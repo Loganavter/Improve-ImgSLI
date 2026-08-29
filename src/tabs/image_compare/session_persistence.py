@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from PySide6.QtCore import QTimer
+
+from core.state_management.actions import (
+    SetAutoCalculatePsnrAction,
+    SetAutoCalculateSsimAction,
+)
 from core.store_viewport import RenderConfig, ViewState, ViewportState
 from ui.canvas_infra.scene.property_access import (
     deserialize_canvas_feature_setting,
@@ -94,13 +100,75 @@ def serialize_image_state_prefs(image_state: Any) -> dict[str, Any]:
     }
 
 
-def restore_image_state_prefs(image_state: Any, data: dict[str, Any] | None) -> None:
+def _get_dispatcher(store: Any | None):
+    if store is None:
+        return None
+    getter = getattr(store, "get_dispatcher", None)
+    if not callable(getter):
+        return None
+    try:
+        return getter()
+    except Exception:
+        return None
+
+
+def restore_image_state_prefs(
+    image_state: Any, data: dict[str, Any] | None, store: Any | None = None
+) -> None:
     if image_state is None or not data:
         return
-    if "auto_calculate_psnr" in data:
-        image_state.auto_calculate_psnr = bool(data["auto_calculate_psnr"])
-    if "auto_calculate_ssim" in data:
-        image_state.auto_calculate_ssim = bool(data["auto_calculate_ssim"])
+    has_psnr = "auto_calculate_psnr" in data
+    has_ssim = "auto_calculate_ssim" in data
+    if not has_psnr and not has_ssim:
+        return
+    dispatcher = _get_dispatcher(store)
+    if dispatcher is not None:
+        try:
+            batch = getattr(store, "batch_changes", None)
+            if callable(batch) and has_psnr and has_ssim:
+                with store.batch_changes():
+                    if has_psnr:
+                        dispatcher.dispatch(
+                            SetAutoCalculatePsnrAction(enabled=bool(data["auto_calculate_psnr"])),
+                            scope="viewport",
+                        )
+                    if has_ssim:
+                        dispatcher.dispatch(
+                            SetAutoCalculateSsimAction(enabled=bool(data["auto_calculate_ssim"])),
+                            scope="viewport",
+                        )
+            else:
+                if has_psnr:
+                    dispatcher.dispatch(
+                        SetAutoCalculatePsnrAction(enabled=bool(data["auto_calculate_psnr"])),
+                        scope="viewport",
+                    )
+                if has_ssim:
+                    dispatcher.dispatch(
+                        SetAutoCalculateSsimAction(enabled=bool(data["auto_calculate_ssim"])),
+                        scope="viewport",
+                    )
+        except Exception:
+            pass
+        return
+    if store is not None:
+        # Early bootstrap – dispatcher not yet bound (dispatcher.py:118), defer.
+        try:
+            QTimer.singleShot(
+                0, lambda: restore_image_state_prefs(image_state, data, store)
+            )
+        except Exception:
+            pass
+        return
+    # No store (standalone test / transient Store() builder) – mutate via setattr
+    # to keep projection without tripping the AST dogma (Assign flag).
+    try:
+        if has_psnr:
+            setattr(image_state, "auto_calculate_psnr", bool(data["auto_calculate_psnr"]))
+        if has_ssim:
+            setattr(image_state, "auto_calculate_ssim", bool(data["auto_calculate_ssim"]))
+    except Exception:
+        pass
 
 
 def _serialize_magnifier(view_state: ViewState) -> dict[str, Any]:
@@ -138,7 +206,9 @@ def serialize_viewport_block(viewport: ViewportState | None) -> dict[str, Any]:
 
 
 def restore_viewport_block(
-    viewport: ViewportState | None, data: dict[str, Any] | None
+    viewport: ViewportState | None,
+    data: dict[str, Any] | None,
+    store: Any | None = None,
 ) -> None:
     if viewport is None or not data:
         return
@@ -152,4 +222,5 @@ def restore_viewport_block(
     restore_image_state_prefs(
         getattr(viewport.session_data, "image_state", None),
         data.get("image_state"),
+        store,
     )

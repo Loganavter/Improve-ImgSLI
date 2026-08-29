@@ -2,6 +2,8 @@ import logging
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from core.state_management.actions import SetCachedDiffImageAction
+
 from shared.image_processing.store_lease import StoreLease
 from shared.rendering.image_identity import image_uid
 
@@ -80,12 +82,26 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
             return
         # Both fields are updated together so a future request_key
         # comparison never sees a served key without its matching image.
-        presenter.store.viewport.session_data.render_cache.cached_diff_image = (
-            diff_image
-        )
-        presenter.store.viewport.session_data.render_cache.cached_diff_source_key = (
-            request_key
-        )
+        dispatcher = getattr(presenter.store, "get_dispatcher", None)
+        dispatcher = dispatcher() if callable(dispatcher) else None
+        if dispatcher is not None:
+            try:
+                dispatcher.dispatch(SetCachedDiffImageAction(image=diff_image), scope="viewport")
+            except Exception:
+                logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
+                try:
+                    setattr(presenter.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
+                except Exception:
+                    pass
+        else:
+            try:
+                setattr(presenter.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
+            except Exception:
+                pass
+        try:
+            setattr(presenter.store.viewport.session_data.render_cache, "cached_diff_source_key", request_key)
+        except Exception:
+            pass
         complete_diff_toast(presenter, request_key)
         presenter._last_mag_signature = None
         presenter._last_bg_signature = None

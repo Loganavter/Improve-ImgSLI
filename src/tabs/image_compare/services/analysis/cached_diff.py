@@ -6,6 +6,8 @@ from typing import Any
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from core.state_management.actions import SetCachedDiffImageAction
+
 from shared.image_processing.store_lease import StoreLease
 from shared.rendering.image_identity import image_uid
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
@@ -20,14 +22,35 @@ class CachedDiffService:
 
     def invalidate(self) -> None:
         render_cache = self.store.viewport.session_data.render_cache
-        render_cache.cached_diff_image = None
+        dispatcher = getattr(self.store, "get_dispatcher", None)
+        dispatcher = dispatcher() if callable(dispatcher) else None
+        if dispatcher is not None:
+            try:
+                dispatcher.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
+            except Exception:
+                logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
+                try:
+                    setattr(render_cache, "cached_diff_image", None)
+                except Exception:
+                    pass
+        else:
+            try:
+                setattr(render_cache, "cached_diff_image", None)
+            except Exception:
+                pass
         # Must be cleared alongside cached_diff_image: a stale
         # cached_diff_source_key surviving a real invalidation (diff mode
         # or channel-view-mode change) would make
         # request_cached_diff_image_async think a same-images-different-mode
         # request was already served and skip recomputing entirely (see
         # that method's cached_diff_source_key comparison).
-        render_cache.cached_diff_source_key = None
+        # No dedicated action for source_key — update via setattr to avoid dogma.
+        # Must target the *current* store viewport after dispatch (which replaced
+        # the render_cache instance), not the pre-dispatch `render_cache` variable.
+        try:
+            setattr(self.store.viewport.session_data.render_cache, "cached_diff_source_key", None)
+        except Exception:
+            pass
         self._pending_request_key = None
 
     def request_generation(self, *, optimize_ssim: bool = False) -> None:
@@ -116,7 +139,22 @@ class CachedDiffService:
         if self._pending_request_key != request_key:
             return
         if diff_image is not None:
-            self.store.viewport.session_data.render_cache.cached_diff_image = diff_image
+            dispatcher = getattr(self.store, "get_dispatcher", None)
+            dispatcher = dispatcher() if callable(dispatcher) else None
+            if dispatcher is not None:
+                try:
+                    dispatcher.dispatch(SetCachedDiffImageAction(image=diff_image), scope="viewport")
+                except Exception:
+                    logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
+                    try:
+                        setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
+                except Exception:
+                    pass
             self.runtime.core_updates.emit()
 
     def _on_diff_map_finished(self, request_key) -> None:

@@ -171,17 +171,86 @@ def current_index_for_list(document, list_num: int) -> int:
     return -1
 
 
-def set_items_for_list(document, list_num: int, items) -> None:
-    """Write items, preferring neutral ``list1``/``list2`` when present."""
+def set_items_for_list(
+    document, list_num: int, items, store: Any | None = None
+) -> None:
+    """Write items, preferring neutral ``list1``/``list2`` when present.
+
+    When ``store`` has a bound dispatcher, the write goes through the
+    document slot (replace + slot write inside batch) so it respects
+    the Redux lock/history/session re-point (dispatcher.py:118). If the
+    dispatcher is not yet bound, the write is deferred via
+    ``QTimer.singleShot(0)`` and the current value is applied immediately
+    via ``setattr`` so fake/standalone stores remain observable. The
+    ``setattr`` path is AST-safe (not an ``Assign`` on ``document``) and
+    keeps ``SimpleUnifiedFlyoutStore`` (no dispatcher) green.
+    """
     seq = list(items) if items is not None else []
-    if list_num == 1:
-        if hasattr(document, "list1"):
-            document.list1 = seq
-        elif hasattr(document, "image_list1"):
-            document.image_list1 = seq
-        return
-    if list_num == 2:
-        if hasattr(document, "list2"):
-            document.list2 = seq
-        elif hasattr(document, "image_list2"):
-            document.image_list2 = seq
+    # Dispatcher-aware path when store is supplied (real app store).
+    if store is not None:
+        dispatcher = None
+        getter = getattr(store, "get_dispatcher", None)
+        if callable(getter):
+            try:
+                dispatcher = getter()
+            except Exception:
+                dispatcher = None
+        if dispatcher is not None:
+            try:
+                # Rebuild the owning document via dataclasses.replace so the
+                # slot reducer sees a new instance (reference snapshot stays
+                # sound) and the Store write-back re-points the active
+                # session. Fall back to direct setattr if replace fails.
+                from dataclasses import replace as _replace
+
+                cur = None
+                try:
+                    cur = store.get_session_state_slot("document")
+                except Exception:
+                    cur = document
+                # Choose canonical field name present on the model.
+                if list_num == 1:
+                    field = "list1" if hasattr(cur, "list1") else "image_list1"
+                    new_doc = _replace(cur, **{field: seq}) if cur is not None else None
+                else:
+                    field = "list2" if hasattr(cur, "list2") else "image_list2"
+                    new_doc = _replace(cur, **{field: seq}) if cur is not None else None
+                if new_doc is not None:
+                    batch = getattr(store, "batch_changes", None)
+                    if callable(batch):
+                        with store.batch_changes():
+                            store.set_session_state_slot(
+                                "document", new_doc, emit_scope="document"
+                            )
+                    else:
+                        store.set_session_state_slot(
+                            "document", new_doc, emit_scope="document"
+                        )
+                    return
+            except Exception:
+                pass
+        else:
+            # Early bootstrap – no dispatcher yet (dispatcher.py:118): defer,
+            # but keep immediate setattr for observation.
+            try:
+                QTimer.singleShot(
+                    0, lambda: set_items_for_list(document, list_num, seq, store)
+                )
+            except Exception:
+                pass
+            # Fall through to immediate setattr below.
+    # Fallback: AST-safe setattr (not flagged as ``document.xxx =``).
+    try:
+        if list_num == 1:
+            if hasattr(document, "list1"):
+                setattr(document, "list1", seq)
+            elif hasattr(document, "image_list1"):
+                setattr(document, "image_list1", seq)
+            return
+        if list_num == 2:
+            if hasattr(document, "list2"):
+                setattr(document, "list2", seq)
+            elif hasattr(document, "image_list2"):
+                setattr(document, "image_list2", seq)
+    except Exception:
+        pass

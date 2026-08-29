@@ -28,6 +28,16 @@ class PlaylistListOperations:
         self._trigger_metrics = trigger_metrics_callback
 
     def swap_current_images(self) -> None:
+        dispatcher = self.store.get_dispatcher()
+        assert dispatcher is not None, "swap_current_images requires dispatcher"
+        from core.state_management.actions import (
+            SetFullResImageAction,
+            SetImagePathAction,
+            SetImageSessionImageAction,
+            SetOriginalImageAction,
+            SetPreviewImageAction,
+        )
+
         document = self.store.get_session_state_slot("document")
         idx1 = document.current_index1
         idx2 = document.current_index2
@@ -38,31 +48,38 @@ class PlaylistListOperations:
 
         list1[idx1], list2[idx2] = list2[idx2], list1[idx1]
 
-        document.preview_image1, document.preview_image2 = (
-            document.preview_image2,
-            document.preview_image1,
-        )
-        document.original_image1, document.original_image2 = (
-            document.original_image2,
-            document.original_image1,
-        )
-        document.full_res_image1, document.full_res_image2 = (
-            document.full_res_image2,
-            document.full_res_image1,
-        )
-        document.image1_path, document.image2_path = (
-            document.image2_path,
-            document.image1_path,
-        )
-        self.store.viewport.session_data.image_state.image1, self.store.viewport.session_data.image_state.image2 = (
-            self.store.viewport.session_data.image_state.image2,
-            self.store.viewport.session_data.image_state.image1,
-        )
+        # Capture before any dispatch — reducers replace document, so later
+        # reads would see already-swapped values.
+        prev1 = document.preview_image1
+        prev2 = document.preview_image2
+        orig1 = document.original_image1
+        orig2 = document.original_image2
+        full1 = document.full_res_image1
+        full2 = document.full_res_image2
+        path1 = document.image1_path
+        path2 = document.image2_path
+        img1 = self.store.viewport.session_data.image_state.image1
+        img2 = self.store.viewport.session_data.image_state.image2
 
-        self.store.invalidate_geometry_cache()
+        with self.store.batch_changes():
+            dispatcher.dispatch(SetPreviewImageAction(1, prev2), scope="document")
+            dispatcher.dispatch(SetPreviewImageAction(2, prev1), scope="document")
+            dispatcher.dispatch(SetOriginalImageAction(1, orig2), scope="document")
+            dispatcher.dispatch(SetOriginalImageAction(2, orig1), scope="document")
+            dispatcher.dispatch(SetFullResImageAction(1, full2), scope="document")
+            dispatcher.dispatch(SetFullResImageAction(2, full1), scope="document")
+            dispatcher.dispatch(SetImagePathAction(1, path2), scope="document")
+            dispatcher.dispatch(SetImagePathAction(2, path1), scope="document")
+            dispatcher.dispatch(
+                SetImageSessionImageAction(slot=1, image=img2), scope="viewport"
+            )
+            dispatcher.dispatch(
+                SetImageSessionImageAction(slot=2, image=img1), scope="viewport"
+            )
+            self.store.invalidate_geometry_cache()
+
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self._emit_metrics_update()
-        self.store.state_changed.emit("document")
 
     def swap_entire_lists(self) -> None:
         document_store_ops.swap_all_image_data(self.store)
