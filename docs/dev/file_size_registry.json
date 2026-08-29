@@ -197,6 +197,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/presentation/derived_gpu_state.py",
+      "lines": 91,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=derived-state reason=\"single Store snapshot → GPU commit barrier, fixes shadow cache divergence (store-redux-dogma)\"",
+      "parsed": {
+        "pattern": "derived-state",
+        "reason": "single Store snapshot → GPU commit barrier, fixes shadow cache divergence (store-redux-dogma)"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
       "lines": 534,
       "limit": 500,
