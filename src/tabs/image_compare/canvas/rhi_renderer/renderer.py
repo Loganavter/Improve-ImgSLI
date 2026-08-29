@@ -32,17 +32,21 @@ from ..texture_parts.tile_geometry import (
 )
 from shared.rendering.fallback_lod import resolve_fallback_lod
 from shared.rendering.glass_panel import GlassPanelRenderer
-from ._debug import rhi_render_debug
+from ._debug import rhi_render_debug, rhi_render_debug_enabled
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on
 # shared.debug_flags, so no cycle.
 try:
     from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
+    from tabs.image_compare.debug import ic_preview_debug_enabled as _ic_preview_enabled  # type: ignore
 except Exception:  # pragma: no cover - import-time fallback for tests
 
     def _ic_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
         return None
+
+    def _ic_preview_enabled() -> bool:  # type: ignore
+        return False
 
 from .draw_plan import (
     _covered_fraction,
@@ -184,6 +188,12 @@ class RhiCanvasRenderer:
         # on promotion. The rekeyed-marker signal (``_is_rekeyed_content_key``)
         # persists on its own via ``self._last_good_*`` and needs no flag.
         self._content_swap_active = False
+        # Duplicate-left-on-both fallback guard: single-image mode (display_single_image_on_label)
+        # uploads the same pil_image to both stored slots, so fallback's old baseline
+        # is left-on-both duplicate. Holding it atomically after second image arrives
+        # shows left on right as "placeholder" — obviously wrong. Track whether
+        # previous frame's sources were same object to bypass that baseline.
+        self._prev_sources_is_same: bool | None = None
 
     # -- backward-compatible views onto RhiResources' GPU state, used by
     # feature passes (e.g. magnifier) that read tile textures directly. --
@@ -263,6 +273,7 @@ class RhiCanvasRenderer:
         current_array_plan: list,
         source_changed: bool,
         rekeyed: dict[object, object],
+        current_sources_is_same: bool | None = None,
     ) -> tuple[object | None, list]:
         """Decides this frame's draw plan across a LOD-churn or content-swap
         transition and returns ``(new_last_good_key, array_draw_plan)`` --
@@ -330,6 +341,19 @@ class RhiCanvasRenderer:
                 tuple(rekeyed.get(k, k) for k in texture_keys),
                 rekeyed.get(diff_source_key, diff_source_key),
             )
+        # Single-image duplicate guard (left on both halves): if previous frame's
+        # sources were same object (display_single_image_on_label dup) and current
+        # are distinct (preview/full_res distinct distinct after second load), the
+        # old baseline is left-on-both duplicate — holding it atomically would
+        # show left on right as "placeholder", obviously wrong.
+        if self._prev_sources_is_same is True and current_sources_is_same is False:
+            _ic_preview_log(
+                "fallback SKIP_DUPLICATE_BASELINE: prev same True current False last_good=%s -> drop baseline",
+                last_good_key,
+            )
+            last_good_key = None
+            # Don't keep content_swap_active for duplicate baseline
+            self._content_swap_active = False
         _prev_swap = self._content_swap_active
         if source_changed and last_good_key is not None and last_good_key != key:
             # A content replacement just committed (see the flag's
@@ -365,43 +389,47 @@ class RhiCanvasRenderer:
             self._content_swap_active,
         )
         fallback_diag: dict[str, int] = {}
+        # Fast path: promotion without fallback — avoid closure alloc per frame
+        if not main_more_pending and current_array_plan:
+            new_last_good_key, array_draw_plan = key, current_array_plan
+        else:
 
-        def _build_fallback_items(prior_key):
-            prior_texture_keys, prior_diff_key = prior_key
-            items = build_array_draw_plan(
-                tile_service,
-                prior_texture_keys,
-                base_image,
-                diff_key=prior_diff_key,
-                sampler_name=sampler_name,
-                viewport_zoom=viewport_zoom,
-                viewport_offset=viewport_offset,
+            def _build_fallback_items(prior_key):
+                prior_texture_keys, prior_diff_key = prior_key
+                items = build_array_draw_plan(
+                    tile_service,
+                    prior_texture_keys,
+                    base_image,
+                    diff_key=prior_diff_key,
+                    sampler_name=sampler_name,
+                    viewport_zoom=viewport_zoom,
+                    viewport_offset=viewport_offset,
+                )
+                fallback_diag["raw"] = len(items)
+                # In atomic mode drop_covered never runs (the whole point is
+                # that current_items stays out of the draw plan entirely),
+                # so this is the only place "kept" gets set -- default it to
+                # "everything survives", then let _drop_covered overwrite it
+                # in non-atomic mode.
+                fallback_diag["kept"] = len(items)
+                return items
+
+            def _drop_covered(fallback_items, current_items):
+                dropped = drop_covered_fallback_items(
+                    fallback_items, current_items, base_image
+                )
+                fallback_diag["kept"] = len(dropped)
+                return dropped
+
+            new_last_good_key, array_draw_plan = resolve_fallback_lod(
+                key=key,
+                current_items=current_array_plan,
+                more_pending=main_more_pending,
+                last_good_key=last_good_key,
+                build_fallback_items=_build_fallback_items,
+                drop_covered=_drop_covered,
+                atomic=is_content_swap,
             )
-            fallback_diag["raw"] = len(items)
-            # In atomic mode drop_covered never runs (the whole point is
-            # that current_items stays out of the draw plan entirely),
-            # so this is the only place "kept" gets set -- default it to
-            # "everything survives", then let _drop_covered overwrite it
-            # in non-atomic mode.
-            fallback_diag["kept"] = len(items)
-            return items
-
-        def _drop_covered(fallback_items, current_items):
-            dropped = drop_covered_fallback_items(
-                fallback_items, current_items, base_image
-            )
-            fallback_diag["kept"] = len(dropped)
-            return dropped
-
-        new_last_good_key, array_draw_plan = resolve_fallback_lod(
-            key=key,
-            current_items=current_array_plan,
-            more_pending=main_more_pending,
-            last_good_key=last_good_key,
-            build_fallback_items=_build_fallback_items,
-            drop_covered=_drop_covered,
-            atomic=is_content_swap,
-        )
         if new_last_good_key == key:
             # Promotion: the new content's current-view tiles are all
             # resident; the transition is over. From here on, further
@@ -567,36 +595,35 @@ class RhiCanvasRenderer:
                 if base_image.use_hires
                 else tuple(ctx.stored_pil_images)
             )
-            # Duplicate-left-on-both-halves debug: log the actual objects
-            # bound for sampling (type/size/id) plus the slot keys, under
-            # same [ic-preview] stream as picker (render_flow.py:482).
-            def _sz(o):
-                if o is None:
+            # Gated debug: avoid 4× image_uid + type + closure alloc per frame when off
+            if _ic_preview_enabled():
+                def _sz(o):
+                    if o is None:
+                        return None
+                    if hasattr(o, "size"):
+                        v = getattr(o, "size")
+                        if callable(v):
+                            try:
+                                q = v()
+                                return (q.width(), q.height()) if hasattr(q, "width") else str(q)
+                            except Exception:
+                                return str(v)
+                        return v
                     return None
-                if hasattr(o, "size"):
-                    v = getattr(o, "size")
-                    if callable(v):
-                        try:
-                            q = v()
-                            return (q.width(), q.height()) if hasattr(q, "width") else str(q)
-                        except Exception:
-                            return str(v)
-                    return v
-                return None
-            _ic_preview_log(
-                "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object=%s",
-                base_image.use_hires,
-                list(texture_keys),
-                list(ctx.source_texture_ids),
-                [image_uid(s) if s is not None else None for s in sources],
-                [type(s).__name__ if s is not None else None for s in sources],
-                [_sz(s) for s in sources],
-                id(sources[0]) if len(sources) > 0 and sources[0] is not None else 0,
-                id(sources[1]) if len(sources) > 1 and sources[1] is not None else 0,
-                [image_uid(s) if s is not None else None for s in ctx.stored_pil_images],
-                [image_uid(s) if s is not None else None for s in getattr(widget.runtime_state, "_source_pil_images", ())],
-                (len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]),
-            )
+                _ic_preview_log(
+                    "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object=%s",
+                    base_image.use_hires,
+                    list(texture_keys),
+                    list(ctx.source_texture_ids),
+                    [image_uid(s) if s is not None else None for s in sources],
+                    [type(s).__name__ if s is not None else None for s in sources],
+                    [_sz(s) for s in sources],
+                    id(sources[0]) if len(sources) > 0 and sources[0] is not None else 0,
+                    id(sources[1]) if len(sources) > 1 and sources[1] is not None else 0,
+                    [image_uid(s) if s is not None else None for s in ctx.stored_pil_images],
+                    [image_uid(s) if s is not None else None for s in getattr(widget.runtime_state, "_source_pil_images", ())],
+                    (len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]),
+                )
             # Device px per logical px: DPR in live render, 1.0 during tiled
             # export (widget is sized to the tile's pixel footprint).
             scale_px = target_size.width() / float(max(1, widget.width()))
@@ -716,8 +743,11 @@ class RhiCanvasRenderer:
                 and ctx.source_texture_ids[0]
                 and ctx.source_texture_ids[1]
             )
-            if tile_dump_enabled():
+            # Cache union once — used for both diagnostic and residency
+            _cap_uv = None
+            if _mag_branch_active or tile_dump_enabled():
                 _cap_uv = _union_capture_uv_rect(overlay) if overlay is not None else None
+            if tile_dump_enabled():
                 log_tile_event(
                     "magnifier.residency_branch",
                     branch_active=_mag_branch_active,
@@ -736,7 +766,7 @@ class RhiCanvasRenderer:
                     base_image,
                     updates,
                     diff_key=None,
-                    capture_uv_rect=_union_capture_uv_rect(overlay),
+                    capture_uv_rect=_cap_uv,
                     dirty_layers=dirty_layers,
                 )
                 if _debug_timing:
@@ -780,6 +810,7 @@ class RhiCanvasRenderer:
             # mechanism runs in atomic mode (current tiles stay hidden
             # until the new content is fully resident) -- see
             # ``_resolve_fallback_plan``.
+            _cur_is_same = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
             new_last_good_key, array_draw_plan = self._resolve_fallback_plan(
                 tile_service=self.tile_service,
                 texture_keys=texture_keys,
@@ -792,7 +823,10 @@ class RhiCanvasRenderer:
                 current_array_plan=current_array_plan,
                 source_changed=source_changed,
                 rekeyed=self.resources.residency.last_rekeyed_keys,
+                current_sources_is_same=_cur_is_same,
             )
+            # Remember for next frame's duplicate-baseline guard
+            self._prev_sources_is_same = _cur_is_same
             self._last_good_texture_keys, self._last_good_diff_key = (
                 new_last_good_key if new_last_good_key is not None else (None, None)
             )
@@ -802,7 +836,7 @@ class RhiCanvasRenderer:
             # Real draw content (not wishful sources): per-tile layers/bbox — if
             # fallback holds old duplicate, both layers will be same _prev_content
             # even when sources already distinct.
-            if array_draw_plan:
+            if array_draw_plan and _ic_preview_enabled():
                 _ic_preview_log(
                     "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s",
                     list(texture_keys),
@@ -831,56 +865,57 @@ class RhiCanvasRenderer:
             # >1x (e.g. covered=0.55 at zoom=6.857, stable for over a second,
             # main_more_pending=False -- not a transient bug, just fewer than
             # 100% of the unzoomed image being on screen).
-            letterbox1 = tuple(base_image.letterbox1)
-            letterbox2 = tuple(base_image.letterbox2)
-            unit_grid = SimpleNamespace(total_width=1.0, total_height=1.0)
-            visible1 = _visible_side_image_rect(
-                base_image,
-                letterbox1,
-                unit_grid,
-                viewport_zoom=viewport_zoom,
-                viewport_offset=viewport_offset,
-            )
-            visible2 = _visible_side_image_rect(
-                base_image,
-                letterbox2,
-                unit_grid,
-                viewport_zoom=viewport_zoom,
-                viewport_offset=viewport_offset,
-            )
-            visible1_common = _to_common_space(
-                (visible1[0], visible1[1], visible1[2] - visible1[0], visible1[3] - visible1[1]),
-                letterbox1,
-            )
-            visible2_common = _to_common_space(
-                (visible2[0], visible2[1], visible2[2] - visible2[0], visible2[3] - visible2[1]),
-                letterbox2,
-            )
-            covered1 = _covered_fraction(
-                visible1_common,
-                [_to_common_space(item.rect1, letterbox1) for item in array_draw_plan],
-            )
-            covered2 = _covered_fraction(
-                visible2_common,
-                [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
-            )
-            if covered1 < 0.999 or covered2 < 0.999:
-                rhi_render_debug(
-                    "render GAP_DETECTED covered1=%.4f covered2=%.4f entries=%d "
-                    "main_more_pending=%s",
-                    covered1,
-                    covered2,
-                    len(array_draw_plan),
-                    main_more_pending,
+            if rhi_render_debug_enabled() or _ic_preview_enabled():
+                letterbox1 = tuple(base_image.letterbox1)
+                letterbox2 = tuple(base_image.letterbox2)
+                unit_grid = SimpleNamespace(total_width=1.0, total_height=1.0)
+                visible1 = _visible_side_image_rect(
+                    base_image,
+                    letterbox1,
+                    unit_grid,
+                    viewport_zoom=viewport_zoom,
+                    viewport_offset=viewport_offset,
                 )
-                _ic_preview_log(
-                    "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s",
-                    covered1,
-                    covered2,
-                    len(array_draw_plan),
-                    main_more_pending,
-                    self._content_swap_active,
+                visible2 = _visible_side_image_rect(
+                    base_image,
+                    letterbox2,
+                    unit_grid,
+                    viewport_zoom=viewport_zoom,
+                    viewport_offset=viewport_offset,
                 )
+                visible1_common = _to_common_space(
+                    (visible1[0], visible1[1], visible1[2] - visible1[0], visible1[3] - visible1[1]),
+                    letterbox1,
+                )
+                visible2_common = _to_common_space(
+                    (visible2[0], visible2[1], visible2[2] - visible2[0], visible2[3] - visible2[1]),
+                    letterbox2,
+                )
+                covered1 = _covered_fraction(
+                    visible1_common,
+                    [_to_common_space(item.rect1, letterbox1) for item in array_draw_plan],
+                )
+                covered2 = _covered_fraction(
+                    visible2_common,
+                    [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
+                )
+                if covered1 < 0.999 or covered2 < 0.999:
+                    rhi_render_debug(
+                        "render GAP_DETECTED covered1=%.4f covered2=%.4f entries=%d "
+                        "main_more_pending=%s",
+                        covered1,
+                        covered2,
+                        len(array_draw_plan),
+                        main_more_pending,
+                    )
+                    _ic_preview_log(
+                        "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s",
+                        covered1,
+                        covered2,
+                        len(array_draw_plan),
+                        main_more_pending,
+                        self._content_swap_active,
+                    )
 
         # Submit this frame's tile uploads now (rather than folding them into
         # the main pass's own resourceUpdates below) so generate_all_dirty_mips

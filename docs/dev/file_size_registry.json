@@ -220,7 +220,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 1052,
+      "lines": 1087,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split\"",
@@ -309,7 +309,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 696,
+      "lines": 698,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
