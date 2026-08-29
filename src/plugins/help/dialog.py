@@ -9,7 +9,6 @@ from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QScrollArea,
     QSizePolicy,
     QSplitter,
     QVBoxLayout,
@@ -48,12 +47,11 @@ from sli_ui_toolkit.ui.widgets.composite.help_sections import (
 from sli_ui_toolkit.widgets import (
     CustomLineEdit,
     HelpDocumentView,
-    MinimalistScrollBar,
     SidebarDialogShell,
+    SurfaceScrollArea,
 )
 from ui.icon_manager import AppIcon, get_app_icon
 from ui.layout_spacing import sidebar_header_host
-from ui.theming import tint_scroll_surface
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -445,11 +443,7 @@ class HelpDialog(ThemedDialog):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        self._scroll = QScrollArea(content_col)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBar(MinimalistScrollBar(parent=self._scroll))
+        self._scroll = SurfaceScrollArea(content_col)
         # QScrollArea can report sizeHint(0,0); without a floor, stretch=1 still
         # allocates zero height and the hub looks like a blank white pane.
         self._scroll.setMinimumSize(0, 1)
@@ -457,7 +451,6 @@ class HelpDialog(ThemedDialog):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._apply_scroll_surface()
         content_layout.addWidget(self._scroll, 1)
 
         self._content_host = QWidget()
@@ -568,20 +561,6 @@ class HelpDialog(ThemedDialog):
         # Hub cards store eager QIcons; same freeze as session_picker had.
         self.setWindowIcon(get_app_icon(AppIcon.HELP))
         self._hub_page.sync_icons()
-        self._apply_scroll_surface()
-
-    def _apply_scroll_surface(self) -> None:
-        """Paint the content scroll surface with the dialog surface token.
-
-        The QScrollArea and its viewport are stock QWidgets: they auto-fill
-        the QPalette Window role, which the dark palette keeps near-black
-        (#1e1e1e) — the hub page and document view (transparent custom
-        widgets) then render on a black substrate instead of the gray dialog
-        surface (dialog.background → surface.background). See
-        ``ui.theming.tint_scroll_surface`` for the mechanism; re-run on
-        ``theme_changed`` so token overrides take effect.
-        """
-        tint_scroll_surface(self._scroll)
 
     def update_language(self, new_language: str) -> None:
         self.current_language = new_language

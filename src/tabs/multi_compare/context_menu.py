@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QInputDialog, QLineEdit
+from tabs.host_helpers import AppTextInputDialog
 from sli_ui_toolkit.widgets import (
     ContextMenuAction,
     ContextMenuEntry,
@@ -104,11 +104,10 @@ class MultiCompareContextMenuProvider:
         return next((slot for slot in self.widget.state.slots if slot.id == sid), None)
 
     def _rename_slot(self, slot: CompareSlot) -> None:
-        text, ok = QInputDialog.getText(
+        text, ok = AppTextInputDialog.get_text(
             self.widget,
             self._tr("context.rename", "Rename"),
             self._tr("context.name", "Name"),
-            QLineEdit.EchoMode.Normal,
             slot.label,
         )
         if ok:

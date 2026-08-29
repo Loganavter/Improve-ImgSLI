@@ -28,7 +28,7 @@ from sli_ui_toolkit.widgets import (
     Label,
     LogConsoleWidget,
     SpinBox,
-    OverlayScrollArea,
+    SurfaceScrollArea,
     TopTabHost,
 )
 from tabs.image_compare.icons import Icon, get_icon
@@ -336,7 +336,7 @@ def _wrap_tab_scroll(content: QWidget) -> QWidget:
             QSizePolicy.Policy.Minimum,
         )
     content.setMinimumWidth(0)
-    scroll_area = OverlayScrollArea(tab)
+    scroll_area = SurfaceScrollArea(tab, surface_token=None)
     # Host pane already paints rounded chrome; a viewport mask here clips
     # content and can bleed neighbouring framebuffer pixels.
     scroll_area.set_corner_radius(0)
@@ -673,13 +673,9 @@ def create_toolbar(dialog):
     return toolbar_frame
 
 def create_timeline_scroll_area(dialog):
-    scroll_area = QScrollArea()
+    scroll_area = SurfaceScrollArea()
     scroll_area.setObjectName("VideoEditorTimelineScrollArea")
-    scroll_area.setWidgetResizable(True)
-    scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
     scroll_area.setMinimumHeight(scaled_px(210))
-    scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     store = None
     if hasattr(dialog, "export_controller") and dialog.export_controller:

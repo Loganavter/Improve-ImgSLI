@@ -8,12 +8,12 @@ import logging
 
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CustomLineEdit, Label, MinimalistScrollBar
+from sli_ui_toolkit.widgets import CustomLineEdit, Label, SurfaceScrollArea
 from tabs.registry import get_shared_tab_registry
 from ui.actions.palette.common import (
     current_keyboard_overrides as _current_keyboard_overrides,
@@ -310,11 +310,7 @@ class FindActionDialog(ThemedDialog):
         self._search.installEventFilter(self)
         root.addWidget(self._search)
 
-        self._scroll = QScrollArea(self)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBar(MinimalistScrollBar(parent=self._scroll))
+        self._scroll = SurfaceScrollArea(self)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._list_host = QWidget(self._scroll)
