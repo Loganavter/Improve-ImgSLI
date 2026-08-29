@@ -27,10 +27,13 @@ def deactivate_single_image_mode(controller):
     if dispatcher is not None:
         from core.state_management.viewport_actions import SetShowingSingleImageModeAction
         from core.state_management.interaction_actions import SetDraggingSplitLineAction
-        from tabs.image_compare.canvas.features.magnifier.input.actions import (
-            SetDraggingCapturePointAction,
-            SetDraggingSplitInMagnifierAction,
+        import importlib
+
+        _magnifier_actions = importlib.import_module(
+            "tabs.image_compare.canvas.features.magnifier.input.actions"
         )
+        SetDraggingCapturePointAction = _magnifier_actions.SetDraggingCapturePointAction
+        SetDraggingSplitInMagnifierAction = _magnifier_actions.SetDraggingSplitInMagnifierAction
 
         with store.batch_changes():
             dispatcher.dispatch(SetShowingSingleImageModeAction(0), scope="viewport")

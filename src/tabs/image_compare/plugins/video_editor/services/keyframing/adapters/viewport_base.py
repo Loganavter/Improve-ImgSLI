@@ -93,10 +93,9 @@ def _read_interaction_session(snapshot: FrameSnapshot) -> dict[str, Any]:
     return {"value": str(int(getattr(viewport.interaction_state, "interaction_session_id", 0)))}
 
 def _write_interaction_session(snapshot: FrameSnapshot, channels: dict[str, Any]) -> None:
-    from dataclasses import replace
-
     from core.state_management.actions import SetInteractionSessionIdAction
     from core.state_management.reducers import InteractionStateReducer
+    from core.store_viewport import ViewportState
 
     try:
         sid = int(channels["value"])
@@ -110,7 +109,7 @@ def _write_interaction_session(snapshot: FrameSnapshot, channels: dict[str, Any]
         if dispatcher is not None:
             dispatcher.dispatch(SetInteractionSessionIdAction(sid), scope="viewport")
             try:
-                snapshot.viewport_state = store.viewport
+                object.__setattr__(snapshot, "viewport_state", store.viewport)
             except Exception:
                 pass
             return
@@ -120,14 +119,17 @@ def _write_interaction_session(snapshot: FrameSnapshot, channels: dict[str, Any]
     # (`scope="viewport"`) instead of direct `viewport.interaction_state... =`.
     try:
         from core.store import Store
+        from core.state_management.dispatcher import Dispatcher
 
         tmp = Store()
         tmp.viewport = snapshot.viewport_state
         d = tmp.get_dispatcher()
-        if d is not None:
-            d.dispatch(SetInteractionSessionIdAction(sid), scope="viewport")
-            snapshot.viewport_state = tmp.viewport
-            return
+        if d is None:
+            d = Dispatcher(tmp)
+            tmp.set_dispatcher(d)
+        d.dispatch(SetInteractionSessionIdAction(sid), scope="viewport")
+        object.__setattr__(snapshot, "viewport_state", tmp.viewport)
+        return
     except Exception:
         pass
 
@@ -136,7 +138,18 @@ def _write_interaction_session(snapshot: FrameSnapshot, channels: dict[str, Any]
     if current is None:
         return
     new_interaction = InteractionStateReducer.reduce(current, SetInteractionSessionIdAction(sid))
-    snapshot.viewport_state = replace(snapshot.viewport_state, interaction_state=new_interaction)
+    vp = snapshot.viewport_state
+    object.__setattr__(
+        snapshot,
+        "viewport_state",
+        ViewportState(
+            render_config=vp.render_config,
+            session_data=vp.session_data,
+            view_state=vp.view_state,
+            interaction_state=new_interaction,
+            geometry_state=vp.geometry_state,
+        ),
+    )
 
 def _track_descriptor(
     track_id: str,

@@ -197,6 +197,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
+      "lines": 534,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=canvas-presentation reason=\"plan applicator — 5 helpers + geometry sync + store binding, 519 lines\"",
+      "parsed": {
+        "pattern": "canvas-presentation",
+        "reason": "plan applicator — 5 helpers + geometry sync + store binding, 519 lines"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/render_context.py",
       "lines": 594,
       "limit": 500,
@@ -309,7 +320,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 767,
+      "lines": 798,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -321,7 +332,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
-      "lines": 585,
+      "lines": 584,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
@@ -485,7 +496,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 666,
+      "lines": 672,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
