@@ -450,10 +450,64 @@ def update_comparison_if_needed(presenter):
         presenter.current_displayed_pixmap = None
         return False
     if not have1 or not have2:
-        # One side is mid-reload / empty. Keep showing the live half instead of
-        # blanking the whole canvas (ClearImageSlotData + path-only load).
-        # Throttle: same have1/have2 + same image uids would spam at 60Hz via fps timer.
+        # One side is mid-reload / empty.
+        # For a brand-new comparison (other list empty) we wait for the
+        # second side instead of painting the live half duplicated across
+        # both halves (left-on-both via display_single_image_on_label →
+        # stored_0/stored_1 is_same=True). That duplicate is what the
+        # 02:05:58.415 log showed (uid [2,2] on both halves). Waiting makes
+        # the first load "1 загрузка, он покорно ждет sample2" and the
+        # pair appears simultaneously once both sides are ready.
+        # If the other list already has content (user browsing / reload),
+        # keep the old live-half behaviour.
         global _last_one_side_log_sig
+        other_list_empty = (
+            len(_document.image_list2) == 0 if have1 else len(_document.image_list1) == 0
+        )
+        # Path exists but pixels not yet ready → second side is on its way
+        # (02:37:44.236 paths=sample1/sample2 but source2 still None). Wait
+        # instead of painting left-on-both.
+        other_has_path = (
+            (_document.image2_path is not None) if have1 else (_document.image1_path is not None)
+        )
+        # Also wait if the other slot has a decode pending (coalesced by
+        # _pending_image_loads) — visible via controller pending set.
+        try:
+            _pending = getattr(presenter.store, "_pending_image_loads", None)  # type: ignore[attr-defined]
+            # controller pending lives on the tab controller, not store; check
+            # presenter side via controller if available
+            _ctrl = getattr(presenter, "controller", None) or getattr(presenter, "_controller", None)
+            # presenter.widget may hold controller ref in some builds
+            if _ctrl is None:
+                _w = getattr(presenter, "widget", None)
+                _ctrl = getattr(_w, "_controller", None) if _w is not None else None
+            has_pending_other = False
+            if _pending:
+                other_slot = 2 if have1 else 1
+                has_pending_other = any(slot == other_slot for slot, _p in _pending)
+            elif _ctrl is not None:
+                _cp = getattr(_ctrl, "_pending_image_loads", None)
+                if _cp:
+                    other_slot = 2 if have1 else 1
+                    has_pending_other = any(slot == other_slot for slot, _p in _cp)
+            else:
+                has_pending_other = False
+        except Exception:
+            has_pending_other = False
+        if other_list_empty or other_has_path or has_pending_other:
+            _one_side_sig = (have1, have2, image_uid(source1) if source1 else None, image_uid(source2) if source2 else None, other_list_empty, other_has_path, has_pending_other)
+            if _one_side_sig != _last_one_side_log_sig:
+                _last_one_side_log_sig = _one_side_sig
+                _preview_log(
+                    "update: one side missing (have1=%s have2=%s) - wait for other side (other_empty=%s other_has_path=%s pending_other=%s)",
+                    have1,
+                    have2,
+                    other_list_empty,
+                    other_has_path,
+                    has_pending_other,
+                )
+            return False
+        # Throttle: same have1/have2 + same image uids would spam at 60Hz via fps timer.
         _one_side_sig = (have1, have2, image_uid(source1) if source1 else None, image_uid(source2) if source2 else None)
         if _one_side_sig != _last_one_side_log_sig:
             _last_one_side_log_sig = _one_side_sig

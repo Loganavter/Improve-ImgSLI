@@ -125,7 +125,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 729,
+      "lines": 743,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -331,7 +331,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 798,
+      "lines": 852,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -366,7 +366,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/loading.py",
-      "lines": 904,
+      "lines": 965,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",

@@ -241,6 +241,18 @@ def trigger_preview_unification(controller, image_number: int):
     source2 = document.full_res_image2 or document.preview_image2
 
     if source1 and source2 and not _defer_mixed_unify(controller, document):
+        # Dedup: two triggers (preview QTimer 0 and full QTimer 50) can
+        # coalesce on the same path pair within ~50ms. If a unify for this
+        # exact path pair is already in flight, skip the second start —
+        # the first worker will finish and publish the unified stores.
+        try:
+            _rc = _session_render_cache(controller)
+            if _rc is not None and getattr(_rc, "unification_in_progress", False):
+                pending = getattr(_rc, "pending_unification_paths", None)
+                if pending == (document.image1_path, document.image2_path):
+                    return
+        except Exception:
+            pass
         try:
             controller._cancel_pending_unification(
                 document.image1_path,
@@ -369,6 +381,16 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         source2 = live_document.full_res_image2 or live_document.preview_image2
         if _defer_mixed_unify(controller, live_document):
             return
+        # Dedup same as trigger_preview_unification: coalesce duplicate
+        # unify starts for the same path pair that is already in flight.
+        try:
+            _rc2 = _session_render_cache(controller)
+            if _rc2 is not None and getattr(_rc2, "unification_in_progress", False):
+                pending2 = getattr(_rc2, "pending_unification_paths", None)
+                if pending2 == (live_document.image1_path, live_document.image2_path):
+                    return
+        except Exception:
+            pass
         if source1 and source2:
             _hf_dispatcher = getattr(controller.store, "get_dispatcher", None)
             _hf_dispatcher = _hf_dispatcher() if callable(_hf_dispatcher) else None
@@ -764,11 +786,43 @@ def set_current_image(
     controller._schedule_image_canvas_update()
 
     if pil_img is None and path:
-        worker = GenericWorker(
-            controller._load_image_async, path, image_number, current_index, None
-        )
-        worker.signals.result.connect(controller._on_image_loaded_from_worker)
-        controller.thread_pool.start(worker)
+        # Dedup: load_images_from_paths schedules set_current_image via
+        # QTimer 50ms and the "document" on_change resync schedules via
+        # QTimer 0ms — both fire for the same slot/path before the first
+        # worker returns. Without a guard we start two
+        # TiledPixelStore.from_path for the same file (see log 02:05:51.775 +
+        # 02:05:51.834). Coalesce on (slot, path).
+        pending = getattr(controller, "_pending_image_loads", None)
+        key = (image_number, path)
+        if pending is not None and key in pending:
+            pass
+        else:
+            if pending is not None:
+                pending.add(key)
+
+                def _clear_pending(k=key, p=pending):
+                    try:
+                        p.discard(k)
+                    except Exception:
+                        pass
+
+            else:
+
+                def _clear_pending():  # type: ignore[no-redef]
+                    pass
+
+            worker = GenericWorker(
+                controller._load_image_async, path, image_number, current_index, None
+            )
+            worker.signals.result.connect(controller._on_image_loaded_from_worker)
+            # finished fires for both success and error; result handler also
+            # clears via the same key so the slot can reload after failure.
+            try:
+                worker.signals.finished.connect(_clear_pending)
+            except Exception:
+                pass
+            worker.signals.result.connect(lambda *_a, _cp=_clear_pending: _cp())
+            controller.thread_pool.start(worker)
     else:
         controller._trigger_preview_unification(image_number)
 
@@ -899,6 +953,13 @@ def resync_current_image_slots(controller) -> None:
             is_open = getattr(full_res, "is_open", None)
             stale = is_open is not None and not is_open
         if stale:
+            # Coalesce with a normal load_images_from_paths flow: both the
+            # QTimer(0) resync and the QTimer(50) finalize schedule
+            # set_current_image for the same new item. If a worker for
+            # (slot, path) is already pending, skip the duplicate resync.
+            pending = getattr(controller, "_pending_image_loads", None)
+            if pending is not None and (image_number, item.path) in pending:
+                continue
             # Through the controller's public seam (which delegates back to
             # this module) so callers/tests can stub the reload decision.
             controller.set_current_image(image_number, force_refresh=True)
