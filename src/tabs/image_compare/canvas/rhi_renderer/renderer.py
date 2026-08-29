@@ -33,6 +33,17 @@ from ..texture_parts.tile_geometry import (
 from shared.rendering.fallback_lod import resolve_fallback_lod
 from shared.rendering.glass_panel import GlassPanelRenderer
 from ._debug import rhi_render_debug
+
+# [ic-preview] correlation for "placeholder missing" flash (same env flag as
+# render_flow's gate). Import lazy-tolerant: debug.py only depends on
+# shared.debug_flags, so no cycle.
+try:
+    from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
+except Exception:  # pragma: no cover - import-time fallback for tests
+
+    def _ic_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
+        return None
+
 from .draw_plan import (
     _covered_fraction,
     _to_common_space,
@@ -319,13 +330,39 @@ class RhiCanvasRenderer:
                 tuple(rekeyed.get(k, k) for k in texture_keys),
                 rekeyed.get(diff_source_key, diff_source_key),
             )
+        _prev_swap = self._content_swap_active
         if source_changed and last_good_key is not None and last_good_key != key:
             # A content replacement just committed (see the flag's
             # docstring for which cases). Hold the old content on screen
             # for the whole transition, not just this frame.
             self._content_swap_active = True
+            _ic_preview_log(
+                "fallback content_swap_active: SET (source_changed=%s last_good=%s key=%s prev=%s -> True)",
+                source_changed,
+                last_good_key,
+                key,
+                _prev_swap,
+            )
         is_content_swap = self._content_swap_active or _is_rekeyed_content_baseline(
             last_good_key
+        )
+        # Always emit the atomic decision on every fallback-active frame so
+        # "[ic-preview] fallback decision -> fallback result -> apply" can be
+        # correlated in one grep. Otherwise a preview->store flip that silently
+        # falls back to progressive (is_content_swap=False) looks identical to
+        # a correct atomic hold in the log.
+        _ic_preview_log(
+            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s",
+            source_changed,
+            last_good_key,
+            key,
+            dict(rekeyed) if rekeyed else None,
+            is_content_swap,
+            is_content_swap,
+            main_more_pending,
+            len(current_array_plan),
+            _is_rekeyed_content_baseline(last_good_key),
+            self._content_swap_active,
         )
         fallback_diag: dict[str, int] = {}
 
@@ -370,7 +407,45 @@ class RhiCanvasRenderer:
             # resident; the transition is over. From here on, further
             # LOD-level churn on the (now committed) content is a plain
             # progressive reveal again.
+            if self._content_swap_active:
+                _ic_preview_log(
+                    "fallback content_swap_active: CLEARED on promotion (new_last_good==key %s)",
+                    key,
+                )
             self._content_swap_active = False
+        # Result line: explains "forgot placeholder and immediately tiled" —
+        # three distinct reasons leave fallback empty / not drawn:
+        #   1) last_good_key is None (no baseline yet),
+        #   2) atomic fallback empty (old content evicted → degraded to current),
+        #   3) is_content_swap False (progressive instead of atomic).
+        _ic_preview_log(
+            "fallback result: atomic=%s fallback_raw=%s fallback_kept=%s resolved=%d current=%d more_pending=%s last_good=%s new_last_good=%s promoted=%s",
+            is_content_swap,
+            fallback_diag.get("raw"),
+            fallback_diag.get("kept"),
+            len(array_draw_plan),
+            len(current_array_plan),
+            main_more_pending,
+            last_good_key,
+            new_last_good_key,
+            new_last_good_key == key,
+        )
+        if fallback_diag and fallback_diag.get("raw") == 0:
+            _ic_preview_log(
+                "fallback EMPTY: atomic=%s old_keys=%s — placeholder had no resident tiles, degraded to partial new content",
+                is_content_swap,
+                old_texture_keys,
+            )
+        elif not fallback_diag and last_good_key is not None and last_good_key != key:
+            # resolve_fallback_lod returned last_good_key without building fallback
+            # (e.g. no fallback path taken because last_good == key?) — log so
+            # missing placeholder is not silent.
+            pass  # covered by fallback result above
+        elif last_good_key is None:
+            _ic_preview_log(
+                "fallback NO_BASELINE: last_good is None (first paint or after eviction) — no placeholder possible for key=%s",
+                key,
+            )
         if fallback_diag:
             rhi_render_debug(
                 "render FALLBACK_ACTIVE old_keys=%s new_keys=%s "
@@ -541,6 +616,14 @@ class RhiCanvasRenderer:
                 self._lod_committed_keys = raw_texture_keys
                 self._lod_committed_source_ids = source_ids
             texture_keys = self._lod_committed_keys
+            if source_changed:
+                _ic_preview_log(
+                    "lod_commit source_changed=True src_ids=%s raw=%s committed=%s pending_ms=%.1f",
+                    list(source_ids),
+                    [str(k) for k in raw_texture_keys],
+                    [str(k) for k in texture_keys],
+                    (now - self._lod_pending_since) * 1000.0,
+                )
             if tile_dump_enabled():
                 log_tile_event(
                     "lod_commit",
@@ -747,6 +830,14 @@ class RhiCanvasRenderer:
                     covered2,
                     len(array_draw_plan),
                     main_more_pending,
+                )
+                _ic_preview_log(
+                    "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s",
+                    covered1,
+                    covered2,
+                    len(array_draw_plan),
+                    main_more_pending,
+                    self._content_swap_active,
                 )
 
         # Submit this frame's tile uploads now (rather than folding them into

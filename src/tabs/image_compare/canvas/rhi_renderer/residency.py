@@ -39,6 +39,13 @@ from ..texture_parts.upload_queue import (
 )
 from ._debug import rhi_render_debug
 
+try:
+    from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
+except Exception:  # pragma: no cover - import-time fallback
+
+    def _ic_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
+        return None
+
 # docs/dev/TILED_RENDERING_DESIGN.md Phase 2 "Open questions: Cache budget"
 # -- byte budget over resident-tile pixel bytes (RGBA8, post-apron), not a
 # tile count: matches how production tile caches (image editors, tiled map
@@ -166,6 +173,10 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         role that's never gone through the tile-array path at all)."""
         resident = tile_service.resident_tiles(key)
         if not resident:
+            _ic_preview_log(
+                "rekey_stale_content: SKIP key=%s — no resident tiles, nothing to preserve",
+                key,
+            )
             return
         prev_key = ("_prev_content", key, next(self._prev_key_counter))
         if tile_dump_enabled():
@@ -175,6 +186,12 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                 prev_key=str(prev_key),
                 resident_tile_count=len(resident),
             )
+        _ic_preview_log(
+            "rekey_stale_content: key=%s -> prev_key=%s resident=%d",
+            key,
+            prev_key,
+            len(resident),
+        )
         tile_service.rekey_source(key, prev_key)
         self.last_rekeyed_keys[key] = prev_key
 
@@ -209,6 +226,13 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             tile_service.rekey_source(key, stash_key)
             stash[prev_uid] = stash_key
             self.last_rekeyed_keys[key] = stash_key
+            _ic_preview_log(
+                "rekey _content_stash: key=%s prev_uid=%s -> stash_key=%s resident=%d",
+                key,
+                prev_uid,
+                stash_key,
+                len(tile_service.resident_tiles(stash_key) or ()),
+            )
             if tile_dump_enabled():
                 log_tile_event(
                     "rekey_stale_content",
@@ -219,6 +243,13 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
 
         restore_key = stash.get(src_uid)
         if restore_key is not None and tile_service.resident_tiles(restore_key):
+            _ic_preview_log(
+                "restore_stashed_content: key=%s src_uid=%s <- restore_key=%s resident=%d",
+                key,
+                src_uid,
+                restore_key,
+                len(tile_service.resident_tiles(restore_key) or ()),
+            )
             tile_service.rekey_source(restore_key, key)
             del stash[src_uid]
             if tile_dump_enabled():
@@ -229,6 +260,13 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     resident_tile_count=len(tile_service.resident_tiles(key)),
                 )
             return tile_service.grid_for(key)
+        elif restore_key is not None:
+            _ic_preview_log(
+                "restore_stashed_content: SKIP key=%s src_uid=%s restore_key=%s — evicted, cache miss",
+                key,
+                src_uid,
+                restore_key,
+            )
 
         return tile_service.register_source(key, (src_w, src_h))
 
