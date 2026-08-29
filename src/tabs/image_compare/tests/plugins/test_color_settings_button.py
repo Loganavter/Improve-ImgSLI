@@ -98,3 +98,40 @@ def test_color_button_hides_underline_when_magnifier_disabled(monkeypatch):
 
     assert probe.show_underline is False
     assert probe.value is None
+
+
+def test_color_button_disconnects_store_when_destroyed(qtbot):
+    """Regression: a destroyed ColorSettingsButton must stop reacting to
+    store.state_changed.
+
+    PySide6 keeps the Python wrapper alive through the bound-method
+    connection, so without the destroyed->disconnect the handler fires after
+    the C++ widget (and its flyout buttons) are gone and crashes in
+    IconActionFlyout.set_action_state with "Internal C++ object (Button)
+    already deleted".
+    """
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtWidgets import QWidget
+
+    class _Store(QObject):
+        state_changed = Signal(str)
+
+        def __init__(self):
+            super().__init__()
+            self.viewport = SimpleNamespace(view_state=object())
+
+    store = _Store()
+    calls = []
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    button = color_settings_button_module.ColorSettingsButton(parent=parent, store=store)
+    button.refresh_visual_state = lambda: calls.append(1)  # type: ignore[method-assign]
+
+    store.state_changed.emit("viewport")
+    assert calls == [1]
+
+    parent.deleteLater()  # destroys button + sibling flyout (shared parent)
+    qtbot.wait(20)
+    store.state_changed.emit("viewport")
+    assert calls == [1], "destroyed button must be disconnected from the store"
