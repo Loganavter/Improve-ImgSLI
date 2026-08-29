@@ -190,16 +190,21 @@ def update_common_letterbox_geometry(
     image1: PilImage.Image | None,
     image2: PilImage.Image | None,
 ) -> None:
-    """Keep both comparison sides in one canvas coordinate system."""
-    reference = image1 if image1 is not None else image2
-    update_letterbox_geometry(widget, reference, slot_index=0)
+    """Keep both comparison sides in one canvas coordinate system.
+
+    Per-image letterbox (not a copy of slot 0) — before unify the two sides
+    have different native sizes (preview 1017 vs 768, full-res 2797 vs 768)
+    and different aspects; forcing identical letterboxes makes
+    _to_common_space/bbox produce a 0.001 apron sliver instead of ~0.3 and
+    visually left-on-both (see store-redux-dogma investigation).
+    After unify both stores are same size so the two letterboxes naturally
+    converge anyway.
+    """
+    update_letterbox_geometry(widget, image1, slot_index=0)
+    update_letterbox_geometry(widget, image2, slot_index=1)
+    # ensure at least 2 slots exist (update_letterbox_geometry already handles None → 1.0)
     while len(widget.runtime_state._letterbox_params) < 2:
-        widget.runtime_state._letterbox_params.append(
-            tuple(widget.runtime_state._letterbox_params[0])
-        )
-    widget.runtime_state._letterbox_params[1] = tuple(
-        widget.runtime_state._letterbox_params[0]
-    )
+        widget.runtime_state._letterbox_params.append((0.0, 0.0, 1.0, 1.0))
 
 
 def upload_pil_images(
