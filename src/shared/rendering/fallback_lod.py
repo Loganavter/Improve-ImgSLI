@@ -53,19 +53,24 @@ def resolve_fallback_lod(
     completely hidden until promotion, at which point the whole draw plan
     flips over in one frame. ``build_fallback_items`` still runs so there is
     something to draw; ``drop_covered`` is skipped since nothing needs to be
-    subtracted from a plan that never includes ``current_items``. Intended
-    for a caller that only sets ``atomic=True`` while ``last_good_key`` is
-    itself a rekeyed same-slot-swap marker (see callers) -- a plain
-    LOD/pyramid-level transition keeps ``atomic=False`` and the original
-    progressive reveal, which is the right behavior there (finer detail
-    filling in over an already-visible coarser image, not a content
-    change)."""
+    subtracted from a plan that never includes ``current_items``. If the
+    fallback plan comes back empty (the old content was fully evicted or
+    never resident), atomicity is moot -- nothing old is left to hold the
+    screen -- so the partial ``current_items`` are drawn rather than a blank
+    frame. Intended for a caller that only sets ``atomic=True`` while
+    ``last_good_key`` is itself a rekeyed same-slot-swap marker (see
+    callers) -- a plain LOD/pyramid-level transition keeps ``atomic=False``
+    and the original progressive reveal, which is the right behavior there
+    (finer detail filling in over an already-visible coarser image, not a
+    content change)."""
     if not more_pending and current_items:
         return key, current_items
     if last_good_key is not None and last_good_key != key:
         fallback_items = build_fallback_items(last_good_key)
         if atomic:
-            return last_good_key, fallback_items
+            if fallback_items:
+                return last_good_key, fallback_items
+            return last_good_key, current_items
         fallback_items = drop_covered(fallback_items, current_items)
         return last_good_key, fallback_items + current_items
     return last_good_key, current_items

@@ -56,6 +56,15 @@ takes the full path (`plan_applicator.py::_apply_plan_full`). Invariants:
   к ближней грани" at pyramid completion) came exactly from the
   `reset_view()` + restore + `restore_letterbox_focus` dance emitting
   transient zoom/pan through `zoomChanged` listeners.
+- The flip must be **atomic on screen**: the preview's tiles stay drawn in
+  full until every current-view tile of the store has uploaded, then the
+  draw plan flips over in one frame. The flip commits the store under fresh
+  `LevelKey`s and rekeys nothing, so its fallback baseline carries no
+  rekeyed marker — the renderer's content-swap detection recognizes it via
+  the source-identity change instead (see
+  `src/tabs/image_compare/docs/investigations/content-swap-atomic-commit.md`
+  and `docs/dev/rendering/tile-rendering-system.md` "Content swaps are
+  atomic; LOD churn is progressive").
 - `_on_pyramid_level_ready` invalidates the render pick **only when a
   pyramid just completed** (that is the only event that can change
   `pick_display_image`'s answer); intermediate level publishes just

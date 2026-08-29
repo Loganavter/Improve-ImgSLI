@@ -163,6 +163,10 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md), [src/tabs/image_compare/docs/plugins/comparison.md](../../src/tabs/image_compare/docs/plugins/comparison.md), [src/tabs/image_compare/docs/plugins/video_editor.md](../../src/tabs/image_compare/docs/plugins/video_editor.md)
 - **[Image Compare](../../src/tabs/image_compare/docs/README.md)** — `src/tabs/image_compare/docs/README.md`
 
+## src/tabs/image_compare/docs/investigations/
+
+- **[Investigation: content replacement must be atomic, not tile-by-tile](../../src/tabs/image_compare/docs/investigations/content-swap-atomic-commit.md)** — `src/tabs/image_compare/docs/investigations/content-swap-atomic-commit.md`
+
 ## src/tabs/image_compare/docs/plugins/
 
 - **[Comparison plugin](../../src/tabs/image_compare/docs/plugins/comparison.md)** — `src/tabs/image_compare/docs/plugins/comparison.md`
