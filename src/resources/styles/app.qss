@@ -4,30 +4,6 @@
    Do not put color/font rules on QLabel — any QSS on a QLabel makes Qt ignore
    setFont() when painting (system face fallback). */
 
-RatingListItem > AutoRepeatButton {
-    border-radius: 11px;
-    padding: 0px;
-    background-color: transparent;
-    border: none;
-}
-
-RatingListItem > AutoRepeatButton:hover {
-    background-color: transparent;
-}
-
-RatingListItem > AutoRepeatButton:pressed {
-    background-color: transparent;
-}
-
-RatingListItem > AutoRepeatButton#plusButton {
-    qproperty-iconSize: 9px;
-    margin-top: -1px;
-}
-
-RatingListItem > AutoRepeatButton#minusButton {
-    qproperty-iconSize: 9px;
-}
-
 /* --- Main window UI --- */
 QWidget#StartupPlaceholder,
 QWidget#StartupCover,
