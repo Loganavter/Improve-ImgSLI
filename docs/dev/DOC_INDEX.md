@@ -59,7 +59,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/README.md](README.md)
 - **[Testing](TESTING.md)** — `docs/dev/TESTING.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/tabs/isolation.md](tabs/isolation.md)
-- **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
+- **[Theming](THEMING.md)** — `docs/dev/THEMING.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
@@ -177,10 +177,6 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Image Gallery — product & interaction design](../../src/tabs/image_gallery/docs/design.md)** — `src/tabs/image_gallery/docs/design.md`
   Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
 - **[Image Gallery — Design Parity Audit](../../src/tabs/image_gallery/docs/design_parity_audit.md)** — `src/tabs/image_gallery/docs/design_parity_audit.md`
-
-## src/tabs/image_gallery/docs/design/
-
-- **[UI-SPEC (text-only) · Improve ImgSLI — Image Gallery · состояние S2 «triage complete»](../../src/tabs/image_gallery/docs/design/real_design.md)** — `src/tabs/image_gallery/docs/design/real_design.md`
 
 ## src/tabs/image_gallery/docs/plugins/
 
