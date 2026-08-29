@@ -40,10 +40,15 @@ def downscale_source_to_pil(
         raise TypeError(f"Unsupported pixel source type: {type(source)!r}")
 
     target_w, target_h = target_size
-    sw, sh = source.size
+    sw, sh = pixel_source_size(source)
+    if sw == 0 or sh == 0:
+        raise RuntimeError("TiledPixelStore is closed or empty — abort downscale")
     if target_w <= 0 or target_h <= 0:
         raise ValueError("target_size must be positive")
     if sw == target_w and sh == target_h:
+        # may still be TiledPixelStore — crop handles closed via pixel_source_size check above
+        if isinstance(source, TiledPixelStore) and not source.is_open:
+            raise RuntimeError("TiledPixelStore is closed")
         return source.crop((0, 0, sw, sh))
 
     output = Image.new("RGBA", (target_w, target_h))
