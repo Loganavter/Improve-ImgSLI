@@ -371,10 +371,21 @@ def update_comparison_if_needed(presenter):
         False,
     ):
         if presenter.store.viewport.session_data.image_state.image1 is None:
+            # During unification the unified stores are not yet ready, but the
+            # document already holds the raw loads (full_res/preview). The
+            # previous "always defer" kept the canvas on the stale duplicate
+            # (left on both halves, 20:59 16-entry [1,1] promotion) for ~1s
+            # until the unified pair arrived. If both document sides are
+            # present we can already show the preview/full_res pair — the
+            # geometry already converged via _update_comparison_geometry.
+            if source1 is None or source2 is None:
+                _preview_log(
+                    "update: deferred - unification in progress, image1 not ready"
+                )
+                return False
             _preview_log(
-                "update: deferred - unification in progress, image1 not ready"
+                "update: unification in progress but both document sources ready - proceeding with preview/full_res (image_state not yet ready)"
             )
-            return False
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         _preview_log(
@@ -481,6 +492,7 @@ def update_comparison_if_needed(presenter):
             img1 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image1,
                 _document.preview_image1,
+                _document.full_res_image1,
                 _document.original_image1,
                 last_applied_uid=_last_display_uids.get(1),
                 superseded_preview_uid=_superseded_uids.get(1),
@@ -488,6 +500,7 @@ def update_comparison_if_needed(presenter):
             img2 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image2,
                 _document.preview_image2,
+                _document.full_res_image2,
                 _document.original_image2,
                 last_applied_uid=_last_display_uids.get(2),
                 superseded_preview_uid=_superseded_uids.get(2),
@@ -499,19 +512,22 @@ def update_comparison_if_needed(presenter):
                 (1, img1, _document.preview_image1),
                 (2, img2, _document.preview_image2),
             ):
+                _cand_full = _document.full_res_image1 if _slot_num == 1 else _document.full_res_image2
+                _tier = "full_res" if _picked is _cand_full and _picked is not None else _source_tier(
+                    _picked,
+                    _document.preview_image1 if _slot_num == 1 else _document.preview_image2,
+                    _document.original_image1 if _slot_num == 1 else _document.original_image2,
+                    presenter.store.viewport.session_data.image_state.image1 if _slot_num == 1 else presenter.store.viewport.session_data.image_state.image2,
+                )
                 _preview_log(
-                    "pick slot%d: preview_uid=%s last_applied=%s superseded=%s -> picked uid=%s tier=%s fresh=%s",
+                    "pick slot%d: preview_uid=%s full_res_uid=%s last_applied=%s superseded=%s -> picked uid=%s tier=%s fresh=%s",
                     _slot_num,
                     image_uid(_cand_preview) if _cand_preview is not None else None,
+                    image_uid(_cand_full) if _cand_full is not None else None,
                     _last_display_uids.get(_slot_num),
                     _superseded_uids.get(_slot_num),
                     image_uid(_picked) if _picked is not None else None,
-                    _source_tier(
-                        _picked,
-                        _document.preview_image1 if _slot_num == 1 else _document.preview_image2,
-                        _document.original_image1 if _slot_num == 1 else _document.original_image2,
-                        presenter.store.viewport.session_data.image_state.image1 if _slot_num == 1 else presenter.store.viewport.session_data.image_state.image2,
-                    ),
+                    _tier,
                     _picked is _cand_preview if _cand_preview is not None else False,
                 )
             render_img1, render_img2 = img1, img2
@@ -536,23 +552,25 @@ def update_comparison_if_needed(presenter):
                 source_key,
             )
             if img_sig != getattr(presenter, "_last_img_sig", None):
+                _t1 = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(
+                    render_img1,
+                    _document.preview_image1,
+                    _document.original_image1,
+                    presenter.store.viewport.session_data.image_state.image1,
+                )
+                _t2 = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(
+                    render_img2,
+                    _document.preview_image2,
+                    _document.original_image2,
+                    presenter.store.viewport.session_data.image_state.image2,
+                )
                 _preview_log(
                     "update: apply_store_to_canvas - sig changed "
                     "(uid1=%s uid2=%s tier1=%s tier2=%s label=%dx%d diff=%s channel=%s)",
                     image_uid(render_img1),
                     image_uid(render_img2),
-                    _source_tier(
-                        render_img1,
-                        _document.preview_image1,
-                        _document.original_image1,
-                        presenter.store.viewport.session_data.image_state.image1,
-                    ),
-                    _source_tier(
-                        render_img2,
-                        _document.preview_image2,
-                        _document.original_image2,
-                        presenter.store.viewport.session_data.image_state.image2,
-                    ),
+                    _t1,
+                    _t2,
                     current_label_dims[0],
                     current_label_dims[1],
                     presenter.store.viewport.view_state.diff_mode,
