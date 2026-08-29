@@ -307,7 +307,7 @@ def test_find_action_ctrl_enter_learns_more(qtbot, monkeypatch):
 
     monkeypatch.setattr(
         "ui.actions.palette.dialog.open_help_page",
-        lambda page, anchor=None: opened.append((page, anchor)),
+        lambda page, anchor=None, **_kwargs: opened.append((page, anchor)),
     )
 
     dialog = FindActionDialog(None, query="")
@@ -347,7 +347,7 @@ def test_find_action_row_learn_more_click(qtbot, monkeypatch):
 
     monkeypatch.setattr(
         "ui.actions.palette.dialog.open_help_page",
-        lambda page, anchor=None: opened.append((page, anchor)),
+        lambda page, anchor=None, **_kwargs: opened.append((page, anchor)),
     )
 
     dialog = FindActionDialog(None, query="")
