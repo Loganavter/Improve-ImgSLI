@@ -93,9 +93,11 @@ pipeline (`paintEvent` + token reads) owns every surface:
   The toolkit `ThemeManager` still ships the QSS template machinery
   (`register_qss_path`, `_scale_qss_px`) — dormant, kept for other hosts.
 
-If you must add a stylesheet rule today, prefer a widget-level
-`setStyleSheet` on the specific widget over app-wide QSS, and read the
-"Never use QSS to style toolkit widgets" rule in AGENTS.md.
+The hard rule (also in AGENTS.md and the toolkit's `DESIGN_LANGUAGE.md`):
+**never use QSS (`setStyleSheet`) to style toolkit widgets — the painter
+pipeline owns all visual output.** If you must add a stylesheet rule today,
+prefer a widget-level `setStyleSheet` on the specific widget over app-wide
+QSS.
 
 ## Connecting a widget to theme changes
 
@@ -248,4 +250,4 @@ theme change when the icon must stay an eager `QIcon`.)
 - [PLUGINS.md](PLUGINS.md) — `get_qss_paths()` plugin contribution hook
 - [UI_INSPECTOR.md](UI_INSPECTOR.md) — runtime tool for inspecting which color token a widget resolves to
 - `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) — Qt/platform quirks, including the palette/autoFillBackground issue above
-- `sli-ui-toolkit/docs/DESIGN_LANGUAGE.md` — toolkit-side conventions
+- `sli-ui-toolkit/docs/dev/DESIGN_LANGUAGE.md` — toolkit-side conventions
