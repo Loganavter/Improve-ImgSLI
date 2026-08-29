@@ -551,7 +551,7 @@
     },
     {
       "path": "src/ui/main_window/csd_menu_strip.py",
-      "lines": 502,
+      "lines": 505,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single CSD menu strip — custom chrome + layout\"",

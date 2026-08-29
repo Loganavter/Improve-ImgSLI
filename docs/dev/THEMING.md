@@ -84,6 +84,39 @@ Registered at bootstrap in `src/core/bootstrap.py:_configure_theme_manager`:
 
 Plus each plugin contributes via `Plugin.get_qss_paths()` — see [PLUGINS.md](PLUGINS.md).
 
+### QSS is being retired — painter owns toolkit widgets
+
+Application QSS is a shrinking fallback, not a co-equal pipeline. The painter
+pipeline (`paintEvent` + `get_color`) owns all toolkit widgets, and QSS rules
+on them are either inert or actively harmful:
+
+- Qt only honors QSS backgrounds/borders on widgets whose class is exactly
+  `QWidget` (as a top level) or on stock widgets (`QFrame`/`QScrollArea`/…).
+  Custom `QWidget` subclasses never get `WA_StyledBackground`, so rules like
+  `#SettingsSidebar { background-color: … }` silently no-op and the widget
+  falls back to the QPalette `Window` role — which hosts keep darker than the
+  dialog surface token (near-black in the dark theme). Verified 2026-08-29.
+- Surfaces that used to rely on such rules now paint themselves from
+  `dialog.background`: toolkit `IconListWidget` (paints its list surface) and
+  `SidebarDialogShell`'s content area (`_SurfaceWidget` in
+  `sli-ui-toolkit/ui/widgets/composite/dialog_shell.py`). The same explicit
+  `paintEvent` pattern is the documented fix for any future "this surface is
+  black" bug (see "Known Qt quirk" below).
+
+What QSS still covers today (the sanctioned remainder): the `custom-line-edit`
+neutralization rules (strip QSS chrome so toolkit `CustomLineEdit`/`SpinBox`
+painters work — a prerequisite gate), `#FlyoutWidget` container chrome for the
+`UnifiedListPicker` (plain `QWidget` + explicit `WA_StyledBackground`),
+`#ValuePopupContainer`, `#WorkspaceTabsBar` margin slivers, `QSplitter` handle
+dividers, `QProgressBar::chunk` (stock widget, no painter replacement yet), and
+`QDialog#<Name>` top-level surface rules (top-level QSS painting does work).
+Everything else was deleted in the 2026-08-29 QSS-retirement sweep
+(dead legacy selectors, toast blocks, stock-input rules for widgets already
+replaced by toolkit equivalents, opacity/`QTabBar` rules on widgets that never
+existed). If you add a QSS rule today, it must be token-substituted and target
+a stock widget with no painter equivalent — do not add rules for toolkit
+widgets.
+
 ## Connecting a widget to theme changes
 
 Pattern used everywhere in the toolkit:
