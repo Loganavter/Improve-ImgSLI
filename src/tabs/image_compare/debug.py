@@ -13,7 +13,14 @@ Tags:
     [ic-debug]   — generic lifecycle
     [ic-preview] — preview display gate: when the canvas apply runs, and
                    every reason it is deferred/skipped instead (render_flow.py,
-                   loading_pyramid.py, _session_controller.py)
+                   loading_pyramid.py, _session_controller.py); since
+                   2026-08-29 also per-slot picker decisions
+                   (pick_display_with_preview_backing), residency rekey
+                   (realize_tile_plan stashing/restore) and fallback-LOD
+                   atomic decision (renderer._resolve_fallback_plan) so
+                   "preview shown but placeholder missing" can be correlated
+                   as: tiles replaced → render state invalidated → pick
+                   → fallback decision → apply/skip
 
 All helpers emit ``WARNING`` when their explicit env flag is set (visible
 without ``--debug``) and ``DEBUG`` when global ``--debug`` is on — hybrid per

@@ -478,6 +478,28 @@ def update_comparison_if_needed(presenter):
                 last_applied_uid=_last_display_uids.get(2),
                 superseded_preview_uid=_superseded_uids.get(2),
             )
+            # Correlate picker decision with the fallback-LOD debug in renderer
+            # (same [ic-preview] stream): why "store shown but placeholder
+            # missing" — was the preview even considered fresh?
+            for _slot_num, _picked, _cand_preview in (
+                (1, img1, _document.preview_image1),
+                (2, img2, _document.preview_image2),
+            ):
+                _preview_log(
+                    "pick slot%d: preview_uid=%s last_applied=%s superseded=%s -> picked uid=%s tier=%s fresh=%s",
+                    _slot_num,
+                    image_uid(_cand_preview) if _cand_preview is not None else None,
+                    _last_display_uids.get(_slot_num),
+                    _superseded_uids.get(_slot_num),
+                    image_uid(_picked) if _picked is not None else None,
+                    _source_tier(
+                        _picked,
+                        _document.preview_image1 if _slot_num == 1 else _document.preview_image2,
+                        _document.original_image1 if _slot_num == 1 else _document.original_image2,
+                        presenter.store.viewport.session_data.image_state.image1 if _slot_num == 1 else presenter.store.viewport.session_data.image_state.image2,
+                    ),
+                    _picked is _cand_preview if _cand_preview is not None else False,
+                )
             render_img1, render_img2 = img1, img2
 
             gui_source1 = presenter.store.viewport.session_data.image_state.image1
