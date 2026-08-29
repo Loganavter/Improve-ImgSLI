@@ -39,6 +39,50 @@ def _size_or_none(candidate):
     return candidate.size
 
 
+def pick_display_with_preview_backing(*candidates, last_applied_uid=None):
+    """Display-pair picker for the live canvas (stored role).
+
+    ``pick_display_image`` only returns a ``TiledPixelStore`` once its
+    pyramid is complete, so the first-load path naturally shows the 1024px
+    preview as the backing until the pyramid catches up. On-the-fly content
+    changes (swap, next image, auto-crop resizing the store, a fresh
+    preview arriving while the previous unified store is still installed)
+    can bypass that: the store's pyramid is already complete, so the canvas
+    flips straight to store tiles whose fallback-LOD baseline is the
+    *previous* content -- the new preview never appears underneath.
+
+    Rule: while the slot's preview is *fresh* (its ``image_uid`` differs
+    from the display pair last applied to the canvas), prefer the preview
+    for the stored role regardless of pyramid state. The next apply cycle
+    (unify result / pyramid-completion invalidation) then finds the preview
+    no longer fresh, picks the store as usual, and the flip's fallback
+    baseline is exactly the new preview tiles -- the backing survives every
+    on-the-fly change instead of only the first load.
+    """
+    preview = candidates[1] if len(candidates) > 1 else None
+    if preview is not None and image_uid(preview) != last_applied_uid:
+        return preview
+    return pick_display_image(*candidates)
+
+
+def _display_cache_key(image1, image2):
+    """Stored-role ids for the *effective* display pair.
+
+    Must mirror ``live_presentation.display_cache_key``'s shape
+    (``(uid1, uid2, size1, size2)``): ``upload_pil_images`` persists it as
+    ``_stored_image_ids`` and ``_textures_are_current`` compares the next
+    plan's key against it, so a preview-backed apply has to record the
+    preview ids -- otherwise the pyramid-complete pick would compute store
+    ids and the flip would be skipped by the scene-only path.
+    """
+    return (
+        image_uid(image1),
+        image_uid(image2),
+        image1.size if image1 is not None else None,
+        image2.size if image2 is not None else None,
+    )
+
+
 def _query_overlay(store, capability_id: str, default=None):
     command = registry().get_feature_command_by_alias(capability_id)
     if command is None:
@@ -318,15 +362,18 @@ def update_comparison_if_needed(presenter):
     if bg_is_dirty:
         if presenter.view.is_canvas_widget():
             image_label = get_canvas_widget(presenter.widget)
-            img1 = pick_display_image(
+            _last_display_uids = getattr(presenter, "_last_display_uids", None) or {}
+            img1 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image1,
                 _document.preview_image1,
                 _document.original_image1,
+                last_applied_uid=_last_display_uids.get(1),
             )
-            img2 = pick_display_image(
+            img2 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image2,
                 _document.preview_image2,
                 _document.original_image2,
+                last_applied_uid=_last_display_uids.get(2),
             )
             render_img1, render_img2 = img1, img2
 
@@ -361,8 +408,13 @@ def update_comparison_if_needed(presenter):
                         source_image1=gui_source1,
                         source_image2=gui_source2,
                         source_key=source_key,
+                        display_cache_key=_display_cache_key(render_img1, render_img2),
                         clip_overlays_to_image_bounds=False,
                     )
+                    presenter._last_display_uids = {
+                        1: image_uid(render_img1),
+                        2: image_uid(render_img2),
+                    }
             else:
                 runtime_state = getattr(image_label, "runtime_state", None)
                 if runtime_state is not None:
