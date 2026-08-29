@@ -1,7 +1,7 @@
 /* --- Стили для кастомных виджетов toolkit --- */
 
 /* --- Стили для flyout виджетов --- */
-QWidget#FlyoutWidget, QWidget#FontSettingsContainer {
+QWidget#FlyoutWidget {
     background-color: @flyout.background;
     border: 1px solid @flyout.border;
     border-radius: 8px;
@@ -20,51 +20,8 @@ QWidget#FlyoutWidget[surfaceRole="transparent"] {
 QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > QWidget {
     background-color: transparent; border: none;
 }
-#UnifiedFlyoutPanel OverlayScrollArea,
-#UnifiedFlyoutPanel OverlayScrollArea > QWidget > QWidget {
-    background-color: transparent;
-    border: none;
-}
-#UnifiedFlyoutPanel[surfaceRole="panel"] {
-    background-color: @flyout.background;
-    border: 1px solid @flyout.border;
-    border-radius: 8px;
-}
-#UnifiedFlyoutPanel[surfaceRole="transparent"] {
-    background: transparent;
-    border: none;
-}
 
-/* --- Toast --- */
-QWidget#ToastNotification {
-    background: transparent;
-    border: none;
-}
-QWidget#ToastContentWidget {
-    background-color: @toast.background;
-    border: 1px solid @toast.border;
-    border-radius: 8px;
-}
-QWidget#ToastContentWidget[hasProgress="true"] {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    border-bottom: none;
-}
-QWidget#ToastProgressContainer[hasProgress="true"] {
-    background-color: @toast.background;
-    border: 1px solid @toast.border;
-    border-top: none;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-}
 /* Toast message color/font: apply_text_color + UiFont in toast.py */
-QWidget#ToastNotification QPushButton {
-    background-color: transparent;
-    color: @toast.text;
-    border: 1px solid @toast.border;
-    border-radius: 6px;
-    padding: 4px 10px;
-}
 /* ToastProgressBar is painter-owned — do not style via QSS. */
 
 /* CustomLineEdit paints its own chrome — do not add QSS padding/bg here;
@@ -81,28 +38,4 @@ QLineEdit[custom-line-edit="true"]:focus {
     outline: none;
 }
 /* PathTooltip chrome/text: painted + palette in tooltips.py (no QLabel QSS). */
-
-ScrollableComboBox {
-    background: transparent;
-    border: none;
-}
-
-/* --- SpinBox --- */
-SpinBox {
-    background-color: @dialog.input.background;
-    border: 1px solid @input.border.thin;
-    border-radius: 2px;
-}
-
-SpinBox:focus {
-    border: 1px solid @accent;
-}
-
-/* Стили для line edit внутри SpinBox */
-SpinBox QLineEdit {
-    border: none;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-}
 

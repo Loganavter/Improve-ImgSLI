@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from sli_ui_toolkit.managers import ThemeManager
+from sli_ui_toolkit.ui.managers.theme_manager import ALIAS
 from sli_ui_toolkit.ui.widgets.buttons.layers.background import (
     BgResolveParams,
     resolve_button_background,
@@ -74,6 +75,18 @@ def _resolved_last(btn, states, tm) -> QColor:
     return layers[-1]
 
 
+def _token_color(theme: str, key: str) -> QColor:
+    """Palette value for a token key (following the toolkit ALIAS chain),
+    without going through ThemeManager color getters."""
+    palette = DARK_THEME_PALETTE if theme == "dark" else LIGHT_THEME_PALETTE
+    cur = key
+    for _ in range(len(ALIAS) + 1):
+        if cur not in ALIAS:
+            break
+        cur = ALIAS[cur]
+    return QColor(palette[cur])
+
+
 # State set -> token key the retired QSS used for the same state.
 _QSS_STATE_TOKENS = [
     ((), "button.toggle.background.normal"),
@@ -96,8 +109,8 @@ def test_editor_toggle_buttons_match_retired_qss_state_table():
             assert btn.getVariant() == "default"
             assert btn.getCornerRadiusPx() == 6
             for states, token in _QSS_STATE_TOKENS:
-                assert _resolved_last(btn, states, tm) == QColor(
-                    tm.get_color(token)
+                assert _resolved_last(btn, states, tm) == _token_color(
+                    theme, token
                 ), f"{btn.objectName()} theme={theme} states={states}"
 
 
@@ -109,11 +122,11 @@ def test_editor_toggle_buttons_paint_qss_intended_background():
             btn.show()
             app.processEvents()
 
-            normal = QColor(tm.get_color("button.toggle.background.normal"))
-            hover = QColor(tm.get_color("button.toggle.background.hover"))
-            checked = QColor(tm.get_color("button.toggle.background.checked"))
-            checked_hover = QColor(
-                tm.get_color("button.toggle.background.checked.hover")
+            normal = _token_color(theme, "button.toggle.background.normal")
+            hover = _token_color(theme, "button.toggle.background.hover")
+            checked = _token_color(theme, "button.toggle.background.checked")
+            checked_hover = _token_color(
+                theme, "button.toggle.background.checked.hover"
             )
             center = QPointF(btn.width() / 2, btn.height() / 2)
             outside = QPointF(-1, -1)

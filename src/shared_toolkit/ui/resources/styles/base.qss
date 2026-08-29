@@ -1,29 +1,7 @@
 /* --- Общие стили для всего приложения --- */
-QCheckBox {
-    spacing: 6px;
-}
-QCheckBox::indicator { width: 0px; height: 0px; }
 
 /* Never put color/font on QLabel here — stylesheet text rules make Qt
    ignore setFont()/UiFont when painting (title bar, lists, toolkit Label). */
-QRadioButton, QCheckBox {
-    color: @dialog.text;
-}
-
-/* --- Стили для диалогов (core/shared) --- */
-QDialog QRadioButton,
-QDialog QCheckBox {
-    color: @dialog.text;
-}
-
-QDialog QLineEdit,
-QDialog QSpinBox {
-    background-color: @dialog.input.background;
-    color: @dialog.text;
-    border: 1px solid @dialog.border;
-    border-radius: 8px;
-    padding: 4px;
-}
 
 /* Toolkit CustomLineEdit / SpinBox paint their own chrome. */
 QDialog QLineEdit[custom-line-edit="true"],
@@ -33,57 +11,10 @@ QDialog QSpinBox[custom-line-edit="true"] {
     padding: 0;
 }
 
-QDialog QSpinBox::up-button,
-QDialog QSpinBox::down-button {
-    border: none;
-    background-color: transparent;
-}
-
-QDialog QPushButton {
-    background-color: @dialog.button.background;
-    color: @dialog.text;
-    border: 1px solid @dialog.border;
-    border-radius: 8px;
-    padding: 5px 15px;
-}
-
-QDialog QPushButton:hover {
-    background-color: @dialog.button.hover;
-}
-
-QDialog QPushButton#okButton {
-    background-color: @accent;
-    color: white;
-    border: none;
-}
-
-QDialog QPushButton#okButton:hover {
-    background-color: @accent.hover;
-}
-
-/* --- Стили для QColorDialog (из FontSettingsFlyout) --- */
-QColorDialog {
-    background-color: @color_dialog.background;
-}
-QColorDialog QLineEdit, QColorDialog QPushButton {
-    color: @color_dialog.text;
-    background-color: @color_dialog.input.background;
-    border: 1px solid @color_dialog.input.border;
-}
-QColorDialog QPushButton {
-    padding: 5px 10px;
-    border-radius: 8px;
-}
-QColorDialog QPushButton:hover {
-    background-color: @dialog.button.hover;
-}
-QColorDialog QLineEdit, QColorDialog QAbstractSpinBox {
-    padding: 2px;
-}
 /* --- Стили для кастомных виджетов --- */
 
 /* --- Стили для flyout виджетов --- */
-QWidget#FlyoutWidget, QWidget#FontSettingsContainer {
+QWidget#FlyoutWidget {
     background-color: @flyout.background;
     border: 1px solid @flyout.border;
     border-radius: 8px;
@@ -93,82 +24,14 @@ QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > Q
 }
 /* RatingListItem text: palette + UiFont in Python (no QLabel color/font QSS). */
 
-/* --- Toast --- */
-QWidget#ToastNotification {
-    background: transparent;
-    border: none;
-}
-QWidget#ToastContentWidget {
-    background-color: @toast.background;
-    border: 1px solid @toast.border;
-    border-radius: 8px;
-}
-QWidget#ToastContentWidget[hasProgress="true"] {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    border-bottom: none;
-}
-QWidget#ToastProgressContainer[hasProgress="true"] {
-    background-color: @toast.background;
-    border: 1px solid @toast.border;
-    border-top: none;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-}
 /* Toast message color/font: apply_text_color + UiFont in toast.py */
-QWidget#ToastNotification QPushButton {
-    background-color: transparent;
-    color: @toast.text;
-    border: 1px solid @toast.border;
-    border-radius: 6px;
-    padding: 4px 10px;
-}
 /* ToastProgressBar is painter-owned — do not style via QSS. */
 /* PathTooltip chrome/text: painted + palette in tooltips.py (no QLabel QSS). */
 
 /* --- Flyouts (Magnifier, Menu, etc) --- */
-#MagnifierVisibilityFlyoutPanel,
-QWidget#menuContainer {
-    background-color: @flyout.background;
-    border: 1px solid @flyout.border;
-    border-radius: 8px;
-}
-
-/* Общие стили для всех панелей-облачков */
-#MagnifierVisibilityFlyoutPanel,
-#MagnifierColorOptionsFlyoutPanel {
-    background-color: @flyout.background;
-    border: 1px solid @flyout.border;
-    border-radius: 8px;
-}
-
 /* Value popup chrome lives on #ValuePopupContainer; label uses UiFont + palette. */
 #ValuePopupContainer {
     background-color: @flyout.background;
     border: 1px solid @flyout.border;
     border-radius: 6px;
-}
-
-/* --- MagnifierVisibilityFlyout --- */
-#MagnifierVisibilityFlyoutPanel {
-    background-color: @flyout.background;
-    border: 1px solid @flyout.border;
-    border-radius: 8px;
-}
-
-/* --- FontSettingsFlyout --- */
-/* Стили для color preview кнопок */
-QPushButton[class="color-preview"] {
-    border-radius: 14px;
-    border: 1px solid grey;
-}
-
-/* --- SimpleOptionsFlyout --- */
-/* Стили для opacity property */
-QWidget[opacity="0.4"] {
-    opacity: 0.4;
-}
-
-QWidget[opacity="1.0"] {
-    opacity: 1.0;
 }
