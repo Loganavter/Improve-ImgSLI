@@ -12,6 +12,10 @@ _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
 from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
 from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_overlays
 from tabs.image_compare.canvas.scene import build_render_scene
+from tabs.image_compare.debug import (
+    ic_preview_debug as _preview_log,
+    ic_preview_source_tier as _source_tier,
+)
 
 from .diff import sync_diff_texture
 
@@ -188,9 +192,11 @@ def schedule_update(presenter):
         hasattr(presenter.main_window_app, "_closing")
         and presenter.main_window_app._closing
     ):
+        _preview_log("schedule_update: ignored - app closing")
         return
 
     if _is_background_tab(presenter):
+        _preview_log("schedule_update: hidden tab - render marked stale")
         _mark_render_stale(presenter)
         return
 
@@ -200,17 +206,20 @@ def schedule_update(presenter):
         presenter._pending_interactive_mode = True
 
     if is_interactive:
+        _preview_log("schedule_update: interactive mode - immediate update")
         presenter._update_scheduler_timer.stop()
         result = presenter.update_comparison_if_needed()
         if result:
             presenter._pending_interactive_mode = None
     else:
         if not presenter._update_scheduler_timer.isActive():
+            _preview_log("schedule_update: non-interactive - fps timer armed")
             presenter._update_scheduler_timer.start()
 
 
 def update_comparison_if_needed(presenter):
     if _is_background_tab(presenter):
+        _preview_log("update: deferred - background tab (render marked stale)")
         _mark_render_stale(presenter)
         return False
 
@@ -218,16 +227,21 @@ def update_comparison_if_needed(presenter):
         not getattr(presenter.main_window_app, "_is_ui_stable", False)
         or presenter.store.viewport.interaction_state.resize_in_progress
     ):
+        _preview_log("update: deferred - ui not stable / resize in progress")
         return False
 
     if (
         not presenter.main_window_app.isVisible()
         or presenter.main_window_app.isMinimized()
     ):
+        _preview_log("update: deferred - window hidden or minimized")
         return False
 
     label_width, label_height = presenter.get_current_label_dimensions()
     if label_width <= 2 or label_height <= 2:
+        _preview_log(
+            "update: deferred - label too small (%dx%d)", label_width, label_height
+        )
         return False
 
     if getattr(
@@ -236,10 +250,14 @@ def update_comparison_if_needed(presenter):
         False,
     ):
         if presenter.store.viewport.session_data.image_state.image1 is None:
+            _preview_log(
+                "update: deferred - unification in progress, image1 not ready"
+            )
             return False
 
     _document = presenter.store.get_session_state_slot("document")
     if _document is None:
+        _preview_log("update: deferred - no document slot")
         return False
     source1 = (
         _document.full_res_image1
@@ -253,6 +271,10 @@ def update_comparison_if_needed(presenter):
     )
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
+        _preview_log(
+            "update: single-image mode %s - display_single_image_on_label",
+            presenter.store.viewport.view_state.showing_single_image_mode,
+        )
         image_to_show = (
             pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
@@ -278,12 +300,18 @@ def update_comparison_if_needed(presenter):
         presenter.store.viewport.session_data.image_state.image2 or source2
     )
     if not have1 and not have2:
+        _preview_log("update: no sources on either side - label cleared")
         presenter.widget.image_label.clear()
         presenter.current_displayed_pixmap = None
         return False
     if not have1 or not have2:
         # One side is mid-reload / empty. Keep showing the live half instead of
         # blanking the whole canvas (ClearImageSlotData + path-only load).
+        _preview_log(
+            "update: one side missing (have1=%s have2=%s) - display live half",
+            have1,
+            have2,
+        )
         image_to_show = (
             pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
@@ -397,6 +425,29 @@ def update_comparison_if_needed(presenter):
                 source_key,
             )
             if img_sig != getattr(presenter, "_last_img_sig", None):
+                _preview_log(
+                    "update: apply_store_to_canvas - sig changed "
+                    "(uid1=%s uid2=%s tier1=%s tier2=%s label=%dx%d "
+                    "diff=%s channel=%s)",
+                    image_uid(render_img1),
+                    image_uid(render_img2),
+                    _source_tier(
+                        render_img1,
+                        _document.preview_image1,
+                        _document.original_image1,
+                        presenter.store.viewport.session_data.image_state.image1,
+                    ),
+                    _source_tier(
+                        render_img2,
+                        _document.preview_image2,
+                        _document.original_image2,
+                        presenter.store.viewport.session_data.image_state.image2,
+                    ),
+                    current_label_dims[0],
+                    current_label_dims[1],
+                    presenter.store.viewport.view_state.diff_mode,
+                    presenter.store.viewport.view_state.channel_view_mode,
+                )
                 presenter._last_img_sig = img_sig
                 if render_img1 and render_img2:
                     apply_store_to_canvas(
@@ -416,6 +467,12 @@ def update_comparison_if_needed(presenter):
                         2: image_uid(render_img2),
                     }
             else:
+                _preview_log(
+                    "update: skip apply - img_sig unchanged (uid1=%s uid2=%s) "
+                    "scene-only repaint",
+                    image_uid(render_img1),
+                    image_uid(render_img2),
+                )
                 runtime_state = getattr(image_label, "runtime_state", None)
                 if runtime_state is not None:
                     runtime_state._store = presenter.store
@@ -436,7 +493,16 @@ def update_comparison_if_needed(presenter):
             if presenter._cached_base_pixmap is None:
                 presenter._cached_base_pixmap = QPixmap(1, 1)
         else:
+            _preview_log("update: skip - not a canvas widget")
             return False
+    else:
+        _preview_log(
+            "update: skip apply - background signature unchanged "
+            "(bg_changed=%s label_dims_changed=%s cached_base_pixmap=%s)",
+            current_bg_sig != last_bg_sig,
+            label_dims_changed,
+            presenter._cached_base_pixmap is not None,
+        )
     visible_models = [
         model
         for model in (_query_overlay(presenter.store, "overlay.all_states", ()) or ())

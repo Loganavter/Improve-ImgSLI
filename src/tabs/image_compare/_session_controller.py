@@ -389,6 +389,16 @@ class SessionController(QObject):
         loading.duplicate_image_to_slot(self, source_slot, target_slot)
 
     def _invalidate_image_canvas_render_state(self, clear_overlay_state: bool = False):
+        # Tile replacement marker: a load/swap/unify/pyramid-complete just
+        # published new pixels into the document; this drops the presenter's
+        # signature caches so the next update gate re-applies to the canvas
+        # (or reports why it can't).
+        from tabs.image_compare.debug import ic_preview_debug as _preview_log
+
+        _preview_log(
+            "render state invalidated (clear_overlay=%s)",
+            clear_overlay_state,
+        )
         presenter = getattr(self, "presenter", None)
         if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
             presenter.invalidate_canvas_render_state(clear_overlay_state=clear_overlay_state)
