@@ -280,9 +280,11 @@ def upload_pil_images(
         if cache is not None:
             for texture_id in widget._source_texture_ids:
                 cache.pop(texture_id, None)
+    # Single geometry update — previously called twice (once per slot) with identical args
+    if stored_changed and state._shader_letterbox_mode and (pil_image1 or pil_image2):
+        update_common_letterbox_geometry(widget, pil_image1, pil_image2)
     if pil_image1 and stored_changed:
         if state._shader_letterbox_mode:
-            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
             # docs/dev/rendering/tile-rendering-system.md Phase 3: skip the
             # whole-image upload for lazy sources -- see the matching
             # comment in upload_source_pil_image; realize_tile_plan()
@@ -300,7 +302,7 @@ def upload_pil_images(
             queue_texture_upload(widget, lb1, widget.texture_ids[0], slot_index=0)
     if pil_image2 and stored_changed:
         if state._shader_letterbox_mode:
-            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
+            pass  # geometry already updated above
             if isinstance(pil_image2, TiledPixelStore):
                 state._images_uploaded[1] = True
             else:

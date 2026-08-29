@@ -69,22 +69,24 @@ def _update_comparison_geometry(
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
     size1 = _size_or_none(src_resize1) or _size_or_none(source1)
     size2 = _size_or_none(src_resize2) or _size_or_none(source2)
+
+    def _fit_scale(w: int, h: int) -> float:
+        return min(label_width / w, label_height / h)
+
     if size1 and size2:
         img1_w, img1_h = size1
         img2_w, img2_h = size2
-        scale1 = min(label_width / img1_w, label_height / img1_h)
-        scale2 = min(label_width / img2_w, label_height / img2_h)
-        scale = min(scale1, scale2)
+        scale = min(_fit_scale(img1_w, img1_h), _fit_scale(img2_w, img2_h))
         scaled_w = max(1, int(img1_w * scale))
         scaled_h = max(1, int(img1_h * scale))
     elif size1:
         img1_w, img1_h = size1
-        scale = min(label_width / img1_w, label_height / img1_h)
+        scale = _fit_scale(img1_w, img1_h)
         scaled_w = max(1, int(img1_w * scale))
         scaled_h = max(1, int(img1_h * scale))
     elif size2:
         img2_w, img2_h = size2
-        scale = min(label_width / img2_w, label_height / img2_h)
+        scale = _fit_scale(img2_w, img2_h)
         scaled_w = max(1, int(img2_w * scale))
         scaled_h = max(1, int(img2_h * scale))
     else:
