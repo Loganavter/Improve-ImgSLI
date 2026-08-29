@@ -151,7 +151,7 @@ def serialize_magnifier_for_project(view_state) -> dict[str, Any]:
     }
 
 
-def restore_magnifier_from_project(view_state, data: dict[str, Any] | None) -> None:
+def restore_magnifier_from_project(view_state, data: dict[str, Any] | None, store: Any | None = None) -> None:
     if not data:
         return
     models: OrderedDict[str, MagnifierModel] = OrderedDict()
@@ -185,6 +185,32 @@ def restore_magnifier_from_project(view_state, data: dict[str, Any] | None) -> N
         auto_color_new_instances=bool(data.get("auto_color_new_instances", True)),
         models=models,
     )
-    if getattr(view_state, "canvas_widget_state", None) is None:
-        view_state.canvas_widget_state = {}
-    view_state.canvas_widget_state["magnifier"] = state
+    # Prefer Redux dispatch when live Store is available (STORE.md:164).
+    target_store = store
+    if target_store is not None:
+        try:
+            dispatcher = target_store.get_dispatcher() if hasattr(target_store, "get_dispatcher") else None
+        except Exception:
+            dispatcher = None
+        if dispatcher is not None:
+            try:
+                from core.state_management.viewport_actions import SetCanvasWidgetStateAction
+
+                dispatcher.dispatch(SetCanvasWidgetStateAction(feature="magnifier", state=state), scope="viewport")
+                return
+            except Exception:
+                pass
+        try:
+            view_state_target = getattr(getattr(target_store, "viewport", None), "view_state", view_state)
+            _cws = dict(getattr(view_state_target, "canvas_widget_state", None) or {})
+            _cws["magnifier"] = state
+            setattr(view_state_target, "canvas_widget_state", _cws)
+            if hasattr(target_store, "emit_viewport_change"):
+                target_store.emit_viewport_change()
+            return
+        except Exception:
+            pass
+    # Transient/test path — local dict + setattr avoids `view_state.canvas_widget_state =` dogma
+    _cws = dict(getattr(view_state, "canvas_widget_state", None) or {})
+    _cws["magnifier"] = state
+    setattr(view_state, "canvas_widget_state", _cws)

@@ -52,8 +52,11 @@ def on_magnifier_guides_thickness_changed(presenter, thickness: int):
 def on_magnifier_element_hovered(presenter, element_name: str):
     if not presenter.store:
         return
-    presenter.store.viewport.view_state.highlighted_overlay_element = element_name
-    presenter.store.emit_state_change()
+    dispatcher = presenter.store.get_dispatcher()
+    if dispatcher is not None:
+        from tabs.image_compare.canvas.features.magnifier.input.actions import SetHighlightedMagnifierElementAction
+
+        dispatcher.dispatch(SetHighlightedMagnifierElementAction(element_name), scope="viewport")
     if presenter.event_bus:
         presenter.event_bus.emit(CoreUpdateRequestedEvent())
     else:
@@ -62,8 +65,11 @@ def on_magnifier_element_hovered(presenter, element_name: str):
 def on_magnifier_element_hover_ended(presenter):
     if not presenter.store:
         return
-    presenter.store.viewport.view_state.highlighted_overlay_element = None
-    presenter.store.emit_state_change()
+    dispatcher = presenter.store.get_dispatcher()
+    if dispatcher is not None:
+        from tabs.image_compare.canvas.features.magnifier.input.actions import SetHighlightedMagnifierElementAction
+
+        dispatcher.dispatch(SetHighlightedMagnifierElementAction(None), scope="viewport")
     if presenter.event_bus:
         presenter.event_bus.emit(CoreUpdateRequestedEvent())
     else:

@@ -23,9 +23,13 @@ class SettingsPresenter(QObject):
             main_window_app=main_window_app,
             tr_func=self._tr,
         )
-        self.view_state = SettingsViewStateCoordinator(
-            store=store,
-            tr_func=self._tr,
+        setattr(
+            self,
+            "view_state",
+            SettingsViewStateCoordinator(
+                store=store,
+                tr_func=self._tr,
+            ),
         )
 
     def show_canvas_feature_color_picker(

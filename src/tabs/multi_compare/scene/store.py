@@ -603,9 +603,15 @@ class MultiCompareStore:
             self._state = state
         else:
             session = self._active_session()
-            if session is not None:
-                session.state_slots[self._SLOT] = state
+            # Phase 6C: store slot API instead of direct state_slots write (STORE.md).
+            # Restore is not a user action (bypass undo); facade notifies directly.
+            # Use viewport scope so bound facade's _on_core_change sees the slot change
+            # but is suppressed via _last_notified identity (no double notify).
             self._last_notified_slot = state
+            if session is not None:
+                self._core_store.set_session_state_slot(
+                    self._SLOT, state, emit_scope="viewport"
+                )
         synthetic = MultiCompareAction(type="multi_compare/replace_state")
         self._last_action = synthetic
         for sub in list(self._subscribers):

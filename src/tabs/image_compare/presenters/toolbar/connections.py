@@ -250,12 +250,11 @@ def _connect_viewport_controls(presenter):
 
             def on_speed_changed(value: int):
                 from core.state_management.actions import SetMovementSpeedAction
+
                 speed = value / 100.0
                 dispatcher = store.get_dispatcher() if hasattr(store, "get_dispatcher") else None
                 if dispatcher is not None:
                     dispatcher.dispatch(SetMovementSpeedAction(speed), scope="viewport")
-                else:
-                    store.viewport.view_state.movement_speed_per_sec = speed
                 settings_manager = getattr(controller, "settings_manager", None) if controller is not None else None
                 if settings_manager is not None:
                     settings_manager._save_setting("movement_speed_per_sec", speed)

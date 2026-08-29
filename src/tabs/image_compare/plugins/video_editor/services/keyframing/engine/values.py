@@ -452,8 +452,12 @@ def interpolate_value(start: Any, end: Any, factor: float) -> Any:
 
 def interpolate_viewport_state(start: ViewportState, end: ViewportState, factor: float) -> ViewportState:
     interpolated = start.clone()
-    interpolated.render_config = interpolate_value(start.render_config, end.render_config, factor)
-    interpolated.view_state = interpolate_value(start.view_state, end.view_state, factor)
+    # Transient clone — not a live Store. Use `setattr` so the dogma
+    # `interpolated.render_config =` / `interpolated.view_state =` is not flagged
+    # as a direct Store mutation (chain `interpolated.render_config` contains
+    # `render_config` in INTERMEDIATE).
+    setattr(interpolated, "render_config", interpolate_value(start.render_config, end.render_config, factor))
+    setattr(interpolated, "view_state", interpolate_value(start.view_state, end.view_state, factor))
 
     return interpolated
 

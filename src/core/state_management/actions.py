@@ -73,6 +73,7 @@ from core.state_management.settings_actions import (
     SetWindowWasMaximizedAction,
 )
 from core.state_management.viewport_actions import (
+    SetCanvasWidgetStateAction,
     SetChannelViewModeAction,
     SetDiffModeAction,
     SetIsDraggingSliderAction,
@@ -81,6 +82,7 @@ from core.state_management.viewport_actions import (
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
     ToggleOrientationAction,
+    UpdateCanvasFeatureStateAction,
 )
 
 __all__ = [name for name in globals() if name.endswith("Action")] + ["Action", "ActionType"]

@@ -118,10 +118,17 @@ def invalidate_render_state(presenter):
 
 def start_interactive_movement(presenter):
     if not presenter.store.viewport.view_state.optimize_interactive_movement:
-        presenter.store.viewport.interaction_state.is_interactive_mode = False
-        presenter.store.emit_state_change()
+        dispatcher = presenter.store.get_dispatcher()
+        if dispatcher is not None:
+            from core.state_management.interaction_actions import SetInteractiveModeAction
+
+            dispatcher.dispatch(SetInteractiveModeAction(False), scope="viewport")
         if presenter.main_controller is not None:
             presenter.main_controller.update_requested.emit()
         return
-    presenter.store.viewport.interaction_state.is_interactive_mode = True
+    dispatcher = presenter.store.get_dispatcher()
+    if dispatcher is not None:
+        from core.state_management.interaction_actions import SetInteractiveModeAction
+
+        dispatcher.dispatch(SetInteractiveModeAction(True), scope="viewport")
     presenter.schedule_update()

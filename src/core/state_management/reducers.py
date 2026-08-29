@@ -84,6 +84,17 @@ def _build_viewport_state(
 class ViewStateReducer:
     @staticmethod
     def reduce(view_state: ViewState, action: Action, session_type: str | None = None) -> ViewState:
+        feature_name = getattr(action, "feature", None)
+        feature_state = getattr(action, "state", None)
+        if feature_name is not None and feature_state is not None and getattr(action, "type", None) in (
+            "SET_CANVAS_WIDGET_STATE",
+            "UPDATE_CANVAS_FEATURE_STATE",
+        ):
+            current = dict(getattr(view_state, "canvas_widget_state", None) or {})
+            if current.get(feature_name) is feature_state:
+                return view_state
+            current[feature_name] = feature_state
+            return replace(view_state, canvas_widget_state=current)
         if isinstance(action, SetSplitPositionAction):
             return replace(
                 view_state, split_position=max(0.0, min(1.0, action.position))

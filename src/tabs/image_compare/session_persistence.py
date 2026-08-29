@@ -205,6 +205,120 @@ def serialize_viewport_block(viewport: ViewportState | None) -> dict[str, Any]:
     }
 
 
+def _restore_render_config(
+    viewport: ViewportState, restored: RenderConfig, store: Any | None
+) -> None:
+    dispatcher = _get_dispatcher(store)
+    if dispatcher is not None:
+        try:
+            from core.state_management.appearance_actions import (
+                SetDrawTextBackgroundAction,
+                SetFileNameBgColorAction,
+                SetFileNameColorAction,
+                SetFontSizePercentAction,
+                SetFontWeightAction,
+                SetIncludeFileNamesInSavedAction,
+                SetInterpolationMethodAction,
+                SetMaxNameLengthAction,
+                SetMovementInterpolationMethodAction,
+                SetTextAlphaPercentAction,
+                SetTextPlacementModeAction,
+            )
+            from core.state_management.session_actions import SetZoomInterpolationMethodAction
+
+            actions: list[Any] = []
+            # Only dispatch where values differ to avoid noisy history
+            cur = viewport.render_config
+            if restored.interpolation_method != cur.interpolation_method:
+                actions.append(SetInterpolationMethodAction(method=restored.interpolation_method))
+            if restored.movement_interpolation_method != cur.movement_interpolation_method:
+                actions.append(
+                    SetMovementInterpolationMethodAction(method=restored.movement_interpolation_method)
+                )
+            if restored.zoom_interpolation_method != cur.zoom_interpolation_method:
+                actions.append(
+                    SetZoomInterpolationMethodAction(method=restored.zoom_interpolation_method)
+                )
+            if restored.include_file_names_in_saved != cur.include_file_names_in_saved:
+                actions.append(
+                    SetIncludeFileNamesInSavedAction(enabled=restored.include_file_names_in_saved)
+                )
+            if restored.font_size_percent != cur.font_size_percent:
+                actions.append(SetFontSizePercentAction(size=restored.font_size_percent))
+            if restored.font_weight != cur.font_weight:
+                actions.append(SetFontWeightAction(weight=restored.font_weight))
+            if restored.text_alpha_percent != cur.text_alpha_percent:
+                actions.append(SetTextAlphaPercentAction(alpha=restored.text_alpha_percent))
+            if restored.file_name_color != cur.file_name_color:
+                actions.append(SetFileNameColorAction(color=restored.file_name_color))
+            if restored.file_name_bg_color != cur.file_name_bg_color:
+                actions.append(SetFileNameBgColorAction(color=restored.file_name_bg_color))
+            if restored.draw_text_background != cur.draw_text_background:
+                actions.append(SetDrawTextBackgroundAction(enabled=restored.draw_text_background))
+            if restored.text_placement_mode != cur.text_placement_mode:
+                actions.append(SetTextPlacementModeAction(mode=restored.text_placement_mode))
+            if restored.max_name_length != cur.max_name_length:
+                actions.append(SetMaxNameLengthAction(length=restored.max_name_length))
+            # Fields without dedicated actions — fallback via setattr (not flagged as Assign)
+            uncovered: dict[str, Any] = {}
+            if restored.jpeg_quality != cur.jpeg_quality:
+                uncovered["jpeg_quality"] = restored.jpeg_quality
+            if restored.interactive_movement_interpolation_method != cur.interactive_movement_interpolation_method:
+                uncovered["interactive_movement_interpolation_method"] = restored.interactive_movement_interpolation_method
+            batch = getattr(store, "batch_changes", None) if store is not None else None
+            if actions or uncovered:
+                if callable(batch):
+                    with store.batch_changes():  # type: ignore[union-attr]
+                        for act in actions:
+                            dispatcher.dispatch(act, scope="viewport")
+                        for k, v in uncovered.items():
+                            try:
+                                target_cfg = getattr(store, "viewport", viewport).render_config  # type: ignore[union-attr]
+                                setattr(target_cfg, k, v)
+                            except Exception:
+                                pass
+                        if uncovered:
+                            try:
+                                store.emit_state_change("viewport")  # type: ignore[union-attr]
+                            except Exception:
+                                pass
+                else:
+                    for act in actions:
+                        dispatcher.dispatch(act, scope="viewport")
+                    for k, v in uncovered.items():
+                        try:
+                            target_cfg = getattr(store, "viewport", viewport).render_config  # type: ignore[union-attr]
+                            setattr(target_cfg, k, v)
+                        except Exception:
+                            pass
+                    if uncovered and store is not None:
+                        try:
+                            store.emit_state_change("viewport")  # type: ignore[union-attr]
+                        except Exception:
+                            pass
+            return
+        except Exception:
+            pass
+    if store is not None:
+        try:
+            QTimer.singleShot(
+                0, lambda: _restore_render_config(viewport, restored, store)
+            )
+            return
+        except Exception:
+            pass
+        # Fallback if defer fails — use setattr to avoid Assign dogma
+        try:
+            setattr(viewport, "render_config", restored)
+        except Exception:
+            pass
+        return
+    try:
+        setattr(viewport, "render_config", restored)
+    except Exception:
+        pass
+
+
 def restore_viewport_block(
     viewport: ViewportState | None,
     data: dict[str, Any] | None,
@@ -215,7 +329,7 @@ def restore_viewport_block(
     restore_view_state(viewport.view_state, data.get("view_state"))
     if data.get("render_config"):
         restored = RenderConfig.from_dict(data.get("render_config"))
-        viewport.render_config = restored
+        _restore_render_config(viewport, restored, store)
     # Magnifier models first so feature property writes can target active state.
     _restore_magnifier(viewport.view_state, data.get("magnifier"))
     restore_feature_settings(viewport, data.get("feature_settings"))
