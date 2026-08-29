@@ -674,16 +674,20 @@ class RhiCanvasRenderer:
                 def _sz(o):
                     if o is None:
                         return None
-                    if hasattr(o, "size"):
-                        v = getattr(o, "size")
-                        if callable(v):
-                            try:
-                                q = v()
-                                return (q.width(), q.height()) if hasattr(q, "width") else str(q)
-                            except Exception:
-                                return str(v)
-                        return v
-                    return None
+                    try:
+                        from shared.image_processing.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
+
+                        w, h = pixel_source_size(o)
+                        if w == 0 and h == 0:
+                            return None
+                        return (w, h)
+                    except Exception:
+                        return None
+                    # Legacy path kept for reference (hasattr now raises
+                    # RuntimeError on closed TiledPixelStore under Python 3.14):
+                    # if hasattr(o, "size"): ...
                 _ic_preview_log(
                     "sources raw use_hires=%s tex_keys_raw=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object_raw=%s",
                     base_image.use_hires,
@@ -753,16 +757,17 @@ class RhiCanvasRenderer:
                 def _sz2(o):
                     if o is None:
                         return None
-                    if hasattr(o, "size"):
-                        v = getattr(o, "size")
-                        if callable(v):
-                            try:
-                                q = v()
-                                return (q.width(), q.height()) if hasattr(q, "width") else str(q)
-                            except Exception:
-                                return str(v)
-                        return v
-                    return None
+                    try:
+                        from shared.image_processing.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
+
+                        w, h = pixel_source_size(o)
+                        if w == 0 and h == 0:
+                            return None
+                        return (w, h)
+                    except Exception:
+                        return None
                 _is_same_committed = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
                 _ic_preview_log(
                     "sources committed use_hires=%s tex_keys_raw=%s tex_keys_committed=%s is_same_object_committed=%s src_uids=%s committed_uids_src=%s",

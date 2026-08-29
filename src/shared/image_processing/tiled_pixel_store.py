@@ -909,26 +909,32 @@ def pixel_source_size(source) -> tuple[int, int]:
     from PySide6.QtCore import QSize
     from PySide6.QtGui import QImage
 
-    if source is None:
+    try:
+        if source is None:
+            return (0, 0)
+        if isinstance(source, QImage):
+            return source.width(), source.height()
+        if isinstance(source, np.ndarray):
+            return int(source.shape[1]), int(source.shape[0])
+        width = getattr(source, "width", None)
+        height = getattr(source, "height", None)
+        if width is not None and height is not None:
+            w = width() if callable(width) else width
+            h = height() if callable(height) else height
+            return int(w), int(h)
+        size = source.size
+        if callable(size):
+            size = size()
+        if isinstance(size, QSize):
+            return int(size.width()), int(size.height())
+        if size is None:
+            return (0, 0)
+        return (int(size[0]), int(size[1]))
+    except Exception:
+        # Closed TiledPixelStore (Python 3.14 hasattr only catches
+        # AttributeError, so size/width raise RuntimeError) or any
+        # malformed source — treat as empty rather than crash render.
         return (0, 0)
-    if isinstance(source, QImage):
-        return source.width(), source.height()
-    if isinstance(source, np.ndarray):
-        return int(source.shape[1]), int(source.shape[0])
-    width = getattr(source, "width", None)
-    height = getattr(source, "height", None)
-    if width is not None and height is not None:
-        w = width() if callable(width) else width
-        h = height() if callable(height) else height
-        return int(w), int(h)
-    size = source.size
-    if callable(size):
-        size = size()
-    if isinstance(size, QSize):
-        return int(size.width()), int(size.height())
-    if size is None:
-        return (0, 0)
-    return (int(size[0]), int(size[1]))
 
 
 def maybe_wrap_pixel_store(pil_image: Image.Image | None):
