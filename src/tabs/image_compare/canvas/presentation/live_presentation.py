@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from shared.rendering.display_image_picker import pick_display_image, pick_first_real
 from shared.rendering.image_identity import image_uid
+from shared.image_processing.tiled_pixel_store import autocrop_debug
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
 
 def build_live_store_presentation(store) -> SnapshotStorePresentation:
@@ -35,6 +36,19 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
         display_image1 = pick_first_real(source_image1)
     if display_image2 is None and source_image2 is not None:
         display_image2 = pick_first_real(source_image2)
+
+    def _kind(img):
+        return (type(img).__name__, img.size) if img is not None else None
+
+    autocrop_debug(
+        "presentation paths=%s | %s sources=%s | %s displays=%s | %s",
+        document.image1_path,
+        document.image2_path,
+        _kind(source_image1),
+        _kind(source_image2),
+        _kind(display_image1),
+        _kind(display_image2),
+    )
 
     source_key = (
         document.image1_path,

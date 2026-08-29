@@ -149,6 +149,12 @@ class SessionController(QObject):
 
         try:
             use_progressive = should_use_progressive_load(path)
+        from shared.image_processing.tiled_pixel_store import autocrop_debug
+
+        autocrop_debug(
+            "slot=%d path=%s auto_crop=%s progressive=%s",
+            image_number, path, should_crop, use_progressive,
+        )
 
             if use_progressive:
                 preview = load_preview_image(path, should_crop)
@@ -298,9 +304,15 @@ class SessionController(QObject):
         loading.trigger_preview_unification(self, image_number)
 
     def _load_full_resolution_async(self, path, image_number, index_in_list):
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        from shared.image_processing.tiled_pixel_store import (
+            TiledPixelStore,
+            autocrop_debug,
+        )
 
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
+        autocrop_debug(
+            "full-res slot=%d path=%s auto_crop=%s", image_number, path, should_crop
+        )
 
         def load_full_task(path_str, crop_flag, slot_number, item_index):
             from shared.image_processing.pixel_cache_loader import load_pixel_store
