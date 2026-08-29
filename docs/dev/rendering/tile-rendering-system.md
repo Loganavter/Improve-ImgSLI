@@ -252,6 +252,40 @@ equal in the (common, easy-to-test-against-by-accident) steady state where
 nothing is mid-upload — exactly the case that hides this bug until a fresh,
 large, or otherwise slow-to-fill grid is involved.
 
+### Content swaps are atomic; LOD churn is progressive
+
+A LOD/pyramid-level churn (zoom crossing a level boundary on the *same*
+source) gets the progressive reveal above — the coarser content stays
+visible and the finer level's tiles replace it region by region, which is
+the intended behavior. A genuine *content replacement* (preview→store flip,
+a same-slot image swap, a source-role switch) must not: the user sees the
+new content appear tile-by-tile over several frames as a patchwork mix of
+old and new regions. ``resolve_fallback_lod``'s ``atomic=True`` mode draws
+*only* the fallback baseline (the old content) until the new content's
+current-view tiles are all resident, then flips the whole draw plan over in
+one frame. The caller (``RhiCanvasRenderer._resolve_fallback_plan`` in
+image_compare; the fixed-pair render tab is the only ``atomic`` caller
+today) identifies a content swap by either of two signals:
+
+1. A rekeyed old-content marker in the fallback baseline —
+   ``("_prev_content", ...)`` (eager whole-image/diff-role path,
+   ``residency.rekey_stale_content``) or ``("_content_stash", ...)`` (lazy
+   TiledPixelStore path, ``residency._rekey_or_restore``). The marker
+   persists in the caller's ``_last_good_*`` state for the whole
+   transition, so no extra state is needed — the marker check must
+   recognize *both* forms (a ``_prev_content``-only check left the lazy
+   path in progressive mode).
+2. A source identity change (``image_uid`` of the live sources differs from
+   the last committed set). The preview→store flip re-registers the store
+   under a fresh ``LevelKey`` and rekeys nothing, so its baseline (the old
+   bare slot keys) carries no marker; the source-identity change is the
+   only signal. It is a one-frame fact and must be persisted
+   (``_content_swap_active``) until promotion.
+
+Atomic mode also degrades gracefully: if the old-content fallback plan is
+empty (the old content was fully evicted or never resident), the partial new
+content is drawn rather than a blank frame.
+
 ### Non-idempotent upload under duplicate same-frame calls (multi_compare-specific)
 
 A second, narrower bug in the same mechanism: `BaseImagesPass._upload_slot`

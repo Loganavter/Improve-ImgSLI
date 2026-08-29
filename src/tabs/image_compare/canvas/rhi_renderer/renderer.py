@@ -91,6 +91,34 @@ def _union_capture_uv_rect(overlay) -> tuple[float, float, float, float] | None:
     return (max(0.0, left), max(0.0, top), min(1.0, right), min(1.0, bottom))
 
 
+def _is_rekeyed_content_key(key: object) -> bool:
+    """True for the rekeyed old-content marker keys the residency realizer
+    uses to preserve a slot's previous content across a same-slot swap:
+    ``("_prev_content", ...)`` (``rekey_stale_content`` -- the eager
+    whole-image/diff-role upload path in ``RhiResources.upload_source``) or
+    ``("_content_stash", ...)`` (``_rekey_or_restore`` -- the lazy
+    TiledPixelStore path in ``realize_tile_plan``). The marker prefix is
+    what distinguishes a content swap's fallback baseline from a plain
+    LOD/pyramid-level one, whose keys are real ``LevelKey``/slot labels --
+    see ``_resolve_fallback_plan``'s docstring for why the two want
+    different reveal behavior. ``LevelKey`` is a NamedTuple whose first
+    element is the base slot key, so it can never match a marker prefix."""
+    return (
+        isinstance(key, tuple) and len(key) > 0 and key[0] in ("_prev_content", "_content_stash")
+    )
+
+
+def _is_rekeyed_content_baseline(last_good_key) -> bool:
+    """Whether ``last_good_key``'s texture/diff keys carry a rekeyed
+    old-content marker anywhere (both sides checked -- either side can be
+    the swapped one). ``None`` (no fallback baseline yet) is never a
+    content swap."""
+    if last_good_key is None:
+        return False
+    texture_keys, diff_key = last_good_key
+    return any(_is_rekeyed_content_key(k) for k in texture_keys) or _is_rekeyed_content_key(diff_key)
+
+
 class RhiCanvasRenderer:
     """Composition root: constructs/tears down ``RhiResources`` +
     ``TileTextureService`` + feature passes, and sequences each frame's
@@ -133,6 +161,18 @@ class RhiCanvasRenderer:
         # still-loaded image) so the settle delay below can be bypassed for
         # it -- see render()'s commit logic.
         self._lod_committed_source_ids: tuple[int, int] | None = None
+        # Whether the current fallback baseline is a genuine content
+        # replacement (preview->store flip, same-slot image swap, source-role
+        # switch) rather than a LOD/pyramid-level churn on the same content:
+        # while set, ``_resolve_fallback_plan`` runs ``resolve_fallback_lod``
+        # in atomic mode so the old content stays on screen in full until the
+        # new content's current-view tiles are all resident, then the whole
+        # draw plan flips in one frame -- never a per-tile pop-in mixing old
+        # and new. Set on the frame a source identity change commits (a
+        # one-frame fact that must persist for the whole transition); cleared
+        # on promotion. The rekeyed-marker signal (``_is_rekeyed_content_key``)
+        # persists on its own via ``self._last_good_*`` and needs no flag.
+        self._content_swap_active = False
 
     # -- backward-compatible views onto RhiResources' GPU state, used by
     # feature passes (e.g. magnifier) that read tile textures directly. --
@@ -197,6 +237,173 @@ class RhiCanvasRenderer:
         for render_pass in self.feature_passes:
             render_pass.release()
         self.__init__()
+
+    def _resolve_fallback_plan(
+        self,
+        *,
+        tile_service: TileTextureService,
+        texture_keys: tuple[object, object],
+        diff_source_key: object | None,
+        base_image,
+        sampler_name: str,
+        viewport_zoom: tuple[float, float] | None,
+        viewport_offset: tuple[float, float] | None,
+        main_more_pending: bool,
+        current_array_plan: list,
+        source_changed: bool,
+        rekeyed: dict[object, object],
+    ) -> tuple[object | None, list]:
+        """Decides this frame's draw plan across a LOD-churn or content-swap
+        transition and returns ``(new_last_good_key, array_draw_plan)`` --
+        the caller stores ``new_last_good_key`` back onto
+        ``self._last_good_*``. Owns the two pieces of caller-side fallback
+        state that live in this class: ``self._last_good_*`` (the last key
+        set whose tiles were fully drawable) and ``self._content_swap_active``
+        (see its docstring). Extracted from render() so the content-swap
+        atomicity decision is testable without a live QRhi.
+
+        docs/dev/rendering/tile-rendering-system.md "Fallback-LOD": a plain
+        LOD/pyramid-level transition progressively reveals the new level's
+        tiles over the old level's still-resident ones. A genuine content
+        replacement (preview->store flip, a same-slot image swap, a
+        source-role switch) must instead be atomic -- every non-resident
+        region of the new content keeps drawing the OLD content until the
+        new content's current-view tiles are all resident, then the whole
+        draw plan flips over in one frame -- via ``resolve_fallback_lod``'s
+        ``atomic`` mode (docs/dev/rendering/tile-rendering-system.md
+        "Fallback-LOD" / ``shared/rendering/fallback_lod.py``). The two
+        signals identifying a content swap (vs. a same-content level churn)
+        are:
+
+        (1) a rekeyed old-content marker key in the fallback baseline --
+        ``("_prev_content", ...)`` (eager whole-image path) or
+        ``("_content_stash", ...)`` (lazy TiledPixelStore path). The marker
+        survives in ``self._last_good_*`` for every frame of the transition
+        (a still-pending earlier frame's substitution is carried forward
+        until promotion), so it needs no extra state -- but the marker check
+        itself must recognize BOTH forms: the lazy path's
+        ``_content_stash`` marker used to fall through the ``_prev_content``-
+        only check, leaving the swap in progressive (mixed-frame) mode.
+
+        (2) a source identity change (``source_changed`` -- set once, on
+        the frame the new source commits). The preview->store flip
+        re-registers the store under a fresh ``LevelKey`` and rekeys
+        nothing, so its fallback baseline (the plain old bare slot keys in
+        ``self._last_good_texture_keys``) carries no marker at all; the
+        source-identity change is the only signal. It is a one-frame fact,
+        so it is persisted into ``self._content_swap_active`` until
+        promotion, and only when a real baseline change exists (the flip
+        frame's committed keys differ from the previous frame's keys --
+        ``last_good_key != key``); a source change with an identical
+        baseline sets nothing.
+        """
+        old_texture_keys = self._last_good_texture_keys
+        last_good_key = (
+            (old_texture_keys, self._last_good_diff_key)
+            if old_texture_keys is not None
+            else None
+        )
+        key = (texture_keys, diff_source_key)
+        # A same-slot content swap (e.g. loading a new image into an
+        # already-loaded side) never changes texture_keys/diff_source_key
+        # themselves -- they're stable slot labels, not per-image
+        # identity -- so the plain old_texture_keys comparison above can't
+        # see it and last_good_key's plain form is a no-op here. When
+        # realize_tile_plan rekeys a slot's stale old content instead of
+        # dropping it (residency.py's last_rekeyed_keys), substitute that
+        # key so resolve_fallback_lod treats this frame as a genuine key
+        # change and draws the old content underneath while the new content
+        # at the reused slot fills in.
+        if rekeyed:
+            last_good_key = (
+                tuple(rekeyed.get(k, k) for k in texture_keys),
+                rekeyed.get(diff_source_key, diff_source_key),
+            )
+        if source_changed and last_good_key is not None and last_good_key != key:
+            # A content replacement just committed (see the flag's
+            # docstring for which cases). Hold the old content on screen
+            # for the whole transition, not just this frame.
+            self._content_swap_active = True
+        is_content_swap = self._content_swap_active or _is_rekeyed_content_baseline(
+            last_good_key
+        )
+        fallback_diag: dict[str, int] = {}
+
+        def _build_fallback_items(prior_key):
+            prior_texture_keys, prior_diff_key = prior_key
+            items = build_array_draw_plan(
+                tile_service,
+                prior_texture_keys,
+                base_image,
+                diff_key=prior_diff_key,
+                sampler_name=sampler_name,
+                viewport_zoom=viewport_zoom,
+                viewport_offset=viewport_offset,
+            )
+            fallback_diag["raw"] = len(items)
+            # In atomic mode drop_covered never runs (the whole point is
+            # that current_items stays out of the draw plan entirely),
+            # so this is the only place "kept" gets set -- default it to
+            # "everything survives", then let _drop_covered overwrite it
+            # in non-atomic mode.
+            fallback_diag["kept"] = len(items)
+            return items
+
+        def _drop_covered(fallback_items, current_items):
+            dropped = drop_covered_fallback_items(
+                fallback_items, current_items, base_image
+            )
+            fallback_diag["kept"] = len(dropped)
+            return dropped
+
+        new_last_good_key, array_draw_plan = resolve_fallback_lod(
+            key=key,
+            current_items=current_array_plan,
+            more_pending=main_more_pending,
+            last_good_key=last_good_key,
+            build_fallback_items=_build_fallback_items,
+            drop_covered=_drop_covered,
+            atomic=is_content_swap,
+        )
+        if new_last_good_key == key:
+            # Promotion: the new content's current-view tiles are all
+            # resident; the transition is over. From here on, further
+            # LOD-level churn on the (now committed) content is a plain
+            # progressive reveal again.
+            self._content_swap_active = False
+        if fallback_diag:
+            rhi_render_debug(
+                "render FALLBACK_ACTIVE old_keys=%s new_keys=%s "
+                "fallback_raw=%d fallback_entries=%d current_entries=%d main_more_pending=%s",
+                old_texture_keys,
+                texture_keys,
+                fallback_diag["raw"],
+                fallback_diag["kept"],
+                len(current_array_plan),
+                main_more_pending,
+            )
+        if tile_dump_enabled():
+            log_tile_event(
+                "fallback_lod",
+                old_texture_keys=[str(k) for k in old_texture_keys]
+                if old_texture_keys is not None
+                else None,
+                new_texture_keys=[str(k) for k in texture_keys],
+                diff_source_key=str(diff_source_key)
+                if diff_source_key is not None
+                else None,
+                fallback_raw=fallback_diag.get("raw"),
+                fallback_kept=fallback_diag.get("kept"),
+                current_entries=len(current_array_plan),
+                resolved_entries=len(array_draw_plan),
+                main_more_pending=main_more_pending,
+                fallback_active=bool(fallback_diag),
+                rekeyed_same_slot_swap={str(k): str(v) for k, v in rekeyed.items()}
+                if rekeyed
+                else None,
+                content_swap_active=self._content_swap_active,
+            )
+        return new_last_good_key, array_draw_plan
 
     def render(self, widget, command_buffer, clear_color) -> bool:
         """Record one frame. Returns True after a completed beginPass/endPass.
@@ -456,126 +663,26 @@ class RhiCanvasRenderer:
             # order alone decides the final pixel, so any tile the new
             # level has already uploaded replaces the stale one, and only
             # the still-missing regions fall back to the old level
-            # instead of blanking.
-            old_texture_keys = self._last_good_texture_keys
-            last_good_key = (
-                (old_texture_keys, self._last_good_diff_key)
-                if old_texture_keys is not None
-                else None
-            )
-            # A same-slot content swap (e.g. loading a new image into an
-            # already-loaded side) never changes texture_keys/diff_source_key
-            # themselves -- they're stable slot labels, not per-image
-            # identity -- so the plain old_texture_keys comparison above
-            # can't see it and last_good_key above is a no-op here. When
-            # realize_tile_plan rekeys a slot's stale-sized old content
-            # instead of dropping it (residency.py's last_rekeyed_keys),
-            # substitute that key so resolve_fallback_lod treats this frame
-            # as a genuine key change and draws the old content underneath
-            # while the new content at the reused slot fills in.
-            rekeyed = self.resources.residency.last_rekeyed_keys
-            if rekeyed:
-                last_good_key = (
-                    tuple(rekeyed.get(k, k) for k in texture_keys),
-                    rekeyed.get(diff_source_key, diff_source_key),
-                )
-            # A content swap's fallback baseline is always a rekeyed
-            # "_prev_content" marker key (see rekey_stale_content) -- once
-            # substituted in above (whether this frame or a still-pending
-            # earlier one, since old_texture_keys/`self._last_good_diff_key`
-            # persist it forward until promotion), that marker survives in
-            # `last_good_key` for every frame of the transition. A plain
-            # LOD/pyramid-level fallback never has one (its keys are real
-            # `LevelKey`/slot labels), so this distinguishes "the user swapped
-            # in new content" from "the same content is refining to a finer
-            # zoom level" without extra persisted state -- see
-            # resolve_fallback_lod's `atomic` param docstring for why the two
-            # cases want different reveal behavior.
-            is_content_swap = last_good_key is not None and (
-                any(
-                    isinstance(k, tuple) and k and k[0] == "_prev_content"
-                    for k in last_good_key[0]
-                )
-                or (
-                    isinstance(last_good_key[1], tuple)
-                    and last_good_key[1]
-                    and last_good_key[1][0] == "_prev_content"
-                )
-            )
-            fallback_diag: dict[str, int] = {}
-
-            def _build_fallback_items(prior_key):
-                prior_texture_keys, prior_diff_key = prior_key
-                items = build_array_draw_plan(
-                    self.tile_service,
-                    prior_texture_keys,
-                    base_image,
-                    diff_key=prior_diff_key,
-                    sampler_name=sampler_name,
-                    viewport_zoom=viewport_zoom,
-                    viewport_offset=viewport_offset,
-                )
-                fallback_diag["raw"] = len(items)
-                # In atomic mode drop_covered never runs (the whole point is
-                # that current_items stays out of the draw plan entirely),
-                # so this is the only place "kept" gets set -- default it to
-                # "everything survives", then let _drop_covered overwrite it
-                # in non-atomic mode.
-                fallback_diag["kept"] = len(items)
-                return items
-
-            def _drop_covered(fallback_items, current_items):
-                dropped = drop_covered_fallback_items(
-                    fallback_items, current_items, base_image
-                )
-                fallback_diag["kept"] = len(dropped)
-                return dropped
-
-            new_last_good_key, array_draw_plan = resolve_fallback_lod(
-                key=(texture_keys, diff_source_key),
-                current_items=current_array_plan,
-                more_pending=main_more_pending,
-                last_good_key=last_good_key,
-                build_fallback_items=_build_fallback_items,
-                drop_covered=_drop_covered,
-                atomic=is_content_swap,
+            # instead of blanking. For a genuine content swap the same
+            # mechanism runs in atomic mode (current tiles stay hidden
+            # until the new content is fully resident) -- see
+            # ``_resolve_fallback_plan``.
+            new_last_good_key, array_draw_plan = self._resolve_fallback_plan(
+                tile_service=self.tile_service,
+                texture_keys=texture_keys,
+                diff_source_key=diff_source_key,
+                base_image=base_image,
+                sampler_name=sampler_name,
+                viewport_zoom=viewport_zoom,
+                viewport_offset=viewport_offset,
+                main_more_pending=main_more_pending,
+                current_array_plan=current_array_plan,
+                source_changed=source_changed,
+                rekeyed=self.resources.residency.last_rekeyed_keys,
             )
             self._last_good_texture_keys, self._last_good_diff_key = (
                 new_last_good_key if new_last_good_key is not None else (None, None)
             )
-            if fallback_diag:
-                rhi_render_debug(
-                    "render FALLBACK_ACTIVE old_keys=%s new_keys=%s "
-                    "fallback_raw=%d fallback_entries=%d current_entries=%d main_more_pending=%s",
-                    old_texture_keys,
-                    texture_keys,
-                    fallback_diag["raw"],
-                    fallback_diag["kept"],
-                    len(current_array_plan),
-                    main_more_pending,
-                )
-            if tile_dump_enabled():
-                log_tile_event(
-                    "fallback_lod",
-                    old_texture_keys=[str(k) for k in old_texture_keys]
-                    if old_texture_keys is not None
-                    else None,
-                    new_texture_keys=[str(k) for k in texture_keys],
-                    diff_source_key=str(diff_source_key)
-                    if diff_source_key is not None
-                    else None,
-                    fallback_raw=fallback_diag.get("raw"),
-                    fallback_kept=fallback_diag.get("kept"),
-                    current_entries=len(current_array_plan),
-                    resolved_entries=len(array_draw_plan),
-                    main_more_pending=main_more_pending,
-                    fallback_active=bool(fallback_diag),
-                    rekeyed_same_slot_swap={
-                        str(k): str(v) for k, v in rekeyed.items()
-                    }
-                    if rekeyed
-                    else None,
-                )
             rhi_render_debug(
                 "render array_draw_plan=%d entries", len(array_draw_plan)
             )
