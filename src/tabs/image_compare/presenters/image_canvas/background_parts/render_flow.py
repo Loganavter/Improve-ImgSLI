@@ -326,6 +326,20 @@ def update_comparison_if_needed(presenter):
     if _document is None:
         _preview_log("update: deferred - no document slot")
         return False
+    # Left-on-both-halves debug: document vs image_state divergence (same [ic-preview] correlation as renderer sources log)
+    _preview_log(
+        "document state: full_res uid1=%s uid2=%s preview uid1=%s uid2=%s original uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
+        image_uid(_document.full_res_image1) if _document.full_res_image1 is not None else None,
+        image_uid(_document.full_res_image2) if _document.full_res_image2 is not None else None,
+        image_uid(_document.preview_image1) if _document.preview_image1 is not None else None,
+        image_uid(_document.preview_image2) if _document.preview_image2 is not None else None,
+        image_uid(_document.original_image1) if _document.original_image1 is not None else None,
+        image_uid(_document.original_image2) if _document.original_image2 is not None else None,
+        image_uid(presenter.store.viewport.session_data.image_state.image1) if presenter.store.viewport.session_data.image_state.image1 is not None else None,
+        image_uid(presenter.store.viewport.session_data.image_state.image2) if presenter.store.viewport.session_data.image_state.image2 is not None else None,
+        getattr(_document, "image1_path", None),
+        getattr(_document, "image2_path", None),
+    )
     source1 = (
         _document.full_res_image1
         or _document.preview_image1
