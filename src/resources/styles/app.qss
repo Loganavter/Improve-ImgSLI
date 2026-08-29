@@ -4,40 +4,7 @@
    Do not put color/font rules on QLabel — any QSS on a QLabel makes Qt ignore
    setFont() when painting (system face fallback). */
 
-/* --- Main window UI --- */
-QWidget#StartupPlaceholder,
-QWidget#StartupCover,
-QWidget#ImageStartupPlaceholder {
-    background-color: @label.image.background;
-}
-
-/* --- Custom title bar (client-side decorations) --- */
-QWidget#CustomTitleBar {
-    background: transparent;
-    border: none;
-}
-
-QWidget[opacity="0.4"] {
-    opacity: 0.4;
-}
-
-QWidget[opacity="1.0"] {
-    opacity: 1.0;
-}
-
 /* --- Workspace tabs bar (top of main window) --- */
 QWidget#WorkspaceTabsBar {
     background: @button.toggle.background.normal;
-}
-
-QTabBar#WorkspaceTabs {
-    background: transparent;
-    qproperty-drawBase: 0;
-}
-
-/* --- Image properties dialog --- */
-QFrame#ImagePropertiesSection {
-    background: @dialog.input.background;
-    border: 1px solid @dialog.border;
-    border-radius: 6px;
 }

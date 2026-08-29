@@ -5,9 +5,3 @@ QDialog#SettingsDialog {
 #SettingsContentArea {
     background-color: @dialog.background;
 }
-
-#SettingsSidebar {
-    background-color: @dialog.input.background;
-    border-right: 1px solid @dialog.border;
-    outline: none;
-}
