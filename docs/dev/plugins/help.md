@@ -14,9 +14,9 @@ Source: `src/plugins/help/`. Authoring/content rules live in
 
 - `initialize(context)` stores `store` + `event_bus`; subscribes
   `SettingsChangeLanguageEvent` to update an open dialog's language.
-- `get_qss_paths()` → `resources/help.qss`.
 - `get_controller()` returns the plugin itself; `handle_command` dispatches
-  commands like `show_dialog`.
+  commands like `show_dialog`. No plugin QSS: the dialog surface is painted
+  from the `dialog.background` token in `ThemedDialog.paintEvent`.
 - `show_dialog(parent=..., language=..., page=..., anchor=...)` opens the
   modeless `HelpDialog` — deliberately never Qt-parented to the main window
   (a transient-for link would make the WM raise the whole main-window group

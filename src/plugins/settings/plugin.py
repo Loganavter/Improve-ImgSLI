@@ -84,9 +84,6 @@ class SettingsPlugin(Plugin, IServicePlugin):
                         ),
                     )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "settings.qss"),)
-
     def get_controller(self) -> SettingsController | None:
         return self.controller
 

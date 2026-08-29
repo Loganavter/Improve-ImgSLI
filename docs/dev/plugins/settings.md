@@ -23,7 +23,9 @@ via `get_controller` / `handle_command`).
   .get_feature_settings_event_bindings()`) and forwards them to
   `SettingsController.execute_canvas_feature_command`. Called again for
   `multi_compare` in the deferred tier.
-- `get_qss_paths()` → `resources/settings.qss`.
+- `get_controller()` / `handle_command` — command surface (see
+  [PLUGINS.md](../PLUGINS.md)). No plugin QSS: the dialog surface is painted
+  from the `dialog.background` token in `ThemedDialog.paintEvent`.
 
 ## Key modules
 

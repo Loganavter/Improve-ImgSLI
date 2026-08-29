@@ -49,9 +49,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             else None
         )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "export.qss"),)
-
     def configure_controller(
         self,
         main_controller: Any | None = None,

@@ -20,8 +20,9 @@ after `video_editor`, order 0). Implements `IControllablePlugin` +
   service (tab-provided, fallback to bootstrap default), and
   `ExportController`. It schedules a GPU warm-up (`QTimer.singleShot(3000)`)
   and subscribes session-activated + export EventBus events.
-- `get_qss_paths()` → `resources/export.qss`.
 - `get_service()` → the recorder; `get_controller()` → `ExportController`.
+  No plugin QSS: the dialog surface is painted from the `dialog.background`
+  token in `ThemedDialog.paintEvent`.
 
 ## Key modules
 

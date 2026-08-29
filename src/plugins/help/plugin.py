@@ -23,9 +23,6 @@ class HelpPlugin(Plugin, IControllablePlugin):
                 SettingsChangeLanguageEvent, self._on_language_changed
             )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "help.qss"),)
-
     def get_controller(self) -> "HelpPlugin":
         return self
 
