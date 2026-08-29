@@ -54,7 +54,12 @@ def on_magnifier_element_hovered(presenter, element_name: str):
         return
     dispatcher = presenter.store.get_dispatcher()
     if dispatcher is not None:
-        from tabs.image_compare.canvas.features.magnifier.input.actions import SetHighlightedMagnifierElementAction
+        import importlib
+
+        _magnifier_actions = importlib.import_module(
+            "tabs.image_compare.canvas.features.magnifier.input.actions"
+        )
+        SetHighlightedMagnifierElementAction = _magnifier_actions.SetHighlightedMagnifierElementAction
 
         dispatcher.dispatch(SetHighlightedMagnifierElementAction(element_name), scope="viewport")
     if presenter.event_bus:
@@ -67,7 +72,12 @@ def on_magnifier_element_hover_ended(presenter):
         return
     dispatcher = presenter.store.get_dispatcher()
     if dispatcher is not None:
-        from tabs.image_compare.canvas.features.magnifier.input.actions import SetHighlightedMagnifierElementAction
+        import importlib
+
+        _magnifier_actions = importlib.import_module(
+            "tabs.image_compare.canvas.features.magnifier.input.actions"
+        )
+        SetHighlightedMagnifierElementAction = _magnifier_actions.SetHighlightedMagnifierElementAction
 
         dispatcher.dispatch(SetHighlightedMagnifierElementAction(None), scope="viewport")
     if presenter.event_bus:

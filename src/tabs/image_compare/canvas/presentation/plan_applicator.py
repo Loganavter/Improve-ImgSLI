@@ -1,3 +1,5 @@
+# Audit-Meta: pattern=canvas-presentation reason="plan applicator — 5 helpers + geometry sync + store binding, 519 lines"
+
 from __future__ import annotations
 
 from domain.types import Rect
@@ -258,6 +260,19 @@ def sync_geometry_state(canvas, store) -> None:
     cx, cy, cw, ch = rect
     vp = getattr(store, "viewport", None)
     if vp is not None and cw > 0 and ch > 0:
+        # Guard: only dispatch when geometry actually changed — otherwise
+        # every update_comparison_if_needed() would emit a viewport change,
+        # re-arm the fps timer and spam [ic-preview] document state logs.
+        try:
+            gs = getattr(vp, "geometry_state", None)
+            if gs is not None:
+                cur_w = getattr(gs, "pixmap_width", None)
+                cur_h = getattr(gs, "pixmap_height", None)
+                cur_rect = getattr(gs, "image_display_rect_on_label", None)
+                if cur_w == cw and cur_h == ch and cur_rect == Rect(cx, cy, cw, ch):
+                    return
+        except Exception:
+            pass
         dispatcher = getattr(store, "get_dispatcher", lambda: None)()
         if dispatcher is not None:
             try:

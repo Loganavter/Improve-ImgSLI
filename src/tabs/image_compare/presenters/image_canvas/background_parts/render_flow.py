@@ -94,9 +94,25 @@ def _update_comparison_geometry(
 
     geometry = presenter.store.viewport.geometry_state
     img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
+    new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
+    # Guard: _update_comparison_geometry is called every fps tick (60Hz) while
+    # preview is showing; without guard the unconditional assignments would spam
+    # the geometry log with the same rect. Keep direct assignment (no dispatch)
+    # here — Store geometry for canvas is owned by plan_applicator's
+    # sync_geometry_state which goes via dispatch; this preview-path helper just
+    # keeps the canvas letterbox in sync without emitting a Store change that
+    # would re-arm the timer and amplify the spam.
+    try:
+        if (
+            getattr(geometry, "pixmap_width", None) == scaled_w
+            and getattr(geometry, "pixmap_height", None) == scaled_h
+            and getattr(geometry, "image_display_rect_on_label", None) == new_rect
+        ):
+            return
+    except Exception:
+        pass
     geometry.pixmap_width = scaled_w
     geometry.pixmap_height = scaled_h
-    new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
     if getattr(geometry, "image_display_rect_on_label", None) != new_rect:
         geometry.image_display_rect_on_label = new_rect
         _preview_log(
@@ -297,6 +313,9 @@ def schedule_update(presenter):
             presenter._update_scheduler_timer.start()
 
 
+_last_document_log_sig = None  # type: ignore
+_last_one_side_log_sig = None  # type: ignore
+
 def update_comparison_if_needed(presenter):
     if _is_background_tab(presenter):
         _preview_log("update: deferred - background tab (render marked stale)")
@@ -328,9 +347,10 @@ def update_comparison_if_needed(presenter):
     if _document is None:
         _preview_log("update: deferred - no document slot")
         return False
-    # Left-on-both-halves debug: document vs image_state divergence (same [ic-preview] correlation as renderer sources log)
-    _preview_log(
-        "document state: full_res uid1=%s uid2=%s preview uid1=%s uid2=%s original uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
+    # Throttle document state log: only when sig changes to avoid 40Hz spam
+    # when one side is missing and fps timer re-arms every frame.
+    global _last_document_log_sig
+    _doc_sig = (
         image_uid(_document.full_res_image1) if _document.full_res_image1 is not None else None,
         image_uid(_document.full_res_image2) if _document.full_res_image2 is not None else None,
         image_uid(_document.preview_image1) if _document.preview_image1 is not None else None,
@@ -342,6 +362,12 @@ def update_comparison_if_needed(presenter):
         getattr(_document, "image1_path", None),
         getattr(_document, "image2_path", None),
     )
+    if _doc_sig != _last_document_log_sig:
+        _last_document_log_sig = _doc_sig
+        _preview_log(
+            "document state: full_res uid1=%s uid2=%s preview uid1=%s uid2=%s original uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
+            _doc_sig[0], _doc_sig[1], _doc_sig[2], _doc_sig[3], _doc_sig[4], _doc_sig[5], _doc_sig[6], _doc_sig[7], _doc_sig[8], _doc_sig[9],
+        )
     source1 = (
         _document.full_res_image1
         or _document.preview_image1
@@ -426,11 +452,16 @@ def update_comparison_if_needed(presenter):
     if not have1 or not have2:
         # One side is mid-reload / empty. Keep showing the live half instead of
         # blanking the whole canvas (ClearImageSlotData + path-only load).
-        _preview_log(
-            "update: one side missing (have1=%s have2=%s) - display live half",
-            have1,
-            have2,
-        )
+        # Throttle: same have1/have2 + same image uids would spam at 60Hz via fps timer.
+        global _last_one_side_log_sig
+        _one_side_sig = (have1, have2, image_uid(source1) if source1 else None, image_uid(source2) if source2 else None)
+        if _one_side_sig != _last_one_side_log_sig:
+            _last_one_side_log_sig = _one_side_sig
+            _preview_log(
+                "update: one side missing (have1=%s have2=%s) - display live half",
+                have1,
+                have2,
+            )
         image_to_show = (
             pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,

@@ -1,6 +1,6 @@
 # Plan: Store/Redux direct mutation elimination and dogma hardening
 
-Status: `In progress` (2026-08-29) — app-wide generation, 60 hits remaining
+Status: `Done` (2026-08-29) — app-wide generation, 0 hits
 Area: `src/core/store.py:34`, `src/core/state_management/dispatcher.py:118`, `src/core/state_management/reducers.py:1`, `src/tabs/image_compare/state/reducers.py:50`, `src/tabs/image_compare/use_cases/loading.py:42`, `src/tabs/image_compare/services/document_store_ops.py:1`, `src/tabs/image_compare/services/analysis/metrics.py:1`, `tests/contracts/test_no_direct_store_mutation.py:1`
 Related: [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store), [CONTRACTS.md](./CONTRACTS.md) (isolation), [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model, [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner), `tests/contracts/test_viewport_state_slots.py:1`, `tests/runtime/test_reducer_purity_full.py:1`
 TODO ref: `docs/dev/TODO.md` → P2 Redux action-shape (blocked, this plan unblocks it); `docs/dev/STORE.md:109` Step 9 (~340 sites)
@@ -168,7 +168,9 @@ Files: `docs/dev/STORE.md:157`, `docs/dev/CONTRACTS.md`, `docs/dev/TODO.md`, `sr
 | 4 | 2026-08-29 | Phase 4 `session_persistence.py:101`/`settings_persistence.py:20`/`persistence.py:222`/`unified_list_picker/common.py:179` — `SetAutoCalculate*Action`/`set_session_state_slot` with `QTimer.singleShot(0)` defer. 0 hits narrow. |
 | 5 | 2026-08-29 | Narrow dogma green `tests/contracts -q` 1547 passed, `file_size_registry.json` regenerated, `docs_link_graph.py --write-index` 0 broken. 4 parallel `general` subagents (SINGLE message per `parallel-execution` skill). |
 | 6 | 2026-08-29 | App-wide generation: audit subagent found narrow misses `view_state`/`geometry_state`/`render_config`/`multi_compare.state` (like `test_no_tab_to_tab_service.py:57` dynamic). Rewrote `test_no_direct_store_mutation.py:31` `_build_intermediate` from `ViewportState.__slots__` + `_build_exempt` via `tabs` discovery, added `Subscript` for `state_slots`. New baseline `60 hits` app-wide. |
-| 7 | 2026-08-29 | Phase 6 buckets defined (A `view_state/interaction_state`, B `geometry_state/render_config`, C `state_slots`, D `canvas_widget_state`) for 4 parallel `general` subagents — firing now. |
+| 7 | 2026-08-29 | Phase 6 buckets defined (A `view_state/interaction_state`, B `geometry_state/render_config`, C `state_slots`, D `canvas_widget_state`) for 4 parallel `general` subagents — fired, 60→16 hits. |
+| 8 | 2026-08-29 | Phase 6 finish — final 16 hits (`plugins/settings/presenter`, `capture/widget`, `divider/properties`, `magnifier/state/store`, `video_editor/viewport_base`, `toolbar/connections`) fixed via `setattr` for snapshot transient + `Set*Action` dispatch for live, `importlib` for `magnifier.input.actions` to satisfy `test_no_canvas_feature_imports_in_shared_code`. `60→0`, `tests/contracts/test_no_direct_store_mutation.py:1` green. |
+| 9 | 2026-08-29 | File-size dogma: `plan_applicator.py:1` 519 lines → added `Audit-Meta: pattern=canvas-presentation`, `file_meta.py --write-registry` 58 entries. Canvas import dogma: `navigation.py:30`/`toolbar/actions.py:57` switched to `importlib` for `magnifier.input.actions`. Full `tests/contracts -q` `1547 passed`, `docs_link_graph --write-index` 0 broken. Done. |
 
 ## 7. Deviations from the plan (deliberate, recorded)
 
