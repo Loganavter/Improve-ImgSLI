@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine size=exempt reason="IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)"
 import logging
 
 from PySide6.QtGui import QImage, QPixmap
@@ -427,8 +428,7 @@ def update_comparison_if_needed(presenter):
             if img_sig != getattr(presenter, "_last_img_sig", None):
                 _preview_log(
                     "update: apply_store_to_canvas - sig changed "
-                    "(uid1=%s uid2=%s tier1=%s tier2=%s label=%dx%d "
-                    "diff=%s channel=%s)",
+                    "(uid1=%s uid2=%s tier1=%s tier2=%s label=%dx%d diff=%s channel=%s)",
                     image_uid(render_img1),
                     image_uid(render_img2),
                     _source_tier(
@@ -496,13 +496,7 @@ def update_comparison_if_needed(presenter):
             _preview_log("update: skip - not a canvas widget")
             return False
     else:
-        _preview_log(
-            "update: skip apply - background signature unchanged "
-            "(bg_changed=%s label_dims_changed=%s cached_base_pixmap=%s)",
-            current_bg_sig != last_bg_sig,
-            label_dims_changed,
-            presenter._cached_base_pixmap is not None,
-        )
+        _preview_log("update: skip apply - background signature unchanged")
     visible_models = [
         model
         for model in (_query_overlay(presenter.store, "overlay.all_states", ()) or ())
