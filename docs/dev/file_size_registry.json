@@ -26,7 +26,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 894,
+      "lines": 873,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -242,7 +242,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
-      "lines": 700,
+      "lines": 696,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
@@ -528,7 +528,7 @@
     },
     {
       "path": "src/ui/actions/palette/dialog.py",
-      "lines": 563,
+      "lines": 559,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring size=exempt reason=\"one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px\"",

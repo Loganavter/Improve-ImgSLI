@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import pytest
 from PySide6.QtCore import Qt
 
 from core.actions.types import ActionDescriptor
+from sli_ui_toolkit.widgets import SurfaceScrollArea
 from ui.actions.palette.dialog import FindActionDialog
 from ui.actions.registry import get_action_registry, reset_action_registry_for_tests
+
+
+@pytest.fixture
+def dark_theme(qapp):
+    """Dark palette + registered palettes (Window #1e1e1e vs dialog.background #2b2b2b)."""
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("dark", qapp, await_ripples=False)
+    tm._flush_pending_theme()  # type: ignore[attr-defined]
+    return tm
 
 
 def test_find_action_dialog_lists_filters_and_runs(qtbot):
@@ -34,6 +49,7 @@ def test_find_action_dialog_lists_filters_and_runs(qtbot):
 
     dialog = FindActionDialog(None, query="")
     qtbot.addWidget(dialog)
+    assert isinstance(dialog._scroll, SurfaceScrollArea)
     assert {a.action_id for a in dialog._actions} == {
         "platform.settings",
         "platform.help",
@@ -611,6 +627,76 @@ def test_reveal_ensure_visible_then_pulse(qtbot, monkeypatch):
     qtbot.wait(350)
     assert ensured == ["ok"]
     assert pulsed == [card]
+
+
+def test_find_action_scroll_surface_paints_dialog_background(qapp, qtbot, dark_theme):
+    """Scroll surface must be dialog.background, not the near-black Window role.
+
+    Stock QScrollArea viewports auto-fill Window (#1e1e1e dark); the palette
+    list sits on the SurfaceScrollArea token fill (#2b2b2b). Sample the
+    viewport below the rows (the list host's trailing stretch pad).
+    """
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(action_id="a.first", label_key="menu.settings", run=lambda: None)
+    )
+    registry.register(
+        ActionDescriptor(action_id="b.second", label_key="menu.show_help", run=lambda: None)
+    )
+
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qapp.processEvents()
+
+    img = dialog._scroll.viewport().grab().toImage()
+    assert img.width() > 0 and img.height() > 0
+    pixel = img.pixelColor(img.width() // 2, img.height() - 25)
+    assert pixel.name() == "#2b2b2b"
+    assert pixel.name() != "#1e1e1e"
+
+
+def test_find_action_scroll_surface_survives_polish(qapp, qtbot, dark_theme):
+    """QStyle::polish at show() resets palettes — the token fill must persist."""
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(action_id="a.first", label_key="menu.settings", run=lambda: None)
+    )
+
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qapp.processEvents()
+    dialog._scroll.style().unpolish(dialog._scroll)
+    dialog._scroll.style().polish(dialog._scroll)
+    qapp.processEvents()
+
+    img = dialog._scroll.viewport().grab().toImage()
+    pixel = img.pixelColor(img.width() // 2, img.height() - 25)
+    assert pixel.name() == "#2b2b2b"
+
+
+def test_find_action_scroll_re_tints_on_theme_switch(qapp, qtbot, dark_theme):
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(action_id="a.first", label_key="menu.settings", run=lambda: None)
+    )
+
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qapp.processEvents()
+
+    dark_theme.set_theme("light", qapp, await_ripples=False)
+    dark_theme._flush_pending_theme()  # type: ignore[attr-defined]
+    qapp.processEvents()
+
+    img = dialog._scroll.viewport().grab().toImage()
+    pixel = img.pixelColor(img.width() // 2, img.height() - 25)
+    assert pixel.name() == "#ffffff"
 
 
 def test_palette_chrome_hover_clips_to_row_capsule():
