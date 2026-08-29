@@ -15,6 +15,8 @@ import logging
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from tabs.image_compare.debug import ic_preview_debug as _preview_log
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -125,6 +127,17 @@ def on_pyramid_level_ready(controller, payload) -> None:
     from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
 
     uid, level_count, total_levels, complete = payload
+    # Tile replacement marker: the pyramid just wrote a LOD level into the
+    # store that backs the live canvas. Only `complete` drops the pick
+    # signatures (preview -> store flip); intermediate levels only arm a
+    # repaint, which render_flow then gates on its signatures.
+    _preview_log(
+        "tiles replaced: pyramid level ready (uid=%s level=%d/%d complete=%s)",
+        uid,
+        level_count,
+        total_levels,
+        complete,
+    )
     # Only a *completed* pyramid can flip pick_display_image from the
     # preview tier to the tiled store — that's the only publish that
     # needs the pick signatures dropped. Intermediate levels just need
