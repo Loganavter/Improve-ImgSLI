@@ -44,22 +44,38 @@ class ImagePipeline:
 
     # -- sync peek (no decode) --
 
-    def peek(self, path: str, auto_crop: bool = True):
-        return self.cache.get_pixel(path, auto_crop)
+    def peek(self, path: str, crop_service=None, auto_crop: bool | None = None):
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        if auto_crop is not None:
+            return self.cache.get_pixel(path, eff, auto_crop)
+        return self.cache.get_pixel(path, eff)
 
     # -- ensure tiers --
 
-    def ensure_pixel(self, path: str, auto_crop: bool = True, signal: AbortSignal | None = None):
-        if signal is not None and signal.is_aborted():
+    def ensure_pixel(
+        self, path: str, crop_service=None, auto_crop: bool | None = None, signal: AbortSignal | None = None
+    ):
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        # сигнал может быть передан позиционно как третий arg в старых вызовах ensure_pixel(path, True, signal)
+        if isinstance(signal, bool):
+            auto_crop = signal  # type: ignore
+            signal = None
+        if signal is not None and getattr(signal, "is_aborted", lambda: False)():
             return None
-        cached = self.cache.get_pixel(path, auto_crop)
+        eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        cached = self.cache.get_pixel(path, eff, auto_crop) if auto_crop is not None else self.cache.get_pixel(path, eff)
         if cached is not None:
             return cached
-        # single-flight: if same path already loading, return None and let
-        # caller await the in-flight result via controller's worker.
-        # Phase 2 will add awaitable future; for now just load.
         try:
-            store = self.cache.get_or_load(path, auto_crop=auto_crop)
+            if auto_crop is not None:
+                store = self.cache.get_or_load(path, eff, auto_crop)
+            else:
+                store = self.cache.get_or_load(path, eff)
             return store
         except Exception as e:
             logger.error(f"Pipeline ensure_pixel failed for {path}: {e}", exc_info=True)

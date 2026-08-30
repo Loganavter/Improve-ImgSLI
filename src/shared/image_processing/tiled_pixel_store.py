@@ -287,138 +287,58 @@ def _write_rgba_strips(
 def _find_trim_box_vips(
     rgb: np.ndarray, *, threshold: int = 15
 ) -> tuple[int, int, int, int] | None:
-    """BBox of non-black content via vips ``find_trim`` — no PIL passes.
+    """Совместимость — делегирует в shared.image_processing.autocrop.vips."""
+    from shared.image_processing.autocrop.vips import find_box_vips
 
-    ``rgb`` must already be the (possibly downscaled) probe buffer; this
-    only wraps it into a vips image (single memcpy, no per-pixel Python).
-    Returns ``None`` on failure so callers can fall back to the PIL path.
-    """
-    from shared.image_processing.progressive_loader import PYVIPS_SUPPORTED
-
-    if not PYVIPS_SUPPORTED:
-        return None
-    try:
-        import pyvips  # type: ignore[import-untyped]  # pyvips has no stubs
-
-        a = np.ascontiguousarray(rgb[:, :, :3], dtype=np.uint8)
-        h, w = a.shape[0], a.shape[1]
-        vimg = pyvips.Image.new_from_memory(a.tobytes(), w, h, 3, "uchar")
-        left, top, width, height = vimg.find_trim(
-            threshold=threshold, background=[0, 0, 0]
-        )
-        if width <= 0 or height <= 0:
-            return None
-        right, bottom = left + width, top + height
-        if (left, top, right, bottom) == (0, 0, w, h):
-            return None
-        return (left, top, right, bottom)
-    except Exception as e:
-        logger.debug("vips find_trim probe failed: %s", e)
-        return None
+    box = find_box_vips(rgb, threshold=threshold)
+    return box.to_tuple() if box is not None else None
 
 
 def _auto_crop_box_scaled(
     rgba: Image.Image, *, threshold: int = 15
 ) -> tuple[int, int, int, int] | None:
-    """BBox via bounded downscale — avoids full-res crop analysis resident."""
-    from shared.image_processing.resize import get_auto_crop_box
+    """Совместимость — делегирует в autocrop CropService (probe_max из CropConfig)."""
+    from shared.image_processing.autocrop.model import CropConfig
+    from shared.image_processing.autocrop.service import CropService
 
-    w, h = rgba.size
-    longest = max(w, h)
-    if longest <= _AUTO_CROP_PROBE_MAX:
-        vips_box = _find_trim_box_vips(np.asarray(rgba), threshold=threshold)
-        if vips_box is not None:
-            return vips_box
-        return get_auto_crop_box(rgba, threshold)
-
-    scale = _AUTO_CROP_PROBE_MAX / float(longest)
-    probe_w = max(1, int(round(w * scale)))
-    probe_h = max(1, int(round(h * scale)))
-    # NEAREST: BILINEAR on RGBA makes PIL premultiply-convert the whole
-    # full-res image (RGBA->RGBa), a multi-GB copy for 20k+ sources. For a
-    # bbox probe nearest sampling is sufficient.
-    probe = rgba.resize((probe_w, probe_h), Image.Resampling.NEAREST)
-    inv = 1.0 / scale
-
-    vips_box = _find_trim_box_vips(np.asarray(probe), threshold=threshold)
-    if vips_box is not None:
-        pl, pt, pr, pb = vips_box
-    else:
-        box = get_auto_crop_box(probe, threshold)
-        if box is None:
-            return None
-        pl, pt, pr, pb = box
-
-    left = max(0, int(pl * inv))
-    top = max(0, int(pt * inv))
-    right = min(w, max(left + 1, int(round(pr * inv))))
-    bottom = min(h, max(top + 1, int(round(pb * inv))))
-    if (left, top, right, bottom) == (0, 0, w, h):
-        return None
-    return (left, top, right, bottom)
+    # Лёгкий ephemeral сервис без кэша — сохраняет parity через тот же scaled-путь.
+    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
+    svc = CropService(cfg)
+    # Используем внутренний _box_from_rgba напрямую чтобы не переоткрывать файл
+    box = svc._box_from_rgba(rgba, threshold)  # type: ignore[attr-defined]
+    return box.to_tuple() if box is not None else None
 
 
 def _auto_crop_box_from_ndarray(
     arr: np.ndarray, *, threshold: int = 15
 ) -> tuple[int, int, int, int] | None:
-    """Same as ``_auto_crop_box_scaled`` for a HxWxC uint8 array (JXL path)."""
-    src_h, src_w = int(arr.shape[0]), int(arr.shape[1])
-    longest = max(src_w, src_h)
-    if longest <= _AUTO_CROP_PROBE_MAX:
-        vips_box = _find_trim_box_vips(arr, threshold=threshold)
-        if vips_box is not None:
-            return vips_box
-        channels = arr[:, :, :3] if arr.shape[2] >= 3 else arr
-        rgb = Image.fromarray(np.asarray(channels, dtype=np.uint8), mode="RGB")
-        return _auto_crop_box_scaled(rgb.convert("RGBA"), threshold=threshold)
+    """Совместимость — делегирует в CropService._box_from_ndarray."""
+    from shared.image_processing.autocrop.model import CropConfig
+    from shared.image_processing.autocrop.service import CropService
 
-    scale = _AUTO_CROP_PROBE_MAX / float(longest)
-    step = max(1, int(1.0 / scale))
-    small = np.asarray(arr[::step, ::step, :3], dtype=np.uint8)
-
-    vips_box = _find_trim_box_vips(small, threshold=threshold)
-    if vips_box is None:
-        probe = Image.fromarray(small, mode="RGB").convert("RGBA")
-        from shared.image_processing.resize import get_auto_crop_box
-
-        box = get_auto_crop_box(probe, threshold)
-        if box is None:
-            return None
-        vips_box = box
-
-    pl, pt, pr, pb = vips_box
-    left = max(0, int(pl * step))
-    top = max(0, int(pt * step))
-    right = min(src_w, max(left + 1, int(pr * step)))
-    bottom = min(src_h, max(top + 1, int(pb * step)))
-    if (left, top, right, bottom) == (0, 0, src_w, src_h):
-        return None
-    return (left, top, right, bottom)
+    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
+    svc = CropService(cfg)
+    box = svc._box_from_ndarray(arr, threshold)  # type: ignore[attr-defined]
+    return box.to_tuple() if box is not None else None
 
 
 def get_cached_crop_box(path_str: str, threshold: int = 15) -> tuple[int, int, int, int] | None:
-    """Single source of truth for auto-crop — one bbox per path.
+    """Deprecated — глобальный кэш удалён, используйте CropService.get()."""
+    from shared.image_processing.autocrop.model import CropConfig
+    from shared.image_processing.autocrop.service import CropService
 
-    Both preview and full decodes must use the same bbox, otherwise
-    768→764 (preview) vs 768→768 (vips full) desync makes the unified
-    2797 show stripes again after the first 764 frame. The bbox is
-    computed once via PIL 1024 probe (_auto_crop_box_scaled) and cached.
-    """
+    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
+    svc = CropService(cfg)
+    # Эфемерный — без персистентного кэша; для совместимости храним в _crop_box_cache.
     key = f"{path_str}:{threshold}"
     if key in _crop_box_cache:
         return _crop_box_cache[key]
-    try:
-        from PIL import Image as _PILImage
-
-        im = _PILImage.open(path_str).convert("RGBA")
-        box = _auto_crop_box_scaled(im, threshold=threshold)
-        _crop_box_cache[key] = box
-        autocrop_debug("cached crop box for %s thr=%d -> %s", path_str, threshold, box)
-        return box
-    except Exception as e:
-        logger.debug("get_cached_crop_box failed for %s: %s", path_str, e)
-        _crop_box_cache[key] = None
-        return None
+    box = svc.get(path_str)
+    tup = box.to_tuple() if box is not None else None
+    # Кэшируем в legacy dict только если он уже использовался (не создаём глобал заново)
+    # Но фактически оставляем запись чтобы старые вызовы не ломались.
+    _crop_box_cache[key] = tup
+    return tup
 
 
 def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
@@ -451,7 +371,12 @@ def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
         img.close()
 
 
-def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool = False) -> tuple[np.memmap, str, int, int]:
+def _stream_pyvips_to_memmap(
+    path_str: str,
+    tmp_dir: str | None,
+    crop_service=None,
+    auto_crop: bool | None = None,
+) -> tuple[np.memmap, str, int, int]:
     import pyvips
 
     img = pyvips.Image.new_from_file(path_str, access="sequential")
@@ -472,15 +397,32 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
     src_w = img.width
     src_h = img.height
 
-    src_box = None
-    if auto_crop:
-        # Single source: centralized service (thr15→thr30 on 1024 probe)
+    # Совместимость: auto_crop bool -> ephemeral CropService
+    if crop_service is None and auto_crop is True:
         try:
-            from shared.image_processing.autocrop_service import get_crop_box
+            from shared.image_processing.autocrop import CropService
 
-            src_box = get_crop_box(path_str)
+            crop_service = CropService()
+        except Exception:
+            crop_service = None
+    # Если передали bool как crop_service (старые вызовы), нормализуем
+    if isinstance(crop_service, bool):
+        if crop_service:
+            from shared.image_processing.autocrop import CropService
+
+            crop_service = CropService()
+        else:
+            crop_service = None
+
+    src_box = None
+    if crop_service is not None:
+        try:
+            box = crop_service.get(path_str)
+            src_box = box.to_tuple() if box is not None else None
+            # fallback: если get вернул None, но прямой PIL-зонд может дать bbox
+            # (parity с прошлой логикой fallback thr30) — CropService уже пробует оба thr
         except Exception as e:
-            logger.debug("cached crop box failed for %s: %s", path_str, e)
+            logger.debug("crop_service failed for %s: %s", path_str, e)
             src_box = None
         autocrop_debug("streaming probe box=%s (src %dx%d)", src_box, src_w, src_h)
 
@@ -630,7 +572,8 @@ class TiledPixelStore:
         path: str | Path,
         tmp_dir: str | None = None,
         *,
-        auto_crop: bool = False,
+        crop_service=None,
+        auto_crop: bool | None = None,
     ) -> "TiledPixelStore":
         import time
         from core.constants import AppConstants
@@ -639,13 +582,34 @@ class TiledPixelStore:
             pyvips_can_stream,
         )
 
+        # Нормализация DI: crop_service — предпочтительно, auto_crop — deprecated
+        if crop_service is None and auto_crop is not None:
+            if isinstance(auto_crop, bool) and auto_crop:
+                try:
+                    from shared.image_processing.autocrop import CropService
+
+                    crop_service = CropService()
+                except Exception:
+                    crop_service = None
+            elif not isinstance(auto_crop, bool) and auto_crop is not None:
+                crop_service = auto_crop  # если передали сервис как auto_crop
+        if isinstance(crop_service, bool):
+            if crop_service:
+                from shared.image_processing.autocrop import CropService
+
+                crop_service = CropService()
+            else:
+                crop_service = None
+
         t0 = time.perf_counter()
         path_str = os.fspath(path)
-        logger.info(f"[TileStore] from_path starting for {path_str} (auto_crop={auto_crop})")
-        autocrop_debug("from_path start path=%s auto_crop=%s", path_str, auto_crop)
+        logger.info(f"[TileStore] from_path starting for {path_str} (crop_service={'yes' if crop_service else 'no'})")
+        autocrop_debug("from_path start path=%s crop_service=%s", path_str, bool(crop_service))
         if pyvips_can_stream(path_str):
             try:
-                memmap, spill_path, out_w, out_h = _stream_pyvips_to_memmap(path_str, tmp_dir, auto_crop=auto_crop)
+                memmap, spill_path, out_w, out_h = _stream_pyvips_to_memmap(
+                    path_str, tmp_dir, crop_service=crop_service
+                )
                 memmap = _reopen_readonly(spill_path, out_h, out_w)
                 elapsed = time.perf_counter() - t0
                 logger.info(f"[TileStore] pyvips streamed {path_str} ({out_w}x{out_h}) in {elapsed:.3f}s")
@@ -661,15 +625,14 @@ class TiledPixelStore:
         if isinstance(decoded, np.ndarray):
             arr = np.asarray(decoded)
             src_h, src_w = int(arr.shape[0]), int(arr.shape[1])
-            if auto_crop:
+            if crop_service is not None:
                 try:
-                    from shared.image_processing.autocrop_service import get_crop_box
-
-                    src_box = get_crop_box(path_str)
+                    box = crop_service.get(path_str)
+                    src_box = box.to_tuple() if box is not None else None
                     if src_box is None:
                         src_box = _auto_crop_box_from_ndarray(arr)
                 except Exception:
-                    src_box = _auto_crop_box_from_ndarray(arr) if auto_crop else None
+                    src_box = _auto_crop_box_from_ndarray(arr)
             else:
                 src_box = None
             if src_box is None:
@@ -698,15 +661,14 @@ class TiledPixelStore:
             return cls(memmap, spill_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
 
         rgba = decoded if decoded.mode == "RGBA" else decoded.convert("RGBA")
-        if auto_crop:
+        if crop_service is not None:
             try:
-                from shared.image_processing.autocrop_service import get_crop_box
-
-                src_box = get_crop_box(path_str)
+                box = crop_service.get(path_str)
+                src_box = box.to_tuple() if box is not None else None
                 if src_box is None:
                     src_box = _auto_crop_box_scaled(rgba)
             except Exception:
-                src_box = _auto_crop_box_scaled(rgba) if auto_crop else None
+                src_box = _auto_crop_box_scaled(rgba)
         else:
             src_box = None
         if src_box is None:

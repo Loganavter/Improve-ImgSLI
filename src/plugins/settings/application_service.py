@@ -286,12 +286,18 @@ class SettingsApplicationService(QObject):
             != data.auto_crop_black_borders
         ):
             dispatcher.dispatch(SetAutoCropBlackBordersAction(data.auto_crop_black_borders))
-            # Centralized cache in autocrop_service — stale bbox per path would
-            # otherwise survive the toggle (e.g. OFF→ON after file changed).
+            # Инвалидируем явные кэши всех CropService (DI, без глобала)
             try:
-                from shared.image_processing.autocrop_service import invalidate_all
+                from shared.image_processing.autocrop import invalidate_all_services
 
-                invalidate_all()
+                invalidate_all_services()
+            except Exception:
+                pass
+            # Совместимость: старый глобальный кэш (если ещё жив)
+            try:
+                from shared.image_processing.autocrop_service import invalidate_all as _legacy_inv
+
+                _legacy_inv()
             except Exception:
                 pass
 

@@ -81,18 +81,18 @@
     },
     {
       "path": "src/shared/image_processing/autocrop_service.py",
-      "lines": 74,
+      "lines": 85,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=collaborator reason=\"owns _crop_box_cache state, single bbox per path\"",
+      "raw": "pattern=collaborator reason=\"deprecated shim over autocrop.CropService — no state, delegates to DI service\"",
       "parsed": {
         "pattern": "collaborator",
-        "reason": "owns _crop_box_cache state, single bbox per path"
+        "reason": "deprecated shim over autocrop.CropService — no state, delegates to DI service"
       }
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 994,
+      "lines": 954,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 903,
+      "lines": 915,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
-      "lines": 553,
+      "lines": 568,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",

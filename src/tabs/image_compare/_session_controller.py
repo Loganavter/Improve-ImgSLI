@@ -115,6 +115,8 @@ class SessionController(QObject):
         self._image_sessions[_default_id] = _default_session
         self._pipeline_cache = _default_session.cache
         self.pipeline = _default_session.pipeline
+        # Явный CropService per session (DI, без глобала)
+        self._crop_service = _default_session.crop_service
         self._pipeline_aborts: dict[tuple, AbortSignal] = {}
         # Proxy pending guards to ImageSession (per-session)
         # Keep controller-level attributes as live views for compat
@@ -158,9 +160,22 @@ class SessionController(QObject):
             self.pipeline = sess.pipeline
             self._pending_full_loads = sess.pending_full_loads
             self._pending_image_loads = sess.pending_image_loads
+            self._crop_service = sess.crop_service
         except Exception:
             pass
         return sess
+
+    def _get_crop_service(self):
+        """Вернуть CropService если autocrop включён, иначе None."""
+        should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
+        if not should_crop:
+            return None
+        # Актуальный сервис из активной сессии
+        try:
+            sess = self._get_image_session()
+            return getattr(sess, "crop_service", None) or getattr(self, "_crop_service", None)
+        except Exception:
+            return getattr(self, "_crop_service", None)
 
     def _on_store_scoped_change(self, scope: str) -> None:
         if scope != "document":
@@ -230,25 +245,25 @@ class SessionController(QObject):
         )
         from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-        should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
+        crop_service = self._get_crop_service()
 
         try:
             use_progressive = should_use_progressive_load(path)
-            from shared.image_processing.tiled_pixel_store import autocrop_debug
+            from shared.image_processing.autocrop.debug import autocrop_debug
 
             autocrop_debug(
-                "slot=%d path=%s auto_crop=%s progressive=%s",
-                image_number, path, should_crop, use_progressive,
+                "slot=%d path=%s crop_service=%s progressive=%s",
+                image_number, path, bool(crop_service), use_progressive,
             )
 
             if use_progressive:
-                preview = load_preview_image(path, should_crop)
+                preview = load_preview_image(path, crop_service=crop_service)
                 if preview:
                     return preview, path, image_number, index_in_list, True
 
             from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-            store = load_pixel_store(path, auto_crop=should_crop)
+            store = load_pixel_store(path, crop_service=crop_service)
             return store, path, image_number, index_in_list, False
         except Exception as e:
             if self.event_bus:
@@ -421,20 +436,17 @@ class SessionController(QObject):
         loading.trigger_preview_unification(self, image_number)
 
     def _load_full_resolution_async(self, path, image_number, index_in_list):
-        from shared.image_processing.tiled_pixel_store import (
-            TiledPixelStore,
-            autocrop_debug,
-        )
+        from shared.image_processing.autocrop.debug import autocrop_debug
 
-        should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
+        crop_service = self._get_crop_service()
         autocrop_debug(
-            "full-res slot=%d path=%s auto_crop=%s", image_number, path, should_crop
+            "full-res slot=%d path=%s crop_service=%s", image_number, path, bool(crop_service)
         )
 
-        def load_full_task(path_str, crop_flag, slot_number, item_index):
+        def load_full_task(path_str, svc, slot_number, item_index):
             from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-            store = load_pixel_store(path_str, auto_crop=crop_flag)
+            store = load_pixel_store(path_str, crop_service=svc)
             return (
                 store,
                 path_str,
@@ -445,7 +457,7 @@ class SessionController(QObject):
         worker = GenericWorker(
             load_full_task,
             path,
-            should_crop,
+            crop_service,
             image_number,
             index_in_list,
         )
