@@ -269,6 +269,73 @@ def _display_cache_key(image1, image2):
     )
 
 
+def _update_preview_tracking(presenter, picked_by_slot: dict) -> None:
+    """Remember which preview uid was last shown per slot and which preview
+    a store superseded -- using ``image_uid`` equality, not ``is``.
+
+    Must be called on *any* successful pick (dual, scene-only, single-side)
+    so the ``pick_display_with_preview_backing`` freshness check
+    (last_applied/superseded) can gate the next store pick correctly.
+    A recreated ``QImage`` from the same file has a different ``id``/``is``
+    but the same ``image_uid`` -- ``is`` comparison misses it and the flip-
+    flop guard never arms.
+    """
+    try:
+        doc = presenter.store.get_session_state_slot("document")
+    except Exception:
+        doc = None
+    try:
+        img_state = presenter.store.viewport.session_data.image_state
+    except Exception:
+        img_state = None
+    last_display = dict(getattr(presenter, "_last_display_uids", None) or {})
+    applied = dict(getattr(presenter, "_last_applied_preview_uid", None) or {})
+    superseded = dict(getattr(presenter, "_last_superseded_preview_uid", None) or {})
+    for slot, picked in (picked_by_slot or {}).items():
+        if picked is None:
+            continue
+        try:
+            uid = image_uid(picked)
+        except Exception:
+            continue
+        if uid is None or uid == 0:
+            continue
+        last_display[slot] = uid
+        preview = None
+        store_img = None
+        try:
+            if doc is not None:
+                preview = getattr(doc, f"preview_image{slot}", None)
+        except Exception:
+            preview = None
+        try:
+            if img_state is not None:
+                store_img = getattr(img_state, f"image{slot}", None)
+        except Exception:
+            store_img = None
+        preview_uid = None
+        store_uid = None
+        try:
+            preview_uid = image_uid(preview) if preview is not None else None
+        except Exception:
+            preview_uid = None
+        try:
+            store_uid = image_uid(store_img) if store_img is not None else None
+        except Exception:
+            store_uid = None
+        # uid equality, not ``is`` -- a recreated QImage has a new identity
+        # but the same stable uid.
+        if preview_uid is not None and preview_uid != 0 and uid == preview_uid:
+            applied[slot] = uid
+        elif store_uid is not None and store_uid != 0 and uid == store_uid:
+            prev_applied = applied.get(slot)
+            if prev_applied is not None:
+                superseded[slot] = prev_applied
+    presenter._last_display_uids = last_display
+    presenter._last_applied_preview_uid = applied
+    presenter._last_superseded_preview_uid = superseded
+
+
 def _query_overlay(store, capability_id: str, default=None):
     command = registry().get_feature_command_by_alias(capability_id)
     if command is None:
@@ -536,6 +603,12 @@ def update_comparison_if_needed(presenter):
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
+        try:
+            slot = int(presenter.store.viewport.view_state.showing_single_image_mode)
+            if image_to_show is not None:
+                _update_preview_tracking(presenter, {slot: image_to_show})
+        except Exception:
+            pass
         return False
 
     have1 = bool(
@@ -635,9 +708,30 @@ def update_comparison_if_needed(presenter):
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
+        try:
+            slot = 1 if have1 else 2
+            if image_to_show is not None:
+                _update_preview_tracking(presenter, {slot: image_to_show})
+        except Exception:
+            pass
         return False
 
     current_bg_sig = presenter.background.get_background_signature(source1, source2)
+    # Background signature must also be dirty when the unified store appears:
+    # ``get_background_signature`` is keyed only on ``document.full_res/preview``
+    # (``source1/2``), so ``image_state`` 4/5 arriving never dirtied ``bg_is_dirty``
+    # and the ``pick`` branch 682:886 was skipped -- the fresh preview before unify
+    # was lost and the 1024px backing never showed.
+    try:
+        _is1 = presenter.store.viewport.session_data.image_state.image1
+        _is2 = presenter.store.viewport.session_data.image_state.image2
+    except Exception:
+        _is1 = _is2 = None
+    current_bg_sig = (
+        current_bg_sig,
+        image_uid(_is1) if _is1 is not None else None,
+        image_uid(_is2) if _is2 is not None else None,
+    )
     last_bg_sig = getattr(presenter, "_last_bg_signature", None)
     current_label_dims = (label_width, label_height)
     label_dims_changed = presenter._last_label_dims != current_label_dims

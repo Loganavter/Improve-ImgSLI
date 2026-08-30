@@ -95,6 +95,14 @@ class MultiCompareController:
         self._pyramid_builds: set[int] = self._pyramid_coordinator._pyramid_builds
         self._pyramid_toast_slot: dict[int, int] = self._pyramid_coordinator._pyramid_toast_slot
 
+        # DI CropService (как в image_compare._session_controller._get_crop_service)
+        try:
+            from shared.image_processing.autocrop import CropService
+
+            self._crop_service = CropService()
+        except Exception:
+            self._crop_service = None  # type: ignore[attr-defined]
+
         self.widget.images_dropped.connect(self._on_images_dropped)
         self.widget.add_requested.connect(self._on_add_requested)
         self.widget.save_requested.connect(self._on_save_requested)
@@ -107,6 +115,16 @@ class MultiCompareController:
         self._apply_ui_mode_to_toolbar()
         self._subscribe_to_ui_mode_changes()
         self._subscribe_to_settings_store_changes()
+
+    def _get_crop_service(self):
+        """Вернуть CropService если autocrop включён, иначе None (зеркало IC)."""
+        try:
+            should_crop = getattr(self.store.settings, "auto_crop_black_borders", True) if self.store else True
+        except Exception:
+            should_crop = True
+        if not should_crop:
+            return None
+        return getattr(self, "_crop_service", None)
 
     def _call_service(self, name: str) -> None:
         if self.context is None:
