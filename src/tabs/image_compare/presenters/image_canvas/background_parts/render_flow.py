@@ -382,38 +382,31 @@ def update_comparison_if_needed(presenter):
     # Comparison letterbox geometry must track the preview arrival, not the
     # unified-store flip. The early returns below (unification deferral,
     # single-image mode, one-side missing) used to skip the geometry block,
-    # leaving the canvas letterboxed at the *previous* comparison's rect
-    # until the unified tiles landed -- a visible resize arriving "with the
-    # tiles" instead of "with the preview". Computing the rect from the best
-    # available sizes (unified stores > full-res > previews) as soon as any
-    # side has content converges it to the final layout during the preview
-    # phase: previews preserve the source aspect, so the pair-fit rect is
-    # already the flip's rect and the store flip no longer resizes anything.
-    _update_comparison_geometry(
-        presenter, source1, source2, label_width, label_height
-    )
-
     if getattr(
         presenter.store.viewport.session_data.render_cache,
         "unification_in_progress",
         False,
     ):
         if presenter.store.viewport.session_data.image_state.image1 is None:
-            # During unification the unified stores are not yet ready, but the
-            # document already holds the raw loads (full_res/preview). The
-            # previous "always defer" kept the canvas on the stale duplicate
-            # (left on both halves, 20:59 16-entry [1,1] promotion) for ~1s
-            # until the unified pair arrived. If both document sides are
-            # present we can already show the preview/full_res pair — the
-            # geometry already converged via _update_comparison_geometry.
-            if source1 is None or source2 is None:
-                _preview_log(
-                    "update: deferred - unification in progress, image1 not ready"
-                )
-                return False
+            # Wait for unified stores — showing preview/full (1017+764) for
+            # ~0.2s then jumping to unified 2796/2791 causes the huge
+            # bboxes jump 0.001→0.104 and the stripe re-appearance that the
+            # user reported as "прыгает разница". Defer until image_state
+            # ready so the first paint after the second image is already
+            # unified (no intermediate 764).
             _preview_log(
-                "update: unification in progress but both document sources ready - proceeding with preview/full_res (image_state not yet ready)"
+                "update: deferred - unification in progress, image_state not ready (wait for unified)"
             )
+            return False
+
+    # Geometry must be computed from the same sources that will actually be
+    # displayed. Computing it before the above defer would letterbox to the
+    # preview size (1017+764) and then jump to unified (2796/2791) on the next
+    # frame. Deferring the update keeps the previous comparison's rect until
+    # the unified pair is ready, so the flip is atomic.
+    _update_comparison_geometry(
+        presenter, source1, source2, label_width, label_height
+    )
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         _preview_log(
