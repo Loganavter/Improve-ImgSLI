@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from shared.image_processing.autocrop import CropService
+
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.pipeline.cache import PipelineCache
 from tabs.image_compare.pipeline.pipeline import ImagePipeline
@@ -20,6 +22,7 @@ from tabs.image_compare.pipeline.pipeline import ImagePipeline
 @dataclass
 class ImageSession:
     session_id: str
+    crop_service: CropService = field(default_factory=CropService)
     cache: PipelineCache = field(default_factory=PipelineCache)
     pipeline: ImagePipeline = field(default_factory=ImagePipeline)
     abort: AbortSignal = field(default_factory=AbortSignal)
@@ -31,9 +34,10 @@ class ImageSession:
     loading_toast_uid_slot: dict[int, int] = field(default_factory=dict)
 
     def __post_init__(self):
-        # wire pipeline to this session's cache
+        # wire pipeline to this session's cache + crop_service
         try:
             self.pipeline.cache = self.cache
+            self.cache.crop_service = self.crop_service
         except Exception:
             pass
 

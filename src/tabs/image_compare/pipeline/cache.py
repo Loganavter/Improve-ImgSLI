@@ -29,7 +29,13 @@ _PIXEL_CACHE_MAX = 8
 _UNIFY_CACHE_MAX = 8
 
 
-def _pixel_key(path: str, auto_crop: bool) -> tuple:
+def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None) -> tuple:
+    # DI: ключ содержит наличие crop_service (а не bool), box резолвится при загрузке
+    has_crop = False
+    if crop_service is not None:
+        has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
+    elif auto_crop is not None:
+        has_crop = bool(auto_crop)
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -37,9 +43,7 @@ def _pixel_key(path: str, auto_crop: bool) -> tuple:
     except OSError:
         mtime = 0
         size = 0
-    # crop_box is part of key via autocrop_service.get_crop_box cache,
-    # but we include auto_crop flag; box itself is resolved at load time.
-    return (os.path.normpath(path), mtime, size, bool(auto_crop))
+    return (os.path.normpath(path), mtime, size, bool(has_crop))
 
 
 def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) -> tuple:
@@ -47,18 +51,34 @@ def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) 
 
 
 class PipelineCache:
-    """Single source for pixels; owns TiledPixelStore lifecycle."""
+    """Single source for pixels; owns TiledPixelStore lifecycle.
 
-    def __init__(self, max_pixel: int = _PIXEL_CACHE_MAX, max_unify: int = _UNIFY_CACHE_MAX):
+    CropService инжектируется (DI) — ключ пикселя зависит от has_crop, а сам
+    bbox вычисляется внутри TiledPixelStore через сервис.
+    """
+
+    def __init__(
+        self,
+        max_pixel: int = _PIXEL_CACHE_MAX,
+        max_unify: int = _UNIFY_CACHE_MAX,
+        crop_service=None,
+    ):
         self._pixel: OrderedDict[tuple, object] = OrderedDict()
         self._unify: OrderedDict[tuple, tuple] = OrderedDict()
         self._max_pixel = int(max_pixel)
         self._max_unify = int(max_unify)
+        self.crop_service = crop_service
 
     # -- pixel tier --
 
-    def get_pixel(self, path: str, auto_crop: bool = True):
-        key = _pixel_key(path, auto_crop)
+    def get_pixel(self, path: str, crop_service=None, auto_crop: bool | None = None, **_kw):
+        # Поддержка старой сигнатуры get_pixel(path, True)
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
+        # если явно передан auto_crop, он приоритетнее сервиса
+        key = _pixel_key(path, eff, auto_crop)
         store = self._pixel.get(key)
         if store is not None:
             # LRU bump
@@ -75,10 +95,22 @@ class PipelineCache:
             return store
         return None
 
-    def put_pixel(self, path: str, auto_crop: bool, store) -> None:
+    def put_pixel(self, path: str, crop_service=None, store=None, auto_crop: bool | None = None, **_kw) -> None:
+        # Нормализация перегрузки: старый пут put_pixel(path, True, store)
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        # Если store is None и crop_service — это на самом деле store (вызов put_pixel(path, store))
+        if store is None and crop_service is not None and hasattr(crop_service, "is_open"):
+            store = crop_service
+            crop_service = self.crop_service
         if store is None:
             return
-        key = _pixel_key(path, auto_crop)
+        # Если crop_service всё ещё bool
+        if isinstance(crop_service, bool):
+            auto_crop = crop_service
+            crop_service = None
+        key = _pixel_key(path, crop_service, auto_crop)
         self._pixel[key] = store
         try:
             self._pixel.move_to_end(key)
@@ -99,19 +131,38 @@ class PipelineCache:
         except Exception:
             pass
 
-    def get_or_load(self, path: str, auto_crop: bool = True):
-        """Return cached or load via TiledPixelStore.from_path (single-flight caller must dedup)."""
-        cached = self.get_pixel(path, auto_crop)
+    def get_or_load(self, path: str, crop_service=None, auto_crop: bool | None = None):
+        """Return cached or load via TiledPixelStore.from_path (DI crop_service)."""
+        # Совместимость: если первый arg bool после path — это auto_crop
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        eff_service = crop_service if crop_service is not None else self.crop_service
+        # если явно auto_crop передан, он решает has_crop, иначе наличие eff_service
+        if auto_crop is not None:
+            eff_service = eff_service if auto_crop else None
+            has_crop_arg = auto_crop
+        else:
+            has_crop_arg = None
+        cached = self.get_pixel(path, eff_service, has_crop_arg)
         if cached is not None:
             return cached
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            store = TiledPixelStore.from_path(path, auto_crop=auto_crop)
+            if eff_service is not None and has_crop_arg is not False:
+                store = TiledPixelStore.from_path(path, crop_service=eff_service)
+            else:
+                # нет сервиса → без кропа; поддержка legacy auto_crop bool
+                if auto_crop is not None:
+                    store = TiledPixelStore.from_path(path, auto_crop=bool(auto_crop))
+                else:
+                    store = TiledPixelStore.from_path(path, crop_service=None)
         except Exception:
             raise
         if store is not None:
-            self.put_pixel(path, auto_crop, store)
+            # кладём с тем же ключом что и get
+            self.put_pixel(path, eff_service, store, has_crop_arg)
         return store
 
     def evict(self, path: str) -> None:

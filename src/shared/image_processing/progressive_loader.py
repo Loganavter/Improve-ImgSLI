@@ -126,7 +126,9 @@ def should_use_progressive_load(
             logger.debug(f"Failed to check image dimensions: {e}")
         return False
 
-def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | None":
+def load_preview_image(
+    image_path: str, crop_service=None, auto_crop: bool | None = None
+) -> "QImage | None":
     """Load a bounded progressive preview for display-tier use only.
 
     Returns ``QImage`` RGBA8888 capped at 1024 px on the long edge. Callers
@@ -137,10 +139,31 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
     PIL ``thumbnail`` (no QImageReader — deleted per plan_image_pipeline.md Phase 4).
     Both paths share ``VipsImage.new_from_file(access="sequential")`` conceptually;
     PIL fallback keeps the same 1024 cap and autocrop scaling.
+
+    crop_service — DI CropService (предпочтительно), auto_crop — deprecated bool.
     """
+    # Нормализация deprecated auto_crop → crop_service
+    if crop_service is None and auto_crop is not None:
+        if isinstance(auto_crop, bool) and auto_crop:
+            try:
+                from shared.image_processing.autocrop import CropService
+
+                crop_service = CropService()
+            except Exception:
+                crop_service = None
+        elif not isinstance(auto_crop, bool) and auto_crop is not None:
+            crop_service = auto_crop
+    if isinstance(crop_service, bool):
+        if crop_service:
+            from shared.image_processing.autocrop import CropService
+
+            crop_service = CropService()
+        else:
+            crop_service = None
+
     try:
         if pyvips_can_stream(image_path):
-            return _load_preview_vips(image_path, auto_crop=auto_crop)
+            return _load_preview_vips(image_path, crop_service=crop_service)
 
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
             logger.info(f"Loading JXL preview for: {image_path}")
@@ -160,15 +183,18 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
                 img = img.resize((new_width, new_height), Image.Resampling.BILINEAR)
 
             preview = img.convert("RGBA")
-            if auto_crop:
-                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+            if crop_service is not None:
+                from shared.image_processing.autocrop.scaling import get_scaled_box_for_thumb as _get_scaled
 
-                orig_box = get_crop_box(image_path)
-                scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), preview.size)
+                box = crop_service.get(image_path)
+                orig_box = box.to_tuple() if box is not None else None
+                scaled = _get_scaled(orig_box, (original_width, original_height), preview.size)
                 if scaled is not None:
-                    preview = preview.crop(scaled)
+                    preview = preview.crop(scaled.to_tuple())
                 else:
-                    preview = crop_black_borders(preview)
+                    # parity: если сервис не дал bbox, пробуем локальный кроп превью
+                    if box is None:
+                        preview = crop_black_borders(preview)
 
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
@@ -194,15 +220,17 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
                 preview = preview.convert("RGBA")
                 new_width, new_height = preview.size
 
-            if auto_crop:
-                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+            if crop_service is not None:
+                from shared.image_processing.autocrop.scaling import get_scaled_box_for_thumb as _get_scaled2
 
-                orig_box = get_crop_box(image_path)
-                scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), (new_width, new_height))
+                box = crop_service.get(image_path)
+                orig_box = box.to_tuple() if box is not None else None
+                scaled = _get_scaled2(orig_box, (original_width, original_height), (new_width, new_height))
                 if scaled is not None:
-                    preview = preview.crop(scaled)
+                    preview = preview.crop(scaled.to_tuple())
                 else:
-                    preview = crop_black_borders(preview)
+                    if box is None:
+                        preview = crop_black_borders(preview)
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
 
@@ -213,16 +241,32 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
         return None
 
 
-def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | None":
+def _load_preview_vips(
+    image_path: str, crop_service=None, auto_crop: bool | None = None
+) -> "QImage | None":
     """Streaming preview via ``pyvips.thumbnail`` (no full-frame decode)."""
+    if crop_service is None and auto_crop is not None:
+        if isinstance(auto_crop, bool) and auto_crop:
+            try:
+                from shared.image_processing.autocrop import CropService
+
+                crop_service = CropService()
+            except Exception:
+                crop_service = None
+        elif not isinstance(auto_crop, bool) and auto_crop is not None:
+            crop_service = auto_crop
+    if isinstance(crop_service, bool):
+        if crop_service:
+            from shared.image_processing.autocrop import CropService
+
+            crop_service = CropService()
+        else:
+            crop_service = None
     try:
         import numpy as np
         import pyvips
         from PySide6.QtGui import QImage
-        from shared.image_processing.tiled_pixel_store import (
-            get_cached_crop_box,
-            qimage_from_pixel_source,
-        )
+        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
 
         thumb = pyvips.Image.thumbnail(
             image_path, 1024, height=1024, size=pyvips.enums.Size.DOWN
@@ -241,27 +285,27 @@ def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | No
             arr = np.empty((thumb.height, thumb.width, 4), dtype=np.uint8)
             arr[:, :, :3] = rgb
             arr[:, :, 3] = 255
-        if auto_crop:
-            # Use single source of truth: cached box from original, scaled to thumb (thr15→thr30)
+        if crop_service is not None:
             try:
-                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+                from shared.image_processing.autocrop.scaling import get_scaled_box_for_thumb as _get_scaled
 
-                orig_box = get_crop_box(image_path)
+                box = crop_service.get(image_path)
+                orig_box = box.to_tuple() if box is not None else None
                 if orig_box is not None:
                     from PIL import Image as _PILImage
 
                     with _PILImage.open(image_path) as _im:
                         orig_w, orig_h = _im.size
-                    scaled = get_scaled_box_for_thumb(orig_box, (orig_w, orig_h), (thumb.width, thumb.height))
+                    scaled = _get_scaled(orig_box, (orig_w, orig_h), (thumb.width, thumb.height))
                     if scaled is not None:
-                        l, t, r, b = scaled
+                        l, t, r, b = scaled.to_tuple()
                         arr = arr[t:b, l:r]
                 else:
                     from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
 
-                    box = _auto_crop_box_from_ndarray(arr)
-                    if box is not None:
-                        left, top, right, bottom = box
+                    box2 = _auto_crop_box_from_ndarray(arr)
+                    if box2 is not None:
+                        left, top, right, bottom = box2
                         arr = arr[top:bottom, left:right]
             except Exception:
                 from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
@@ -333,9 +377,15 @@ class ProgressiveImageLoader:
         return preview
 
     def get_full(
-        self, image_path: str, force_reload: bool = False, *, auto_crop: bool = False
+        self, image_path: str, force_reload: bool = False, *, crop_service=None, auto_crop: bool | None = None
     ):
         """Return a ``TiledPixelStore`` for ``image_path`` (cached, LRU-bounded)."""
+        if crop_service is None and auto_crop is not None and not isinstance(auto_crop, bool):
+            crop_service = auto_crop
+            auto_crop = None
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
         if not force_reload and image_path in self._full_cache:
             try:
                 self._full_cache.move_to_end(image_path)
@@ -345,7 +395,12 @@ class ProgressiveImageLoader:
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            store = TiledPixelStore.from_path(image_path, auto_crop=auto_crop)
+            if crop_service is not None:
+                store = TiledPixelStore.from_path(image_path, crop_service=crop_service)
+            elif auto_crop is not None:
+                store = TiledPixelStore.from_path(image_path, auto_crop=bool(auto_crop))
+            else:
+                store = TiledPixelStore.from_path(image_path)
         except ImageSizeLimitError:
             raise
         except Exception as e:

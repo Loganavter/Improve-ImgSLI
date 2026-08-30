@@ -82,6 +82,21 @@ def _invalidate_caches_for_paths(paths: list[str]) -> None:
         if not p:
             continue
         try:
+            from shared.image_processing.autocrop import invalidate_all_services
+            from shared.image_processing.autocrop.service import CropService
+
+            # Инвалидируем все живые сервисы (DI) — точечная инвалидация path
+            from shared.image_processing.autocrop.service import _live_services
+
+            for svc in list(_live_services):
+                try:
+                    svc.invalidate(p)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Совместимость: старый глобальный сервис
+        try:
             from shared.image_processing import autocrop_service
 
             autocrop_service.invalidate(p)
