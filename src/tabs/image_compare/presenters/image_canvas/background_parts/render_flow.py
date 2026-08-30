@@ -14,6 +14,8 @@ from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
 from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_overlays
 from tabs.image_compare.canvas.scene import build_render_scene
 from tabs.image_compare.debug import (
+    ic_gap_debug as _gap_log,
+    ic_gap_debug_enabled as _gap_enabled,
     ic_preview_debug as _preview_log,
     ic_preview_source_tier as _source_tier,
 )
@@ -93,6 +95,24 @@ def _update_comparison_geometry(
         return
 
     geometry = presenter.store.viewport.geometry_state
+    # [ic-gap] input snapshot before guard
+    if _gap_enabled():
+        try:
+            _unified = bool(src_resize1 is not None or src_resize2 is not None)
+            _gap_log(
+                "geometry input state1=%s state2=%s src1=%s src2=%s label=%dx%d unified=%s size1=%s size2=%s",
+                image_uid(src_resize1) if src_resize1 is not None else None,
+                image_uid(src_resize2) if src_resize2 is not None else None,
+                image_uid(source1) if source1 is not None else None,
+                image_uid(source2) if source2 is not None else None,
+                label_width,
+                label_height,
+                _unified,
+                size1,
+                size2,
+            )
+        except Exception:
+            pass
     img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
     new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
     # Guard: _update_comparison_geometry is called every fps tick (60Hz) while
@@ -111,6 +131,33 @@ def _update_comparison_geometry(
             return
     except Exception:
         pass
+    # [ic-gap] rect transition with throttling
+    if _gap_enabled():
+        try:
+            global _last_gap_geometry_sig
+            _prev_rect = getattr(geometry, "image_display_rect_on_label", None)
+            _prev_w = getattr(geometry, "pixmap_width", None)
+            _prev_h = getattr(geometry, "pixmap_height", None)
+            _sig = (scaled_w, scaled_h, new_rect, bool(src_resize1 or src_resize2))
+            if _sig != _last_gap_geometry_sig:
+                _last_gap_geometry_sig = _sig
+                _gap_log(
+                    "geometry rect before=%s %sx%s after=%s %dx%d label=%dx%d scale=%.5f unified=%s src1=%s src2=%s",
+                    _prev_rect,
+                    _prev_w,
+                    _prev_h,
+                    new_rect,
+                    scaled_w,
+                    scaled_h,
+                    label_width,
+                    label_height,
+                    scale if 'scale' in locals() else 0.0,
+                    bool(src_resize1 is not None or src_resize2 is not None),
+                    _size_or_none(src_resize1) or _size_or_none(source1),
+                    _size_or_none(src_resize2) or _size_or_none(source2),
+                )
+        except Exception:
+            pass
     geometry.pixmap_width = scaled_w
     geometry.pixmap_height = scaled_h
     if getattr(geometry, "image_display_rect_on_label", None) != new_rect:
@@ -315,6 +362,9 @@ def schedule_update(presenter):
 
 _last_document_log_sig = None  # type: ignore
 _last_one_side_log_sig = None  # type: ignore
+_last_gap_geometry_sig = None  # type: ignore
+_last_gap_pick_sig = None  # type: ignore
+_last_gap_apply_sig = None  # type: ignore
 
 def update_comparison_if_needed(presenter):
     if _is_background_tab(presenter):
@@ -619,19 +669,54 @@ def update_comparison_if_needed(presenter):
                 )
             render_img1, render_img2 = img1, img2
 
-            # Re-sync comparison geometry to the *actual* display pair.
-            # The preview-phase call at the top of update_comparison_if_needed
-            # used document sources (full_res/preview) before the fresh-preview
-            # backing decision; the pick can flip one side from store (2791)
-            # to preview (1017) while the other stays store, leaving the
-            # earlier rect/letterbox based on image_state sizes stale. A stale
-            # letterbox makes _to_common_space/bbox collapse to a 0.001 sliver.
-            try:
-                _update_comparison_geometry(
-                    presenter, render_img1, render_img2, label_width, label_height
-                )
-            except Exception:
-                pass
+            # [ic-gap] mixed-tier risk during unification: store vs preview on same frame -> letterbox mismatch
+            if _gap_enabled():
+                try:
+                    _gap_sig = (
+                        image_uid(render_img1) if render_img1 is not None else None,
+                        image_uid(render_img2) if render_img2 is not None else None,
+                        _size_or_none(render_img1),
+                        _size_or_none(render_img2),
+                        getattr(presenter.store.viewport.session_data.render_cache, "unification_in_progress", False),
+                    )
+                    global _last_gap_pick_sig
+                    if _gap_sig != _last_gap_pick_sig:
+                        _last_gap_pick_sig = _gap_sig
+                        _t1_gap = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(render_img1, _document.preview_image1, _document.original_image1, presenter.store.viewport.session_data.image_state.image1)
+                        _t2_gap = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(render_img2, _document.preview_image2, _document.original_image2, presenter.store.viewport.session_data.image_state.image2)
+                        _mixed = (_t1_gap != _t2_gap)
+                        _geom = getattr(presenter.store.viewport.geometry_state, "image_display_rect_on_label", None)
+                        _pix_w = getattr(presenter.store.viewport.geometry_state, "pixmap_width", None)
+                        _pix_h = getattr(presenter.store.viewport.geometry_state, "pixmap_height", None)
+                        _gap_log(
+                            "pick->gap slot1 tier=%s size=%s slot2 tier=%s size=%s mixed=%s unified=%s geom=%s pixmap=%sx%s label=%dx%d gap_id=%s/%s",
+                            _t1_gap,
+                            _size_or_none(render_img1),
+                            _t2_gap,
+                            _size_or_none(render_img2),
+                            _mixed,
+                            getattr(presenter.store.viewport.session_data.render_cache, "unification_in_progress", False),
+                            _geom,
+                            _pix_w,
+                            _pix_h,
+                            label_width,
+                            label_height,
+                            image_uid(render_img1) if render_img1 is not None else None,
+                            image_uid(render_img2) if render_img2 is not None else None,
+                        )
+                        if _mixed:
+                            try:
+                                from core.tracing.tracer import Tracer
+                                if Tracer.enabled():
+                                    Tracer.instance().record(
+                                        "ic.gap.mixed_tier",
+                                        f"mixed tier pick gap risk { _t1_gap}/{_t2_gap}",
+                                        {"tier1": _t1_gap, "tier2": _t2_gap, "size1": str(_size_or_none(render_img1)), "size2": str(_size_or_none(render_img2)), "mixed": _mixed},
+                                    )
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
             gui_source1 = presenter.store.viewport.session_data.image_state.image1
             gui_source2 = presenter.store.viewport.session_data.image_state.image2
@@ -678,6 +763,31 @@ def update_comparison_if_needed(presenter):
                     presenter.store.viewport.view_state.channel_view_mode,
                 )
                 presenter._last_img_sig = img_sig
+                # [ic-gap] apply correlation
+                if _gap_enabled():
+                    try:
+                        global _last_gap_apply_sig
+                        _geom2 = getattr(presenter.store.viewport.geometry_state, "image_display_rect_on_label", None)
+                        _apply_sig = (image_uid(render_img1), image_uid(render_img2), _geom2, _t1, _t2)
+                        if _apply_sig != _last_gap_apply_sig:
+                            _last_gap_apply_sig = _apply_sig
+                            _gap_log(
+                                "apply gap_correlation gap_id=%s/%s tier=%s/%s size=%s/%s geom=%s pixmap=%sx%s label=%dx%d unified=%s",
+                                image_uid(render_img1),
+                                image_uid(render_img2),
+                                _t1,
+                                _t2,
+                                _size_or_none(render_img1),
+                                _size_or_none(render_img2),
+                                _geom2,
+                                getattr(presenter.store.viewport.geometry_state, "pixmap_width", None),
+                                getattr(presenter.store.viewport.geometry_state, "pixmap_height", None),
+                                current_label_dims[0],
+                                current_label_dims[1],
+                                getattr(presenter.store.viewport.session_data.render_cache, "unification_in_progress", False),
+                            )
+                    except Exception:
+                        pass
                 if render_img1 and render_img2:
                     apply_store_to_canvas(
                         image_label,
