@@ -220,7 +220,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
-      "lines": 542,
+      "lines": 534,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation reason=\"plan applicator — 5 helpers + geometry sync + store binding, 519 lines\"",
@@ -342,7 +342,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1076,
+      "lines": 1074,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
