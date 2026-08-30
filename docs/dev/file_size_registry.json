@@ -92,7 +92,7 @@
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 998,
+      "lines": 994,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 800,
+      "lines": 815,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",

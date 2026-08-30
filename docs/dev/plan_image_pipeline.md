@@ -1,6 +1,6 @@
 # Plan: ImagePipeline — replace loading.py brute-force with demand-driven pipeline
 
-Status: `Open` — design approved, no code yet
+Status: `In progress` — Phase 1 done, Phase 2 reentrant dispatcher landed 2026-08-30
 Area: `src/tabs/image_compare/use_cases/loading.py:1` (946 LOC), `src/tabs/image_compare/use_cases/_session_controller.py:1` (800 LOC), `src/shared/image_processing/tiled_pixel_store.py:577`, `src/shared/image_processing/progressive_loader.py:11`, `src/tabs/image_compare/services/unify.py:1`, `src/tabs/_shared/pyramid.py:57`, `src/tabs/image_compare/use_cases/loading_pyramid.py:1`, `src/core/state_management/dispatcher.py:118`, `src/core/store.py:94`, `src/tabs/image_compare/use_cases/chrome_sync.py:125`
 Related: [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store, batch_changes), [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model / Canvas Stack, [CONTRACTS.md](./CONTRACTS.md), [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner + use_cases), `docs/dev/plan_store_redux_repair.md:1`, `docs/dev/TODO.md` P2 Session-state
 TODO ref: `docs/dev/TODO.md` → P2 Session-state follow-ups (unify/duplication, pyramid lifecycle)
@@ -181,8 +181,8 @@ Verification: `tests/contracts -q` 1547 passed, `QT_QPA_PLATFORM=offscreen pytes
 | Step | Date | Result |
 |---|---|---|
 | 0 | 2026-08-30 | Plan landed `docs/dev/plan_image_pipeline.md:1`, inventory `rg QTimer >15`, baseline `loading.py:946` + `_session_controller.py:800` recorded via `cloc.txt`. 4 parallel `explore` subagents mapped violations. |
-| 1 |  |  |
-| 2 |  |  |
+| 1 | 2026-08-30 | **Phase 1 skeleton done.** Created `src/tabs/image_compare/pipeline/` (`abort.py:AbortSignal`, `cache.py:PipelineCache` LRU 8 + unify memo by uid, `pipeline.py:ImagePipeline` demand-driven `ensure_pixel/ensure_unified` + `peek`, `__init__.py` public). Wired `SessionController.pipeline` + `._pipeline_cache` + `._pipeline_aborts` (`_session_controller.py:60`). Removed `tiled_pixel_store.py:262,287,524,597` `time.sleep(0.001)` throttle (4 strips, worker-thread only — no GUI starvation). `pytest tests/contracts -q` 1551 passed, `file_size_registry.json` regenerated (61 entries). |
+| 2 | 2026-08-30 | **Phase 2 in progress.** `Dispatcher.dispatch` now reentrant-safe: reduce+write-back+history under `_lock`, subscriber snapshot + `emit_state_change` outside lock (`dispatcher.py:186`). Class docstring updated. `_session_controller.py:114` `_on_store_scoped_change` now tries direct `resync` (sync dispatch) with `QTimer` fallback, removing 0ms defer for browse-undo. `file_size_registry.json` updated. Still TODO: `Store.transact` single-action Transaction (1 ViewportState) — next step wires `pipeline.ensure` to `transact`. |
 | 3 |  |  |
 | 4 |  |  |
 | 5 |  |  |
