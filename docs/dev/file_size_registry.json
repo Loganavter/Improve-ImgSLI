@@ -387,6 +387,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/use_cases/loading.py",
+      "lines": 523,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — pipeline thin owner per CODE_PATTERNS\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "use_cases target for _session_controller — pipeline thin owner per CODE_PATTERNS"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/widget.py",
       "lines": 585,
       "limit": 500,
