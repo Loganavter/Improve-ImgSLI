@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shiboken6 as sip
+
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 
@@ -91,12 +93,24 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
         self.set_actions(self._build_actions())
 
     def update_state(self):
+        if not sip.isValid(self):  # type: ignore[attr-defined]
+            return
+        # h_layout may already be deleted during shutdown (see icon_action_flyout fix)
+        h_layout = getattr(self, "h_layout", None)
+        if h_layout is not None and not sip.isValid(h_layout):  # type: ignore[attr-defined]
+            return
         is_active = self._is_magnifier_active()
-        self.set_action_state("capture", visible=self._is_capture_active())
-        self.set_action_state("laser", visible=self._is_laser_active())
-        self.set_action_state("border", visible=is_active)
-        self.set_action_state("divider", visible=self._is_divider_active())
-        super().update_state()
+        try:
+            self.set_action_state("capture", visible=self._is_capture_active())
+            self.set_action_state("laser", visible=self._is_laser_active())
+            self.set_action_state("border", visible=is_active)
+            self.set_action_state("divider", visible=self._is_divider_active())
+        except RuntimeError:
+            return
+        try:
+            super().update_state()
+        except RuntimeError:
+            return
 
 
 class ColorSettingsButton(Button):
@@ -155,8 +169,18 @@ class ColorSettingsButton(Button):
             pass
 
     def refresh_visual_state(self):
-        self._update_underline_colors()
-        self.flyout.update_state()
+        flyout = getattr(self, "flyout", None)
+        if flyout is not None and not sip.isValid(flyout):  # type: ignore[attr-defined]
+            return
+        try:
+            self._update_underline_colors()
+        except RuntimeError:
+            return
+        if flyout is not None:
+            try:
+                flyout.update_state()
+            except RuntimeError:
+                return
 
     def update_language(self, lang_code: str):
         self.current_language = lang_code
@@ -248,13 +272,34 @@ class ColorSettingsButton(Button):
         self.setUnderlineColor([color for condition, color in zones if condition])
 
     def _on_store_state_changed(self, domain: str):
+        # Shutdown guard: wrapper can outlive C++ (bound-method connection)
+        # — same class as toolkit 4.1.0/4.2.1 stale-widget fix. Without this,
+        # a viewport emission during app close reaches a half-deleted flyout
+        # and crashes in h_layout.invalidate() (QHBoxLayout already deleted).
+        if not sip.isValid(self):  # type: ignore[attr-defined]
+            try:
+                store = getattr(self, "store", None)
+                if store is not None and hasattr(store, "state_changed"):
+                    store.state_changed.disconnect(self._on_store_state_changed)
+            except Exception:
+                pass
+            return
+        flyout = getattr(self, "flyout", None)
+        if flyout is not None and not sip.isValid(flyout):  # type: ignore[attr-defined]
+            return
         if domain == "settings" or domain == "viewport" or domain.startswith("viewport."):
-            self.refresh_visual_state()
-            if self.flyout.isVisible():
-                if self.flyout.has_visible_actions():
-                    self._show_preview()
-                else:
-                    self.flyout.hide()
+            try:
+                self.refresh_visual_state()
+            except RuntimeError:
+                return
+            try:
+                if flyout is not None and flyout.isVisible():
+                    if flyout.has_visible_actions():
+                        self._show_preview()
+                    else:
+                        flyout.hide()
+            except RuntimeError:
+                return
 
     def _show_preview(self):
         """Preview без кражи фокуса — Up входит через extension_below."""
