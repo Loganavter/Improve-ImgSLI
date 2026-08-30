@@ -710,65 +710,13 @@ def update_comparison_if_needed(presenter):
                     _picked is _cand_preview if _cand_preview is not None else False,
                 )
             render_img1, render_img2 = img1, img2
-            # Second geometry pass from the *picked* display pair: source sizes
-            # (used in the early _update_comparison_geometry) can be mixed-tier
-            # (store vs preview) while picked is preview vs preview, so the
-            # pair-fit rect there is stale until unify (~400ms). Re-derive from
-            # the actual picked sizes so letterbox/content_rect converge with
-            # display_cache_key, not the lagging source_key (path,uid_store,size).
-            try:
-                _ps1 = _size_or_none(render_img1)
-                _ps2 = _size_or_none(render_img2)
-                if _ps1 or _ps2:
-                    def _picked_fit_scale(w: int, h: int) -> float:
-                        return min(label_width / w, label_height / h)
-
-                    if _ps1 and _ps2:
-                        _pw1, _ph1 = _ps1
-                        _pw2, _ph2 = _ps2
-                        _sc_p = min(_picked_fit_scale(_pw1, _ph1), _picked_fit_scale(_pw2, _ph2))
-                        _sw_p = max(1, int(_pw1 * _sc_p))
-                        _sh_p = max(1, int(_ph1 * _sc_p))
-                    elif _ps1:
-                        _pw1, _ph1 = _ps1
-                        _sc_p = _picked_fit_scale(_pw1, _ph1)
-                        _sw_p = max(1, int(_pw1 * _sc_p))
-                        _sh_p = max(1, int(_ph1 * _sc_p))
-                    else:
-                        _pw2, _ph2 = _ps2  # type: ignore[possibly-undefined]
-                        _sc_p = _picked_fit_scale(_pw2, _ph2)
-                        _sw_p = max(1, int(_pw2 * _sc_p))
-                        _sh_p = max(1, int(_ph2 * _sc_p))
-                    _new_rect_p = Rect((label_width - _sw_p) // 2, (label_height - _sh_p) // 2, _sw_p, _sh_p)
-                    _geom_p = presenter.store.viewport.geometry_state
-                    _needs_p = not (
-                        getattr(_geom_p, "pixmap_width", None) == _sw_p
-                        and getattr(_geom_p, "pixmap_height", None) == _sh_p
-                        and getattr(_geom_p, "image_display_rect_on_label", None) == _new_rect_p
-                    )
-                    if _needs_p:
-                        _disp_p = getattr(presenter.store, "get_dispatcher", lambda: None)()
-                        if _disp_p is not None:
-                            from core.state_management.geometry_actions import (
-                                SetImageDisplayRectAction as _SetRect,
-                                SetPixmapDimensionsAction as _SetDims,
-                            )
-
-                            _batch_p = getattr(presenter.store, "batch_changes", None)
-                            if callable(_batch_p):
-                                with presenter.store.batch_changes():
-                                    _disp_p.dispatch(_SetDims(width=_sw_p, height=_sh_p), scope="viewport")
-                                    _disp_p.dispatch(_SetRect(rect=_new_rect_p), scope="viewport")
-                            else:
-                                _disp_p.dispatch(_SetDims(width=_sw_p, height=_sh_p), scope="viewport")
-                                _disp_p.dispatch(_SetRect(rect=_new_rect_p), scope="viewport")
-                        else:
-                            _geom_p.pixmap_width = _sw_p
-                            _geom_p.pixmap_height = _sh_p
-                            if getattr(_geom_p, "image_display_rect_on_label", None) != _new_rect_p:
-                                _geom_p.image_display_rect_on_label = _new_rect_p
-            except Exception:
-                pass
+            # Phase 5: single geometry pass — second batch_changes per frame removed.
+            # The early _update_comparison_geometry(source1, source2) already
+            # letterboxes from the best available sizes (unified → full_res →
+            # preview) preserving aspect, so the rect converges during the preview
+            # phase without a second picked-size pass. A transient mixed-tier
+            # (store vs preview) now waits ~400ms for unify before the rect
+            # re-converges — cheaper than 2 batch_changes per frame (60Hz).
 
             # [ic-gap] mixed-tier risk during unification: store vs preview on same frame -> letterbox mismatch
             if _gap_enabled():

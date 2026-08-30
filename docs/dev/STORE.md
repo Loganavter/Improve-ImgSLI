@@ -56,6 +56,25 @@ replace: `create_workspace_session` + `close_workspace_session` must not paint
 a two-tab strip in between). Backed by `Store.replace_workspace_session` /
 `WorkspaceSessionActions.replace_workspace_session`.
 
+### Batching — Transaction (Phase 5)
+
+`Store.transact(actions, scope="document")` coalesces N actions into one
+`Dispatcher.dispatch(TransactionAction)` → one `RootReducer.reduce` → one
+`emit_state_change(scope)`. For image browsing this collapses 6–10 dispatches
+(`SetFullResImage` + `SetPreviewImage` + `SetImagePath` + `SetImageSessionImage` …)
+to 1 dispatch / 1 `ViewportState` alloc (verified `IMGSLI_TRACE=1` `dispatch.begin/end`
+exactly 1 per `set_current_image`). The reducer chains inner actions without
+intermediate `Store` allocs. `Dispatcher` is reentrant-safe (`_lock` taken only
+for reduce+write-back, subscriber snapshot + `emit_state_change` outside lock,
+`dispatcher.py:186`), so `on_change → dispatch` needs no `QTimer`. Legacy
+`batch_changes` remains for `persistence.py` but nested scopes dedup (already).
+
+For LOD, `PyramidBuildCoordinator` publishes `store.publish("lod_available")`
+per level with `await idle` between levels instead of `invalidate_render` per
+level — the canvas LOD selector consumes new levels without a full
+pick-signature invalidation; only the final flip calls
+`invalidate_render_state`.
+
 ### Dispatcher (`src/core/state_management/dispatcher.py:29`)
 
 ```python
@@ -166,7 +185,7 @@ self.store.state_changed.disconnect(self._on_store_changed)
    if hasattr(store, "emit_viewport_change"):
        store.emit_viewport_change("interaction")
    ```
-4. **No back-loops.** A subscriber must not dispatch an action whose reducer triggers the same scope synchronously. There is no built-in re-entry guard at the dispatcher level (the lock would deadlock). Use a flag, or defer with `QTimer.singleShot(0, ...)`.
+4. **No back-loops.** `Dispatcher.dispatch` is reentrant-safe (Phase 2/5 — reduce + write-back under `_lock`, subscriber snapshot + `emit_state_change` outside lock, `dispatcher.py:186`), so `store.on_change → dispatch` may run synchronously. `QTimer.singleShot(0, dispatch)` is now optional, not required. For multi-action user-visible transitions, prefer `store.transact([...], scope)` over `batch_changes` to get 1 alloc / 1 emit (see §Batching).
 5. **Workspace sessions own their substate.** When you dispatch, `Dispatcher` re-points the active session's `document`/`viewport` to the new instances. If you bypass dispatch and assign a new instance manually, the session keeps the old reference → switching sessions restores stale state.
 
 ## Extension recipe — adding a new action

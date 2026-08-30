@@ -281,8 +281,81 @@ class RootReducer:
         self.viewport_reducer = ViewportReducer()
         self.settings_reducer = SettingsReducer()
 
+    def _reduce_one(self, store: "Store", action: Action, session_type: str | None) -> tuple[Any, Any, dict[str, Any], bool, bool]:
+        """Single-action reduction without allocating Store. Returns (new_viewport, new_settings, new_slot_values, any_slot_changed, viewport_changed)."""
+        new_viewport = self.viewport_reducer.reduce(store.viewport, action, session_type)
+        new_render_config = reduce_render_config_extensions(
+            new_viewport.render_config, action
+        )
+        if new_render_config is not new_viewport.render_config:
+            new_viewport = _build_viewport_state(
+                new_viewport, render_config=new_render_config
+            )
+        new_settings = self.settings_reducer.reduce(store.settings, action)
+        new_slot_values: dict[str, Any] = {}
+        any_slot_changed = False
+        for slot_name, slot_reducer in iter_state_slot_reducers():
+            # For intermediate steps in a transaction we need current accumulated value, not original store's
+            # This helper is only for single action; caller handles accumulation for transaction.
+            current_value = store.get_session_state_slot(slot_name)
+            new_value = slot_reducer(current_value, action)
+            new_slot_values[slot_name] = new_value
+            if new_value is not current_value:
+                any_slot_changed = True
+        return new_viewport, new_settings, new_slot_values, any_slot_changed, new_viewport is not store.viewport
+
     def reduce(self, store: "Store", action: Action) -> "Store":
         from core.store import Store
+
+        # Transaction — single Store alloc for N inner actions (plan_image_pipeline.md Phase 5)
+        if getattr(action, "type", None) == "TRANSACTION":
+            inner = getattr(action, "actions", None) or []
+            if not inner:
+                return store
+            active_session = store.get_active_workspace_session()
+            session_type = active_session.session_type if active_session is not None else None
+            cur_viewport = store.viewport
+            cur_settings = store.settings
+            # accumulate slot values in dict, starting from current store
+            cur_slots: dict[str, Any] = {
+                name: store.get_session_state_slot(name) for name, _ in iter_state_slot_reducers()
+            }
+            any_changed = False
+            for sub in inner:
+                # reduce viewport/settings incrementally
+                new_viewport = self.viewport_reducer.reduce(cur_viewport, sub, session_type)
+                new_render_config = reduce_render_config_extensions(new_viewport.render_config, sub)
+                if new_render_config is not new_viewport.render_config:
+                    new_viewport = _build_viewport_state(new_viewport, render_config=new_render_config)
+                new_settings = self.settings_reducer.reduce(cur_settings, sub)
+                # reduce each slot against accumulated value
+                new_slots: dict[str, Any] = {}
+                slot_changed_this_step = False
+                for slot_name, slot_reducer in iter_state_slot_reducers():
+                    cur_val = cur_slots.get(slot_name)
+                    new_val = slot_reducer(cur_val, sub)
+                    new_slots[slot_name] = new_val
+                    if new_val is not cur_val:
+                        slot_changed_this_step = True
+                        any_changed = True
+                if new_viewport is not cur_viewport:
+                    any_changed = True
+                if new_settings is not cur_settings:
+                    any_changed = True
+                if slot_changed_this_step:
+                    # will set any_changed already
+                    pass
+                cur_viewport, cur_settings, cur_slots = new_viewport, new_settings, new_slots
+            if not any_changed:
+                return store
+            new_store = Store()
+            new_store.viewport = cur_viewport
+            for slot_name, new_value in cur_slots.items():
+                new_store.set_session_state_slot(slot_name, new_value, emit_scope="")
+            new_store.settings = cur_settings
+            new_store.recorder = store.recorder
+            new_store._dispatcher = store._dispatcher
+            return new_store
 
         active_session = store.get_active_workspace_session()
         session_type = active_session.session_type if active_session is not None else None
