@@ -239,7 +239,7 @@ def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | No
         import pyvips
         from PySide6.QtGui import QImage
         from shared.image_processing.tiled_pixel_store import (
-            _auto_crop_box_from_ndarray,
+            get_cached_crop_box,
             qimage_from_pixel_source,
         )
 
@@ -261,10 +261,42 @@ def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | No
             arr[:, :, :3] = rgb
             arr[:, :, 3] = 255
         if auto_crop:
-            box = _auto_crop_box_from_ndarray(arr)
-            if box is not None:
-                left, top, right, bottom = box
-                arr = arr[top:bottom, left:right]
+            # Use single source of truth: cached box from original, scaled to thumb
+            try:
+                orig_box = get_cached_crop_box(image_path, threshold=15)
+                if orig_box is not None:
+                    # thumb is DOWN-scaled original, so scale box
+                    import os as _os
+
+                    # Get original dims via PIL for scaling (cheap, cached)
+                    from PIL import Image as _PILImage
+
+                    with _PILImage.open(image_path) as _im:
+                        orig_w, orig_h = _im.size
+                    scale_w = thumb.width / orig_w if orig_w else 1.0
+                    scale_h = thumb.height / orig_h if orig_h else 1.0
+                    l, t, r, b = orig_box
+                    left = max(0, int(round(l * scale_w)))
+                    top = max(0, int(round(t * scale_h)))
+                    right = min(thumb.width, max(left + 1, int(round(r * scale_w))))
+                    bottom = min(thumb.height, max(top + 1, int(round(b * scale_h))))
+                    if (left, top, right, bottom) != (0, 0, thumb.width, thumb.height):
+                        arr = arr[top:bottom, left:right]
+                else:
+                    # Fallback to direct probe if cache missed (e.g. JXL)
+                    from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
+
+                    box = _auto_crop_box_from_ndarray(arr)
+                    if box is not None:
+                        left, top, right, bottom = box
+                        arr = arr[top:bottom, left:right]
+            except Exception:
+                from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
+
+                box = _auto_crop_box_from_ndarray(arr)
+                if box is not None:
+                    left, top, right, bottom = box
+                    arr = arr[top:bottom, left:right]
         return qimage_from_pixel_source(arr)
     except ImageSizeLimitError:
         raise

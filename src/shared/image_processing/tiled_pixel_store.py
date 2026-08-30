@@ -38,6 +38,10 @@ def autocrop_debug(message: str, *args) -> None:
 
 _spill_dir_cache: str | None = None
 _AUTO_CROP_PROBE_MAX = 1024
+# Single source of truth for auto-crop: one bbox per path, computed once
+# via PIL 1024 probe and reused for both preview and full decodes. This
+# removes the vips-vs-PIL desync that made 768→full 768 but preview 764.
+_crop_box_cache: dict[str, tuple[int, int, int, int] | None] = {}
 
 # Held for the process's whole lifetime once acquired (module-level so it
 # isn't garbage-collected, which would release the OS lock early). Whether
@@ -396,6 +400,31 @@ def _auto_crop_box_from_ndarray(
     return (left, top, right, bottom)
 
 
+def get_cached_crop_box(path_str: str, threshold: int = 15) -> tuple[int, int, int, int] | None:
+    """Single source of truth for auto-crop — one bbox per path.
+
+    Both preview and full decodes must use the same bbox, otherwise
+    768→764 (preview) vs 768→768 (vips full) desync makes the unified
+    2797 show stripes again after the first 764 frame. The bbox is
+    computed once via PIL 1024 probe (_auto_crop_box_scaled) and cached.
+    """
+    key = f"{path_str}:{threshold}"
+    if key in _crop_box_cache:
+        return _crop_box_cache[key]
+    try:
+        from PIL import Image as _PILImage
+
+        im = _PILImage.open(path_str).convert("RGBA")
+        box = _auto_crop_box_scaled(im, threshold=threshold)
+        _crop_box_cache[key] = box
+        autocrop_debug("cached crop box for %s thr=%d -> %s", path_str, threshold, box)
+        return box
+    except Exception as e:
+        logger.debug("get_cached_crop_box failed for %s: %s", path_str, e)
+        _crop_box_cache[key] = None
+        return None
+
+
 def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
     """Decode file to one RGBA surface (PIL or ndarray for JXL).
 
@@ -449,43 +478,14 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
 
     src_box = None
     if auto_crop:
+        # Single source of truth: one bbox per path via PIL 1024 probe,
+        # reused for both preview and full. This removes vips-vs-PIL
+        # desync that made 768 full→768 but preview→764.
         try:
-            probe_img = pyvips.Image.thumbnail(
-                path_str, _AUTO_CROP_PROBE_MAX, size=pyvips.enums.Size.DOWN
-            )
-            probe_rgb = probe_img[:3] if probe_img.bands >= 3 else probe_img
-            left, top, width, height = probe_rgb.find_trim(
-                threshold=15, background=[0, 0, 0]
-            )
-            if width > 0 and height > 0 and not (
-                left == 0 and top == 0
-                and width == probe_img.width and height == probe_img.height
-            ):
-                right, bottom = left + width, top + height
-                scale_w = src_w / probe_img.width
-                scale_h = src_h / probe_img.height
-                l2 = max(0, int(left * scale_w))
-                t2 = max(0, int(top * scale_h))
-                r2 = min(src_w, max(l2 + 1, int(round(right * scale_w))))
-                b2 = min(src_h, max(t2 + 1, int(round(bottom * scale_h))))
-                if (l2, t2, r2, b2) != (0, 0, src_w, src_h):
-                    src_box = (l2, t2, r2, b2)
+            src_box = get_cached_crop_box(path_str, threshold=15)
         except Exception as e:
-            logger.debug("pyvips auto-crop probe failed: %s", e)
-        # Fallback to PIL probe when pyvips missed a thin border (e.g. 768
-        # sample2: pyvips 768→768 full, but PIL get_auto_crop_box
-        # finds 764). This aligns streaming and PIL paths.
-        if src_box is None:
-            try:
-                from PIL import Image as _PILImage
-
-                _pil_probe = _PILImage.open(path_str).convert("RGBA")
-                _fallback = _auto_crop_box_scaled(_pil_probe, threshold=15)
-                if _fallback is not None:
-                    src_box = _fallback
-                    autocrop_debug("PIL fallback auto-crop: %s", src_box)
-            except Exception as e2:
-                logger.debug("PIL fallback auto-crop failed: %s", e2)
+            logger.debug("cached crop box failed for %s: %s", path_str, e)
+            src_box = None
         autocrop_debug("streaming probe box=%s (src %dx%d)", src_box, src_w, src_h)
 
     out_w = src_w
@@ -667,9 +667,13 @@ class TiledPixelStore:
         if isinstance(decoded, np.ndarray):
             arr = np.asarray(decoded)
             src_h, src_w = int(arr.shape[0]), int(arr.shape[1])
-            src_box = (
-                _auto_crop_box_from_ndarray(arr) if auto_crop else None
-            )
+            if auto_crop:
+                try:
+                    src_box = get_cached_crop_box(path_str, threshold=15)
+                except Exception:
+                    src_box = _auto_crop_box_from_ndarray(arr) if auto_crop else None
+            else:
+                src_box = None
             if src_box is None:
                 out_w, out_h = src_w, src_h
             else:
@@ -696,7 +700,16 @@ class TiledPixelStore:
             return cls(memmap, spill_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
 
         rgba = decoded if decoded.mode == "RGBA" else decoded.convert("RGBA")
-        src_box = _auto_crop_box_scaled(rgba) if auto_crop else None
+        if auto_crop:
+            try:
+                src_box = get_cached_crop_box(path_str, threshold=15)
+                # Fallback to direct probe if cache missed for newly decoded PIL
+                if src_box is None:
+                    src_box = _auto_crop_box_scaled(rgba)
+            except Exception:
+                src_box = _auto_crop_box_scaled(rgba) if auto_crop else None
+        else:
+            src_box = None
         if src_box is None:
             out_w, out_h = rgba.size
         else:
