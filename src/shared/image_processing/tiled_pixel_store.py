@@ -472,6 +472,20 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
                     src_box = (l2, t2, r2, b2)
         except Exception as e:
             logger.debug("pyvips auto-crop probe failed: %s", e)
+        # Fallback to PIL probe when pyvips missed a thin border (e.g. 768
+        # sample2: pyvips 768→768 find_trim full, but PIL get_auto_crop_box
+        # finds 764). This aligns streaming and PIL paths.
+        if src_box is None:
+            try:
+                from PIL import Image as _PILImage
+
+                _pil_probe = _PILImage.open(path_str).convert("RGBA")
+                _fallback = _auto_crop_box_scaled(_pil_probe, threshold=15)
+                if _fallback is not None:
+                    src_box = _fallback
+                    logger.debug("PIL fallback auto-crop: %s", src_box)
+            except Exception as e2:
+                logger.debug("PIL fallback auto-crop failed: %s", e2)
         autocrop_debug("streaming probe box=%s (src %dx%d)", src_box, src_w, src_h)
 
     out_w = src_w
