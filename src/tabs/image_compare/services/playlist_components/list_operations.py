@@ -1,6 +1,13 @@
+# Audit-Meta: pattern=thin-owner-target reason="playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep"
 from __future__ import annotations
 
 import logging
+
+from core.state_management.actions import (
+    SetImageSessionImageAction,
+    SetPendingUnificationPathsAction,
+    SetUnificationInProgressAction,
+)
 
 from tabs.image_compare.services import document_store_ops
 from tabs.image_compare.services.playlist_components.common import (
@@ -13,6 +20,126 @@ from tabs.image_compare.services.playlist_components.common import (
 )
 
 _log = logging.getLogger("ImproveImgSLI.playlist.list_ops")
+
+
+def _close_outgoing_store(document, image_number: int, outgoing_store) -> None:
+    if outgoing_store is None:
+        return
+    other = 2 if image_number == 1 else 1
+    other_store = getattr(document, f"full_res_image{other}", None) if document is not None else None
+    if outgoing_store is other_store:
+        return
+    try:
+        from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+        close_pixel_store(outgoing_store)
+    except Exception:
+        pass
+
+
+def _discard_pending_loads(main_controller, image_number: int, paths: list[str]) -> None:
+    ctrl = main_controller
+    real = getattr(ctrl, "session_ctrl", None) if ctrl is not None else None
+    holder = real if real is not None else ctrl
+    # image loads dedup set
+    pending = getattr(holder, "_pending_image_loads", None) if holder is not None else None
+    if pending is not None:
+        import os as _os
+
+        if paths:
+            for p in paths:
+                if not p:
+                    continue
+                try:
+                    pending.discard((image_number, p))
+                except Exception:
+                    pass
+                try:
+                    norm = _os.path.normpath(p)
+                    pending.discard((image_number, norm))
+                except Exception:
+                    pass
+        # sweeping: also drop any stale entries for this slot that remain (e.g. clear of whole list)
+        try:
+            for key in list(pending):
+                if isinstance(key, tuple) and len(key) == 2 and key[0] == image_number:
+                    pending.discard(key)
+        except Exception:
+            pass
+    # full-res decode counters — reset for the cleared slot so mixed-unify defer does not hang
+    try:
+        full_pending = getattr(holder, "_pending_full_loads", None) if holder is not None else None
+        if isinstance(full_pending, dict) and image_number in full_pending:
+            full_pending[image_number] = 0
+    except Exception:
+        pass
+
+
+def _invalidate_caches_for_paths(paths: list[str]) -> None:
+    if not paths:
+        return
+    for p in paths:
+        if not p:
+            continue
+        try:
+            from shared.image_processing import autocrop_service
+
+            autocrop_service.invalidate(p)
+        except Exception:
+            pass
+        try:
+            from shared.image_processing import pixel_cache_registry
+
+            cache = getattr(pixel_cache_registry, "_cache", None)
+            if isinstance(cache, dict):
+                cache.pop(p, None)
+                # also try normalized / str variants
+                import os as _os
+
+                try:
+                    cache.pop(_os.path.normpath(p), None)
+                except Exception:
+                    pass
+                try:
+                    cache.pop(str(p), None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    try:
+        from shared.image_processing import pyramid_registry
+
+        pyramid_registry.sweep()
+    except Exception:
+        pass
+
+
+def _force_cancel_unification(store, main_controller) -> None:
+    ctrl = main_controller
+    real = getattr(ctrl, "session_ctrl", None) if ctrl is not None else None
+    holder = real if real is not None else ctrl
+    if holder is not None and hasattr(holder, "_cancel_pending_unification"):
+        try:
+            # new signature supports force=True
+            holder._cancel_pending_unification("", "", force=True)  # type: ignore[call-arg]
+            return
+        except TypeError:
+            pass
+        try:
+            holder._cancel_pending_unification("", "")
+            return
+        except Exception:
+            pass
+    # fallback: dispatch directly if controller unavailable
+    try:
+        dispatcher = store.get_dispatcher()
+        if dispatcher is not None:
+            with store.batch_changes():
+                dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
+    except Exception:
+        pass
+
 
 class PlaylistListOperations:
     def __init__(
@@ -91,10 +218,43 @@ class PlaylistListOperations:
         if not (0 <= current_index < len(target_list)):
             return
 
+        outgoing_item = target_list[current_index]
+        outgoing_path = getattr(outgoing_item, "path", None) if outgoing_item else None
+        document = self.store.get_session_state_slot("document")
+        outgoing_store = getattr(document, f"full_res_image{image_number}", None) if document is not None else None
+        # fallback: ImageItem.image may hold the live TiledPixelStore when document slot is already stale
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+            item_img = getattr(outgoing_item, "image", None)
+            if isinstance(item_img, TiledPixelStore) and outgoing_store is None:
+                outgoing_store = item_img
+        except Exception:
+            pass
+
         target_list.pop(current_index)
 
         new_index = min(current_index, len(target_list) - 1) if target_list else -1
         set_current_index(self.store, image_number, new_index)
+
+        # full cleanup: document slot + image_state + pixel store + pending + caches + pyramid + unification
+        outgoing_paths = [outgoing_path] if outgoing_path else []
+        try:
+            if not target_list:
+                document_store_ops.clear_image_slot_data(self.store, image_number)
+            # image_state (viewport) — always clear stale image to avoid blank strip sharing old store
+            try:
+                dispatcher = self.store.get_dispatcher()
+                if dispatcher is not None:
+                    dispatcher.dispatch(SetImageSessionImageAction(slot=image_number, image=None), scope="viewport")
+            except Exception:
+                pass
+            _close_outgoing_store(document, image_number, outgoing_store)
+            _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
+            _invalidate_caches_for_paths(outgoing_paths)
+            _force_cancel_unification(self.store, self.main_controller)
+        except Exception:
+            pass
 
         self.store.invalidate_geometry_cache()
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
@@ -109,6 +269,23 @@ class PlaylistListOperations:
         if not (0 <= index_to_remove < len(target_list)):
             return
 
+        outgoing_item = target_list[index_to_remove]
+        outgoing_path = getattr(outgoing_item, "path", None) if outgoing_item else None
+        document = self.store.get_session_state_slot("document")
+        # only close document store if the removed index was the current slot
+        is_current_removal = index_to_remove == current_index
+        outgoing_store = None
+        if is_current_removal and document is not None:
+            outgoing_store = getattr(document, f"full_res_image{image_number}", None)
+            try:
+                from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+                item_img = getattr(outgoing_item, "image", None)
+                if isinstance(item_img, TiledPixelStore) and outgoing_store is None:
+                    outgoing_store = item_img
+            except Exception:
+                pass
+
         target_list.pop(index_to_remove)
 
         if not target_list:
@@ -121,16 +298,77 @@ class PlaylistListOperations:
             new_current_index = current_index
 
         set_current_index(self.store, image_number, new_current_index)
+        # cleanup for the removed entry (always invalidate its caches; slot clear only if it was current)
+        try:
+            outgoing_paths = [outgoing_path] if outgoing_path else []
+            if outgoing_paths:
+                # pixel store for non-current removals: close the item's own store if tiled
+                if not is_current_removal:
+                    try:
+                        from shared.image_processing.tiled_pixel_store import TiledPixelStore, close_pixel_store
+
+                        item_img = getattr(outgoing_item, "image", None)
+                        if isinstance(item_img, TiledPixelStore):
+                            close_pixel_store(item_img)
+                    except Exception:
+                        pass
+                else:
+                    _close_outgoing_store(document, image_number, outgoing_store)
+                    # clear slot data if list became empty, otherwise current slot will be reloaded
+                    if not target_list:
+                        document_store_ops.clear_image_slot_data(self.store, image_number)
+                    try:
+                        dispatcher = self.store.get_dispatcher()
+                        if dispatcher is not None:
+                            dispatcher.dispatch(SetImageSessionImageAction(slot=image_number, image=None), scope="viewport")
+                    except Exception:
+                        pass
+                    _force_cancel_unification(self.store, self.main_controller)
+                _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
+                _invalidate_caches_for_paths(outgoing_paths)
+        except Exception:
+            pass
+
         self.store.invalidate_geometry_cache()
         emit_ui_update(self.main_controller, ["combobox"])
         self._set_current_image(image_number)
 
     def clear_image_list(self, image_number: int) -> None:
-        self.store.clear_all_caches()
         target_list = get_target_list(self.store, image_number)
+        outgoing_paths = [getattr(item, "path", None) for item in list(target_list) if getattr(item, "path", None)]
+        document = self.store.get_session_state_slot("document")
+        outgoing_stores: list = []
+        if document is not None:
+            slot_store = getattr(document, f"full_res_image{image_number}", None)
+            if slot_store is not None:
+                outgoing_stores.append(slot_store)
+        # collect per-item tiled stores (JXL etc) that are not the slot store
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+            for item in list(target_list):
+                img = getattr(item, "image", None)
+                if isinstance(img, TiledPixelStore) and img not in outgoing_stores:
+                    outgoing_stores.append(img)
+        except Exception:
+            pass
+
+        self.store.clear_all_caches()
         target_list.clear()
         set_current_index(self.store, image_number, -1)
         document_store_ops.clear_image_slot_data(self.store, image_number)
+        try:
+            dispatcher = self.store.get_dispatcher()
+            if dispatcher is not None:
+                dispatcher.dispatch(SetImageSessionImageAction(slot=image_number, image=None), scope="viewport")
+        except Exception:
+            pass
+        for st in outgoing_stores:
+            _close_outgoing_store(document, image_number, st)
+        # also close any remaining collected stores that were not the slot store (already handled)
+        _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
+        _invalidate_caches_for_paths(outgoing_paths)
+        _force_cancel_unification(self.store, self.main_controller)
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self.store.state_changed.emit("document")
