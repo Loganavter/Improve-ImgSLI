@@ -350,11 +350,11 @@ class ProgressiveImageLoader:
         self._full_cache: OrderedDict[str, object] = OrderedDict()
 
     def get_preview(
-        self, image_path: str, force_reload: bool = False
+        self, image_path: str, force_reload: bool = False, crop_service=None
     ) -> "QImage | None":
         if not force_reload and image_path in self._preview_cache:
             return self._preview_cache[image_path]
-        preview = load_preview_image(image_path)
+        preview = load_preview_image(image_path, crop_service=crop_service)
         if preview:
             self._preview_cache[image_path] = preview
         return preview

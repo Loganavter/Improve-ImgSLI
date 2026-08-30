@@ -160,11 +160,35 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
         logger.exception("Failed to dismiss full-image loading toast")
 
 
+def _get_crop_service(controller):
+    """DI helper — mirror SessionController._get_crop_service."""
+    try:
+        getter = getattr(controller, "_get_crop_service", None)
+        if callable(getter):
+            return getter()
+    except Exception:
+        pass
+    try:
+        svc = getattr(controller, "_crop_service", None)
+        if svc is not None:
+            # check setting manually if controller has no getter
+            store = getattr(controller, "store", None)
+            if store is not None:
+                should = getattr(getattr(store, "settings", None), "auto_crop_black_borders", True)
+                if not should:
+                    return None
+            return svc
+    except Exception:
+        pass
+    return None
+
+
 def read_image(controller, path: Path, *, slot_id: int | None = None, start_pyramid: bool = True):
     try:
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-        store = load_pixel_store(path, auto_crop=False)
+        crop_service = _get_crop_service(controller)
+        store = load_pixel_store(path, crop_service=crop_service)
         if start_pyramid:
             start_pyramid_build(controller, store, slot_id=slot_id)
         return store
@@ -308,9 +332,10 @@ def load_initial_image(controller, path: Path) -> tuple[Any, bool]:
     )
 
     t0 = time.perf_counter()
+    crop_service = _get_crop_service(controller)
     try:
         if should_use_progressive_load(str(path)):
-            preview = load_preview_image(str(path))
+            preview = load_preview_image(str(path), crop_service=crop_service)
             if preview is not None:
                 logger.debug(
                     "[preview-load] %s: preview ready in %.3fs (%dx%d)",
@@ -349,10 +374,12 @@ def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
 
     from sli_ui_toolkit.workers import GenericWorker
 
-    def load_full_task(path_str: str):
+    crop_service = _get_crop_service(controller)
+
+    def load_full_task(path_str: str, svc=crop_service):
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-        return load_pixel_store(path_str, auto_crop=False)
+        return load_pixel_store(path_str, crop_service=svc)
 
     worker = GenericWorker(load_full_task, str(path))
     worker.signals.result.connect(

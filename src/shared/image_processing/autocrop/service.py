@@ -177,7 +177,8 @@ class CropService:
             return find_box_pil(rgb.convert("RGBA"), threshold=thr)
 
         scale = probe_max / float(longest)
-        step = max(1, int(1.0 / scale))
+        inv = 1.0 / scale
+        step = max(1, int(round(inv)))
         small = np.asarray(arr[::step, ::step, :3], dtype=np.uint8)
 
         vb = find_box_vips(small, threshold=thr)
@@ -188,10 +189,10 @@ class CropService:
                 return None
 
         pl, pt, pr, pb = vb.left, vb.top, vb.right, vb.bottom
-        left = max(0, int(round(pl * step)))
-        top = max(0, int(round(pt * step)))
-        right = min(src_w, max(left + 1, int(round(pr * step))))
-        bottom = min(src_h, max(top + 1, int(round(pb * step))))
+        left = max(0, int(round(pl * inv)))
+        top = max(0, int(round(pt * inv)))
+        right = min(src_w, max(left + 1, int(round(pr * inv))))
+        bottom = min(src_h, max(top + 1, int(round(pb * inv))))
         if (left, top, right, bottom) == (0, 0, src_w, src_h):
             return None
         return CropBox(left, top, right, bottom)

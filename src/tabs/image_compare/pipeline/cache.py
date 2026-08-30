@@ -30,12 +30,19 @@ _UNIFY_CACHE_MAX = 8
 
 
 def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None) -> tuple:
-    # DI: ключ содержит наличие crop_service (а не bool), box резолвится при загрузке
+    # DI: ключ содержит наличие crop_service (а не bool) + box, чтобы смена thr инвалидировала.
     has_crop = False
     if crop_service is not None:
         has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
     elif auto_crop is not None:
         has_crop = bool(auto_crop)
+    box_tuple = None
+    if has_crop and crop_service is not None and not isinstance(crop_service, bool):
+        try:
+            box = crop_service.get(path)
+            box_tuple = box.to_tuple() if box is not None else None
+        except Exception:
+            box_tuple = None
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -43,7 +50,7 @@ def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None) -> t
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(path), mtime, size, bool(has_crop))
+    return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple)
 
 
 def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) -> tuple:
