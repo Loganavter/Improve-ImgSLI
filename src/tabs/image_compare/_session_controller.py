@@ -121,21 +121,23 @@ class SessionController(QObject):
         self._pending_full_loads: dict[int, int] = _default_session.pending_full_loads
         self._pending_image_loads: set[tuple[int, str]] = _default_session.pending_image_loads
         self._image_session = _default_session  # type: ignore[attr-defined]
+        # keep browse-undo resync (document scope) — reentrant-safe after Phase 2
+        self.store.on_change(self._on_store_scoped_change)
 
     @property
     def _unification_task_id(self) -> int:  # type: ignore[override]
-        sess = getattr(self, "_image_session", None)
+        sess = self.__dict__.get("_image_session", None)
         if sess is not None:
             return sess.unification_task_id
-        return 0
+        return self.__dict__.get("_unification_task_id_raw", 0)
 
     @_unification_task_id.setter
     def _unification_task_id(self, v: int) -> None:
-        sess = getattr(self, "_image_session", None)
+        sess = self.__dict__.get("_image_session", None)
         if sess is not None:
             sess.unification_task_id = int(v)
         else:
-            object.__setattr__(self, "_unification_task_id", int(v))
+            self.__dict__["_unification_task_id_raw"] = int(v)
 
     def _get_image_session(self, session_id: str | None = None):
         """Return ImageSession for session_id (or active). Creates on demand."""
@@ -159,26 +161,22 @@ class SessionController(QObject):
         except Exception:
             pass
         return sess
-        # Undo/redo of browsing (SET_CURRENT_INDEX) restores the index but
-        # the slot's pixels can point at a closed store — re-sync on the
-        # "document" scope. Deferred to the next loop turn: the emit fires
-        # inside Dispatcher.undo() while its lock is held, and the re-sync
-        # dispatches (non-reentrant lock).
-        self.store.on_change(self._on_store_scoped_change)
 
     def _on_store_scoped_change(self, scope: str) -> None:
         if scope != "document":
             return
-        # Dispatcher is now reentrant-safe (plan_image_pipeline.md Phase 2):
-        # resync may dispatch synchronously. Keep QTimer fallback only for
-        # re-entrancy during undo's emit while lock is held in old code paths,
-        # but try direct first to make browse-undo O(1) without 0ms delay.
+        if getattr(self, "_resyncing", False):
+            return
+        self._resyncing = True  # type: ignore[attr-defined]
         try:
+            # Dispatcher is now reentrant-safe (plan_image_pipeline.md Phase 2):
+            # resync may dispatch synchronously. Direct call is O(1) without
+            # 0ms delay; loop is broken by _resyncing guard.
             self._resync_current_image_slots_if_needed()
         except RuntimeError:
-            # Fallback to async if a subscriber is still inside dispatch lock
-            # on an old code path (should not happen after Phase 2).
             QTimer.singleShot(0, self._resync_current_image_slots_if_needed)
+        finally:
+            self._resyncing = False  # type: ignore[attr-defined]
 
     def _resync_current_image_slots_if_needed(self) -> None:
         from tabs.image_compare.use_cases.loading import resync_current_image_slots
@@ -508,52 +506,76 @@ class SessionController(QObject):
         loading.duplicate_image_to_slot(self, source_slot, target_slot)
 
     def _invalidate_image_canvas_render_state(self, clear_overlay_state: bool = False):
-        # Tile replacement marker: a load/swap/unify/pyramid-complete just
-        # published new pixels into the document; this drops the presenter's
-        # signature caches so the next update gate re-applies to the canvas
-        # (or reports why it can't).
-        from tabs.image_compare.debug import ic_preview_debug as _preview_log
+        # Hang fix: previous QTimer-coalesce introduced infinite loop —
+        # _flush → presenter.invalidate → store change → resync → set_current →
+        # _invalidate → schedule → loop every event-loop turn. Keep immediate
+        # invalidate (synchronous) but break re-entrancy and throttle log.
+        if getattr(self, "_invalidating", False):
+            # Re-entrant call while already invalidating (e.g. from
+            # presenter.invalidate → store signal → resync) — coalesce: keep
+            # clear_overlay=True if any caller needs it, but don't recurse.
+            if clear_overlay_state:
+                self._pending_clear_overlay = True  # type: ignore[attr-defined]
+            return
+        self._invalidating = True  # type: ignore[attr-defined]
+        try:
+            # Throttle ic-preview log: burst of 20 in 65ms spams without value.
+            # Log at most once per 200ms; still do the invalidate every time.
+            import time
 
-        _preview_log(
-            "render state invalidated (clear_overlay=%s)",
-            clear_overlay_state,
-        )
-        presenter = getattr(self, "presenter", None)
-        if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
-            presenter.invalidate_canvas_render_state(clear_overlay_state=clear_overlay_state)
-        # Stale display_cache vs source_key window (≈400ms): after a slot clear
-        # the widget still holds the old _stored_image_ids/_content_rect_px, so a
-        # same-file reload (new uid, same path) can be mis-considered
-        # _textures_are_current and letterbox stays at the old rect until unify.
-        # Invalidate the canvas RuntimeState when the slot is truly empty.
-        if clear_overlay_state:
-            try:
-                canvas_widget = None
-                if presenter is not None:
-                    w = getattr(presenter, "widget", None)
-                    if w is not None:
-                        canvas_widget = getattr(w, "image_label", None)
-                        if canvas_widget is None:
-                            from tabs.image_compare.canvas.helpers import get_canvas
+            now = time.monotonic()
+            last = getattr(self, "_last_invalidate_log_ts", 0.0)
+            should_log = (now - last) > 0.2
+            # pending clear_overlay from coalesced re-entrant calls
+            pending_clear = bool(getattr(self, "_pending_clear_overlay", False))
+            clear = bool(clear_overlay_state or pending_clear)
+            self._pending_clear_overlay = False  # type: ignore[attr-defined]
+            if should_log:
+                from tabs.image_compare.debug import ic_preview_debug as _preview_log
 
-                            canvas_widget = get_canvas(w)
-                if canvas_widget is not None and hasattr(canvas_widget, "runtime_state"):
-                    rs = canvas_widget.runtime_state
-                    rs._stored_image_ids = None
-                    rs._stored_pil_images = [None, None]
-                    rs._source_pil_images = [None, None]
-                    rs._source_image_ids = None
-                    rs._source_images_ready = False
-                    rs._content_rect_px = None
-                    rs._inner_content_rect_px = None
-                    rs._inner_split_position = None
-                    rs._letterbox_params = [None, None]
-                    rs._images_uploaded = [False, False]
-                    rs._shader_letterbox_mode = False
-                    rs._content_sr = 1.0
-                    rs._clip_overlays_to_content_rect = False
-            except Exception:
-                pass
+                _preview_log(
+                    "render state invalidated (clear_overlay=%s)",
+                    clear,
+                )
+                self._last_invalidate_log_ts = now  # type: ignore[attr-defined]
+            presenter = getattr(self, "presenter", None)
+            if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
+                presenter.invalidate_canvas_render_state(clear_overlay_state=clear)
+            if clear:
+                try:
+                    canvas_widget = None
+                    if presenter is not None:
+                        w = getattr(presenter, "widget", None)
+                        if w is not None:
+                            canvas_widget = getattr(w, "image_label", None)
+                            if canvas_widget is None:
+                                from tabs.image_compare.canvas.helpers import get_canvas
+
+                                canvas_widget = get_canvas(w)
+                    if canvas_widget is not None and hasattr(canvas_widget, "runtime_state"):
+                        rs = canvas_widget.runtime_state
+                        rs._stored_image_ids = None
+                        rs._stored_pil_images = [None, None]
+                        rs._source_pil_images = [None, None]
+                        rs._source_image_ids = None
+                        rs._source_images_ready = False
+                        rs._content_rect_px = None
+                        rs._inner_content_rect_px = None
+                        rs._inner_split_position = None
+                        rs._letterbox_params = [None, None]
+                        rs._images_uploaded = [False, False]
+                        rs._shader_letterbox_mode = False
+                        rs._content_sr = 1.0
+                        rs._clip_overlays_to_content_rect = False
+                except Exception:
+                    pass
+        finally:
+            self._invalidating = False  # type: ignore[attr-defined]
+            # If a re-entrant request arrived with clear_overlay=True while we
+            # were inside, flush it once more (single extra pass, not loop).
+            if getattr(self, "_pending_clear_overlay", False):
+                self._pending_clear_overlay = False  # type: ignore[attr-defined]
+                self._invalidate_image_canvas_render_state(clear_overlay_state=True)
 
     def _schedule_image_canvas_update(self):
         presenter = getattr(self, "presenter", None)
