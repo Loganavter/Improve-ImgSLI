@@ -110,6 +110,146 @@ def _clear_unification_flags(controller) -> None:
         logger.error("Failed to dispatch clear_unification_flags", exc_info=True)
 
 
+def ensure_unification(controller, delay_ms: int = 0) -> None:
+    """Shared unify starter — deduplicates trigger_preview_unification + handle_full trigger (45 lines).
+
+    Schedules via QTimer if delay_ms > 0, otherwise runs immediately. Handles
+    defer-mixed, dedup, pending-flag dispatch, worker creation and fallback
+    metrics/toast. Called by both preview and full-res paths.
+    """
+    def _run():
+        document = controller.store.get_session_state_slot("document")
+        if document is None:
+            return
+        source1 = document.full_res_image1 or document.preview_image1
+        source2 = document.full_res_image2 or document.preview_image2
+        # infer slot for toast fallback: which side is missing preview/full
+        toast_slot = 1 if not source1 else (2 if not source2 else 1)
+        if source1 and source2 and not _defer_mixed_unify(controller, document):
+            try:
+                _rc = _session_render_cache(controller)
+                if _rc is not None and getattr(_rc, "unification_in_progress", False):
+                    pending = getattr(_rc, "pending_unification_paths", None)
+                    if pending == (document.image1_path, document.image2_path):
+                        return
+            except Exception:
+                pass
+            try:
+                controller._cancel_pending_unification(
+                    document.image1_path or "",
+                    document.image2_path or "",
+                )
+                if not document.image1_path or not document.image2_path:
+                    return
+                _dispatcher = getattr(controller.store, "get_dispatcher", None)
+                _dispatcher = _dispatcher() if callable(_dispatcher) else None
+                if _dispatcher is not None:
+                    try:
+                        with controller.store.batch_changes():
+                            _dispatcher.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
+                            _dispatcher.dispatch(
+                                SetPendingUnificationPathsAction(paths=(document.image1_path, document.image2_path)),
+                                scope="viewport",
+                            )
+                    except Exception:
+                        logger.error("Failed to dispatch unification pending", exc_info=True)
+                else:
+                    try:
+                        _rc2 = _session_render_cache(controller)
+                        if _rc2 is not None:
+                            setattr(_rc2, "unification_in_progress", True)
+                            setattr(_rc2, "pending_unification_paths", (document.image1_path, document.image2_path))
+                    except Exception:
+                        pass
+                controller._unification_task_id += 1
+                current_task_id = controller._unification_task_id
+                worker = GenericWorker(
+                    controller._unify_images_worker_task,
+                    source1,
+                    source2,
+                    document.image1_path,
+                    document.image2_path,
+                    current_task_id,
+                    _unify_resize_method(controller),
+                )
+                worker.signals.result.connect(controller._on_unified_images_ready)
+                controller.thread_pool.start(worker, priority=1)
+            except Exception:
+                _err_dispatcher = getattr(controller.store, "get_dispatcher", None)
+                _err_dispatcher = _err_dispatcher() if callable(_err_dispatcher) else None
+                if _err_dispatcher is not None:
+                    try:
+                        _err_dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                    except Exception:
+                        logger.error("Failed to dispatch unification rollback", exc_info=True)
+                else:
+                    try:
+                        _err_rc = _session_render_cache(controller)
+                        if _err_rc is not None:
+                            setattr(_err_rc, "unification_in_progress", False)
+                    except Exception:
+                        pass
+                try:
+                    controller.metrics_service.on_metrics_calculated(None)
+                except Exception:
+                    pass
+        else:
+            try:
+                controller.metrics_service.on_metrics_calculated(None)
+            except Exception:
+                pass
+            try:
+                finish_toast_for_unpaired_slot(controller, document, toast_slot)
+            except Exception:
+                pass
+        if controller.presenter:
+            try:
+                QTimer.singleShot(10, lambda: controller.store.emit_state_change("viewport"))
+            except Exception:
+                pass
+
+    if delay_ms:
+        try:
+            QTimer.singleShot(int(delay_ms), _run)
+        except Exception:
+            _run()
+    else:
+        _run()
+
+
+def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:
+    """Shared stale-slot check for set_current_image vs resync (CODE_PATTERNS.md thin-owner).
+
+    Returns True if a reload was triggered (or would be), False if slot already fresh.
+    Handles pending-dedup and closed-store detection identical in both call sites.
+    """
+    document = controller.store.get_session_state_slot("document")
+    if document is None:
+        return False
+    target_list = document.image_list1 if image_number == 1 else document.image_list2
+    current_index = document.current_index1 if image_number == 1 else document.current_index2
+    image_path = document.image1_path if image_number == 1 else document.image2_path
+    full_res = document.full_res_image1 if image_number == 1 else document.full_res_image2
+    if not (0 <= current_index < len(target_list)):
+        return False
+    item = target_list[current_index]
+    stale = image_path != item.path
+    if not stale:
+        is_open = getattr(full_res, "is_open", None)
+        stale = is_open is not None and not is_open
+    if stale or force_refresh:
+        pending = getattr(controller, "_pending_image_loads", None)
+        if pending is not None and (image_number, item.path) in pending:
+            return False
+        # delegate via public seam so tests can stub
+        try:
+            controller.set_current_image(image_number, force_refresh=force_refresh)
+        except Exception:
+            pass
+        return True
+    return False
+
+
 def initialize_app_display(controller):
     if controller.store.get_session_state_slot("document") is None:
         return
@@ -235,89 +375,9 @@ def trigger_preview_unification(controller, image_number: int):
         controller.presenter.ui_batcher.schedule_batch_update(
             ["file_names", "resolution"]
         )
-
-    document = controller.store.get_session_state_slot("document")
-    source1 = document.full_res_image1 or document.preview_image1
-    source2 = document.full_res_image2 or document.preview_image2
-
-    if source1 and source2 and not _defer_mixed_unify(controller, document):
-        # Dedup: two triggers (preview QTimer 0 and full QTimer 50) can
-        # coalesce on the same path pair within ~50ms. If a unify for this
-        # exact path pair is already in flight, skip the second start —
-        # the first worker will finish and publish the unified stores.
-        try:
-            _rc = _session_render_cache(controller)
-            if _rc is not None and getattr(_rc, "unification_in_progress", False):
-                pending = getattr(_rc, "pending_unification_paths", None)
-                if pending == (document.image1_path, document.image2_path):
-                    return
-        except Exception:
-            pass
-        try:
-            controller._cancel_pending_unification(
-                document.image1_path,
-                document.image2_path,
-            )
-            if not document.image1_path or not document.image2_path:
-                return
-
-            _tp_dispatcher = getattr(controller.store, "get_dispatcher", None)
-            _tp_dispatcher = _tp_dispatcher() if callable(_tp_dispatcher) else None
-            if _tp_dispatcher is not None:
-                try:
-                    with controller.store.batch_changes():
-                        _tp_dispatcher.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
-                        _tp_dispatcher.dispatch(
-                            SetPendingUnificationPathsAction(paths=(document.image1_path, document.image2_path)),
-                            scope="viewport",
-                        )
-                except Exception:
-                    logger.error("Failed to dispatch unification pending", exc_info=True)
-            else:
-                try:
-                    _tp_rc = _session_render_cache(controller)
-                    if _tp_rc is not None:
-                        setattr(_tp_rc, "unification_in_progress", True)
-                        setattr(_tp_rc, "pending_unification_paths", (document.image1_path, document.image2_path))
-                except Exception:
-                    pass
-
-            controller._unification_task_id += 1
-            current_task_id = controller._unification_task_id
-
-            worker = GenericWorker(
-                controller._unify_images_worker_task,
-                source1,
-                source2,
-                document.image1_path,
-                document.image2_path,
-                current_task_id,
-                _unify_resize_method(controller),
-            )
-            worker.signals.result.connect(controller._on_unified_images_ready)
-            controller.thread_pool.start(worker, priority=1)
-        except Exception:
-            _tp_err_dispatcher = getattr(controller.store, "get_dispatcher", None)
-            _tp_err_dispatcher = _tp_err_dispatcher() if callable(_tp_err_dispatcher) else None
-            if _tp_err_dispatcher is not None:
-                try:
-                    _tp_err_dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-                except Exception:
-                    logger.error("Failed to dispatch unification rollback", exc_info=True)
-            else:
-                try:
-                    _tp_err_rc = _session_render_cache(controller)
-                    if _tp_err_rc is not None:
-                        setattr(_tp_err_rc, "unification_in_progress", False)
-                except Exception:
-                    pass
-            controller.metrics_service.on_metrics_calculated(None)
-    else:
-        controller.metrics_service.on_metrics_calculated(None)
-        finish_toast_for_unpaired_slot(controller, document, image_number)
-
-    if controller.presenter:
-        QTimer.singleShot(10, lambda: controller.store.emit_state_change("viewport"))
+    # Delegates to shared ensure_unification (thin-owner pattern) — keep presenter batch above
+    ensure_unification(controller, delay_ms=0)
+    # ensure_unification already schedules viewport emit; keep explicit for backwards compat is inside helper
 
 
 def handle_full_image_loaded(controller, full_img, path, image_number, index_in_list):
@@ -375,63 +435,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     # swap atomically (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
     # follow-up).
 
-    def trigger_unification():
-        live_document = controller.store.get_session_state_slot("document")
-        source1 = live_document.full_res_image1 or live_document.preview_image1
-        source2 = live_document.full_res_image2 or live_document.preview_image2
-        if _defer_mixed_unify(controller, live_document):
-            return
-        # Dedup same as trigger_preview_unification: coalesce duplicate
-        # unify starts for the same path pair that is already in flight.
-        try:
-            _rc2 = _session_render_cache(controller)
-            if _rc2 is not None and getattr(_rc2, "unification_in_progress", False):
-                pending2 = getattr(_rc2, "pending_unification_paths", None)
-                if pending2 == (live_document.image1_path, live_document.image2_path):
-                    return
-        except Exception:
-            pass
-        if source1 and source2:
-            _hf_dispatcher = getattr(controller.store, "get_dispatcher", None)
-            _hf_dispatcher = _hf_dispatcher() if callable(_hf_dispatcher) else None
-            if _hf_dispatcher is not None:
-                try:
-                    with controller.store.batch_changes():
-                        _hf_dispatcher.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
-                        _hf_dispatcher.dispatch(
-                            SetPendingUnificationPathsAction(
-                                paths=(live_document.image1_path, live_document.image2_path)
-                            ),
-                            scope="viewport",
-                        )
-                except Exception:
-                    logger.error("Failed to dispatch handle_full pending", exc_info=True)
-            else:
-                try:
-                    _hf_rc = _session_render_cache(controller)
-                    if _hf_rc is not None:
-                        setattr(_hf_rc, "unification_in_progress", True)
-                        setattr(_hf_rc, "pending_unification_paths", (live_document.image1_path, live_document.image2_path))
-                except Exception:
-                    pass
-            controller._unification_task_id += 1
-            current_task_id = controller._unification_task_id
-            worker = GenericWorker(
-                controller._unify_images_worker_task,
-                source1,
-                source2,
-                live_document.image1_path,
-                live_document.image2_path,
-                current_task_id,
-                _unify_resize_method(controller),
-            )
-            worker.signals.result.connect(controller._on_unified_images_ready)
-            controller.thread_pool.start(worker, priority=1)
-        else:
-            controller.metrics_service.on_metrics_calculated(None)
-            finish_toast_for_unpaired_slot(controller, live_document, image_number)
-
-    QTimer.singleShot(50, trigger_unification)
+    ensure_unification(controller, delay_ms=50)
 
 
 def load_images_from_paths(controller, file_paths: list[str], image_number: int):
@@ -932,41 +936,11 @@ def resync_current_image_slots(controller) -> None:
     current entry from the list (path+reload) when the stored path diverges
     from the list entry or the full-res store is closed. A healthy slot —
     normal loads already match — is left untouched.
+
+    Delegates stale check to ensure_current_slot (thin-owner pattern).
     """
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return
-    for image_number, image_list, current_index, image_path, full_res in (
-        (
-            1,
-            document.image_list1,
-            document.current_index1,
-            document.image1_path,
-            document.full_res_image1,
-        ),
-        (
-            2,
-            document.image_list2,
-            document.current_index2,
-            document.image2_path,
-            document.full_res_image2,
-        ),
-    ):
-        if not (0 <= current_index < len(image_list)):
-            continue
-        item = image_list[current_index]
-        stale = image_path != item.path
-        if not stale:
-            is_open = getattr(full_res, "is_open", None)
-            stale = is_open is not None and not is_open
-        if stale:
-            # Coalesce with a normal load_images_from_paths flow: both the
-            # QTimer(0) resync and the QTimer(50) finalize schedule
-            # set_current_image for the same new item. If a worker for
-            # (slot, path) is already pending, skip the duplicate resync.
-            pending = getattr(controller, "_pending_image_loads", None)
-            if pending is not None and (image_number, item.path) in pending:
-                continue
-            # Through the controller's public seam (which delegates back to
-            # this module) so callers/tests can stub the reload decision.
-            controller.set_current_image(image_number, force_refresh=True)
+    for image_number in (1, 2):
+        ensure_current_slot(controller, image_number, force_refresh=True)

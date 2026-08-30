@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 743,
+      "lines": 800,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -220,7 +220,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
-      "lines": 534,
+      "lines": 542,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation reason=\"plan applicator — 5 helpers + geometry sync + store binding, 519 lines\"",
@@ -242,7 +242,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 598,
+      "lines": 604,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -253,7 +253,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 1345,
+      "lines": 1372,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split\"",
@@ -342,7 +342,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 976,
+      "lines": 1076,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -364,6 +364,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
+      "lines": 553,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
       "lines": 539,
       "limit": 500,
@@ -377,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/loading.py",
-      "lines": 972,
+      "lines": 946,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",

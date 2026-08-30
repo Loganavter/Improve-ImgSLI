@@ -184,17 +184,41 @@ class SessionController(QObject):
                 )
             return None, path, image_number, index_in_list, False
 
-    def _cancel_pending_unification(self, new_path1: str, new_path2: str) -> bool:
-        if not self.store.viewport.session_data.render_cache.unification_in_progress:
+    def _cancel_pending_unification(self, new_path1: str = "", new_path2: str = "", force: bool = False) -> bool:
+        try:
+            cache = getattr(getattr(self.store.viewport, "session_data", None), "render_cache", None)
+            if cache is None or not getattr(cache, "unification_in_progress", False):
+                return False
+        except Exception:
             return False
-        pending = (
-            self.store.viewport.session_data.render_cache.pending_unification_paths
-        )
+        if force:
+            try:
+                dispatcher = self.store.get_dispatcher()
+                if dispatcher is not None:
+                    with self.store.batch_changes():
+                        dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                        dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
+                else:
+                    cache.unification_in_progress = False  # type: ignore[attr-defined]
+                    cache.pending_unification_paths = None  # type: ignore[attr-defined]
+                self.store.invalidate_geometry_cache()
+            except Exception:
+                pass
+            return True
+        pending = getattr(cache, "pending_unification_paths", None)
         if pending and (pending[0] != new_path1 or pending[1] != new_path2):
-            dispatcher = self.store.get_dispatcher()
-            dispatcher.dispatch(SetUnificationInProgressAction(enabled=False))
-            dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None))
-            self.store.invalidate_geometry_cache()
+            try:
+                dispatcher = self.store.get_dispatcher()
+                if dispatcher is not None:
+                    with self.store.batch_changes():
+                        dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                        dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
+                else:
+                    cache.unification_in_progress = False  # type: ignore[attr-defined]
+                    cache.pending_unification_paths = None  # type: ignore[attr-defined]
+                self.store.invalidate_geometry_cache()
+            except Exception:
+                pass
             return True
         return False
 
@@ -416,6 +440,39 @@ class SessionController(QObject):
         presenter = getattr(self, "presenter", None)
         if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
             presenter.invalidate_canvas_render_state(clear_overlay_state=clear_overlay_state)
+        # Stale display_cache vs source_key window (≈400ms): after a slot clear
+        # the widget still holds the old _stored_image_ids/_content_rect_px, so a
+        # same-file reload (new uid, same path) can be mis-considered
+        # _textures_are_current and letterbox stays at the old rect until unify.
+        # Invalidate the canvas RuntimeState when the slot is truly empty.
+        if clear_overlay_state:
+            try:
+                canvas_widget = None
+                if presenter is not None:
+                    w = getattr(presenter, "widget", None)
+                    if w is not None:
+                        canvas_widget = getattr(w, "image_label", None)
+                        if canvas_widget is None:
+                            from tabs.image_compare.canvas.helpers import get_canvas
+
+                            canvas_widget = get_canvas(w)
+                if canvas_widget is not None and hasattr(canvas_widget, "runtime_state"):
+                    rs = canvas_widget.runtime_state
+                    rs._stored_image_ids = None
+                    rs._stored_pil_images = [None, None]
+                    rs._source_pil_images = [None, None]
+                    rs._source_image_ids = None
+                    rs._source_images_ready = False
+                    rs._content_rect_px = None
+                    rs._inner_content_rect_px = None
+                    rs._inner_split_position = None
+                    rs._letterbox_params = [None, None]
+                    rs._images_uploaded = [False, False]
+                    rs._shader_letterbox_mode = False
+                    rs._content_sr = 1.0
+                    rs._clip_overlays_to_content_rect = False
+            except Exception:
+                pass
 
     def _schedule_image_canvas_update(self):
         presenter = getattr(self, "presenter", None)
