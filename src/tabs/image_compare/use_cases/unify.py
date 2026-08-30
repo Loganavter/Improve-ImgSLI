@@ -80,8 +80,23 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
     if pl is not None:
         try:
             method = _unify_resize_method(controller)
+            try:
+                w1, h1 = int(getattr(s1, "width", 0) or 0), int(getattr(s1, "height", 0) or 0)
+                w2, h2 = int(getattr(s2, "width", 0) or 0), int(getattr(s2, "height", 0) or 0)
+                # fallback for QImage sources
+                if w1 == 0 or h1 == 0:
+                    from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+                    w1, h1 = pixel_source_size(s1)
+                if w2 == 0 or h2 == 0:
+                    from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+                    w2, h2 = pixel_source_size(s2)
+                wh = (max(w1, w2), max(h1, h2))
+            except Exception:
+                wh = (0, 0)
             cached = pl.cache.get_unified(
-                getattr(s1, "uid", id(s1)), getattr(s2, "uid", id(s2)), method, 0, 0
+                getattr(s1, "uid", id(s1)), getattr(s2, "uid", id(s2)), method, wh[0], wh[1]
             )
             _ = cached
         except Exception:
@@ -186,7 +201,21 @@ def on_unified_images_ready(controller, result):
         if pl is not None:
             try:
                 method = _unify_resize_method(controller)
-                pl.cache.put_unified(getattr(u1, "uid", id(u1)), getattr(u2, "uid", id(u2)), method, 0, 0, (u1, u2))
+                try:
+                    w1, h1 = int(getattr(u1, "width", 0) or 0), int(getattr(u1, "height", 0) or 0)
+                    w2, h2 = int(getattr(u2, "width", 0) or 0), int(getattr(u2, "height", 0) or 0)
+                    if w1 == 0 or h1 == 0:
+                        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+                        w1, h1 = pixel_source_size(u1)
+                    if w2 == 0 or h2 == 0:
+                        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+                        w2, h2 = pixel_source_size(u2)
+                    wh = (max(w1, w2), max(h1, h2))
+                except Exception:
+                    wh = (0, 0)
+                pl.cache.put_unified(getattr(u1, "uid", id(u1)), getattr(u2, "uid", id(u2)), method, wh[0], wh[1], (u1, u2))
             except Exception:
                 pass
         d = getattr(controller.store, "get_dispatcher", lambda: None)()

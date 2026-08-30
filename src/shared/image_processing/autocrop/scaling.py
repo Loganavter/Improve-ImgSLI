@@ -55,8 +55,8 @@ def scale_box_to_original(
     inv_h = 1.0 / scale_h if scale_h else 1.0
     # Но для квадратных скейлов достаточно одной величины; берём инверсию по
     # каждой оси отдельно для корректности неквадратных кейсов.
-    left = max(0, int(probe_box.left * inv_w))
-    top = max(0, int(probe_box.top * inv_h))
+    left = max(0, int(round(probe_box.left * inv_w)))
+    top = max(0, int(round(probe_box.top * inv_h)))
     right = min(orig_w, max(left + 1, int(round(probe_box.right * inv_w))))
     bottom = min(orig_h, max(top + 1, int(round(probe_box.bottom * inv_h))))
     if (left, top, right, bottom) == (0, 0, orig_w, orig_h):
