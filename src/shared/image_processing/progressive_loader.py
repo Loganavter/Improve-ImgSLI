@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from shared.image_processing.resize import crop_black_borders
 from core.constants import AppConstants
 
 if TYPE_CHECKING:
@@ -191,10 +190,7 @@ def load_preview_image(
                 scaled = _get_scaled(orig_box, (original_width, original_height), preview.size)
                 if scaled is not None:
                     preview = preview.crop(scaled.to_tuple())
-                else:
-                    # parity: если сервис не дал bbox, пробуем локальный кроп превью
-                    if box is None:
-                        preview = crop_black_borders(preview)
+                # если box is None — без кропа (единый зонд CropService, без fallback)
 
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
@@ -228,9 +224,7 @@ def load_preview_image(
                 scaled = _get_scaled2(orig_box, (original_width, original_height), (new_width, new_height))
                 if scaled is not None:
                     preview = preview.crop(scaled.to_tuple())
-                else:
-                    if box is None:
-                        preview = crop_black_borders(preview)
+                # если box is None — без кропа (единый зонд CropService)
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
 
@@ -300,20 +294,9 @@ def _load_preview_vips(
                     if scaled is not None:
                         l, t, r, b = scaled.to_tuple()
                         arr = arr[t:b, l:r]
-                else:
-                    from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
-
-                    box2 = _auto_crop_box_from_ndarray(arr)
-                    if box2 is not None:
-                        left, top, right, bottom = box2
-                        arr = arr[top:bottom, left:right]
+                # если box is None — без кропа (единый зонд CropService)
             except Exception:
-                from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
-
-                box = _auto_crop_box_from_ndarray(arr)
-                if box is not None:
-                    left, top, right, bottom = box
-                    arr = arr[top:bottom, left:right]
+                pass
         return qimage_from_pixel_source(arr)
     except ImageSizeLimitError:
         raise

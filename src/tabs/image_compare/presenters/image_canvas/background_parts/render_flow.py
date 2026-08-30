@@ -468,19 +468,30 @@ def update_comparison_if_needed(presenter):
         or _document.original_image2
     )
 
-    # Comparison letterbox geometry must track the preview arrival, not the
-    # unified-store flip. The early returns below (unification deferral,
-    # single-image mode, one-side missing) used to skip the geometry block,
-    # leaving the canvas letterboxed at the *previous* comparison's rect
-    # until the unified tiles landed -- a visible resize arriving "with the
-    # tiles" instead of "with the preview". Computing the rect from the best
-    # available sizes (unified stores > full-res > previews) as soon as any
-    # side has content converges it to the final layout during the preview
-    # phase: previews preserve the source aspect, so the pair-fit rect is
-    # already the flip's rect and the store flip no longer resizes anything.
-    _update_comparison_geometry(
-        presenter, source1, source2, label_width, label_height
+    # Letterbox must not fit from mixed-tier preview sizes while unification is
+    # in progress — preview is 1024-capped, unified is trimmed full-res. Fitting
+    # from the preview then refitting from unified causes a visible jump (see
+    # task: tiles out_w/h already trimmed but render_flow early fits from preview
+    # 1024). Defer geometry until unified stores land; preview background still
+    # uploads but without resizing the comparison rect.
+    _is_unifying = getattr(
+        presenter.store.viewport.session_data.render_cache,
+        "unification_in_progress",
+        False,
     )
+    if not _is_unifying:
+        _update_comparison_geometry(
+            presenter, source1, source2, label_width, label_height
+        )
+    else:
+        # Only converge geometry if unified images already available — otherwise
+        # keep previous rect to avoid mixed-tier (preview vs store) mismatch.
+        _u1 = presenter.store.viewport.session_data.image_state.image1
+        _u2 = presenter.store.viewport.session_data.image_state.image2
+        if _u1 is not None and _u2 is not None:
+            _update_comparison_geometry(
+                presenter, source1, source2, label_width, label_height
+            )
 
     if getattr(
         presenter.store.viewport.session_data.render_cache,

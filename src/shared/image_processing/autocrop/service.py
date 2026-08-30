@@ -155,8 +155,8 @@ class CropService:
                 return None
             pl, pt, pr, pb = b.left, b.top, b.right, b.bottom
 
-        left = max(0, int(pl * inv))
-        top = max(0, int(pt * inv))
+        left = max(0, int(round(pl * inv)))
+        top = max(0, int(round(pt * inv)))
         right = min(w, max(left + 1, int(round(pr * inv))))
         bottom = min(h, max(top + 1, int(round(pb * inv))))
         if (left, top, right, bottom) == (0, 0, w, h):
@@ -188,10 +188,10 @@ class CropService:
                 return None
 
         pl, pt, pr, pb = vb.left, vb.top, vb.right, vb.bottom
-        left = max(0, int(pl * step))
-        top = max(0, int(pt * step))
-        right = min(src_w, max(left + 1, int(pr * step)))
-        bottom = min(src_h, max(top + 1, int(pb * step)))
+        left = max(0, int(round(pl * step)))
+        top = max(0, int(round(pt * step)))
+        right = min(src_w, max(left + 1, int(round(pr * step))))
+        bottom = min(src_h, max(top + 1, int(round(pb * step))))
         if (left, top, right, bottom) == (0, 0, src_w, src_h):
             return None
         return CropBox(left, top, right, bottom)

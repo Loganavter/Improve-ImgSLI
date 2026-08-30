@@ -629,10 +629,9 @@ class TiledPixelStore:
                 try:
                     box = crop_service.get(path_str)
                     src_box = box.to_tuple() if box is not None else None
-                    if src_box is None:
-                        src_box = _auto_crop_box_from_ndarray(arr)
+                    # без fallback — единый зонд CropService (DI)
                 except Exception:
-                    src_box = _auto_crop_box_from_ndarray(arr)
+                    src_box = None
             else:
                 src_box = None
             if src_box is None:
@@ -665,10 +664,9 @@ class TiledPixelStore:
             try:
                 box = crop_service.get(path_str)
                 src_box = box.to_tuple() if box is not None else None
-                if src_box is None:
-                    src_box = _auto_crop_box_scaled(rgba)
+                # без fallback — единый зонд CropService (DI)
             except Exception:
-                src_box = _auto_crop_box_scaled(rgba)
+                src_box = None
         else:
             src_box = None
         if src_box is None:
