@@ -259,7 +259,6 @@ def _write_rgba_strips(
             else:
                 memmap[y : y + chunk, :, :] = _to_u8(band)
             y += chunk
-            time.sleep(0.001)
         memmap.flush()
         return
 
@@ -284,7 +283,6 @@ def _write_rgba_strips(
             chunk, out_w, 4
         )
         y += chunk
-        time.sleep(0.001)
     memmap.flush()
 
 
@@ -521,7 +519,6 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
             arr = np.ndarray(buffer=strip_bytes, dtype=np.uint8, shape=(chunk, out_w, 4))
             memmap[y:y+chunk, :, :] = arr
             y += chunk
-            time.sleep(0.001)
         memmap.flush()
     except Exception:
         try:
@@ -594,7 +591,6 @@ class TiledPixelStore:
                 band, dtype=np.uint8
             ).reshape(chunk, out_w, 4)
             y += chunk
-            time.sleep(0.001)
         memmap.flush()
 
     def write_array(self, box: tuple[int, int, int, int], arr: np.ndarray) -> None:

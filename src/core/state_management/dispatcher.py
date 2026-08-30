@@ -118,14 +118,12 @@ _RAPID_ACTION_GROUP_MS = 400
 class Dispatcher:
     """Central Redux-style dispatcher.
 
-    Thread-safety: ``dispatch`` holds ``_lock`` across reduce → write-back →
-    history → subscriber notification.  Subscribers are therefore **not allowed
-    to dispatch synchronously** while the lock is held — the underlying lock
-    is non-reentrant and a synchronous dispatch would deadlock.  All current
-    call sites that need to trigger a follow-up dispatch from a store callback
-    defer via ``QTimer.singleShot(0, ...)`` (e.g. ``menu_controller.py:161``,
-    ``_session_controller.py:71-80``).  Keep this contract: if you add a new
-    store subscriber that needs to dispatch, schedule it asynchronously.
+    Thread-safety: ``dispatch`` holds ``_lock`` only for reduce → write-back →
+    history. Subscriber notification and ``emit_state_change`` happen **outside**
+    the lock (snapshot subscribers while locked, notify after), so a store
+    ``on_change`` subscriber may ``dispatch`` synchronously without deadlock.
+    Legacy call sites still use ``QTimer.singleShot(0, ...)`` deferral
+    (e.g. ``menu_controller.py:161``) — now optional, not required.
     """
 
     def __init__(self, store):
@@ -184,6 +182,13 @@ class Dispatcher:
         return self._store
 
     def dispatch(self, action: Action, scope: str = "viewport") -> None:
+        # Phase 2 of plan_image_pipeline.md: reentrant-safe dispatch.
+        # Reduce + write-back + history stay under _lock, but subscriber
+        # notification and emit_state_change happen *outside* the lock
+        # (snapshot subscribers while locked, notify after). This lets
+        # store.on_change → dispatch synchronously without QTimer.
+        subscribers: list = []
+        emit_scope: str | None = None
         with self._lock:
             try:
 
@@ -272,24 +277,26 @@ class Dispatcher:
                             self._undo_stack.pop(0)
                         self._redo_stack.clear()
 
-                    # Subscribers run while _lock is still held.
-                    # Do NOT dispatch synchronously from a subscriber;
-                    # use QTimer.singleShot(0, ...) to defer (see class docstring).
-                    for subscriber in list(self._subscribers):
-                        try:
-                            subscriber(action)
-                        except Exception as e:
-                            logger.error(
-                                f"Error in dispatcher subscriber: {e}", exc_info=True
-                            )
-
-                    self._store.emit_state_change(scope)
+                    subscribers = list(self._subscribers)
+                    emit_scope = scope
+                # else: no state change → no emit, no subscriber notify
 
             except Exception as e:
                 logger.error(
                     f"Error dispatching action {action.type}: {e}", exc_info=True
                 )
                 raise
+        # Outside lock: notify subscribers and emit. Re-entrant dispatch is now safe.
+        if emit_scope is not None:
+            for subscriber in subscribers:
+                try:
+                    subscriber(action)
+                except Exception as e:
+                    logger.error(f"Error in dispatcher subscriber: {e}", exc_info=True)
+            try:
+                self._store.emit_state_change(emit_scope)
+            except Exception as e:
+                logger.error(f"Error emitting state change {emit_scope}: {e}", exc_info=True)
 
     def subscribe(self, callback: Callable[[Action], None]) -> None:
         with self._lock:
