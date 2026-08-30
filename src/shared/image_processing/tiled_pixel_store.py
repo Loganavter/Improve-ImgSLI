@@ -27,20 +27,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def autocrop_debug(message: str, *args) -> None:
-    """Env-gated auto-crop diagnostics — ``IMGSLI_AUTOCROP_DEBUG=1``.
+from shared.image_processing.autocrop.debug import autocrop_debug as _autocrop_debug
 
-    Tagged ``[autocrop-debug]`` so the stream can be grepped out of
-    ``log.txt``; see docs/dev/LOGGING.md (unique-prefix convention).
-    """
-    if os.environ.get("IMGSLI_AUTOCROP_DEBUG") == "1":
-        logger.debug("[autocrop-debug] " + message, *args)
+def autocrop_debug(message: str, *args) -> None:
+    """Backward-compat re-export — см. shared.image_processing.autocrop.debug."""
+    _autocrop_debug(message, *args)
 
 _spill_dir_cache: str | None = None
+# Probe max теперь в CropConfig (autocrop.model.CropConfig.probe_max).
+# Оставлен для обратной совместимости тестов — не используется напрямую.
 _AUTO_CROP_PROBE_MAX = 1024
-# Single source of truth for auto-crop: one bbox per path, computed once
-# via PIL 1024 probe and reused for both preview and full decodes. This
-# removes the vips-vs-PIL desync that made 768→full 768 but preview 764.
+# Глобальный кэш удалён — каждый CropService владеет своим кэшем (DI).
+# Оставлен пустой dict для обратной совместимости импортов.
 _crop_box_cache: dict[str, tuple[int, int, int, int] | None] = {}
 
 # Held for the process's whole lifetime once acquired (module-level so it
