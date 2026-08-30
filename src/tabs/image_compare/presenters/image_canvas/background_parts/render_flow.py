@@ -115,13 +115,10 @@ def _update_comparison_geometry(
             pass
     img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
     new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
-    # Guard: _update_comparison_geometry is called every fps tick (60Hz) while
-    # preview is showing; without guard the unconditional assignments would spam
-    # the geometry log with the same rect. Keep direct assignment (no dispatch)
-    # here — Store geometry for canvas is owned by plan_applicator's
-    # sync_geometry_state which goes via dispatch; this preview-path helper just
-    # keeps the canvas letterbox in sync without emitting a Store change that
-    # would re-arm the timer and amplify the spam.
+    # Guard: throttle 60Hz fps tick — dispatch only when rect actually changes.
+    # Single owner via dispatch (was direct assignment) so Store remains source
+    # of truth and sync_geometry_state (canvas -> Store) can converge without
+    # fighting a second owner. Guard prevents re-arming the fps timer via Store emit.
     try:
         if (
             getattr(geometry, "pixmap_width", None) == scaled_w
@@ -158,6 +155,48 @@ def _update_comparison_geometry(
                 )
         except Exception:
             pass
+    # Unified dispatch owner: was direct assignment (Store bypass) — now dispatch
+    # so viewport geometry stays Redux-consistent and emitters are coalesced.
+    try:
+        dispatcher = getattr(presenter.store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            from core.state_management.geometry_actions import (
+                SetImageDisplayRectAction,
+                SetPixmapDimensionsAction,
+            )
+
+            batch = getattr(presenter.store, "batch_changes", None)
+            if callable(batch):
+                with presenter.store.batch_changes():
+                    dispatcher.dispatch(
+                        SetPixmapDimensionsAction(width=scaled_w, height=scaled_h),
+                        scope="viewport",
+                    )
+                    dispatcher.dispatch(
+                        SetImageDisplayRectAction(rect=new_rect),
+                        scope="viewport",
+                    )
+            else:
+                dispatcher.dispatch(
+                    SetPixmapDimensionsAction(width=scaled_w, height=scaled_h),
+                    scope="viewport",
+                )
+                dispatcher.dispatch(
+                    SetImageDisplayRectAction(rect=new_rect),
+                    scope="viewport",
+                )
+            _preview_log(
+                "geometry: comparison rect updated to %dx%d (sizes from %s)",
+                scaled_w,
+                scaled_h,
+                "unified stores"
+                if (src_resize1 is not None or src_resize2 is not None)
+                else "sources/previews",
+            )
+            return
+    except Exception:
+        pass
+    # Fallback for test fakes without dispatcher
     geometry.pixmap_width = scaled_w
     geometry.pixmap_height = scaled_h
     if getattr(geometry, "image_display_rect_on_label", None) != new_rect:
@@ -668,6 +707,65 @@ def update_comparison_if_needed(presenter):
                     _picked is _cand_preview if _cand_preview is not None else False,
                 )
             render_img1, render_img2 = img1, img2
+            # Second geometry pass from the *picked* display pair: source sizes
+            # (used in the early _update_comparison_geometry) can be mixed-tier
+            # (store vs preview) while picked is preview vs preview, so the
+            # pair-fit rect there is stale until unify (~400ms). Re-derive from
+            # the actual picked sizes so letterbox/content_rect converge with
+            # display_cache_key, not the lagging source_key (path,uid_store,size).
+            try:
+                _ps1 = _size_or_none(render_img1)
+                _ps2 = _size_or_none(render_img2)
+                if _ps1 or _ps2:
+                    def _picked_fit_scale(w: int, h: int) -> float:
+                        return min(label_width / w, label_height / h)
+
+                    if _ps1 and _ps2:
+                        _pw1, _ph1 = _ps1
+                        _pw2, _ph2 = _ps2
+                        _sc_p = min(_picked_fit_scale(_pw1, _ph1), _picked_fit_scale(_pw2, _ph2))
+                        _sw_p = max(1, int(_pw1 * _sc_p))
+                        _sh_p = max(1, int(_ph1 * _sc_p))
+                    elif _ps1:
+                        _pw1, _ph1 = _ps1
+                        _sc_p = _picked_fit_scale(_pw1, _ph1)
+                        _sw_p = max(1, int(_pw1 * _sc_p))
+                        _sh_p = max(1, int(_ph1 * _sc_p))
+                    else:
+                        _pw2, _ph2 = _ps2  # type: ignore[possibly-undefined]
+                        _sc_p = _picked_fit_scale(_pw2, _ph2)
+                        _sw_p = max(1, int(_pw2 * _sc_p))
+                        _sh_p = max(1, int(_ph2 * _sc_p))
+                    _new_rect_p = Rect((label_width - _sw_p) // 2, (label_height - _sh_p) // 2, _sw_p, _sh_p)
+                    _geom_p = presenter.store.viewport.geometry_state
+                    _needs_p = not (
+                        getattr(_geom_p, "pixmap_width", None) == _sw_p
+                        and getattr(_geom_p, "pixmap_height", None) == _sh_p
+                        and getattr(_geom_p, "image_display_rect_on_label", None) == _new_rect_p
+                    )
+                    if _needs_p:
+                        _disp_p = getattr(presenter.store, "get_dispatcher", lambda: None)()
+                        if _disp_p is not None:
+                            from core.state_management.geometry_actions import (
+                                SetImageDisplayRectAction as _SetRect,
+                                SetPixmapDimensionsAction as _SetDims,
+                            )
+
+                            _batch_p = getattr(presenter.store, "batch_changes", None)
+                            if callable(_batch_p):
+                                with presenter.store.batch_changes():
+                                    _disp_p.dispatch(_SetDims(width=_sw_p, height=_sh_p), scope="viewport")
+                                    _disp_p.dispatch(_SetRect(rect=_new_rect_p), scope="viewport")
+                            else:
+                                _disp_p.dispatch(_SetDims(width=_sw_p, height=_sh_p), scope="viewport")
+                                _disp_p.dispatch(_SetRect(rect=_new_rect_p), scope="viewport")
+                        else:
+                            _geom_p.pixmap_width = _sw_p
+                            _geom_p.pixmap_height = _sh_p
+                            if getattr(_geom_p, "image_display_rect_on_label", None) != _new_rect_p:
+                                _geom_p.image_display_rect_on_label = _new_rect_p
+            except Exception:
+                pass
 
             # [ic-gap] mixed-tier risk during unification: store vs preview on same frame -> letterbox mismatch
             if _gap_enabled():

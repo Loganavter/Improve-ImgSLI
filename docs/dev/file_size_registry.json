@@ -80,8 +80,19 @@
       }
     },
     {
+      "path": "src/shared/image_processing/autocrop_service.py",
+      "lines": 74,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=collaborator reason=\"owns _crop_box_cache state, single bbox per path\"",
+      "parsed": {
+        "pattern": "collaborator",
+        "reason": "owns _crop_box_cache state, single bbox per path"
+      }
+    },
+    {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 993,
+      "lines": 998,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -231,7 +242,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 589,
+      "lines": 598,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -366,7 +377,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/loading.py",
-      "lines": 1016,
+      "lines": 972,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",

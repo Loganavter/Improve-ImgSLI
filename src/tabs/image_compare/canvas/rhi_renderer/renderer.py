@@ -469,7 +469,34 @@ class RhiCanvasRenderer:
         self._fallback_more_pending_snapshot = main_more_pending
         fallback_diag: dict[str, int] = {}
         # Fast path: promotion without fallback — avoid closure alloc per frame
+        # Guard: sliver-contaminated plan (float seam 0.00078) reports
+        # coverage healthy but is visually gapped. If >50% of bboxes are
+        # narrow (<0.001), treat as not ready — don't promote on
+        # more_pending=False, fall through to fallback/keep old baseline.
+        _narrow_blocked = False
         if not main_more_pending and current_array_plan:
+            try:
+                _narrow_cnt = sum(
+                    1
+                    for _it in current_array_plan
+                    if _it.bbox[2] < 0.001 or _it.bbox[3] < 0.001
+                )
+                if _narrow_cnt / len(current_array_plan) > 0.5:
+                    _narrow_blocked = True
+                    if _gap_enabled():
+                        try:
+                            _gap_log(
+                                "gap promotion_blocked narrow=%d/%d ratio=%.2f entries=%d more_pending=False",
+                                _narrow_cnt,
+                                len(current_array_plan),
+                                _narrow_cnt / len(current_array_plan),
+                                len(current_array_plan),
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                _narrow_blocked = False
+        if not main_more_pending and current_array_plan and not _narrow_blocked:
             new_last_good_key, array_draw_plan = key, current_array_plan
         else:
 
