@@ -67,8 +67,37 @@ def _update_comparison_geometry(
     """
     src_resize1 = presenter.store.viewport.session_data.image_state.image1
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
-    size1 = _size_or_none(src_resize1) or _size_or_none(source1)
-    size2 = _size_or_none(src_resize2) or _size_or_none(source2)
+    # Use final store size for geometry even while preview is shown, to keep
+    # letterbox stable (1017 preview vs 2797 store have same crop, but 1017
+    # would give bboxes 0.31/0.001 vs 0.104/0.104 jump). Preview is fast (2s)
+    # but geometry must be from final 2797, not 1017.
+    def _expected_final_size(source, path):
+        # If source is QImage preview, look up cached crop box for final store
+        if source is None or path is None:
+            return None
+        try:
+            from PySide6.QtGui import QImage
+
+            if isinstance(source, QImage):
+                # Preview QImage 1017 is downscaled 2797, but final store is 2797
+                # Use cached box size (2797) for geometry
+                from shared.image_processing.tiled_pixel_store import get_cached_crop_box
+
+                box = get_cached_crop_box(path, threshold=15)
+                if box is not None:
+                    left, top, right, bottom = box
+                    return (right - left, bottom - top)
+                # Fallback: preview size scaled back to original via cached ratio
+                # If no cached box, use preview size itself
+        except Exception:
+            pass
+        return _size_or_none(source)
+
+    _doc = presenter.store.get_session_state_slot("document")
+    _path1 = getattr(_doc, "image1_path", None) if _doc else None
+    _path2 = getattr(_doc, "image2_path", None) if _doc else None
+    size1 = _size_or_none(src_resize1) or _expected_final_size(source1, _path1) or _size_or_none(source1)
+    size2 = _size_or_none(src_resize2) or _expected_final_size(source2, _path2) or _size_or_none(source2)
 
     def _fit_scale(w: int, h: int) -> float:
         return min(label_width / w, label_height / h)
@@ -388,22 +417,15 @@ def update_comparison_if_needed(presenter):
         False,
     ):
         if presenter.store.viewport.session_data.image_state.image1 is None:
-            # Wait for unified stores — showing preview/full (1017+764) for
-            # ~0.2s then jumping to unified 2796/2791 causes the huge
-            # bboxes jump 0.001→0.104 and the stripe re-appearance that the
-            # user reported as "прыгает разница". Defer until image_state
-            # ready so the first paint after the second image is already
-            # unified (no intermediate 764).
+            if source1 is None or source2 is None:
+                _preview_log(
+                    "update: deferred - unification in progress, image1 not ready"
+                )
+                return False
             _preview_log(
-                "update: deferred - unification in progress, image_state not ready (wait for unified)"
+                "update: unification in progress but both document sources ready - proceeding with preview/full_res (image_state not yet ready)"
             )
-            return False
 
-    # Geometry must be computed from the same sources that will actually be
-    # displayed. Computing it before the above defer would letterbox to the
-    # preview size (1017+764) and then jump to unified (2796/2791) on the next
-    # frame. Deferring the update keeps the previous comparison's rect until
-    # the unified pair is ready, so the flip is atomic.
     _update_comparison_geometry(
         presenter, source1, source2, label_width, label_height
     )
