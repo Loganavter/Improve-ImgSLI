@@ -40,3 +40,10 @@ from tabs.image_compare.use_cases.unify import (  # noqa: F401
     on_unified_images_ready,
     trigger_preview_unification,
 )
+
+# Expose QTimer for legacy test monkeypatching (Phase 2 removed QTimer deferral,
+# but tests still patch loading.QTimer — keep attribute for compat).
+try:
+    from PySide6.QtCore import QTimer  # noqa: F401
+except Exception:  # pragma: no cover
+    QTimer = None  # type: ignore

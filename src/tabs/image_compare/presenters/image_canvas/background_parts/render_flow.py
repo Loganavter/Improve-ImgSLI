@@ -550,9 +550,12 @@ def update_comparison_if_needed(presenter):
         # If the other list already has content (user browsing / reload),
         # keep the old live-half behaviour.
         global _last_one_side_log_sig
-        other_list_empty = (
-            len(_document.image_list2) == 0 if have1 else len(_document.image_list1) == 0
-        )
+        try:
+            other_list_empty = (
+                len(_document.image_list2) == 0 if have1 else len(_document.image_list1) == 0
+            )
+        except AttributeError:
+            other_list_empty = False
         # Path exists but pixels not yet ready → second side is on its way
         # (02:37:44.236 paths=sample1/sample2 but source2 still None). Wait
         # instead of painting left-on-both.
