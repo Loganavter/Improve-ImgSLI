@@ -23,13 +23,6 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:
-    from tabs.image_compare.use_cases import loading as _loading
-
-    # Delegate to loading.set_current_image via controller path to avoid cycle.
-    # Keep logic here to avoid re-import duplication.
-    # We call _loading.ensure_current_slot's original body by direct store check
-    # to avoid recursion.
-    # To keep this module self-contained, re-implement directly:
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return False
@@ -41,13 +34,16 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
         return False
     item = lst[idx]
     stale = path != item.path or (getattr(full, "is_open", None) is not None and not full.is_open)
-    if stale or force_refresh:
-        try:
-            controller.set_current_image(image_number, force_refresh=force_refresh)
-        except Exception:
-            pass
-        return True
-    return False
+    # force_refresh is for undo/redo where snapshot may hold closed store;
+    # healthy (stale==False, is_open True) must stay untouched — see
+    # test_resync_leaves_healthy_slot_untouched. Don't force reload healthy.
+    if not stale:
+        return False
+    try:
+        controller.set_current_image(image_number, force_refresh=force_refresh)
+    except Exception:
+        pass
+    return True
 
 
 def handle_full_image_loaded(controller, full_img, path, image_number, index_in_list):
@@ -356,8 +352,38 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
     if pil_img is None and path:
+        # Single-flight: 4 parallel DnD / resync calls for same (slot,path)
+        # while first worker is in flight must not start 4 decodes (2026-08-30
+        # log: 4× from_path + 7× autocrop). Use controller._pending_image_loads
+        # (proxied to ImageSession) as in-flight set.
+        pending = getattr(controller, "_pending_image_loads", None)
+        key = (int(image_number), str(path))
+        if pending is not None:
+            if key in pending:
+                if emit_signal:
+                    controller.store.emit_state_change("document")
+                return
+            pending.add(key)
+
+            def _clear():
+                try:
+                    pending.discard(key)
+                except Exception:
+                    pass
+        else:
+
+            def _clear():  # type: ignore[no-redef]
+                pass
+
         worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
         worker.signals.result.connect(controller._on_image_loaded_from_worker)
+        # finished fires on both success and error; result also clears so
+        # slot can reload after failure.
+        try:
+            worker.signals.finished.connect(_clear)
+        except Exception:
+            pass
+        worker.signals.result.connect(lambda *_a, _c=_clear: _c())
         controller.thread_pool.start(worker)
     else:
         controller._trigger_preview_unification(image_number)
