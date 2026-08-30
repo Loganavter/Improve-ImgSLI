@@ -57,10 +57,23 @@ def resolve_lod_texture_keys(
     # thus grid dimensions) identical whenever they'd otherwise want the
     # same level (the common case, since compared images are unified to
     # matching sizes/letterboxes).
-    ready_pyramids = [p for p in pyramids if p is not None]
-    shared_level_count = (
-        min(p.level_count for p in ready_pyramids) if ready_pyramids else 0
-    )
+    # While one side's pyramid is still building (or the side is a
+    # preview QImage with no pyramid at all) the two sides' grids differ:
+    # bare 2796 is 6×5 tiles, LevelKey(1) 1398 is 3×3, preview is 1×1.
+    # _to_common_space/bbox then collapses to a 0.001 sliver even though
+    # each side's own rect coverage is 1.0, producing a blank middle strip.
+    # Keep both sides at level 0 until every TiledPixelStore side has a
+    # pyramid, so fallback-LOD's atomic hold keeps the old matched content
+    # instead of promoting a mismatched-grid plan.
+    tiled_sources = [s for s in sources if isinstance(s, TiledPixelStore)]
+    tiled_pyramids = [pyramid_for(s) for s in tiled_sources]
+    if tiled_sources and any(p is None for p in tiled_pyramids):
+        shared_level_count = 0
+    else:
+        ready_pyramids = [p for p in tiled_pyramids if p is not None]
+        shared_level_count = (
+            min(p.level_count for p in ready_pyramids) if ready_pyramids else 0
+        )
     resolved = []
     for key, letterbox, source, pyramid in zip(
         texture_keys, letterboxes, sources, pyramids
