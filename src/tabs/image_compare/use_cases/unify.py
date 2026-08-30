@@ -124,6 +124,31 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_batch_update(["file_names", "resolution"])
+    # Single-slot pairing: unify never runs, so close the loading toast here
+    # (otherwise it hangs forever — see test_single_slot_loading_toast_finishes).
+    document = controller.store.get_session_state_slot("document")
+    if document is not None:
+        s1 = document.full_res_image1 or document.preview_image1
+        s2 = document.full_res_image2 or document.preview_image2
+        # If exactly one side has an image and the other slot is empty (no path),
+        # finish the toast for the side that just loaded.
+        # But don't finish while the slot's own full-res decode is still pending
+        # (preview-only, _pending_full_loads >0) — that would close prematurily.
+        try:
+            from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
+        except Exception:
+            finish_toast_for_unpaired_slot = None  # type: ignore
+        if finish_toast_for_unpaired_slot is not None:
+            if (s1 and not s2) or (s2 and not s1):
+                pending = getattr(controller, "_pending_full_loads", None)
+                # If the triggering slot still has a full-res decode pending, wait.
+                if pending is not None and pending.get(image_number, 0) > 0:
+                    pass
+                else:
+                    try:
+                        finish_toast_for_unpaired_slot(controller, document, image_number)
+                    except Exception:
+                        pass
     ensure_unification(controller)
 
 

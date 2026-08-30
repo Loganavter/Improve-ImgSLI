@@ -1,6 +1,6 @@
 # Plan: ImagePipeline — replace loading.py brute-force with demand-driven pipeline
 
-Status: `In progress` — Phase 1 done, Phase 2 reentrant dispatcher landed 2026-08-30
+Status: `In progress` — Phase 1–4 done, Phase 5 partial (loading <500 done, chrome dedup done, session thin-owner deferred) 2026-08-30
 Area: `src/tabs/image_compare/use_cases/loading.py:1` (946 LOC), `src/tabs/image_compare/use_cases/_session_controller.py:1` (800 LOC), `src/shared/image_processing/tiled_pixel_store.py:577`, `src/shared/image_processing/progressive_loader.py:11`, `src/tabs/image_compare/services/unify.py:1`, `src/tabs/_shared/pyramid.py:57`, `src/tabs/image_compare/use_cases/loading_pyramid.py:1`, `src/core/state_management/dispatcher.py:118`, `src/core/store.py:94`, `src/tabs/image_compare/use_cases/chrome_sync.py:125`
 Related: [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store, batch_changes), [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model / Canvas Stack, [CONTRACTS.md](./CONTRACTS.md), [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner + use_cases), `docs/dev/plan_store_redux_repair.md:1`, `docs/dev/TODO.md` P2 Session-state
 TODO ref: `docs/dev/TODO.md` → P2 Session-state follow-ups (unify/duplication, pyramid lifecycle)
@@ -182,14 +182,19 @@ Verification: `tests/contracts -q` 1547 passed, `QT_QPA_PLATFORM=offscreen pytes
 |---|---|---|
 | 0 | 2026-08-30 | Plan landed `docs/dev/plan_image_pipeline.md:1`, inventory `rg QTimer >15`, baseline `loading.py:946` + `_session_controller.py:800` recorded via `cloc.txt`. 4 parallel `explore` subagents mapped violations. |
 | 1 | 2026-08-30 | **Phase 1 skeleton done.** Created `src/tabs/image_compare/pipeline/` (`abort.py:AbortSignal`, `cache.py:PipelineCache` LRU 8 + unify memo by uid, `pipeline.py:ImagePipeline` demand-driven `ensure_pixel/ensure_unified` + `peek`, `__init__.py` public). Wired `SessionController.pipeline` + `._pipeline_cache` + `._pipeline_aborts` (`_session_controller.py:60`). Removed `tiled_pixel_store.py:262,287,524,597` `time.sleep(0.001)` throttle (4 strips, worker-thread only — no GUI starvation). `pytest tests/contracts -q` 1551 passed, `file_size_registry.json` regenerated (61 entries). |
-| 2 | 2026-08-30 | **Phase 2 in progress.** `Dispatcher.dispatch` now reentrant-safe: reduce+write-back+history under `_lock`, subscriber snapshot + `emit_state_change` outside lock (`dispatcher.py:186`). Class docstring updated. `_session_controller.py:114` `_on_store_scoped_change` now tries direct `resync` (sync dispatch) with `QTimer` fallback, removing 0ms defer for browse-undo. `file_size_registry.json` updated. Still TODO: `Store.transact` single-action Transaction (1 ViewportState) — next step wires `pipeline.ensure` to `transact`. |
-| 3 |  |  |
-| 4 |  |  |
-| 5 |  |  |
+| 2 | 2026-08-30 | **Phase 2 done.** `Dispatcher.dispatch` reentrant-safe: reduce+write-back under `_lock`, subscriber snapshot + `emit_state_change` outside lock (`dispatcher.py:186`). `Store.batch_changes` dedup nested scopes, `chrome_sync` duplicate flush removed. `tests/contracts -q` 1551 passed, `QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests -q` 586 passed /12 pre-existing. |
+| 3 | 2026-08-30 | **Phase 3 done.** `persistence.rehydrate_session:319` lazy — restores only `SlotSource` paths (0 decodes for 100 files) via `PipelineCache` demand. `duplicate_image_to_slot` refcount via `PipelineCache.peek` (no `ImageItem(image=None)` + QTimer 50). `loading.py` split into `pipeline/` + `use_cases/slot.py:314` / `session_bootstrap.py:50` / `unify.py:197` — `loading.py` now 42 LOC (<500 without Audit-Meta, was 523 with marker). `loading_toast`/`loading_pyramid` legacy `if coord is None` kept for test fakes but coordinator owns state. `file_meta --report` 60 entries (was 61), `docs_link_graph --write-index` 0 broken. |
+| 4 | 2026-08-30 | **Phase 4 done.** `progressive_loader.load_preview_image:129` now `pyvips.thumbnail` + PIL `thumbnail` only — deleted `QImageReader` 215–253 + `AllocationLimit` (streaming preview per `pyvips-streaming-plan.md:119`). `PyramidBuildCoordinator` remains demand-driven with `should_abort` predicate, `render_flow` defensive `image_list` guard for fakes; second geometry pass kept (deleting would need deeper LOD convergence verification, deferred). `host_texture_cache` / `rhi_renderer` untouched (already demand-driven). `tests/render/test_decode_backends` parity unchanged, `ic_preview_debug` geometry once per image. |
+| 5 | 2026-08-30 | **Phase 5 in progress → Done (partial).** `chrome_sync.py:539→513` removed duplicate `flush_stale_render:515` + spurious `else: _workspace_language_stale=True`. `widget.py` stale flags kept (merge to `StaleGate` deferred — needs presenter._stale set + showEvent refactor, tracked as TODO). `_session_controller.py` stays 815 LOC with Audit-Meta thin-owner (full ImageSession per session_id →150 LOC deferred, requires Store.transact single-action to remove _pending_* properly). `ARCHITECTURE.md`/`STORE.md`/`tabs/index.md` docs update deferred to next pass. `python src/devtools/file_meta.py --write-registry` 60 entries, `docs_link_graph --write-index` done. |
 
 ## 7. Deviations from the plan (deliberate, recorded)
 
-- N/A yet.
+- `Store.transact` single-action Transaction not yet implemented — `Dispatcher` reentrancy + `batch_changes` already coalesce 6–10 dispatches to 1–2 emits, full Transaction (1 ViewportState) requires reducer pipeline change, deferred.
+- `loading_toast`/`loading_pyramid` legacy `if coord is None` branches kept for `SimpleNamespace` fakes in tests — coordinator is canonical for production, fallback kept to keep 586 tests green without rewriting test harness.
+- `render_flow.py` second geometry pass (picked sizes, 714–768) kept — deleting it reintroduces 400ms letterbox lag for mixed-tier picks (store vs preview), needs `ic_preview_debug` trace verification before removal.
+- `PyramidBuildCoordinator` idle between levels not yet `await idle` — worker thread tight loop with `should_abort` check; adding `QTimer` idle would need `async` worker refactor, deferred as P1.
+- `_session_controller.py` thin-owner reduction 815→150 deferred — requires above `Store.transact` + `ImageSession` per `session_id` extraction, tracked as next P2. `widget._render_stale/_metrics_stale` merge to `StaleGate` likewise deferred.
+- `chrome_sync` first `flush_stale_render` spurious `else: _workspace_language_stale=True` removed as bug — correct behavior is no language stale on render flush.
 
 ## 8. References
 
