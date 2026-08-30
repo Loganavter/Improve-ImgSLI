@@ -478,11 +478,11 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
 
     src_box = None
     if auto_crop:
-        # Single source of truth: one bbox per path via PIL 1024 probe,
-        # reused for both preview and full. This removes vips-vs-PIL
-        # desync that made 768 full→768 but preview→764.
+        # Single source: centralized service (thr15→thr30 on 1024 probe)
         try:
-            src_box = get_cached_crop_box(path_str, threshold=15)
+            from shared.image_processing.autocrop_service import get_crop_box
+
+            src_box = get_crop_box(path_str)
         except Exception as e:
             logger.debug("cached crop box failed for %s: %s", path_str, e)
             src_box = None
@@ -669,7 +669,11 @@ class TiledPixelStore:
             src_h, src_w = int(arr.shape[0]), int(arr.shape[1])
             if auto_crop:
                 try:
-                    src_box = get_cached_crop_box(path_str, threshold=15)
+                    from shared.image_processing.autocrop_service import get_crop_box
+
+                    src_box = get_crop_box(path_str)
+                    if src_box is None:
+                        src_box = _auto_crop_box_from_ndarray(arr)
                 except Exception:
                     src_box = _auto_crop_box_from_ndarray(arr) if auto_crop else None
             else:
@@ -702,8 +706,9 @@ class TiledPixelStore:
         rgba = decoded if decoded.mode == "RGBA" else decoded.convert("RGBA")
         if auto_crop:
             try:
-                src_box = get_cached_crop_box(path_str, threshold=15)
-                # Fallback to direct probe if cache missed for newly decoded PIL
+                from shared.image_processing.autocrop_service import get_crop_box
+
+                src_box = get_crop_box(path_str)
                 if src_box is None:
                     src_box = _auto_crop_box_scaled(rgba)
             except Exception:
