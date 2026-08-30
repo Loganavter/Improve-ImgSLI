@@ -870,56 +870,12 @@ def on_unified_images_ready(controller, result):
             controller.metrics_service.on_metrics_calculated(None)
             return
 
-        # Post-unify re-crop: 764→2797 Lanczos up-scale can re-introduce a
-        # dark edge that thr=15 misses (2797 thr15→None, thr30→2791). The
-        # first frame (764) was correctly cropped, the next two frames
-        # (2797 unified) showed stripes again. Re-trim unified stores.
-        try:
-            should_crop = getattr(controller.store.settings, "auto_crop_black_borders", True)
-            if should_crop:
-                from PIL import Image as _PILImage
-
-                from shared.image_processing.resize import get_auto_crop_box
-                from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
-
-                def _recrop(store):
-                    if store is None or not isinstance(store, _TPS):
-                        return store
-                    try:
-                        # Convert to PIL for bbox probe (downscaled probe inside
-                        # get_auto_crop_box is cheap for 2797)
-                        arr = store._memmap[:, :, :3] if hasattr(store, "_memmap") and store._memmap is not None else None
-                        if arr is None:
-                            return store
-                        pil = _PILImage.fromarray(arr.copy())
-                        # Try thr 15 first, then 30 for resampled edge
-                        box = get_auto_crop_box(pil, threshold=15)
-                        if box is None:
-                            box = get_auto_crop_box(pil, threshold=30)
-                        if box is None or box == (0, 0, pil.width, pil.height):
-                            return store
-                        left, top, right, bottom = box
-                        # Crop via PIL then back to TiledPixelStore
-                        cropped_pil = pil.crop(box)
-                        # Use from_pil to create new store (owns_file, no auto-crop needed)
-                        new_store = _TPS.from_pil(cropped_pil)
-                        try:
-                            from shared.image_processing.tiled_pixel_store import close_pixel_store
-
-                            close_pixel_store(store)
-                        except Exception:
-                            pass
-                        return new_store
-                    except Exception as e:
-                        logger.debug("post-unify recrop failed: %s", e)
-                        return store
-
-                # Only recrop if the unified size still contains border
-                # (check via PIL, cheap for 2797)
-                u1 = _recrop(u1)
-                u2 = _recrop(u2)
-        except Exception:
-            pass
+        # Centralized auto-crop: bbox is applied at load stage via
+        # autocrop_service.get_crop_box (thr15→thr30 on 1024 probe). Unified
+        # size via unify_pair(max(cropped)) is final — no post-unify mutation.
+        # The old recrop mutated 2797→2791 after letterbox/pyramid were built,
+        # causing narrow bbox slivers. If a Lanczos edge reappears, the thr30
+        # fallback on next load (service) will catch it without resizing here.
 
         _on_ready_dispatcher = getattr(controller.store, "get_dispatcher", None)
         _on_ready_dispatcher = _on_ready_dispatcher() if callable(_on_ready_dispatcher) else None

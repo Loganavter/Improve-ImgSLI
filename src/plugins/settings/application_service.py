@@ -286,6 +286,14 @@ class SettingsApplicationService(QObject):
             != data.auto_crop_black_borders
         ):
             dispatcher.dispatch(SetAutoCropBlackBordersAction(data.auto_crop_black_borders))
+            # Centralized cache in autocrop_service — stale bbox per path would
+            # otherwise survive the toggle (e.g. OFF→ON after file changed).
+            try:
+                from shared.image_processing.autocrop_service import invalidate_all
+
+                invalidate_all()
+            except Exception:
+                pass
 
         if getattr(self.store.settings, "ui_mode", "beginner") != data.ui_mode:
             dispatcher.dispatch(SetUIModeAction(data.ui_mode))

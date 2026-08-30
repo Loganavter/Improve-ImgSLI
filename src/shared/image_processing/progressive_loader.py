@@ -165,7 +165,14 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
 
             preview = img.convert("RGBA")
             if auto_crop:
-                preview = crop_black_borders(preview)
+                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+
+                orig_box = get_crop_box(image_path)
+                scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), preview.size)
+                if scaled is not None:
+                    preview = preview.crop(scaled)
+                else:
+                    preview = crop_black_borders(preview)
             
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
@@ -184,15 +191,24 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
 
                 if scale >= 1.0:
                     preview = img.copy().convert("RGBA")
+                    new_width, new_height = preview.size
                 else:
                     new_width = int(original_width * scale)
                     new_height = int(original_height * scale)
                     preview = img.copy()
                     preview.thumbnail((new_width, new_height), Image.Resampling.BILINEAR)
                     preview = preview.convert("RGBA")
+                    new_width, new_height = preview.size
 
                 if auto_crop:
-                    preview = crop_black_borders(preview)
+                    from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+
+                    orig_box = get_crop_box(image_path)
+                    scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), (new_width, new_height))
+                    if scaled is not None:
+                        preview = preview.crop(scaled)
+                    else:
+                        preview = crop_black_borders(preview)
                 from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
                 return qimage_from_pixel_source(preview)
 
@@ -216,11 +232,23 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
             qimg = qimg.convertToFormat(QImage.Format.Format_RGBA8888)
             
             if auto_crop:
-                pil_probe = Image.frombytes("RGBA", (qimg.width(), qimg.height()), qimg.bits())
-                from shared.image_processing.resize import get_auto_crop_box
-                bbox = get_auto_crop_box(pil_probe, 15)
-                if bbox is not None:
-                    qimg = qimg.copy(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1])
+                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
+
+                # Use single source of truth: original bbox scaled to thumb
+                orig_w, orig_h = original_width, original_height
+                thumb_w, thumb_h = qimg.width(), qimg.height()
+                orig_box = get_crop_box(image_path)
+                scaled = get_scaled_box_for_thumb(orig_box, (orig_w, orig_h), (thumb_w, thumb_h))
+                if scaled is not None:
+                    l, t, r, b = scaled
+                    qimg = qimg.copy(l, t, r - l, b - t)
+                else:
+                    # Fallback to direct probe on thumb (old behavior)
+                    pil_probe = Image.frombytes("RGBA", (qimg.width(), qimg.height()), qimg.bits())
+                    from shared.image_processing.resize import get_auto_crop_box
+                    bbox = get_auto_crop_box(pil_probe, 15)
+                    if bbox is not None:
+                        qimg = qimg.copy(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1])
             
             return qimg
         else:
@@ -261,29 +289,21 @@ def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | No
             arr[:, :, :3] = rgb
             arr[:, :, 3] = 255
         if auto_crop:
-            # Use single source of truth: cached box from original, scaled to thumb
+            # Use single source of truth: cached box from original, scaled to thumb (thr15→thr30)
             try:
-                orig_box = get_cached_crop_box(image_path, threshold=15)
-                if orig_box is not None:
-                    # thumb is DOWN-scaled original, so scale box
-                    import os as _os
+                from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
 
-                    # Get original dims via PIL for scaling (cheap, cached)
+                orig_box = get_crop_box(image_path)
+                if orig_box is not None:
                     from PIL import Image as _PILImage
 
                     with _PILImage.open(image_path) as _im:
                         orig_w, orig_h = _im.size
-                    scale_w = thumb.width / orig_w if orig_w else 1.0
-                    scale_h = thumb.height / orig_h if orig_h else 1.0
-                    l, t, r, b = orig_box
-                    left = max(0, int(round(l * scale_w)))
-                    top = max(0, int(round(t * scale_h)))
-                    right = min(thumb.width, max(left + 1, int(round(r * scale_w))))
-                    bottom = min(thumb.height, max(top + 1, int(round(b * scale_h))))
-                    if (left, top, right, bottom) != (0, 0, thumb.width, thumb.height):
-                        arr = arr[top:bottom, left:right]
+                    scaled = get_scaled_box_for_thumb(orig_box, (orig_w, orig_h), (thumb.width, thumb.height))
+                    if scaled is not None:
+                        l, t, r, b = scaled
+                        arr = arr[t:b, l:r]
                 else:
-                    # Fallback to direct probe if cache missed (e.g. JXL)
                     from shared.image_processing.tiled_pixel_store import _auto_crop_box_from_ndarray
 
                     box = _auto_crop_box_from_ndarray(arr)
