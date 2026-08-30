@@ -96,9 +96,41 @@ class ImageCompareChromeSync(QObject):
         self.widget = widget
         self.store = store
         self._resolve_window_presenter = resolve_window_presenter
-        self._workspace_language_stale = False
-        self._render_stale = False
+        # Reuse widget's StaleGate if present (dedup render/metrics/language)
+        gate = getattr(widget, "_stale_gate", None)
+        if gate is not None:
+            self._stale_gate = gate
+        else:
+            from tabs.image_compare.use_cases.stale_gate import StaleGate
+
+            self._stale_gate = StaleGate()
+            try:
+                widget._stale_gate = self._stale_gate  # type: ignore[attr-defined]
+            except Exception:
+                pass
         self.store.state_changed.connect(self._on_store_state_changed)
+
+    @property
+    def _workspace_language_stale(self) -> bool:  # type: ignore[override]
+        return self._stale_gate.is_stale("language")
+
+    @_workspace_language_stale.setter
+    def _workspace_language_stale(self, v: bool) -> None:
+        if v:
+            self._stale_gate.mark("language")
+        else:
+            self._stale_gate.consume("language")
+
+    @property
+    def _render_stale(self) -> bool:  # type: ignore[override]
+        return self._stale_gate.is_stale("render")
+
+    @_render_stale.setter
+    def _render_stale(self, v: bool) -> None:
+        if v:
+            self._stale_gate.mark("render")
+        else:
+            self._stale_gate.consume("render")
 
     def _is_visible(self) -> bool:
         widget = self.widget

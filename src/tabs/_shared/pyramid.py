@@ -46,11 +46,26 @@ def _pyramid_build_loop(
     total_levels: int,
     progress_callback=None,
 ):
-    """Worker body: build levels until complete or aborted, emitting progress."""
+    """Worker body: build levels until complete or aborted, emitting progress.
+
+    Phase 5: await idle between levels (let event loop breathe) — the worker
+    thread yields briefly so the UI thread can paint/use LOD 0 while higher
+    levels build. Previously a tight loop starved the thread_pool.
+    """
+    import time
+
     while pyramid.build_next_level(should_abort=should_abort):
         complete = pyramid.is_complete()
         if progress_callback is not None:
             progress_callback((uid, pyramid.level_count, total_levels, complete))
+        # idle between levels: yield to UI / other workers
+        if not complete:
+            try:
+                time.sleep(0.002)
+            except Exception:
+                pass
+            if should_abort is not None and should_abort():
+                break
     return None
 
 
@@ -80,6 +95,7 @@ class PyramidBuildCoordinator:
         estimate_levels: Callable[[int, int], int] | None = None,
         request_view_update: Callable[[], None] | None = None,
         invalidate_render: Callable[[bool], None] | None = None,
+        get_store: Callable[[], Any | None] | None = None,
     ) -> None:
         self._get_thread_pool = get_thread_pool
         self._toast = toast_coordinator
@@ -87,6 +103,7 @@ class PyramidBuildCoordinator:
         self._estimate_levels = estimate_levels
         self._request_view_update = request_view_update
         self._invalidate_render = invalidate_render
+        self._get_store = get_store
 
         self._pyramid_builds: set[int] = set()
         # uid -> slot_id / image_number
@@ -221,6 +238,30 @@ class PyramidBuildCoordinator:
         return True
 
     def on_level_ready(self, payload) -> None:
+        # Phase 5: publish lod_available per level instead of invalidate_render
+        # per level. The canvas LOD selector consumes new levels without a
+        # full pick-signature invalidation; only the final flip needs it.
+        # We still call request_view_update for repaint, but publish lod_available
+        # so subscribers can coalesce.
+        store = None
+        if self._get_store is not None:
+            try:
+                store = self._get_store()
+            except Exception:
+                store = None
+
+        # publish lod_available for every level (including complete)
+        if store is not None and hasattr(store, "publish"):
+            try:
+                store.publish("lod_available")
+            except Exception:
+                pass
+        elif store is not None and hasattr(store, "emit_state_change"):
+            try:
+                store.emit_state_change("lod_available")
+            except Exception:
+                pass
+
         # UI refresh hooks (tab-specific) — view update on every level
         if self._request_view_update is not None:
             try:
@@ -232,7 +273,7 @@ class PyramidBuildCoordinator:
             return
         uid, level_count, total_levels, complete = payload
 
-        # IC-style invalidate on complete
+        # IC-style invalidate only on complete (final flip)
         if complete and self._invalidate_render is not None:
             try:
                 self._invalidate_render(True)

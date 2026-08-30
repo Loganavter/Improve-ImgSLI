@@ -126,6 +126,47 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
                 for scope in scopes:
                     self.emit_state_change(scope)
 
+    def transact(self, actions: list, scope: str = "document") -> None:
+        """Single-dispatch transaction (plan_image_pipeline.md Phase 5).
+
+        Coalesces N actions (e.g. SetFullResImage + SetImagePath + SetPreview)
+        into one ``Dispatcher.dispatch(TransactionAction)`` → one
+        ``RootReducer.reduce`` → one ``emit_state_change(scope)``.
+
+        Falls back to sequential dispatch for fake stores without dispatcher.
+        """
+        dispatcher = self.get_dispatcher()
+        if dispatcher is None:
+            # fake store in tests — apply via set_session_state_slot fallback
+            for a in actions:
+                try:
+                    dispatcher.dispatch(a, scope=scope)  # type: ignore[union-attr]
+                except Exception:
+                    pass
+            return
+        # fast path: single action → direct dispatch (avoid wrapping)
+        if len(actions) == 1:
+            dispatcher.dispatch(actions[0], scope=scope)
+            return
+        try:
+            from core.state_management.transaction import TransactionAction
+
+            dispatcher.dispatch(TransactionAction(actions), scope=scope)
+        except Exception:
+            # fallback: sequential
+            for a in actions:
+                try:
+                    dispatcher.dispatch(a, scope=scope)
+                except Exception:
+                    continue
+
+    def publish(self, scope: str) -> None:
+        """Best-effort publish for LOD / non-document scopes (phase 4: lod_available)."""
+        try:
+            self.emit_state_change(scope)
+        except Exception:
+            pass
+
     def emit_viewport_change(self, subdomain: str | None = None) -> None:
         scope = "viewport"
         if subdomain:

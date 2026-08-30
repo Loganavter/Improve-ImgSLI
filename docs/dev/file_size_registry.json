@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 815,
+      "lines": 881,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -342,7 +342,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1077,
+      "lines": 1025,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -376,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 511,
+      "lines": 543,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
@@ -388,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/widget.py",
-      "lines": 585,
+      "lines": 616,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"root widget thin owner — delegates to layout/magnifier/chrome_sync\"",

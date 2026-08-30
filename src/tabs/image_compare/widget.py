@@ -35,8 +35,39 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         self._assembled = False
         self._slot_has_image1 = False
         self._slot_has_image2 = False
-        self._render_stale: bool = False
-        self._metrics_stale: bool = False
+        # Phase 5 StaleGate: single set dedup for render/metrics/language
+        from tabs.image_compare.use_cases.stale_gate import StaleGate
+
+        self._stale_gate = StaleGate()
+        # _render_stale / _metrics_stale are now Gate-backed properties (see below);
+        # init via gate to avoid double storage
+        self._stale_gate.clear()
+
+    @property
+    def _render_stale(self) -> bool:  # type: ignore[override]
+        return self._stale_gate.is_stale("render") if hasattr(self, "_stale_gate") else False
+
+    @_render_stale.setter
+    def _render_stale(self, value: bool) -> None:
+        if not hasattr(self, "_stale_gate"):
+            object.__setattr__(self, "_stale_gate", __import__("tabs.image_compare.use_cases.stale_gate", fromlist=["StaleGate"]).StaleGate())
+        if value:
+            self._stale_gate.mark("render")
+        else:
+            self._stale_gate.consume("render")
+
+    @property
+    def _metrics_stale(self) -> bool:  # type: ignore[override]
+        return self._stale_gate.is_stale("metrics") if hasattr(self, "_stale_gate") else False
+
+    @_metrics_stale.setter
+    def _metrics_stale(self, value: bool) -> None:
+        if not hasattr(self, "_stale_gate"):
+            object.__setattr__(self, "_stale_gate", __import__("tabs.image_compare.use_cases.stale_gate", fromlist=["StaleGate"]).StaleGate())
+        if value:
+            self._stale_gate.mark("metrics")
+        else:
+            self._stale_gate.consume("metrics")
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)

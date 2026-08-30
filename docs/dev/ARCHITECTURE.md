@@ -225,6 +225,10 @@ The store is intentionally small at the top level (`core/store.py`).
 | `workspace` | sessions/tabs, active session, per-session state slots |
 | `runtime_cache` | ephemeral, non-persistent GPU/rendering cache (`ViewportRuntimeCache`) |
 
+### Image-compare SlotSource vs PipelineView (Phase 5)
+
+`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(Transaction)` from `PipelineCache` (LRU 8, memo by `(uid1,uid2,method)`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. See `plan_image_pipeline.md` Phase 5.
+
 ### Rules
 
 - Actions are immutable payloads (`core/state_management/*_actions.py`).

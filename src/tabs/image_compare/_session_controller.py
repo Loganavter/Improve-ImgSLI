@@ -92,24 +92,73 @@ class SessionController(QObject):
             toast_coordinator=self._loading_toast_coordinator,
             request_view_update=self._schedule_image_canvas_update,
             invalidate_render=lambda complete: self._invalidate_image_canvas_render_state() if complete else None,
+            get_store=lambda: self.store,
         )
         self._pyramid_builds: set[int] = self._pyramid_coordinator._pyramid_builds
         self._loading_toast_uid_slot: dict[int, int] = self._pyramid_coordinator._pyramid_toast_slot
         # Pipeline — demand-driven decode/unify cache (Phase 1 skeleton, docs/dev/plan_image_pipeline.md)
         from tabs.image_compare.pipeline import AbortSignal, ImagePipeline, PipelineCache
+        from tabs.image_compare.pipeline.session import ImageSession
 
-        self._pipeline_cache = PipelineCache()
-        self.pipeline = ImagePipeline(cache=self._pipeline_cache)
+        # Phase 5: ImageSession per session_id (thin owner). Single default for now;
+        # _sessions dict is ready for multi-session routing via store.get_active_workspace_session().
+        self._image_sessions: dict[str, ImageSession] = {}
+        def _resolve_active_session_id() -> str:
+            try:
+                sess = self.store.get_active_workspace_session()
+                return getattr(sess, "id", "default") or "default"
+            except Exception:
+                return "default"
+        self._resolve_active_session_id = _resolve_active_session_id  # type: ignore[attr-defined]
+        _default_id = _resolve_active_session_id()
+        _default_session = ImageSession(session_id=_default_id)
+        self._image_sessions[_default_id] = _default_session
+        self._pipeline_cache = _default_session.cache
+        self.pipeline = _default_session.pipeline
         self._pipeline_aborts: dict[tuple, AbortSignal] = {}
-        # Slots with a full-resolution decode in flight; unify against a
-        # preview side is deferred while the real pixels are on the way.
-        self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
-        # Image loads via set_current_image() — dedup for the
-        # load_images_from_paths (QTimer 50ms) vs resync (QTimer 0ms) race:
-        # both schedule set_current_image for the same slot/path before the
-        # first worker returns, which would start two TiledPixelStore.from_path
-        # for the same file. Guard by pending (slot, path) set.
-        self._pending_image_loads: set[tuple[int, str]] = set()
+        # Proxy pending guards to ImageSession (per-session)
+        # Keep controller-level attributes as live views for compat
+        self._pending_full_loads: dict[int, int] = _default_session.pending_full_loads
+        self._pending_image_loads: set[tuple[int, str]] = _default_session.pending_image_loads
+        self._image_session = _default_session  # type: ignore[attr-defined]
+
+    @property
+    def _unification_task_id(self) -> int:  # type: ignore[override]
+        sess = getattr(self, "_image_session", None)
+        if sess is not None:
+            return sess.unification_task_id
+        return 0
+
+    @_unification_task_id.setter
+    def _unification_task_id(self, v: int) -> None:
+        sess = getattr(self, "_image_session", None)
+        if sess is not None:
+            sess.unification_task_id = int(v)
+        else:
+            object.__setattr__(self, "_unification_task_id", int(v))
+
+    def _get_image_session(self, session_id: str | None = None):
+        """Return ImageSession for session_id (or active). Creates on demand."""
+        try:
+            sid = session_id or self._resolve_active_session_id()
+        except Exception:
+            sid = session_id or "default"
+        sess = self._image_sessions.get(sid)
+        if sess is None:
+            from tabs.image_compare.pipeline.session import ImageSession
+
+            sess = ImageSession(session_id=sid)
+            self._image_sessions[sid] = sess
+        # keep live proxies pointed at active session (thin owner)
+        try:
+            self._image_session = sess
+            self._pipeline_cache = sess.cache
+            self.pipeline = sess.pipeline
+            self._pending_full_loads = sess.pending_full_loads
+            self._pending_image_loads = sess.pending_image_loads
+        except Exception:
+            pass
+        return sess
         # Undo/redo of browsing (SET_CURRENT_INDEX) restores the index but
         # the slot's pixels can point at a closed store — re-sync on the
         # "document" scope. Deferred to the next loop turn: the emit fires
@@ -146,13 +195,30 @@ class SessionController(QObject):
         is_preview=False,
         is_full_res=False,
     ):
-        dispatcher = self.store.get_dispatcher()
+        # Phase 5: single dispatch Transaction (1 ViewportState / 1 emit)
+        actions = []
         if is_full_res and image is not None:
-            dispatcher.dispatch(SetFullResImageAction(slot=slot_number, image=image))
+            actions.append(SetFullResImageAction(slot=slot_number, image=image))
         if is_preview and image is not None:
-            dispatcher.dispatch(SetPreviewImageAction(slot=slot_number, image=image))
+            actions.append(SetPreviewImageAction(slot=slot_number, image=image))
         if path is not None:
-            dispatcher.dispatch(SetImagePathAction(slot=slot_number, path=path))
+            actions.append(SetImagePathAction(slot=slot_number, path=path))
+        if not actions:
+            if emit:
+                self.store.emit_state_change("document")
+            return
+        # transact coalesces to one Store alloc + one emit
+        try:
+            if hasattr(self.store, "transact"):
+                self.store.transact(actions, scope="document")
+                # transact already emitted; emit flag satisfied
+                return
+        except Exception:
+            pass
+        # fallback sequential (should not happen after Phase 5)
+        dispatcher = self.store.get_dispatcher()
+        for a in actions:
+            dispatcher.dispatch(a, scope="document")
         if emit:
             self.store.emit_state_change("document")
 
