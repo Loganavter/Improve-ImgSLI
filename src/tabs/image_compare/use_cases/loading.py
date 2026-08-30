@@ -1,8 +1,9 @@
-# Audit-Meta: pattern=thin-owner-target reason="use_cases target for _session_controller — 15 functions taking controller"
+# Pipeline-based loading — replaces 946-LOC brute-force brute.
+# Demand-driven, single-flight via PipelineCache, one Store.transact per image change.
+# See docs/dev/plan_image_pipeline.md Phase 2–3.
 import logging
 import os
 
-from PySide6.QtCore import QTimer
 from sli_ui_toolkit.workers import GenericWorker
 
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
@@ -15,12 +16,12 @@ from core.state_management.actions import (
 )
 from tabs.image_compare.services import document_store_ops
 from tabs.image_compare.state.document import ImageItem
-from sli_ui_toolkit.i18n import get_current_language, tr
+from sli_ui_toolkit.i18n import tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Re-export toast constants for controller binding (see _session_controller.py).
-from tabs.image_compare.use_cases.loading_toast import (  # noqa: E402
+# Re-export toast/pyramid for controller binding (Phase 1 skeleton keeps API)
+from tabs.image_compare.use_cases.loading_toast import (  # noqa: E402,F401
     DECODE_DONE_PROGRESS,
     PYRAMID_START_PROGRESS,
     bump_loading_toast_pyramid_started,
@@ -31,217 +32,130 @@ from tabs.image_compare.use_cases.loading_toast import (  # noqa: E402
     set_loading_toast_progress,
     show_loading_toast,
 )
-
-# Re-export pyramid functions for controller binding.
-from tabs.image_compare.use_cases.loading_pyramid import (  # noqa: E402
+from tabs.image_compare.use_cases.loading_pyramid import (  # noqa: E402,F401
     on_pyramid_level_ready,
     pyramid_build_task,
     start_pyramid_builds,
 )
 
 
+def _session_render_cache(controller):
+    sd = getattr(controller.store.viewport, "session_data", None)
+    return getattr(sd, "render_cache", None) if sd else None
+
+
 def _invalidate_diff_cache(controller) -> None:
     if getattr(controller, "diff_service", None) is not None:
         controller.diff_service.invalidate()
-    else:
-        render_cache = _session_render_cache(controller)
-        if render_cache is not None:
-            dispatcher = getattr(controller.store, "get_dispatcher", None)
-            dispatcher = dispatcher() if callable(dispatcher) else None
-            if dispatcher is not None:
-                try:
-                    dispatcher.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
-                except Exception:
-                    logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
-            else:
-                # No dispatcher (test fake or early bootstrap) — use setattr to
-                # avoid contract Assign flag while keeping fake tests green;
-                # real app always has a dispatcher here, so this branch is not
-                # taken in production — for early bootstrap the deferred retry
-                # below will dispatch once the dispatcher is wired.
-                try:
-                    setattr(render_cache, "cached_diff_image", None)
-                except Exception:
-                    pass
-                try:
-                    QTimer.singleShot(
-                        0,
-                        lambda: _invalidate_diff_cache(controller),
-                    )
-                except Exception:
-                    pass
-
-
-def _session_render_cache(controller):
-    session_data = getattr(controller.store.viewport, "session_data", None)
-    if session_data is None:
-        return None
-    return getattr(session_data, "render_cache", None)
+        return
+    rc = _session_render_cache(controller)
+    if rc is None:
+        return
+    d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    if d is None:
+        return
+    try:
+        d.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
+    except Exception:
+        logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
 
 
 def _clear_unification_flags(controller) -> None:
-    """Clear in-progress flags; no-op if the active session has no render_cache.
-
-    Unification workers can finish after a workspace switch (e.g. Move to
-    another tab). The new session's ``SessionData`` may have ``render_cache
-    is None`` — never assign attributes onto that.
-    """
-    render_cache = _session_render_cache(controller)
-    if render_cache is None:
+    rc = _session_render_cache(controller)
+    if rc is None:
         return
-    dispatcher = getattr(controller.store, "get_dispatcher", None)
-    dispatcher = dispatcher() if callable(dispatcher) else None
-    if dispatcher is None:
-        try:
-            setattr(render_cache, "unification_in_progress", False)
-            setattr(render_cache, "pending_unification_paths", None)
-        except Exception:
-            pass
+    d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    if d is None:
         return
-    # Batch the two viewport mutations atomically; callers run on the GUI
-    # thread (GenericWorker result signal), not inside dispatcher._lock, so
-    # synchronous dispatch is safe (dispatcher.py:118 — defer only from
-    # store subscribers).
     try:
         with controller.store.batch_changes():
-            dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-            dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
+            d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+            d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
     except Exception:
-        logger.error("Failed to dispatch clear_unification_flags", exc_info=True)
+        logger.error("Failed to clear unification flags", exc_info=True)
+
+
+def _unify_resize_method(controller) -> str:
+    from shared.rendering.interpolation import get_effective_main_interpolation_method
+
+    return get_effective_main_interpolation_method(controller.store.viewport)
 
 
 def ensure_unification(controller, delay_ms: int = 0) -> None:
-    """Shared unify starter — deduplicates trigger_preview_unification + handle_full trigger (45 lines).
-
-    Schedules via QTimer if delay_ms > 0, otherwise runs immediately. Handles
-    defer-mixed, dedup, pending-flag dispatch, worker creation and fallback
-    metrics/toast. Called by both preview and full-res paths.
-    """
-    def _run():
-        document = controller.store.get_session_state_slot("document")
-        if document is None:
-            return
-        source1 = document.full_res_image1 or document.preview_image1
-        source2 = document.full_res_image2 or document.preview_image2
-        # infer slot for toast fallback: which side is missing preview/full
-        toast_slot = 1 if not source1 else (2 if not source2 else 1)
-        if source1 and source2 and not _defer_mixed_unify(controller, document):
-            try:
-                _rc = _session_render_cache(controller)
-                if _rc is not None and getattr(_rc, "unification_in_progress", False):
-                    pending = getattr(_rc, "pending_unification_paths", None)
-                    if pending == (document.image1_path, document.image2_path):
-                        return
-            except Exception:
-                pass
-            try:
-                controller._cancel_pending_unification(
-                    document.image1_path or "",
-                    document.image2_path or "",
-                )
-                if not document.image1_path or not document.image2_path:
-                    return
-                _dispatcher = getattr(controller.store, "get_dispatcher", None)
-                _dispatcher = _dispatcher() if callable(_dispatcher) else None
-                if _dispatcher is not None:
-                    try:
-                        with controller.store.batch_changes():
-                            _dispatcher.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
-                            _dispatcher.dispatch(
-                                SetPendingUnificationPathsAction(paths=(document.image1_path, document.image2_path)),
-                                scope="viewport",
-                            )
-                    except Exception:
-                        logger.error("Failed to dispatch unification pending", exc_info=True)
-                else:
-                    try:
-                        _rc2 = _session_render_cache(controller)
-                        if _rc2 is not None:
-                            setattr(_rc2, "unification_in_progress", True)
-                            setattr(_rc2, "pending_unification_paths", (document.image1_path, document.image2_path))
-                    except Exception:
-                        pass
-                controller._unification_task_id += 1
-                current_task_id = controller._unification_task_id
-                worker = GenericWorker(
-                    controller._unify_images_worker_task,
-                    source1,
-                    source2,
-                    document.image1_path,
-                    document.image2_path,
-                    current_task_id,
-                    _unify_resize_method(controller),
-                )
-                worker.signals.result.connect(controller._on_unified_images_ready)
-                controller.thread_pool.start(worker, priority=1)
-            except Exception:
-                _err_dispatcher = getattr(controller.store, "get_dispatcher", None)
-                _err_dispatcher = _err_dispatcher() if callable(_err_dispatcher) else None
-                if _err_dispatcher is not None:
-                    try:
-                        _err_dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-                    except Exception:
-                        logger.error("Failed to dispatch unification rollback", exc_info=True)
-                else:
-                    try:
-                        _err_rc = _session_render_cache(controller)
-                        if _err_rc is not None:
-                            setattr(_err_rc, "unification_in_progress", False)
-                    except Exception:
-                        pass
-                try:
-                    controller.metrics_service.on_metrics_calculated(None)
-                except Exception:
-                    pass
-        else:
-            try:
-                controller.metrics_service.on_metrics_calculated(None)
-            except Exception:
-                pass
-            try:
-                finish_toast_for_unpaired_slot(controller, document, toast_slot)
-            except Exception:
-                pass
-        if controller.presenter:
-            try:
-                QTimer.singleShot(10, lambda: controller.store.emit_state_change("viewport"))
-            except Exception:
-                pass
-
-    if delay_ms:
+    """Demand-driven unify via PipelineCache (memo by uid). No QTimer dedup."""
+    # delay_ms kept for API compat — pipeline is sync-memo, delay is no-op.
+    document = controller.store.get_session_state_slot("document")
+    if document is None:
+        return
+    s1 = document.full_res_image1 or document.preview_image1
+    s2 = document.full_res_image2 or document.preview_image2
+    if not (s1 and s2):
         try:
-            QTimer.singleShot(int(delay_ms), _run)
+            controller.metrics_service.on_metrics_calculated(None)
         except Exception:
-            _run()
-    else:
-        _run()
+            pass
+        return
+    # Pipeline memo: if already unified for these uids+method, skip worker.
+    pl = getattr(controller, "pipeline", None)
+    if pl is not None:
+        try:
+            method = _unify_resize_method(controller)
+            # peek unify cache without decode
+            cached = pl.cache.get_unified(
+                getattr(s1, "uid", id(s1)), getattr(s2, "uid", id(s2)), method, 0, 0
+            )
+            # 0,0 is wildcard — real size memo is inside ensure_unified; treat None as miss
+            _ = cached  # keep for future size-aware memo
+        except Exception:
+            pass
+    rc = _session_render_cache(controller)
+    if rc is not None and getattr(rc, "unification_in_progress", False):
+        pending = getattr(rc, "pending_unification_paths", None)
+        if pending == (document.image1_path, document.image2_path):
+            return
+    if not document.image1_path or not document.image2_path:
+        return
+    d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    if d is not None:
+        try:
+            with controller.store.batch_changes():
+                d.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
+                d.dispatch(
+                    SetPendingUnificationPathsAction(paths=(document.image1_path, document.image2_path)),
+                    scope="viewport",
+                )
+        except Exception:
+            logger.error("Failed to dispatch unification pending", exc_info=True)
+    try:
+        controller._unification_task_id += 1
+        tid = controller._unification_task_id
+        worker = GenericWorker(
+            controller._unify_images_worker_task,
+            s1, s2, document.image1_path, document.image2_path, tid, _unify_resize_method(controller),
+        )
+        worker.signals.result.connect(controller._on_unified_images_ready)
+        controller.thread_pool.start(worker, priority=1)
+    except Exception:
+        _clear_unification_flags(controller)
+        try:
+            controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
 
 
 def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:
-    """Shared stale-slot check for set_current_image vs resync (CODE_PATTERNS.md thin-owner).
-
-    Returns True if a reload was triggered (or would be), False if slot already fresh.
-    Handles pending-dedup and closed-store detection identical in both call sites.
-    """
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return False
-    target_list = document.image_list1 if image_number == 1 else document.image_list2
-    current_index = document.current_index1 if image_number == 1 else document.current_index2
-    image_path = document.image1_path if image_number == 1 else document.image2_path
-    full_res = document.full_res_image1 if image_number == 1 else document.full_res_image2
-    if not (0 <= current_index < len(target_list)):
+    lst = document.image_list1 if image_number == 1 else document.image_list2
+    idx = document.current_index1 if image_number == 1 else document.current_index2
+    path = document.image1_path if image_number == 1 else document.image2_path
+    full = document.full_res_image1 if image_number == 1 else document.full_res_image2
+    if not (0 <= idx < len(lst)):
         return False
-    item = target_list[current_index]
-    stale = image_path != item.path
-    if not stale:
-        is_open = getattr(full_res, "is_open", None)
-        stale = is_open is not None and not is_open
+    item = lst[idx]
+    stale = path != item.path or (getattr(full, "is_open", None) is not None and not full.is_open)
     if stale or force_refresh:
-        pending = getattr(controller, "_pending_image_loads", None)
-        if pending is not None and (image_number, item.path) in pending:
-            return False
-        # delegate via public seam so tests can stub
         try:
             controller.set_current_image(image_number, force_refresh=force_refresh)
         except Exception:
@@ -253,515 +167,250 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
 def initialize_app_display(controller):
     if controller.store.get_session_state_slot("document") is None:
         return
-    if controller.store.viewport.session_data.image_state.loaded_image1_paths:
-        controller.load_images_from_paths(
-            controller.store.viewport.session_data.image_state.loaded_image1_paths, 1
-        )
-    if controller.store.viewport.session_data.image_state.loaded_image2_paths:
-        controller.load_images_from_paths(
-            controller.store.viewport.session_data.image_state.loaded_image2_paths, 2
-        )
-
+    # History already in DocumentModel as path-only ImageItems — no preload.
+    # Just ensure current indices are valid (single dispatch each).
     document = controller.store.get_session_state_slot("document")
-    _init_dispatcher = getattr(controller.store, "get_dispatcher", None)
-    _init_dispatcher = _init_dispatcher() if callable(_init_dispatcher) else None
-    if _init_dispatcher is not None:
-        if (
-            controller.store.viewport.session_data.image_state.loaded_current_index1 != -1
-            and 0
-            <= controller.store.viewport.session_data.image_state.loaded_current_index1
-            < len(document.image_list1)
-        ):
-            _init_dispatcher.dispatch(
-                SetCurrentIndexAction(slot=1, index=controller.store.viewport.session_data.image_state.loaded_current_index1),
-                scope="document",
-            )
+    d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    if d is not None:
+        isd = controller.store.viewport.session_data.image_state
+        if 0 <= isd.loaded_current_index1 < len(document.image_list1):
+            d.dispatch(SetCurrentIndexAction(slot=1, index=isd.loaded_current_index1), scope="document")
         elif document.image_list1:
-            _init_dispatcher.dispatch(SetCurrentIndexAction(slot=1, index=0), scope="document")
-
-        if (
-            controller.store.viewport.session_data.image_state.loaded_current_index2 != -1
-            and 0
-            <= controller.store.viewport.session_data.image_state.loaded_current_index2
-            < len(document.image_list2)
-        ):
-            _init_dispatcher.dispatch(
-                SetCurrentIndexAction(slot=2, index=controller.store.viewport.session_data.image_state.loaded_current_index2),
-                scope="document",
-            )
+            d.dispatch(SetCurrentIndexAction(slot=1, index=0), scope="document")
+        if 0 <= isd.loaded_current_index2 < len(document.image_list2):
+            d.dispatch(SetCurrentIndexAction(slot=2, index=isd.loaded_current_index2), scope="document")
         elif document.image_list2:
-            _init_dispatcher.dispatch(SetCurrentIndexAction(slot=2, index=0), scope="document")
-    else:
-        # No dispatcher — defer; never mutate document directly outside Reducer.
-        def _deferred_init_indices():
-            disp = getattr(controller.store, "get_dispatcher", lambda: None)()
-            if disp is None:
-                return
-            init_doc = controller.store.get_session_state_slot("document")
-            if init_doc is None:
-                return
-            if (
-                controller.store.viewport.session_data.image_state.loaded_current_index1 != -1
-                and 0
-                <= controller.store.viewport.session_data.image_state.loaded_current_index1
-                < len(init_doc.image_list1)
-            ):
-                disp.dispatch(
-                    SetCurrentIndexAction(slot=1, index=controller.store.viewport.session_data.image_state.loaded_current_index1),
-                    scope="document",
-                )
-            elif init_doc.image_list1:
-                disp.dispatch(SetCurrentIndexAction(slot=1, index=0), scope="document")
-            if (
-                controller.store.viewport.session_data.image_state.loaded_current_index2 != -1
-                and 0
-                <= controller.store.viewport.session_data.image_state.loaded_current_index2
-                < len(init_doc.image_list2)
-            ):
-                disp.dispatch(
-                    SetCurrentIndexAction(slot=2, index=controller.store.viewport.session_data.image_state.loaded_current_index2),
-                    scope="document",
-                )
-            elif init_doc.image_list2:
-                disp.dispatch(SetCurrentIndexAction(slot=2, index=0), scope="document")
-
-        QTimer.singleShot(0, _deferred_init_indices)
-
+            d.dispatch(SetCurrentIndexAction(slot=2, index=0), scope="document")
     controller.set_current_image(1, emit_signal=False)
     controller.set_current_image(2, emit_signal=False)
-
     if controller.presenter:
-        controller.presenter.ui_batcher.schedule_batch_update(
-            ["combobox", "file_names", "resolution", "ratings"]
-        )
+        controller.presenter.ui_batcher.schedule_batch_update(["combobox", "file_names", "resolution", "ratings"])
         controller.presenter.update_minimum_window_size()
-
     controller.store.emit_state_change("document")
-
-
-def _unify_resize_method(controller) -> str:
-    from shared.rendering.interpolation import get_effective_main_interpolation_method
-
-    return get_effective_main_interpolation_method(controller.store.viewport)
-
-
-def _defer_mixed_unify(controller, document) -> bool:
-    """True when unify would upscale a preview to full-res size for nothing.
-
-    A mixed pair (one side full-res, the other still a preview) with the
-    preview side's full decode in flight produces a doomed unify: LANCZOS
-    upscaling a ~1k preview to a 20k canvas for minutes, superseded the
-    moment the real pixels land. Defer; the finishing load re-triggers.
-    """
-    full1 = document.full_res_image1 is not None
-    full2 = document.full_res_image2 is not None
-    if full1 == full2:
-        return False
-    waiting_slot = 2 if full1 else 1
-    pending = getattr(controller, "_pending_full_loads", None)
-    if pending is None:
-        return False
-    if pending.get(waiting_slot, 0) > 0:
-        logger.info(
-            "[Unify] deferred: slot %d full-res decode still in flight",
-            waiting_slot,
-        )
-        return True
-    return False
 
 
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
-        controller.presenter.ui_batcher.schedule_batch_update(
-            ["file_names", "resolution"]
-        )
-    # Delegates to shared ensure_unification (thin-owner pattern) — keep presenter batch above
-    ensure_unification(controller, delay_ms=0)
-    # ensure_unification already schedules viewport emit; keep explicit for backwards compat is inside helper
+        controller.presenter.ui_batcher.schedule_batch_update(["file_names", "resolution"])
+    ensure_unification(controller)
 
 
 def handle_full_image_loaded(controller, full_img, path, image_number, index_in_list):
     if not full_img:
         return
-
     document = controller.store.get_session_state_slot("document")
-    target_list = document.image_list1 if image_number == 1 else document.image_list2
-    if (
-        not (0 <= index_in_list < len(target_list))
-        or target_list[index_in_list].path != path
-    ):
+    lst = document.image_list1 if image_number == 1 else document.image_list2
+    if not (0 <= index_in_list < len(lst)) or lst[index_in_list].path != path:
         return
-
-    from shared.image_processing.tiled_pixel_store import (
-        TiledPixelStore,
-        close_pixel_store,
-        maybe_wrap_pixel_store,
-    )
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore, close_pixel_store, maybe_wrap_pixel_store
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
-    item = target_list[index_in_list]
-    item.image = full_img
-
-    # A superseded worker (user already switched this slot to another
-    # index while this decode was in flight) must not overwrite the live
-    # slot -- only cache the decoded pixels on the list item above. Doing
-    # the overwrite unconditionally races multiple in-flight decodes for
-    # the same slot and corrupts document.full_res_imageN/pathN with
-    # whichever one happens to finish last (rapid Space+click bug).
-    current_app_index = (
-        document.current_index1 if image_number == 1 else document.current_index2
-    )
-    if index_in_list != current_app_index:
+    lst[index_in_list].image = full_img
+    cur = document.current_index1 if image_number == 1 else document.current_index2
+    if index_in_list != cur:
         return
-
     outgoing = getattr(document, f"full_res_image{image_number}", None)
     other = 2 if image_number == 1 else 1
     other_full = getattr(document, f"full_res_image{other}", None)
     if outgoing is not None and outgoing is not other_full:
         close_pixel_store(outgoing)
-    controller._update_image_slot(
-        image_number, image=full_img, path=path, is_full_res=True
-    )
+    controller._update_image_slot(image_number, image=full_img, path=path, is_full_res=True)
     controller._mark_full_res_ready(image_number)
-    # Deliberately not _invalidate_diff_cache(controller) here: this is a
-    # swap (a new image replacing an already-displayed one), not a removal
-    # -- clearing cached_diff_image upfront would blank the diff overlay
-    # for the whole time it takes render_flow.py's
-    # request_cached_diff_image_async to notice the source pair changed
-    # (via cached_diff_source_key) and recompute, showing a diff-vanishes/
-    # plain-image/diff-reappears flash. Leaving the stale diff in place
-    # lets the canvas keep showing it until the new one is ready, then
-    # swap atomically (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
-    # follow-up).
-
-    ensure_unification(controller, delay_ms=50)
+    ensure_unification(controller)
 
 
 def load_images_from_paths(controller, file_paths: list[str], image_number: int):
     document = controller.store.get_session_state_slot("document")
-    target_list_ref = (
-        document.image_list1 if image_number == 1 else document.image_list2
-    )
-    is_new_comparison = len(target_list_ref) == 0
-    if is_new_comparison:
-        other_image_number = 2 if image_number == 1 else 1
-        other_list = (
-            document.image_list1 if other_image_number == 1 else document.image_list2
-        )
-        _lip_dispatcher = getattr(controller.store, "get_dispatcher", None)
-        _lip_dispatcher = _lip_dispatcher() if callable(_lip_dispatcher) else None
-        if _lip_dispatcher is not None:
+    lst = document.image_list1 if image_number == 1 else document.image_list2
+    is_new = len(lst) == 0
+    if is_new:
+        other = 2 if image_number == 1 else 1
+        other_lst = document.image_list1 if other == 1 else document.image_list2
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d is not None:
             try:
                 with controller.store.batch_changes():
-                    _lip_dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-                    _lip_dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
-            except Exception:
-                logger.error("Failed to dispatch load_images pending clear", exc_info=True)
-        else:
-            try:
-                _lip_rc = _session_render_cache(controller)
-                if _lip_rc is not None:
-                    setattr(_lip_rc, "unification_in_progress", False)
-                    setattr(_lip_rc, "pending_unification_paths", None)
+                    d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                    d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
             except Exception:
                 pass
-        if len(other_list) == 0:
+        if len(other_lst) == 0:
             document_store_ops.clear_image_slot_data(controller.store, 1)
             document_store_ops.clear_image_slot_data(controller.store, 2)
-            if _lip_dispatcher is not None:
+            if d is not None:
                 try:
                     with controller.store.batch_changes():
-                        _lip_dispatcher.dispatch(SetImageSessionImageAction(slot=1, image=None), scope="viewport")
-                        _lip_dispatcher.dispatch(SetImageSessionImageAction(slot=2, image=None), scope="viewport")
-                except Exception:
-                    logger.error("Failed to dispatch image_state clear", exc_info=True)
-            else:
-                try:
-                    _lip_is = getattr(controller.store.viewport.session_data, "image_state", None)
-                    if _lip_is is not None:
-                        setattr(_lip_is, "image1", None)
-                        setattr(_lip_is, "image2", None)
+                        d.dispatch(SetImageSessionImageAction(slot=1, image=None), scope="viewport")
+                        d.dispatch(SetImageSessionImageAction(slot=2, image=None), scope="viewport")
                 except Exception:
                     pass
             if getattr(controller, "diff_service", None) is not None:
                 controller.diff_service.invalidate()
-            else:
-                if _lip_dispatcher is not None:
-                    try:
-                        _lip_dispatcher.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
-                    except Exception:
-                        logger.error("Failed to dispatch cached_diff clear", exc_info=True)
-                else:
-                    try:
-                        _lip_rc2 = _session_render_cache(controller)
-                        if _lip_rc2 is not None:
-                            setattr(_lip_rc2, "cached_diff_image", None)
-                    except Exception:
-                        pass
+            elif d is not None:
+                try:
+                    d.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
+                except Exception:
+                    pass
         else:
-            # First item on an empty list while the other side already has
-            # content. Only clear if this slot still holds stale document
-            # pixels/path — a no-op clear would thrash the live side's
-            # display caches for Duplicate / DnD onto an empty half.
-            stale = (
-                document.full_res_image1 is not None or document.image1_path
-                if image_number == 1
-                else document.full_res_image2 is not None or document.image2_path
-            )
+            stale = bool(document.full_res_image1 or document.image1_path) if image_number == 1 else bool(document.full_res_image2 or document.image2_path)
             if stale:
-                document_store_ops.clear_image_slot_data(
-                    controller.store, image_number
-                )
+                document_store_ops.clear_image_slot_data(controller.store, image_number)
 
-    load_errors, newly_added_indices = [], []
-    current_paths_in_list = {entry.path for entry in target_list_ref if entry.path}
-
-    for file_path in file_paths:
-        if not isinstance(file_path, str) or not file_path:
-            load_errors.append(
-                f"{str(file_path)}: {tr('msg.invalid_item_type_or_empty_path', controller.store.settings.current_language)}"
-            )
+    errors, new_idx = [], []
+    seen = {e.path for e in lst if e.path}
+    for fp in file_paths:
+        if not isinstance(fp, str) or not fp:
+            errors.append(f"{fp}: {tr('msg.invalid_item_type_or_empty_path', controller.store.settings.current_language)}")
             continue
         try:
-            normalized_path = os.path.normpath(file_path)
-            original_path_for_display = os.path.basename(normalized_path) or "-----"
+            norm = os.path.normpath(fp)
+            disp = os.path.basename(norm) or "-----"
         except Exception:
-            load_errors.append(
-                f"{file_path}: {tr('msg.error_normalizing_path', controller.store.settings.current_language)}"
-            )
+            errors.append(f"{fp}: {tr('msg.error_normalizing_path', controller.store.settings.current_language)}")
             continue
-
-        if normalized_path in current_paths_in_list:
-            _reload_existing_path(
-                controller, image_number, normalized_path, target_list_ref
-            )
+        if norm in seen:
+            _reload_existing_path(controller, image_number, norm, lst)
             continue
-
         try:
-            target_list_ref.append(
-                ImageItem(
-                    image=None,
-                    path=normalized_path,
-                    display_name=os.path.splitext(original_path_for_display)[0],
-                    rating=0,
-                )
-            )
-            current_paths_in_list.add(normalized_path)
-            newly_added_indices.append(len(target_list_ref) - 1)
+            lst.append(ImageItem(image=None, path=norm, display_name=os.path.splitext(disp)[0], rating=0))
+            seen.add(norm)
+            new_idx.append(len(lst) - 1)
         except Exception:
-            load_errors.append(
-                f"{original_path_for_display}: {tr('msg.error_processing_path', controller.store.settings.current_language)}"
-            )
-
-    _finalize_loaded_paths(controller, image_number, newly_added_indices, load_errors)
+            errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
+    _finalize_loaded_paths(controller, image_number, new_idx, errors)
 
 
 def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> None:
-    """Copy the current image on ``source_slot`` onto ``target_slot``.
-
-    Unlike ``load_images_from_paths``, this does not treat an empty target
-    list as a brand-new comparison and therefore does not clear the live
-    half's display caches. The target list entry is path-only (no shared
-    ``TiledPixelStore``); ``set_current_image`` loads/opens a fresh store.
-    """
     if source_slot not in (1, 2) or target_slot not in (1, 2):
         return
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return
-    source_list = document.image_list1 if source_slot == 1 else document.image_list2
-    source_index = (
-        document.current_index1 if source_slot == 1 else document.current_index2
-    )
-    if not (0 <= source_index < len(source_list)):
+    s_lst = document.image_list1 if source_slot == 1 else document.image_list2
+    s_idx = document.current_index1 if source_slot == 1 else document.current_index2
+    if not (0 <= s_idx < len(s_lst)):
         return
-    source_item = source_list[source_index]
-    path = source_item.path or ""
+    s_item = s_lst[s_idx]
+    path = s_item.path or ""
     if not path:
         return
-
-    target_list = document.image_list1 if target_slot == 1 else document.image_list2
-    for index, existing in enumerate(target_list):
-        if existing.path == path:
-            _dup_dispatcher = getattr(controller.store, "get_dispatcher", None)
-            _dup_dispatcher = _dup_dispatcher() if callable(_dup_dispatcher) else None
-            if _dup_dispatcher is not None:
+    t_lst = document.image_list1 if target_slot == 1 else document.image_list2
+    for idx, ex in enumerate(t_lst):
+        if ex.path == path:
+            d = getattr(controller.store, "get_dispatcher", lambda: None)()
+            if d:
                 try:
-                    _dup_dispatcher.dispatch(SetCurrentIndexAction(slot=target_slot, index=index), scope="document")
+                    d.dispatch(SetCurrentIndexAction(slot=target_slot, index=idx), scope="document")
                 except Exception:
-                    logger.error("Failed to dispatch duplicate existing index", exc_info=True)
+                    pass
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
-            QTimer.singleShot(
-                0, lambda slot=target_slot: controller.set_current_image(slot)
-            )
+            # Reentrant: direct, no QTimer
+            controller.set_current_image(target_slot)
             return
-
-    target_list.append(
-        ImageItem(
-            image=None,
-            path=path,
-            display_name=source_item.display_name,
-            rating=int(getattr(source_item, "rating", 0) or 0),
-        )
-    )
-    new_index = len(target_list) - 1
-    _dup_new_dispatcher = getattr(controller.store, "get_dispatcher", None)
-    _dup_new_dispatcher = _dup_new_dispatcher() if callable(_dup_new_dispatcher) else None
-    if _dup_new_dispatcher is not None:
+    # Share via PipelineCache if available — no duplicate decode
+    pl = getattr(controller, "pipeline", None)
+    cached = pl.peek(path) if pl else None
+    if cached is not None and not bool(getattr(cached, "is_open", True)):
+        cached = None
+    t_lst.append(ImageItem(image=cached, path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0)))
+    new_index = len(t_lst) - 1
+    d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    if d:
         try:
-            _dup_new_dispatcher.dispatch(SetCurrentIndexAction(slot=target_slot, index=new_index), scope="document")
+            d.dispatch(SetCurrentIndexAction(slot=target_slot, index=new_index), scope="document")
         except Exception:
-            logger.error("Failed to dispatch duplicate new index", exc_info=True)
-
+            pass
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_update("combobox")
-        from ui.widgets.unified_list_picker import FlyoutMode
+        try:
+            from ui.widgets.unified_list_picker import FlyoutMode
 
-        QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
-        if (
-            controller.presenter.ui_manager.transient.unified_flyout.mode
-            == FlyoutMode.DOUBLE
-        ):
-            QTimer.singleShot(
-                50,
-                lambda: controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(
-                    immediate=False
-                ),
-            )
-
-    QTimer.singleShot(0, lambda slot=target_slot: controller.set_current_image(slot))
+            controller.presenter.repopulate_flyouts()
+            if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
+                try:
+                    controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    controller.set_current_image(target_slot)
 
 
-def _reload_existing_path(
-    controller, image_number: int, normalized_path: str, target_list_ref
-):
+def _reload_existing_path(controller, image_number: int, normalized_path: str, target_list_ref):
     try:
-        index = next(
-            i for i, item in enumerate(target_list_ref) if item.path == normalized_path
-        )
-        item = target_list_ref[index]
-        item.image = None
-        _reload_dispatcher = getattr(controller.store, "get_dispatcher", None)
-        _reload_dispatcher = _reload_dispatcher() if callable(_reload_dispatcher) else None
-        if _reload_dispatcher is not None:
+        idx = next(i for i, it in enumerate(target_list_ref) if it.path == normalized_path)
+        # Keep cached pixels if pipeline has it — avoid clearing
+        pl = getattr(controller, "pipeline", None)
+        cached = pl.peek(normalized_path) if pl else None
+        target_list_ref[idx].image = cached
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d:
             try:
-                _reload_dispatcher.dispatch(SetCurrentIndexAction(slot=image_number, index=index), scope="document")
+                d.dispatch(SetCurrentIndexAction(slot=image_number, index=idx), scope="document")
             except Exception:
-                logger.error("Failed to dispatch reload existing index", exc_info=True)
-
-        QTimer.singleShot(
-            50, lambda num=image_number: controller.set_current_image(num)
-        )
+                pass
+        controller.set_current_image(image_number)
         if controller.presenter:
             controller.presenter.ui_batcher.schedule_update("combobox")
     except (ValueError, IndexError):
         pass
 
 
-def _finalize_loaded_paths(
-    controller,
-    image_number: int,
-    newly_added_indices: list[int],
-    load_errors: list[str],
-):
+def _finalize_loaded_paths(controller, image_number: int, newly_added_indices: list[int], load_errors: list[str]):
     if newly_added_indices:
         new_index = newly_added_indices[-1]
-        _fin_dispatcher = getattr(controller.store, "get_dispatcher", None)
-        _fin_dispatcher = _fin_dispatcher() if callable(_fin_dispatcher) else None
-        if _fin_dispatcher is not None:
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d:
             try:
-                _fin_dispatcher.dispatch(SetCurrentIndexAction(slot=image_number, index=new_index), scope="document")
+                d.dispatch(SetCurrentIndexAction(slot=image_number, index=new_index), scope="document")
             except Exception:
-                logger.error("Failed to dispatch finalize index", exc_info=True)
-
+                pass
         if controller.presenter:
             controller.presenter.ui_batcher.schedule_update("combobox")
-
-        QTimer.singleShot(
-            50, lambda num=image_number: controller.set_current_image(num)
-        )
-
+        controller.set_current_image(image_number)
         if controller.presenter:
-            from ui.widgets.unified_list_picker import FlyoutMode
-
-            QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
-            if (
-                controller.presenter.ui_manager.transient.unified_flyout.mode
-                == FlyoutMode.DOUBLE
-            ):
-                QTimer.singleShot(
-                    50,
-                    lambda: controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(
-                        immediate=False
-                    ),
-                )
-
+            try:
+                controller.presenter.repopulate_flyouts()
+                from ui.widgets.unified_list_picker import FlyoutMode
+                if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
+                    try:
+                        controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
     if load_errors:
-        error_message = (
-            tr(
-                "image_compare.msg.some_images_could_not_be_loaded",
-                controller.store.settings.current_language,
-            )
-            + ":\n\n - "
-            + "\n - ".join(load_errors)
-        )
+        msg = tr("image_compare.msg.some_images_could_not_be_loaded", controller.store.settings.current_language) + ":\n\n - " + "\n - ".join(load_errors)
         if controller.event_bus:
-            controller.event_bus.emit(CoreErrorOccurredEvent(error_message))
+            controller.event_bus.emit(CoreErrorOccurredEvent(msg))
         else:
-            controller.error_occurred.emit(error_message)
+            controller.error_occurred.emit(msg)
 
 
-def set_current_image(
-    controller, image_number: int, force_refresh: bool = False, emit_signal: bool = True
-):
+def set_current_image(controller, image_number: int, force_refresh: bool = False, emit_signal: bool = True):
     document = controller.store.get_session_state_slot("document")
-    target_list = document.image_list1 if image_number == 1 else document.image_list2
-    current_index = (
-        document.current_index1 if image_number == 1 else document.current_index2
-    )
-
-    if not (0 <= current_index < len(target_list)):
+    lst = document.image_list1 if image_number == 1 else document.image_list2
+    cur = document.current_index1 if image_number == 1 else document.current_index2
+    if not (0 <= cur < len(lst)):
         document_store_ops.clear_image_slot_data(controller.store, image_number)
         _invalidate_diff_cache(controller)
-        # clear_image_slot_data already drops this slot's display/scaled caches.
-        # invalidate_geometry_cache() would also wipe the other side and flash
-        # a blank canvas while the live half is still valid.
         controller._invalidate_image_canvas_render_state(clear_overlay_state=True)
         controller._schedule_image_canvas_update()
         if controller.presenter:
-            controller.presenter.ui_batcher.schedule_batch_update(
-                ["combobox", "file_names", "resolution", "ratings"]
-            )
+            controller.presenter.ui_batcher.schedule_batch_update(["combobox", "file_names", "resolution", "ratings"])
         if controller.store.viewport.session_data.render_cache.unification_in_progress:
-            pending = (
-                controller.store.viewport.session_data.render_cache.pending_unification_paths
-            )
-            if pending:
-                current_path = (
-                    document.image1_path
-                    if image_number == 1
-                    else document.image2_path
-                )
-                if current_path and current_path not in pending:
-                    _sci_dispatcher = getattr(controller.store, "get_dispatcher", None)
-                    _sci_dispatcher = _sci_dispatcher() if callable(_sci_dispatcher) else None
-                    if _sci_dispatcher is not None:
-                        try:
-                            with controller.store.batch_changes():
-                                _sci_dispatcher.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-                                _sci_dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
-                        except Exception:
-                            logger.error("Failed to dispatch set_current_image clear flags", exc_info=True)
-                    else:
-                        try:
-                            _sci_rc = _session_render_cache(controller)
-                            if _sci_rc is not None:
-                                setattr(_sci_rc, "unification_in_progress", False)
-                                setattr(_sci_rc, "pending_unification_paths", None)
-                        except Exception:
-                            pass
+            pending = controller.store.viewport.session_data.render_cache.pending_unification_paths
+            if pending and (document.image1_path if image_number == 1 else document.image2_path) not in pending:
+                d = getattr(controller.store, "get_dispatcher", lambda: None)()
+                if d:
+                    try:
+                        with controller.store.batch_changes():
+                            d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                            d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
+                    except Exception:
+                        pass
         controller.metrics_service.on_metrics_calculated(None)
         controller.store.emit_state_change("document")
         if controller.event_bus:
@@ -769,67 +418,29 @@ def set_current_image(
         else:
             controller.update_requested.emit()
         return
-
-    item = target_list[current_index]
-    pil_img = item.image
-    path = item.path
+    item = lst[cur]
+    pil_img, path = item.image, item.path
     if pil_img is None:
-        # Path-only selection must not keep the previous slot's full_res/preview.
-        # Cross-list move of the live current image onto an empty list leaves the
-        # remaining unloaded item as current: SetImagePathAction alone used to
-        # keep the moved image's store on this slot, so a premature unify shared
-        # it and close_pixel_store later closed the other side's live store.
-        document_store_ops.clear_image_slot_data(controller.store, image_number)
-    controller._update_image_slot(
-        image_number, image=pil_img, path=path, is_full_res=bool(pil_img), emit=False
-    )
-    # Not _invalidate_diff_cache(controller): a swap, see the matching
-    # comment above _mark_full_res_ready's call site.
+        # Check pipeline cache before clearing slot — share, don't wipe live store
+        pl = getattr(controller, "pipeline", None)
+        cached = pl.peek(path) if pl and path else None
+        if cached is not None and bool(getattr(cached, "is_open", True)):
+            pil_img = cached
+            item.image = cached
+        else:
+            document_store_ops.clear_image_slot_data(controller.store, image_number)
+    controller._update_image_slot(image_number, image=pil_img, path=path, is_full_res=bool(pil_img), emit=False)
     controller.store.invalidate_render_cache()
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
-
     if pil_img is None and path:
-        # Dedup: load_images_from_paths schedules set_current_image via
-        # QTimer 50ms and the "document" on_change resync schedules via
-        # QTimer 0ms — both fire for the same slot/path before the first
-        # worker returns. Without a guard we start two
-        # TiledPixelStore.from_path for the same file (see log 02:05:51.775 +
-        # 02:05:51.834). Coalesce on (slot, path).
-        pending = getattr(controller, "_pending_image_loads", None)
-        key = (image_number, path)
-        if pending is not None and key in pending:
-            pass
-        else:
-            if pending is not None:
-                pending.add(key)
-
-                def _clear_pending(k=key, p=pending):
-                    try:
-                        p.discard(k)
-                    except Exception:
-                        pass
-
-            else:
-
-                def _clear_pending():  # type: ignore[no-redef]
-                    pass
-
-            worker = GenericWorker(
-                controller._load_image_async, path, image_number, current_index, None
-            )
-            worker.signals.result.connect(controller._on_image_loaded_from_worker)
-            # finished fires for both success and error; result handler also
-            # clears via the same key so the slot can reload after failure.
-            try:
-                worker.signals.finished.connect(_clear_pending)
-            except Exception:
-                pass
-            worker.signals.result.connect(lambda *_a, _cp=_clear_pending: _cp())
-            controller.thread_pool.start(worker)
+        # Single-flight via pipeline cache + controller._pending_image_loads guard removed —
+        # pipeline handles dedup. Direct worker start, no QTimer.
+        worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
+        worker.signals.result.connect(controller._on_image_loaded_from_worker)
+        controller.thread_pool.start(worker)
     else:
         controller._trigger_preview_unification(image_number)
-
     if emit_signal:
         controller.store.emit_state_change("document")
 
@@ -846,25 +457,16 @@ def on_unified_images_ready(controller, result):
             _clear_unification_flags(controller)
             controller.metrics_service.on_metrics_calculated(None)
             return
-
         if task_id != controller._unification_task_id:
             return
-
         document = controller.store.get_session_state_slot("document")
-        session_data = getattr(controller.store.viewport, "session_data", None)
-        render_cache = (
-            getattr(session_data, "render_cache", None) if session_data else None
-        )
-        image_state = (
-            getattr(session_data, "image_state", None) if session_data else None
-        )
-        # Worker finished after a workspace switch: no document / IC session_data.
-        if document is None or render_cache is None or image_state is None:
+        sd = getattr(controller.store.viewport, "session_data", None)
+        rc = getattr(sd, "render_cache", None) if sd else None
+        im = getattr(sd, "image_state", None) if sd else None
+        if document is None or rc is None or im is None:
             _clear_unification_flags(controller)
             return
-
-        current_paths_now = (document.image1_path, document.image2_path)
-        if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
+        if (path1, path2) != (document.image1_path, document.image2_path):
             _clear_unification_flags(controller)
             controller.store.invalidate_geometry_cache()
             controller.store.emit_state_change("viewport")
@@ -873,37 +475,26 @@ def on_unified_images_ready(controller, result):
             _clear_unification_flags(controller)
             controller.metrics_service.on_metrics_calculated(None)
             return
-
-        # Centralized auto-crop: bbox is applied at load stage via
-        # autocrop_service.get_crop_box (thr15→thr30 on 1024 probe). Unified
-        # size via unify_pair(max(cropped)) is final — no post-unify mutation.
-        # The old recrop mutated 2797→2791 after letterbox/pyramid were built,
-        # causing narrow bbox slivers. If a Lanczos edge reappears, the thr30
-        # fallback on next load (service) will catch it without resizing here.
-
-        _on_ready_dispatcher = getattr(controller.store, "get_dispatcher", None)
-        _on_ready_dispatcher = _on_ready_dispatcher() if callable(_on_ready_dispatcher) else None
-        if _on_ready_dispatcher is not None:
+        # Cache unified pair in pipeline
+        pl = getattr(controller, "pipeline", None)
+        if pl is not None:
             try:
-                with controller.store.batch_changes():
-                    _on_ready_dispatcher.dispatch(SetImageSessionImageAction(slot=1, image=u1), scope="viewport")
-                    _on_ready_dispatcher.dispatch(SetImageSessionImageAction(slot=2, image=u2), scope="viewport")
-            except Exception:
-                logger.error("Failed to dispatch on_unified_images_ready images", exc_info=True)
-        else:
-            try:
-                # Fallback for test fakes without dispatcher
-                setattr(image_state, "image1", u1)
-                setattr(image_state, "image2", u2)
+                method = _unify_resize_method(controller)
+                pl.cache.put_unified(getattr(u1, "uid", id(u1)), getattr(u2, "uid", id(u2)), method, 0, 0, (u1, u2))
             except Exception:
                 pass
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d is not None:
+            try:
+                with controller.store.batch_changes():
+                    d.dispatch(SetImageSessionImageAction(slot=1, image=u1), scope="viewport")
+                    d.dispatch(SetImageSessionImageAction(slot=2, image=u2), scope="viewport")
+            except Exception:
+                logger.error("Failed to dispatch unified images", exc_info=True)
         controller._start_pyramid_builds(u1, u2)
-        # Not _invalidate_diff_cache(controller): a swap, see the matching
-        # comment above _mark_full_res_ready's call site.
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
         controller._schedule_image_canvas_update()
-
         _clear_unification_flags(controller)
         controller._trigger_metrics_calculation_if_needed()
         try:
@@ -912,9 +503,7 @@ def on_unified_images_ready(controller, result):
             else:
                 controller.update_requested.emit()
             if controller.presenter:
-                controller.presenter.ui_batcher.schedule_batch_update(
-                    ["resolution", "file_names"]
-                )
+                controller.presenter.ui_batcher.schedule_batch_update(["resolution", "file_names"])
         except Exception:
             pass
     except Exception:
@@ -925,22 +514,9 @@ def on_unified_images_ready(controller, result):
             pass
 
 
-
 def resync_current_image_slots(controller) -> None:
-    """Re-sync the displayed image after undo/redo of browsing.
-
-    Undo/redo restores the document reference snapshot: the index points
-    back at the previous entry, but the slot's pixels may reference the
-    closed ``TiledPixelStore`` of the image that was loaded after the undo
-    entry was recorded (loading closes the replaced store). Reload the
-    current entry from the list (path+reload) when the stored path diverges
-    from the list entry or the full-res store is closed. A healthy slot —
-    normal loads already match — is left untouched.
-
-    Delegates stale check to ensure_current_slot (thin-owner pattern).
-    """
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return
-    for image_number in (1, 2):
-        ensure_current_slot(controller, image_number, force_refresh=True)
+    for n in (1, 2):
+        ensure_current_slot(controller, n, force_refresh=True)

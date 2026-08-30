@@ -317,6 +317,14 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
 
 
 def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
+    """Lazy rehydrate — only ensure current slots, don't preload history.
+
+    Old code decoded every path in image_list1/2 (history) via
+    load_images_from_paths, which for 100 files meant 200 full decodes on
+    project open. PipelineCache is demand-driven: history ImageItems keep
+    only path/display_name, pixels are loaded on first browse via
+    set_current_image → pipeline.ensure. This makes open O(1).
+    """
     store = getattr(context, "store", None)
     if store is None:
         return
@@ -327,21 +335,31 @@ def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
     if doc is None:
         return
 
-    paths1 = [item.path for item in doc.image_list1 if getattr(item, "path", None)]
-    paths2 = [item.path for item in doc.image_list2 if getattr(item, "path", None)]
-    if doc.image1_path and doc.image1_path not in paths1:
-        paths1.append(doc.image1_path)
-    if doc.image2_path and doc.image2_path not in paths2:
-        paths2.append(doc.image2_path)
-    if not paths1 and not paths2:
+    if not doc.image_list1 and not doc.image_list2:
         return
 
     sessions = _resolve_image_compare_sessions(context)
     if sessions is None:
         return
 
+    # Demand-driven: only the current index matters for initial display.
+    # The canvas/ metrics will call pipeline.ensure on first set_current_image.
+    # History stays as path-only ImageItems until the user browses to them.
     with store.using_workspace_session(session_id):
-        if paths1:
-            sessions.load_images_from_paths(paths1, 1)
-        if paths2:
-            sessions.load_images_from_paths(paths2, 2)
+        # Ensure the document's current_index is valid, but don't force a
+        # decode of every history entry. set_current_image will use
+        # PipelineCache (single-flight, memo) for the current path only.
+        for slot in (1, 2):
+            lst = doc.image_list1 if slot == 1 else doc.image_list2
+            idx = doc.current_index1 if slot == 1 else doc.current_index2
+            if lst and 0 <= idx < len(lst):
+                try:
+                    sessions.set_current_image(slot, force_refresh=False, emit_signal=False)
+                except Exception:
+                    pass
+        # One coalesced emit for the initial view (was 2× load_images_from_paths
+        # with 3–5 dispatches each).
+        try:
+            store.emit_state_change("document")
+        except Exception:
+            pass
