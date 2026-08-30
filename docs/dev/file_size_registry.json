@@ -387,17 +387,6 @@
       }
     },
     {
-      "path": "src/tabs/image_compare/use_cases/loading.py",
-      "lines": 946,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",
-      "parsed": {
-        "pattern": "thin-owner-target",
-        "reason": "use_cases target for _session_controller — 15 functions taking controller"
-      }
-    },
-    {
       "path": "src/tabs/image_compare/widget.py",
       "lines": 585,
       "limit": 500,
