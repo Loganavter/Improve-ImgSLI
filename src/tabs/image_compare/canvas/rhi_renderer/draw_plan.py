@@ -67,10 +67,16 @@ def resolve_lod_texture_keys(
     # thus grid dimensions) identical whenever they'd otherwise want the
     # same level (the common case, since compared images are unified to
     # matching sizes/letterboxes).
-    ready_pyramids = [p for p in pyramids if p is not None]
-    shared_level_count = (
-        min(p.level_count for p in ready_pyramids) if ready_pyramids else 0
-    )
+    # Effective level count per TiledPixelStore source: missing pyramid
+    # (still TiledPixelStore, not pyramid-built yet) is treated as 1
+    # (only base level) so a [3, None] pair clamps to 1 rather than 3
+    # — otherwise the ready side picks a coarse level whose grid mismatches
+    # the bare side's grid and produces 0.0007 sliver bboxes.
+    effective_counts: list[int] = []
+    for src, pyr in zip(sources, pyramids):
+        if isinstance(src, TiledPixelStore):
+            effective_counts.append(pyr.level_count if pyr is not None else 1)
+    shared_level_count = min(effective_counts) if effective_counts else 0
     if _gap_enabled():
         try:
             _gap_log(
@@ -477,6 +483,12 @@ def build_array_draw_plan(
                 continue
             scale2 = _content_scale(tile_service.content_size_for(src2, idx2))
             pair_bbox = _intersection_rect(common1, common2)
+            # Filter floating-point seam slivers: intersection <2px (0.0012*1654)
+            # is not real coverage — otherwise 28/49 entries are 0.0007 wide
+            # and produce blank middle strip even though covered=1.0. Apron
+            # overlap (8px → 0.004*letterbox) stays >0.002 and is kept.
+            if pair_bbox[2] < 0.001 or pair_bbox[3] < 0.001:
+                continue
             content_scale = (*scale1, *scale2)
             if not diff_is_multi_tile:
                 items.append(
@@ -501,6 +513,9 @@ def build_array_draw_plan(
                 diff_slot = tile_service.slot_for(diff_src, diff_idx)
                 if diff_slot is None or diff_slot[0] != array_index1:
                     continue
+                _diff_bbox = _intersection_rect(pair_bbox, diff_common)
+                if _diff_bbox[2] < 0.001 or _diff_bbox[3] < 0.001:
+                    continue
                 emitted_for_pair = True
                 items.append(
                     ArrayDrawItem(
@@ -515,7 +530,7 @@ def build_array_draw_plan(
                         layer_diff=diff_slot[1],
                         array_index=array_index1,
                         sampler_name=sampler_name,
-                        bbox=_intersection_rect(pair_bbox, diff_common),
+                        bbox=_diff_bbox,
                         rect_diff=diff_rect_raw,
                     )
                 )
