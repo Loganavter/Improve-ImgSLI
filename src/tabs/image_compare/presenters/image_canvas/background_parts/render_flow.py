@@ -535,30 +535,19 @@ def update_comparison_if_needed(presenter):
         or _document.original_image2
     )
 
-    # Letterbox must not fit from mixed-tier preview sizes while unification is
-    # in progress — preview is 1024-capped, unified is trimmed full-res. Fitting
-    # from the preview then refitting from unified causes a visible jump (see
-    # task: tiles out_w/h already trimmed but render_flow early fits from preview
-    # 1024). Defer geometry until unified stores land; preview background still
-    # uploads but without resizing the comparison rect.
-    _is_unifying = getattr(
-        presenter.store.viewport.session_data.render_cache,
-        "unification_in_progress",
-        False,
+    # Comparison letterbox geometry must track the preview arrival, not the
+    # unified-store flip. The early returns below (unification deferral,
+    # single-image mode, one-side missing) used to skip the geometry block,
+    # leaving the canvas letterboxed at the *previous* comparison's rect
+    # until the unified tiles landed -- a visible resize arriving "with the
+    # tiles" instead of "with the preview". Computing the rect from the best
+    # available sizes (unified stores > full-res > previews) as soon as any
+    # side has content converges it to the final layout during the preview
+    # phase: previews preserve the source aspect, so the pair-fit rect is
+    # already the flip's rect and the store flip no longer resizes anything.
+    _update_comparison_geometry(
+        presenter, source1, source2, label_width, label_height
     )
-    if not _is_unifying:
-        _update_comparison_geometry(
-            presenter, source1, source2, label_width, label_height
-        )
-    else:
-        # Only converge geometry if unified images already available — otherwise
-        # keep previous rect to avoid mixed-tier (preview vs store) mismatch.
-        _u1 = presenter.store.viewport.session_data.image_state.image1
-        _u2 = presenter.store.viewport.session_data.image_state.image2
-        if _u1 is not None and _u2 is not None:
-            _update_comparison_geometry(
-                presenter, source1, source2, label_width, label_height
-            )
 
     if getattr(
         presenter.store.viewport.session_data.render_cache,
@@ -815,6 +804,16 @@ def update_comparison_if_needed(presenter):
                     _picked is _cand_preview if _cand_preview is not None else False,
                 )
             render_img1, render_img2 = img1, img2
+            # Always remember what was picked (uid equality, not ``is``) even
+            # when the GPU apply is skipped (scene-only) -- otherwise the
+            # single-side preview never arms ``last_applied`` and the
+            # ``superseded`` guard after unify never fires.
+            try:
+                _update_preview_tracking(
+                    presenter, {1: render_img1, 2: render_img2}
+                )
+            except Exception:
+                pass
             # Phase 5: single geometry pass — second batch_changes per frame removed.
             # The early _update_comparison_geometry(source1, source2) already
             # letterboxes from the best available sizes (unified → full_res →
@@ -955,29 +954,11 @@ def update_comparison_if_needed(presenter):
                         display_cache_key=_display_cache_key(render_img1, render_img2),
                         clip_overlays_to_image_bounds=False,
                     )
-                    presenter._last_display_uids = {
-                        1: image_uid(render_img1),
-                        2: image_uid(render_img2),
-                    }
-                    # Flip-flop guard: remember which preview uid each slot's
-                    # store just superseded, so pick_display_with_preview_backing
-                    # never treats that same image's preview as "fresh" again.
-                    _applied_preview = (
-                        getattr(presenter, "_last_applied_preview_uid", None) or {}
-                    )
-                    _superseded_uids = (
-                        getattr(presenter, "_last_superseded_preview_uid", None) or {}
-                    )
-                    for _slot, _picked in ((1, render_img1), (2, render_img2)):
-                        if _picked is getattr(document, f"preview_image{_slot}"):
-                            _applied_preview[_slot] = presenter._last_display_uids[_slot]
-                        elif _picked is getattr(
-                            presenter.store.viewport.session_data.image_state,
-                            f"image{_slot}",
-                        ):
-                            _superseded_uids[_slot] = _applied_preview.get(_slot)
-                    presenter._last_applied_preview_uid = _applied_preview
-                    presenter._last_superseded_preview_uid = _superseded_uids
+                    # ``_update_preview_tracking`` already updated
+                    # ``_last_display_uids`` / ``_last_applied_preview_uid`` /
+                    # ``_last_superseded_preview_uid`` via ``image_uid`` equality
+                    # (not ``is``) before the ``img_sig`` guard -- keeps single-side
+                    # and scene-only picks armed for the next ``pick``.
                     # pick log vs GPU: correlate tier log with actual _stored_pil_images after upload_pil_images/realize_tile_plan
                     try:
                         _stored_actual = getattr(image_label.runtime_state, "_stored_pil_images", [None, None])
