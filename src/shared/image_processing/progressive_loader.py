@@ -133,16 +133,12 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
     store the result in ``document.preview_image*`` — never wrap with
     ``TiledPixelStore`` (full-res tier owns memmap storage).
 
-    When the installed libvips can stream the file's format, the preview is
-    produced by ``pyvips.thumbnail`` — a real streaming thumbnail (no
-    full-frame decode). This matters for large JXL/HEIF/AVIF sources, where
-    the imagecodecs/QImageReader fallbacks below would otherwise materialize
-    the entire frame just to build a 1024px preview.
+    Streaming: ``pyvips.thumbnail`` when libvips can stream the format, else
+    PIL ``thumbnail`` (no QImageReader — deleted per plan_image_pipeline.md Phase 4).
+    Both paths share ``VipsImage.new_from_file(access="sequential")`` conceptually;
+    PIL fallback keeps the same 1024 cap and autocrop scaling.
     """
     try:
-        from PySide6.QtGui import QImage, QImageReader
-        from PySide6.QtCore import QSize
-
         if pyvips_can_stream(image_path):
             return _load_preview_vips(image_path, auto_crop=auto_crop)
 
@@ -173,86 +169,43 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
                     preview = preview.crop(scaled)
                 else:
                     preview = crop_black_borders(preview)
-            
+
             from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
 
-        reader = QImageReader(image_path)
-        reader.setAllocationLimit(16384)
-        if reader.format().isEmpty():
-            logger.warning(f"QImageReader unsupported format for {image_path}, falling back to PIL")
-            with Image.open(image_path) as img:
-                original_width, original_height = img.size
-                _ensure_supported_dimensions(original_width, original_height, image_path)
-                max_preview_size = 1024
-                scale = min(
-                    max_preview_size / original_width, max_preview_size / original_height
-                )
-
-                if scale >= 1.0:
-                    preview = img.copy().convert("RGBA")
-                    new_width, new_height = preview.size
-                else:
-                    new_width = int(original_width * scale)
-                    new_height = int(original_height * scale)
-                    preview = img.copy()
-                    preview.thumbnail((new_width, new_height), Image.Resampling.BILINEAR)
-                    preview = preview.convert("RGBA")
-                    new_width, new_height = preview.size
-
-                if auto_crop:
-                    from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
-
-                    orig_box = get_crop_box(image_path)
-                    scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), (new_width, new_height))
-                    if scaled is not None:
-                        preview = preview.crop(scaled)
-                    else:
-                        preview = crop_black_borders(preview)
-                from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
-                return qimage_from_pixel_source(preview)
-
-        size = reader.size()
-        if size.isValid():
-            original_width, original_height = size.width(), size.height()
+        # PIL thumbnail fallback — single path for all non-streaming formats.
+        # Replaces QImageReader 215–253 + AllocationLimit (deleted, no size bound bypass).
+        with Image.open(image_path) as img:
+            original_width, original_height = img.size
             _ensure_supported_dimensions(original_width, original_height, image_path)
             max_preview_size = 1024
-            scale = min(max_preview_size / original_width, max_preview_size / original_height)
-            
-            if scale < 1.0:
-                new_width = max(1, int(original_width * scale))
-                new_height = max(1, int(original_height * scale))
-                reader.setScaledSize(QSize(new_width, new_height))
-            
-            qimg = reader.read()
-            if qimg.isNull():
-                logger.error(f"QImageReader returned null image for {image_path}")
-                return None
-            
-            qimg = qimg.convertToFormat(QImage.Format.Format_RGBA8888)
-            
+            scale = min(
+                max_preview_size / original_width, max_preview_size / original_height
+            )
+
+            if scale >= 1.0:
+                preview = img.copy().convert("RGBA")
+                new_width, new_height = preview.size
+            else:
+                new_width = int(original_width * scale)
+                new_height = int(original_height * scale)
+                preview = img.copy()
+                preview.thumbnail((new_width, new_height), Image.Resampling.BILINEAR)
+                preview = preview.convert("RGBA")
+                new_width, new_height = preview.size
+
             if auto_crop:
                 from shared.image_processing.autocrop_service import get_crop_box, get_scaled_box_for_thumb
 
-                # Use single source of truth: original bbox scaled to thumb
-                orig_w, orig_h = original_width, original_height
-                thumb_w, thumb_h = qimg.width(), qimg.height()
                 orig_box = get_crop_box(image_path)
-                scaled = get_scaled_box_for_thumb(orig_box, (orig_w, orig_h), (thumb_w, thumb_h))
+                scaled = get_scaled_box_for_thumb(orig_box, (original_width, original_height), (new_width, new_height))
                 if scaled is not None:
-                    l, t, r, b = scaled
-                    qimg = qimg.copy(l, t, r - l, b - t)
+                    preview = preview.crop(scaled)
                 else:
-                    # Fallback to direct probe on thumb (old behavior)
-                    pil_probe = Image.frombytes("RGBA", (qimg.width(), qimg.height()), qimg.bits())
-                    from shared.image_processing.resize import get_auto_crop_box
-                    bbox = get_auto_crop_box(pil_probe, 15)
-                    if bbox is not None:
-                        qimg = qimg.copy(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1])
-            
-            return qimg
-        else:
-            return None
+                    preview = crop_black_borders(preview)
+            from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+            return qimage_from_pixel_source(preview)
+
     except ImageSizeLimitError:
         raise
     except Exception as e:

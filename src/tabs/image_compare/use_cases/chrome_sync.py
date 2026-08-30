@@ -474,8 +474,6 @@ class ImageCompareChromeSync(QObject):
             window_presenter.ui_batcher.schedule_batch_update(["file_names","resolution","combobox","ratings","window_schedule","zoom_indicator"])
         except Exception:
             pass
-        else:
-            self._workspace_language_stale = True
 
     def _refresh_visible_workspace_language(self, window_presenter, lang_code: str) -> None:
         from domain.qt_adapters import color_to_qcolor
@@ -511,29 +509,3 @@ class ImageCompareChromeSync(QObject):
         if settings_presenter is not None:
             settings_presenter.on_language_changed()
         self._refresh_visible_workspace_language(window_presenter, lang_code)
-
-    def flush_stale_render(self, window_presenter) -> None:
-        if not self._render_stale:
-            return
-        if not self._is_visible():
-            return
-        widget = self.widget
-        if widget is not None and not getattr(widget, "_render_stale", False):
-            self._render_stale = False
-            return
-        self._render_stale = False
-        if widget is not None:
-            try:
-                widget._render_stale = False  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        try:
-            from core.tracing.tracer import Tracer
-            if Tracer.enabled():
-                Tracer.instance().record("render.ic.chrome_flush", "IC chrome stale flushed on show", {})
-        except Exception:
-            pass
-        try:
-            window_presenter.ui_batcher.schedule_batch_update(["file_names","resolution","combobox","ratings","window_schedule","zoom_indicator"])
-        except Exception:
-            pass
