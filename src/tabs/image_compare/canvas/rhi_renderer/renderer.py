@@ -51,6 +51,8 @@ except Exception:  # pragma: no cover - import-time fallback for tests
 
 from .draw_plan import (
     _covered_fraction,
+    _intersection_rect,
+    _rects_overlap,
     _to_common_space,
     build_array_draw_plan,
     drop_covered_fallback_items,
@@ -442,8 +444,14 @@ class RhiCanvasRenderer:
         self._fallback_atomic_snapshot = decision_is_content_swap
         self._fallback_more_pending_snapshot = main_more_pending
         fallback_diag: dict[str, int] = {}
-        # Fast path: promotion without fallback — avoid closure alloc per frame
-        if not main_more_pending and current_array_plan:
+        # Fast path: promotion without fallback — avoid closure alloc per frame.
+        # Do not take the fast path during a content swap: the new plan's
+        # letterboxes can be mismatched (store 2796 vs preview 1017 / bare 764)
+        # giving a 0.001 bbox sliver even though per-side rect coverage is
+        # 1.0 and more_pending is already False (bare 764 has no tiles to
+        # upload). Promoting that sliver produces a blank middle strip; the
+        # atomic fallback path keeps the old matched baseline instead.
+        if not main_more_pending and current_array_plan and not is_content_swap:
             new_last_good_key, array_draw_plan = key, current_array_plan
         else:
 
@@ -1011,6 +1019,17 @@ class RhiCanvasRenderer:
                     visible2_common,
                     [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
                 )
+                # Bbox coverage catches the 0.001 sliver: each side's rect can
+                # be fully covered (covered1/2=1.0) while their intersection
+                # bbox is tiny due to mismatched letterboxes (store 2796 vs
+                # preview 1017 / bare 764). The gap is a blank middle strip
+                # where no bbox covers the overlap of the two visibles.
+                bbox_covered = 1.0
+                if array_draw_plan and _rects_overlap(visible1_common, visible2_common):
+                    visible_overlap = _intersection_rect(visible1_common, visible2_common)
+                    bbox_covered = _covered_fraction(
+                        visible_overlap, [item.bbox for item in array_draw_plan]
+                    )
                 # Make more_pending vs coverage gap explicit: more_pending tells
                 # whether residency still has tiles to upload, covered tells
                 # whether the current draw plan actually covers the visible
@@ -1026,35 +1045,39 @@ class RhiCanvasRenderer:
                         _gap_more = main_more_pending
                     except NameError:
                         _gap_more = False
-                if covered1 < 0.999 or covered2 < 0.999:
+                if covered1 < 0.999 or covered2 < 0.999 or bbox_covered < 0.999:
                     rhi_render_debug(
-                        "render GAP_DETECTED covered1=%.4f covered2=%.4f entries=%d "
+                        "render GAP_DETECTED covered1=%.4f covered2=%.4f bbox=%.4f entries=%d "
                         "main_more_pending=%s decision_atomic=%s coverage_gap=True",
                         covered1,
                         covered2,
+                        bbox_covered,
                         len(array_draw_plan),
                         _gap_more,
                         _gap_atomic,
                     )
                     _ic_preview_log(
-                        "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s coverage=%.4f/%.4f gap_vs_pending=%s",
+                        "gap_detected covered1=%.4f covered2=%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s coverage=%.4f/%.4f/%.4f gap_vs_pending=%s",
                         covered1,
                         covered2,
+                        bbox_covered,
                         len(array_draw_plan),
                         _gap_more,
                         self._content_swap_active,
                         _gap_atomic,
                         covered1,
                         covered2,
+                        bbox_covered,
                         "expected_more_pending" if _gap_more else "BUG_no_more_pending_but_gap",
                     )
                 elif _ic_preview_enabled():
                     # Log healthy coverage explicitly so more_pending vs coverage
                     # correlation is visible even without a gap.
                     _ic_preview_log(
-                        "coverage_healthy covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s",
+                        "coverage_healthy covered1=%.4f covered2=%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s",
                         covered1,
                         covered2,
+                        bbox_covered,
                         len(array_draw_plan),
                         _gap_more,
                         self._content_swap_active,

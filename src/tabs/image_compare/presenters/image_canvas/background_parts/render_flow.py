@@ -619,6 +619,20 @@ def update_comparison_if_needed(presenter):
                 )
             render_img1, render_img2 = img1, img2
 
+            # Re-sync comparison geometry to the *actual* display pair.
+            # The preview-phase call at the top of update_comparison_if_needed
+            # used document sources (full_res/preview) before the fresh-preview
+            # backing decision; the pick can flip one side from store (2791)
+            # to preview (1017) while the other stays store, leaving the
+            # earlier rect/letterbox based on image_state sizes stale. A stale
+            # letterbox makes _to_common_space/bbox collapse to a 0.001 sliver.
+            try:
+                _update_comparison_geometry(
+                    presenter, render_img1, render_img2, label_width, label_height
+                )
+            except Exception:
+                pass
+
             gui_source1 = presenter.store.viewport.session_data.image_state.image1
             gui_source2 = presenter.store.viewport.session_data.image_state.image2
             document = presenter.store.get_session_state_slot("document")
