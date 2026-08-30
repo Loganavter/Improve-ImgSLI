@@ -366,7 +366,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/loading.py",
-      "lines": 965,
+      "lines": 1016,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",

@@ -37,8 +37,36 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
     if display_image2 is None and source_image2 is not None:
         display_image2 = pick_first_real(source_image2)
 
+    def _size(img):
+        if img is None:
+            return None
+        # QImage.size is a method, TiledPixelStore.size is a tuple property
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from PySide6.QtGui import QImage, QPixmap
+
+            if isinstance(img, TiledPixelStore):
+                return img.size
+            if isinstance(img, (QImage, QPixmap)):
+                s = img.size()
+                return (s.width(), s.height())
+        except Exception:
+            pass
+        # Fallback: _size_or_none style
+        try:
+            sz = getattr(img, "size", None)
+            if callable(sz):
+                s = sz()
+                try:
+                    return (s.width(), s.height())
+                except Exception:
+                    return s
+            return sz
+        except Exception:
+            return None
+
     def _kind(img):
-        return (type(img).__name__, img.size) if img is not None else None
+        return (type(img).__name__, _size(img)) if img is not None else None
 
     autocrop_debug(
         "presentation paths=%s | %s sources=%s | %s displays=%s | %s",
@@ -55,14 +83,14 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
         document.image2_path,
         image_uid(source_image1),
         image_uid(source_image2),
-        source_image1.size if source_image1 is not None else None,
-        source_image2.size if source_image2 is not None else None,
+        _size(source_image1),
+        _size(source_image2),
     )
     display_cache_key = (
         image_uid(display_image1),
         image_uid(display_image2),
-        display_image1.size if display_image1 is not None else None,
-        display_image2.size if display_image2 is not None else None,
+        _size(display_image1),
+        _size(display_image2),
     )
 
     return SnapshotStorePresentation(
