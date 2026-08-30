@@ -192,74 +192,14 @@ def update_common_letterbox_geometry(
 ) -> None:
     """Keep both comparison sides in one canvas coordinate system.
 
-    Before unify the two sides have different native sizes (preview 1017
-    vs 764) — per-image letterbox makes bboxes 0.31 vs 0.001 (10×) and
-    visually left-on-both. Use a single common letterbox from the larger
-    final size so both sides share 0.104 and the jump 764→2797 is only
-    resolution, not geometry.
+    Per-image letterbox (not a copy of slot 0) — before unify the two sides
+    have different native sizes (preview 1017 vs 768, full-res 2797 vs 768)
+    and different aspects; forcing identical letterboxes makes
+    _to_common_space/bbox produce a 0.001 apron sliver instead of ~0.3 and
+    visually left-on-both (see store-redux-dogma investigation).
+    After unify both stores are same size so the two letterboxes naturally
+    converge anyway.
     """
-    from shared.image_processing.image_dims import get_image_dims
-
-    # Determine final sizes: if image is QImage preview, try cached final
-    # store size (2797) for stable geometry
-    def _final_size(img):
-        if img is None:
-            return (0, 0)
-        w, h = get_image_dims(img)
-        # If this is a small preview (1017/764) but final store is 2797,
-        # the preview's cached box will be 2797 — use it for letterbox
-        # so 1017 and 2797 share the same rect.
-        try:
-            from PySide6.QtGui import QImage
-
-            if isinstance(img, QImage):
-                # Preview QImage — try to find its final store size via
-                # the other image if it's already a TiledStore 2797
-                # (heuristic: if one side is TiledStore 2797, use that for both)
-                # For now, just use the larger of the two display sizes
-                # scaled to final via cached box
-                pass
-        except Exception:
-            pass
-        return (w, h)
-
-    w1, h1 = _final_size(image1)
-    w2, h2 = _final_size(image2)
-    if w1 and h1 and w2 and h2:
-        # Use max dimensions for common letterbox so both sides share same
-        # rect — prevents 0.001 apron sliver
-        cw, ch = _canvas_dims(widget)
-        if cw > 0 and ch > 0:
-            # Compute letterbox for the larger image and apply to both
-            max_w = max(w1, w2)
-            max_h = max(h1, h2)
-            geometry = resolve_canvas_content_geometry(
-                widget_width=cw,
-                widget_height=ch,
-                image_width=max_w,
-                image_height=max_h,
-                virtual_layout=None,
-            )
-            inner = geometry.inner_rect_px
-            if inner is not None:
-                offset_x, offset_y, nw, nh = inner
-                common_lb = (
-                    offset_x / float(cw),
-                    offset_y / float(ch),
-                    nw / float(cw),
-                    nh / float(ch),
-                )
-                state = widget.runtime_state
-                state._letterbox_params[0] = common_lb
-                state._letterbox_params[1] = common_lb
-                if True:
-                    state._content_rect_px = geometry.outer_rect_px or (0, 0, cw, ch)
-                    state._inner_content_rect_px = inner
-                    state._clip_overlays_to_content_rect = False
-                while len(state._letterbox_params) < 2:
-                    state._letterbox_params.append(common_lb)
-                return
-    # Fallback to per-image
     update_letterbox_geometry(widget, image1, slot_index=0)
     update_letterbox_geometry(widget, image2, slot_index=1)
     # ensure at least 2 slots exist (update_letterbox_geometry already handles None → 1.0)

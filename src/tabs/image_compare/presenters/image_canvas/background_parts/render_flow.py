@@ -67,37 +67,8 @@ def _update_comparison_geometry(
     """
     src_resize1 = presenter.store.viewport.session_data.image_state.image1
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
-    # Use final store size for geometry even while preview is shown, to keep
-    # letterbox stable (1017 preview vs 2797 store have same crop, but 1017
-    # would give bboxes 0.31/0.001 vs 0.104/0.104 jump). Preview is fast (2s)
-    # but geometry must be from final 2797, not 1017.
-    def _expected_final_size(source, path):
-        # If source is QImage preview, look up cached crop box for final store
-        if source is None or path is None:
-            return None
-        try:
-            from PySide6.QtGui import QImage
-
-            if isinstance(source, QImage):
-                # Preview QImage 1017 is downscaled 2797, but final store is 2797
-                # Use cached box size (2797) for geometry
-                from shared.image_processing.tiled_pixel_store import get_cached_crop_box
-
-                box = get_cached_crop_box(path, threshold=15)
-                if box is not None:
-                    left, top, right, bottom = box
-                    return (right - left, bottom - top)
-                # Fallback: preview size scaled back to original via cached ratio
-                # If no cached box, use preview size itself
-        except Exception:
-            pass
-        return _size_or_none(source)
-
-    _doc = presenter.store.get_session_state_slot("document")
-    _path1 = getattr(_doc, "image1_path", None) if _doc else None
-    _path2 = getattr(_doc, "image2_path", None) if _doc else None
-    size1 = _size_or_none(src_resize1) or _expected_final_size(source1, _path1) or _size_or_none(source1)
-    size2 = _size_or_none(src_resize2) or _expected_final_size(source2, _path2) or _size_or_none(source2)
+    size1 = _size_or_none(src_resize1) or _size_or_none(source1)
+    size2 = _size_or_none(src_resize2) or _size_or_none(source2)
 
     def _fit_scale(w: int, h: int) -> float:
         return min(label_width / w, label_height / h)
@@ -411,12 +382,30 @@ def update_comparison_if_needed(presenter):
     # Comparison letterbox geometry must track the preview arrival, not the
     # unified-store flip. The early returns below (unification deferral,
     # single-image mode, one-side missing) used to skip the geometry block,
+    # leaving the canvas letterboxed at the *previous* comparison's rect
+    # until the unified tiles landed -- a visible resize arriving "with the
+    # tiles" instead of "with the preview". Computing the rect from the best
+    # available sizes (unified stores > full-res > previews) as soon as any
+    # side has content converges it to the final layout during the preview
+    # phase: previews preserve the source aspect, so the pair-fit rect is
+    # already the flip's rect and the store flip no longer resizes anything.
+    _update_comparison_geometry(
+        presenter, source1, source2, label_width, label_height
+    )
+
     if getattr(
         presenter.store.viewport.session_data.render_cache,
         "unification_in_progress",
         False,
     ):
         if presenter.store.viewport.session_data.image_state.image1 is None:
+            # During unification the unified stores are not yet ready, but the
+            # document already holds the raw loads (full_res/preview). The
+            # previous "always defer" kept the canvas on the stale duplicate
+            # (left on both halves, 20:59 16-entry [1,1] promotion) for ~1s
+            # until the unified pair arrived. If both document sides are
+            # present we can already show the preview/full_res pair — the
+            # geometry already converged via _update_comparison_geometry.
             if source1 is None or source2 is None:
                 _preview_log(
                     "update: deferred - unification in progress, image1 not ready"
@@ -425,10 +414,6 @@ def update_comparison_if_needed(presenter):
             _preview_log(
                 "update: unification in progress but both document sources ready - proceeding with preview/full_res (image_state not yet ready)"
             )
-
-    _update_comparison_geometry(
-        presenter, source1, source2, label_width, label_height
-    )
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         _preview_log(
