@@ -95,6 +95,12 @@ class SessionController(QObject):
         )
         self._pyramid_builds: set[int] = self._pyramid_coordinator._pyramid_builds
         self._loading_toast_uid_slot: dict[int, int] = self._pyramid_coordinator._pyramid_toast_slot
+        # Pipeline — demand-driven decode/unify cache (Phase 1 skeleton, docs/dev/plan_image_pipeline.md)
+        from tabs.image_compare.pipeline import AbortSignal, ImagePipeline, PipelineCache
+
+        self._pipeline_cache = PipelineCache()
+        self.pipeline = ImagePipeline(cache=self._pipeline_cache)
+        self._pipeline_aborts: dict[tuple, AbortSignal] = {}
         # Slots with a full-resolution decode in flight; unify against a
         # preview side is deferred while the real pixels are on the way.
         self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
@@ -114,7 +120,16 @@ class SessionController(QObject):
     def _on_store_scoped_change(self, scope: str) -> None:
         if scope != "document":
             return
-        QTimer.singleShot(0, self._resync_current_image_slots_if_needed)
+        # Dispatcher is now reentrant-safe (plan_image_pipeline.md Phase 2):
+        # resync may dispatch synchronously. Keep QTimer fallback only for
+        # re-entrancy during undo's emit while lock is held in old code paths,
+        # but try direct first to make browse-undo O(1) without 0ms delay.
+        try:
+            self._resync_current_image_slots_if_needed()
+        except RuntimeError:
+            # Fallback to async if a subscriber is still inside dispatch lock
+            # on an old code path (should not happen after Phase 2).
+            QTimer.singleShot(0, self._resync_current_image_slots_if_needed)
 
     def _resync_current_image_slots_if_needed(self) -> None:
         from tabs.image_compare.use_cases.loading import resync_current_image_slots
