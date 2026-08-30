@@ -21,6 +21,16 @@ from .resources import _ARRAY_LAYER_PX
 from .uniforms import _FULL_TILE_RECT
 from ._debug import rhi_render_debug
 
+try:
+    from tabs.image_compare.debug import ic_gap_debug as _gap_log, ic_gap_debug_enabled as _gap_enabled  # type: ignore
+except Exception:  # pragma: no cover
+
+    def _gap_log(msg: str, *a, **kw) -> None:  # type: ignore
+        return None
+
+    def _gap_enabled() -> bool:  # type: ignore
+        return False
+
 
 def resolve_lod_texture_keys(
     texture_keys: tuple[object, object],
@@ -57,23 +67,27 @@ def resolve_lod_texture_keys(
     # thus grid dimensions) identical whenever they'd otherwise want the
     # same level (the common case, since compared images are unified to
     # matching sizes/letterboxes).
-    # While one side's pyramid is still building (or the side is a
-    # preview QImage with no pyramid at all) the two sides' grids differ:
-    # bare 2796 is 6×5 tiles, LevelKey(1) 1398 is 3×3, preview is 1×1.
-    # _to_common_space/bbox then collapses to a 0.001 sliver even though
-    # each side's own rect coverage is 1.0, producing a blank middle strip.
-    # Keep both sides at level 0 until every TiledPixelStore side has a
-    # pyramid, so fallback-LOD's atomic hold keeps the old matched content
-    # instead of promoting a mismatched-grid plan.
-    tiled_sources = [s for s in sources if isinstance(s, TiledPixelStore)]
-    tiled_pyramids = [pyramid_for(s) for s in tiled_sources]
-    if tiled_sources and any(p is None for p in tiled_pyramids):
-        shared_level_count = 0
-    else:
-        ready_pyramids = [p for p in tiled_pyramids if p is not None]
-        shared_level_count = (
-            min(p.level_count for p in ready_pyramids) if ready_pyramids else 0
-        )
+    ready_pyramids = [p for p in pyramids if p is not None]
+    shared_level_count = (
+        min(p.level_count for p in ready_pyramids) if ready_pyramids else 0
+    )
+    if _gap_enabled():
+        try:
+            _gap_log(
+                "gap resolve_lod shared_level=%d ready=%d canvas=%.0fx%.0f zoom=%.3f letterbox1=(%.3f,%.3f,%.3f,%.3f) letterbox2=(%.3f,%.3f,%.3f,%.3f) keys=%s src_types=%s pyr_counts=%s",
+                shared_level_count,
+                len(ready_pyramids),
+                canvas_w_px,
+                canvas_h_px,
+                zoom,
+                *letterboxes[0],
+                *letterboxes[1],
+                [str(k) for k in texture_keys],
+                [type(s).__name__ if s is not None else None for s in sources],
+                [p.level_count if p else None for p in pyramids],
+            )
+        except Exception:
+            pass
     resolved = []
     for key, letterbox, source, pyramid in zip(
         texture_keys, letterboxes, sources, pyramids
@@ -531,4 +545,45 @@ def build_array_draw_plan(
             item_count=len(items),
             distinct_diff_layers=len({item.layer_diff for item in items}),
         )
+    if _gap_enabled() and items:
+        try:
+            widths = [b[2] for b in (it.bbox for it in items)]
+            heights = [b[3] for b in (it.bbox for it in items)]
+            widths_sorted = sorted(widths)
+            narrow = sum(1 for w in widths if w < 0.01)
+            min_w = min(widths) if widths else 0.0
+            max_w = max(widths) if widths else 0.0
+            med_w = widths_sorted[len(widths_sorted)//2] if widths_sorted else 0.0
+            # detect central gap via sorted bbox X gaps
+            xs = sorted([it.bbox[0] for it in items])
+            max_gap = 0.0
+            if len(xs) > 1:
+                for i in range(len(xs)-1):
+                    gap = xs[i+1] - (xs[i] + widths_sorted[i] if i < len(widths_sorted) else xs[i])
+                    # approximate using bbox x + w; use actual bboxes order
+                    pass
+            _gap_log(
+                "gap draw_plan entries=%d side1=%d side2=%d grid1=%s grid2=%s letterbox1=%s letterbox2=%s bbox w min=%.5f med=%.5f max=%.5f narrow<0.01=%d/%.2f",
+                len(items),
+                len(side1),
+                len(side2),
+                f"{tile_service.grid_for(texture_keys[0]).rows if tile_service.grid_for(texture_keys[0]) else 1}x{tile_service.grid_for(texture_keys[0]).columns if tile_service.grid_for(texture_keys[0]) else 1}",
+                f"{tile_service.grid_for(texture_keys[1]).rows if tile_service.grid_for(texture_keys[1]) else 1}x{tile_service.grid_for(texture_keys[1]).columns if tile_service.grid_for(texture_keys[1]) else 1}",
+                tuple(letterboxes[0]),
+                tuple(letterboxes[1]),
+                min_w,
+                med_w,
+                max_w,
+                narrow,
+                narrow/len(widths) if widths else 0.0,
+            )
+            if narrow > 0 and min_w < 0.005:
+                try:
+                    from core.tracing.tracer import Tracer as _Tracer
+                    if _Tracer.enabled():
+                        _Tracer.instance().record("ic.gap.narrow_bbox", f"narrow bbox {narrow}/{len(items)} min {min_w:.5f}", {"narrow": narrow, "min_w": min_w, "med_w": med_w, "entries": len(items)}, caller_skip=1)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     return items

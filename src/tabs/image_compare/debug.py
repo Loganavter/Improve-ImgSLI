@@ -84,6 +84,25 @@ def ic_preview_debug(msg: str, *args, **kwargs) -> None:
         )
 
 
+def ic_gap_debug_enabled() -> bool:
+    return (
+        _env_flag("IMGSLI_IC_GAP_DEBUG")
+        or _env_flag("IMGSLI_IC_PREVIEW_DEBUG")
+        or logger.isEnabledFor(logging.DEBUG)
+    )
+
+
+def ic_gap_debug(msg: str, *args, **kwargs) -> None:
+    if ic_gap_debug_enabled():
+        _emit(
+            "[ic-gap]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_IC_GAP_DEBUG", "IMGSLI_IC_PREVIEW_DEBUG"),
+            **kwargs,
+        )
+
+
 def ic_preview_source_tier(img, preview, original, state_img) -> str:
     """Human-readable display tier for ``img`` (``[ic-preview]`` payload).
 

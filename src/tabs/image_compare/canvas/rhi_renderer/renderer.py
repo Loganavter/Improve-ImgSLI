@@ -39,9 +39,17 @@ from ._debug import rhi_render_debug, rhi_render_debug_enabled
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on
 # shared.debug_flags, so no cycle.
 try:
+    from tabs.image_compare.debug import ic_gap_debug as _gap_log  # type: ignore
+    from tabs.image_compare.debug import ic_gap_debug_enabled as _gap_enabled  # type: ignore
     from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
     from tabs.image_compare.debug import ic_preview_debug_enabled as _ic_preview_enabled  # type: ignore
 except Exception:  # pragma: no cover - import-time fallback for tests
+
+    def _gap_log(msg: str, *args, **kwargs) -> None:  # type: ignore
+        return None
+
+    def _gap_enabled() -> bool:  # type: ignore
+        return False
 
     def _ic_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
         return None
@@ -51,8 +59,6 @@ except Exception:  # pragma: no cover - import-time fallback for tests
 
 from .draw_plan import (
     _covered_fraction,
-    _intersection_rect,
-    _rects_overlap,
     _to_common_space,
     build_array_draw_plan,
     drop_covered_fallback_items,
@@ -440,18 +446,30 @@ class RhiCanvasRenderer:
             decision_content_swap_flag,
             decision_is_content_swap,
         )
+        if _gap_enabled():
+            try:
+                _gap_log(
+                    "gap fallback decision key=%s last_good=%s atomic=%s more_pending=%s current=%d letterbox1=%s letterbox2=%s grid1=%sx%s grid2=%sx%s",
+                    key,
+                    last_good_key,
+                    decision_is_content_swap,
+                    main_more_pending,
+                    len(current_array_plan),
+                    tuple(base_image.letterbox1),
+                    tuple(base_image.letterbox2),
+                    tile_service.grid_for(texture_keys[0]).rows if tile_service.grid_for(texture_keys[0]) else 1,
+                    tile_service.grid_for(texture_keys[0]).columns if tile_service.grid_for(texture_keys[0]) else 1,
+                    tile_service.grid_for(texture_keys[1]).rows if tile_service.grid_for(texture_keys[1]) else 1,
+                    tile_service.grid_for(texture_keys[1]).columns if tile_service.grid_for(texture_keys[1]) else 1,
+                )
+            except Exception:
+                pass
         # Stash snapshot for render() gap log (same frame, after promotion clears flag)
         self._fallback_atomic_snapshot = decision_is_content_swap
         self._fallback_more_pending_snapshot = main_more_pending
         fallback_diag: dict[str, int] = {}
-        # Fast path: promotion without fallback — avoid closure alloc per frame.
-        # Do not take the fast path during a content swap: the new plan's
-        # letterboxes can be mismatched (store 2796 vs preview 1017 / bare 764)
-        # giving a 0.001 bbox sliver even though per-side rect coverage is
-        # 1.0 and more_pending is already False (bare 764 has no tiles to
-        # upload). Promoting that sliver produces a blank middle strip; the
-        # atomic fallback path keeps the old matched baseline instead.
-        if not main_more_pending and current_array_plan and not is_content_swap:
+        # Fast path: promotion without fallback — avoid closure alloc per frame
+        if not main_more_pending and current_array_plan:
             new_last_good_key, array_draw_plan = key, current_array_plan
         else:
 
@@ -1019,17 +1037,53 @@ class RhiCanvasRenderer:
                     visible2_common,
                     [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
                 )
-                # Bbox coverage catches the 0.001 sliver: each side's rect can
-                # be fully covered (covered1/2=1.0) while their intersection
-                # bbox is tiny due to mismatched letterboxes (store 2796 vs
-                # preview 1017 / bare 764). The gap is a blank middle strip
-                # where no bbox covers the overlap of the two visibles.
-                bbox_covered = 1.0
-                if array_draw_plan and _rects_overlap(visible1_common, visible2_common):
-                    visible_overlap = _intersection_rect(visible1_common, visible2_common)
-                    bbox_covered = _covered_fraction(
-                        visible_overlap, [item.bbox for item in array_draw_plan]
-                    )
+                # [ic-gap] bbox distribution + bbox coverage for central strip
+                _bbox_min = _bbox_med = _bbox_max = 0.0
+                _bbox_narrow = 0
+                _bbox_cov = 1.0
+                if _gap_enabled() and array_draw_plan:
+                    try:
+                        _bws = [b[2] for b in (it.bbox for it in array_draw_plan)]
+                        _bhs = [b[3] for b in (it.bbox for it in array_draw_plan)]
+                        _bws_sorted = sorted(_bws)
+                        _bbox_min = min(_bws) if _bws else 0.0
+                        _bbox_max = max(_bws) if _bws else 0.0
+                        _bbox_med = _bws_sorted[len(_bws_sorted)//2] if _bws_sorted else 0.0
+                        _bbox_narrow = sum(1 for w in _bws if w < 0.01)
+                        # bbox coverage over overlap of visibles
+                        from shared.rendering.tile_coverage import intersection_rect as _gap_int, rects_overlap as _gap_overlap
+                        if _gap_overlap(visible1_common, visible2_common):
+                            _overlap = _gap_int(visible1_common, visible2_common)
+                            _bbox_cov = _covered_fraction(_overlap, [it.bbox for it in array_draw_plan])
+                        else:
+                            _bbox_cov = 0.0
+                        if _bbox_narrow > 0 or _bbox_cov < 0.999:
+                            _gap_log(
+                                "gap bbox_dist entries=%d bbox w min=%.5f med=%.5f max=%.5f narrow<0.01=%d bbox_cov=%.4f covered=%.4f/%.4f letterbox1=%s letterbox2=%s grid1=%sx%s grid2=%sx%s",
+                                len(array_draw_plan),
+                                _bbox_min,
+                                _bbox_med,
+                                _bbox_max,
+                                _bbox_narrow,
+                                _bbox_cov,
+                                covered1,
+                                covered2,
+                                letterbox1,
+                                letterbox2,
+                                tile_service.grid_for(texture_keys[0]).rows if tile_service.grid_for(texture_keys[0]) else 1,
+                                tile_service.grid_for(texture_keys[0]).columns if tile_service.grid_for(texture_keys[0]) else 1,
+                                tile_service.grid_for(texture_keys[1]).rows if tile_service.grid_for(texture_keys[1]) else 1,
+                                tile_service.grid_for(texture_keys[1]).columns if tile_service.grid_for(texture_keys[1]) else 1,
+                            )
+                            if _bbox_min < 0.005 and _bbox_narrow > 0:
+                                try:
+                                    from core.tracing.tracer import Tracer as _Tracer2
+                                    if _Tracer2.enabled():
+                                        _Tracer2.instance().record("ic.gap.narrow_bbox", f"narrow bbox min {_bbox_min:.5f} narrow {_bbox_narrow}/{len(array_draw_plan)}", {"min_w": _bbox_min, "narrow": _bbox_narrow, "bbox_cov": _bbox_cov}, caller_skip=1)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
                 # Make more_pending vs coverage gap explicit: more_pending tells
                 # whether residency still has tiles to upload, covered tells
                 # whether the current draw plan actually covers the visible
@@ -1045,13 +1099,15 @@ class RhiCanvasRenderer:
                         _gap_more = main_more_pending
                     except NameError:
                         _gap_more = False
-                if covered1 < 0.999 or covered2 < 0.999 or bbox_covered < 0.999:
+                _bbox_cov_for_gap = locals().get("_bbox_cov", 1.0)
+                _bbox_min_for_gap = locals().get("_bbox_min", 0.0)
+                if covered1 < 0.999 or covered2 < 0.999 or _bbox_cov_for_gap < 0.999:
                     rhi_render_debug(
                         "render GAP_DETECTED covered1=%.4f covered2=%.4f bbox=%.4f entries=%d "
                         "main_more_pending=%s decision_atomic=%s coverage_gap=True",
                         covered1,
                         covered2,
-                        bbox_covered,
+                        _bbox_cov_for_gap,
                         len(array_draw_plan),
                         _gap_more,
                         _gap_atomic,
@@ -1060,16 +1116,38 @@ class RhiCanvasRenderer:
                         "gap_detected covered1=%.4f covered2=%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s coverage=%.4f/%.4f/%.4f gap_vs_pending=%s",
                         covered1,
                         covered2,
-                        bbox_covered,
+                        _bbox_cov_for_gap,
                         len(array_draw_plan),
                         _gap_more,
                         self._content_swap_active,
                         _gap_atomic,
                         covered1,
                         covered2,
-                        bbox_covered,
+                        _bbox_cov_for_gap,
                         "expected_more_pending" if _gap_more else "BUG_no_more_pending_but_gap",
                     )
+                    if _gap_enabled():
+                        try:
+                            _gap_log(
+                                "gap GAP_DETECTED covered=%.4f/%.4f bbox=%.4f min_w=%.5f entries=%d more_pending=%s atomic=%s letterbox1=%s letterbox2=%s",
+                                covered1,
+                                covered2,
+                                _bbox_cov_for_gap,
+                                _bbox_min_for_gap,
+                                len(array_draw_plan),
+                                _gap_more,
+                                _gap_atomic,
+                                letterbox1,
+                                letterbox2,
+                            )
+                            try:
+                                from core.tracing.tracer import Tracer as _Tracer3
+                                if _Tracer3.enabled():
+                                    _Tracer3.instance().record("ic.gap.detected", f"GAP covered {covered1:.3f}/{covered2:.3f} bbox {_bbox_cov_for_gap:.3f}", {"covered1": covered1, "covered2": covered2, "bbox_cov": _bbox_cov_for_gap, "entries": len(array_draw_plan), "more_pending": _gap_more, "atomic": _gap_atomic, "letterbox1": str(letterbox1), "letterbox2": str(letterbox2)}, caller_skip=1)
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
                 elif _ic_preview_enabled():
                     # Log healthy coverage explicitly so more_pending vs coverage
                     # correlation is visible even without a gap.
@@ -1077,12 +1155,25 @@ class RhiCanvasRenderer:
                         "coverage_healthy covered1=%.4f covered2=%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s",
                         covered1,
                         covered2,
-                        bbox_covered,
+                        _bbox_cov_for_gap,
                         len(array_draw_plan),
                         _gap_more,
                         self._content_swap_active,
                         _gap_atomic,
                     )
+                    if _gap_enabled():
+                        try:
+                            _gap_log(
+                                "gap healthy covered=%.4f/%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s",
+                                covered1,
+                                covered2,
+                                _bbox_cov_for_gap,
+                                len(array_draw_plan),
+                                _gap_more,
+                                _gap_atomic,
+                            )
+                        except Exception:
+                            pass
 
         # Submit this frame's tile uploads now (rather than folding them into
         # the main pass's own resourceUpdates below) so generate_all_dirty_mips
