@@ -30,9 +30,11 @@ def test_common_letterbox_uses_one_reference_rect_for_both_sides():
         Image.new("RGBA", (1000, 2000)),
     )
 
+    # Eager max envelope: pw,ph = 2000,2000 -> square fitted into 1000x500
+    # => 500x500 centered at (250,0)
     assert state._letterbox_params[0] == state._letterbox_params[1]
-    assert state._letterbox_params[0] == (0.0, 0.0, 1.0, 1.0)
-    assert state._content_rect_px == (0, 0, 1000, 500)
+    assert state._letterbox_params[0] == (0.25, 0.0, 0.5, 1.0)
+    assert state._content_rect_px == (250, 0, 500, 500)
 
 
 def _letterbox_widget(width=800, height=600):

@@ -456,15 +456,18 @@ class ImageCompareChromeSync(QObject):
         lang = self.store.settings.current_language
         show_labels = bool(name1 != "-----" or name2 != "-----")
 
-        self.widget.update_file_names_display(
-            name1_text=name1,
-            name2_text=name2,
-            is_horizontal=self.store.viewport.view_state.is_horizontal,
-            current_language=lang,
-            show_labels=show_labels,
-            has_image1=bool(document.image1_path),
-            has_image2=bool(document.image2_path),
-        )
+        try:
+            self.widget.update_file_names_display(
+                name1_text=name1,
+                name2_text=name2,
+                is_horizontal=self.store.viewport.view_state.is_horizontal,
+                current_language=lang,
+                show_labels=show_labels,
+                has_image1=bool(document.image1_path),
+                has_image2=bool(document.image2_path),
+            )
+        except RuntimeError:
+            return
 
         if not self.widget.edit_name1.hasFocus():
             self.widget.edit_name1.blockSignals(True)
@@ -509,8 +512,11 @@ class ImageCompareChromeSync(QObject):
         self.widget.update_combobox_display(2, count2, idx2, text2, "")
 
         unified_flyout = self._unified_flyout(window_presenter)
-        if unified_flyout is not None and unified_flyout.isVisible():
-            unified_flyout.sync_from_store()
+        try:
+            if unified_flyout is not None and unified_flyout.isVisible():
+                unified_flyout.sync_from_store()
+        except RuntimeError:
+            pass
 
     def do_update_rating_displays(self, window_presenter):
         self.widget.update_rating_display(
@@ -521,15 +527,18 @@ class ImageCompareChromeSync(QObject):
         )
 
         unified_flyout = self._unified_flyout(window_presenter)
-        if unified_flyout is not None and unified_flyout.isVisible():
-            document = _document(self.store)
-            current_idx1 = document.current_index1
-            current_idx2 = document.current_index2
-            if current_idx1 >= 0:
-                unified_flyout.update_rating_for_item(1, current_idx1)
-            if current_idx2 >= 0:
-                unified_flyout.update_rating_for_item(2, current_idx2)
-            QTimer.singleShot(0, unified_flyout.refreshGeometry)
+        try:
+            if unified_flyout is not None and unified_flyout.isVisible():
+                document = _document(self.store)
+                current_idx1 = document.current_index1
+                current_idx2 = document.current_index2
+                if current_idx1 >= 0:
+                    unified_flyout.update_rating_for_item(1, current_idx1)
+                if current_idx2 >= 0:
+                    unified_flyout.update_rating_for_item(2, current_idx2)
+                QTimer.singleShot(0, unified_flyout.refreshGeometry)
+        except RuntimeError:
+            pass
 
     def on_language_changed(self, window_presenter):
         lang_code = self.store.settings.current_language

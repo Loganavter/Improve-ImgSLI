@@ -580,14 +580,20 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             presenter.update_rating_displays()
 
     def _hide_file_name_labels(self):
-        self.file_name_label1.setVisible(False)
-        self.file_name_label2.setVisible(False)
-        self.file_name_label1.setText("")
-        self.file_name_label2.setText("")
+        try:
+            self.file_name_label1.setVisible(False)
+            self.file_name_label2.setVisible(False)
+            self.file_name_label1.setText("")
+            self.file_name_label2.setText("")
+        except RuntimeError:
+            pass
 
     def _show_file_name_labels(self):
-        self.file_name_label1.setVisible(True)
-        self.file_name_label2.setVisible(True)
+        try:
+            self.file_name_label1.setVisible(True)
+            self.file_name_label2.setVisible(True)
+        except RuntimeError:
+            pass
 
     def _get_file_name_prefixes(
         self, is_horizontal: bool, current_language: str

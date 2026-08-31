@@ -101,8 +101,8 @@ def rebuild_magnifier_overlay(presenter):
                     if not path:
                         continue
                     try:
-                        vp = store.viewport.session_data.image_state
-                        cand = vp.image1 if slot == 1 else vp.image2
+                        _img_state = store.viewport.session_data.image_state
+                        cand = _img_state.image1 if slot == 1 else _img_state.image2
                         if cand is not None and getattr(cand, "is_open", True):
                             try:
                                 if hasattr(cand, "isNull") and cand.isNull():
