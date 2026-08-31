@@ -20,6 +20,13 @@ from tabs.image_compare.debug import ic_preview_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Throttle: ensure/set_current are re-entered 3× for same path at 60Hz via
+# load path + transaction emit + fps timer. Dedup identical (slot, idx, path)
+# probes so one load = one log line, not 3.
+_last_ensure_slot_sig: dict[int, tuple] = {}
+_last_set_current_sig: dict[tuple, bool] = {}
+_last_handle_full_sig: dict[tuple, bool] = {}
+
 
 def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:
     document = controller.store.get_session_state_slot("document")
@@ -29,9 +36,14 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
     lst = document.image_list1 if image_number == 1 else document.image_list2
     idx = document.current_index1 if image_number == 1 else document.current_index2
     path = document.image1_path if image_number == 1 else document.image2_path
-    ic_preview_debug("ensure_current_slot slot=%s idx=%s path=%s lst_len=%s", image_number, idx, path, len(lst))
+    _ens_sig = (int(image_number), int(idx) if isinstance(idx, int) else idx, str(path) if path else None, len(lst))
+    _ens_should = _last_ensure_slot_sig.get(int(image_number)) != _ens_sig
+    if _ens_should:
+        _last_ensure_slot_sig[int(image_number)] = _ens_sig
+        ic_preview_debug("ensure_current_slot slot=%s idx=%s path=%s lst_len=%s", image_number, idx, path, len(lst))
     if not (0 <= idx < len(lst)):
-        ic_preview_debug("ensure_current_slot slot=%s -> idx out of range", image_number)
+        if _ens_should:
+            ic_preview_debug("ensure_current_slot slot=%s -> idx out of range", image_number)
         return False
     item = lst[idx]
     # staleness via pipeline cache (no document pixel fields)
@@ -43,7 +55,8 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
     if path and cached is None:
         # if pipeline has no entry, treat as stale needing load
         stale = True
-    ic_preview_debug("ensure_current_slot slot=%s stale=%s cached=%s is_open=%s item.path=%s", image_number, stale, cached, is_open, item.path)
+    if _ens_should:
+        ic_preview_debug("ensure_current_slot slot=%s stale=%s cached=%s is_open=%s item.path=%s", image_number, stale, cached, is_open, item.path)
     if not stale:
         return False
     try:
@@ -352,7 +365,6 @@ def _finalize_loaded_paths(controller, image_number: int, newly_added_indices: l
 
 
 def set_current_image(controller, image_number: int, force_refresh: bool = False, emit_signal: bool = True):
-    ic_preview_debug("set_current_image slot=%s force=%s emit=%s", image_number, force_refresh, emit_signal)
     from tabs.image_compare.services import document_store_ops
     from core.state_management.actions import SetCachedDiffImageAction, SetUnificationInProgressAction, SetPendingUnificationPathsAction
     from core.events import CoreUpdateRequestedEvent
@@ -360,7 +372,14 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
     cur = document.current_index1 if image_number == 1 else document.current_index2
-    ic_preview_debug("set_current_image slot=%s cur=%s len=%s path=%s", image_number, cur, len(lst), lst[cur].path if 0 <= cur < len(lst) else None)
+    _cur_path = lst[cur].path if 0 <= cur < len(lst) else None
+    _set_sig = (int(image_number), int(cur) if isinstance(cur, int) else cur, str(_cur_path) if _cur_path else None, bool(force_refresh))
+    _last_sig = _last_set_current_sig.get(int(image_number))  # type: ignore[has-type]
+    _should_log_set = _set_sig != _last_sig or bool(force_refresh)
+    if _should_log_set:
+        _last_set_current_sig[int(image_number)] = _set_sig  # type: ignore[has-type]
+        ic_preview_debug("set_current_image slot=%s force=%s emit=%s", image_number, force_refresh, emit_signal)
+        ic_preview_debug("set_current_image slot=%s cur=%s len=%s path=%s", image_number, cur, len(lst), _cur_path)
     if not (0 <= cur < len(lst)):
         document_store_ops.clear_image_slot_data(controller.store, image_number)
         from tabs.image_compare.use_cases.unify import _invalidate_diff_cache
@@ -395,20 +414,26 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     path = item.path
     # pipeline is single source — peek to see if cached
     pl = getattr(controller, "pipeline", None)
-    ic_preview_debug("set_current_image slot=%s path=%s pipeline=%s", image_number, path, bool(pl))
+    if _should_log_set:
+        ic_preview_debug("set_current_image slot=%s path=%s pipeline=%s", image_number, path, bool(pl))
     cached = pl.peek(path) if pl is not None and path else None
-    ic_preview_debug("set_current_image slot=%s cached=%s is_open=%s", image_number, cached, getattr(cached, "is_open", None) if cached else None)
+    if _should_log_set:
+        ic_preview_debug("set_current_image slot=%s cached=%s is_open=%s", image_number, cached, getattr(cached, "is_open", None) if cached else None)
     if cached is not None and not bool(getattr(cached, "is_open", True)):
-        ic_preview_debug("set_current_image slot=%s cached closed -> None", image_number)
+        if _should_log_set:
+            ic_preview_debug("set_current_image slot=%s cached closed -> None", image_number)
         cached = None
     pil_img = cached
-    ic_preview_debug("set_current_image slot=%s pil_img=%s path=%s", image_number, pil_img, path)
+    if _should_log_set:
+        ic_preview_debug("set_current_image slot=%s pil_img=%s path=%s", image_number, pil_img, path)
     if pil_img is None and path:
-        ic_preview_debug("set_current_image slot=%s -> clear slot data (cache miss)", image_number)
+        if _should_log_set:
+            ic_preview_debug("set_current_image slot=%s -> clear slot data (cache miss)", image_number)
         document_store_ops.clear_image_slot_data(controller.store, image_number)
     # publish PipelineView via single Transaction (1 emit)
     if pil_img is not None:
-        ic_preview_debug("set_current_image slot=%s -> transact image uid=%s", image_number, getattr(pil_img, "uid", id(pil_img)))
+        if _should_log_set:
+            ic_preview_debug("set_current_image slot=%s -> transact image uid=%s", image_number, getattr(pil_img, "uid", id(pil_img)))
         try:
             from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
@@ -416,16 +441,19 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 [SetImageSessionImageAction(slot=image_number, image=pil_img), InvalidateGeometryCacheAction()],
                 scope="viewport",
             )
-            ic_preview_debug("set_current_image slot=%s transact done", image_number)
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s transact done", image_number)
         except Exception as e:
-            ic_preview_debug("set_current_image slot=%s transact failed %s", image_number, e)
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s transact failed %s", image_number, e)
             try:
                 controller._update_image_slot(image_number, image=pil_img, path=path, is_full_res=True, emit=False)
             except Exception:
                 pass
     else:
         # still publish clear via transaction if needed
-        ic_preview_debug("set_current_image slot=%s -> transact clear image_state", image_number)
+        if _should_log_set:
+            ic_preview_debug("set_current_image slot=%s -> transact clear image_state", image_number)
         try:
             from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
@@ -433,24 +461,30 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 [SetImageSessionImageAction(slot=image_number, image=None), InvalidateGeometryCacheAction()],
                 scope="viewport",
             )
-            ic_preview_debug("set_current_image slot=%s clear transact done", image_number)
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s clear transact done", image_number)
         except Exception as e:
-            ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
             pass
-    ic_preview_debug("set_current_image slot=%s -> invalidate_render + schedule_update", image_number)
+    if _should_log_set:
+        ic_preview_debug("set_current_image slot=%s -> invalidate_render + schedule_update", image_number)
     controller.store.invalidate_render_cache()
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
     if pil_img is None and path:
-        ic_preview_debug("set_current_image slot=%s -> cache miss, will start worker path=%s cur=%s", image_number, path, cur)
+        if _should_log_set:
+            ic_preview_debug("set_current_image slot=%s -> cache miss, will start worker path=%s cur=%s", image_number, path, cur)
         pl = getattr(controller, "pipeline", None)
         key = (int(image_number), str(path))
         if pl is not None and hasattr(pl, "_inflight"):
             existing = pl._inflight.get(key)  # type: ignore[arg-type]
-            ic_preview_debug("set_current_image slot=%s inflight existing=%s", image_number, existing)
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s inflight existing=%s", image_number, existing)
             if existing is not None:
                 try:
                     if not existing.is_aborted():
+                        # dedup is important — always log even when throttled
                         ic_preview_debug("set_current_image slot=%s -> inflight exists, dedup return", image_number)
                         if emit_signal:
                             controller.store.emit_state_change("document")
@@ -464,9 +498,11 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
                 _sig = _AbortSignal()
                 pl._inflight[key] = _sig
-                ic_preview_debug("set_current_image slot=%s -> new inflight %s", image_number, _sig)
+                if _should_log_set:
+                    ic_preview_debug("set_current_image slot=%s -> new inflight %s", image_number, _sig)
             except Exception as e:
-                ic_preview_debug("set_current_image slot=%s inflight create failed %s", image_number, e)
+                if _should_log_set:
+                    ic_preview_debug("set_current_image slot=%s inflight create failed %s", image_number, e)
                 _sig = None
 
             def _clear():

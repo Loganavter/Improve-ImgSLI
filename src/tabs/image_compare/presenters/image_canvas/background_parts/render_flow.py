@@ -95,12 +95,11 @@ def _update_comparison_geometry(
         return
 
     geometry = presenter.store.viewport.geometry_state
-    # [ic-gap] input snapshot before guard
+    # [ic-gap] input snapshot before guard — throttled: same (state, src, label, unified, size) at 60Hz
     if _gap_enabled():
         try:
             _unified = bool(src_resize1 is not None or src_resize2 is not None)
-            _gap_log(
-                "geometry input state1=%s state2=%s src1=%s src2=%s label=%dx%d unified=%s size1=%s size2=%s",
+            _gap_input_sig = (
                 image_uid(src_resize1) if src_resize1 is not None else None,
                 image_uid(src_resize2) if src_resize2 is not None else None,
                 image_uid(source1) if source1 is not None else None,
@@ -111,6 +110,20 @@ def _update_comparison_geometry(
                 size1,
                 size2,
             )
+            global _last_gap_geometry_input_sig
+            if _gap_input_sig != _last_gap_geometry_input_sig:
+                _gap_log(
+                    "geometry input state1=%s state2=%s src1=%s src2=%s label=%dx%d unified=%s size1=%s size2=%s",
+                    image_uid(src_resize1) if src_resize1 is not None else None,
+                    image_uid(src_resize2) if src_resize2 is not None else None,
+                    image_uid(source1) if source1 is not None else None,
+                    image_uid(source2) if source2 is not None else None,
+                    label_width,
+                    label_height,
+                    _unified,
+                    size1,
+                    size2,
+                )
         except Exception:
             pass
     img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
@@ -437,6 +450,9 @@ def flush_stale_render(presenter) -> bool:
 
 
 def schedule_update(presenter):
+    import time as _time
+
+    global _last_schedule_log_sig
     if (
         hasattr(presenter.main_window_app, "_closing")
         and presenter.main_window_app._closing
@@ -454,23 +470,37 @@ def schedule_update(presenter):
     if is_interactive:
         presenter._pending_interactive_mode = True
 
+    # time-based throttle for fps-timer spam: at most one "armed" log per 500ms
+    now = _time.monotonic()
+    last_armed = getattr(schedule_update, "_last_armed_log", 0.0)
+
     if is_interactive:
-        _preview_log("schedule_update: interactive mode - immediate update")
+        if _last_schedule_log_sig != "interactive":
+            _last_schedule_log_sig = "interactive"
+            _preview_log("schedule_update: interactive mode - immediate update")
         presenter._update_scheduler_timer.stop()
         result = presenter.update_comparison_if_needed()
         if result:
             presenter._pending_interactive_mode = None
     else:
         if not presenter._update_scheduler_timer.isActive():
-            _preview_log("schedule_update: non-interactive - fps timer armed")
+            if now - last_armed >= 0.5 or _last_schedule_log_sig != "armed":
+                _last_schedule_log_sig = "armed"
+                schedule_update._last_armed_log = now  # type: ignore[attr-defined]
+                _preview_log("schedule_update: non-interactive - fps timer armed")
             presenter._update_scheduler_timer.start()
+        else:
+            # throttle: timer already armed — don't spam every 16ms
+            pass
 
 
 _last_document_log_sig = None  # type: ignore
 _last_one_side_log_sig = None  # type: ignore
 _last_gap_geometry_sig = None  # type: ignore
+_last_gap_geometry_input_sig = None  # type: ignore
 _last_gap_pick_sig = None  # type: ignore
 _last_gap_apply_sig = None  # type: ignore
+_last_schedule_log_sig = None  # type: ignore
 
 def update_comparison_if_needed(presenter):
     if _is_background_tab(presenter):
