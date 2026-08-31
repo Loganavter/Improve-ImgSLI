@@ -155,6 +155,8 @@ flowchart LR
 
 Rendering uses **QRhi**, not raw OpenGL — see [rendering/index.md](rendering/index.md) for the feature contract and auto-discovery mechanism.
 
+Comparison letterbox (`image_compare`): `update_common_letterbox_geometry` (`canvas/texture_parts/base_images.py:189`) / `_update_comparison_geometry` (`presenters/image_canvas/background_parts/render_flow.py:75`) compute eager envelope `pw,ph = max(w1,w2), max(h1,h2)` from `get_image_dims` and derive a single `resolve_canvas_content_geometry(cw,ch,pw,ph)` fitted rect for both sides — `letterbox` stable from first `gap draw_plan` (no `UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry; `HOLD` + `atomic` remain only for pixel fallback LOD in `rhi_renderer/renderer.py:463`).
+
 ### Important constraint
 
 Canvas features are discovered automatically from `tabs/<tab>/canvas/features/<name>/`. A feature package should be removable without breaking startup, as long as no other code imports it directly.

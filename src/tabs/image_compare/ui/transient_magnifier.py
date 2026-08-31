@@ -169,6 +169,7 @@ class MagnifierVisibilityController:
 
     def _handle_button_event(self, event):
         host = self.manager.host
+        btn = getattr(self.widget, "btn_magnifier", None)
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))

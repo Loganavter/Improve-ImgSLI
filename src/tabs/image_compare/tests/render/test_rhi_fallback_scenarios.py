@@ -425,9 +425,9 @@ def test_bbox_width_for_distinct_images():
     img2 = Image.new("RGBA", (768, 576), (0, 255, 0, 255))
     update_common_letterbox_geometry(widget, img1, img2)
     lb1, lb2 = widget.runtime_state._letterbox_params
-    # After fix they must be distinct for different aspects (before fix they were forced equal)
-    # 1017x838 (1.21) vs 768x576 (1.33) on 1171x965 (1.21) should give different pillarbox
-    assert lb1 != lb2, f"letterboxes forced identical {lb1} vs {lb2} — duplicate copy bug"
+    # Eager max envelope (Phase 1): both sides share one fitted rect from pw,ph = max
+    # 1017x838 vs 768x576 -> pw=1017, ph=838 -> identical letterbox, bbox stable 0.091
+    assert lb1 == lb2, f"eager max must share one letterbox, got {lb1} vs {lb2}"
 
     # Now drive build_array_draw_plan with TileTextureService grids for 768/1017
     svc = TileTextureService(max_tile_extent=512)
