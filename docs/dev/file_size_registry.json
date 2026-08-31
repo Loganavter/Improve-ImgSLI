@@ -276,7 +276,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
-      "lines": 581,
+      "lines": 636,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1238,
+      "lines": 1264,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -429,6 +429,17 @@
       "parsed": {
         "pattern": "thin-owner",
         "reason": "SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/unify.py",
+      "lines": 537,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"unify flow — wh deterministic predicted_unified_size + worker lifecycle, single file\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "unify flow — wh deterministic predicted_unified_size + worker lifecycle, single file"
       }
     },
     {

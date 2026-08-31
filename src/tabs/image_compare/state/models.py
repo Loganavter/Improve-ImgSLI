@@ -58,6 +58,7 @@ class RenderCacheState:
 
     unification_in_progress: bool = False
     pending_unification_paths: Optional[tuple[str, str]] = None
+    predicted_unified_size: Optional[tuple[int, int]] = None
 
     cached_diff_image: Optional[Any] = None
     # request_key (diff_mode, image_uid(source1), image_uid(source2), size1,

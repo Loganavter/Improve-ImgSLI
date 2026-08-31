@@ -286,6 +286,41 @@ def update_common_letterbox_geometry(
             return False
 
     if needs_union:
+        # predicted_unified_size fast-path (58.352): if both slots have predicted wh,
+        # use predicted envelope (both 2797) not current 2797 vs 764 => 1041 without HOLD
+        _predicted = None
+        try:
+            _store = getattr(state, "_store", None) or getattr(widget, "_store", None)
+            if _store is not None:
+                _rc = getattr(_store.viewport.session_data, "render_cache", None)
+                _predicted = getattr(_rc, "predicted_unified_size", None) if _rc is not None else None
+        except Exception:
+            _predicted = None
+        if _predicted is not None and isinstance(_predicted, (tuple, list)) and len(_predicted) == 2:
+            try:
+                _pw, _ph = int(_predicted[0]), int(_predicted[1])
+                if _pw > 0 and _ph > 0:
+                    _p_geom = resolve_canvas_content_geometry(
+                        widget_width=cw,
+                        widget_height=ch,
+                        image_width=_pw,
+                        image_height=_ph,
+                        virtual_layout=None,
+                    )
+                    _p_inner = _p_geom.inner_rect_px or (0, 0, cw, ch)
+                    _px, _py, _pw2, _ph2 = _p_inner
+                    _pred_letterbox = (_px / float(cw), _py / float(ch), _pw2 / float(cw), _ph2 / float(ch))
+                    _pred_rect = (int(round(_px)), int(round(_py)), max(1, int(round(_pw2))), max(1, int(round(_ph2))))
+                    # predicted envelope is single rect (both 2797) => immediate 1041, no HOLD / no more_pending
+                    state._letterbox_params[0] = _pred_letterbox
+                    state._letterbox_params[1] = _pred_letterbox
+                    state._content_rect_px = _pred_rect
+                    state._inner_content_rect_px = _pred_rect
+                    state._clip_overlays_to_content_rect = False
+                    _dispatch_store(_pred_rect)
+                    return
+            except Exception:
+                pass
         # Compute candidate union rect first to detect 0.571->0.523 jump
         geom1 = resolve_canvas_content_geometry(
             widget_width=cw,
@@ -326,37 +361,57 @@ def update_common_letterbox_geometry(
                 # Only hold if candidate would cause a jump (e.g. 0.571->0.523)
                 is_jump = (letterbox != prev0) or (tuple(candidate_rect) != tuple(prev_rect))
                 if is_jump:
-                    now = time.monotonic()
-                    hold_until = float(getattr(state, "_union_letterbox_hold_until", 0.0) or 0.0)
-                    # more_pending flag: tile residency still has pending uploads
-                    more_pending = getattr(state, "_tile_more_pending", None)
-                    if more_pending is None:
-                        more_pending = getattr(widget, "_tile_more_pending", None) if hasattr(widget, "_tile_more_pending") else None
-                    if more_pending is None:
-                        more_pending = True
-                    # If more_pending False => release immediately (no hold)
-                    if more_pending is False:
-                        try:
-                            state._union_letterbox_hold_until = 0.0
-                        except Exception:
-                            pass
-                    elif hold_until and now < hold_until:
-                        _dispatch_store(prev_rect)
-                        return
-                    elif hold_until and now >= hold_until:
-                        try:
-                            state._union_letterbox_hold_until = 0.0
-                        except Exception:
-                            pass
-                        # fall through to apply candidate
+                    # predicted==candidate => don't start HOLD, remove more_pending linkage (fallback only if mismatch)
+                    _skip_hold_via_predicted = False
+                    try:
+                        _store2 = getattr(state, "_store", None) or getattr(widget, "_store", None)
+                        _rc2 = getattr(_store2.viewport.session_data, "render_cache", None) if _store2 is not None else None
+                        _pred2 = getattr(_rc2, "predicted_unified_size", None) if _rc2 is not None else None
+                        if _pred2 is not None and isinstance(_pred2, (tuple, list)) and len(_pred2) == 2 and _pred2[0] > 0 and _pred2[1] > 0:
+                            _pw2, _ph2 = int(_pred2[0]), int(_pred2[1])
+                            _p_geom2 = resolve_canvas_content_geometry(widget_width=cw, widget_height=ch, image_width=_pw2, image_height=_ph2, virtual_layout=None)
+                            _p_inner2 = _p_geom2.inner_rect_px or (0, 0, cw, ch)
+                            _px2, _py2, _pw22, _ph22 = _p_inner2
+                            _pred_rect2 = (int(round(_px2)), int(round(_py2)), max(1, int(round(_pw22))), max(1, int(round(_ph22))))
+                            if tuple(_pred_rect2) == tuple(candidate_rect):
+                                _skip_hold_via_predicted = True
+                    except Exception:
+                        _skip_hold_via_predicted = False
+                    if _skip_hold_via_predicted:
+                        # predicted matches candidate -> no HOLD, no more_pending check, fall through
+                        pass
                     else:
-                        # No active hold — start one for UNION_LETTERBOX_HOLD_MS
-                        try:
-                            state._union_letterbox_hold_until = now + UNION_LETTERBOX_HOLD_MS / 1000.0
-                        except Exception:
-                            pass
-                        _dispatch_store(prev_rect)
-                        return
+                        now = time.monotonic()
+                        hold_until = float(getattr(state, "_union_letterbox_hold_until", 0.0) or 0.0)
+                        # more_pending flag: tile residency still has pending uploads
+                        more_pending = getattr(state, "_tile_more_pending", None)
+                        if more_pending is None:
+                            more_pending = getattr(widget, "_tile_more_pending", None) if hasattr(widget, "_tile_more_pending") else None
+                        if more_pending is None:
+                            more_pending = True
+                        # If more_pending False => release immediately (no hold)
+                        if more_pending is False:
+                            try:
+                                state._union_letterbox_hold_until = 0.0
+                            except Exception:
+                                pass
+                        elif hold_until and now < hold_until:
+                            _dispatch_store(prev_rect)
+                            return
+                        elif hold_until and now >= hold_until:
+                            try:
+                                state._union_letterbox_hold_until = 0.0
+                            except Exception:
+                                pass
+                            # fall through to apply candidate
+                        else:
+                            # No active hold — start one for UNION_LETTERBOX_HOLD_MS
+                            try:
+                                state._union_letterbox_hold_until = now + UNION_LETTERBOX_HOLD_MS / 1000.0
+                            except Exception:
+                                pass
+                            _dispatch_store(prev_rect)
+                            return
         state._letterbox_params[0] = letterbox
         state._letterbox_params[1] = letterbox
         state._content_rect_px = candidate_rect

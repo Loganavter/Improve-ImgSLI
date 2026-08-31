@@ -51,6 +51,7 @@ from core.state_management.session_actions import (
     SetAutoCalculateSsimAction,
     SetImageSessionImageAction,
     SetPendingUnificationPathsAction,
+    SetPredictedUnifiedSizeAction,
     SetPsnrValueAction,
     SetSsimValueAction,
     SetUnificationInProgressAction,
