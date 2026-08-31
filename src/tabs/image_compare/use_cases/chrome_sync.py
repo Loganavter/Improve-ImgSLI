@@ -242,7 +242,7 @@ class ImageCompareChromeSync(QObject):
             # but we gate resolution on at least one present to avoid early waste
             return has1 or has2
         except Exception:
-            return False
+            return True
 
     def _window_presenter(self):
         try:
