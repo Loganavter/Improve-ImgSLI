@@ -253,18 +253,18 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 1600,
+      "lines": 466,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split\"",
+      "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
       "parsed": {
-        "pattern": "state-machine",
-        "reason": "one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split"
+        "pattern": "thin-owner",
+        "reason": "RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only"
       }
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 544,
+      "lines": 548,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -272,6 +272,78 @@
         "pattern": "tile-residency",
         "size": "exempt",
         "reason": "viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
+      "lines": 448,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
+      "lines": 252,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
+      "lines": 364,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
+      "lines": 272,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py",
+      "lines": 157,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/tile_residency.py",
+      "lines": 183,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
       }
     },
     {
