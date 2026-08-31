@@ -68,7 +68,15 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
         elif "is_left_area" in hint:
             slot = 1 if bool(hint.get("is_left_area")) else 2
     _dnd_log("handle_drop: scheduling load slot=%s paths=%r", slot, image_paths[:3])
+    def _do_load():
+        _dnd_log("handle_drop: _do_load executing load_images_from_paths slot=%s paths=%r", slot, image_paths[:3])
+        try:
+            sessions.load_images_from_paths(image_paths, slot)
+            _dnd_log("handle_drop: _do_load done")
+        except Exception as e:
+            _dnd_log("handle_drop: _do_load failed %r", e)
     QTimer.singleShot(
-        0, lambda: sessions.load_images_from_paths(image_paths, slot)
+        0, _do_load
     )
+    _dnd_log("handle_drop: scheduled, returning True (overlay should already be hidden by WindowEventHandler)")
     return True

@@ -108,8 +108,15 @@ void main()
     vec2 tileUV1 = (sampleUV - vRect1.xy) / vRect1.zw;
     vec2 tileUV2 = (sampleUV - vRect2.xy) / vRect2.zw;
     if (diffMode != 4) {
-        bool inTile1 = tileUV1.x >= 0.0 && tileUV1.x <= 1.0 && tileUV1.y >= 0.0 && tileUV1.y <= 1.0;
-        bool inTile2 = tileUV2.x >= 0.0 && tileUV2.x <= 1.0 && tileUV2.y >= 0.0 && tileUV2.y <= 1.0;
+        // Micro-seam fix: adjacent tile bboxes share an edge at exactly
+        // 0/1 in tileUV. Floating-point + integer-rounded letterbox leaves
+        // a 0.5px screen gap where both tiles compute tileUV 1.00001 / -0.00001
+        // and both discard -> transparent grid that heals after any zoom
+        // recomputes rects/bboxes. Expand inTile tolerance to 1e-3 (≈0.5px
+        // image space) so the seam is always covered by at least one tile
+        // (overdraw in the 1px apron overlap, not a gap).
+        bool inTile1 = tileUV1.x >= -0.001 && tileUV1.x <= 1.001 && tileUV1.y >= -0.001 && tileUV1.y <= 1.001;
+        bool inTile2 = tileUV2.x >= -0.001 && tileUV2.x <= 1.001 && tileUV2.y >= -0.001 && tileUV2.y <= 1.001;
         if (!inTile1 || !inTile2) {
             fragColor = vec4(0.0);
             return;

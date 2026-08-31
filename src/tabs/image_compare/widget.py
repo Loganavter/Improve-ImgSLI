@@ -376,7 +376,17 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         return self.image_label.is_drag_overlay_visible()
 
     def update_drag_overlays(self, horizontal: bool = False, visible: bool = False):
+        try:
+            from tabs.image_compare.debug import ic_dnd_debug
+            ic_dnd_debug("widget.update_drag_overlays called visible=%s horizontal=%s isVisible=%s geometry=%r", visible, horizontal, self.image_label.isVisible(), self.image_label.geometry())
+        except Exception:
+            pass
         if not self.image_label.isVisible():
+            try:
+                from tabs.image_compare.debug import ic_dnd_debug
+                ic_dnd_debug("widget.update_drag_overlays -> hide (image_label not visible)")
+            except Exception:
+                pass
             self.drag_overlay.hide()
             return
         lang = self._context.settings.current_language if self._context else "en"
@@ -395,6 +405,11 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             text1=text1,
             text2=text2,
         )
+        try:
+            from tabs.image_compare.debug import ic_dnd_debug
+            ic_dnd_debug("widget.update_drag_overlays done visible=%s drag_overlay.isVisible=%s", visible, self.drag_overlay.isVisible())
+        except Exception:
+            pass
 
     def update_resolution_labels(
         self,
