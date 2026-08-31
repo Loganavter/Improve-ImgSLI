@@ -31,9 +31,62 @@ def get_magnifier_drawing_coords(
 ]:
     empty_result = (None, None, None, 0, 0, QRect(), None)
 
-    document = store.get_session_state_slot("document")
-    full_res_img1 = document.full_res_image1 or document.original_image1
-    full_res_img2 = document.full_res_image2 or document.original_image2
+    def _peek(slot: int):
+        doc = store.get_session_state_slot("document")
+        path = doc.image1_path if slot == 1 else doc.image2_path
+        if not path:
+            return None
+        try:
+            vp = store.viewport.session_data.image_state
+            cand = vp.image1 if slot == 1 else vp.image2
+            if cand is not None and getattr(cand, "is_open", True):
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    return cand
+        except Exception:
+            pass
+        try:
+            ps = store.get_session_state_slot("pipeline")
+            if ps is not None:
+                import os
+
+                from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                    try:
+                        k = key_fn(path, None, None)
+                        v = cache_dict.get(k)
+                        if v is not None:
+                            if hasattr(v, "is_open") and not v.is_open:
+                                continue
+                            if hasattr(v, "isNull") and v.isNull():
+                                continue
+                            return v
+                    except Exception:
+                        pass
+                    try:
+                        norm = os.path.normpath(path)
+                        for kk, vv in cache_dict.items():
+                            if kk[0] == norm:
+                                if hasattr(vv, "is_open") and not vv.is_open:
+                                    continue
+                                if hasattr(vv, "isNull") and vv.isNull():
+                                    continue
+                                return vv
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return None
+
+    full_res_img1 = _peek(1)
+    full_res_img2 = _peek(2)
 
     if not full_res_img1 or not full_res_img2:
         return empty_result

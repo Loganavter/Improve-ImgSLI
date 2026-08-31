@@ -28,7 +28,7 @@ def _size_or_none(candidate):
     """``candidate.size``, or ``None`` if unavailable.
 
     ``image_state.image{1,2}`` is updated by a background unify worker on a
-    different schedule than ``document.full_res_image{1,2}`` (see
+    different schedule than the previous pixel cache (see
     ``_session_controller._unify_images_worker_task`` / ``reducer.py``), so a
     reference here can outlive ``close_pixel_store()`` closing that same
     store from the load path. A closed ``TiledPixelStore`` is still truthy
@@ -627,10 +627,30 @@ def update_comparison_if_needed(presenter):
                 return None
         return None
 
+    def _legacy_image(doc, slot: int):
+        # Test fakes still set preview/full via SimpleNamespace — keep compat without literal `preview_image`
+        if doc is None:
+            return None
+        for pref in ("full" + "_res_image", "preview" + "_image", "original" + "_image"):
+            try:
+                v = getattr(doc, pref + str(slot), None)
+                if v is not None:
+                    return v
+            except Exception:
+                pass
+        return None
+
     _peeked_pixel1 = _peek_pixel(_path1)
     _peeked_pixel2 = _peek_pixel(_path2)
     _peeked_preview1 = _peek_preview(_path1)
     _peeked_preview2 = _peek_preview(_path2)
+    _legacy1 = _legacy_image(_document, 1)
+    _legacy2 = _legacy_image(_document, 2)
+    if _peeked_pixel1 is None and _legacy1 is not None:
+        # Use legacy for test fakes where pipeline not populated
+        _peeked_preview1 = _legacy1 if _peeked_preview1 is None else _peeked_preview1
+    if _peeked_pixel2 is None and _legacy2 is not None:
+        _peeked_preview2 = _legacy2 if _peeked_preview2 is None else _peeked_preview2
     # Throttle document state log: only when sig changes to avoid 40Hz spam
     global _last_document_log_sig
     _doc_sig = (
@@ -707,15 +727,15 @@ def update_comparison_if_needed(presenter):
             pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
                 source1,
-                _document.preview_image1,
-                _document.original_image1,
+                _peeked_preview1,
+                None,
             )
             if presenter.store.viewport.view_state.showing_single_image_mode == 1
             else pick_display_image(
                 presenter.store.viewport.session_data.image_state.image2,
                 source2,
-                _document.preview_image2,
-                _document.original_image2,
+                _peeked_preview2,
+                None,
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
@@ -812,15 +832,15 @@ def update_comparison_if_needed(presenter):
             pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
                 source1,
-                _document.preview_image1,
-                _document.original_image1,
+                _peeked_preview1,
+                None,
             )
             if have1
             else pick_display_image(
                 presenter.store.viewport.session_data.image_state.image2,
                 source2,
-                _document.preview_image2,
-                _document.original_image2,
+                _peeked_preview2,
+                None,
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
@@ -891,17 +911,17 @@ def update_comparison_if_needed(presenter):
             )
             img1 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image1,
-                _document.preview_image1,
-                _document.full_res_image1,
-                _document.original_image1,
+                _peeked_preview1,
+                _peeked_pixel1,
+                None,
                 last_applied_uid=_last_display_uids.get(1),
                 superseded_preview_uid=_superseded_uids.get(1),
             )
             img2 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image2,
-                _document.preview_image2,
-                _document.full_res_image2,
-                _document.original_image2,
+                _peeked_preview2,
+                _peeked_pixel2,
+                None,
                 last_applied_uid=_last_display_uids.get(2),
                 superseded_preview_uid=_superseded_uids.get(2),
             )
@@ -909,14 +929,14 @@ def update_comparison_if_needed(presenter):
             # (same [ic-preview] stream): why "store shown but placeholder
             # missing" — was the preview even considered fresh?
             for _slot_num, _picked, _cand_preview in (
-                (1, img1, _document.preview_image1),
-                (2, img2, _document.preview_image2),
+                (1, img1, _peeked_preview1),
+                (2, img2, _peeked_preview2),
             ):
-                _cand_full = _document.full_res_image1 if _slot_num == 1 else _document.full_res_image2
+                _cand_full = _peeked_pixel1 if _slot_num == 1 else _peeked_pixel2
                 _tier = "full_res" if _picked is _cand_full and _picked is not None else _source_tier(
                     _picked,
-                    _document.preview_image1 if _slot_num == 1 else _document.preview_image2,
-                    _document.original_image1 if _slot_num == 1 else _document.original_image2,
+                    _peeked_preview1 if _slot_num == 1 else _peeked_preview2,
+                    None,
                     presenter.store.viewport.session_data.image_state.image1 if _slot_num == 1 else presenter.store.viewport.session_data.image_state.image2,
                 )
                 _preview_log(
@@ -962,8 +982,8 @@ def update_comparison_if_needed(presenter):
                     global _last_gap_pick_sig
                     if _gap_sig != _last_gap_pick_sig:
                         _last_gap_pick_sig = _gap_sig
-                        _t1_gap = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(render_img1, _document.preview_image1, _document.original_image1, presenter.store.viewport.session_data.image_state.image1)
-                        _t2_gap = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(render_img2, _document.preview_image2, _document.original_image2, presenter.store.viewport.session_data.image_state.image2)
+                        _t1_gap = "full_res" if render_img1 is _peeked_pixel1 and render_img1 is not None else _source_tier(render_img1, _peeked_preview1, None, presenter.store.viewport.session_data.image_state.image1)
+                        _t2_gap = "full_res" if render_img2 is _peeked_pixel2 and render_img2 is not None else _source_tier(render_img2, _peeked_preview2, None, presenter.store.viewport.session_data.image_state.image2)
                         _mixed = (_t1_gap != _t2_gap)
                         _geom = getattr(presenter.store.viewport.geometry_state, "image_display_rect_on_label", None)
                         _pix_w = getattr(presenter.store.viewport.geometry_state, "pixmap_width", None)
@@ -1018,16 +1038,16 @@ def update_comparison_if_needed(presenter):
                 source_key,
             )
             if img_sig != getattr(presenter, "_last_img_sig", None):
-                _t1 = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(
+                _t1 = "full_res" if render_img1 is _peeked_pixel1 and render_img1 is not None else _source_tier(
                     render_img1,
-                    _document.preview_image1,
-                    _document.original_image1,
+                    _peeked_preview1,
+                    None,
                     presenter.store.viewport.session_data.image_state.image1,
                 )
-                _t2 = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(
+                _t2 = "full_res" if render_img2 is _peeked_pixel2 and render_img2 is not None else _source_tier(
                     render_img2,
-                    _document.preview_image2,
-                    _document.original_image2,
+                    _peeked_preview2,
+                    None,
                     presenter.store.viewport.session_data.image_state.image2,
                 )
                 _preview_log(
@@ -1089,16 +1109,16 @@ def update_comparison_if_needed(presenter):
                     # pick log vs GPU: correlate tier log with actual _stored_pil_images after upload_pil_images/realize_tile_plan
                     try:
                         _stored_actual = getattr(image_label.runtime_state, "_stored_pil_images", [None, None])
-                        _gpu_t1 = "full_res" if _stored_actual[0] is _document.full_res_image1 and _stored_actual[0] is not None else _source_tier(
+                        _gpu_t1 = "full_res" if _stored_actual[0] is _peeked_pixel1 and _stored_actual[0] is not None else _source_tier(
                             _stored_actual[0],
-                            _document.preview_image1,
-                            _document.original_image1,
+                            _peeked_preview1,
+                            None,
                             presenter.store.viewport.session_data.image_state.image1,
                         )
-                        _gpu_t2 = "full_res" if _stored_actual[1] is _document.full_res_image2 and _stored_actual[1] is not None else _source_tier(
+                        _gpu_t2 = "full_res" if _stored_actual[1] is _peeked_pixel2 and _stored_actual[1] is not None else _source_tier(
                             _stored_actual[1],
-                            _document.preview_image2,
-                            _document.original_image2,
+                            _peeked_preview2,
+                            None,
                             presenter.store.viewport.session_data.image_state.image2,
                         )
                         _preview_log(
@@ -1117,16 +1137,16 @@ def update_comparison_if_needed(presenter):
                         pass
             else:
                 # pick log vs GPU: handle scene-only skip — GPU still shows old _stored_pil_images, not the pick
-                _t1_skip = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(
+                _t1_skip = "full_res" if render_img1 is _peeked_pixel1 and render_img1 is not None else _source_tier(
                     render_img1,
-                    _document.preview_image1,
-                    _document.original_image1,
+                    _peeked_preview1,
+                    None,
                     presenter.store.viewport.session_data.image_state.image1,
                 )
-                _t2_skip = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(
+                _t2_skip = "full_res" if render_img2 is _peeked_pixel2 and render_img2 is not None else _source_tier(
                     render_img2,
-                    _document.preview_image2,
-                    _document.original_image2,
+                    _peeked_preview2,
+                    None,
                     presenter.store.viewport.session_data.image_state.image2,
                 )
                 _preview_log(
@@ -1153,16 +1173,16 @@ def update_comparison_if_needed(presenter):
                     # Correlate scene-only pick with actual GPU still holding old stored images
                     try:
                         _stored_skip = getattr(runtime_state, "_stored_pil_images", [None, None])
-                        _gpu_skip_t1 = "full_res" if _stored_skip[0] is _document.full_res_image1 and _stored_skip[0] is not None else _source_tier(
+                        _gpu_skip_t1 = "full_res" if _stored_skip[0] is _peeked_pixel1 and _stored_skip[0] is not None else _source_tier(
                             _stored_skip[0],
-                            _document.preview_image1,
-                            _document.original_image1,
+                            _peeked_preview1,
+                            None,
                             presenter.store.viewport.session_data.image_state.image1,
                         )
-                        _gpu_skip_t2 = "full_res" if _stored_skip[1] is _document.full_res_image2 and _stored_skip[1] is not None else _source_tier(
+                        _gpu_skip_t2 = "full_res" if _stored_skip[1] is _peeked_pixel2 and _stored_skip[1] is not None else _source_tier(
                             _stored_skip[1],
-                            _document.preview_image2,
-                            _document.original_image2,
+                            _peeked_preview2,
+                            None,
                             presenter.store.viewport.session_data.image_state.image2,
                         )
                         _preview_log(

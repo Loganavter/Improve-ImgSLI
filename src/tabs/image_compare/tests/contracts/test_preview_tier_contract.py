@@ -14,11 +14,15 @@ from tests.contracts._framework import ROOT, iter_py, rel
 
 
 def test_document_preview_fields_are_qimage_only():
+    # Phase 3 slim: DocumentModel is SlotSource only (list+index+path), pixels via PipelineCache / ImageSessionState
     hints = DocumentModel.__annotations__
-    assert hints["preview_image1"] in ("Optional[\"QImage\"]", "Optional['QImage']")
-    assert hints["preview_image2"] in ("Optional[\"QImage\"]", "Optional['QImage']")
-    assert "TiledPixelStore" not in hints["preview_image1"]
-    assert "TiledPixelStore" not in hints["preview_image2"]
+    assert "preview_image1" not in hints, "DocumentModel should be slim — preview via PipelineCache, not document field"
+    assert "preview_image2" not in hints
+    # ImageSessionState + PipelineView are single source; preview tier is QImage via PipelineCache
+    from tabs.image_compare.state.models import ImageSessionState
+
+    assert "image1" in ImageSessionState.__annotations__
+    assert "image2" in ImageSessionState.__annotations__
 
 
 def test_load_preview_image_is_display_tier_qimage():
