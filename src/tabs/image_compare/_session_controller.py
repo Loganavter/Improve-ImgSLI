@@ -102,6 +102,11 @@ class SessionController(SessionApiMixin, QObject):
             self._image_session = sess
             self._pipeline_cache = sess.cache
             self.pipeline = sess.pipeline
+            try:
+                if hasattr(self.pipeline, "set_store"):
+                    self.pipeline.set_store(self.store)
+            except Exception:
+                pass
             self._pending_full_loads = sess.pending_full_loads
             self._pending_image_loads = sess.pending_image_loads
             self._crop_service = sess.crop_service

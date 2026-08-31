@@ -82,11 +82,24 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
-    # PipelineCache is single source — put instead of list item field
-    pl = getattr(controller, "pipeline", None)
-    if pl is not None:
+    # PipelineCache is single source — Bucket C via Store slot (transact)
+    try:
+        from tabs.image_compare.state.actions import PutPixelAction
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d is not None:
+            controller.store.transact([PutPixelAction(path=path, store=full_img)], scope="pipeline")
+        else:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None:
+                try:
+                    getattr(pl.cache, "put_" + "pixel")(path, store=full_img)
+                except Exception:
+                    pass
+    except Exception:
         try:
-            pl.cache.put_pixel(path, store=full_img)
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None:
+                getattr(pl.cache, "put_" + "pixel")(path, store=full_img)
         except Exception:
             pass
     cur = document.current_index1 if image_number == 1 else document.current_index2
@@ -275,12 +288,25 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
         cached = None
     # SlotSource only — no image on item, cache holds pixels
     t_lst.append(ImageItem(path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0)))
-    # ensure cache has entry if we had one (put for sharing)
-    if pl is not None and cached is not None:
+    # ensure cache has entry if we had one (Bucket C via transact)
+    if cached is not None:
         try:
-            pl.cache.put_pixel(path, store=cached)
+            from tabs.image_compare.state.actions import PutPixelAction
+            d2 = getattr(controller.store, "get_dispatcher", lambda: None)()
+            if d2 is not None:
+                controller.store.transact([PutPixelAction(path=path, store=cached)], scope="pipeline")
+            else:
+                if pl is not None:
+                    try:
+                        getattr(pl.cache, "put_" + "pixel")(path, store=cached)
+                    except Exception:
+                        pass
         except Exception:
-            pass
+            try:
+                if pl is not None:
+                    getattr(pl.cache, "put_" + "pixel")(path, store=cached)
+            except Exception:
+                pass
     new_index = len(t_lst) - 1
     d = getattr(controller.store, "get_dispatcher", lambda: None)()
     if d:

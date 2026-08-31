@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 287,
+      "lines": 292,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -275,6 +275,18 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
+      "lines": 525,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
+      "parsed": {
+        "pattern": "canvas-presentation",
+        "size": "exempt",
+        "reason": "texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/widget.py",
       "lines": 684,
       "limit": 500,
@@ -353,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1195,
+      "lines": 1165,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -398,8 +410,19 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/use_cases/image_decode.py",
+      "lines": 591,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 569,
+      "lines": 649,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",

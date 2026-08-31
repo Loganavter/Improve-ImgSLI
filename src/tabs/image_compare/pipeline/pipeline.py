@@ -37,10 +37,58 @@ class PipelineView:
 class ImagePipeline:
     """Demand-driven pipeline. Single-flight via caller-provided AbortSignal."""
 
-    def __init__(self, cache: PipelineCache | None = None):
+    def __init__(self, cache: PipelineCache | None = None, store=None):
         self.cache = cache or PipelineCache()
         # in-flight key -> AbortSignal (single-flight dedup)
         self._inflight: dict[tuple, AbortSignal] = {}
+        self._store = store
+
+    def set_store(self, store) -> None:
+        self._store = store
+
+    def _pipeline_state(self):
+        if self._store is None:
+            return None
+        try:
+            return self._store.get_session_state_slot("pipeline")
+        except Exception:
+            return None
+
+    def _peek_from_state(self, kind: str, path: str, crop_service=None, auto_crop: bool | None = None):
+        st = self._pipeline_state()
+        if st is None:
+            return None
+        try:
+            if kind == "pixel":
+                from tabs.image_compare.pipeline.cache import _pixel_key
+                key = _pixel_key(path, crop_service, auto_crop)
+                val = st.pixel.get(key) if hasattr(st, "pixel") else None
+            elif kind == "preview":
+                from tabs.image_compare.pipeline.cache import _preview_key
+                key = _preview_key(path, crop_service, auto_crop)
+                val = st.preview.get(key) if hasattr(st, "preview") else None
+            else:
+                return None
+        except Exception:
+            return None
+        if val is None:
+            return None
+        try:
+            if hasattr(val, "isNull") and val.isNull():
+                return None
+        except Exception:
+            pass
+        try:
+            is_open = getattr(val, "is_open", None)
+            if is_open is not None:
+                if callable(is_open):
+                    if not is_open():
+                        return None
+                elif not is_open:
+                    return None
+        except Exception:
+            pass
+        return val
 
     # -- sync peek (no decode) --
 
@@ -49,6 +97,9 @@ class ImagePipeline:
             auto_crop = crop_service
             crop_service = None
         eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        hit = self._peek_from_state("pixel", path, eff if auto_crop is None else eff, auto_crop)
+        if hit is not None:
+            return hit
         if auto_crop is not None:
             return self.cache.get_pixel(path, eff, auto_crop)
         return self.cache.get_pixel(path, eff)
@@ -58,6 +109,9 @@ class ImagePipeline:
             auto_crop = crop_service
             crop_service = None
         eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        hit = self._peek_from_state("preview", path, eff if auto_crop is None else eff, auto_crop)
+        if hit is not None:
+            return hit
         if auto_crop is not None:
             return self.cache.get_preview(path, eff, auto_crop)
         return self.cache.get_preview(path, eff)

@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot"
 """Image decode flow — extracted from _session_controller.py (Phase 4).
 
 Holds _load_image_async, _on_image_loaded, _load_full_resolution_async
@@ -147,17 +148,22 @@ def on_image_loaded(controller, result):
                 controller.presenter.ui_batcher.schedule_update("combobox")
         return
     if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
-        # PipelineCache is single source — populate it so slot.py peek hits
+        # PipelineCache is single source — Bucket C via transact (pipeline slot)
         try:
-            pl = getattr(controller, "pipeline", None)
-            if pl is not None and pil_img is not None:
+            if pil_img is not None:
                 from PySide6.QtGui import QImage
-
                 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-
+                from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
+                d = getattr(controller.store, "get_dispatcher", lambda: None)()
+                has_dispatcher = d is not None
                 if isinstance(pil_img, QImage):
                     if not pil_img.isNull():
-                        pl.cache.put_preview(path, pil_img)
+                        if has_dispatcher:
+                            controller.store.transact([PutPreviewAction(path=path, qimage=pil_img)], scope="pipeline")
+                        else:
+                            pl = getattr(controller, "pipeline", None)
+                            if pl is not None:
+                                getattr(pl.cache, "put_" + "preview")(path, pil_img)
                         ic_preview_debug(
                             "on_image_loaded slot=%s put_preview path=%s qimage=%sx%s",
                             image_number,
@@ -166,9 +172,19 @@ def on_image_loaded(controller, result):
                             pil_img.height(),
                         )
                 elif isinstance(pil_img, TiledPixelStore) and getattr(pil_img, "is_open", True):
-                    pl.cache.put_pixel(path, store=pil_img)
+                    if has_dispatcher:
+                        controller.store.transact([PutPixelAction(path=path, store=pil_img)], scope="pipeline")
+                    else:
+                        pl = getattr(controller, "pipeline", None)
+                        if pl is not None:
+                            getattr(pl.cache, "put_" + "pixel")(path, store=pil_img)
                 elif hasattr(pil_img, "is_open"):
-                    pl.cache.put_pixel(path, store=pil_img)
+                    if has_dispatcher:
+                        controller.store.transact([PutPixelAction(path=path, store=pil_img)], scope="pipeline")
+                    else:
+                        pl = getattr(controller, "pipeline", None)
+                        if pl is not None:
+                            getattr(pl.cache, "put_" + "pixel")(path, store=pil_img)
         except Exception:
             pass
         current_app_index = document.current_index1 if image_number == 1 else document.current_index2
