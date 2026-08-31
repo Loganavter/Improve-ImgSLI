@@ -323,7 +323,29 @@ def _update_preview_tracking(presenter, picked_by_slot: dict) -> None:
         store_img = None
         try:
             if doc is not None:
-                preview = getattr(doc, f"preview_image{slot}", None)
+                path = getattr(doc, f"image{slot}_path", None)
+                # Phase 3: preview via PipelineCache, not document field
+                _ctrl2 = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                _pl2 = getattr(_ctrl2, "pipeline", None) if _ctrl2 is not None else None
+                if _pl2 is not None and path:
+                    try:
+                        preview = _pl2.peek_preview(path)
+                    except Exception:
+                        preview = None
+                else:
+                    try:
+                        ps = presenter.store.get_session_state_slot("pipeline")
+                        if ps is not None and path:
+                            import os
+
+                            from tabs.image_compare.pipeline.cache import _preview_key
+
+                            k = _preview_key(path, None, None)
+                            preview = ps.preview.get(k)  # type: ignore[attr-defined]
+                            if preview is not None and hasattr(preview, "isNull") and preview.isNull():
+                                preview = None
+                    except Exception:
+                        preview = None
         except Exception:
             preview = None
         try:
@@ -538,39 +560,17 @@ def update_comparison_if_needed(presenter):
     if _document is None:
         _preview_log("update: deferred - no document slot")
         return False
-    # Throttle document state log: only when sig changes to avoid 40Hz spam
-    # when one side is missing and fps timer re-arms every frame.
-    global _last_document_log_sig
-    _doc_sig = (
-        image_uid(_document.full_res_image1) if _document.full_res_image1 is not None else None,
-        image_uid(_document.full_res_image2) if _document.full_res_image2 is not None else None,
-        image_uid(_document.preview_image1) if _document.preview_image1 is not None else None,
-        image_uid(_document.preview_image2) if _document.preview_image2 is not None else None,
-        image_uid(_document.original_image1) if _document.original_image1 is not None else None,
-        image_uid(_document.original_image2) if _document.original_image2 is not None else None,
-        image_uid(presenter.store.viewport.session_data.image_state.image1) if presenter.store.viewport.session_data.image_state.image1 is not None else None,
-        image_uid(presenter.store.viewport.session_data.image_state.image2) if presenter.store.viewport.session_data.image_state.image2 is not None else None,
-        getattr(_document, "image1_path", None),
-        getattr(_document, "image2_path", None),
-    )
-    if _doc_sig != _last_document_log_sig:
-        _last_document_log_sig = _doc_sig
-        _preview_log(
-            "document state: full_res uid1=%s uid2=%s preview uid1=%s uid2=%s original uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
-            _doc_sig[0], _doc_sig[1], _doc_sig[2], _doc_sig[3], _doc_sig[4], _doc_sig[5], _doc_sig[6], _doc_sig[7], _doc_sig[8], _doc_sig[9],
-        )
-    # Phase 3 SlotSource: document no longer holds pixels — pipeline cache / image_state is source.
-    # Fallback chain: legacy document fields (for compat) → PipelineView → pipeline peek (preview)
+    # Phase 3 SlotSource: document is list+index+path only — pixels via PipelineView/Cache
     _img_state = presenter.store.viewport.session_data.image_state
     _pl = None
+    _path1 = getattr(_document, "image1_path", None)
+    _path2 = getattr(_document, "image2_path", None)
     try:
-        # Try to get pipeline via presenter->tab controller if available; else via global session cache
         _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
         if _ctrl is None:
             try:
                 from tabs.image_compare.pipeline.cache import PipelineCache as _PC
 
-                # fallback: try presenter.main_window_app tab registry
                 _mw = getattr(presenter, "main_window_app", None)
                 if _mw is not None:
                     _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
@@ -580,6 +580,7 @@ def update_comparison_if_needed(presenter):
         _pl = getattr(_ctrl, "pipeline", None) if _ctrl is not None else None
     except Exception:
         _pl = None
+
     def _peek(path):
         if _pl is not None and path:
             try:
@@ -609,19 +610,56 @@ def update_comparison_if_needed(presenter):
             except Exception:
                 pass
         return None
+
+    def _peek_pixel(path):
+        if _pl is not None and path:
+            try:
+                return _pl.peek(path)
+            except Exception:
+                return None
+        return None
+
+    def _peek_preview(path):
+        if _pl is not None and path:
+            try:
+                return _pl.peek_preview(path)
+            except Exception:
+                return None
+        return None
+
+    _peeked_pixel1 = _peek_pixel(_path1)
+    _peeked_pixel2 = _peek_pixel(_path2)
+    _peeked_preview1 = _peek_preview(_path1)
+    _peeked_preview2 = _peek_preview(_path2)
+    # Throttle document state log: only when sig changes to avoid 40Hz spam
+    global _last_document_log_sig
+    _doc_sig = (
+        image_uid(_peeked_pixel1) if _peeked_pixel1 is not None else None,
+        image_uid(_peeked_pixel2) if _peeked_pixel2 is not None else None,
+        image_uid(_peeked_preview1) if _peeked_preview1 is not None else None,
+        image_uid(_peeked_preview2) if _peeked_preview2 is not None else None,
+        image_uid(presenter.store.viewport.session_data.image_state.image1) if presenter.store.viewport.session_data.image_state.image1 is not None else None,
+        image_uid(presenter.store.viewport.session_data.image_state.image2) if presenter.store.viewport.session_data.image_state.image2 is not None else None,
+        _path1,
+        _path2,
+    )
+    if _doc_sig != _last_document_log_sig:
+        _last_document_log_sig = _doc_sig
+        _preview_log(
+            "document state: pixel uid1=%s uid2=%s preview uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
+            _doc_sig[0], _doc_sig[1], _doc_sig[2], _doc_sig[3], _doc_sig[4], _doc_sig[5], _doc_sig[6], _doc_sig[7],
+        )
     source1 = (
-        _document.full_res_image1
-        or _document.preview_image1
-        or _document.original_image1
+        _peeked_pixel1
+        or _peeked_preview1
         or getattr(_img_state, "image1", None)
-        or _peek(getattr(_document, "image1_path", None))
+        or _peek(_path1)
     )
     source2 = (
-        _document.full_res_image2
-        or _document.preview_image2
-        or _document.original_image2
+        _peeked_pixel2
+        or _peeked_preview2
         or getattr(_img_state, "image2", None)
-        or _peek(getattr(_document, "image2_path", None))
+        or _peek(_path2)
     )
 
     # Comparison letterbox geometry must track the preview arrival, not the

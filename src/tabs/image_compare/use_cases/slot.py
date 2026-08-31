@@ -141,22 +141,9 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     ic_preview_debug("handle_full_image_loaded slot=%s -> ensure_unification", image_number)
     ensure_unification(controller)
     try:
-        from tabs.image_compare.use_cases.loading import QTimer  # type: ignore
+        from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
 
-        if QTimer is not None:
-            def _finish_if_unpaired():
-                try:
-                    from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
-
-                    finish_toast_for_unpaired_slot(controller, document, image_number)
-                except Exception:
-                    pass
-
-            QTimer.singleShot(0, _finish_if_unpaired)
-        else:
-            from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
-
-            finish_toast_for_unpaired_slot(controller, document, image_number)
+        finish_toast_for_unpaired_slot(controller, document, image_number)
     except Exception:
         pass
 

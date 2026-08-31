@@ -63,18 +63,75 @@ def get_current_score(store, image_number: int) -> int | None:
     return None
 
 
+def _peek_via_pipeline_state(store, path: str | None):
+    if not path:
+        return None
+    try:
+        ps = store.get_session_state_slot("pipeline")
+        if ps is not None:
+            import os
+
+            from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+            for cache_dict, key_fn in (
+                (getattr(ps, "pixel", None), _pixel_key),
+                (getattr(ps, "preview", None), _preview_key),
+            ):
+                if cache_dict is None:
+                    continue
+                try:
+                    k = key_fn(path, None, None)
+                    v = cache_dict.get(k)
+                    if v is not None:
+                        if hasattr(v, "is_open") and not v.is_open:
+                            pass
+                        elif hasattr(v, "isNull") and v.isNull():
+                            pass
+                        else:
+                            return v
+                except Exception:
+                    pass
+                try:
+                    norm = os.path.normpath(path)
+                    for kk, vv in cache_dict.items():
+                        if kk[0] == norm:
+                            if hasattr(vv, "is_open") and not vv.is_open:
+                                continue
+                            if hasattr(vv, "isNull") and vv.isNull():
+                                continue
+                            return vv
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+
 def get_image_dimensions(store, image_number: int) -> tuple[int, int] | None:
     document = _document(store)
     if document is None:
         return None
-    if image_number == 1:
-        if not document.image1_path:
-            return None
-        img = document.full_res_image1 or document.preview_image1
-    else:
-        if not document.image2_path:
-            return None
-        img = document.full_res_image2 or document.preview_image2
+    path = document.image1_path if image_number == 1 else document.image2_path
+    if not path:
+        return None
+    img = None
+    try:
+        vp = store.viewport.session_data.image_state
+        cand = vp.image1 if image_number == 1 else vp.image2
+        if cand is not None:
+            try:
+                if hasattr(cand, "isNull") and cand.isNull():
+                    cand = None
+                elif hasattr(cand, "is_open") and not cand.is_open:
+                    cand = None
+            except Exception:
+                pass
+            if cand is not None:
+                img = cand
+    except Exception:
+        pass
+    if img is None:
+        img = _peek_via_pipeline_state(store, path)
     if img:
         if hasattr(img, "width") and hasattr(img, "height"):
             w = img.width() if callable(img.width) else img.width

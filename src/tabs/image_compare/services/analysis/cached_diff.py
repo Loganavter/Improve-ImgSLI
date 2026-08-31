@@ -53,13 +53,66 @@ class CachedDiffService:
             pass
         self._pending_request_key = None
 
+    def _peek_slot(self, slot: int):
+        doc = self.store.get_session_state_slot("document")
+        path = doc.image1_path if slot == 1 else doc.image2_path
+        if not path:
+            return None
+        try:
+            vp = self.store.viewport.session_data.image_state
+            cand = vp.image1 if slot == 1 else vp.image2
+            if cand is not None:
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    return cand
+        except Exception:
+            pass
+        try:
+            ps = self.store.get_session_state_slot("pipeline")
+            if ps is not None:
+                import os
+
+                from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                    try:
+                        k = key_fn(path, None, None)
+                        v = cache_dict.get(k)
+                        if v is not None:
+                            if hasattr(v, "is_open") and not v.is_open:
+                                continue
+                            if hasattr(v, "isNull") and v.isNull():
+                                continue
+                            return v
+                    except Exception:
+                        pass
+                    try:
+                        norm = os.path.normpath(path)
+                        for kk, vv in cache_dict.items():
+                            if kk[0] == norm:
+                                if hasattr(vv, "is_open") and not vv.is_open:
+                                    continue
+                                if hasattr(vv, "isNull") and vv.isNull():
+                                    continue
+                                return vv
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return None
+
     def request_generation(self, *, optimize_ssim: bool = False) -> None:
         if not self.runtime.thread_pool:
             return
 
-        document = self.store.get_session_state_slot("document")
-        image1 = document.full_res_image1 or document.original_image1
-        image2 = document.full_res_image2 or document.original_image2
+        image1 = self._peek_slot(1)
+        image2 = self._peek_slot(2)
         diff_mode = self.store.viewport.view_state.diff_mode
         channel_mode = getattr(self.store.viewport.view_state, "channel_view_mode", "RGB")
 

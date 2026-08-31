@@ -1,7 +1,7 @@
 """ImagePipeline package — demand-driven decode/unify/pyramid pipeline.
 
 Phase 1 skeleton: AbortSignal + PipelineCache + ImagePipeline are state-owning
-collaborators (CODE_PATTERNS.md) that replace legacy dedup flags and QTimer
+collaborators (CODE_PATTERNS.md) that replace legacy dedup flags and
 deferrals in session controller / loading.
 
 Public surface:

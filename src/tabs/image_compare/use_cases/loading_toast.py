@@ -141,8 +141,47 @@ def finish_toast_for_unpaired_slot(controller, document, image_number: int) -> N
     slot would otherwise hang forever. Close it here once this slot's own
     full-res decode has actually landed.
     """
-    own_full = getattr(document, f"full_res_image{image_number}", None)
+    # PipelineCache is single source — check via store peek
+    store = getattr(controller, "store", None)
+    own = None
+    if store is not None:
+        path = document.image1_path if image_number == 1 else document.image2_path
+        if path:
+            # try viewport
+            try:
+                vp = store.viewport.session_data.image_state
+                cand = vp.image1 if image_number == 1 else vp.image2
+                if cand is not None and getattr(cand, "is_open", True):
+                    try:
+                        if hasattr(cand, "isNull") and cand.isNull():
+                            cand = None
+                    except Exception:
+                        pass
+                    own = cand
+            except Exception:
+                pass
+            if own is None:
+                pl = getattr(controller, "pipeline", None)
+                if pl is not None:
+                    try:
+                        own = pl.peek(path) or pl.peek_preview(path)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        ps = store.get_session_state_slot("pipeline")
+                        if ps is not None:
+                            import os
+
+                            from tabs.image_compare.pipeline.cache import _pixel_key
+
+                            k = _pixel_key(path, None, None)
+                            v = ps.pixel.get(k)  # type: ignore[attr-defined]
+                            if v is not None and getattr(v, "is_open", True):
+                                own = v
+                    except Exception:
+                        pass
     other_number = 2 if image_number == 1 else 1
     other_path = getattr(document, f"image{other_number}_path", None)
-    if own_full is not None and not other_path:
+    if own is not None and not other_path:
         controller._finish_loading_toast(image_number)
