@@ -225,9 +225,9 @@ The store is intentionally small at the top level (`core/store.py`).
 | `workspace` | sessions/tabs, active session, per-session state slots |
 | `runtime_cache` | ephemeral, non-persistent GPU/rendering cache (`ViewportRuntimeCache`) |
 
-### Image-compare SlotSource vs PipelineView (Phase 5)
+### Image-compare SlotSource vs PipelineView (Phase 5–6)
 
-`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(Transaction)` from `PipelineCache` (LRU 8, memo by `(uid1,uid2,method)`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. See `plan_image_pipeline.md` Phase 5.
+`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(Transaction)` from `PipelineCache` (LRU 8, memo by `(uid1,uid2,method)`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. `SessionController` (`_session_controller.py:287` Phase 6) is a ≤300 LOC thin owner (MethodObject split per CODE_PATTERNS.md:161) forwarding to `use_cases/canvas_invalidate, image_decode, document_slot, metrics_trigger, session_api, session_init` + `ui_batcher` + `ImageSession`. Chrome stale is single `StaleGate` (`use_cases/stale_gate.py`) merging `widget._render_stale/_metrics_stale` and `chrome_sync._render_stale`. See `plan_image_pipeline.md` Phase 5 and `plan_loading_simplification.md` Phase 4.
 
 ### Rules
 

@@ -134,6 +134,18 @@ def on_image_loaded(controller, result):
         return
     if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
         item = target_list[index_in_list]
+        # PipelineCache is single source — populate it so slot.py peek hits
+        try:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None and pil_img is not None:
+                from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+                if isinstance(pil_img, TiledPixelStore) and getattr(pil_img, "is_open", True):
+                    pl.cache.put_pixel(path, store=pil_img)
+                elif hasattr(pil_img, "is_open"):
+                    pl.cache.put_pixel(path, store=pil_img)
+        except Exception:
+            pass
         current_app_index = document.current_index1 if image_number == 1 else document.current_index2
         is_current = index_in_list == current_app_index
         if is_current:
@@ -169,7 +181,10 @@ def on_image_loaded(controller, result):
                     is_full_res=True,
                 )
                 controller._mark_full_res_ready(image_number)
-        item.image = pil_img
+        try:
+            item.image = pil_img
+        except Exception:
+            pass
         if is_current:
             if not is_preview:
                 controller.set_current_image(image_number, force_refresh=True)

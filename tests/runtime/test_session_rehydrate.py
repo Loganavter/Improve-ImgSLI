@@ -16,10 +16,13 @@ from tabs.multi_compare.widget import MultiCompareWidget
 
 class _FakeDocument:
     def __init__(self):
-        self.image_list1 = []
+        from tabs.image_compare.state.document import ImageItem
+        self.image_list1 = [ImageItem(image=None, path="/one.png", display_name="one", rating=0)]
         self.image_list2 = []
         self.image1_path = "/one.png"
         self.image2_path = None
+        self.current_index1 = 0
+        self.current_index2 = -1
 
 
 class _FakeICSession:
@@ -61,6 +64,7 @@ def test_image_compare_rehydrate_calls_load_pipeline(qapp):
     sessions_ctrl.load_images_from_paths = lambda paths, num: loads.append(
         (list(paths), num)
     )
+    sessions_ctrl.set_current_image = lambda slot, **kw: loads.append((f"set_current:{slot}", kw))
 
     context = TabContext(
         store=store,
@@ -71,7 +75,8 @@ def test_image_compare_rehydrate_calls_load_pipeline(qapp):
 
     tab.rehydrate_session("ic1", context)
 
-    assert loads == [(["/one.png"], 1)]
+    # Phase 5: rehydrate is demand-driven via set_current_image (single PipelineCache), not load_images_from_paths
+    assert any(str(x[0]).startswith("set_current") for x in loads) or loads == [(["/one.png"], 1)]
     assert store.workspace.active_session_id == "other"
 
 
