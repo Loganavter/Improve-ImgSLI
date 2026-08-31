@@ -482,15 +482,26 @@ class ImageCompareChromeSync(QObject):
             self._refresh_visible_workspace_language(window_presenter, lang_code)
 
     def flush_stale_render(self, window_presenter) -> None:
-        if not self._render_stale:
+        # Dedup: single StaleGate — delegate to widget's flush if shared gate, else consume gate.
+        gate = getattr(self, "_stale_gate", None)
+        if gate is not None and not gate.is_stale("render"):
             return
         if not self._is_visible():
             return
+        # If widget shares the same gate, let widget's flush be canonical (it also handles presenter schedule).
         widget = self.widget
-        if widget is not None and not getattr(widget, "_render_stale", False):
-            self._render_stale = False
+        if widget is not None and getattr(widget, "_stale_gate", None) is gate and hasattr(widget, "_flush_stale_render"):
+            try:
+                widget._flush_stale_render()
+            except Exception:
+                pass
+            # ensure gate consumed (widget already did)
             return
-        self._render_stale = False
+        # fallback: consume and schedule batch via window_presenter
+        if gate is not None:
+            gate.consume("render")
+        else:
+            self._render_stale = False
         if widget is not None:
             try:
                 widget._render_stale = False  # type: ignore[attr-defined]

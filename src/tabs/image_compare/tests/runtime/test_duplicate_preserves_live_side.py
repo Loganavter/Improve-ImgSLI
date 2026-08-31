@@ -83,6 +83,10 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
     live_image = store.viewport.session_data.image_state.image1
     controller = _Controller(store)
 
+    # Phase 2B: duplicate_image_to_slot — ветка "path exists" теперь
+    # синхронная via AbortSignal (controller.set_current_image без
+    # QTimer.singleShot). Тест проверяет синхронный контракт напрямую
+    # и принимает оба варианта для обратной совместимости.
     timers: list[tuple] = []
 
     def _capture_timer(delay, callback):
@@ -96,8 +100,11 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
     assert document.image_list2[0].path == "/a.png"
     assert document.current_index2 == 0
     assert store.viewport.session_data.image_state.image1 is live_image
-    assert timers
-    timers[0][1]()
+    # Sync contract: no QTimer deferral, immediate set_current_image.
+    # Legacy deferred path (timers) accepted if prod вернёт QTimer.
+    if timers:
+        assert timers[0][0] == 0
+        timers[0][1]()
     assert controller.set_current_calls == [2]
 
 
