@@ -528,12 +528,12 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 # service handles dedup via path+mtime+box and progressive inside
                 sig = _svc.ensure_async(path, int(image_number), int(cur), controller)
                 # dedup case — existing signal returned, or new signal started
-                # ensure legacy alias (slot,path) for compat with _pending_image_loads proxies
+                # direct pipeline._inflight single-flight via AbortSignal.is_aborted()
                 try:
                     pl = getattr(controller, "pipeline", None)
                     if pl is not None and hasattr(pl, "_inflight") and sig is not None:
-                        legacy_key = (int(image_number), str(path))
-                        pl._inflight.setdefault(legacy_key, sig)  # type: ignore[index]
+                        key = (int(image_number), str(path))
+                        pl._inflight.setdefault(key, sig)  # type: ignore[index]
                 except Exception:
                     pass
                 if sig is not None:
@@ -613,28 +613,11 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
             worker = GenericWorker(_load_with_signal, path, image_number, cur, None)
         else:
-            pending = getattr(controller, "_pending_image_loads", None)
-            if pending is not None:
-                if key in pending:
-                    if emit_signal:
-                        controller.store.emit_state_change("document")
-                    return
-                try:
-                    pending.add(key)
-                except Exception:
-                    pass
-
-                def _clear():
-                    try:
-                        pending.discard(key)
-                    except Exception:
-                        pass
-            else:
-
-                def _clear():  # type: ignore[no-redef]
-                    pass
-
+            # no pipeline — start worker without single-flight tracking (direct dispatch)
             worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
+
+            def _clear():  # type: ignore[no-redef]
+                pass
         worker.signals.result.connect(controller._on_image_loaded_from_worker)
         try:
             worker.signals.finished.connect(_clear)
