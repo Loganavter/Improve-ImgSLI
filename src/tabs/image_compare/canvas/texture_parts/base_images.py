@@ -1,6 +1,4 @@
 # Audit-Meta: pattern=canvas-presentation size=exempt reason="texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
-import time
-
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
@@ -10,11 +8,6 @@ from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
-
-try:
-    from shared.rendering.tile_constants import UNION_LETTERBOX_HOLD_MS
-except Exception:
-    UNION_LETTERBOX_HOLD_MS = 350.0
 
 
 def _canvas_dims(widget) -> tuple[int, int]:
@@ -200,13 +193,12 @@ def update_common_letterbox_geometry(
 ) -> None:
     """Keep both comparison sides in one canvas coordinate system.
 
-    Bucket A (Phase 2): single geometry owner. When tiers mix
-    (TiledPixelStore vs preview QImage/PIL), hold previous unified
-    letterbox if valid; otherwise compute union aspect max(w1,w2)/max(h1,h2)
-    once (envelope of fitted rects) so letterbox1==letterbox2 and dispatch
-    single SetPixmapDimensions+SetImageDisplayRect via store.transact.
-    Per-image letterbox previously produced 0.001 slivers and left-on-both.
-    See plan_render_dispatch_and_gap_fix.md Phase 2.
+    Eager max envelope (single owner): when both sides have sizes, compute
+    pw,ph = max(w1,w2), max(h1,h2) once and derive a single fitted rect via
+    resolve_canvas_content_geometry(cw,ch,pw,ph). Both letterbox slots receive
+    the same ux/cw,uy/ch,uw/cw,uh/ch, dispatched via store.transact. No HOLD,
+    no more_pending, no Store predicted field. Fallback to per-image
+    letterbox only when one side has no size.
     """
     state = widget.runtime_state
     cw, ch = _canvas_dims(widget)
@@ -230,33 +222,6 @@ def update_common_letterbox_geometry(
         state._inner_content_rect_px = state._content_rect_px
         state._clip_overlays_to_content_rect = False
         return
-
-    is_store1 = isinstance(image1, TiledPixelStore)
-    is_store2 = isinstance(image2, TiledPixelStore)
-    mixed_tier = have1 and have2 and (is_store1 != is_store2)
-    # union only for mixed tier (store vs preview) or very different aspects
-    # (portrait vs landscape) — keeps preview-preview close aspects distinct
-    # to avoid 0.001 sliver (test_bbox) while fixing gap for mixed/large diff
-    # (test_common). Threshold 0.4 separates 2000x1000 vs 1000x2000 (1.5) from
-    # 1017x838 vs 768x576 (0.11). Also union when grid differs (5x6 vs 2x2)
-    # — real bug 53,603: both Tiled 2797x2304 vs 764x576, same tier but gap.
-    import math
-    aspect1 = w1 / h1 if h1 else 0
-    aspect2 = w2 / h2 if h2 else 0
-    large_aspect_diff = have1 and have2 and abs(aspect1 - aspect2) > 0.4
-    try:
-        from core.constants import AppConstants
-        _tile = int(getattr(AppConstants, "PIXEL_TILE_SIZE", 512))
-    except Exception:
-        _tile = 512
-    def _grid(w, h):
-        return (math.ceil(w / _tile) if w else 0, math.ceil(h / _tile) if h else 0)
-    grid1 = _grid(w1, h1) if have1 else (0, 0)
-    grid2 = _grid(w2, h2) if have2 else (0, 0)
-    grid_mismatch = have1 and have2 and grid1 != grid2
-    size_mismatch = have1 and have2 and (w1 != w2 or h1 != h2)
-    # grid mismatch is sufficient (5x6 vs 2x2) even when aspect diff small
-    needs_union = have1 and have2 and (mixed_tier or large_aspect_diff or grid_mismatch or (size_mismatch and grid_mismatch))
 
     def _dispatch_store(rect_tuple: tuple[int, int, int, int]) -> bool:
         x, y, w, h = rect_tuple
@@ -285,133 +250,24 @@ def update_common_letterbox_geometry(
         except Exception:
             return False
 
-    if needs_union:
-        # predicted_unified_size fast-path (58.352): if both slots have predicted wh,
-        # use predicted envelope (both 2797) not current 2797 vs 764 => 1041 without HOLD
-        _predicted = None
-        try:
-            _store = getattr(state, "_store", None) or getattr(widget, "_store", None)
-            if _store is not None:
-                _rc = getattr(_store.viewport.session_data, "render_cache", None)
-                _predicted = getattr(_rc, "predicted_unified_size", None) if _rc is not None else None
-        except Exception:
-            _predicted = None
-        if _predicted is not None and isinstance(_predicted, (tuple, list)) and len(_predicted) == 2:
-            try:
-                _pw, _ph = int(_predicted[0]), int(_predicted[1])
-                if _pw > 0 and _ph > 0:
-                    _p_geom = resolve_canvas_content_geometry(
-                        widget_width=cw,
-                        widget_height=ch,
-                        image_width=_pw,
-                        image_height=_ph,
-                        virtual_layout=None,
-                    )
-                    _p_inner = _p_geom.inner_rect_px or (0, 0, cw, ch)
-                    _px, _py, _pw2, _ph2 = _p_inner
-                    _pred_letterbox = (_px / float(cw), _py / float(ch), _pw2 / float(cw), _ph2 / float(ch))
-                    _pred_rect = (int(round(_px)), int(round(_py)), max(1, int(round(_pw2))), max(1, int(round(_ph2))))
-                    # predicted envelope is single rect (both 2797) => immediate 1041, no HOLD / no more_pending
-                    state._letterbox_params[0] = _pred_letterbox
-                    state._letterbox_params[1] = _pred_letterbox
-                    state._content_rect_px = _pred_rect
-                    state._inner_content_rect_px = _pred_rect
-                    state._clip_overlays_to_content_rect = False
-                    _dispatch_store(_pred_rect)
-                    return
-            except Exception:
-                pass
-        # Compute candidate union rect first to detect 0.571->0.523 jump
-        geom1 = resolve_canvas_content_geometry(
+    if have1 and have2:
+        pw = max(w1, w2)
+        ph = max(h1, h2)
+        geometry = resolve_canvas_content_geometry(
             widget_width=cw,
             widget_height=ch,
-            image_width=w1 if have1 else w2,
-            image_height=h1 if have1 else h2,
+            image_width=pw,
+            image_height=ph,
             virtual_layout=None,
         )
-        geom2 = resolve_canvas_content_geometry(
-            widget_width=cw,
-            widget_height=ch,
-            image_width=w2 if have2 else w1,
-            image_height=h2 if have2 else h1,
-            virtual_layout=None,
-        )
-        inner1 = geom1.inner_rect_px or (0, 0, cw, ch)
-        inner2 = geom2.inner_rect_px or (0, 0, cw, ch)
-        x1, y1, w1p, h1p = inner1
-        x2, y2, w2p, h2p = inner2
-        ux = min(x1, x2)
-        uy = min(y1, y2)
-        ux2 = max(x1 + w1p, x2 + w2p)
-        uy2 = max(y1 + h1p, y2 + h2p)
-        uw = max(1, int(round(ux2 - ux)))
-        uh = max(1, int(round(uy2 - uy)))
-        ux = int(round(ux))
-        uy = int(round(uy))
-        letterbox = (ux / float(cw), uy / float(ch), uw / float(cw), uh / float(ch))
-        candidate_rect = (ux, uy, uw, uh)
-
-        prev0 = state._letterbox_params[0]
-        prev1 = state._letterbox_params[1]
-        if prev0 is not None and prev1 is not None and prev0 == prev1 and prev0 != (0.0, 0.0, 1.0, 1.0):
-            prev_rect = getattr(state, "_inner_content_rect_px", None) or getattr(
-                state, "_content_rect_px", None
-            )
-            if prev_rect is not None and prev_rect[2] > 0 and prev_rect[3] > 0:
-                # Only hold if candidate would cause a jump (e.g. 0.571->0.523)
-                is_jump = (letterbox != prev0) or (tuple(candidate_rect) != tuple(prev_rect))
-                if is_jump:
-                    # predicted==candidate => don't start HOLD, remove more_pending linkage (fallback only if mismatch)
-                    _skip_hold_via_predicted = False
-                    try:
-                        _store2 = getattr(state, "_store", None) or getattr(widget, "_store", None)
-                        _rc2 = getattr(_store2.viewport.session_data, "render_cache", None) if _store2 is not None else None
-                        _pred2 = getattr(_rc2, "predicted_unified_size", None) if _rc2 is not None else None
-                        if _pred2 is not None and isinstance(_pred2, (tuple, list)) and len(_pred2) == 2 and _pred2[0] > 0 and _pred2[1] > 0:
-                            _pw2, _ph2 = int(_pred2[0]), int(_pred2[1])
-                            _p_geom2 = resolve_canvas_content_geometry(widget_width=cw, widget_height=ch, image_width=_pw2, image_height=_ph2, virtual_layout=None)
-                            _p_inner2 = _p_geom2.inner_rect_px or (0, 0, cw, ch)
-                            _px2, _py2, _pw22, _ph22 = _p_inner2
-                            _pred_rect2 = (int(round(_px2)), int(round(_py2)), max(1, int(round(_pw22))), max(1, int(round(_ph22))))
-                            if tuple(_pred_rect2) == tuple(candidate_rect):
-                                _skip_hold_via_predicted = True
-                    except Exception:
-                        _skip_hold_via_predicted = False
-                    if _skip_hold_via_predicted:
-                        # predicted matches candidate -> no HOLD, no more_pending check, fall through
-                        pass
-                    else:
-                        now = time.monotonic()
-                        hold_until = float(getattr(state, "_union_letterbox_hold_until", 0.0) or 0.0)
-                        # more_pending flag: tile residency still has pending uploads
-                        more_pending = getattr(state, "_tile_more_pending", None)
-                        if more_pending is None:
-                            more_pending = getattr(widget, "_tile_more_pending", None) if hasattr(widget, "_tile_more_pending") else None
-                        if more_pending is None:
-                            more_pending = True
-                        # If more_pending False => release immediately (no hold)
-                        if more_pending is False:
-                            try:
-                                state._union_letterbox_hold_until = 0.0
-                            except Exception:
-                                pass
-                        elif hold_until and now < hold_until:
-                            _dispatch_store(prev_rect)
-                            return
-                        elif hold_until and now >= hold_until:
-                            try:
-                                state._union_letterbox_hold_until = 0.0
-                            except Exception:
-                                pass
-                            # fall through to apply candidate
-                        else:
-                            # No active hold — start one for UNION_LETTERBOX_HOLD_MS
-                            try:
-                                state._union_letterbox_hold_until = now + UNION_LETTERBOX_HOLD_MS / 1000.0
-                            except Exception:
-                                pass
-                            _dispatch_store(prev_rect)
-                            return
+        inner = geometry.inner_rect_px or (0, 0, cw, ch)
+        ux, uy, uw, uh = inner
+        ux_i = int(round(ux))
+        uy_i = int(round(uy))
+        uw_i = max(1, int(round(uw)))
+        uh_i = max(1, int(round(uh)))
+        letterbox = (ux_i / float(cw), uy_i / float(ch), uw_i / float(cw), uh_i / float(ch))
+        candidate_rect = (ux_i, uy_i, uw_i, uh_i)
         state._letterbox_params[0] = letterbox
         state._letterbox_params[1] = letterbox
         state._content_rect_px = candidate_rect

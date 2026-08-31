@@ -1,6 +1,5 @@
 # Audit-Meta: pattern=state-machine size=exempt reason="IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)"
 import logging
-import time as _rf_time
 
 from PySide6.QtGui import QImage, QPixmap
 
@@ -72,31 +71,22 @@ def _update_comparison_geometry(
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
     size1 = _size_or_none(src_resize1) or _size_or_none(source1)
     size2 = _size_or_none(src_resize2) or _size_or_none(source2)
-    # predicted_unified_size fast-path: both 2797 => 1041 at 58.352 without HOLD
-    _predicted_rf = None
-    try:
-        _rc_rf = getattr(presenter.store.viewport.session_data, "render_cache", None)
-        _predicted_rf = getattr(_rc_rf, "predicted_unified_size", None) if _rc_rf is not None else None
-    except Exception:
-        _predicted_rf = None
-    if _predicted_rf is not None and isinstance(_predicted_rf, (tuple, list)) and len(_predicted_rf) == 2:
-        try:
-            _pw_rf, _ph_rf = int(_predicted_rf[0]), int(_predicted_rf[1])
-            if _pw_rf > 0 and _ph_rf > 0:
-                size1 = (_pw_rf, _ph_rf)
-                size2 = (_pw_rf, _ph_rf)
-        except Exception:
-            pass
+    # Eager max envelope: when both sides have sizes, derive geometry from
+    # pw,ph = max(w1,w2), max(h1,h2) — single fitted rect, no HOLD.
+    if size1 and size2:
+        pw = max(size1[0], size2[0])
+        ph = max(size1[1], size2[1])
+        size1 = (pw, ph)
+        size2 = (pw, ph)
 
     def _fit_scale(w: int, h: int) -> float:
         return min(label_width / w, label_height / h)
 
     if size1 and size2:
-        img1_w, img1_h = size1
-        img2_w, img2_h = size2
-        scale = min(_fit_scale(img1_w, img1_h), _fit_scale(img2_w, img2_h))
-        scaled_w = max(1, int(img1_w * scale))
-        scaled_h = max(1, int(img1_h * scale))
+        pw, ph = size1  # both equal to (max_w, max_h)
+        scale = _fit_scale(pw, ph)
+        scaled_w = max(1, int(pw * scale))
+        scaled_h = max(1, int(ph * scale))
     elif size1:
         img1_w, img1_h = size1
         scale = _fit_scale(img1_w, img1_h)
@@ -109,51 +99,6 @@ def _update_comparison_geometry(
         scaled_h = max(1, int(img2_h * scale))
     else:
         return
-
-    # Union letterbox hold: fallback only if predicted != final (skip when predicted==candidate)
-    try:
-        # if predicted valid, skip HOLD and more_pending linkage — envelope already from predicted (1041)
-        _skip_hold_predicted = False
-        try:
-            if _predicted_rf is not None and isinstance(_predicted_rf, (tuple, list)) and len(_predicted_rf) == 2 and _predicted_rf[0] > 0 and _predicted_rf[1] > 0:
-                # predicted overrides size1/size2 already, so candidate is predicted => skip HOLD
-                _skip_hold_predicted = True
-        except Exception:
-            _skip_hold_predicted = False
-        if _skip_hold_predicted:
-            pass
-        else:
-            _hold_until = 0.0
-            _more_pending = None
-            # Try canvas runtime_state first
-            try:
-                _w = getattr(presenter, "widget", None)
-                if _w is not None:
-                    # prefer canvas widget's runtime_state (base_images hold)
-                    _rs = getattr(_w, "runtime_state", None)
-                    if _rs is not None:
-                        _hold_until = float(getattr(_rs, "_union_letterbox_hold_until", 0.0) or 0.0)
-                        _more_pending = getattr(_rs, "_tile_more_pending", None)
-                    # also check get_canvas_widget for strict canvas
-                    try:
-                        from tabs.image_compare.canvas.helpers import get_canvas_widget
-
-                        _canvas = get_canvas_widget(_w)
-                        if _canvas is not None and getattr(_canvas, "runtime_state", None) is not None:
-                            _crs = _canvas.runtime_state
-                            _ch = float(getattr(_crs, "_union_letterbox_hold_until", 0.0) or 0.0)
-                            if _ch:
-                                _hold_until = _ch
-                            if getattr(_crs, "_tile_more_pending", None) is not None:
-                                _more_pending = getattr(_crs, "_tile_more_pending", None)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            if _hold_until and _rf_time.monotonic() < _hold_until and _more_pending is not False:
-                return
-    except Exception:
-        pass
 
     geometry = presenter.store.viewport.geometry_state
     # [ic-gap] input snapshot before guard — throttled: same (state, src, label, unified, size) at 60Hz

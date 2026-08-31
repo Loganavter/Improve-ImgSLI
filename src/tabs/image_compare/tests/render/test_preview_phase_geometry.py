@@ -118,12 +118,12 @@ def test_geometry_updates_during_unification_deferral():
         assert render_flow.update_comparison_if_needed(presenter) is False
     finally:
         store.get_dispatcher = orig_get_dispatcher  # type: ignore[assignment]
-    # Pair fit of 100x50 + 60x60 into 400x400: scale = min(4, 6.667) = 4
-    # -> 400x200, centered.
-    assert (geometry.pixmap_width, geometry.pixmap_height) == (400, 200)
+    # Eager max envelope: pw,ph = max(100,60), max(50,60) = 100x60
+    # fit into 400x400: scale = min(4, 6.667) = 4 -> 400x240 centered at y=80
+    assert (geometry.pixmap_width, geometry.pixmap_height) == (400, 240)
     assert geometry.image_display_rect_on_label is not None
     rect = geometry.image_display_rect_on_label
-    assert (rect.x, rect.y, rect.w, rect.h) == (0, 100, 400, 200)
+    assert (rect.x, rect.y, rect.w, rect.h) == (0, 80, 400, 240)
 
 
 def test_geometry_updates_when_one_side_missing():
