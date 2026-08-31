@@ -1,7 +1,4 @@
-"""Unification flow — demand-driven via PipelineCache memo.
-
-Extracted from ``loading.py`` to keep that file <500. Re-exported via ``loading.py``.
-"""
+"""Unification flow — demand-driven via PipelineCache memo."""
 
 from __future__ import annotations
 
@@ -15,8 +12,6 @@ from core.state_management.actions import (
     SetPendingUnificationPathsAction,
     SetUnificationInProgressAction,
 )
-
-from sli_ui_toolkit.i18n import tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -63,13 +58,35 @@ def _unify_resize_method(controller) -> str:
     return get_effective_main_interpolation_method(controller.store.viewport)
 
 
+def _slot_sources(controller, document):
+    """PipelineCache is single source; fallback to viewport image_state."""
+    pl = getattr(controller, "pipeline", None)
+    vp_state = getattr(controller.store.viewport.session_data, "image_state", None)
+    s1 = s2 = None
+    if document is not None:
+        if pl is not None:
+            try:
+                p1 = document.image1_path
+                p2 = document.image2_path
+                if p1:
+                    s1 = pl.peek(p1)
+                if p2:
+                    s2 = pl.peek(p2)
+            except Exception:
+                pass
+        if s1 is None and vp_state is not None:
+            s1 = getattr(vp_state, "image1", None)
+        if s2 is None and vp_state is not None:
+            s2 = getattr(vp_state, "image2", None)
+    return s1, s2
+
+
 def ensure_unification(controller, delay_ms: int = 0) -> None:
     """Demand-driven unify via PipelineCache (memo by uid). No QTimer dedup."""
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return
-    s1 = document.full_res_image1 or document.preview_image1
-    s2 = document.full_res_image2 or document.preview_image2
+    s1, s2 = _slot_sources(controller, document)
     if not (s1 and s2):
         try:
             controller.metrics_service.on_metrics_calculated(None)
@@ -83,7 +100,6 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
             try:
                 w1, h1 = int(getattr(s1, "width", 0) or 0), int(getattr(s1, "height", 0) or 0)
                 w2, h2 = int(getattr(s2, "width", 0) or 0), int(getattr(s2, "height", 0) or 0)
-                # fallback for QImage sources
                 if w1 == 0 or h1 == 0:
                     from shared.image_processing.tiled_pixel_store import pixel_source_size
 
@@ -120,7 +136,6 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
         except Exception:
             logger.error("Failed to dispatch unification pending", exc_info=True)
     try:
-        # Phase 2A: AbortSignal single-flight (replaces _unification_task_id)
         signal = None
         try:
             sess = None
@@ -134,13 +149,11 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
             else:
                 raise AttributeError
         except Exception:
-            # fallback for fakes without session
             try:
                 controller._unification_task_id += 1  # type: ignore[attr-defined]
                 signal = controller._unification_task_id  # type: ignore[attr-defined]
             except Exception:
                 signal = 0
-        # single-flight dedup via pipeline._inflight if available
         method = _unify_resize_method(controller)
         pl = getattr(controller, "pipeline", None)
         unify_key = None
@@ -154,7 +167,6 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
                             return
                     except Exception:
                         return
-                # reserve; store AbortSignal if signal is int fallback, wrap
                 if signal is not None and hasattr(signal, "is_aborted"):
                     pl._inflight[unify_key] = signal  # type: ignore[index]
                 else:
@@ -172,12 +184,10 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
             s1, s2, document.image1_path, document.image2_path, signal if signal is not None else 0, method,
         )
 
-        # clear single-flight on finish
         def _clear_unify_inflight(*_a, **_kw):
             if pl is not None and unify_key is not None:
                 try:
                     cur = pl._inflight.get(unify_key)  # type: ignore[arg-type]
-                    # only clear if still our signal
                     if signal is None or cur is signal or (hasattr(cur, "is_aborted") and hasattr(signal, "is_aborted")):
                         pl._inflight.pop(unify_key, None)
                 except Exception:
@@ -200,23 +210,15 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_batch_update(["file_names", "resolution"])
-    # Single-slot pairing: unify never runs, so close the loading toast here
-    # (otherwise it hangs forever — see test_single_slot_loading_toast_finishes).
     document = controller.store.get_session_state_slot("document")
     if document is not None:
-        s1 = document.full_res_image1 or document.preview_image1
-        s2 = document.full_res_image2 or document.preview_image2
-        # If exactly one side has an image and the other slot is empty (no path),
-        # finish the toast for the side that just loaded.
-        # But don't finish while the slot's own full-res decode is still in flight
-        # via pipeline._inflight — that would close prematurely.
+        s1, s2 = _slot_sources(controller, document)
         try:
             from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
         except Exception:
             finish_toast_for_unpaired_slot = None  # type: ignore
         if finish_toast_for_unpaired_slot is not None:
             if (s1 and not s2) or (s2 and not s1):
-                # Check pipeline single-flight first, then legacy pending alias
                 has_pending = False
                 pl = getattr(controller, "pipeline", None)
                 if pl is not None and hasattr(pl, "_inflight"):
@@ -235,7 +237,6 @@ def trigger_preview_unification(controller, image_number: int):
                     if has_pending:
                         pass
                     else:
-                        # fallback to legacy pending_full_loads alias
                         pending = getattr(controller, "_pending_full_loads", None)
                         if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
                             has_pending = True
@@ -259,30 +260,31 @@ def trigger_preview_unification(controller, image_number: int):
 def on_unified_images_ready(controller, result):
     if not result:
         _clear_unification_flags(controller)
-        controller.metrics_service.on_metrics_calculated(None)
+        try:
+            controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
         return
     try:
         if isinstance(result, tuple) and len(result) == 5:
             u1, u2, path1, path2, task_or_signal = result
         else:
             _clear_unification_flags(controller)
-            controller.metrics_service.on_metrics_calculated(None)
+            try:
+                controller.metrics_service.on_metrics_calculated(None)
+            except Exception:
+                pass
             return
-        # Phase 2A: AbortSignal takes precedence over legacy task_id
         try:
             from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal
 
             if isinstance(task_or_signal, _AbortSignal):
                 if task_or_signal.is_aborted():
                     return
-                # also check if current session has newer signal (aborted old)
-                # is_aborted already covers global new_abort, but if pipeline
-                # cleared _inflight we still reject stale via abort flag
             else:
                 if task_or_signal != controller._unification_task_id:
                     return
         except Exception:
-            # fallback legacy
             try:
                 if task_or_signal != controller._unification_task_id:  # type: ignore[attr-defined]
                     return
@@ -302,7 +304,10 @@ def on_unified_images_ready(controller, result):
             return
         if not (u1 and u2):
             _clear_unification_flags(controller)
-            controller.metrics_service.on_metrics_calculated(None)
+            try:
+                controller.metrics_service.on_metrics_calculated(None)
+            except Exception:
+                pass
             return
         pl = getattr(controller, "pipeline", None)
         if pl is not None:
@@ -338,7 +343,10 @@ def on_unified_images_ready(controller, result):
         controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
         controller._schedule_image_canvas_update()
         _clear_unification_flags(controller)
-        controller._trigger_metrics_calculation_if_needed()
+        try:
+            controller._trigger_metrics_calculation_if_needed()
+        except Exception:
+            pass
         try:
             if controller.event_bus:
                 from core.events import CoreUpdateRequestedEvent

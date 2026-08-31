@@ -22,29 +22,45 @@ class ImageItem:
     path: str
     display_name: str
     rating: int
+    _deprecated: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __init__(self, path: str = "", display_name: str = "", rating: int = 0, **kwargs) -> None:
         object.__setattr__(self, "path", str(path))
         object.__setattr__(self, "display_name", str(display_name))
         object.__setattr__(self, "rating", int(rating) if rating is not None else 0)
-        # kwargs swallows deprecated 'image' etc
+        # handle dataclass replace copying _deprecated
+        if "_deprecated" in kwargs:
+            dep = kwargs.pop("_deprecated")
+            object.__setattr__(self, "_deprecated", dict(dep) if isinstance(dep, dict) else {})
+        else:
+            object.__setattr__(self, "_deprecated", {})
         for _k, _v in kwargs.items():
-            pass
+            self._deprecated[_k] = _v
 
     def __getattr__(self, name: str):  # type: ignore[override]
-        # compat for deprecated pixel field — return None without storing
+        d = object.__getattribute__(self, "__dict__").get("_deprecated", {})
+        if name in d:
+            return d[name]
         if name == "image":
             return None
         raise AttributeError(name)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in ("path", "display_name", "rating"):
+        if name in ("path", "display_name", "rating", "_deprecated"):
             object.__setattr__(self, name, value)
         elif name == "image":
-            # deprecated — ignore silently
-            return
+            d = object.__getattribute__(self, "__dict__").get("_deprecated")
+            if d is None:
+                object.__setattr__(self, "_deprecated", {name: value})
+            else:
+                d[name] = value
         else:
-            object.__setattr__(self, name, value)
+            # store deprecated generically
+            d = object.__getattribute__(self, "__dict__").get("_deprecated")
+            if d is not None:
+                d[name] = value
+            else:
+                object.__setattr__(self, "_deprecated", {name: value})
 
 
 @dataclass(init=False)
@@ -61,6 +77,7 @@ class DocumentModel:
     progressive_load_in_progress2: bool
     _last_display_name1: str
     _last_display_name2: str
+    _deprecated: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __init__(
         self,
@@ -90,40 +107,56 @@ class DocumentModel:
         object.__setattr__(self, "progressive_load_in_progress2", bool(progressive_load_in_progress2))
         object.__setattr__(self, "_last_display_name1", str(_last_display_name1))
         object.__setattr__(self, "_last_display_name2", str(_last_display_name2))
-        # kwargs swallows deprecated pixel/path fields for compat (old construction
-        # with image1_path etc). Derived path is computed, not stored.
+        if "_deprecated" in kwargs:
+            dep = kwargs.pop("_deprecated")
+            object.__setattr__(self, "_deprecated", dict(dep) if isinstance(dep, dict) else {})
+        else:
+            object.__setattr__(self, "_deprecated", {})
         for _k, _v in kwargs.items():
-            # silently ignore deprecated keys
-            pass
+            self._deprecated[_k] = _v
 
     @property
     def image1_path(self) -> str | None:
         if 0 <= self.current_index1 < len(self.image_list1):
             return self.image_list1[self.current_index1].path
+        d = object.__getattribute__(self, "__dict__").get("_deprecated", {})
+        if "image1_path" in d:
+            return d["image1_path"]
         return None
 
     @image1_path.setter
     def image1_path(self, value: str | None) -> None:
-        # derived — setter is no-op (kept for compat with old dispatch)
-        pass
+        d = object.__getattribute__(self, "__dict__").get("_deprecated")
+        if d is None:
+            object.__setattr__(self, "_deprecated", {"image1_path": value})
+        else:
+            d["image1_path"] = value
 
     @property
     def image2_path(self) -> str | None:
         if 0 <= self.current_index2 < len(self.image_list2):
             return self.image_list2[self.current_index2].path
+        d = object.__getattribute__(self, "__dict__").get("_deprecated", {})
+        if "image2_path" in d:
+            return d["image2_path"]
         return None
 
     @image2_path.setter
     def image2_path(self, value: str | None) -> None:
-        pass
+        d = object.__getattribute__(self, "__dict__").get("_deprecated")
+        if d is None:
+            object.__setattr__(self, "_deprecated", {"image2_path": value})
+        else:
+            d["image2_path"] = value
 
     def __getattr__(self, name: str):  # type: ignore[override]
-        # deprecated pixel holders — return None so legacy reads don't crash
-        # generic fallback without mentioning literal field names
+        d = object.__getattribute__(self, "__dict__").get("_deprecated", {})
+        if name in d:
+            return d[name]
+        # deprecated holders — return None so legacy reads don't crash
         return None
 
     def __setattr__(self, name: str, value) -> None:
-        # allow known SlotSource fields and derived path setters (no-ops)
         known = {
             "image_list1",
             "image_list2",
@@ -137,17 +170,24 @@ class DocumentModel:
             "progressive_load_in_progress2",
             "_last_display_name1",
             "_last_display_name2",
+            "_deprecated",
         }
-        if name in known or name in ("image1_path", "image2_path"):
-            # image*_path setters are no-ops via property, but allow assignment
-            if name in ("image1_path", "image2_path"):
-                return
+        if name in known:
             object.__setattr__(self, name, value)
+        elif name in ("image1_path", "image2_path"):
+            d = object.__getattribute__(self, "__dict__").get("_deprecated")
+            if d is None:
+                object.__setattr__(self, "_deprecated", {name: value})
+            else:
+                d[name] = value
         elif name.startswith("_"):
             object.__setattr__(self, name, value)
         else:
-            # deprecated pixel fields — ignore silently
-            return
+            d = object.__getattribute__(self, "__dict__").get("_deprecated")
+            if d is None:
+                object.__setattr__(self, "_deprecated", {name: value})
+            else:
+                d[name] = value
 
     def has_current_item(self, slot: int) -> bool:
         idx = self.current_index1 if slot == 1 else self.current_index2
