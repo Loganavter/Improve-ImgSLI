@@ -208,47 +208,89 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
             # unified  max(w1,w2) pair is cached. Single-side / same-size
             # stays unaffected (need_unify False).
             try:
-                _both_previews2 = peeked["peeked_preview1"] is not None and peeked["peeked_preview2"] is not None
-                if _both_previews2:
-                    _s1u = presenter.store.viewport.session_data.image_state.image1
-                    _s2u = presenter.store.viewport.session_data.image_state.image2
-                    if _s1u is not None and _s2u is not None:
-                        from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss
+                _s1u = presenter.store.viewport.session_data.image_state.image1
+                _s2u = presenter.store.viewport.session_data.image_state.image2
+                if _s1u is not None and _s2u is not None:
+                    from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss
 
-                        try:
-                            _w1, _h1 = _pss(_s1u)
-                        except Exception:
-                            _w1, _h1 = int(getattr(_s1u, "width", 0) or 0), int(getattr(_s1u, "height", 0) or 0)
-                        try:
-                            _w2, _h2 = _pss(_s2u)
-                        except Exception:
-                            _w2, _h2 = int(getattr(_s2u, "width", 0) or 0), int(getattr(_s2u, "height", 0) or 0)
-                        if (_w1 != _w2 or _h1 != _h2) and _w1 > 0 and _w2 > 0:
-                            _need_unify = True
-                            _ctrl_u = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
-                            _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
-                            _cache_u = getattr(_pl_u, "cache", None) if _pl_u is not None else None
-                            if _cache_u is not None:
-                                try:
-                                    from shared.rendering.image_identity import image_uid as _uid2
-                                    from shared.rendering.interpolation import get_effective_main_interpolation_method as _get_method
+                    try:
+                        _w1, _h1 = _pss(_s1u)
+                    except Exception:
+                        _w1, _h1 = int(getattr(_s1u, "width", 0) or 0), int(getattr(_s1u, "height", 0) or 0)
+                    try:
+                        _w2, _h2 = _pss(_s2u)
+                    except Exception:
+                        _w2, _h2 = int(getattr(_s2u, "width", 0) or 0), int(getattr(_s2u, "height", 0) or 0)
+                    if (_w1 != _w2 or _h1 != _h2) and _w1 > 0 and _w2 > 0:
+                        _preview_log("unify gate check: size mismatch %sx%s vs %sx%s", _w1, _h1, _w2, _h2)
+                        _ctrl_u = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                        if _ctrl_u is None:
+                            try:
+                                _mw = getattr(presenter, "main_window_app", None) or getattr(getattr(presenter, "widget", None), "main_window_app", None)
+                                if _mw is not None:
+                                    _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
+                                    _ctrl_u = getattr(_tab, "session_controller", None) if _tab else None
+                            except Exception:
+                                _ctrl_u = None
+                        _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
+                        # Fallback: pipeline may be stored in presenter directly
+                        if _pl_u is None:
+                            try:
+                                _pl_u = getattr(presenter, "pipeline", None)
+                            except Exception:
+                                _pl_u = None
+                        _cache_u = getattr(_pl_u, "cache", None) if _pl_u is not None else None
+                        _preview_log("unify gate: pipeline %s cache %s ctrl=%s", _pl_u is not None, _cache_u is not None, type(_ctrl_u).__name__ if _ctrl_u else None)
+                        if _cache_u is not None:
+                            try:
+                                from shared.rendering.image_identity import image_uid as _uid2
+                                from shared.rendering.interpolation import get_effective_main_interpolation_method as _get_method
 
-                                    _method_u = _get_method(presenter.store.viewport)
-                                    _wh_u = (max(_w1, _w2), max(_h1, _h2))
-                                    _uid1 = _uid2(_s1u)
-                                    _uid2v = _uid2(_s2u)
-                                    if _cache_u.get_unified(_uid1, _uid2v, _method_u, _wh_u[0], _wh_u[1]) is None:
-                                        _t1_u = "full_res" if img1 is peeked["peeked_pixel1"] and img1 is not None else _source_tier(img1, peeked["peeked_preview1"], None, _s1u)
-                                        _t2_u = "full_res" if img2 is peeked["peeked_pixel2"] and img2 is not None else _source_tier(img2, peeked["peeked_preview2"], None, _s2u)
-                                        if _t1_u != "preview" or _t2_u != "preview":
+                                _method_u = _get_method(presenter.store.viewport)
+                                _wh_u = (max(_w1, _w2), max(_h1, _h2))
+                                _uid1 = _uid2(_s1u)
+                                _uid2v = _uid2(_s2u)
+                                _miss = _cache_u.get_unified(_uid1, _uid2v, _method_u, _wh_u[0], _wh_u[1]) is None
+                                _preview_log("unify gate: get_unified %s/%s %s %s miss=%s", _uid1, _uid2v, _method_u, _wh_u, _miss)
+                                if _miss:
+                                    # Robust preview fetch: peek may be None due to key mismatch
+                                    # (crop_service), scan cache directly as fallback.
+                                    _pp1 = peeked["peeked_preview1"]
+                                    _pp2 = peeked["peeked_preview2"]
+                                    if _pp1 is None or _pp2 is None:
+                                        try:
+                                            import os as _os2
+
+                                            _norm1 = _os2.path.normpath(peeked.get("path1") or "")
+                                            _norm2 = _os2.path.normpath(peeked.get("path2") or "")
+                                            for _k, _v in list(getattr(_cache_u, "_preview", {}).items()):
+                                                try:
+                                                    if _pp1 is None and _k[0] == _norm1 and _v is not None and not getattr(_v, "isNull", lambda: True)():
+                                                        _pp1 = _v
+                                                    if _pp2 is None and _k[0] == _norm2 and _v is not None and not getattr(_v, "isNull", lambda: True)():
+                                                        _pp2 = _v
+                                                except Exception:
+                                                    continue
+                                        except Exception:
+                                            pass
+                                    _both_have_preview = _pp1 is not None and _pp2 is not None
+                                    _t1_u = "full_res" if img1 is peeked["peeked_pixel1"] and img1 is not None else _source_tier(img1, _pp1, None, _s1u)
+                                    _t2_u = "full_res" if img2 is peeked["peeked_pixel2"] and img2 is not None else _source_tier(img2, _pp2, None, _s2u)
+                                    if _t1_u != "preview" or _t2_u != "preview":
+                                        if _both_have_preview:
                                             _preview_log(
                                                 "joint preview hold: size mismatch %sx%s vs %sx%s need_unify miss %s/%s wh=%s -> force preview/preview (was %s/%s)",
                                                 _w1, _h1, _w2, _h2, _uid1, _uid2v, _wh_u, _t1_u, _t2_u,
                                             )
-                                            img1 = peeked["peeked_preview1"]
-                                            img2 = peeked["peeked_preview2"]
-                                except Exception:
-                                    pass
+                                            img1 = _pp1
+                                            img2 = _pp2
+                                        else:
+                                            _preview_log(
+                                                "joint preview hold: size mismatch %sx%s vs %sx%s need_unify miss %s/%s wh=%s -> preview missing (pp1=%s pp2=%s) cannot force, fallback will hold via atomic",
+                                                _w1, _h1, _w2, _h2, _uid1, _uid2v, _wh_u, _pp1 is not None, _pp2 is not None,
+                                            )
+                            except Exception:
+                                pass
             except Exception:
                 pass
             for _slot_num, _picked, _cand_preview in (
