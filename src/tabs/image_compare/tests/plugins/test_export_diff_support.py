@@ -473,9 +473,19 @@ def test_image_export_save_context_uses_video_style_fit_content_bounds():
     )
     img1 = Image.new("RGBA", (100, 100), (0, 0, 0, 255))
     img2 = Image.new("RGBA", (100, 100), (255, 255, 255, 255))
+    from tabs.image_compare.state.actions import PutPixelAction
+    from tabs.image_compare.state.document import ImageItem
+
     document = store.get_session_state_slot("document")
-    document.full_res_image1 = img1
-    document.full_res_image2 = img2
+    document.image_list1 = [ImageItem(path="/tmp/a.png", display_name="a")]
+    document.image_list2 = [ImageItem(path="/tmp/b.png", display_name="b")]
+    document.current_index1 = 0
+    document.current_index2 = 0
+    store.transact([PutPixelAction(path="/tmp/a.png", store=img1)], scope="pipeline")
+    store.transact([PutPixelAction(path="/tmp/b.png", store=img2)], scope="pipeline")
+    # also need to set viewport image_state for export context builder fallback
+    store.viewport.session_data.image_state.image1 = img1
+    store.viewport.session_data.image_state.image2 = img2
 
     state = get_magnifier_widget_state(store.viewport.view_state)
     state.enabled = True

@@ -26,6 +26,8 @@ from tabs.image_compare.use_cases import loading
 
 
 def _make_store(document: DocumentModel) -> Store:
+    import tabs.image_compare.bootstrap_reducers  # noqa: F401
+
     store = Store()
     store.create_workspace_session(session_type="image_compare", activate=True)
     store.set_session_state_slot("document", document)
@@ -34,6 +36,13 @@ def _make_store(document: DocumentModel) -> Store:
     )
     store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
     store.set_dispatcher(Dispatcher(store))
+    from tabs.image_compare.state.models import PipelineCacheState
+
+    try:
+        if store.get_session_state_slot("pipeline") is None:
+            store.set_session_state_slot("pipeline", PipelineCacheState())
+    except Exception:
+        pass
     return store
 
 

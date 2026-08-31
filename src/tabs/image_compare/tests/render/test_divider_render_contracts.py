@@ -9,6 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from ui.canvas_infra.scene.registry import get_canvas_registry
+import tabs.image_compare.canvas.features as image_compare_features
+
+get_canvas_registry("image_compare").register_package(image_compare_features)
+
 
 def _build_ctx(*, show_divider: bool, thickness: int, images_uploaded, content_rect):
     return SimpleNamespace(
