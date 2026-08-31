@@ -90,14 +90,14 @@ def test_same_size():
 
 def test_one_missing_fallback():
     cw, ch = 1920, 1080
-    # only first has size
+    # only first has size (1.5 aspect)
     lb1, rect1 = eager_envelope_rect(cw, ch, [(1200, 800), (0, 0)])
     expected1 = _resolve(cw, ch, 1200, 800)
     ex, ey, ew, eh = expected1
     assert rect1 == (int(round(ex)), int(round(ey)), max(1, int(round(ew))), max(1, int(round(eh))))
-    # only second has size
-    lb2, rect2 = eager_envelope_rect(cw, ch, [(0, 0), (900, 600)])
-    expected2 = _resolve(cw, ch, 900, 600)
+    # only second has size (1.0 aspect -> different fitted width)
+    lb2, rect2 = eager_envelope_rect(cw, ch, [(0, 0), (900, 900)])
+    expected2 = _resolve(cw, ch, 900, 900)
     ex, ey, ew, eh = expected2
     assert rect2 == (int(round(ex)), int(round(ey)), max(1, int(round(ew))), max(1, int(round(eh))))
     # missing should be per-image, not max with zero (which would be 1200 vs 0 -> not 0)
