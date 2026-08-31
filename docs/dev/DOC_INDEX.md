@@ -72,6 +72,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[Plan: Comparison letterbox eager max — no HOLD jump 1138→1041](plan_comparison_letterbox.md)** — `docs/dev/plan_comparison_letterbox.md`
+  Referenced by: [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md)
 - **[Plan: ImagePipeline — replace loading.py brute-force with demand-driven pipeline](plan_image_pipeline.md)** — `docs/dev/plan_image_pipeline.md`
 - **[Plan: Loading pipeline consolidation — 8 caches → 1, 8 cancels → 1](plan_loading_simplification.md)** — `docs/dev/plan_loading_simplification.md`
 - **[Plan: Preview QImage → Unify transition — missing put, tier mismatch, uid memo](plan_preview_unify_transition_fix.md)** — `docs/dev/plan_preview_unify_transition_fix.md`
@@ -101,7 +102,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Contracts](rendering/contracts.md)** — `docs/dev/rendering/contracts.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
 - **[Coordinate Systems](rendering/coordinate-systems.md)** — `docs/dev/rendering/coordinate-systems.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[Display image pipeline: preview tier → unify → pyramid → tiled render](rendering/display-image-pipeline.md)** — `docs/dev/rendering/display-image-pipeline.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
@@ -113,9 +114,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
   Referenced by: [docs/dev/rendering/feature-decomposition-playbook.md](rendering/feature-decomposition-playbook.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md)
 - **[Render Pass Contract](rendering/render-pass-contract.md)** — `docs/dev/rendering/render-pass-contract.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Rendering Model](rendering/rendering-model.md)** — `docs/dev/rendering/rendering-model.md`
-  Referenced by: [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Tiled rendering system](rendering/tile-rendering-system.md)** — `docs/dev/rendering/tile-rendering-system.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Zoom, Pan & Interaction](rendering/zoom-pan.md)** — `docs/dev/rendering/zoom-pan.md`

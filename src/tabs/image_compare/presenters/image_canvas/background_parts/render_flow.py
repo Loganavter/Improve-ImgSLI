@@ -71,34 +71,32 @@ def _update_comparison_geometry(
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
     size1 = _size_or_none(src_resize1) or _size_or_none(source1)
     size2 = _size_or_none(src_resize2) or _size_or_none(source2)
-    # Eager max envelope: when both sides have sizes, derive geometry from
-    # pw,ph = max(w1,w2), max(h1,h2) — single fitted rect, no HOLD.
-    if size1 and size2:
-        pw = max(size1[0], size2[0])
-        ph = max(size1[1], size2[1])
+    # Eager max envelope via shared host helper — single
+    # resolve_canvas_content_geometry(cw,ch,pw,ph) for both sides, no hold.
+    from shared.rendering.unified_envelope import eager_envelope_rect
+
+    has1 = bool(size1 and size1[0] > 0 and size1[1] > 0)
+    has2 = bool(size2 and size2[0] > 0 and size2[1] > 0)
+    if not has1 and not has2:
+        return
+    # Build sizes list for helper; zero where missing (per-image fallback).
+    sizes_for_helper: list[tuple[int, int]] = [
+        (int(size1[0]), int(size1[1])) if has1 else (0, 0),
+        (int(size2[0]), int(size2[1])) if has2 else (0, 0),
+    ]
+    _lb, _rect = eager_envelope_rect(label_width, label_height, sizes_for_helper)
+    scaled_w, scaled_h = int(_rect[2]), int(_rect[3])
+    # Recover scale for gap log (derived from envelope vs per-image)
+    if has1 and has2:
+        pw, ph = max(size1[0], size2[0]), max(size1[1], size2[1])
+        # log-friendly envelope sizes
         size1 = (pw, ph)
         size2 = (pw, ph)
-
-    def _fit_scale(w: int, h: int) -> float:
-        return min(label_width / w, label_height / h)
-
-    if size1 and size2:
-        pw, ph = size1  # both equal to (max_w, max_h)
-        scale = _fit_scale(pw, ph)
-        scaled_w = max(1, int(pw * scale))
-        scaled_h = max(1, int(ph * scale))
-    elif size1:
-        img1_w, img1_h = size1
-        scale = _fit_scale(img1_w, img1_h)
-        scaled_w = max(1, int(img1_w * scale))
-        scaled_h = max(1, int(img1_h * scale))
-    elif size2:
-        img2_w, img2_h = size2
-        scale = _fit_scale(img2_w, img2_h)
-        scaled_w = max(1, int(img2_w * scale))
-        scaled_h = max(1, int(img2_h * scale))
+        scale = min(label_width / pw, label_height / ph) if pw and ph else 1.0
+    elif has1:
+        scale = min(label_width / size1[0], label_height / size1[1]) if size1[0] and size1[1] else 1.0
     else:
-        return
+        scale = min(label_width / size2[0], label_height / size2[1]) if size2[0] and size2[1] else 1.0
 
     geometry = presenter.store.viewport.geometry_state
     # [ic-gap] input snapshot before guard — throttled: same (state, src, label, unified, size) at 60Hz
@@ -132,7 +130,7 @@ def _update_comparison_geometry(
                 )
         except Exception:
             pass
-    img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
+    img_x, img_y = int(_rect[0]), int(_rect[1])
     new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
     # Guard: throttle 60Hz fps tick — dispatch only when rect actually changes.
     # Single owner via dispatch (was direct assignment) so Store remains source
