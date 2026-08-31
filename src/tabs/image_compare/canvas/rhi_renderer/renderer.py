@@ -704,6 +704,7 @@ class RhiCanvasRenderer:
         treat the frame as presented — Image Compare startup gates and the
         Windows D3D first-present path depend on this.
         """
+        global _last_first_paint_hold_sig  # type: ignore[used-before-def]
         target = widget.renderTarget()
         if target is None or self.rhi is None:
             rhi_render_debug(
@@ -1366,6 +1367,68 @@ class RhiCanvasRenderer:
                                 )
                             except Exception:
                                 pass
+            # First-paint atomic hold supplement: when last_good was None (no
+            # baseline yet), do not emit 7/16 partial plan even if _resolve
+            # returned it (covered<1.0 path). Keep placeholder cleared until
+            # more_pending False and covered==1.0. Throttled log.
+            try:
+                _prev_hold_is_first = prev_last_good is None  # type: ignore[has-type]
+            except NameError:
+                _prev_hold_is_first = False
+            if _prev_hold_is_first and array_draw_plan:
+                # Need coverage values; they exist only when the debug/preview
+                # block above ran. If not, compute a cheap fallback.
+                _hold_cov1 = locals().get("covered1", 1.0)
+                _hold_cov2 = locals().get("covered2", 1.0)
+                _hold_bbox = locals().get("_bbox_cov_for_gap", locals().get("_bbox_cov", 1.0))
+                _hold_covered_ok = _hold_cov1 >= 0.999 and _hold_cov2 >= 0.999 and _hold_bbox >= 0.999
+                # If block didn't run, compute quickly
+                if "covered1" not in locals():
+                    try:
+                        _lb1 = tuple(base_image.letterbox1)
+                        _lb2 = tuple(base_image.letterbox2)
+                        _ug = SimpleNamespace(total_width=1.0, total_height=1.0)
+                        _v1 = _visible_side_image_rect(base_image, _lb1, _ug, viewport_zoom=viewport_zoom, viewport_offset=viewport_offset)
+                        _v2 = _visible_side_image_rect(base_image, _lb2, _ug, viewport_zoom=viewport_zoom, viewport_offset=viewport_offset)
+                        _v1c = _to_common_space((_v1[0], _v1[1], _v1[2]-_v1[0], _v1[3]-_v1[1]), _lb1)
+                        _v2c = _to_common_space((_v2[0], _v2[1], _v2[2]-_v2[0], _v2[3]-_v2[1]), _lb2)
+                        _hold_cov1 = _covered_fraction(_v1c, [_to_common_space(it.rect1, _lb1) for it in array_draw_plan])
+                        _hold_cov2 = _covered_fraction(_v2c, [_to_common_space(it.rect2, _lb2) for it in array_draw_plan])
+                        _hold_covered_ok = _hold_cov1 >= 0.999 and _hold_cov2 >= 0.999
+                    except Exception:
+                        _hold_covered_ok = False
+                        _hold_cov1 = _hold_cov2 = 0.0
+                if main_more_pending or not _hold_covered_ok:  # type: ignore[has-type]
+                    # Hold placeholder: clear partial draw, keep label cleared
+                    try:
+                        _hold_sig2 = (bool(main_more_pending), round(_hold_cov1, 3), round(_hold_cov2, 3), len(array_draw_plan))  # type: ignore[has-type]
+                        if _hold_sig2 != _last_first_paint_hold_sig:  # type: ignore[has-type]
+                            _last_first_paint_hold_sig = _hold_sig2  # type: ignore[has-type]
+                            _ic_preview_log(
+                                "first_paint_hold render: prev_last_good None more_pending=%s covered=%.3f/%.3f bbox=%.3f hold placeholder (was %d entries)",
+                                main_more_pending, _hold_cov1, _hold_cov2, _hold_bbox, len(array_draw_plan),
+                            )
+                            rhi_render_debug(
+                                "render FIRST_PAINT_HOLD more_pending=%s covered=%.3f/%.3f bbox=%.3f entries=%d -> hold 0",
+                                main_more_pending, _hold_cov1, _hold_cov2, _hold_bbox, len(array_draw_plan),
+                            )
+                    except Exception:
+                        pass
+                    array_draw_plan = []
+                    # revert promotion if it happened
+                    self._last_good_texture_keys, self._last_good_diff_key = (None, None)
+            elif _prev_hold_is_first and not array_draw_plan and current_array_plan and main_more_pending:
+                # Already held in _resolve, keep throttled log consistent
+                try:
+                    _hold_sig3 = (bool(main_more_pending), len(current_array_plan))  # type: ignore[has-type]
+                    if _hold_sig3 != _last_first_paint_hold_sig:  # type: ignore[has-type]
+                        _last_first_paint_hold_sig = _hold_sig3  # type: ignore[has-type]
+                        _ic_preview_log(
+                            "first_paint_hold render: still held placeholder current=%d more_pending=%s",
+                            len(current_array_plan), main_more_pending,
+                        )
+                except Exception:
+                    pass
 
         # Submit this frame's tile uploads now (rather than folding them into
         # the main pass's own resourceUpdates below) so generate_all_dirty_mips
