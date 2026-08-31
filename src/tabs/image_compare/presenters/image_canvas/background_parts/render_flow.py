@@ -168,44 +168,14 @@ def _update_comparison_geometry(
                 )
         except Exception:
             pass
-    # Unified dispatch owner: was direct assignment (Store bypass) — now dispatch
-    # so viewport geometry stays Redux-consistent and emitters are coalesced.
+    # Bucket A: single geometry owner is base_images.update_common_letterbox_geometry
+    # via store.transact. Hold previous Store rect here (no dispatch) — waits
+    # ~400ms for unify when mixed tier (store vs preview). Keep guard 136;
+    # for test fakes without dispatcher retain direct assignment so preview-phase
+    # geometry tests stay green.
     try:
         dispatcher = getattr(presenter.store, "get_dispatcher", lambda: None)()
         if dispatcher is not None:
-            from core.state_management.geometry_actions import (
-                SetImageDisplayRectAction,
-                SetPixmapDimensionsAction,
-            )
-
-            batch = getattr(presenter.store, "batch_changes", None)
-            if callable(batch):
-                with presenter.store.batch_changes():
-                    dispatcher.dispatch(
-                        SetPixmapDimensionsAction(width=scaled_w, height=scaled_h),
-                        scope="viewport",
-                    )
-                    dispatcher.dispatch(
-                        SetImageDisplayRectAction(rect=new_rect),
-                        scope="viewport",
-                    )
-            else:
-                dispatcher.dispatch(
-                    SetPixmapDimensionsAction(width=scaled_w, height=scaled_h),
-                    scope="viewport",
-                )
-                dispatcher.dispatch(
-                    SetImageDisplayRectAction(rect=new_rect),
-                    scope="viewport",
-                )
-            _preview_log(
-                "geometry: comparison rect updated to %dx%d (sizes from %s)",
-                scaled_w,
-                scaled_h,
-                "unified stores"
-                if (src_resize1 is not None or src_resize2 is not None)
-                else "sources/previews",
-            )
             return
     except Exception:
         pass

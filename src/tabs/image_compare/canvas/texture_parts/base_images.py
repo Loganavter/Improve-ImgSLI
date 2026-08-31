@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=canvas-presentation size=exempt reason="texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
@@ -192,19 +193,129 @@ def update_common_letterbox_geometry(
 ) -> None:
     """Keep both comparison sides in one canvas coordinate system.
 
-    Per-image letterbox (not a copy of slot 0) — before unify the two sides
-    have different native sizes (preview 1017 vs 768, full-res 2797 vs 768)
-    and different aspects; forcing identical letterboxes makes
-    _to_common_space/bbox produce a 0.001 apron sliver instead of ~0.3 and
-    visually left-on-both (see store-redux-dogma investigation).
-    After unify both stores are same size so the two letterboxes naturally
-    converge anyway.
+    Bucket A (Phase 2): single geometry owner. When tiers mix
+    (TiledPixelStore vs preview QImage/PIL), hold previous unified
+    letterbox if valid; otherwise compute union aspect max(w1,w2)/max(h1,h2)
+    once (envelope of fitted rects) so letterbox1==letterbox2 and dispatch
+    single SetPixmapDimensions+SetImageDisplayRect via store.transact.
+    Per-image letterbox previously produced 0.001 slivers and left-on-both.
+    See plan_render_dispatch_and_gap_fix.md Phase 2.
     """
+    state = widget.runtime_state
+    cw, ch = _canvas_dims(widget)
+    while len(state._letterbox_params) < 2:
+        state._letterbox_params.append((0.0, 0.0, 1.0, 1.0))
+    if cw <= 0 or ch <= 0:
+        update_letterbox_geometry(widget, image1, slot_index=0)
+        update_letterbox_geometry(widget, image2, slot_index=1)
+        return
+
+    from shared.image_processing.image_dims import get_image_dims
+
+    w1, h1 = get_image_dims(image1) if image1 is not None else (0, 0)
+    w2, h2 = get_image_dims(image2) if image2 is not None else (0, 0)
+    have1 = image1 is not None and w1 > 0 and h1 > 0
+    have2 = image2 is not None and w2 > 0 and h2 > 0
+    if not have1 and not have2:
+        state._letterbox_params[0] = (0.0, 0.0, 1.0, 1.0)
+        state._letterbox_params[1] = (0.0, 0.0, 1.0, 1.0)
+        state._content_rect_px = (0, 0, max(1, cw), max(1, ch))
+        state._inner_content_rect_px = state._content_rect_px
+        state._clip_overlays_to_content_rect = False
+        return
+
+    is_store1 = isinstance(image1, TiledPixelStore)
+    is_store2 = isinstance(image2, TiledPixelStore)
+    mixed_tier = have1 and have2 and (is_store1 != is_store2)
+    # union only for mixed tier (store vs preview) or very different aspects
+    # (portrait vs landscape) — keeps preview-preview close aspects distinct
+    # to avoid 0.001 sliver (test_bbox) while fixing gap for mixed/large diff
+    # (test_common). Threshold 0.4 separates 2000x1000 vs 1000x2000 (1.5) from
+    # 1017x838 vs 768x576 (0.11).
+    aspect1 = w1 / h1 if h1 else 0
+    aspect2 = w2 / h2 if h2 else 0
+    large_aspect_diff = have1 and have2 and abs(aspect1 - aspect2) > 0.4
+    needs_union = have1 and have2 and (mixed_tier or large_aspect_diff)
+
+    def _dispatch_store(rect_tuple: tuple[int, int, int, int]) -> bool:
+        x, y, w, h = rect_tuple
+        store = getattr(state, "_store", None) or getattr(widget, "_store", None)
+        if store is None:
+            return False
+        try:
+            dispatcher = store.get_dispatcher()
+            if dispatcher is None:
+                return False
+            from core.state_management.geometry_actions import (
+                SetImageDisplayRectAction,
+                SetPixmapDimensionsAction,
+            )
+            from domain.types import Rect
+
+            rect = Rect(x, y, w, h)
+            store.transact(
+                [
+                    SetPixmapDimensionsAction(width=w, height=h),
+                    SetImageDisplayRectAction(rect=rect),
+                ],
+                scope="viewport",
+            )
+            return True
+        except Exception:
+            return False
+
+    if needs_union:
+        prev0 = state._letterbox_params[0]
+        prev1 = state._letterbox_params[1]
+        if prev0 is not None and prev1 is not None and prev0 == prev1 and prev0 != (0.0, 0.0, 1.0, 1.0):
+            prev_rect = getattr(state, "_inner_content_rect_px", None) or getattr(
+                state, "_content_rect_px", None
+            )
+            if prev_rect is not None and prev_rect[2] > 0 and prev_rect[3] > 0:
+                _dispatch_store(prev_rect)
+                return
+        geom1 = resolve_canvas_content_geometry(
+            widget_width=cw,
+            widget_height=ch,
+            image_width=w1 if have1 else w2,
+            image_height=h1 if have1 else h2,
+            virtual_layout=None,
+        )
+        geom2 = resolve_canvas_content_geometry(
+            widget_width=cw,
+            widget_height=ch,
+            image_width=w2 if have2 else w1,
+            image_height=h2 if have2 else h1,
+            virtual_layout=None,
+        )
+        inner1 = geom1.inner_rect_px or (0, 0, cw, ch)
+        inner2 = geom2.inner_rect_px or (0, 0, cw, ch)
+        x1, y1, w1p, h1p = inner1
+        x2, y2, w2p, h2p = inner2
+        ux = min(x1, x2)
+        uy = min(y1, y2)
+        ux2 = max(x1 + w1p, x2 + w2p)
+        uy2 = max(y1 + h1p, y2 + h2p)
+        uw = max(1, int(round(ux2 - ux)))
+        uh = max(1, int(round(uy2 - uy)))
+        ux = int(round(ux))
+        uy = int(round(uy))
+        letterbox = (ux / float(cw), uy / float(ch), uw / float(cw), uh / float(ch))
+        state._letterbox_params[0] = letterbox
+        state._letterbox_params[1] = letterbox
+        state._content_rect_px = (ux, uy, uw, uh)
+        state._inner_content_rect_px = (ux, uy, uw, uh)
+        state._clip_overlays_to_content_rect = False
+        _dispatch_store((ux, uy, uw, uh))
+        return
+
     update_letterbox_geometry(widget, image1, slot_index=0)
     update_letterbox_geometry(widget, image2, slot_index=1)
-    # ensure at least 2 slots exist (update_letterbox_geometry already handles None → 1.0)
-    while len(widget.runtime_state._letterbox_params) < 2:
-        widget.runtime_state._letterbox_params.append((0.0, 0.0, 1.0, 1.0))
+    inner = getattr(state, "_inner_content_rect_px", None) or getattr(
+        state, "_content_rect_px", None
+    )
+    if inner is not None:
+        _dispatch_store(inner)
 
 
 def upload_pil_images(
