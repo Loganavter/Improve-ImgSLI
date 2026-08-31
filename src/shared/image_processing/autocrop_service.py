@@ -51,7 +51,11 @@ def get_scaled_box_for_thumb(
 
 
 def invalidate(path: str | None = None) -> None:
-    """Deprecated — инвалидирует все живые CropService."""
+    """Deprecated — инвалидирует все живые CropService.
+
+    Legacy ``_crop_box_cache`` в ``tiled_pixel_store`` — пустой алиас (единый
+    ключ ``PipelineCache._pixel_key``), не очищается отдельно.
+    """
     try:
         from shared.image_processing.autocrop import invalidate_all_services
 
@@ -65,18 +69,6 @@ def invalidate(path: str | None = None) -> None:
                     svc.invalidate(path)
                 except Exception:
                     pass
-    except Exception:
-        pass
-    # Совместимость: чистим и legacy dict в tiled_pixel_store
-    try:
-        from shared.image_processing.tiled_pixel_store import _crop_box_cache
-
-        if path is None:
-            _crop_box_cache.clear()
-        else:
-            for thr in (15, 30):
-                _crop_box_cache.pop(f"{path}:{thr}", None)
-                _crop_box_cache.pop(f"{os.fspath(path)}:{thr}", None)
     except Exception:
         pass
 

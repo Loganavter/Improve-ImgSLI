@@ -21,17 +21,17 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Action catalog (Find Action)](ACTIONS.md)** — `docs/dev/ACTIONS.md`
   Referenced by: [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[ImgSLI Architecture](ARCHITECTURE.md)** — `docs/dev/ARCHITECTURE.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
   Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
-  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)
 - **[Doc Index](DOC_INDEX.md)** — `docs/dev/DOC_INDEX.md`
@@ -54,7 +54,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Testing](TESTING.md)** — `docs/dev/TESTING.md`
@@ -72,6 +72,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[Plan: ImagePipeline — replace loading.py brute-force with demand-driven pipeline](plan_image_pipeline.md)** — `docs/dev/plan_image_pipeline.md`
+- **[Plan: Loading pipeline consolidation — 8 caches → 1, 8 cancels → 1](plan_loading_simplification.md)** — `docs/dev/plan_loading_simplification.md`
 - **[Plan: Store/Redux direct mutation elimination and dogma hardening](plan_store_redux_repair.md)** — `docs/dev/plan_store_redux_repair.md`
 
 ## docs/dev/plugins/

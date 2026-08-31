@@ -81,7 +81,7 @@
     },
     {
       "path": "src/shared/image_processing/autocrop_service.py",
-      "lines": 85,
+      "lines": 77,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=collaborator reason=\"deprecated shim over autocrop.CropService — no state, delegates to DI service\"",
@@ -92,7 +92,7 @@
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 952,
+      "lines": 956,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
-      "lines": 614,
+      "lines": 587,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",

@@ -37,8 +37,10 @@ _spill_dir_cache: str | None = None
 # Probe max теперь в CropConfig (autocrop.model.CropConfig.probe_max).
 # Оставлен для обратной совместимости тестов — не используется напрямую.
 _AUTO_CROP_PROBE_MAX = 1024
-# Глобальный кэш удалён — каждый CropService владеет своим кэшем (DI).
-# Оставлен пустой dict для обратной совместимости импортов.
+# Legacy: глобальный кэш удалён — единый ключ PipelineCache._pixel_key
+# (path, mtime, size, has_crop, box_tuple). Переменная оставлена пустой для
+# обратной совместимости импортов (autocrop_service, старые тесты) — фактический
+# кэш принадлежит CropService._cache (DI) + PipelineCache LRU8. Не заполняется.
 _crop_box_cache: dict[str, tuple[int, int, int, int] | None] = {}
 
 # Held for the process's whole lifetime once acquired (module-level so it
@@ -323,22 +325,24 @@ def _auto_crop_box_from_ndarray(
 
 
 def get_cached_crop_box(path_str: str, threshold: int = 15) -> tuple[int, int, int, int] | None:
-    """Deprecated — глобальный кэш удалён, используйте CropService.get()."""
+    """Deprecated — глобальный кэш удалён, используйте CropService.get().
+
+    Legacy ``_crop_box_cache`` остаётся пустым алиасом (импорт-совместимость);
+    единый ключ — ``PipelineCache._pixel_key`` (box_tuple). Эфемерный сервис
+    не кэширует в глобал повторно.
+    """
+    import warnings
+
+    warnings.warn(
+        "get_cached_crop_box is deprecated, use CropService.get()", DeprecationWarning, stacklevel=2
+    )
     from shared.image_processing.autocrop.model import CropConfig
     from shared.image_processing.autocrop.service import CropService
 
     cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
     svc = CropService(cfg)
-    # Эфемерный — без персистентного кэша; для совместимости храним в _crop_box_cache.
-    key = f"{path_str}:{threshold}"
-    if key in _crop_box_cache:
-        return _crop_box_cache[key]
     box = svc.get(path_str)
-    tup = box.to_tuple() if box is not None else None
-    # Кэшируем в legacy dict только если он уже использовался (не создаём глобал заново)
-    # Но фактически оставляем запись чтобы старые вызовы не ломались.
-    _crop_box_cache[key] = tup
-    return tup
+    return box.to_tuple() if box is not None else None
 
 
 def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
