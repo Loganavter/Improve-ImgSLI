@@ -75,7 +75,7 @@ def _discard_pending_loads(main_controller, image_number: int, paths: list[str])
         pass
 
 
-def _invalidate_caches_for_paths(paths: list[str]) -> None:
+def _invalidate_caches_for_paths(paths: list[str], main_controller=None) -> None:
     if not paths:
         return
     for p in paths:
@@ -121,6 +121,52 @@ def _invalidate_caches_for_paths(paths: list[str]) -> None:
                     pass
         except Exception:
             pass
+        # PipelineCache (per-session, ImageSession.cache) — evict closed TiledPixelStore
+        # иначе peek(cache.py:98) находит closed store → lazy evict только на peek,
+        # duplicate теряет refcount, unify memo остаётся с old_uids.
+        if main_controller is not None:
+            try:
+                ctrl = main_controller
+                real = getattr(ctrl, "session_ctrl", None) if ctrl is not None else None
+                holder = real if real is not None else ctrl
+                if holder is not None:
+                    # active single cache
+                    for _attr, _cache in (
+                        ("_pipeline_cache", getattr(holder, "_pipeline_cache", None)),
+                        ("pipeline.cache", getattr(getattr(holder, "pipeline", None), "cache", None)),
+                    ):
+                        if _cache is not None and hasattr(_cache, "evict"):
+                            try:
+                                _cache.evict(p)
+                            except Exception:
+                                pass
+                    # all sessions (cross-session leaks)
+                    sessions = getattr(holder, "_image_sessions", None)
+                    if isinstance(sessions, dict):
+                        for sess in list(sessions.values()):
+                            sc = getattr(sess, "cache", None)
+                            if sc is not None and hasattr(sc, "evict"):
+                                try:
+                                    sc.evict(p)
+                                except Exception:
+                                    pass
+                            pc = getattr(getattr(sess, "pipeline", None), "cache", None)
+                            if pc is not None and pc is not sc and hasattr(pc, "evict"):
+                                try:
+                                    pc.evict(p)
+                                except Exception:
+                                    pass
+                    # direct session proxy
+                    sess_single = getattr(holder, "_image_session", None)
+                    if sess_single is not None:
+                        sc = getattr(sess_single, "cache", None)
+                        if sc is not None and hasattr(sc, "evict"):
+                            try:
+                                sc.evict(p)
+                            except Exception:
+                                pass
+            except Exception:
+                pass
     try:
         from shared.image_processing import pyramid_registry
 
@@ -266,7 +312,7 @@ class PlaylistListOperations:
                 pass
             _close_outgoing_store(document, image_number, outgoing_store)
             _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
-            _invalidate_caches_for_paths(outgoing_paths)
+            _invalidate_caches_for_paths(outgoing_paths, self.main_controller)
             _force_cancel_unification(self.store, self.main_controller)
         except Exception:
             pass
@@ -340,7 +386,7 @@ class PlaylistListOperations:
                         pass
                     _force_cancel_unification(self.store, self.main_controller)
                 _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
-                _invalidate_caches_for_paths(outgoing_paths)
+                _invalidate_caches_for_paths(outgoing_paths, self.main_controller)
         except Exception:
             pass
 
@@ -382,7 +428,7 @@ class PlaylistListOperations:
             _close_outgoing_store(document, image_number, st)
         # also close any remaining collected stores that were not the slot store (already handled)
         _discard_pending_loads(self.main_controller, image_number, outgoing_paths)
-        _invalidate_caches_for_paths(outgoing_paths)
+        _invalidate_caches_for_paths(outgoing_paths, self.main_controller)
         _force_cancel_unification(self.store, self.main_controller)
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
