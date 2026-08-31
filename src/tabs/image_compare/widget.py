@@ -387,13 +387,21 @@ class ImageCompareWidget(ThemedWidget, QWidget):
                 ic_dnd_debug("widget.update_drag_overlays -> hide (image_label not visible)")
             except Exception:
                 pass
+            # Ensure both overlays are hidden even when canvas not visible,
+            # otherwise is_drag_overlay_visible() (canvas-backed) stays stale
+            # and blocks immediate re-entry after drop (see WindowEventHandler
+            # race: deferred SHOW vs sync HIDE).
+            try:
+                self.image_label.set_drag_overlay_state(visible=False)
+            except Exception:
+                pass
             self.drag_overlay.hide()
             return
         lang = self._context.settings.current_language if self._context else "en"
         text1 = tr("image_compare.ui.drop_images_1_here", lang)
         text2 = tr("image_compare.ui.drop_images_2_here", lang)
         self.image_label.set_drag_overlay_state(
-            visible=False,
+            visible=visible,
             horizontal=horizontal,
             text1=text1,
             text2=text2,

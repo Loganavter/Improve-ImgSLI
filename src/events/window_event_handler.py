@@ -64,7 +64,7 @@ class WindowEventHandler(QObject):
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
             _dnd_debug("handle_drag_enter -> show overlay", stack=True)
-            QTimer.singleShot(0, lambda: self._safe_update_drag_overlays(True))
+            self._safe_update_drag_overlays(True)
         else:
             event.ignore()
 
@@ -102,6 +102,8 @@ class WindowEventHandler(QObject):
         # Force immediate visual hide – TopLevelInWindowOverlay hide() alone
         # waits for next paint, which is coalesced with the RHI canvas repaint
         # triggered only after image decode (0.5s). Repaint parent now.
+        # Also force canvas repaint so RHI drag tiles disappear instantly and
+        # don't block input during the async decode.
         try:
             if self.widget:
                 self.widget.update()
@@ -109,6 +111,20 @@ class WindowEventHandler(QObject):
                 if hasattr(self.widget, "drag_overlay"):
                     self.widget.drag_overlay.update()
                     self.widget.drag_overlay.repaint()
+                # RHI canvas overlay (set_drag_overlay_state) only scheduled
+                # widget.update(); force immediate repaint so tiles don't
+                # linger logically visible while visually coalesced.
+                canvas = getattr(self.widget, "image_label", None)
+                if canvas is not None:
+                    try:
+                        canvas.update()
+                        # QRhiWidget repaint is coalesced via RHI; requestUpdate
+                        # is the explicit flush path, but update() + process
+                        # is sufficient to clear the overlay state immediately.
+                        if hasattr(canvas, "repaint"):
+                            canvas.repaint()
+                    except Exception:
+                        pass
         except Exception:
             pass
         _dnd_debug("handle_drop hide overlay is_drag_overlay_visible=%s", getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?", stack=True)
