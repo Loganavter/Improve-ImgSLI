@@ -23,16 +23,13 @@ def _dnd_debug(msg, *args, stack=False, **kwargs):
 
 
 def _dbg_overlay_state(widget) -> str:
-    """Compact overlay state for debug lines."""
+    """Compact overlay state for debug lines — canvas-only RHI (Phase 2)."""
     try:
         if widget is None:
             return "widget=None"
         canvas = getattr(widget, "image_label", None)
-        overlay = getattr(widget, "drag_overlay", None)
         c_vis = "?"
         c_geom = "?"
-        o_vis = "?"
-        o_geom = "?"
         try:
             c_vis = canvas.is_drag_overlay_visible() if canvas and hasattr(canvas, "is_drag_overlay_visible") else "?"
         except Exception as e:
@@ -41,17 +38,12 @@ def _dbg_overlay_state(widget) -> str:
             c_geom = repr(canvas.geometry()) if canvas else "?"
         except Exception:
             pass
-        try:
-            o_vis = overlay.isVisible() if overlay else "?"
-            o_geom = repr(overlay.geometry()) if overlay else "?"
-        except Exception:
-            pass
         w_vis = "?"
         try:
             w_vis = widget.is_drag_overlay_visible() if hasattr(widget, "is_drag_overlay_visible") else "?"
         except Exception:
             pass
-        return f"canvas_vis={c_vis} widget_vis={w_vis} overlay_isVisible={o_vis} canvas_geom={c_geom} overlay_geom={o_geom}"
+        return f"canvas_vis={c_vis} widget_vis={w_vis} canvas_geom={c_geom}"
     except Exception as e:
         return f"err:{e}"
 
@@ -192,32 +184,12 @@ class WindowEventHandler(QObject):
         )
         self._drag_leave_timer.stop()
         self._safe_update_drag_overlays(False)
-        # Force immediate visual hide – TopLevelInWindowOverlay hide() alone
-        # waits for next paint, which is coalesced with the RHI canvas repaint
-        # triggered only after image decode (0.5s). Repaint parent now.
-        # Also force canvas repaint so RHI drag tiles disappear instantly and
-        # don't block input during the async decode.
+        # Phase 2 canvas-only: RHI DragDropOverlayPass reads canvas state; only
+        # canvas.update() is needed — no QWidget drag_overlay repaint forces.
         try:
-            if self.widget:
-                self.widget.update()
-                self.widget.repaint()
-                if hasattr(self.widget, "drag_overlay"):
-                    self.widget.drag_overlay.update()
-                    self.widget.drag_overlay.repaint()
-                # RHI canvas overlay (set_drag_overlay_state) only scheduled
-                # widget.update(); force immediate repaint so tiles don't
-                # linger logically visible while visually coalesced.
-                canvas = getattr(self.widget, "image_label", None)
-                if canvas is not None:
-                    try:
-                        canvas.update()
-                        # QRhiWidget repaint is coalesced via RHI; requestUpdate
-                        # is the explicit flush path, but update() + process
-                        # is sufficient to clear the overlay state immediately.
-                        if hasattr(canvas, "repaint"):
-                            canvas.repaint()
-                    except Exception:
-                        pass
+            canvas = getattr(self.widget, "image_label", None)
+            if canvas is not None:
+                canvas.update()
         except Exception:
             pass
         _dnd_debug(
@@ -226,22 +198,25 @@ class WindowEventHandler(QObject):
             _dbg_overlay_state(self.widget),
             stack=True,
         )
-        # DEBUG: post-drop blocking check — verify overlay stays hidden and new input not blocked
-        def _post_drop_check(delay_ms: int):
-            def _check():
-                vis = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
-                state = _dbg_overlay_state(self.widget)
-                _dnd_debug("handle_drop post-check +%dms vis=%s %s", delay_ms, vis, state, stack=False)
-                # If still visible after drop, it blocks new DnD (the reported bug)
-                if vis:
-                    _dnd_debug("handle_drop POST-CHECK BLOCKING! overlay still visible +%dms %s", delay_ms, state, stack=True)
-            return _check
+        # DEBUG post-drop checks (50/200/500/1000ms) — gated behind IMGSLI_DND_DEBUG
+        # to avoid timer spam and log noise in prod. Phase 1 cleanup: keep
+        # diagnosis aid but do not schedule by default.
+        if os.environ.get("IMGSLI_DND_DEBUG"):
+            def _post_drop_check(delay_ms: int):
+                def _check():
+                    vis = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
+                    state = _dbg_overlay_state(self.widget)
+                    _dnd_debug("handle_drop post-check +%dms vis=%s %s", delay_ms, vis, state, stack=False)
+                    # If still visible after drop, it blocks new DnD (the reported bug)
+                    if vis:
+                        _dnd_debug("handle_drop POST-CHECK BLOCKING! overlay still visible +%dms %s", delay_ms, state, stack=True)
+                return _check
 
-        for _d in (50, 200, 500, 1000):
-            try:
-                QTimer.singleShot(_d, _post_drop_check(_d))
-            except Exception:
-                pass
+            for _d in (50, 200, 500, 1000):
+                try:
+                    QTimer.singleShot(_d, _post_drop_check(_d))
+                except Exception:
+                    pass
 
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()

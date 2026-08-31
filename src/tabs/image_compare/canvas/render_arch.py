@@ -9,6 +9,13 @@ from tabs.image_compare.canvas.style_tokens import (
 from ui.canvas_presentation.label_style import FilenameOverlayStyle
 from ui.canvas_infra.rhi.render_metrics import resolve_font_px, resolve_view_px
 
+# Phase 2 canvas-only overlay: DragDropOverlayPass (TransientPreview, HUD 50)
+# is registered via ``canvas/features/drag_drop_overlay/passes.py:RENDER_PASSES``
+# and auto-discovered by ``registry().get_render_passes()`` — no explicit list
+# here. Stacking is via ``CanvasStackRole.TRANSIENT_PREVIEW`` (after base_images,
+# before HUD_LABEL), so tiles composite over the tiled image but under labels.
+# The pass sets ``requires_content = False`` so empty-canvas drop hints still show.
+
 
 @dataclass(frozen=True, slots=True)
 class SceneFrame:

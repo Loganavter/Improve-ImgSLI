@@ -204,8 +204,11 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     lst = document.image_list1 if image_number == 1 else document.image_list2
     ic_preview_debug("load_images_from_paths slot=%s after is_new re-fetch len=%s id(lst)=%s", image_number, len(lst), id(lst))
 
-    errors, new_idx = [], []
+    errors: list[str] = []
     seen = {e.path for e in lst if e.path}
+    # Phase 3 lightweight: collect without mutating detached list, no os.stat/mtime/box
+    to_add: list[ImageItem] = []
+    seen_batch: set[str] = set()
     ic_preview_debug("load_images_from_paths slot=%s seen=%s", image_number, seen)
     for fp in file_paths:
         if not isinstance(fp, str) or not fp:
@@ -223,17 +226,90 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             ic_preview_debug("load_images_from_paths slot=%s reload existing %s", image_number, norm)
             _reload_existing_path(controller, image_number, norm, lst)
             continue
+        if norm in seen_batch:
+            ic_preview_debug("load_images_from_paths slot=%s dedup batch %s", image_number, norm)
+            continue
         try:
             ic_preview_debug("load_images_from_paths slot=%s append %s disp=%s", image_number, norm, disp)
-            lst.append(ImageItem(path=norm, display_name=os.path.splitext(disp)[0], rating=0))
-            seen.add(norm)
-            new_idx.append(len(lst) - 1)
+            # lightweight: only ImageItem creation (no stat/mtime/box), heavy in ImageLoadService.ensure_async lazy
+            item = ImageItem(path=norm, display_name=os.path.splitext(disp)[0], rating=0)
+            to_add.append(item)
+            seen_batch.add(norm)
         except Exception as e:
             ic_preview_debug("load_images_from_paths slot=%s append failed %s %s", image_number, disp, e)
             errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
-    ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s t=%.3f", image_number, new_idx, errors, len(lst), _t.monotonic() - _t0)
+    # lightweight transaction: single emit for Append + SetCurrentIndex
+    if to_add:
+        orig_len = len(lst)
+        new_idx = list(range(orig_len, orig_len + len(to_add)))
+        new_index = new_idx[-1]
+        ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s t=%.3f", image_number, new_idx, errors, orig_len + len(to_add), _t.monotonic() - _t0)
+        _t1 = _t.monotonic()
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if d is not None:
+            try:
+                from core.state_management.document_actions import AppendImageItemsAction
+                from core.state_management.actions import SetCurrentIndexAction
+
+                controller.store.transact(
+                    [AppendImageItemsAction(slot=image_number, items=to_add), SetCurrentIndexAction(slot=image_number, index=new_index)],
+                    scope="document",
+                )
+                ic_preview_debug("load_images_from_paths slot=%s lightweight transact done t=%.3f", image_number, _t.monotonic() - _t1)
+            except Exception as e:
+                ic_preview_debug("load_images_from_paths transact failed %s", e)
+                # fallback for fake stores
+                try:
+                    lst.extend(to_add)
+                    d.dispatch(SetCurrentIndexAction(slot=image_number, index=new_index), scope="document")
+                except Exception:
+                    pass
+        else:
+            # fake store without dispatcher
+            try:
+                lst.extend(to_add)
+            except Exception:
+                pass
+            try:
+                setattr(controller.store.get_session_state_slot("document"), f"current_index{image_number}", new_index)
+            except Exception:
+                pass
+        # UI + async lazy load (stat/cache_key now in ImageLoadService.ensure_async)
+        if controller.presenter:
+            try:
+                controller.presenter.ui_batcher.schedule_update("combobox")
+            except Exception:
+                pass
+        try:
+            controller.set_current_image(image_number)
+        except Exception:
+            pass
+        if controller.presenter:
+            try:
+                controller.presenter.repopulate_flyouts()
+                from ui.widgets.unified_list_picker import FlyoutMode
+
+                if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
+                    try:
+                        controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        if errors:
+            from core.events import CoreErrorOccurredEvent
+
+            msg = tr("image_compare.msg.some_images_could_not_be_loaded", controller.store.settings.current_language) + ":\n\n - " + "\n - ".join(errors)
+            if controller.event_bus:
+                controller.event_bus.emit(CoreErrorOccurredEvent(msg))
+            else:
+                controller.error_occurred.emit(msg)
+        ic_preview_debug("load_images_from_paths slot=%s _finalize done t=%.3f total=%.3f", image_number, _t.monotonic() - _t1, _t.monotonic() - _t0)
+        return
+    # no new items: only reloads or errors
+    ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s t=%.3f", image_number, [], errors, len(lst), _t.monotonic() - _t0)
     _t1 = _t.monotonic()
-    _finalize_loaded_paths(controller, image_number, new_idx, errors)
+    _finalize_loaded_paths(controller, image_number, [], errors)
     ic_preview_debug("load_images_from_paths slot=%s _finalize done t=%.3f total=%.3f", image_number, _t.monotonic() - _t1, _t.monotonic() - _t0)
 
 
