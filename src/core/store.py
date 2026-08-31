@@ -32,6 +32,17 @@ __all__ = [
 ]
 
 class Store(WorkspaceStoreMixin, StoreOperationsMixin):
+    """Root Store — viewport / document / settings holder.
+
+    Long-term Store lock fix (plan_image_compare_dnd_tiles.md): Dispatcher
+    prepares new_viewport / new_slots copies (including ViewState
+    ViewportState cloning and shallow dict copies of canvas_widget_state)
+    *outside* Dispatcher._lock. The critical section only does ``is``
+    identity comparison and an atomic pointer swap plus history. This keeps
+    deepcopy / dict-copy work off the lock and preserves the reentrant-safe
+    emit outside the lock (dispatcher.py:280).
+    """
+
     def __init__(self):
         self._change_callbacks: List[Callable[[str], None]] = []
         self.state_changed = None
@@ -131,7 +142,9 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
 
         Coalesces N actions (e.g. SetFullResImage + SetImagePath + SetPreview)
         into one ``Dispatcher.dispatch(TransactionAction)`` → one
-        ``RootReducer.reduce`` → one ``emit_state_change(scope)``.
+        ``RootReducer.reduce`` → one ``emit_state_change(scope)``. The reducer
+        work (new_viewport / new_slots copies) is prepared outside
+        Dispatcher._lock; the lock only does ``is`` comparison + atomic swap.
 
         Falls back to sequential dispatch for fake stores without dispatcher.
         """

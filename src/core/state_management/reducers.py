@@ -1,6 +1,15 @@
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
+# Long-term Store lock fix (plan_image_compare_dnd_tiles.md):
+# All ViewportState / slot copies (dict shallow copies, ViewState/ViewportState
+# replacements) are prepared here inside RootReducer.reduce — which Dispatcher
+# now calls *outside* Dispatcher._lock. The critical section in
+# Dispatcher.dispatch only does ``is``-comparison and an atomic swap of the
+# already-prepared objects. This file must not use deepcopy; shallow
+# ``dict(...)`` / ``replace`` is sufficient because feature states are
+# immutable.
+
 from core.store import (
     GeometryState,
     InteractionState,
@@ -93,6 +102,9 @@ class ViewStateReducer:
             "SET_CANVAS_WIDGET_STATE",
             "UPDATE_CANVAS_FEATURE_STATE",
         ):
+            # Shallow dict copy — no deepcopy (removed from critical section).
+            # Feature states are immutable, so sharing values is safe and the
+            # copy itself is prepared outside Dispatcher._lock.
             current = dict(getattr(view_state, "canvas_widget_state", None) or {})
             if current.get(feature_name) is feature_state:
                 return view_state

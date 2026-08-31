@@ -111,20 +111,17 @@ _PIXEL_CACHE_MAX = 8
 _UNIFY_CACHE_MAX = 8
 
 
-def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None) -> tuple:
-    # DI: ключ содержит наличие crop_service (а не bool) + box, чтобы смена thr инвалидировала.
+def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
+    # Long-term fix: ключ без box_tuple, только (path,mtime,size,has_crop).
+    # box вычисляется lazy внутри GenericWorker и включается в put_pixel ключ
+    # только если явно передан (worker-side). GUI не делает sync crop_service.get.
     has_crop = False
     if crop_service is not None:
         has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
     elif auto_crop is not None:
         has_crop = bool(auto_crop)
-    box_tuple = None
-    if has_crop and crop_service is not None and not isinstance(crop_service, bool):
-        try:
-            box = crop_service.get(path)
-            box_tuple = box.to_tuple() if box is not None else None
-        except Exception:
-            box_tuple = None
+    # box_tuple intentionally NOT fetched synchronously here (was cache.py:121).
+    # If caller explicitly provides box_tuple (lazy worker), include it for precise key.
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -132,7 +129,9 @@ def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None) -> t
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple)
+    if box_tuple is not None:
+        return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple)
+    return (os.path.normpath(path), mtime, size, bool(has_crop))
 
 
 def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) -> tuple:
@@ -143,24 +142,18 @@ _PREVIEW_CACHE_MAX = 8
 _PREVIEW_SIZE = 1024
 
 
-def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None) -> tuple:
-    """Preview tier key: (path, mtime_ns, size, has_crop, crop_box, 1024).
+def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
+    """Preview tier key: (path, mtime_ns, size, has_crop, 1024) без box.
 
-    Mirrors _pixel_key but appends PREVIEW_SIZE sentinel to isolate preview
-    entries from pixel entries. mtime/size ensure file mutation invalidates.
+    Long-term fix: как _pixel_key, без синхронного crop_service.get.
+    Mirrors _pixel_key but appends PREVIEW_SIZE sentinel. box вычисляется
+    lazy в воркере и передаётся явно если нужен.
     """
     has_crop = False
     if crop_service is not None:
         has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
     elif auto_crop is not None:
         has_crop = bool(auto_crop)
-    box_tuple = None
-    if has_crop and crop_service is not None and not isinstance(crop_service, bool):
-        try:
-            box = crop_service.get(path)
-            box_tuple = box.to_tuple() if box is not None else None
-        except Exception:
-            box_tuple = None
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -168,7 +161,9 @@ def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None) ->
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple, _PREVIEW_SIZE)
+    if box_tuple is not None:
+        return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple, _PREVIEW_SIZE)
+    return (os.path.normpath(path), mtime, size, bool(has_crop), _PREVIEW_SIZE)
 
 
 class PipelineCache:
@@ -202,8 +197,25 @@ class PipelineCache:
             crop_service = None
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
         # если явно передан auto_crop, он приоритетнее сервиса
-        key = _pixel_key(path, eff, auto_crop)
+        box_tuple = _kw.get("box_tuple")
+        # support explicit box passed via positional _kw? also check if crop_service hack carried box
+        key = _pixel_key(path, eff, auto_crop, box_tuple=box_tuple)
         hit = key in self._pixel
+        # fallback: if miss and box not in key, try any box variant (old cache entries or lazy put with box)
+        fallback_key = None
+        if not hit and box_tuple is None:
+            # scan for any key with same prefix (path,mtime,size,has_crop) — handles lazy put with box or old 5-tuple
+            try:
+                norm = os.path.normpath(path)
+                # mtime/size from key (already computed)
+                _, mtime, size, has_crop = key[:4] if len(key) >= 4 else (None, None, None, None)
+                for k in list(self._pixel.keys()):
+                    if len(k) >= 4 and k[0] == norm and k[1] == mtime and k[2] == size and k[3] == bool(has_crop):
+                        fallback_key = k
+                        hit = True
+                        break
+            except Exception:
+                pass
         # throttle: same (key, hit) repeats at 60Hz from render_flow _peek
         try:
             _last = _last_cache_get_pixel_sig.get(key)
@@ -217,6 +229,9 @@ class PipelineCache:
         except Exception:
             ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, hit)
         store = self._pixel.get(key)
+        if store is None and fallback_key is not None:
+            store = self._pixel.get(fallback_key)
+            key = fallback_key
         if store is not None:
             # LRU bump
             try:
@@ -248,7 +263,9 @@ class PipelineCache:
             auto_crop = crop_service
             crop_service = None
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
-        key = _pixel_key(path, eff, auto_crop)
+        box_tuple = _kw.get("box_tuple")
+        # Если box вычислен lazy в воркере — включаем в ключ (long-term fix)
+        key = _pixel_key(path, eff, auto_crop, box_tuple=box_tuple)
         ic_preview_debug("cache put_pixel path=%s eff=%s auto_crop=%s key=%s store=%s", path, bool(eff), auto_crop, key, getattr(store, "uid", id(store)))
         self._pixel[key] = store
         try:
@@ -340,9 +357,22 @@ class PipelineCache:
         else:
             has_crop_arg = None
             eff = eff
-        # _preview_key handles has_crop/box internally via eff
-        key = _preview_key(path, eff, has_crop_arg)
+        box_tuple = _kw.get("box_tuple")
+        key = _preview_key(path, eff, has_crop_arg, box_tuple=box_tuple)
         qimg = self._preview.get(key)
+        fallback_key = None
+        if qimg is None and box_tuple is None:
+            try:
+                norm = os.path.normpath(path)
+                _, mtime, size, has_crop = key[0], key[1], key[2], key[3]
+                for k in list(self._preview.keys()):
+                    if len(k) >= 5 and k[0] == norm and k[1] == mtime and k[2] == size and k[3] == bool(has_crop):
+                        fallback_key = k
+                        qimg = self._preview.get(k)
+                        key = k
+                        break
+            except Exception:
+                pass
         if qimg is not None:
             try:
                 self._preview.move_to_end(key)
@@ -371,7 +401,8 @@ class PipelineCache:
         if isinstance(crop_service, bool):
             auto_crop = crop_service
             crop_service = None
-        key = _preview_key(path, crop_service, auto_crop)
+        box_tuple = _kw.get("box_tuple")
+        key = _preview_key(path, crop_service, auto_crop, box_tuple=box_tuple)
         self._preview[key] = qimage
         try:
             self._preview.move_to_end(key)

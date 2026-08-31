@@ -42,6 +42,19 @@ def invalidate_all_services() -> None:
             pass
 
 
+def schedule_crop_warmup(
+    crop_service: "CropService | None", paths: list[str], thread_pool=None
+) -> None:
+    """Удобный хелпер для фонового прогрева CropService (long-term fix)."""
+    if crop_service is None or not paths:
+        return
+    try:
+        # delegate to service method (handles pooling)
+        crop_service.warm_cache_async(paths, thread_pool=thread_pool)
+    except Exception:
+        pass
+
+
 class CropService:
     """Явный сервис автокропа — инжектируется в PipelineCache / TiledPixelStore.
 
@@ -205,3 +218,65 @@ class CropService:
 
     def _has_cached(self, path: str | Path) -> bool:
         return os.path.normpath(os.fspath(path)) in self._cache
+
+    # -- long-term fix: background warmup (отдельный crop cache прогрев) --
+    def warm_cache_async(
+        self, paths: list[str | Path], thread_pool=None
+    ) -> None:
+        """Прогреть кэш CropService в фоне без блока GUI.
+
+        Запускает GenericWorker в thread_pool (или global QThreadPool) который
+        вызывает self.compute для каждого path. GUI не ждёт результата.
+        """
+        if not paths:
+            return
+        # фильтрация уже кэшированных — без sync get вне воркера фильтрация по _has_cached ок (без IO)
+        to_warm: list[str] = []
+        for p in paths:
+            try:
+                key = os.path.normpath(os.fspath(p))
+                if key not in self._cache:
+                    to_warm.append(key)
+            except Exception:
+                continue
+        if not to_warm:
+            return
+
+        def _warm(paths_: list[str], svc: "CropService"):
+            for pp in paths_:
+                try:
+                    svc.compute(pp)
+                except Exception:
+                    pass
+
+        try:
+            from sli_ui_toolkit.workers import GenericWorker
+        except Exception:
+            # fallback sync warm (tests без Qt)
+            for pp in to_warm:
+                try:
+                    self.compute(pp)
+                except Exception:
+                    pass
+            return
+        try:
+            worker = GenericWorker(_warm, to_warm, self)
+            pool = thread_pool
+            if pool is None:
+                try:
+                    from PySide6.QtCore import QThreadPool
+
+                    pool = QThreadPool.globalInstance()
+                except Exception:
+                    pool = None
+            if pool is not None:
+                pool.start(worker)
+            else:
+                # no pool — run inline (tests)
+                for pp in to_warm:
+                    try:
+                        self.compute(pp)
+                    except Exception:
+                        pass
+        except Exception:
+            pass

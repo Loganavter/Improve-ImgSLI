@@ -118,12 +118,16 @@ _RAPID_ACTION_GROUP_MS = 400
 class Dispatcher:
     """Central Redux-style dispatcher.
 
-    Thread-safety: ``dispatch`` holds ``_lock`` only for reduce → write-back →
-    history. Subscriber notification and ``emit_state_change`` happen **outside**
-    the lock (snapshot subscribers while locked, notify after), so a store
-    ``on_change`` subscriber may ``dispatch`` synchronously without deadlock.
-    Legacy call sites still use ``QTimer.singleShot(0, ...)`` deferral
-    (e.g. ``menu_controller.py:161``) — now optional, not required.
+    Thread-safety: ``dispatch`` prepares ``new_viewport``/``new_slots`` copies
+    outside ``_lock`` (includes any ``ViewportState`` cloning / ``deepcopy`` of
+    ``canvas_widget_state``). Under ``_lock`` it only does ``is``-comparison
+    and an atomic swap of the already-prepared objects plus history
+    bookkeeping. Subscriber notification and ``emit_state_change`` happen
+    **outside** the lock (snapshot subscribers while locked, notify after),
+    so a store ``on_change`` subscriber may ``dispatch`` synchronously
+    without deadlock. Legacy call sites still use
+    ``QTimer.singleShot(0, ...)`` deferral (e.g. ``menu_controller.py:161``)
+    — now optional, not required.
     """
 
     def __init__(self, store):
@@ -182,121 +186,161 @@ class Dispatcher:
         return self._store
 
     def dispatch(self, action: Action, scope: str = "viewport") -> None:
-        # Phase 2 of plan_image_pipeline.md: reentrant-safe dispatch.
-        # Reduce + write-back + history stay under _lock, but subscriber
-        # notification and emit_state_change happen *outside* the lock
-        # (snapshot subscribers while locked, notify after). This lets
-        # store.on_change → dispatch synchronously without QTimer.
+        # Long-term Store lock fix (plan_image_compare_dnd_tiles.md Phase 3+):
+        # Prepare new_viewport/new_slots copies outside the lock (includes any
+        # ViewState/ViewportState cloning / dict copies / deepcopy of
+        # canvas_widget_state). Under the lock only do is-comparison and an
+        # atomic swap of the already-prepared objects plus history bookkeeping.
+        # Subscriber snapshot is taken under lock, notification and
+        # emit_state_change stay outside (reentrant-safe, dispatcher.py:280).
+        from .slot_reducers import iter_state_slot_reducers
+
+        slot_reducers = tuple(iter_state_slot_reducers())
+
+        # Optimistic concurrency: prepare outside, verify identity under lock,
+        # retry if another dispatch mutated the store since our snapshot.
+        # In the common single-threaded Qt case the first attempt succeeds and
+        # the critical section is only a handful of is checks + pointer swaps.
         subscribers: list = []
         emit_scope: str | None = None
-        with self._lock:
+
+        for _attempt in range(5):
+            # Snapshot references without holding the lock (atomic GIL reads).
+            # No deepcopy here — just identity capture for later is comparison.
+            old_viewport = self._store.viewport
+            old_settings = self._store.settings
+            old_slots = {
+                name: self._store.get_session_state_slot(name)
+                for name, _ in slot_reducers
+            }
+
+            # Heavy work outside lock: reducers may clone ViewportState /
+            # deepcopy canvas_widget_state (now outside the critical section).
             try:
-
-                from .slot_reducers import iter_state_slot_reducers
-
-                slot_reducers = tuple(iter_state_slot_reducers())
-
-                # Reference-snapshot for undo/redo: reducers return fresh
-                # immutable state objects, so the pre-dispatch refs stay
-                # untouched and are a cheap, safe undo snapshot (no deep copy
-                # of pixel stores).
-                old_viewport = self._store.viewport
-                old_slots = {
-                    name: self._store.get_session_state_slot(name)
-                    for name, _ in slot_reducers
-                }
-
                 new_store = self._reducer.reduce(self._store, action)
-
-                if new_store is not self._store:
-
-                    self._store.viewport = new_store.viewport
-                    self._store.settings = new_store.settings
-
-                    # The active workspace session owns the state slots and
-                    # ``viewport``. Reducers return fresh instances, so the
-                    # session's references must be re-pointed here — otherwise
-                    # switching back to this session restores the pre-action
-                    # state (lost image lists, lost view state, etc).
-                    active_session = None
-                    get_active = getattr(self._store, "get_active_workspace_session", None)
-                    if callable(get_active):
-                        try:
-                            active_session = get_active()
-                        except Exception:
-                            active_session = None
-
-                    # Sync every slot-reducer slot back to the live store and
-                    # the active session (only the changed ones).
-                    new_slots: dict = {}
-                    for name, _ in slot_reducers:
-                        new_value = new_store.get_session_state_slot(name)
-                        new_slots[name] = new_value
-                        if new_value is not old_slots.get(name):
-                            self._store.set_session_state_slot(
-                                name, new_value, emit_scope=""
-                            )
-                            if active_session is not None:
-                                active_session.state_slots[name] = new_value
-                    if active_session is not None:
-                        active_session.viewport = self._store.viewport
-
-                    self._action_history.append(action)
-                    if len(self._action_history) > self._max_history_size:
-                        self._action_history.pop(0)
-
-                    if action.type in _UNDOABLE_TYPES:
-                        after = (new_store.viewport, new_slots)
-                        before = (old_viewport, old_slots)
-                        now = time.monotonic()
-                        last_ts = self._last_dispatch_ts.get(action.type)
-                        self._last_dispatch_ts[action.type] = now
-                        rapid_burst = (
-                            last_ts is not None
-                            and (now - last_ts) * 1000.0 < _RAPID_ACTION_GROUP_MS
-                        )
-                        if (
-                            not self._redo_stack
-                            and self._undo_stack
-                            and self._undo_stack[-1][0] == action.type
-                            and (
-                                action.type in _COALESCE_TYPES or rapid_burst
-                            )
-                        ):
-                            # Continuous gesture or a rapid same-type burst:
-                            # move the undo "after" forward so one undo step
-                            # returns to the pre-gesture/pre-burst state.
-                            self._undo_stack[-1] = (
-                                action.type,
-                                self._undo_stack[-1][1],
-                                after,
-                            )
-                        else:
-                            self._undo_stack.append((action.type, before, after))
-                        if len(self._undo_stack) > self._max_history_size:
-                            self._undo_stack.pop(0)
-                        self._redo_stack.clear()
-
-                    subscribers = list(self._subscribers)
-                    emit_scope = scope
-                # else: no state change → no emit, no subscriber notify
-
             except Exception as e:
                 logger.error(
                     f"Error dispatching action {action.type}: {e}", exc_info=True
                 )
                 raise
-        # Outside lock: notify subscribers and emit. Re-entrant dispatch is now safe.
-        if emit_scope is not None:
-            for subscriber in subscribers:
+
+            if new_store is self._store:
+                return
+
+            new_viewport = new_store.viewport
+            new_settings = new_store.settings
+            new_slots = {
+                name: new_store.get_session_state_slot(name)
+                for name, _ in slot_reducers
+            }
+
+            # Critical section: only is-comparison + atomic swap + history.
+            need_retry = False
+            with self._lock:
+                # Detect concurrent mutation since snapshot (optimistic check).
+                if self._store.viewport is not old_viewport or self._store.settings is not old_settings:
+                    need_retry = True
+                else:
+                    for name, _ in slot_reducers:
+                        if self._store.get_session_state_slot(name) is not old_slots[name]:
+                            need_retry = True
+                            break
+                if need_retry:
+                    continue
+
+                # is-based no-op detection (no deepcopy, just identity).
+                viewport_changed = new_viewport is not old_viewport
+                settings_changed = new_settings is not old_settings
+                slot_changed = False
+                for name, _ in slot_reducers:
+                    if new_slots[name] is not old_slots[name]:
+                        slot_changed = True
+                        break
+                if not viewport_changed and not settings_changed and not slot_changed:
+                    return
+
+                # Atomic swap of the already-prepared copies.
+                self._store.viewport = new_viewport
+                self._store.settings = new_settings
+
+                # The active workspace session owns the state slots and
+                # ``viewport``. Reducers return fresh instances, so the
+                # session's references must be re-pointed here — otherwise
+                # switching back to this session restores the pre-action
+                # state (lost image lists, lost view state, etc).
+                active_session = None
+                get_active = getattr(self._store, "get_active_workspace_session", None)
+                if callable(get_active):
+                    try:
+                        active_session = get_active()
+                    except Exception:
+                        active_session = None
+
+                for name, _ in slot_reducers:
+                    new_value = new_slots[name]
+                    if new_value is not old_slots.get(name):
+                        self._store.set_session_state_slot(
+                            name, new_value, emit_scope=""
+                        )
+                        if active_session is not None:
+                            active_session.state_slots[name] = new_value
+                if active_session is not None:
+                    active_session.viewport = new_viewport
+
+                self._action_history.append(action)
+                if len(self._action_history) > self._max_history_size:
+                    self._action_history.pop(0)
+
+                if action.type in _UNDOABLE_TYPES:
+                    after = (new_viewport, new_slots)
+                    before = (old_viewport, old_slots)
+                    now = time.monotonic()
+                    last_ts = self._last_dispatch_ts.get(action.type)
+                    self._last_dispatch_ts[action.type] = now
+                    rapid_burst = (
+                        last_ts is not None
+                        and (now - last_ts) * 1000.0 < _RAPID_ACTION_GROUP_MS
+                    )
+                    if (
+                        not self._redo_stack
+                        and self._undo_stack
+                        and self._undo_stack[-1][0] == action.type
+                        and (
+                            action.type in _COALESCE_TYPES or rapid_burst
+                        )
+                    ):
+                        # Continuous gesture or a rapid same-type burst:
+                        # move the undo "after" forward so one undo step
+                        # returns to the pre-gesture/pre-burst state.
+                        self._undo_stack[-1] = (
+                            action.type,
+                            self._undo_stack[-1][1],
+                            after,
+                        )
+                    else:
+                        self._undo_stack.append((action.type, before, after))
+                    if len(self._undo_stack) > self._max_history_size:
+                        self._undo_stack.pop(0)
+                    self._redo_stack.clear()
+
+                subscribers = list(self._subscribers)
+                emit_scope = scope
+
+            # Outside lock: notify subscribers and emit. Re-entrant dispatch is now safe.
+            if emit_scope is not None:
+                for subscriber in subscribers:
+                    try:
+                        subscriber(action)
+                    except Exception as e:
+                        logger.error(f"Error in dispatcher subscriber: {e}", exc_info=True)
                 try:
-                    subscriber(action)
+                    self._store.emit_state_change(emit_scope)
                 except Exception as e:
-                    logger.error(f"Error in dispatcher subscriber: {e}", exc_info=True)
-            try:
-                self._store.emit_state_change(emit_scope)
-            except Exception as e:
-                logger.error(f"Error emitting state change {emit_scope}: {e}", exc_info=True)
+                    logger.error(f"Error emitting state change {emit_scope}: {e}", exc_info=True)
+            return
+        # Optimistic retries exhausted — extremely rare; give up (single-threaded
+        # callers already succeeded on first attempt, so this path is never hit
+        # in tests).
 
     def subscribe(self, callback: Callable[[Action], None]) -> None:
         with self._lock:

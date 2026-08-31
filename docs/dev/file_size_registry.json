@@ -371,7 +371,7 @@
     },
     {
       "path": "src/tabs/image_compare/pipeline/cache.py",
-      "lines": 562,
+      "lines": 593,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid\"",
@@ -481,7 +481,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 620,
+      "lines": 648,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
@@ -504,7 +504,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 746,
+      "lines": 794,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
