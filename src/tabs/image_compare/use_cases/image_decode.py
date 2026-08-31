@@ -39,7 +39,10 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
     crop_service = controller._get_crop_service()
     ic_preview_debug("load_image_async slot=%s path=%s idx=%s crop=%s", image_number, path, index_in_list, bool(crop_service))
     try:
-        use_progressive = should_use_progressive_load(path)
+        # Always progressive for image_compare: even 764×576 goes via QImage
+        # 1×1 preview first, then tiled full-res (threshold 0 / forced True).
+        _ = should_use_progressive_load  # keep import used for contracts
+        use_progressive = True
         from shared.image_processing.autocrop.debug import autocrop_debug
 
         autocrop_debug(

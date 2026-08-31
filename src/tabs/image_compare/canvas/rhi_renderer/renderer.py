@@ -157,6 +157,7 @@ _last_renderer_fallback_sig: tuple | None = None
 _last_renderer_draw_plan_sig: tuple | None = None
 _last_renderer_coverage_sig: tuple | None = None
 _last_renderer_rekeyed_sig: tuple | None = None
+_last_first_paint_hold_sig: tuple | None = None
 
 
 class RhiCanvasRenderer:
@@ -513,6 +514,25 @@ class RhiCanvasRenderer:
         self._fallback_atomic_snapshot = decision_is_content_swap
         self._fallback_more_pending_snapshot = main_more_pending
         fallback_diag: dict[str, int] = {}
+        # First-paint atomic hold: no baseline yet and tiles still pending
+        # -> keep label cleared / placeholder, do not emit 7/16 partial plan.
+        # Covered check lives in render() (needs geometry), but we hold on
+        # more_pending alone here; render() adds the covered<1.0 gate.
+        if last_good_key is None and main_more_pending and current_array_plan:
+            try:
+                global _last_first_paint_hold_sig  # type: ignore[used-before-def]
+                _hold_sig = (str(key), len(current_array_plan), bool(main_more_pending))  # type: ignore[has-type]
+                if _hold_sig != _last_first_paint_hold_sig:  # type: ignore[has-type]
+                    _last_first_paint_hold_sig = _hold_sig  # type: ignore[has-type]
+                    _ic_preview_log(
+                        "first_paint_hold _resolve: last_good None more_pending True hold placeholder current=%d key=%s",
+                        len(current_array_plan),
+                        key,
+                    )
+            except Exception:
+                pass
+            fallback_diag["held_first_paint"] = 1
+            return None, []
         # Fast path: promotion without fallback — avoid closure alloc per frame
         # Guard: sliver-contaminated plan (float seam 0.00078) reports
         # coverage healthy but is visually gapped. If >50% of bboxes are
@@ -980,6 +1000,17 @@ class RhiCanvasRenderer:
                     log_tile_event(
                         "realize_tile_plan.timing", which="main", duration_s=_dt
                     )
+            # Propagate tile more_pending to canvas runtime_state for union letterbox hold
+            try:
+                widget.runtime_state._tile_more_pending = bool(main_more_pending)
+                if not main_more_pending:
+                    # more_pending False => early release of union hold (or until timeout)
+                    try:
+                        widget.runtime_state._union_letterbox_hold_until = 0.0
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # Magnifier always samples source_* at level 0 when letterbox
             # sources are ready (see MagnifierPass.prepare), even while the
             # base canvas draws stored_* or a coarser pyramid LevelKey.
@@ -1065,6 +1096,7 @@ class RhiCanvasRenderer:
             # until the new content is fully resident) -- see
             # ``_resolve_fallback_plan``.
             _cur_is_same = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
+            prev_last_good = self._last_good_texture_keys
             new_last_good_key, array_draw_plan = self._resolve_fallback_plan(
                 tile_service=self.tile_service,
                 texture_keys=texture_keys,

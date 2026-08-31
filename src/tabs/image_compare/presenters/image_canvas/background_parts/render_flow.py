@@ -1,5 +1,6 @@
 # Audit-Meta: pattern=state-machine size=exempt reason="IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)"
 import logging
+import time as _rf_time
 
 from PySide6.QtGui import QImage, QPixmap
 
@@ -93,6 +94,40 @@ def _update_comparison_geometry(
         scaled_h = max(1, int(img2_h * scale))
     else:
         return
+
+    # Union letterbox hold: keep prev geometry for 350ms after put_unified or until more_pending False
+    try:
+        _hold_until = 0.0
+        _more_pending = None
+        # Try canvas runtime_state first
+        try:
+            _w = getattr(presenter, "widget", None)
+            if _w is not None:
+                # prefer canvas widget's runtime_state (base_images hold)
+                _rs = getattr(_w, "runtime_state", None)
+                if _rs is not None:
+                    _hold_until = float(getattr(_rs, "_union_letterbox_hold_until", 0.0) or 0.0)
+                    _more_pending = getattr(_rs, "_tile_more_pending", None)
+                # also check get_canvas_widget for strict canvas
+                try:
+                    from tabs.image_compare.canvas.helpers import get_canvas_widget
+
+                    _canvas = get_canvas_widget(_w)
+                    if _canvas is not None and getattr(_canvas, "runtime_state", None) is not None:
+                        _crs = _canvas.runtime_state
+                        _ch = float(getattr(_crs, "_union_letterbox_hold_until", 0.0) or 0.0)
+                        if _ch:
+                            _hold_until = _ch
+                        if getattr(_crs, "_tile_more_pending", None) is not None:
+                            _more_pending = getattr(_crs, "_tile_more_pending", None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if _hold_until and _rf_time.monotonic() < _hold_until and _more_pending is not False:
+            return
+    except Exception:
+        pass
 
     geometry = presenter.store.viewport.geometry_state
     # [ic-gap] input snapshot before guard — throttled: same (state, src, label, unified, size) at 60Hz
