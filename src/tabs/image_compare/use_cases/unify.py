@@ -281,28 +281,33 @@ def trigger_preview_unification(controller, image_number: int):
                 pl = getattr(controller, "pipeline", None)
                 if pl is not None and hasattr(pl, "_inflight"):
                     try:
-                        for k, sig in pl._inflight.items():
-                            if isinstance(k, tuple) and len(k) == 2 and k[0] == int(image_number):
-                                if not sig.is_aborted():
-                                    has_pending = True
-                                    break
-                            if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
-                                if not sig.is_aborted():
-                                    has_pending = True
-                                    break
-                    except Exception:
-                        has_pending = False
-                    if has_pending:
-                        pass
-                    else:
-                        pending = getattr(controller, "_pending_full_loads", None)
-                        if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
-                            has_pending = True
-                        if not has_pending:
+                        for k, sig in list(pl._inflight.items()):
                             try:
-                                finish_toast_for_unpaired_slot(controller, document, image_number)
+                                if sig.is_aborted():
+                                    continue
                             except Exception:
                                 pass
+                            # consistent with PendingFullLoadsProxy: any (slot, ...) with len>=2
+                            if isinstance(k, tuple) and len(k) >= 2 and k[0] == int(image_number):
+                                has_pending = True
+                                break
+                            if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
+                                has_pending = True
+                                break
+                    except Exception:
+                        has_pending = False
+                    # proxy is alias to _inflight synthetic, but check for consistency
+                    try:
+                        pending = getattr(controller, "_pending_full_loads", None)
+                        if not has_pending and pending is not None and pending.get(int(image_number), 0) > 0:  # type: ignore[union-attr]
+                            has_pending = True
+                    except Exception:
+                        pass
+                    if not has_pending:
+                        try:
+                            finish_toast_for_unpaired_slot(controller, document, image_number)
+                        except Exception:
+                            pass
                 else:
                     pending = getattr(controller, "_pending_full_loads", None)
                     if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
