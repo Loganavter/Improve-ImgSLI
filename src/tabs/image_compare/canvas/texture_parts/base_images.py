@@ -195,10 +195,11 @@ def update_common_letterbox_geometry(
 
     Eager max envelope (single owner): when both sides have sizes, compute
     pw,ph = max(w1,w2), max(h1,h2) once and derive a single fitted rect via
-    resolve_canvas_content_geometry(cw,ch,pw,ph). Both letterbox slots receive
-    the same ux/cw,uy/ch,uw/cw,uh/ch, dispatched via store.transact. No HOLD,
-    no more_pending, no Store predicted field. Fallback to per-image
-    letterbox only when one side has no size.
+    shared helper ``eager_envelope_rect`` (one
+    ``resolve_canvas_content_geometry(cw,ch,pw,ph)`` call). Both letterbox
+    slots receive the same ux/cw,uy/ch,uw/cw,uh/ch, dispatched via
+    store.transact. No hold, no more_pending, no Store predicted field.
+    Fallback to per-image letterbox only when one side has no size.
     """
     state = widget.runtime_state
     cw, ch = _canvas_dims(widget)
@@ -210,6 +211,7 @@ def update_common_letterbox_geometry(
         return
 
     from shared.image_processing.image_dims import get_image_dims
+    from shared.rendering.unified_envelope import eager_envelope_rect
 
     w1, h1 = get_image_dims(image1) if image1 is not None else (0, 0)
     w2, h2 = get_image_dims(image2) if image2 is not None else (0, 0)
@@ -251,23 +253,7 @@ def update_common_letterbox_geometry(
             return False
 
     if have1 and have2:
-        pw = max(w1, w2)
-        ph = max(h1, h2)
-        geometry = resolve_canvas_content_geometry(
-            widget_width=cw,
-            widget_height=ch,
-            image_width=pw,
-            image_height=ph,
-            virtual_layout=None,
-        )
-        inner = geometry.inner_rect_px or (0, 0, cw, ch)
-        ux, uy, uw, uh = inner
-        ux_i = int(round(ux))
-        uy_i = int(round(uy))
-        uw_i = max(1, int(round(uw)))
-        uh_i = max(1, int(round(uh)))
-        letterbox = (ux_i / float(cw), uy_i / float(ch), uw_i / float(cw), uh_i / float(ch))
-        candidate_rect = (ux_i, uy_i, uw_i, uh_i)
+        letterbox, candidate_rect = eager_envelope_rect(cw, ch, [(w1, h1), (w2, h2)])
         state._letterbox_params[0] = letterbox
         state._letterbox_params[1] = letterbox
         state._content_rect_px = candidate_rect

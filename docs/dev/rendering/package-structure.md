@@ -22,16 +22,24 @@ tab by default. `canvas_infra` (`scene/`, `viewport/`, `stacking_policy.py`,
 the pass/feature contracts) does **not** live per-tab — it stays a shared
 library under `src/ui/canvas_infra/`, imported the same way by every tab (see
 the `from ui.canvas_infra.scene.pass_contract import ...` example in
-[render-pass-contract.md](render-pass-contract.md)). Only concrete features
-are tab-owned; infrastructure is not.
+[render-pass-contract.md](render-pass-contract.md) — `CanvasRenderPass` at
+`src/ui/canvas_infra/scene/pass_contract.py:75`,
+`CanvasRenderPassBase` for legacy GL). Shared presentation/composition lives in
+`src/ui/canvas_presentation/` (`plan.py` `CanvasRenderPlan`, `composition.py`
+`CompositionPlan`/`ResolvedComposition` — see [rendering-model.md](rendering-model.md)
+and [coordinate-systems.md](coordinate-systems.md)); single geometry owner for
+comparison letterbox is `src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
+(`update_common_letterbox_geometry`) via
+`src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`.
+Only concrete features are tab-owned; infrastructure is not.
 
 ## Auto-Discovery
 
 | Registry | Looks for | In module |
 |---|---|---|
-| `widget_registry` | `WIDGET_FEATURE: CanvasWidgetFeature` | `manifest.py` or `widget.py` |
-| `feature_registry` | `FEATURE: CanvasSceneFeature` | `manifest.py` or `feature.py` |
-| `pass_registry` (QRhi) | `RENDER_PASSES: list[CanvasRenderPass]` | `passes.py` |
+| `widget_registry` | `WIDGET_FEATURE: CanvasWidgetFeature` (`src/ui/canvas_infra/scene/widget_contract.py`) | `manifest.py` or `widget.py` |
+| `feature_registry` | `FEATURE: CanvasSceneFeature` (`src/ui/canvas_infra/scene/feature_contract.py`) | `manifest.py` or `feature.py` |
+| `pass_registry` (QRhi) | `RENDER_PASSES: list[CanvasRenderPass]` (`src/ui/canvas_infra/scene/pass_contract.py:75`) | `passes.py` |
 
 Never hand-wire a pass into a central file. Export it from your feature's
 `passes.py` and it's discovered.

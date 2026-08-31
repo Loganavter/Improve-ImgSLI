@@ -16,7 +16,13 @@ hi-res source). `shared/rendering/tile_constants.py` defines
 no longer 8192) as the threshold: any texture source wider or taller than
 that gets split into an N×M grid of tiles instead of one whole-image
 texture, and only the tiles currently intersecting the viewport are
-actually resident on the GPU.
+actually resident on the GPU. Letterbox geometry itself is **not** tiled —
+both sides share one eager `max` envelope `pw,ph = max(w1,w2), max(h1,h2)`
+(`base_images.py:196`, `render_flow.py:55`) fitted once via
+`resolve_canvas_content_geometry(cw,ch,pw,ph)` → identical `letterbox`
+`0.545` for both sides, no `needs_union`/`grid_mismatch` branching, no
+`HOLD` — so the draw-plan grid and residency agree on geometry from the
+first `gap draw_plan`.
 
 Two roles ever get texture-uploaded (see
 [display-image-pipeline.md](display-image-pipeline.md) for the full role
@@ -91,7 +97,10 @@ invalidated) fall through untouched.
 `shared/rendering/lod.py::select_level(dest_scale, level_count)` is the
 single pure function both the live canvas and snapshot/export call to pick
 a level — see [rendering-model.md](rendering-model.md) for the parity
-requirement. `draw_plan.py` substitutes each side's texture key with a
+requirement. `dest_scale` is derived from the eager `pw,ph = max(w1,w2),
+max(h1,h2)` envelope's fitted rect (same `letterbox 0.545` for both sides,
+`base_images.py:196`), so LOD is consistent even though geometry no longer
+freezes on HOLD. `draw_plan.py` substitutes each side's texture key with a
 `LevelKey(base, level)` before building tile pairs; `resources.py` resolves
 a `LevelKey` back to the level's `TiledPixelStore` at realize time, clamping
 to whatever level is actually published so far (levels build and publish
@@ -116,7 +125,8 @@ Owned by `RhiResources` as `self.residency`; callers invoke it as
 `resources.residency.realize_tile_plan(...)`.
 
 Runs once per frame (or whenever geometry/viewport changes trigger it).
-For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid:
+For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid
+(`LIVE_TILE_EXTENT = 512`, `shared/rendering/tile_constants.py:32`):
 
 1. Determine which tiles are currently visible (same `visible_tiles` call the
    draw plan will use).
@@ -168,6 +178,17 @@ a **cross-frame bookkeeping problem**, not a residency or draw-plan one: it
 needs to remember, per side/slot, "what key was last known to be fully
 drawable" and keep serving that key's tiles until the new key catches up.
 
+**Geometry is eager max, not HOLD:** fallback-LOD here covers **pixels**
+only (`rhi_renderer/renderer.py:463` `resolve_fallback_lod(atomic=...)`);
+letterbox geometry itself is already stable from the first `gap draw_plan`
+(`0.545`, `pw,ph = max(w1,w2), max(h1,h2)` via `base_images.py:196` /
+`render_flow.py:55`, `resolve_canvas_content_geometry(cw,ch,pw,ph)`). Both
+sides share one fitted rect, so `needs_union` / `grid_mismatch` (old
+`6×5 vs 2×2 → 1138` union) is removed, there is no per-side letterbox
+divergence, and no `UNION_LETTERBOX_HOLD_MS` (`tile_constants.py:111`) or
+`more_pending` freeze for `letterbox` — HOLD/atomic remain only for the
+pixel fallback path described below.
+
 **The three pieces of state**, owned by the caller (`RhiCanvasRenderer` in
 image_compare, `BaseImagesPass` in multi_compare — *not* by
 `TileResidencyRealizerBase`/`residency.py`, which holds no cross-frame LOD
@@ -194,7 +215,10 @@ duplicate rects in the "current" list, which arise by design here, made an
 area sum overcount and falsely read as 100% covered) — a fallback tile is
 dropped once the *current* key's own tiles already cover ~all of its
 footprint, so old and new content don't visibly overlap for longer than
-necessary.
+necessary. Coverage is pixel-tile coverage (`512`, `tile_constants.py:32` +
+`TILE_APRON_PX`); letterbox geometry is uniform `0.545` for both sides via the
+eager envelope, so no per-side scale correction is needed — `needs_union`
+divergence removed.
 
 **Both tabs got this wrong the same way, independently, at different
 times**: the tile list fed into that coverage check as "what the current
@@ -255,16 +279,20 @@ large, or otherwise slow-to-fill grid is involved.
 ### Content swaps are atomic; LOD churn is progressive
 
 A LOD/pyramid-level churn (zoom crossing a level boundary on the *same*
-source) gets the progressive reveal above — the coarser content stays
+source, same eager `0.545` letterbox) gets the progressive reveal above — the coarser content stays
 visible and the finer level's tiles replace it region by region, which is
 the intended behavior. A genuine *content replacement* (preview→store flip,
 a same-slot image swap, a source-role switch) must not: the user sees the
 new content appear tile-by-tile over several frames as a patchwork mix of
-old and new regions. ``resolve_fallback_lod``'s ``atomic=True`` mode draws
+old and new regions. Geometry again is
+not part of this decision — letterbox is already identical for both sides
+(`base_images.py:196`), so `atomic` here gates **pixels only** (no HOLD).
+``resolve_fallback_lod``'s ``atomic=True`` mode draws
 *only* the fallback baseline (the old content) until the new content's
 current-view tiles are all resident, then flips the whole draw plan over in
 one frame. The caller (``RhiCanvasRenderer._resolve_fallback_plan`` in
-image_compare; the fixed-pair render tab is the only ``atomic`` caller
+image_compare
+`rhi_renderer/renderer.py:463`; the fixed-pair render tab is the only ``atomic`` caller
 today) identifies a content swap by either of two signals:
 
 1. A rekeyed old-content marker in the fallback baseline —
@@ -351,14 +379,15 @@ image.
 ### Host vs GPU tile granularity
 
 Two tile sizes are **intentional**, not drift, and now formalized in one
-shared module: `shared/rendering/tile_constants.py` (`PIXEL_TILE_SIZE`,
-`LIVE_TILE_EXTENT`, `DEFAULT_TILE_EXTENT`, `TILE_APRON_PX`,
-`TILE_RESIDENCY_MARGIN`).
+shared module: `shared/rendering/tile_constants.py:12,32` (`PIXEL_TILE_SIZE = 512`,
+`LIVE_TILE_EXTENT = 512`, `DEFAULT_TILE_EXTENT`, `TILE_APRON_PX = 1`,
+`TILE_RESIDENCY_MARGIN`, `TILE_UPLOAD_BUDGET_PER_CALL`, `TILE_UPLOAD_TIME_BUDGET_MS`,
+`UNION_LETTERBOX_HOLD_MS:111`).
 
 | Layer | Constant | Typical size | Role |
 |-------|----------|--------------|------|
-| Host storage / CPU ops | `PIXEL_TILE_SIZE` | 512 (square) | memmap `TiledPixelStore`, crop/read_tile, pixel_ops blocks |
-| GPU residency | `LIVE_TILE_EXTENT` | 512 | texture upload grid, draw-plan cross product, VRAM budget |
+| Host storage / CPU ops | `PIXEL_TILE_SIZE` (`tile_constants.py:12`) | 512 (square) | memmap `TiledPixelStore`, crop/read_tile, pixel_ops blocks |
+| GPU residency | `LIVE_TILE_EXTENT` (`tile_constants.py:32`) | 512 | texture upload grid, draw-plan cross product, VRAM budget |
 
 **GEGL precedent:** storage uses small tiles (env default `128×64`; commit
 history moved between `128×128`, `512×64`, etc. via `GEGL_TILE_SIZE`), while
@@ -369,7 +398,13 @@ granularity controls throughput.
 
 Improve-ImgSLI follows the same split: host 512 keeps CPU crops bounded;
 GPU 512 (since `tile-array-atlas-plan.md` Phase 3 (private, `improve-imgsli-internal-docs`, `docs/legacy/rendering/`);
-8192 historically, see Part B below) keeps draw/residency manageable.
+8192 historically, see Part B below) keeps draw/residency manageable — at
+`LIVE_TILE_EXTENT = 512` a single RGBA8 tile is ~1 MB, not ~268 MB, so the
+budget `TILE_UPLOAD_BUDGET_PER_CALL = 64` / `TILE_UPLOAD_TIME_BUDGET_MS = 12.0`
+covers a full refill without draw-call explosion (array/instanced draw).
+Letterbox geometry is orthogonal to this: both sides share the same eager
+`0.545` rect (`base_images.py:196`), so host/GPU tiling never needs a
+per-side `needs_union` size mismatch correction.
 `AppConstants.PIXEL_TILE_SIZE`
 still exists in `core/constants.py` for import-direction reasons (core must
 not import `shared.rendering`) and is pinned equal to
