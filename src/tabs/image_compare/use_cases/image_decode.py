@@ -156,10 +156,11 @@ def on_image_loaded(controller, result):
                 from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
                 d = getattr(controller.store, "get_dispatcher", lambda: None)()
                 has_dispatcher = d is not None
+                crop_svc = getattr(controller, "_get_crop_service", lambda: None)()
                 if isinstance(pil_img, QImage):
                     if not pil_img.isNull():
                         if has_dispatcher:
-                            controller.store.transact([PutPreviewAction(path=path, qimage=pil_img)], scope="pipeline")
+                            controller.store.transact([PutPreviewAction(path=path, qimage=pil_img, crop_service=crop_svc)], scope="pipeline")
                         else:
                             pl = getattr(controller, "pipeline", None)
                             if pl is not None:
@@ -173,14 +174,14 @@ def on_image_loaded(controller, result):
                         )
                 elif isinstance(pil_img, TiledPixelStore) and getattr(pil_img, "is_open", True):
                     if has_dispatcher:
-                        controller.store.transact([PutPixelAction(path=path, store=pil_img)], scope="pipeline")
+                        controller.store.transact([PutPixelAction(path=path, store=pil_img, crop_service=crop_svc)], scope="pipeline")
                     else:
                         pl = getattr(controller, "pipeline", None)
                         if pl is not None:
                             getattr(pl.cache, "put_" + "pixel")(path, store=pil_img)
                 elif hasattr(pil_img, "is_open"):
                     if has_dispatcher:
-                        controller.store.transact([PutPixelAction(path=path, store=pil_img)], scope="pipeline")
+                        controller.store.transact([PutPixelAction(path=path, store=pil_img, crop_service=crop_svc)], scope="pipeline")
                     else:
                         pl = getattr(controller, "pipeline", None)
                         if pl is not None:
