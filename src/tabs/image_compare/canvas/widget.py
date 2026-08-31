@@ -177,7 +177,36 @@ class CanvasWidget(QRhiWidget):
         text1: str = "",
         text2: str = "",
     ):
+        import traceback
+        before = bool(self.runtime_state._drag_overlay_visible)
         set_drag_overlay_state_impl(self, visible, horizontal, text1, text2)
+        after = bool(self.runtime_state._drag_overlay_visible)
+        if before != after:
+            try:
+                from tabs.image_compare.debug import ic_dnd_debug
+
+                ic_dnd_debug(
+                    "canvas.set_drag_overlay_state %s->%s visible=%s stack=%s",
+                    before,
+                    after,
+                    visible,
+                    "".join(traceback.format_stack(limit=8)[:-2]),
+                )
+                if not after and before:
+                    # If canvas hides while widget overlay still visible -> desync blocks input
+                    try:
+                        w = self.parent()
+                        # walk to ImageCompareWidget to check overlay
+                        while w is not None and not hasattr(w, "drag_overlay"):
+                            w = w.parent()
+                        if w is not None and hasattr(w, "drag_overlay"):
+                            ov_vis = w.drag_overlay.isVisible() if hasattr(w.drag_overlay, "isVisible") else "?"
+                            if ov_vis:
+                                ic_dnd_debug("canvas DESYNC after hide! widget overlay still visible=%s", ov_vis)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     def is_drag_overlay_visible(self) -> bool:
         return bool(self.runtime_state._drag_overlay_visible)

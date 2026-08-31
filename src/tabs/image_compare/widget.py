@@ -376,15 +376,27 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         return self.image_label.is_drag_overlay_visible()
 
     def update_drag_overlays(self, horizontal: bool = False, visible: bool = False):
+        import time
+        import traceback
+        _t0 = time.monotonic()
         try:
             from tabs.image_compare.debug import ic_dnd_debug
-            ic_dnd_debug("widget.update_drag_overlays called visible=%s horizontal=%s isVisible=%s geometry=%r", visible, horizontal, self.image_label.isVisible(), self.image_label.geometry())
+            ic_dnd_debug(
+                "widget.update_drag_overlays ENTER visible=%s horizontal=%s isVisible=%s geometry=%r canvas_vis=%s overlay_isVisible=%s t=%.3f",
+                visible,
+                horizontal,
+                self.image_label.isVisible(),
+                self.image_label.geometry(),
+                self.image_label.is_drag_overlay_visible(),
+                self.drag_overlay.isVisible() if hasattr(self, "drag_overlay") else "?",
+                _t0,
+            )
         except Exception:
             pass
         if not self.image_label.isVisible():
             try:
                 from tabs.image_compare.debug import ic_dnd_debug
-                ic_dnd_debug("widget.update_drag_overlays -> hide (image_label not visible)")
+                ic_dnd_debug("widget.update_drag_overlays -> hide (image_label not visible) stack=%s", "".join(traceback.format_stack(limit=6)[:-2]))
             except Exception:
                 pass
             # Ensure both overlays are hidden even when canvas not visible,
@@ -395,11 +407,29 @@ class ImageCompareWidget(ThemedWidget, QWidget):
                 self.image_label.set_drag_overlay_state(visible=False)
             except Exception:
                 pass
-            self.drag_overlay.hide()
+            try:
+                self.drag_overlay.hide()
+            except Exception:
+                pass
+            try:
+                from tabs.image_compare.debug import ic_dnd_debug
+                ic_dnd_debug(
+                    "widget.update_drag_overlays EXIT (not visible) canvas_vis=%s overlay_isVisible=%s t=%.3f",
+                    self.image_label.is_drag_overlay_visible(),
+                    self.drag_overlay.isVisible() if hasattr(self, "drag_overlay") else "?",
+                    time.monotonic(),
+                )
+                # DEBUG: if still visible after hide, it will block new input
+                if self.image_label.is_drag_overlay_visible() or (hasattr(self, "drag_overlay") and self.drag_overlay.isVisible()):
+                    ic_dnd_debug("widget BLOCKING! hide left visible canvas=%s overlay=%s stack=%s", self.image_label.is_drag_overlay_visible(), self.drag_overlay.isVisible(), "".join(traceback.format_stack(limit=5)[:-2]))
+            except Exception:
+                pass
             return
         lang = self._context.settings.current_language if self._context else "en"
         text1 = tr("image_compare.ui.drop_images_1_here", lang)
         text2 = tr("image_compare.ui.drop_images_2_here", lang)
+        _before_canvas = self.image_label.is_drag_overlay_visible()
+        _before_overlay = self.drag_overlay.isVisible()
         self.image_label.set_drag_overlay_state(
             visible=visible,
             horizontal=horizontal,
@@ -413,9 +443,32 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             text1=text1,
             text2=text2,
         )
+        # Force immediate repaint for blocking diagnosis — if hide is coalesced,
+        # tiles appear gone but still intercept dragEnter at Qt level.
+        if not visible:
+            try:
+                self.drag_overlay.update()
+                if self.drag_overlay.parent():
+                    self.drag_overlay.parent().update()
+                self.image_label.update()
+            except Exception:
+                pass
         try:
             from tabs.image_compare.debug import ic_dnd_debug
-            ic_dnd_debug("widget.update_drag_overlays done visible=%s drag_overlay.isVisible=%s", visible, self.drag_overlay.isVisible())
+            ic_dnd_debug(
+                "widget.update_drag_overlays EXIT visible=%s before_canvas=%s after_canvas=%s before_overlay=%s after_overlay=%s geom=%r t=%.3f",
+                visible,
+                _before_canvas,
+                self.image_label.is_drag_overlay_visible(),
+                _before_overlay,
+                self.drag_overlay.isVisible(),
+                self.image_label.geometry(),
+                time.monotonic(),
+            )
+            if not visible and (self.image_label.is_drag_overlay_visible() or self.drag_overlay.isVisible()):
+                ic_dnd_debug("widget BLOCKING after hide! canvas=%s overlay=%s stack=%s", self.image_label.is_drag_overlay_visible(), self.drag_overlay.isVisible(), "".join(traceback.format_stack(limit=6)[:-2]))
+            if visible and (not self.image_label.is_drag_overlay_visible() or not self.drag_overlay.isVisible()):
+                ic_dnd_debug("widget SHOW FAILED! canvas=%s overlay=%s stack=%s", self.image_label.is_drag_overlay_visible(), self.drag_overlay.isVisible(), "".join(traceback.format_stack(limit=6)[:-2]))
         except Exception:
             pass
 

@@ -67,16 +67,39 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
             slot = 1 if int(hint.get("slot") or 1) == 1 else 2
         elif "is_left_area" in hint:
             slot = 1 if bool(hint.get("is_left_area")) else 2
-    _dnd_log("handle_drop: scheduling load slot=%s paths=%r", slot, image_paths[:3])
+    _dnd_log("handle_drop: scheduling load slot=%s paths=%r widget_vis=%s", slot, image_paths[:3], getattr(widget, "is_drag_overlay_visible", lambda: "?")())
+    import time as _t
+    _sched_t = _t.monotonic()
+
     def _do_load():
-        _dnd_log("handle_drop: _do_load executing load_images_from_paths slot=%s paths=%r", slot, image_paths[:3])
+        _dnd_log(
+            "handle_drop: _do_load ENTER slot=%s t=%.3f dt=%.3f widget_vis_before=%s",
+            slot,
+            _t.monotonic(),
+            _t.monotonic() - _sched_t,
+            getattr(widget, "is_drag_overlay_visible", lambda: "?")(),
+        )
         try:
             sessions.load_images_from_paths(image_paths, slot)
-            _dnd_log("handle_drop: _do_load done")
+            _dnd_log(
+                "handle_drop: _do_load done t=%.3f widget_vis_after=%s",
+                _t.monotonic(),
+                getattr(widget, "is_drag_overlay_visible", lambda: "?")(),
+            )
         except Exception as e:
             _dnd_log("handle_drop: _do_load failed %r", e)
+        # DEBUG: check if overlay still blocks after load started (the bug: tiles hide visually but block)
+        try:
+            vis_after = getattr(widget, "is_drag_overlay_visible", lambda: "?")()
+            ov_vis = getattr(getattr(widget, "drag_overlay", None), "isVisible", lambda: "?")()
+            _dnd_log("handle_drop: _do_load post-check canvas_vis=%s overlay_isVisible=%s", vis_after, ov_vis)
+            if vis_after or ov_vis:
+                _dnd_log("handle_drop: BLOCKING after load! canvas_vis=%s overlay=%s", vis_after, ov_vis)
+        except Exception:
+            pass
+
     QTimer.singleShot(
         0, _do_load
     )
-    _dnd_log("handle_drop: scheduled, returning True (overlay should already be hidden by WindowEventHandler)")
+    _dnd_log("handle_drop: scheduled t=%.3f, returning True (overlay should already be hidden by WindowEventHandler vis=%s)", _sched_t, getattr(widget, "is_drag_overlay_visible", lambda: "?")())
     return True

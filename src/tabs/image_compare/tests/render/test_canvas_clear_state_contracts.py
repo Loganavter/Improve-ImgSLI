@@ -88,6 +88,10 @@ def test_gl_canvas_clear_resets_runtime_flags(monkeypatch):
     assert runtime_state._inner_content_rect_px is None
     assert runtime_state._inner_split_position is None
     assert runtime_state._clip_overlays_to_content_rect is False
-    assert runtime_state._drag_overlay_visible is False
+    # Drag overlay is DnD UI state, not texture — must survive clear() otherwise
+    # canvas False vs widget DragDropOverlay True desync blocks new input.
+    assert runtime_state._drag_overlay_visible is True
+    assert runtime_state._drag_overlay_horizontal is True
+    assert runtime_state._drag_overlay_texts == ("A", "B")
     assert getattr(widget, "_diff_cleared", False) is True
     assert getattr(widget, "_overlay_cleared", False) is True
