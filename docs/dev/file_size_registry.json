@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 1051,
+      "lines": 287,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -376,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 543,
+      "lines": 554,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",

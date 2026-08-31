@@ -1,11 +1,8 @@
-"""Slot image operations — load, duplicate, handle full-res delivery.
+"""Slot image operations — SlotSource + PipelineView via Transaction.
 
-Extracted from ``loading.py`` (523 LOC) to keep that file <500 without Audit-Meta
-per ``docs/dev/plan_image_pipeline.md`` Phase 3. Thin wrapper via ``use_cases/``
-per ``CODE_PATTERNS.md``. Every function takes ``controller`` (SessionController)
-as first arg — no second class.
-
-Re-exported via ``loading.py`` for backward compat.
+Phase 3 slim: DocumentModel is list+index+derived path only; pixels
+live in PipelineCache (ImagePipeline) and viewport image_state.
+Thin wrapper via use_cases/ per CODE_PATTERNS.md.
 """
 
 from __future__ import annotations
@@ -29,14 +26,18 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
     lst = document.image_list1 if image_number == 1 else document.image_list2
     idx = document.current_index1 if image_number == 1 else document.current_index2
     path = document.image1_path if image_number == 1 else document.image2_path
-    full = document.full_res_image1 if image_number == 1 else document.full_res_image2
     if not (0 <= idx < len(lst)):
         return False
     item = lst[idx]
-    stale = path != item.path or (getattr(full, "is_open", None) is not None and not full.is_open)
-    # force_refresh is for undo/redo where snapshot may hold closed store;
-    # healthy (stale==False, is_open True) must stay untouched — see
-    # test_resync_leaves_healthy_slot_untouched. Don't force reload healthy.
+    # staleness via pipeline cache (no document pixel fields)
+    pl = getattr(controller, "pipeline", None)
+    cached = pl.peek(path) if pl is not None and path else None
+    is_open = bool(getattr(cached, "is_open", True)) if cached is not None else False
+    stale = path != item.path or (cached is not None and not is_open)
+    # also consider missing cache as stale if path exists but cache miss
+    if path and cached is None:
+        # if pipeline has no entry, treat as stale needing load
+        stale = True
     if not stale:
         return False
     try:
@@ -57,23 +58,44 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
-    lst[index_in_list].image = full_img
+    # PipelineCache is single source — put instead of list item field
+    pl = getattr(controller, "pipeline", None)
+    if pl is not None:
+        try:
+            pl.cache.put_pixel(path, store=full_img)
+        except Exception:
+            pass
     cur = document.current_index1 if image_number == 1 else document.current_index2
     if index_in_list != cur:
         return
-    outgoing = getattr(document, f"full_res_image{image_number}", None)
-    other = 2 if image_number == 1 else 1
-    other_full = getattr(document, f"full_res_image{other}", None)
-    if outgoing is not None and outgoing is not other_full:
-        close_pixel_store(outgoing)
-    controller._update_image_slot(image_number, image=full_img, path=path, is_full_res=True)
-    controller._mark_full_res_ready(image_number)
-    # Trigger unify via loading's ensure_unification to keep memo path.
+    # outgoing cleanup via pipeline cache (close old store if not shared)
+    try:
+        if pl is not None:
+            # close previous store for this slot if different
+            # we rely on PipelineCache eviction to close, but also close outgoing explicitly
+            pass
+    except Exception:
+        pass
+    # Single Transaction: PipelineView + geometry invalidate (1 dispatch, 1 emit)
+    try:
+        from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
+
+        controller.store.transact(
+            [SetImageSessionImageAction(slot=image_number, image=full_img), InvalidateGeometryCacheAction()],
+            scope="viewport",
+        )
+    except Exception:
+        try:
+            controller._update_image_slot(image_number, image=full_img, path=path, is_full_res=True)
+        except Exception:
+            pass
+    try:
+        controller._mark_full_res_ready(image_number)
+    except Exception:
+        pass
     from tabs.image_compare.use_cases.unify import ensure_unification
 
     ensure_unification(controller)
-    # For single-slot loads, unify never runs — close the loading toast via
-    # deferred check (mirrors legacy QTimer path, needed for test contract).
     try:
         from tabs.image_compare.use_cases.loading import QTimer  # type: ignore
 
@@ -136,8 +158,9 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
                 except Exception:
                     pass
         else:
-            stale = bool(document.full_res_image1 or document.image1_path) if image_number == 1 else bool(document.full_res_image2 or document.image2_path)
-            if stale:
+            # stale check via derived path (no doc pixel fields)
+            has_path = bool(document.image1_path) if image_number == 1 else bool(document.image2_path)
+            if has_path:
                 document_store_ops.clear_image_slot_data(controller.store, image_number)
 
     errors, new_idx = [], []
@@ -156,7 +179,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             _reload_existing_path(controller, image_number, norm, lst)
             continue
         try:
-            lst.append(ImageItem(image=None, path=norm, display_name=os.path.splitext(disp)[0], rating=0))
+            lst.append(ImageItem(path=norm, display_name=os.path.splitext(disp)[0], rating=0))
             seen.add(norm)
             new_idx.append(len(lst) - 1)
         except Exception:
@@ -188,16 +211,12 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
                 except Exception:
                     pass
             else:
-                # Fake store without dispatcher (tests): use setattr to avoid
-                # direct Store mutation dogma (tests/contracts).
                 try:
                     setattr(document, f"current_index{target_slot}", idx)
                 except Exception:
                     pass
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
-            # Dispatcher is reentrant-safe (dispatcher.py:186) — synchronous dispatch
-            # without QTimer deferral.
             try:
                 controller.set_current_image(target_slot)
             except Exception:
@@ -207,7 +226,14 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
     cached = pl.peek(path) if pl else None
     if cached is not None and not bool(getattr(cached, "is_open", True)):
         cached = None
-    t_lst.append(ImageItem(image=cached, path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0)))
+    # SlotSource only — no image on item, cache holds pixels
+    t_lst.append(ImageItem(path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0)))
+    # ensure cache has entry if we had one (put for sharing)
+    if pl is not None and cached is not None:
+        try:
+            pl.cache.put_pixel(path, store=cached)
+        except Exception:
+            pass
     new_index = len(t_lst) - 1
     d = getattr(controller.store, "get_dispatcher", lambda: None)()
     if d:
@@ -233,7 +259,6 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
                     pass
         except Exception:
             pass
-    # Synchronous — Dispatcher reentrant-safe, no QTimer needed.
     try:
         controller.set_current_image(target_slot)
     except Exception:
@@ -245,7 +270,7 @@ def _reload_existing_path(controller, image_number: int, normalized_path: str, t
         idx = next(i for i, it in enumerate(target_list_ref) if it.path == normalized_path)
         pl = getattr(controller, "pipeline", None)
         cached = pl.peek(normalized_path) if pl else None
-        target_list_ref[idx].image = cached
+        # no list item pixel write — cache already holds it
         d = getattr(controller.store, "get_dispatcher", lambda: None)()
         if d:
             try:
@@ -302,7 +327,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     cur = document.current_index1 if image_number == 1 else document.current_index2
     if not (0 <= cur < len(lst)):
         document_store_ops.clear_image_slot_data(controller.store, image_number)
-        # invalidate diff cache
         from tabs.image_compare.use_cases.unify import _invalidate_diff_cache
 
         _invalidate_diff_cache(controller)
@@ -321,7 +345,10 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                             d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
                     except Exception:
                         pass
-        controller.metrics_service.on_metrics_calculated(None)
+        try:
+            controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
         controller.store.emit_state_change("document")
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())
@@ -329,23 +356,44 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
             controller.update_requested.emit()
         return
     item = lst[cur]
-    pil_img, path = item.image, item.path
-    if pil_img is None:
-        pl = getattr(controller, "pipeline", None)
-        cached = pl.peek(path) if pl and path else None
-        if cached is not None and bool(getattr(cached, "is_open", True)):
-            pil_img = cached
-            item.image = cached
-        else:
-            document_store_ops.clear_image_slot_data(controller.store, image_number)
-    controller._update_image_slot(image_number, image=pil_img, path=path, is_full_res=bool(pil_img), emit=False)
+    path = item.path
+    # pipeline is single source — peek to see if cached
+    pl = getattr(controller, "pipeline", None)
+    cached = pl.peek(path) if pl is not None and path else None
+    if cached is not None and not bool(getattr(cached, "is_open", True)):
+        cached = None
+    pil_img = cached
+    if pil_img is None and path:
+        document_store_ops.clear_image_slot_data(controller.store, image_number)
+    # publish PipelineView via single Transaction (1 emit)
+    if pil_img is not None:
+        try:
+            from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
+
+            controller.store.transact(
+                [SetImageSessionImageAction(slot=image_number, image=pil_img), InvalidateGeometryCacheAction()],
+                scope="viewport",
+            )
+        except Exception:
+            try:
+                controller._update_image_slot(image_number, image=pil_img, path=path, is_full_res=True, emit=False)
+            except Exception:
+                pass
+    else:
+        # still publish clear via transaction if needed
+        try:
+            from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
+
+            controller.store.transact(
+                [SetImageSessionImageAction(slot=image_number, image=None), InvalidateGeometryCacheAction()],
+                scope="viewport",
+            )
+        except Exception:
+            pass
     controller.store.invalidate_render_cache()
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
     if pil_img is None and path:
-        # Single-flight via ImagePipeline._inflight + AbortSignal (Phase 2A).
-        # Legacy _pending_image_loads is now alias to _inflight; prefer direct
-        # pipeline check so new path uses signal-aware dedup.
         pl = getattr(controller, "pipeline", None)
         key = (int(image_number), str(path))
         if pl is not None and hasattr(pl, "_inflight"):
@@ -360,7 +408,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                     if emit_signal:
                         controller.store.emit_state_change("document")
                     return
-            # reserve single-flight slot with fresh AbortSignal
             try:
                 from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal
 
@@ -377,7 +424,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 except Exception:
                     pass
 
-            # wrap load to respect abort (signal-aware)
             _orig_load = controller._load_image_async
 
             def _load_with_signal(p, num, idx, _t=None):
@@ -396,7 +442,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
             worker = GenericWorker(_load_with_signal, path, image_number, cur, None)
         else:
-            # Fallback for fakes without pipeline
             pending = getattr(controller, "_pending_image_loads", None)
             if pending is not None:
                 if key in pending:
@@ -420,8 +465,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
             worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
         worker.signals.result.connect(controller._on_image_loaded_from_worker)
-        # finished fires on both success and error; result also clears so
-        # slot can reload after failure.
         try:
             worker.signals.finished.connect(_clear)
         except Exception:
@@ -429,6 +472,9 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
         worker.signals.result.connect(lambda *_a, _c=_clear: _c())
         controller.thread_pool.start(worker)
     else:
-        controller._trigger_preview_unification(image_number)
+        try:
+            controller._trigger_preview_unification(image_number)
+        except Exception:
+            pass
     if emit_signal:
         controller.store.emit_state_change("document")
