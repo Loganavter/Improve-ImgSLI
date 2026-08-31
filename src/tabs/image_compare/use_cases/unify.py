@@ -423,6 +423,39 @@ def on_unified_images_ready(controller, result):
                     s1_uid = image_uid(s1_src) if s1_src is not None else image_uid(u1)
                     s2_uid = image_uid(s2_src) if s2_src is not None else image_uid(u2)
                 pl.cache.put_unified(s1_uid, s2_uid, method, wh[0], wh[1], (u1, u2))
+                # Union letterbox hold: keep prev union letterbox for 300-400ms after put_unified
+                try:
+                    import time as _t
+
+                    try:
+                        from shared.rendering.tile_constants import UNION_LETTERBOX_HOLD_MS as _HOLD
+                    except Exception:
+                        _HOLD = 350.0
+                    until = _t.monotonic() + _HOLD / 1000.0
+                    # Try canvas widget runtime_state first
+                    for _obj in (
+                        getattr(getattr(controller, "presenter", None), "widget", None),
+                        getattr(controller, "widget", None),
+                    ):
+                        if _obj is not None and hasattr(_obj, "runtime_state"):
+                            try:
+                                _obj.runtime_state._union_letterbox_hold_until = until
+                            except Exception:
+                                pass
+                        # also check image_label canvas inside widget
+                        try:
+                            from tabs.image_compare.canvas.helpers import get_canvas_widget
+
+                            _canvas = get_canvas_widget(_obj) if _obj is not None else None
+                            if _canvas is not None and hasattr(_canvas, "runtime_state"):
+                                try:
+                                    _canvas.runtime_state._union_letterbox_hold_until = until
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             except Exception:
                 pass
         d = getattr(controller.store, "get_dispatcher", lambda: None)()

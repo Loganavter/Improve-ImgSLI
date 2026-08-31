@@ -94,36 +94,19 @@ def should_use_progressive_load(
 ) -> bool:
     if not file_path:
         return False
-
-    if JXL_SUPPORTED and file_path.lower().endswith(".jxl"):
-        return True
-
-    if file_size_bytes is None:
-        try:
-            file_size_bytes = os.path.getsize(file_path)
-        except OSError:
-            file_size_bytes = 0
-    PROGRESSIVE_SIZE_THRESHOLD = getattr(
-        AppConstants, "PROGRESSIVE_LOAD_THRESHOLD_BYTES", 2 * 1024 * 1024
-    )
-
-    if file_size_bytes >= PROGRESSIVE_SIZE_THRESHOLD:
-        return True
-
+    # Always use progressive preview: even small images (e.g. 764x576) go
+    # via QImage preview first, then tiled full-res. Threshold forced to
+    # 0 / always-True. Keep decode-backend bound check so oversized
+    # non-streamable files still raise early.
     try:
-
         with Image.open(file_path) as img:
             width, height = img.size
             _ensure_supported_dimensions(width, height, file_path, ignore_limit=pyvips_can_stream(file_path))
-            FULL_HD_PIXELS = 1920 * 1080
-            return (width * height) >= FULL_HD_PIXELS
     except ImageSizeLimitError:
         raise
-    except Exception as e:
-
-        if not file_path.lower().endswith(".jxl"):
-            logger.debug(f"Failed to check image dimensions: {e}")
-        return False
+    except Exception:
+        pass
+    return True
 
 def load_preview_image(
     image_path: str, crop_service=None, auto_crop: bool | None = None

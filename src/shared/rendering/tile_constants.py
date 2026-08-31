@@ -105,6 +105,11 @@ MIPS_CASCADE_TIME_BUDGET_MS = 8.0
 # spends upload/mip budget on.
 LOD_FETCH_SETTLE_MS = 100.0
 
+# Union letterbox hold after put_unified (src/tabs/image_compare/canvas/texture_parts/base_images.py): ALLOWED - platform constant used by tab
+# keep prev union letterbox for 300-400ms after put_unified or until more_pending False,
+# not instant 0.571->0.523 jump. Use 350ms (within 300-400) derived from LOD_SETTLE.
+UNION_LETTERBOX_HOLD_MS = 350.0
+
 # Extra ring of tiles kept GPU-resident beyond what's strictly visible.
 # Was 0: that was set when LIVE_TILE_EXTENT was 8192 -- a prefetch ring
 # multiplied the resident set ~9x (a single 8192^2 RGBA tile was ~268 MB),

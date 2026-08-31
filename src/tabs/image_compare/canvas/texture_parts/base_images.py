@@ -1,4 +1,6 @@
 # Audit-Meta: pattern=canvas-presentation size=exempt reason="texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
+import time
+
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
@@ -8,6 +10,11 @@ from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
+
+try:
+    from shared.rendering.tile_constants import UNION_LETTERBOX_HOLD_MS
+except Exception:
+    UNION_LETTERBOX_HOLD_MS = 350.0
 
 
 def _canvas_dims(widget) -> tuple[int, int]:
@@ -231,11 +238,25 @@ def update_common_letterbox_geometry(
     # (portrait vs landscape) — keeps preview-preview close aspects distinct
     # to avoid 0.001 sliver (test_bbox) while fixing gap for mixed/large diff
     # (test_common). Threshold 0.4 separates 2000x1000 vs 1000x2000 (1.5) from
-    # 1017x838 vs 768x576 (0.11).
+    # 1017x838 vs 768x576 (0.11). Also union when grid differs (5x6 vs 2x2)
+    # — real bug 53,603: both Tiled 2797x2304 vs 764x576, same tier but gap.
+    import math
     aspect1 = w1 / h1 if h1 else 0
     aspect2 = w2 / h2 if h2 else 0
     large_aspect_diff = have1 and have2 and abs(aspect1 - aspect2) > 0.4
-    needs_union = have1 and have2 and (mixed_tier or large_aspect_diff)
+    try:
+        from core.constants import AppConstants
+        _tile = int(getattr(AppConstants, "PIXEL_TILE_SIZE", 512))
+    except Exception:
+        _tile = 512
+    def _grid(w, h):
+        return (math.ceil(w / _tile) if w else 0, math.ceil(h / _tile) if h else 0)
+    grid1 = _grid(w1, h1) if have1 else (0, 0)
+    grid2 = _grid(w2, h2) if have2 else (0, 0)
+    grid_mismatch = have1 and have2 and grid1 != grid2
+    size_mismatch = have1 and have2 and (w1 != w2 or h1 != h2)
+    # grid mismatch is sufficient (5x6 vs 2x2) even when aspect diff small
+    needs_union = have1 and have2 and (mixed_tier or large_aspect_diff or grid_mismatch or (size_mismatch and grid_mismatch))
 
     def _dispatch_store(rect_tuple: tuple[int, int, int, int]) -> bool:
         x, y, w, h = rect_tuple
@@ -265,15 +286,7 @@ def update_common_letterbox_geometry(
             return False
 
     if needs_union:
-        prev0 = state._letterbox_params[0]
-        prev1 = state._letterbox_params[1]
-        if prev0 is not None and prev1 is not None and prev0 == prev1 and prev0 != (0.0, 0.0, 1.0, 1.0):
-            prev_rect = getattr(state, "_inner_content_rect_px", None) or getattr(
-                state, "_content_rect_px", None
-            )
-            if prev_rect is not None and prev_rect[2] > 0 and prev_rect[3] > 0:
-                _dispatch_store(prev_rect)
-                return
+        # Compute candidate union rect first to detect 0.571->0.523 jump
         geom1 = resolve_canvas_content_geometry(
             widget_width=cw,
             widget_height=ch,
@@ -301,12 +314,55 @@ def update_common_letterbox_geometry(
         ux = int(round(ux))
         uy = int(round(uy))
         letterbox = (ux / float(cw), uy / float(ch), uw / float(cw), uh / float(ch))
+        candidate_rect = (ux, uy, uw, uh)
+
+        prev0 = state._letterbox_params[0]
+        prev1 = state._letterbox_params[1]
+        if prev0 is not None and prev1 is not None and prev0 == prev1 and prev0 != (0.0, 0.0, 1.0, 1.0):
+            prev_rect = getattr(state, "_inner_content_rect_px", None) or getattr(
+                state, "_content_rect_px", None
+            )
+            if prev_rect is not None and prev_rect[2] > 0 and prev_rect[3] > 0:
+                # Only hold if candidate would cause a jump (e.g. 0.571->0.523)
+                is_jump = (letterbox != prev0) or (tuple(candidate_rect) != tuple(prev_rect))
+                if is_jump:
+                    now = time.monotonic()
+                    hold_until = float(getattr(state, "_union_letterbox_hold_until", 0.0) or 0.0)
+                    # more_pending flag: tile residency still has pending uploads
+                    more_pending = getattr(state, "_tile_more_pending", None)
+                    if more_pending is None:
+                        more_pending = getattr(widget, "_tile_more_pending", None) if hasattr(widget, "_tile_more_pending") else None
+                    if more_pending is None:
+                        more_pending = True
+                    # If more_pending False => release immediately (no hold)
+                    if more_pending is False:
+                        try:
+                            state._union_letterbox_hold_until = 0.0
+                        except Exception:
+                            pass
+                    elif hold_until and now < hold_until:
+                        _dispatch_store(prev_rect)
+                        return
+                    elif hold_until and now >= hold_until:
+                        try:
+                            state._union_letterbox_hold_until = 0.0
+                        except Exception:
+                            pass
+                        # fall through to apply candidate
+                    else:
+                        # No active hold — start one for UNION_LETTERBOX_HOLD_MS
+                        try:
+                            state._union_letterbox_hold_until = now + UNION_LETTERBOX_HOLD_MS / 1000.0
+                        except Exception:
+                            pass
+                        _dispatch_store(prev_rect)
+                        return
         state._letterbox_params[0] = letterbox
         state._letterbox_params[1] = letterbox
-        state._content_rect_px = (ux, uy, uw, uh)
-        state._inner_content_rect_px = (ux, uy, uw, uh)
+        state._content_rect_px = candidate_rect
+        state._inner_content_rect_px = candidate_rect
         state._clip_overlays_to_content_rect = False
-        _dispatch_store((ux, uy, uw, uh))
+        _dispatch_store(candidate_rect)
         return
 
     update_letterbox_geometry(widget, image1, slot_index=0)

@@ -102,6 +102,11 @@ class CanvasRuntimeState:
     _guides_thickness: int = 0
     _capture_color: object = field(default_factory=QColor)
     _export_canvas_viewport: tuple | None = None
+    # Union letterbox hold after put_unified: keep prev union letterbox for
+    # UNION_LETTERBOX_HOLD_MS (350ms) or until tile more_pending False.
+    # See base_images.update_common_letterbox_geometry.
+    _union_letterbox_hold_until: float = 0.0
+    _tile_more_pending: bool = False
 
 
 def init_widget_state(widget):
