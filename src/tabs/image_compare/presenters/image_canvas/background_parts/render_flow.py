@@ -550,7 +550,27 @@ def update_comparison_if_needed(presenter):
             try:
                 c = _pl.peek(path)
                 if c is not None and getattr(c, "is_open", True):
-                    return c
+                    if hasattr(c, "isNull"):
+                        try:
+                            if not c.isNull():
+                                return c
+                        except Exception:
+                            return c
+                    else:
+                        return c
+            except Exception:
+                pass
+            try:
+                p = _pl.peek_preview(path)
+                if p is not None:
+                    if hasattr(p, "isNull"):
+                        try:
+                            if not p.isNull():
+                                return p
+                        except Exception:
+                            return p
+                    else:
+                        return p
             except Exception:
                 pass
         return None

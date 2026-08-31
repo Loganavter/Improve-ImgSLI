@@ -58,6 +58,22 @@ def _unify_resize_method(controller) -> str:
     return get_effective_main_interpolation_method(controller.store.viewport)
 
 
+def _peek_both(pl, path: str | None):
+    """Tier-aware peek: _pixel (TiledPixelStore) or _preview (QImage 1024)."""
+    if not path or pl is None:
+        return None
+    try:
+        hit = pl.peek(path)
+        if hit is not None:
+            return hit
+    except Exception:
+        pass
+    try:
+        return pl.peek_preview(path)
+    except Exception:
+        return None
+
+
 def _slot_sources(controller, document):
     """PipelineCache is single source; fallback to viewport image_state."""
     pl = getattr(controller, "pipeline", None)
@@ -69,9 +85,9 @@ def _slot_sources(controller, document):
                 p1 = document.image1_path
                 p2 = document.image2_path
                 if p1:
-                    s1 = pl.peek(p1)
+                    s1 = _peek_both(pl, p1)
                 if p2:
-                    s2 = pl.peek(p2)
+                    s2 = _peek_both(pl, p2)
             except Exception:
                 pass
         if s1 is None and vp_state is not None:
@@ -111,10 +127,52 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
                 wh = (max(w1, w2), max(h1, h2))
             except Exception:
                 wh = (0, 0)
+            from shared.rendering.image_identity import image_uid
+
             cached = pl.cache.get_unified(
-                getattr(s1, "uid", id(s1)), getattr(s2, "uid", id(s2)), method, wh[0], wh[1]
+                image_uid(s1), image_uid(s2), method, wh[0], wh[1]
             )
-            _ = cached
+            if cached is not None:
+                try:
+                    u1, u2 = cached
+                    if u1 is not None and u2 is not None:
+                        # publish cached unified pair without spawning worker
+                        d_hit = getattr(controller.store, "get_dispatcher", lambda: None)()
+                        if d_hit is not None:
+                            try:
+                                with controller.store.batch_changes():
+                                    d_hit.dispatch(SetImageSessionImageAction(slot=1, image=u1), scope="viewport")
+                                    d_hit.dispatch(SetImageSessionImageAction(slot=2, image=u2), scope="viewport")
+                            except Exception:
+                                logger.error("Failed to dispatch cached unified images", exc_info=True)
+                        try:
+                            controller._start_pyramid_builds(u1, u2)
+                        except Exception:
+                            pass
+                        try:
+                            controller.store.invalidate_render_cache()
+                        except Exception:
+                            pass
+                        try:
+                            controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
+                        except Exception:
+                            pass
+                        try:
+                            controller._schedule_image_canvas_update()
+                        except Exception:
+                            pass
+                        try:
+                            _clear_unification_flags(controller)
+                        except Exception:
+                            pass
+                        try:
+                            controller._trigger_metrics_calculation_if_needed()
+                        except Exception:
+                            pass
+                        logger.info("get_unified hit method=%s wh=%s", method, wh)
+                        return
+                except Exception:
+                    pass
         except Exception:
             pass
     rc = _session_render_cache(controller)
@@ -327,7 +385,39 @@ def on_unified_images_ready(controller, result):
                     wh = (max(w1, w2), max(h1, h2))
                 except Exception:
                     wh = (0, 0)
-                pl.cache.put_unified(getattr(u1, "uid", id(u1)), getattr(u2, "uid", id(u2)), method, wh[0], wh[1], (u1, u2))
+                from shared.rendering.image_identity import image_uid
+
+                # memo key is source uid, not result uid (fix never-hit)
+                s1_src = s2_src = None
+                try:
+                    if hasattr(pl, "peek"):
+                        try:
+                            s1_src = pl.peek(path1)
+                        except Exception:
+                            pass
+                        if s1_src is None:
+                            try:
+                                s1_src = pl.peek_preview(path1)
+                            except Exception:
+                                pass
+                        try:
+                            s2_src = pl.peek(path2)
+                        except Exception:
+                            pass
+                        if s2_src is None:
+                            try:
+                                s2_src = pl.peek_preview(path2)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                if s1_src is not None and s2_src is not None:
+                    s1_uid = image_uid(s1_src)
+                    s2_uid = image_uid(s2_src)
+                else:
+                    s1_uid = image_uid(s1_src) if s1_src is not None else image_uid(u1)
+                    s2_uid = image_uid(s2_src) if s2_src is not None else image_uid(u2)
+                pl.cache.put_unified(s1_uid, s2_uid, method, wh[0], wh[1], (u1, u2))
             except Exception:
                 pass
         d = getattr(controller.store, "get_dispatcher", lambda: None)()

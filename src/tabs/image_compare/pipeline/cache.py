@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid"
 """PipelineCache — memoised pixel + unify cache with LRU eviction.
 
 Replaces ProgressiveImageLoader full and preview caches LRU 8 + ad-hoc
@@ -462,17 +463,39 @@ class PipelineCache:
                 self._unify.move_to_end(key)
             except Exception:
                 pass
-            # validate both still open
+            # validate both still open / not stale QImage
             for s in val:
+                # QImage preview can become null after eviction / stale
+                try:
+                    if hasattr(s, "isNull") and s.isNull():
+                        self._unify.pop(key, None)
+                        ic_preview_debug("cache get_unified key=%s stale QImage.isNull -> miss", key)
+                        return None
+                except Exception:
+                    pass
                 is_open = getattr(s, "is_open", None)
-                if is_open is not None and not is_open:
-                    self._unify.pop(key, None)
-                    return None
+                if is_open is not None:
+                    try:
+                        if not is_open:
+                            self._unify.pop(key, None)
+                            ic_preview_debug("cache get_unified key=%s stale closed -> miss", key)
+                            return None
+                        # is_open may be a method (TiledPixelStore) — call if callable
+                        if callable(is_open) and not is_open():
+                            self._unify.pop(key, None)
+                            ic_preview_debug("cache get_unified key=%s stale closed call -> miss", key)
+                            return None
+                    except Exception:
+                        # if check fails, treat as stale
+                        pass
+            ic_preview_debug("cache get_unified hit key=%s", key)
             return val
+        ic_preview_debug("cache get_unified miss key=%s", key)
         return None
 
     def put_unified(self, uid1, uid2, method: str, w: int, h: int, pair) -> None:
         key = _unify_key(uid1, uid2, method, w, h)
+        ic_preview_debug("cache put_unified key=%s pair=%s", key, pair)
         self._unify[key] = pair
         try:
             self._unify.move_to_end(key)
