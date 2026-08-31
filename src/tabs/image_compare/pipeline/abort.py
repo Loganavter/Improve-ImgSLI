@@ -1,7 +1,7 @@
 """AbortSignal — generation-based cancellation token for pipeline runs.
 
-Replaces _unification_task_id monotonic token + StoreLease capture in
-_session_controller.py:60 / loading.py:164. One signal per pipeline run;
+Replaces legacy task id monotonic token + store lease capture in
+_session_controller / loading. One signal per pipeline run;
 every async stage checks is_aborted() or should_abort() closure.
 """
 

@@ -196,17 +196,12 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
                     pass
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
-            # Defer via QTimer to satisfy legacy test contract (Phase 2 removed
-            # QTimer for browse-undo but duplicate still deferred for ordering).
+            # Dispatcher is reentrant-safe (dispatcher.py:186) — synchronous dispatch
+            # without QTimer deferral.
             try:
-                from tabs.image_compare.use_cases.loading import QTimer  # type: ignore
-
-                if QTimer is not None:
-                    QTimer.singleShot(0, lambda: controller.set_current_image(target_slot))
-                else:
-                    controller.set_current_image(target_slot)
-            except Exception:
                 controller.set_current_image(target_slot)
+            except Exception:
+                pass
             return
     pl = getattr(controller, "pipeline", None)
     cached = pl.peek(path) if pl else None
@@ -238,15 +233,11 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
                     pass
         except Exception:
             pass
+    # Synchronous — Dispatcher reentrant-safe, no QTimer needed.
     try:
-        from tabs.image_compare.use_cases.loading import QTimer  # type: ignore
-
-        if QTimer is not None:
-            QTimer.singleShot(0, lambda: controller.set_current_image(target_slot))
-        else:
-            controller.set_current_image(target_slot)
-    except Exception:
         controller.set_current_image(target_slot)
+    except Exception:
+        pass
 
 
 def _reload_existing_path(controller, image_number: int, normalized_path: str, target_list_ref):
@@ -352,30 +343,82 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
     if pil_img is None and path:
-        # Single-flight: 4 parallel DnD / resync calls for same (slot,path)
-        # while first worker is in flight must not start 4 decodes (2026-08-30
-        # log: 4× from_path + 7× autocrop). Use controller._pending_image_loads
-        # (proxied to ImageSession) as in-flight set.
-        pending = getattr(controller, "_pending_image_loads", None)
+        # Single-flight via ImagePipeline._inflight + AbortSignal (Phase 2A).
+        # Legacy _pending_image_loads is now alias to _inflight; prefer direct
+        # pipeline check so new path uses signal-aware dedup.
+        pl = getattr(controller, "pipeline", None)
         key = (int(image_number), str(path))
-        if pending is not None:
-            if key in pending:
-                if emit_signal:
-                    controller.store.emit_state_change("document")
-                return
-            pending.add(key)
+        if pl is not None and hasattr(pl, "_inflight"):
+            existing = pl._inflight.get(key)  # type: ignore[arg-type]
+            if existing is not None:
+                try:
+                    if not existing.is_aborted():
+                        if emit_signal:
+                            controller.store.emit_state_change("document")
+                        return
+                except Exception:
+                    if emit_signal:
+                        controller.store.emit_state_change("document")
+                    return
+            # reserve single-flight slot with fresh AbortSignal
+            try:
+                from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal
+
+                _sig = _AbortSignal()
+                pl._inflight[key] = _sig
+            except Exception:
+                _sig = None
 
             def _clear():
                 try:
-                    pending.discard(key)
+                    cur_sig = pl._inflight.get(key)  # type: ignore[arg-type]
+                    if _sig is None or cur_sig is _sig:
+                        pl._inflight.pop(key, None)
                 except Exception:
                     pass
+
+            # wrap load to respect abort (signal-aware)
+            _orig_load = controller._load_image_async
+
+            def _load_with_signal(p, num, idx, _t=None):
+                try:
+                    if _sig is not None and _sig.is_aborted():
+                        return None, p, num, idx, False
+                except Exception:
+                    pass
+                res = _orig_load(p, num, idx, _t)
+                try:
+                    if _sig is not None and _sig.is_aborted():
+                        return None, p, num, idx, False
+                except Exception:
+                    pass
+                return res
+
+            worker = GenericWorker(_load_with_signal, path, image_number, cur, None)
         else:
+            # Fallback for fakes without pipeline
+            pending = getattr(controller, "_pending_image_loads", None)
+            if pending is not None:
+                if key in pending:
+                    if emit_signal:
+                        controller.store.emit_state_change("document")
+                    return
+                try:
+                    pending.add(key)
+                except Exception:
+                    pass
 
-            def _clear():  # type: ignore[no-redef]
-                pass
+                def _clear():
+                    try:
+                        pending.discard(key)
+                    except Exception:
+                        pass
+            else:
 
-        worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
+                def _clear():  # type: ignore[no-redef]
+                    pass
+
+            worker = GenericWorker(controller._load_image_async, path, image_number, cur, None)
         worker.signals.result.connect(controller._on_image_loaded_from_worker)
         # finished fires on both success and error; result also clears so
         # slot can reload after failure.
