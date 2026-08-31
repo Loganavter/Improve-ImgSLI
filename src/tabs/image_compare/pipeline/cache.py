@@ -14,9 +14,17 @@ pyramid_registry sweep (like ProgressiveImageLoader.clear_cache).
 
 from __future__ import annotations
 
+import logging
 import os
 from collections import OrderedDict
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger("ImproveImgSLI")
+try:
+    from tabs.image_compare.debug import ic_preview_debug
+except Exception:  # pragma: no cover
+    def ic_preview_debug(msg, *a, **kw):  # type: ignore
+        pass
 
 import logging
 
@@ -198,6 +206,7 @@ class PipelineCache:
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
         # если явно передан auto_crop, он приоритетнее сервиса
         key = _pixel_key(path, eff, auto_crop)
+        ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, key in self._pixel)
         store = self._pixel.get(key)
         if store is not None:
             # LRU bump
@@ -229,7 +238,9 @@ class PipelineCache:
         if isinstance(crop_service, bool):
             auto_crop = crop_service
             crop_service = None
-        key = _pixel_key(path, crop_service, auto_crop)
+        eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
+        key = _pixel_key(path, eff, auto_crop)
+        ic_preview_debug("cache put_pixel path=%s eff=%s auto_crop=%s key=%s store=%s", path, bool(eff), auto_crop, key, getattr(store, "uid", id(store)))
         self._pixel[key] = store
         try:
             self._pixel.move_to_end(key)

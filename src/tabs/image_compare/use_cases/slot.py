@@ -182,6 +182,14 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             if has_path:
                 document_store_ops.clear_image_slot_data(controller.store, image_number)
 
+    # Re-fetch after is_new dispatches: DocumentModel is immutable via replace()
+    # which copies image_list1/2 (see debug test 2026-08-31), so old `lst` reference
+    # is detached from store's current document. Without re-fetch, `lst.append`
+    # mutates detached list and store's list stays empty → ensure_current_slot sees 0.
+    document = controller.store.get_session_state_slot("document")
+    lst = document.image_list1 if image_number == 1 else document.image_list2
+    ic_preview_debug("load_images_from_paths slot=%s after is_new re-fetch len=%s id(lst)=%s", image_number, len(lst), id(lst))
+
     errors, new_idx = [], []
     seen = {e.path for e in lst if e.path}
     ic_preview_debug("load_images_from_paths slot=%s seen=%s", image_number, seen)
