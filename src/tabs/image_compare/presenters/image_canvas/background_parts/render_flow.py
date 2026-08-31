@@ -627,30 +627,10 @@ def update_comparison_if_needed(presenter):
                 return None
         return None
 
-    def _legacy_image(doc, slot: int):
-        # Test fakes still set preview/full via SimpleNamespace — keep compat without literal `preview_image`
-        if doc is None:
-            return None
-        for pref in ("full" + "_res_image", "preview" + "_image", "original" + "_image"):
-            try:
-                v = getattr(doc, pref + str(slot), None)
-                if v is not None:
-                    return v
-            except Exception:
-                pass
-        return None
-
     _peeked_pixel1 = _peek_pixel(_path1)
     _peeked_pixel2 = _peek_pixel(_path2)
     _peeked_preview1 = _peek_preview(_path1)
     _peeked_preview2 = _peek_preview(_path2)
-    _legacy1 = _legacy_image(_document, 1)
-    _legacy2 = _legacy_image(_document, 2)
-    if _peeked_pixel1 is None and _legacy1 is not None:
-        # Use legacy for test fakes where pipeline not populated
-        _peeked_preview1 = _legacy1 if _peeked_preview1 is None else _peeked_preview1
-    if _peeked_pixel2 is None and _legacy2 is not None:
-        _peeked_preview2 = _legacy2 if _peeked_preview2 is None else _peeked_preview2
     # Throttle document state log: only when sig changes to avoid 40Hz spam
     global _last_document_log_sig
     _doc_sig = (

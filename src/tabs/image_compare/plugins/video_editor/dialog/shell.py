@@ -264,8 +264,8 @@ class VideoEditorDialog(ThemedDialog):
 
         pass
 
-    def set_preview_image(self, pixmap: QPixmap):
-        self.runtime.set_preview_image(pixmap)
+    def set_preview(self, pixmap: QPixmap):
+        self.runtime.set_preview(pixmap)
 
     def set_timeline_position(self, frame_idx: int):
         self.timeline.blockSignals(True)
@@ -408,7 +408,7 @@ class VideoEditorDialog(ThemedDialog):
         self.export_ui.on_codec_changed(codec_text)
 
     def _on_preview_updated(self, pixmap: QPixmap):
-        self.set_preview_image(pixmap)
+        self.set_preview(pixmap)
 
     def _on_timeline_position_changed(self, frame_idx: int):
         self.set_timeline_position(frame_idx)

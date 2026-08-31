@@ -76,8 +76,6 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
         image_list2=[],
         current_index1=0,
         current_index2=-1,
-        image1_path="/a.png",
-        full_res_image1=object(),
     )
     store = _Store(document)
     live_image = store.viewport.session_data.image_state.image1
@@ -144,6 +142,35 @@ def test_render_flow_keeps_live_side_when_other_slot_empty():
     live = object()
     cleared: list[int] = []
     single: list[object] = []
+    doc = SimpleNamespace(image1_path="/a.png", image2_path=None)
+    fake_store = SimpleNamespace(
+        viewport=SimpleNamespace(
+            interaction_state=SimpleNamespace(
+                is_interactive_mode=False,
+                resize_in_progress=False,
+            ),
+            view_state=SimpleNamespace(
+                showing_single_image_mode=0,
+                diff_mode="off",
+                channel_view_mode="rgb",
+            ),
+            session_data=SimpleNamespace(
+                image_state=SimpleNamespace(image1=live, image2=None),
+                render_cache=SimpleNamespace(
+                    unification_in_progress=False,
+                    cached_diff_image=None,
+                ),
+            ),
+            geometry_state=SimpleNamespace(
+                pixmap_width=0,
+                pixmap_height=0,
+                image_display_rect_on_label=None,
+            ),
+            render_config=SimpleNamespace(),
+        ),
+        get_session_state_slot=lambda _n: doc if _n == "document" else None,
+        get_dispatcher=lambda: None,
+    )
 
     presenter = SimpleNamespace(
         main_window_app=SimpleNamespace(
@@ -152,42 +179,7 @@ def test_render_flow_keeps_live_side_when_other_slot_empty():
             isMinimized=lambda: False,
             _is_ui_stable=True,
         ),
-        store=SimpleNamespace(
-            viewport=SimpleNamespace(
-                interaction_state=SimpleNamespace(
-                    is_interactive_mode=False,
-                    resize_in_progress=False,
-                ),
-                view_state=SimpleNamespace(
-                    showing_single_image_mode=0,
-                    diff_mode="off",
-                    channel_view_mode="rgb",
-                ),
-                session_data=SimpleNamespace(
-                    image_state=SimpleNamespace(image1=live, image2=None),
-                    render_cache=SimpleNamespace(
-                        unification_in_progress=False,
-                        cached_diff_image=None,
-                    ),
-                ),
-                geometry_state=SimpleNamespace(
-                    pixmap_width=0,
-                    pixmap_height=0,
-                    image_display_rect_on_label=None,
-                ),
-                render_config=SimpleNamespace(),
-            ),
-            get_session_state_slot=lambda _n: SimpleNamespace(
-                full_res_image1=live,
-                full_res_image2=None,
-                preview_image1=None,
-                preview_image2=None,
-                original_image1=None,
-                original_image2=None,
-                image1_path="/a.png",
-                image2_path=None,
-            ),
-        ),
+        store=fake_store,
         widget=SimpleNamespace(
             image_label=SimpleNamespace(clear=lambda: cleared.append(1))
         ),

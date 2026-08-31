@@ -181,12 +181,6 @@ def finish_toast_for_unpaired_slot(controller, document, image_number: int) -> N
                                 own = v
                     except Exception:
                         pass
-            # legacy fallback for tests / DocumentModel with full_res fields (only full-res, not preview)
-            if own is None:
-                try:
-                    own = getattr(document, f"full_res_image{image_number}", None)
-                except Exception:
-                    pass
     other_number = 2 if image_number == 1 else 1
     other_path = getattr(document, f"image{other_number}_path", None)
     if own is not None and not other_path:

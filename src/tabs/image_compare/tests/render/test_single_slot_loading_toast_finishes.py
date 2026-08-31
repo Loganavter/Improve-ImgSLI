@@ -14,44 +14,27 @@ from __future__ import annotations
 
 from PIL import Image
 
+from core.state_management.dispatcher import Dispatcher
+from core.store import Store
+from core.store_viewport import SessionData
+from tabs.image_compare.pipeline.cache import _pixel_key
+from tabs.image_compare.pipeline.pipeline import ImagePipeline
+from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
 from tabs.image_compare.state.document import DocumentModel, ImageItem
+from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 from tabs.image_compare.use_cases import loading
 
 
-class _RenderCache:
-    def __init__(self):
-        self.unification_in_progress = False
-        self.pending_unification_paths = None
-        self.cached_diff_image = None
-
-
-class _ImageState:
-    image1 = None
-    image2 = None
-
-
-class _SessionData:
-    def __init__(self):
-        self.image_state = _ImageState()
-        self.render_cache = _RenderCache()
-
-
-class _Viewport:
-    def __init__(self):
-        self.session_data = _SessionData()
-
-
-class _Store:
-    def __init__(self, document: DocumentModel):
-        self.document = document
-        self.viewport = _Viewport()
-
-    def get_session_state_slot(self, name):
-        assert name == "document"
-        return self.document
-
-    def emit_state_change(self, *_args, **_kwargs):
-        pass
+def _make_store(document: DocumentModel) -> Store:
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", document)
+    store.viewport.session_data = SessionData(
+        image_state=ImageSessionState(), render_cache=RenderCacheState()
+    )
+    store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
+    store.set_dispatcher(Dispatcher(store))
+    return store
 
 
 class _ThreadPool:
@@ -63,25 +46,40 @@ class _ThreadPool:
 
 
 class _FakeController:
-    def __init__(self, store: _Store):
+    def __init__(self, store: Store):
         self.store = store
+        self.pipeline = ImagePipeline(store=store)
         self.thread_pool = _ThreadPool()
         self.presenter = None
+        self.event_bus = None
+        self.diff_service = None
         self.metrics_service = type(
             "M", (), {"on_metrics_calculated": lambda self, _v: None}
         )()
-        self._unification_task_id = 0
         self.finished_toasts: list = []
 
     def _cancel_pending_unification(self, *_args, **_kwargs):
         pass
 
+    def _invalidate_image_canvas_render_state(self, *_a, **_kw):
+        pass
+
+    def _schedule_image_canvas_update(self, *_a, **_kw):
+        pass
+
+    def _trigger_preview_unification(self, n):  # for slot.set_current fallback
+        pass
+
+    def set_current_image(self, *a, **kw):
+        pass
+
     def _update_image_slot(self, image_number, *, image=None, path=None, is_full_res=False, is_preview=False):
-        document = self.store.get_session_state_slot("document")
-        if is_full_res and image is not None:
-            setattr(document, f"full_res_image{image_number}", image)
-        if is_preview and image is not None:
-            setattr(document, f"preview_image{image_number}", image)
+        # legacy path no longer used — pipeline is single source; keep no-op for compat
+        if image is not None and path:
+            try:
+                self.store.transact([PutPixelAction(path=path, store=image)], scope="pipeline")
+            except Exception:
+                pass
 
     def _mark_full_res_ready(self, image_number):
         pass
@@ -89,24 +87,29 @@ class _FakeController:
     def _finish_loading_toast(self, image_number):
         self.finished_toasts.append(image_number)
 
+    def _start_pyramid_builds(self, *_a, **_kw):
+        pass
+
+    def _trigger_metrics_calculation_if_needed(self, *_a, **_kw):
+        pass
+
 
 def _single_slot_document(path: str):
     img = Image.new("RGBA", (4, 4), "red")
     document = DocumentModel(
-        image_list1=[ImageItem(image=None, path=path, display_name=path)],
+        image_list1=[ImageItem(path=path, display_name=path)],
         image_list2=[],
         current_index1=0,
         current_index2=-1,
-        image1_path=path,
-        image2_path=None,
     )
-    document.full_res_image1 = img
-    return document
+    return document, img
 
 
 def test_trigger_preview_unification_finishes_toast_for_unpaired_slot():
-    document = _single_slot_document("only1.png")
-    store = _Store(document)
+    document, img = _single_slot_document("only1.png")
+    store = _make_store(document)
+    # seed pipeline pixel for this path — single source
+    store.transact([PutPixelAction(path="only1.png", store=img)], scope="pipeline")
     controller = _FakeController(store)
 
     loading.trigger_preview_unification(controller, 1)
@@ -120,12 +123,10 @@ def test_trigger_preview_unification_finishes_toast_for_unpaired_slot():
 
 
 def test_handle_full_image_loaded_finishes_toast_for_unpaired_slot(monkeypatch):
-    document = _single_slot_document("only1.png")
-    store = _Store(document)
+    document, img = _single_slot_document("only1.png")
+    store = _make_store(document)
+    # need pipeline linked before call
     controller = _FakeController(store)
-
-    img = document.full_res_image1
-    document.image_list1[0].image = img
 
     loading.handle_full_image_loaded(controller, img, "only1.png", 1, 0)
 
@@ -139,16 +140,20 @@ def test_trigger_preview_unification_does_not_finish_toast_while_own_decode_pend
     still in flight."""
     path = "only1.png"
     document = DocumentModel(
-        image_list1=[ImageItem(image=None, path=path, display_name=path)],
+        image_list1=[ImageItem(path=path, display_name=path)],
         image_list2=[],
         current_index1=0,
         current_index2=-1,
-        image1_path=path,
-        image2_path=None,
     )
-    document.preview_image1 = Image.new("RGBA", (4, 4), "red")
-    store = _Store(document)
+    store = _make_store(document)
+    preview = Image.new("RGBA", (4, 4), "red")
+    store.transact([PutPreviewAction(path=path, qimage=preview)], scope="pipeline")
     controller = _FakeController(store)
+    # mark that full pixel still inflight — pipeline._inflight key for slot 1
+    from tabs.image_compare.pipeline.abort import AbortSignal
+
+    sig = AbortSignal()
+    controller.pipeline._inflight[(1, path)] = sig  # type: ignore[index]
 
     loading.trigger_preview_unification(controller, 1)
 
