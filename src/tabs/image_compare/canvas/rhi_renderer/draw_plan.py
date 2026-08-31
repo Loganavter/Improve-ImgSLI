@@ -491,14 +491,14 @@ def build_array_draw_plan(
                 continue
             # Micro-gap fix: adjacent tile bboxes share an edge in content
             # space (0.0887 vs 0.08906). Floating-point + integer-rounded
-            # letterbox (eager_envelope ux_i/cw) leaves a 0.5px screen seam
+            # letterbox (eager_envelope ux_i/cw) leaves a 0.5-1px screen seam
             # at overview zoom (0.207*0.002*2153≈0.9px) that heals after any
-            # zoom recomputes letterbox/visible_rect. Expand bbox by ~0.5px
-            # screen (≈0.001 in content space at overview) to guarantee
+            # zoom recomputes letterbox/visible_rect. Expand bbox by ~1px
+            # screen (≈0.003 in content space at overview) to guarantee
             # overlap and no background bleed. Clamp to [0,1] so we never
             # sample outside the letterbox. Must be after the <0.002 sliver
             # filter or 0.0007 slivers would be inflated to 0.0037 and kept.
-            _eps = 0.0015
+            _eps = 0.003
             pair_bbox = (
                 max(0.0, pair_bbox[0] - _eps),
                 max(0.0, pair_bbox[1] - _eps),

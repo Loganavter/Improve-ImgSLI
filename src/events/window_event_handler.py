@@ -1,9 +1,25 @@
 import logging
+import os
+import traceback
 
 from PySide6.QtCore import QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _dnd_debug(msg, *args, stack=False, **kwargs):
+    # Gated by same flag as [ic-dnd] but also IMGSLI_DND_DEBUG for window-level
+    if os.environ.get("IMGSLI_DND_DEBUG") or os.environ.get("IMGSLI_IMAGE_COMPARE_DEBUG") or os.environ.get("IMGSLI_IC_DEBUG"):
+        # Use WARNING so visible without --debug, like ic_dnd_debug
+        logger.warning("[dnd-window] " + msg, *args, **kwargs)
+        if stack:
+            try:
+                s = "".join(traceback.format_stack(limit=5)[:-2])
+                logger.warning("[dnd-window] stack:\n%s", s)
+            except Exception:
+                pass
+    else:
+        logger.debug("[dnd-window] " + msg, *args, **kwargs)
 
 class WindowEventHandler(QObject):
     def __init__(self, store, main_controller, widget, parent=None):
@@ -47,17 +63,22 @@ class WindowEventHandler(QObject):
             self._drag_leave_timer.stop()
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
-
+            _dnd_debug("handle_drag_enter -> show overlay", stack=True)
             QTimer.singleShot(0, lambda: self._safe_update_drag_overlays(True))
         else:
             event.ignore()
 
     def _safe_update_drag_overlays(self, visible):
+        # Only log when visibility actually changes to avoid 60Hz spam
+        _before = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?"
         if self.widget is not None and hasattr(self.widget, "update_drag_overlays"):
             try:
                 self.widget.update_drag_overlays(
                     self.store.viewport.view_state.is_horizontal, visible=visible
                 )
+                _after = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if hasattr(self.widget, "is_drag_overlay_visible") else "?"
+                if _before != visible or _after != visible:
+                    _dnd_debug("_safe_update_drag_overlays visible=%s before=%s after=%s", visible, _before, _after, stack=True)
             except (AttributeError, RuntimeError) as e:
                 logger.warning(
                     f"WindowEventHandler._safe_update_drag_overlays: failed to update drag overlays: {e}"
@@ -77,7 +98,20 @@ class WindowEventHandler(QObject):
 
     def handle_drop(self, event: QDropEvent):
         self._drag_leave_timer.stop()
-        QTimer.singleShot(0, lambda: self._safe_update_drag_overlays(False))
+        self._safe_update_drag_overlays(False)
+        # Force immediate visual hide – TopLevelInWindowOverlay hide() alone
+        # waits for next paint, which is coalesced with the RHI canvas repaint
+        # triggered only after image decode (0.5s). Repaint parent now.
+        try:
+            if self.widget:
+                self.widget.update()
+                self.widget.repaint()
+                if hasattr(self.widget, "drag_overlay"):
+                    self.widget.drag_overlay.update()
+                    self.widget.drag_overlay.repaint()
+        except Exception:
+            pass
+        _dnd_debug("handle_drop hide overlay is_drag_overlay_visible=%s", getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?", stack=True)
 
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
