@@ -242,7 +242,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 604,
+      "lines": 626,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -253,7 +253,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 466,
+      "lines": 467,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -264,7 +264,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 548,
+      "lines": 607,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -336,7 +336,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/tile_residency.py",
-      "lines": 183,
+      "lines": 184,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",

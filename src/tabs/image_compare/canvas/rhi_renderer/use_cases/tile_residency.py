@@ -118,6 +118,7 @@ def realize_magnifier_tiles(
     ctx,
     texture_keys: tuple[object, object],
     base_image,
+    updates,
     viewport_zoom: tuple[float, float] | None,
     viewport_offset: tuple[float, float] | None,
     dirty_layers: dict[int, set[int]],

@@ -489,6 +489,22 @@ def build_array_draw_plan(
             # overlap (8px → 0.004*letterbox) stays >0.002 and is kept.
             if pair_bbox[2] < 0.002 or pair_bbox[3] < 0.002:
                 continue
+            # Micro-gap fix: adjacent tile bboxes share an edge in content
+            # space (0.0887 vs 0.08906). Floating-point + integer-rounded
+            # letterbox (eager_envelope ux_i/cw) leaves a 0.5px screen seam
+            # at overview zoom (0.207*0.002*2153≈0.9px) that heals after any
+            # zoom recomputes letterbox/visible_rect. Expand bbox by ~0.5px
+            # screen (≈0.001 in content space at overview) to guarantee
+            # overlap and no background bleed. Clamp to [0,1] so we never
+            # sample outside the letterbox. Must be after the <0.002 sliver
+            # filter or 0.0007 slivers would be inflated to 0.0037 and kept.
+            _eps = 0.0015
+            pair_bbox = (
+                max(0.0, pair_bbox[0] - _eps),
+                max(0.0, pair_bbox[1] - _eps),
+                min(1.0 - max(0.0, pair_bbox[0] - _eps), pair_bbox[2] + 2 * _eps),
+                min(1.0 - max(0.0, pair_bbox[1] - _eps), pair_bbox[3] + 2 * _eps),
+            )
             content_scale = (*scale1, *scale2)
             if not diff_is_multi_tile:
                 items.append(
@@ -516,6 +532,12 @@ def build_array_draw_plan(
                 _diff_bbox = _intersection_rect(pair_bbox, diff_common)
                 if _diff_bbox[2] < 0.002 or _diff_bbox[3] < 0.002:
                     continue
+                _diff_bbox = (
+                    max(0.0, _diff_bbox[0] - _eps),
+                    max(0.0, _diff_bbox[1] - _eps),
+                    min(1.0 - max(0.0, _diff_bbox[0] - _eps), _diff_bbox[2] + 2 * _eps),
+                    min(1.0 - max(0.0, _diff_bbox[1] - _eps), _diff_bbox[3] + 2 * _eps),
+                )
                 emitted_for_pair = True
                 items.append(
                     ArrayDrawItem(
