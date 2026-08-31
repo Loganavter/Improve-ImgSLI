@@ -76,16 +76,19 @@ def _discard_pending_loads(main_controller, image_number: int, paths: list[str])
 
 
 def _invalidate_caches_for_paths(paths: list[str], main_controller=None) -> None:
+    """Инвалидация только через два канала: CropService + PipelineCache.evict.
+
+    Legacy registry pop и прямой pyramid sweep удалены — единственный ключ
+    пикселя ``PipelineCache._pixel_key`` (``_pixel LRU8`` с ``box_tuple``),
+    единственный владелец sweep — ``PipelineCache.evict``.
+    """
     if not paths:
         return
     for p in paths:
         if not p:
             continue
+        # CropService DI — точечная инвалидация path во всех живых сервисах
         try:
-            from shared.image_processing.autocrop import invalidate_all_services
-            from shared.image_processing.autocrop.service import CropService
-
-            # Инвалидируем все живые сервисы (DI) — точечная инвалидация path
             from shared.image_processing.autocrop.service import _live_services
 
             for svc in list(_live_services):
@@ -95,35 +98,11 @@ def _invalidate_caches_for_paths(paths: list[str], main_controller=None) -> None
                     pass
         except Exception:
             pass
-        # Совместимость: старый глобальный сервис
-        try:
-            from shared.image_processing import autocrop_service
-
-            autocrop_service.invalidate(p)
-        except Exception:
-            pass
-        try:
-            from shared.image_processing import pixel_cache_registry
-
-            cache = getattr(pixel_cache_registry, "_cache", None)
-            if isinstance(cache, dict):
-                cache.pop(p, None)
-                # also try normalized / str variants
-                import os as _os
-
-                try:
-                    cache.pop(_os.path.normpath(p), None)
-                except Exception:
-                    pass
-                try:
-                    cache.pop(str(p), None)
-                except Exception:
-                    pass
-        except Exception:
-            pass
         # PipelineCache (per-session, ImageSession.cache) — evict closed TiledPixelStore
         # иначе peek(cache.py:98) находит closed store → lazy evict только на peek,
-        # duplicate теряет refcount, unify memo остаётся с old_uids.
+        # duplicate теряет refcount, unify memo остаётся с old_uids. pyramid sweep
+        # вызывается централизованно внутри PipelineCache.evict — прямого вызова
+        # pyramid_registry.sweep() здесь нет (plan_loading_simplification Phase 1C).
         if main_controller is not None:
             try:
                 ctrl = main_controller
@@ -167,12 +146,6 @@ def _invalidate_caches_for_paths(paths: list[str], main_controller=None) -> None
                                 pass
             except Exception:
                 pass
-    try:
-        from shared.image_processing import pyramid_registry
-
-        pyramid_registry.sweep()
-    except Exception:
-        pass
 
 
 def _force_cancel_unification(store, main_controller) -> None:
