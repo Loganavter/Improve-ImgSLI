@@ -6,13 +6,8 @@ Computes ``pw,ph = max(w1,w2), max(h1,h2)`` once and derives a single
 Both sides receive the same ``(ux/cw, uy/ch, uw/cw, uh/ch)`` and pixel rect.
 Fallback to per-image when one side has no size (``w==0`` or ``h==0``).
 
-Used by:
-- ``tabs/image_compare/canvas/texture_parts/base_images.py:196``
-  ``update_common_letterbox_geometry``
-- ``tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py:55``
-  ``_update_comparison_geometry``
-
 Pure, no Store, no hold, no more_pending.
+Tab-agnostic host helper — callers provide ``sizes`` as ``[(w1,h1),(w2,h2)]``.
 """
 
 from __future__ import annotations
