@@ -437,14 +437,25 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1224,
+      "lines": 129,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
+      "raw": "pattern=thin-owner reason=\"IC render gate thin owner delegates to use_cases/geometry,preview,background,schedule,render_gate per CODE_PATTERNS — sequencing only\"",
       "parsed": {
-        "pattern": "state-machine",
+        "pattern": "thin-owner",
+        "reason": "IC render gate thin owner delegates to use_cases/geometry,preview,background,schedule,render_gate per CODE_PATTERNS — sequencing only"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/render_gate.py",
+      "lines": 649,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"render_gate orchestrator — thin-owner target per CODE_PATTERNS, delegates geometry/preview/background; sequencing only\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)"
+        "reason": "render_gate orchestrator — thin-owner target per CODE_PATTERNS, delegates geometry/preview/background; sequencing only"
       }
     },
     {
