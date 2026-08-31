@@ -147,14 +147,25 @@ def on_image_loaded(controller, result):
                 controller.presenter.ui_batcher.schedule_update("combobox")
         return
     if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
-        item = target_list[index_in_list]
         # PipelineCache is single source — populate it so slot.py peek hits
         try:
             pl = getattr(controller, "pipeline", None)
             if pl is not None and pil_img is not None:
+                from PySide6.QtGui import QImage
+
                 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-                if isinstance(pil_img, TiledPixelStore) and getattr(pil_img, "is_open", True):
+                if isinstance(pil_img, QImage):
+                    if not pil_img.isNull():
+                        pl.cache.put_preview(path, pil_img)
+                        ic_preview_debug(
+                            "on_image_loaded slot=%s put_preview path=%s qimage=%sx%s",
+                            image_number,
+                            path,
+                            pil_img.width(),
+                            pil_img.height(),
+                        )
+                elif isinstance(pil_img, TiledPixelStore) and getattr(pil_img, "is_open", True):
                     pl.cache.put_pixel(path, store=pil_img)
                 elif hasattr(pil_img, "is_open"):
                     pl.cache.put_pixel(path, store=pil_img)
@@ -166,12 +177,41 @@ def on_image_loaded(controller, result):
             controller._show_loading_toast(image_number)
         if is_preview:
             if is_current:
-                controller._update_image_slot(
-                    image_number,
-                    image=pil_img,
-                    path=path,
-                    is_preview=True,
-                )
+                try:
+                    from PySide6.QtGui import QImage
+
+                    from core.state_management.actions import (
+                        InvalidateGeometryCacheAction,
+                        SetImageSessionImageAction,
+                    )
+
+                    if isinstance(pil_img, QImage) and not pil_img.isNull():
+                        controller.store.transact(
+                            [
+                                SetImageSessionImageAction(slot=image_number, image=pil_img),
+                                InvalidateGeometryCacheAction(),
+                            ],
+                            scope="viewport",
+                        )
+                        ic_preview_debug(
+                            "on_image_loaded slot=%s preview transact done path=%s",
+                            image_number,
+                            path,
+                        )
+                        # Re-fetch after dispatch — mirrors slot.py:185 pattern.
+                        # DocumentModel is immutable via replace() which copies
+                        # image_list1/2 (document.py:98 list(...)), so old
+                        # `target_list`/`document` references become detached
+                        # after any document-scope dispatch in the load path.
+                        # Viewport transact here does not replace document,
+                        # but keep the same re-fetch discipline for safety and
+                        # to avoid stale `document`/`target_list` if a
+                        # concurrent document dispatch raced.
+                        document = controller.store.get_session_state_slot("document")
+                        target_list = document.image_list1 if image_number == 1 else document.image_list2
+                except Exception as e:
+                    ic_preview_debug("on_image_loaded slot=%s preview transact failed %s", image_number, e)
+                    pass
             load_full_resolution_async(controller, path, image_number, index_in_list)
         else:
             from shared.image_processing.tiled_pixel_store import (
@@ -194,11 +234,13 @@ def on_image_loaded(controller, result):
                     path=path,
                     is_full_res=True,
                 )
+                # Re-fetch after document dispatch — _update_image_slot
+                # transacts SetFullResImageAction which triggers
+                # DocumentReducer replace() copying image_list (document.py:98).
+                # Old `document`/`target_list` become detached.
+                document = controller.store.get_session_state_slot("document")
+                target_list = document.image_list1 if image_number == 1 else document.image_list2
                 controller._mark_full_res_ready(image_number)
-        try:
-            item.image = pil_img
-        except Exception:
-            pass
         if is_current:
             if not is_preview:
                 controller.set_current_image(image_number, force_refresh=True)
@@ -265,6 +307,14 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
                         pl._inflight.pop((int(image_number), str(path), "full"), None)
                 except Exception:
                     pass
+                try:
+                    pending = getattr(controller, "_pending_full_loads", None)
+                    if pending is not None:
+                        cnt = pending.get(int(image_number), 0)
+                        if cnt > 0:
+                            pending[int(image_number)] = max(0, cnt - 1)
+                except Exception:
+                    pass
 
         else:
             raise AttributeError
@@ -282,7 +332,14 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             pass
 
         def _clear_full():  # type: ignore[no-redef]
-            pass
+            try:
+                pending = getattr(controller, "_pending_full_loads", None)
+                if pending is not None:
+                    cnt = pending.get(int(image_number), 0)
+                    if cnt > 0:
+                        pending[int(image_number)] = max(0, cnt - 1)
+            except Exception:
+                pass
 
     worker.signals.result.connect(controller._on_full_resolution_loaded_result)
     worker.signals.error.connect(
@@ -301,11 +358,32 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
 
 
 def on_full_load_finished(controller, image_number: int) -> None:
-    controller._pending_full_loads[image_number] = max(
-        0, controller._pending_full_loads[image_number] - 1
-    )
-    if controller._pending_full_loads[image_number]:
-        return
+    # Pending count is decremented in _clear_full (single-flight) — here we only check
+    # if any full decode remains for this slot. This avoids double-decrement that
+    # would prematurely finish the toast when two full loads race for the same slot.
+    try:
+        pending = getattr(controller, "_pending_full_loads", None)
+        if pending is not None and pending.get(int(image_number), 0) > 0:
+            return
+    except Exception:
+        pass
+    # Direct inflight check for safety (covers proxy/_inflight desync)
+    try:
+        pl = getattr(controller, "pipeline", None)
+        if pl is not None and hasattr(pl, "_inflight"):
+            for k, sig in list(pl._inflight.items()):
+                try:
+                    is_aborted = sig.is_aborted()
+                except Exception:
+                    is_aborted = False
+                if is_aborted:
+                    continue
+                if isinstance(k, tuple) and len(k) >= 2 and k[0] == int(image_number):
+                    return
+                if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
+                    return
+    except Exception:
+        pass
     document = controller.store.get_session_state_slot("document")
     if getattr(document, f"full_res_image{image_number}") is None:
         controller._trigger_preview_unification(image_number)

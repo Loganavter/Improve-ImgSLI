@@ -286,6 +286,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/pipeline/cache.py",
+      "lines": 522,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
       "lines": 696,
       "limit": 500,
@@ -342,7 +353,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1145,
+      "lines": 1165,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",

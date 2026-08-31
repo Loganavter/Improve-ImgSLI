@@ -130,8 +130,11 @@ class ImagePipeline:
         if signal is not None and signal.is_aborted():
             return None, None
         # uid-based memo (store identity, not path, to catch re-decodes)
-        uid1 = getattr(store1, "uid", None) or id(store1)
-        uid2 = getattr(store2, "uid", None) or id(store2)
+        # use image_uid (counter/cacheKey fallback) for GC-safe identity, not id()
+        from shared.rendering.image_identity import image_uid
+
+        uid1 = image_uid(store1)
+        uid2 = image_uid(store2)
         # target size is max(cropped) inside unify_pair; we approximate via store size
         try:
             w1, h1 = int(getattr(store1, "width", 0) or 0), int(getattr(store1, "height", 0) or 0)
