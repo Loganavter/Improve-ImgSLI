@@ -267,6 +267,112 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             item_index,
         )
 
+    # Bucket D: use ImageLoadService single-flight (path+mtime+box) instead of
+    # separate (slot,path,"full") + _pending_full_loads. Deduplicates preview
+    # full chain and pyramid pending via shared _inflight.
+    _svc = None
+    _key = None
+    _sig = None
+    try:
+        _sess = None
+        if hasattr(controller, "_get_image_session"):
+            try:
+                _sess = controller._get_image_session()
+            except Exception:
+                _sess = None
+        if _sess is not None and hasattr(_sess, "load_service"):
+            _svc = getattr(_sess, "load_service", None)
+        if _svc is None:
+            _pl = getattr(controller, "pipeline", None)
+            _svc = getattr(_pl, "load_service", None) if _pl is not None else None
+    except Exception:
+        _svc = None
+    if _svc is not None:
+        try:
+            # key includes mtime+box via service
+            _key = _svc.key_for(path, crop_service)
+            alo = _svc.try_acquire(_key)
+            if alo is None:
+                ic_preview_debug("load_full_resolution_async slot=%s dedup key=%s", image_number, _key)
+                return
+            _sig = alo
+            # keep legacy alias for _pending_full_loads proxy / pyramid checks
+            try:
+                pl = getattr(controller, "pipeline", None)
+                if pl is not None and hasattr(pl, "_inflight"):
+                    pl._inflight.setdefault((int(image_number), str(path), "full"), _sig)  # type: ignore[index]
+                # bump pending count alias via service release will decrement?
+                controller._pending_full_loads[image_number] = controller._pending_full_loads.get(image_number, 0) + 1  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+            def _wrapped(path_str, svc, slot_number, item_index, _sig=_sig, _orig=load_full_task):
+                try:
+                    if _sig is not None and _sig.is_aborted():
+                        return (None, path_str, slot_number, item_index)
+                except Exception:
+                    pass
+                res = _orig(path_str, svc, slot_number, item_index)
+                try:
+                    if _sig is not None and _sig.is_aborted():
+                        return (None, path_str, slot_number, item_index)
+                except Exception:
+                    pass
+                return res
+
+            worker = GenericWorker(
+                _wrapped,
+                path,
+                crop_service,
+                image_number,
+                index_in_list,
+            )
+
+            def _clear_full(_k=_key, _s=_sig, _svc=_svc):
+                try:
+                    _svc.release(_k, _s)
+                except Exception:
+                    pass
+                try:
+                    pl = getattr(controller, "pipeline", None)
+                    if pl is not None and hasattr(pl, "_inflight"):
+                        cur = pl._inflight.get((int(image_number), str(path), "full"))  # type: ignore[arg-type]
+                        if cur is _s:
+                            pl._inflight.pop((int(image_number), str(path), "full"), None)
+                except Exception:
+                    pass
+                try:
+                    pending = getattr(controller, "_pending_full_loads", None)
+                    if pending is not None:
+                        cnt = pending.get(int(image_number), 0)
+                        if cnt > 0:
+                            pending[int(image_number)] = max(0, cnt - 1)
+                except Exception:
+                    pass
+
+            worker.signals.result.connect(controller._on_full_resolution_loaded_result)
+            worker.signals.error.connect(
+                lambda err: on_full_resolution_error(controller, path, err)
+            )
+
+            def _on_finished(num=image_number, _cf=_clear_full):
+                try:
+                    _cf()
+                except Exception:
+                    pass
+                on_full_load_finished(controller, num)
+
+            worker.signals.finished.connect(_on_finished)
+            controller.thread_pool.start(worker)
+            return
+        except Exception as e:
+            ic_preview_debug("load_full_resolution_async service path failed %s, fallback legacy %s", path, e)
+            if _key is not None and _sig is not None:
+                try:
+                    _svc.release(_key, _sig)
+                except Exception:
+                    pass
+    # fallback legacy path (fakes without service)
     _sig = None
     try:
         pl = getattr(controller, "pipeline", None)

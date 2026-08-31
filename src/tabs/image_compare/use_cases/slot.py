@@ -475,6 +475,60 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     if pil_img is None and path:
         if _should_log_set:
             ic_preview_debug("set_current_image slot=%s -> cache miss, will start worker path=%s cur=%s", image_number, path, cur)
+        # Bucket D: single-flight via ImageLoadService (path+mtime+box → AbortSignal)
+        # should_use_progressive inside service, one transact per result, dedup 3×
+        _svc = None
+        try:
+            # prefer session load_service (shares _inflight dict with pipeline)
+            _sess = None
+            if hasattr(controller, "_get_image_session"):
+                try:
+                    _sess = controller._get_image_session()
+                except Exception:
+                    _sess = None
+            if _sess is not None and hasattr(_sess, "load_service"):
+                _svc = getattr(_sess, "load_service", None)
+            if _svc is None:
+                _pl = getattr(controller, "pipeline", None)
+                _svc = getattr(_pl, "load_service", None) if _pl is not None else None
+            if _svc is None:
+                _svc = getattr(controller, "load_service", None)
+        except Exception:
+            _svc = None
+        if _svc is not None:
+            try:
+                # service handles dedup via path+mtime+box and progressive inside
+                sig = _svc.ensure_async(path, int(image_number), int(cur), controller)
+                # dedup case — existing signal returned, or new signal started
+                # ensure legacy alias (slot,path) for compat with _pending_image_loads proxies
+                try:
+                    pl = getattr(controller, "pipeline", None)
+                    if pl is not None and hasattr(pl, "_inflight") and sig is not None:
+                        legacy_key = (int(image_number), str(path))
+                        pl._inflight.setdefault(legacy_key, sig)  # type: ignore[index]
+                except Exception:
+                    pass
+                if sig is not None:
+                    # started or deduped — single-flight owns result → one transact
+                    if _should_log_set:
+                        ic_preview_debug("set_current_image slot=%s -> ImageLoadService sig=%s", image_number, sig)
+                    if emit_signal:
+                        controller.store.emit_state_change("document")
+                    return
+                else:
+                    # cache-hit path already transacted inside service
+                    if emit_signal:
+                        controller.store.emit_state_change("document")
+                    # trigger unification via service? on cache-hit service already handled
+                    try:
+                        controller._trigger_preview_unification(image_number)
+                    except Exception:
+                        pass
+                    return
+            except Exception as e:
+                ic_preview_debug("set_current_image slot=%s ImageLoadService failed %s, fallback legacy", image_number, e)
+                _svc = None
+        # fallback legacy single-flight (kept for fakes without service)
         pl = getattr(controller, "pipeline", None)
         key = (int(image_number), str(path))
         if pl is not None and hasattr(pl, "_inflight"):

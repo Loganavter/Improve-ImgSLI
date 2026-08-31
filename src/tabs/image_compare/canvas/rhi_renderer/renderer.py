@@ -459,8 +459,10 @@ class RhiCanvasRenderer:
                 key,
                 _prev_swap,
             )
-        is_content_swap = self._content_swap_active or _is_rekeyed_content_baseline(
-            last_good_key
+        is_content_swap = (
+            self._content_swap_active
+            or _is_rekeyed_content_baseline(last_good_key)
+            or tuple(base_image.letterbox1) != tuple(base_image.letterbox2)
         )
         # Capture decision snapshot for consistent logging across SET/CLEAR/result/tile_dump/gap
         decision_is_content_swap = is_content_swap
@@ -524,7 +526,7 @@ class RhiCanvasRenderer:
                     for _it in current_array_plan
                     if _it.bbox[2] < 0.001 or _it.bbox[3] < 0.001
                 )
-                if _narrow_cnt / len(current_array_plan) > 0.5:
+                if _narrow_cnt / len(current_array_plan) > 0.3:
                     _narrow_blocked = True
                     if _gap_enabled():
                         try:

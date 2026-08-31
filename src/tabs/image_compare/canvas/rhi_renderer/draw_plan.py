@@ -487,7 +487,7 @@ def build_array_draw_plan(
             # is not real coverage — otherwise 28/49 entries are 0.0007 wide
             # and produce blank middle strip even though covered=1.0. Apron
             # overlap (8px → 0.004*letterbox) stays >0.002 and is kept.
-            if pair_bbox[2] < 0.001 or pair_bbox[3] < 0.001:
+            if pair_bbox[2] < 0.002 or pair_bbox[3] < 0.002:
                 continue
             content_scale = (*scale1, *scale2)
             if not diff_is_multi_tile:
@@ -514,7 +514,7 @@ def build_array_draw_plan(
                 if diff_slot is None or diff_slot[0] != array_index1:
                     continue
                 _diff_bbox = _intersection_rect(pair_bbox, diff_common)
-                if _diff_bbox[2] < 0.001 or _diff_bbox[3] < 0.001:
+                if _diff_bbox[2] < 0.002 or _diff_bbox[3] < 0.002:
                     continue
                 emitted_for_pair = True
                 items.append(
