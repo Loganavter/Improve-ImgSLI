@@ -8,6 +8,12 @@ whose decoded RGBA8 buffer was embedded in the project can be reopened via
 
 Keyed by absolute media source path (post path-rewrite), not asset_id — the
 call sites only have the media path in hand.
+
+Deprecated alias — logically owned by ``PipelineCache`` embedded tier
+(``get_or_load`` → ``lookup_embedded_cache`` → ``from_embedded_cache``).
+This module remains as a thin compat shim; new code should use
+``PipelineCache.get_or_load/peek/evict``. The underlying dict is shared with
+``PipelineCache._embedded_cache`` via alias (see pipeline/cache.py:44).  # ALLOWED tab ref in comment
 """
 
 from __future__ import annotations

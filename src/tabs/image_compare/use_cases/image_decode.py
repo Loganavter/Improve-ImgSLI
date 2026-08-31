@@ -548,7 +548,6 @@ def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signa
         AbortSignal = None  # type: ignore
 
     signal = None
-    legacy_task_id = None
     if AbortSignal is not None and isinstance(task_or_signal, AbortSignal):
         signal = task_or_signal
         if signal.is_aborted():
@@ -556,11 +555,8 @@ def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signa
         should_abort = signal.is_aborted  # type: ignore[assignment]
         log_id = getattr(signal, "_generation", id(signal))
     else:
-        legacy_task_id = task_or_signal
-        if legacy_task_id != controller._unification_task_id:
-            return None
-        should_abort = lambda: legacy_task_id != controller._unification_task_id  # type: ignore
-        log_id = legacy_task_id
+        # legacy int task_id removed — abort
+        return None
     try:
         import time
 

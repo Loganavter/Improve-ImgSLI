@@ -205,13 +205,13 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
             if sess is not None and hasattr(sess, "new_abort"):
                 signal = sess.new_abort()
             else:
-                raise AttributeError
+                from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal
+
+                signal = _AbortSignal()
         except Exception:
-            try:
-                controller._unification_task_id += 1  # type: ignore[attr-defined]
-                signal = controller._unification_task_id  # type: ignore[attr-defined]
-            except Exception:
-                signal = 0
+            from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal2
+
+            signal = _AbortSignal2()
         method = _unify_resize_method(controller)
         pl = getattr(controller, "pipeline", None)
         unify_key = None
@@ -345,14 +345,10 @@ def on_unified_images_ready(controller, result):
                 if task_or_signal.is_aborted():
                     return
             else:
-                if task_or_signal != controller._unification_task_id:
-                    return
+                # legacy int signal no longer used — treat as aborted if not AbortSignal
+                return
         except Exception:
-            try:
-                if task_or_signal != controller._unification_task_id:  # type: ignore[attr-defined]
-                    return
-            except Exception:
-                pass
+            return
         document = controller.store.get_session_state_slot("document")
         sd = getattr(controller.store.viewport, "session_data", None)
         rc = getattr(sd, "render_cache", None) if sd else None

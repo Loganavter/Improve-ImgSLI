@@ -7,11 +7,8 @@ as plain functions taking controller as first arg.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
-
-
 def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool = False) -> None:
-    # Hang fix: previous QTimer-coalesce introduced infinite loop —
+    # Hang fix: previous coalesce introduced infinite loop —
     # _flush → presenter.invalidate → store change → resync → set_current →
     # _invalidate → schedule → loop every event-loop turn. Keep immediate
     # invalidate (synchronous) but break re-entrancy and throttle log.
@@ -78,4 +75,7 @@ def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool =
 def schedule_image_canvas_update(controller) -> None:
     presenter = getattr(controller, "presenter", None)
     if presenter and hasattr(presenter, "schedule_canvas_update"):
-        QTimer.singleShot(0, presenter.schedule_canvas_update)
+        try:
+            presenter.schedule_canvas_update()
+        except Exception:
+            pass

@@ -4,11 +4,40 @@ from core.state_management.actions import SetCurrentIndexAction
 
 def activate_single_image_mode(controller, image_number: int):
     doc = controller.store.get_session_state_slot("document")
-    img = (
-        (doc.full_res_image1 or doc.preview_image1 or doc.original_image1)
-        if image_number == 1
-        else (doc.full_res_image2 or doc.preview_image2 or doc.original_image2)
-    )
+    path = doc.image1_path if image_number == 1 else doc.image2_path
+    img = None
+    if path:
+        # PipelineView / PipelineCache is single source (Phase 3)
+        try:
+            vp = controller.store.viewport.session_data.image_state
+            cand = vp.image1 if image_number == 1 else vp.image2
+            if cand is not None:
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    img = cand
+        except Exception:
+            pass
+        if img is None:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None:
+                try:
+                    hit = pl.peek(path)
+                    if hit is not None:
+                        img = hit
+                    else:
+                        hit2 = pl.peek_preview(path)
+                        if hit2 is not None:
+                            img = hit2
+                except Exception:
+                    pass
+        if img is None:
+            img = True  # path exists => slot has content (SlotSource)
     mode = image_number if img else 0
     dispatcher = controller.store.get_dispatcher()
     if dispatcher is not None:

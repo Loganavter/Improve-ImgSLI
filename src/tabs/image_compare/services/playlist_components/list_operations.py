@@ -25,10 +25,8 @@ _log = logging.getLogger("ImproveImgSLI.playlist.list_ops")
 def _close_outgoing_store(document, image_number: int, outgoing_store) -> None:
     if outgoing_store is None:
         return
-    other = 2 if image_number == 1 else 1
-    other_store = getattr(document, f"full_res_image{other}", None) if document is not None else None
-    if outgoing_store is other_store:
-        return
+    # SlotSource: other slot sharing same path is handled by PipelineCache refcount;
+    # direct document pixel fields removed (Phase 3).
     try:
         from shared.image_processing.tiled_pixel_store import close_pixel_store
 
@@ -209,28 +207,12 @@ class PlaylistListOperations:
 
         list1[idx1], list2[idx2] = list2[idx2], list1[idx1]
 
-        # Capture before any dispatch — reducers replace document, so later
-        # reads would see already-swapped values.
-        prev1 = document.preview_image1
-        prev2 = document.preview_image2
-        orig1 = document.original_image1
-        orig2 = document.original_image2
-        full1 = document.full_res_image1
-        full2 = document.full_res_image2
-        path1 = document.image1_path
-        path2 = document.image2_path
+        # PipelineView is single source — SlotSource list+index already swapped,
+        # path derived. Only viewport image_state needs swap.
         img1 = self.store.viewport.session_data.image_state.image1
         img2 = self.store.viewport.session_data.image_state.image2
 
         with self.store.batch_changes():
-            dispatcher.dispatch(SetPreviewImageAction(1, prev2), scope="document")
-            dispatcher.dispatch(SetPreviewImageAction(2, prev1), scope="document")
-            dispatcher.dispatch(SetOriginalImageAction(1, orig2), scope="document")
-            dispatcher.dispatch(SetOriginalImageAction(2, orig1), scope="document")
-            dispatcher.dispatch(SetFullResImageAction(1, full2), scope="document")
-            dispatcher.dispatch(SetFullResImageAction(2, full1), scope="document")
-            dispatcher.dispatch(SetImagePathAction(1, path2), scope="document")
-            dispatcher.dispatch(SetImagePathAction(2, path1), scope="document")
             dispatcher.dispatch(
                 SetImageSessionImageAction(slot=1, image=img2), scope="viewport"
             )
@@ -255,16 +237,43 @@ class PlaylistListOperations:
         outgoing_item = target_list[current_index]
         outgoing_path = getattr(outgoing_item, "path", None) if outgoing_item else None
         document = self.store.get_session_state_slot("document")
-        outgoing_store = getattr(document, f"full_res_image{image_number}", None) if document is not None else None
-        # fallback: ImageItem.image may hold the live TiledPixelStore when document slot is already stale
-        try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        # PipelineCache is single source — peek instead of document pixel fields
+        outgoing_store = None
+        if outgoing_path:
+            try:
+                ps = self.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
 
-            item_img = getattr(outgoing_item, "image", None)
-            if isinstance(item_img, TiledPixelStore) and outgoing_store is None:
-                outgoing_store = item_img
-        except Exception:
-            pass
+                    from tabs.image_compare.pipeline.cache import _pixel_key
+
+                    try:
+                        k = _pixel_key(outgoing_path, None, None)
+                        v = ps.pixel.get(k)  # type: ignore[attr-defined]
+                        if v is not None and getattr(v, "is_open", True):
+                            outgoing_store = v
+                    except Exception:
+                        pass
+                    if outgoing_store is None:
+                        try:
+                            norm = os.path.normpath(outgoing_path)
+                            for kk, vv in ps.pixel.items():  # type: ignore[attr-defined]
+                                if kk[0] == norm and getattr(vv, "is_open", True):
+                                    outgoing_store = vv
+                                    break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            if outgoing_store is None:
+                try:
+                    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+                    item_img = getattr(outgoing_item, "image", None)
+                    if isinstance(item_img, TiledPixelStore):
+                        outgoing_store = item_img
+                except Exception:
+                    pass
 
         target_list.pop(current_index)
 
@@ -309,16 +318,41 @@ class PlaylistListOperations:
         # only close document store if the removed index was the current slot
         is_current_removal = index_to_remove == current_index
         outgoing_store = None
-        if is_current_removal and document is not None:
-            outgoing_store = getattr(document, f"full_res_image{image_number}", None)
+        if is_current_removal and document is not None and outgoing_path:
             try:
-                from shared.image_processing.tiled_pixel_store import TiledPixelStore
+                ps = self.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
 
-                item_img = getattr(outgoing_item, "image", None)
-                if isinstance(item_img, TiledPixelStore) and outgoing_store is None:
-                    outgoing_store = item_img
+                    from tabs.image_compare.pipeline.cache import _pixel_key
+
+                    try:
+                        k = _pixel_key(outgoing_path, None, None)
+                        v = ps.pixel.get(k)  # type: ignore[attr-defined]
+                        if v is not None and getattr(v, "is_open", True):
+                            outgoing_store = v
+                    except Exception:
+                        pass
+                    if outgoing_store is None:
+                        try:
+                            norm = os.path.normpath(outgoing_path)
+                            for kk, vv in ps.pixel.items():  # type: ignore[attr-defined]
+                                if kk[0] == norm and getattr(vv, "is_open", True):
+                                    outgoing_store = vv
+                                    break
+                        except Exception:
+                            pass
             except Exception:
                 pass
+            if outgoing_store is None:
+                try:
+                    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+                    item_img = getattr(outgoing_item, "image", None)
+                    if isinstance(item_img, TiledPixelStore):
+                        outgoing_store = item_img
+                except Exception:
+                    pass
 
         target_list.pop(index_to_remove)
 
@@ -372,11 +406,35 @@ class PlaylistListOperations:
         outgoing_paths = [getattr(item, "path", None) for item in list(target_list) if getattr(item, "path", None)]
         document = self.store.get_session_state_slot("document")
         outgoing_stores: list = []
-        if document is not None:
-            slot_store = getattr(document, f"full_res_image{image_number}", None)
-            if slot_store is not None:
-                outgoing_stores.append(slot_store)
-        # collect per-item tiled stores (JXL etc) that are not the slot store
+        # PipelineCache is single source — peek slot store via pipeline state
+        try:
+            cur_path = document.image1_path if image_number == 1 else document.image2_path  # type: ignore[union-attr]
+            if cur_path:
+                ps = self.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
+
+                    from tabs.image_compare.pipeline.cache import _pixel_key
+
+                    try:
+                        k = _pixel_key(cur_path, None, None)
+                        v = ps.pixel.get(k)  # type: ignore[attr-defined]
+                        if v is not None and getattr(v, "is_open", True):
+                            outgoing_stores.append(v)
+                    except Exception:
+                        pass
+                    if not outgoing_stores:
+                        try:
+                            norm = os.path.normpath(cur_path)
+                            for kk, vv in ps.pixel.items():  # type: ignore[attr-defined]
+                                if kk[0] == norm and getattr(vv, "is_open", True):
+                                    outgoing_stores.append(vv)
+                                    break
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        # collect per-item tiled stores that are not the slot store
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
