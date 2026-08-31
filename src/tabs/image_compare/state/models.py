@@ -18,6 +18,7 @@ Any platform/plugin code that reads ``session_data.image_state`` /
 from __future__ import annotations
 
 import copy
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -25,6 +26,7 @@ from core.store_viewport import RenderConfig, SessionData
 
 __all__ = [
     "ImageSessionState",
+    "PipelineCacheState",
     "RenderCacheState",
     "RenderConfig",
     "SessionData",
@@ -71,3 +73,29 @@ class RenderCacheState:
 
     def clone(self):
         return copy.copy(self)
+
+
+@dataclass
+class PipelineCacheState:
+    """Store slot for PipelineCache — Bucket C (plan_render_dispatch_and_gap_fix.md).
+
+    Holds the three LRU tiers as frozen copies. Reducer owns lifecycle
+    (max 8 each) and ``close_pixel_store`` defer, not direct ``cache.put_*``.
+    ``ImagePipeline.peek`` reads from this slot when a Store is present
+    (falls back to the legacy ``PipelineCache`` for headless tests).
+    """
+
+    pixel: Any = field(default_factory=OrderedDict)
+    preview: Any = field(default_factory=OrderedDict)
+    unify: Any = field(default_factory=OrderedDict)
+
+    max_pixel: int = 8
+    max_preview: int = 8
+    max_unify: int = 8
+
+    def clone(self):
+        new_obj = copy.copy(self)
+        new_obj.pixel = OrderedDict(self.pixel)
+        new_obj.preview = OrderedDict(self.preview)
+        new_obj.unify = OrderedDict(self.unify)
+        return new_obj

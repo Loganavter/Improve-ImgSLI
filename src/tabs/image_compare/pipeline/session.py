@@ -17,6 +17,7 @@ from shared.image_processing.autocrop import CropService
 
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.pipeline.cache import PipelineCache
+from tabs.image_compare.pipeline.image_load_service import ImageLoadService
 from tabs.image_compare.pipeline.pipeline import ImagePipeline
 
 
@@ -148,6 +149,27 @@ class ImageSession:
         try:
             self.pipeline.cache = self.cache
             self.cache.crop_service = self.crop_service
+        except Exception:
+            pass
+        # single-flight loader (bucket D) — shares _inflight dict with pipeline
+        try:
+            from tabs.image_compare.pipeline.image_load_service import ImageLoadService as _ILS
+
+            svc = _ILS(
+                cache=self.cache,
+                get_crop_service=lambda _self=self: getattr(_self, "crop_service", None),
+            )
+            # share single-flight dict: pipeline._inflight is alias to svc._inflight
+            try:
+                svc._inflight = self.pipeline._inflight  # type: ignore[attr-defined]
+            except Exception:
+                self.pipeline._inflight = svc._inflight  # type: ignore[attr-defined]
+            object.__setattr__(self, "load_service", svc)
+            # expose on pipeline for direct access (controller.pipeline.load_service)
+            try:
+                self.pipeline.load_service = svc  # type: ignore[attr-defined]
+            except Exception:
+                pass
         except Exception:
             pass
         # compat proxies (alias _inflight, not separate storage)

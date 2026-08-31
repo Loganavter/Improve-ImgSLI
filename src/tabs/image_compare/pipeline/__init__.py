@@ -12,6 +12,7 @@ See docs/dev/plan_image_pipeline.md Phase 1–2.
 
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.pipeline.cache import PipelineCache
+from tabs.image_compare.pipeline.image_load_service import ImageLoadService
 from tabs.image_compare.pipeline.pipeline import ImagePipeline, PipelineView
 
-__all__ = ["AbortSignal", "ImagePipeline", "PipelineCache", "PipelineView"]
+__all__ = ["AbortSignal", "ImageLoadService", "ImagePipeline", "PipelineCache", "PipelineView"]
