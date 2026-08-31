@@ -89,9 +89,80 @@ def rebuild_magnifier_overlay(presenter):
         source_pil_images = getattr(image_label, "_source_pil_images", ())
         tex_img1 = source_pil_images[0] if len(source_pil_images) >= 1 else None
         tex_img2 = source_pil_images[1] if len(source_pil_images) >= 2 else None
-        document = presenter.store.get_session_state_slot("document")
-        tex_img1 = tex_img1 or document.full_res_image1 or document.original_image1
-        tex_img2 = tex_img2 or document.full_res_image2 or document.original_image2
+        if tex_img1 is None or tex_img2 is None:
+            # PipelineCache fallback
+            try:
+                store = presenter.store
+                doc = store.get_session_state_slot("document")
+                for slot, cur in ((1, tex_img1), (2, tex_img2)):
+                    if cur is not None:
+                        continue
+                    path = doc.image1_path if slot == 1 else doc.image2_path
+                    if not path:
+                        continue
+                    try:
+                        vp = store.viewport.session_data.image_state
+                        cand = vp.image1 if slot == 1 else vp.image2
+                        if cand is not None and getattr(cand, "is_open", True):
+                            try:
+                                if hasattr(cand, "isNull") and cand.isNull():
+                                    cand = None
+                                elif hasattr(cand, "is_open") and not cand.is_open:
+                                    cand = None
+                            except Exception:
+                                pass
+                            if cand is not None:
+                                if slot == 1:
+                                    tex_img1 = cand
+                                else:
+                                    tex_img2 = cand
+                                continue
+                    except Exception:
+                        pass
+                    try:
+                        ps = store.get_session_state_slot("pipeline")
+                        if ps is not None:
+                            import os
+
+                            from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                            for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                                try:
+                                    k = key_fn(path, None, None)
+                                    v = cache_dict.get(k)
+                                    if v is not None:
+                                        if hasattr(v, "is_open") and not v.is_open:
+                                            continue
+                                        if hasattr(v, "isNull") and v.isNull():
+                                            continue
+                                        if slot == 1:
+                                            tex_img1 = v
+                                        else:
+                                            tex_img2 = v
+                                        break
+                                except Exception:
+                                    pass
+                                if (tex_img1 if slot == 1 else tex_img2) is not None:
+                                    break
+                                try:
+                                    norm = os.path.normpath(path)
+                                    for kk, vv in cache_dict.items():
+                                        if kk[0] == norm:
+                                            if hasattr(vv, "is_open") and not vv.is_open:
+                                                continue
+                                            if hasattr(vv, "isNull") and vv.isNull():
+                                                continue
+                                            if slot == 1:
+                                                tex_img1 = vv
+                                            else:
+                                                tex_img2 = vv
+                                            break
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         _mark("resolve_source_images")
         if not tex_img1 or not tex_img2:
             reset_canvas_overlays(image_label)

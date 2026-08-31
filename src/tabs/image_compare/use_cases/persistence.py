@@ -187,12 +187,33 @@ def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> di
         return {}
 
     sources: dict = {}
-    for path, image in (
-        (doc.image1_path, doc.full_res_image1),
-        (doc.image2_path, doc.full_res_image2),
-    ):
-        if path and isinstance(image, TiledPixelStore) and image.is_open:
-            sources[path] = image
+    # Phase 3: PipelineCache is single source — peek via session store pipeline
+    try:
+        ps = store.get_session_state_slot("pipeline")  # type: ignore[union-attr]
+        if ps is not None:
+            import os
+
+            from tabs.image_compare.pipeline.cache import _pixel_key
+
+            for path in (doc.image1_path, doc.image2_path):
+                if not path:
+                    continue
+                try:
+                    k = _pixel_key(path, None, None)
+                    img = ps.pixel.get(k)  # type: ignore[attr-defined]
+                    if img is not None and isinstance(img, TiledPixelStore) and img.is_open:
+                        sources[path] = img
+                        continue
+                    # fallback scan by path prefix
+                    norm = os.path.normpath(path)
+                    for kk, vv in ps.pixel.items():  # type: ignore[attr-defined]
+                        if kk[0] == norm and isinstance(vv, TiledPixelStore) and vv.is_open:
+                            sources[path] = vv
+                            break
+                except Exception:
+                    continue
+    except Exception:
+        pass
     return sources
 
 

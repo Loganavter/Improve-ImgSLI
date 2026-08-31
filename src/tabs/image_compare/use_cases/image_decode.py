@@ -243,11 +243,7 @@ def on_image_loaded(controller, result):
             if not isinstance(pil_img, TiledPixelStore):
                 pil_img = maybe_wrap_pixel_store(pil_img)
             if is_current:
-                outgoing = getattr(document, f"full_res_image{image_number}", None)
-                other = 2 if image_number == 1 else 1
-                other_full = getattr(document, f"full_res_image{other}", None)
-                if outgoing is not None and outgoing is not other_full:
-                    close_pixel_store(outgoing)
+                # Phase 3: PipelineCache owns lifecycle, no document pixel fields
                 controller._update_image_slot(
                     image_number,
                     image=pil_img,
@@ -511,7 +507,31 @@ def on_full_load_finished(controller, image_number: int) -> None:
     except Exception:
         pass
     document = controller.store.get_session_state_slot("document")
-    if getattr(document, f"full_res_image{image_number}") is None:
+    has_pixel = False
+    try:
+        path = document.image1_path if image_number == 1 else document.image2_path
+        if path:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None:
+                try:
+                    has_pixel = pl.peek(path) is not None
+                except Exception:
+                    has_pixel = False
+            if not has_pixel:
+                ps = controller.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
+
+                    from tabs.image_compare.pipeline.cache import _pixel_key
+
+                    try:
+                        k = _pixel_key(path, None, None)
+                        has_pixel = k in ps.pixel  # type: ignore[attr-defined]
+                    except Exception:
+                        has_pixel = False
+    except Exception:
+        has_pixel = False
+    if not has_pixel:
         controller._trigger_preview_unification(image_number)
 
 

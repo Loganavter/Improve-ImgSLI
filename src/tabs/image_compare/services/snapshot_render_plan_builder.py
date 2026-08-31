@@ -105,9 +105,6 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     temp_store.settings = snap.settings_state.freeze_for_export()
     temp_store.viewport.session_data.image_state.image1 = image1
     temp_store.viewport.session_data.image_state.image2 = image2
-    temp_document = temp_store.get_session_state_slot("document")
-    temp_document.full_res_image1 = image1
-    temp_document.full_res_image2 = image2
     temp_store.viewport.geometry_state.pixmap_width = base_w
     temp_store.viewport.geometry_state.pixmap_height = base_h
 
@@ -197,9 +194,6 @@ def calculate_global_canvas_bounds(
         temp_store.settings = snap.settings_state.freeze_for_export()
         temp_store.viewport.session_data.image_state.image1 = img1
         temp_store.viewport.session_data.image_state.image2 = img2
-        temp_document = temp_store.get_session_state_slot("document")
-        temp_document.full_res_image1 = img1
-        temp_document.full_res_image2 = img2
         temp_store.viewport.geometry_state.pixmap_width = base_w
         temp_store.viewport.geometry_state.pixmap_height = base_h
 

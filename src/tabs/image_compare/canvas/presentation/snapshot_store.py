@@ -139,24 +139,19 @@ def _build_snapshot_store(
     document.image2_path = getattr(snap, "image2_path", None)
     document.image_list1 = [
         ImageItem(
-            image=source_img1,
             path=getattr(snap, "image1_path", None) or "",
             display_name=getattr(snap, "name1", None) or "",
         )
     ]
     document.image_list2 = [
         ImageItem(
-            image=source_img2,
             path=getattr(snap, "image2_path", None) or "",
             display_name=getattr(snap, "name2", None) or "",
         )
     ]
     document.current_index1 = 0 if document.image_list1 else -1
     document.current_index2 = 0 if document.image_list2 else -1
-    document.original_image1 = source_img1
-    document.original_image2 = source_img2
-    document.full_res_image1 = source_img1
-    document.full_res_image2 = source_img2
+    # PipelineView is source — document no longer stores pixels (Phase 3)
     store.viewport.interaction_state.is_interactive_mode = False
 
     source_key = (

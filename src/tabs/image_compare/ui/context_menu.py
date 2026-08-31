@@ -323,12 +323,59 @@ class ImageCompareContextMenuProvider:
         path = getattr(item, "path", None) or ""
         return Path(path).name if path else ""
 
+    def _peek_image(self, slot: int):
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path = getattr(doc, f"image{slot}_path", None)
+            if not path:
+                return None
+            try:
+                vp = self.store.viewport.session_data.image_state
+                cand = vp.image1 if slot == 1 else vp.image2
+                if cand is not None and getattr(cand, "is_open", True):
+                    try:
+                        if hasattr(cand, "isNull") and cand.isNull():
+                            cand = None
+                        elif hasattr(cand, "is_open") and not cand.is_open:
+                            cand = None
+                    except Exception:
+                        pass
+                    if cand is not None:
+                        return cand
+            except Exception:
+                pass
+            try:
+                ps = self.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
+
+                    from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                    for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                        try:
+                            k = key_fn(path, None, None)
+                            v = cache_dict.get(k)
+                            if v is not None and getattr(v, "is_open", True) and not (hasattr(v, "isNull") and v.isNull()):
+                                return v
+                        except Exception:
+                            pass
+                        try:
+                            norm = os.path.normpath(path)
+                            for kk, vv in cache_dict.items():
+                                if kk[0] == norm and getattr(vv, "is_open", True) and not (hasattr(vv, "isNull") and vv.isNull()):
+                                    return vv
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return None
+
     def _show_properties(self, slot: int) -> None:
         path = self._path_for(slot)
         name = self._display_name_for(slot)
-        image = getattr(
-            self.store.get_session_state_slot("document"), f"original_image{slot}", None
-        )
+        image = self._peek_image(slot)
         rating = self._rating_for(slot)
         self._open_properties(path, name, image, slot, rating)
 
@@ -380,8 +427,7 @@ class ImageCompareContextMenuProvider:
                 ui_manager.set_modal_dialog_active(False)
 
     def _begin_duplicate(self, source_slot: int) -> None:
-        document = self.store.get_session_state_slot("document")
-        image = getattr(document, f"original_image{source_slot}", None)
+        image = self._peek_image(source_slot)
         path = self._path_for(source_slot)
         name = self._display_name_for(source_slot)
         if image is None and not path:
@@ -427,8 +473,7 @@ class ImageCompareContextMenuProvider:
         path = self._path_for(slot)
         if not path:
             return
-        document = self.store.get_session_state_slot("document")
-        image = getattr(document, f"original_image{slot}", None)
+        image = self._peek_image(slot)
         from events.image_carry import begin_image_carry
 
         begin_image_carry([path], image=image)

@@ -37,6 +37,7 @@ ALLOWED_WRITERS = {
     "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
     "src/shared/rendering/host_texture_cache.py",
     "src/ui/canvas_infra/rhi/rhi_render.py",
+    "src/tabs/image_compare/use_cases/canvas_invalidate.py",  # Phase 4 thin-owner forwarder, barrier-equivalent clear on invalidate
 }
 
 

@@ -5,32 +5,76 @@ from shared.rendering.image_identity import image_uid
 from shared.image_processing.tiled_pixel_store import autocrop_debug
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
 
+def _peek_slot(store, slot: int):
+    doc = store.get_session_state_slot("document")
+    path = doc.image1_path if slot == 1 else doc.image2_path
+    if not path:
+        return None
+    try:
+        vp = store.viewport.session_data.image_state
+        cand = vp.image1 if slot == 1 else vp.image2
+        if cand is not None and getattr(cand, "is_open", True):
+            try:
+                if hasattr(cand, "isNull") and cand.isNull():
+                    cand = None
+                elif hasattr(cand, "is_open") and not cand.is_open:
+                    cand = None
+            except Exception:
+                pass
+            if cand is not None:
+                return cand
+    except Exception:
+        pass
+    try:
+        ps = store.get_session_state_slot("pipeline")
+        if ps is not None:
+            import os
+
+            from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+            for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                try:
+                    k = key_fn(path, None, None)
+                    v = cache_dict.get(k)
+                    if v is not None:
+                        if hasattr(v, "is_open") and not v.is_open:
+                            continue
+                        if hasattr(v, "isNull") and v.isNull():
+                            continue
+                        return v
+                except Exception:
+                    pass
+                try:
+                    norm = os.path.normpath(path)
+                    for kk, vv in cache_dict.items():
+                        if kk[0] == norm:
+                            if hasattr(vv, "is_open") and not vv.is_open:
+                                continue
+                            if hasattr(vv, "isNull") and vv.isNull():
+                                continue
+                            return vv
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+
 def build_live_store_presentation(store) -> SnapshotStorePresentation:
     document = store.get_session_state_slot("document")
+    p1 = _peek_slot(store, 1)
+    p2 = _peek_slot(store, 2)
     display_image1 = pick_display_image(
         store.viewport.session_data.image_state.image1,
-        document.preview_image1,
+        p1,
     )
     display_image2 = pick_display_image(
         store.viewport.session_data.image_state.image2,
-        document.preview_image2,
+        p2,
     )
-    # The live high-resolution source pair must use the same unified canvas
-    # coordinate system as the display pair. Document full-res images may have
-    # different dimensions; binding them directly makes each side use a
-    # different letterbox transform after zooming.
-    source_image1 = (
-        store.viewport.session_data.image_state.image1
-        or document.full_res_image1
-        or document.preview_image1
-        or document.original_image1
-    )
-    source_image2 = (
-        store.viewport.session_data.image_state.image2
-        or document.full_res_image2
-        or document.preview_image2
-        or document.original_image2
-    )
+    # PipelineView is single source — preview via cache, not document fields
+    source_image1 = store.viewport.session_data.image_state.image1 or p1
+    source_image2 = store.viewport.session_data.image_state.image2 or p2
 
     if display_image1 is None and source_image1 is not None:
         display_image1 = pick_first_real(source_image1)
