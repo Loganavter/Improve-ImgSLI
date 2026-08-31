@@ -252,8 +252,12 @@ class ViewState:
     text_bg_visual_width: float = 0.0
 
     def clone(self):
+        # Long-term Store lock fix: avoid heavy deepcopy inside the critical
+        # section. ``canvas_widget_state`` values are immutable feature states,
+        # so a shallow dict copy is sufficient and keeps the prepare step
+        # cheap. Deepcopy (if ever needed) is done outside Dispatcher._lock.
         new_obj = copy.copy(self)
-        new_obj.canvas_widget_state = copy.deepcopy(self.canvas_widget_state)
+        new_obj.canvas_widget_state = dict(self.canvas_widget_state)
         return new_obj
 
 class ViewportState:

@@ -1,26 +1,17 @@
 """ImageLoadService — single-flight loader (phase 3 bucket D).
 
-Single-flight via ``path+mtime+box → AbortSignal`` replacing:
+Single-flight via ``path+mtime+has_crop → AbortSignal`` (long-term fix:
+без box_tuple, только has_crop). Заменяет:
 
 * ``slot._inflight[(slot,path)]`` (slot.py:475)
 * ``image_decode._inflight[(slot,path,"full")]`` (image_decode.py:272)
 * ``unify (p1,p2)`` (unify.py:214)
 * ``pyramid single-flight`` (session.py / pyramid.py)
 
-Key is ``(normpath, mtime_ns, size, has_crop, box_tuple)`` — same as
-``_pixel_key``/``_preview_key`` but without sentinel; ``box_tuple`` via
-``crop_service.get(path).to_tuple()`` if present. ``has_crop`` mirrors
-``cache._pixel_key`` DI semantics so crop toggle invalidates.
-
-``should_use_progressive_load`` lives inside the worker (not caller),
-returning one ``transact`` ``[SetImageSessionImage, InvalidateGeometryCache]``
-per completion. Duplicate ``set_current_image`` for same path while
-inflight dedups via refcount (first wins, others return immediately and
-share the same ``TiledPixelStore`` via ``PipelineCache`` refcount).
-
-Threading: worker runs on ``QThreadPool`` via ``GenericWorker``; result
-handler runs on GUI thread (Qt queued connection) and does the single
-``store.transact``. Never holds ``dispatcher._lock`` during I/O.
+Key теперь ``(normpath, mtime_ns, size, has_crop)`` — как
+``_pixel_key`` без box; box вычисляется lazy внутри GenericWorker и
+включается в put_pixel ключ отдельно, чтобы GUI не блокировался
+sync crop_service.get(path) до pool.start.
 """
 
 from __future__ import annotations
@@ -37,17 +28,16 @@ from tabs.image_compare.debug import ic_preview_debug
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def _key_for_path(path: str, crop_service=None) -> tuple:
-    """Compute single-flight key ``(normpath, mtime, size, has_crop, box)``."""
+def _key_for_path(path: str, crop_service=None, box_tuple=None) -> tuple:
+    """Long-term fix: key без box_tuple, только (normpath,mtime,size,has_crop).
+
+    box вычисляется lazy внутри GenericWorker и включается в put_pixel ключ
+    отдельно, чтобы GUI не делал sync crop_service.get(path) до pool.start.
+    """
     has_crop = False
-    box_tuple = None
     if crop_service is not None and not isinstance(crop_service, bool):
-        try:
-            has_crop = bool(crop_service)
-            box = crop_service.get(path)  # type: ignore[union-attr]
-            box_tuple = box.to_tuple() if box is not None else None
-        except Exception:
-            box_tuple = None
+        # do NOT call crop_service.get here — GUI block removed (was :47)
+        has_crop = bool(crop_service)
     elif isinstance(crop_service, bool):
         has_crop = bool(crop_service)
     try:
@@ -57,7 +47,10 @@ def _key_for_path(path: str, crop_service=None) -> tuple:
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop), box_tuple)
+    # if box provided explicitly (worker-side lazy), include it for precise dedup
+    if box_tuple is not None:
+        return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop), box_tuple)
+    return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop))
 
 
 def _unify_key(path1: str, path2: str, method: str) -> tuple:
@@ -223,9 +216,18 @@ class ImageLoadService:
         ic_preview_debug("ImageLoadService start slot=%s path=%s key=%s sig=%s", slot, path, key, sig)
 
         def _worker_body(p: str, svc, sl, idx, sig_ref):
+            # Long-term fix: lazy box compute off GUI thread before pool load.
+            # Warm CropService cache inside worker, not on GUI before start.
+            box_tuple = None
             try:
                 if sig_ref.is_aborted():
                     return None, p, sl, idx, False
+                if svc is not None and not isinstance(svc, bool):
+                    try:
+                        b = svc.get(p)  # type: ignore[union-attr]
+                        box_tuple = b.to_tuple() if b is not None else None
+                    except Exception:
+                        box_tuple = None
             except Exception:
                 pass
             try:
@@ -240,6 +242,12 @@ class ImageLoadService:
                         return None, p, sl, idx, False
                     preview = load_preview_image(p, crop_service=svc)
                     if preview is not None and not getattr(preview, "isNull", lambda: True)():
+                        # put preview with lazy box included for precise key
+                        try:
+                            if cache is not None and box_tuple is not None:
+                                cache.put_preview(p, svc, preview, box_tuple=box_tuple)  # type: ignore
+                        except Exception:
+                            pass
                         return preview, p, sl, idx, True
                 except Exception as e:
                     logger.debug("preview load failed %s: %s", p, e)
@@ -261,6 +269,12 @@ class ImageLoadService:
                 try:
                     if sig_ref.is_aborted():
                         return None, p, sl, idx, False
+                except Exception:
+                    pass
+                # lazy put with box_tuple for precise key (GUI will fallback scan if needed)
+                try:
+                    if cache is not None and store_obj is not None and box_tuple is not None:
+                        cache.put_pixel(p, svc, store_obj, box_tuple=box_tuple)  # type: ignore
                 except Exception:
                     pass
                 return store_obj, p, sl, idx, False

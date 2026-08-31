@@ -37,10 +37,10 @@ class _UnifiedFlyoutRefreshMixin(_UnifiedFlyoutBase):
     def _schedule_geometry_refresh(self):
         if self._is_refreshing:
             if not self._refresh_timer.isActive():
-                self._refresh_timer.start(50)
+                self._refresh_timer.start(100)
             return
         if not self._refresh_timer.isActive():
-            self._refresh_timer.start(50)
+            self._refresh_timer.start(100)
 
     def _begin_immediate_refresh(self) -> bool:
         if self._refresh_timer.isActive():

@@ -322,26 +322,48 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
                 setattr(controller.store.get_session_state_slot("document"), f"current_index{image_number}", new_index)
             except Exception:
                 pass
-        # UI + async lazy load (stat/cache_key now in ImageLoadService.ensure_async)
-        if controller.presenter:
+        # Long-term fix: отдельный crop cache прогрев в фоне (без блока GUI)
+        try:
+            from shared.image_processing.autocrop.service import schedule_crop_warmup
+
+            _svc = None
             try:
-                controller.presenter.ui_batcher.schedule_update("combobox")
+                _svc = getattr(controller, "_get_crop_service", lambda: None)()
             except Exception:
-                pass
+                _svc = None
+            _pool = getattr(controller, "thread_pool", None)
+            schedule_crop_warmup(_svc, [it.path for it in to_add], thread_pool=_pool)
+        except Exception:
+            pass
+        # UI + async lazy load (stat/cache_key now in ImageLoadService.ensure_async)
         try:
             controller.set_current_image(image_number)
         except Exception:
             pass
         if controller.presenter:
             try:
-                controller.presenter.repopulate_flyouts()
-                from ui.widgets.unified_list_picker import FlyoutMode
-
-                if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
-                    try:
-                        controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
-                    except Exception:
-                        pass
+                flyout = getattr(getattr(controller.presenter, "ui_manager", None), "transient", None)
+                flyout = getattr(flyout, "unified_flyout", None) if flyout is not None else None
+                if flyout is not None:
+                    if flyout.isVisible():
+                        controller.presenter.repopulate_flyouts()
+                    else:
+                        try:
+                            widget = getattr(controller, "widget", None)
+                            if widget is None:
+                                widget = getattr(controller.presenter, "widget", None)
+                            gate = getattr(widget, "_stale_gate", None) if widget is not None else None
+                            if gate is not None:
+                                gate.mark("render")
+                            if widget is not None:
+                                try:
+                                    widget._render_stale = True  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                else:
+                    controller.presenter.repopulate_flyouts()
             except Exception:
                 pass
         if errors:
@@ -434,16 +456,29 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
         except Exception:
             pass
     if controller.presenter:
-        controller.presenter.ui_batcher.schedule_update("combobox")
         try:
-            from ui.widgets.unified_list_picker import FlyoutMode
-
-            controller.presenter.repopulate_flyouts()
-            if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
-                try:
-                    controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
-                except Exception:
-                    pass
+            flyout = getattr(getattr(controller.presenter, "ui_manager", None), "transient", None)
+            flyout = getattr(flyout, "unified_flyout", None) if flyout is not None else None
+            if flyout is not None:
+                if flyout.isVisible():
+                    controller.presenter.repopulate_flyouts()
+                else:
+                    try:
+                        widget = getattr(controller, "widget", None)
+                        if widget is None:
+                            widget = getattr(controller.presenter, "widget", None)
+                        gate = getattr(widget, "_stale_gate", None) if widget is not None else None
+                        if gate is not None:
+                            gate.mark("render")
+                        if widget is not None:
+                            try:
+                                widget._render_stale = True  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            else:
+                controller.presenter.repopulate_flyouts()
         except Exception:
             pass
     try:
@@ -480,18 +515,31 @@ def _finalize_loaded_paths(controller, image_number: int, newly_added_indices: l
                 d.dispatch(SetCurrentIndexAction(slot=image_number, index=new_index), scope="document")
             except Exception:
                 pass
-        if controller.presenter:
-            controller.presenter.ui_batcher.schedule_update("combobox")
         controller.set_current_image(image_number)
         if controller.presenter:
             try:
-                controller.presenter.repopulate_flyouts()
-                from ui.widgets.unified_list_picker import FlyoutMode
-                if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
-                    try:
-                        controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(immediate=False)
-                    except Exception:
-                        pass
+                flyout = getattr(getattr(controller.presenter, "ui_manager", None), "transient", None)
+                flyout = getattr(flyout, "unified_flyout", None) if flyout is not None else None
+                if flyout is not None:
+                    if flyout.isVisible():
+                        controller.presenter.repopulate_flyouts()
+                    else:
+                        try:
+                            widget = getattr(controller, "widget", None)
+                            if widget is None:
+                                widget = getattr(controller.presenter, "widget", None)
+                            gate = getattr(widget, "_stale_gate", None) if widget is not None else None
+                            if gate is not None:
+                                gate.mark("render")
+                            if widget is not None:
+                                try:
+                                    widget._render_stale = True  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                else:
+                    controller.presenter.repopulate_flyouts()
             except Exception:
                 pass
     if load_errors:

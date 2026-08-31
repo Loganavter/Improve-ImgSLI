@@ -218,6 +218,32 @@ class ImageCompareChromeSync(QObject):
             except Exception:
                 return True
 
+    def _has_full_res(self) -> bool:
+        """Lazy gate: resolution/psnr/ssim not needed until full_res images are present."""
+        try:
+            img_state = self.store.viewport.session_data.image_state
+            img1 = getattr(img_state, "image1", None)
+            img2 = getattr(img_state, "image2", None)
+            has1 = img1 is not None
+            has2 = img2 is not None
+            if not (has1 or has2):
+                return False
+            for img in (img1, img2):
+                if img is None:
+                    continue
+                try:
+                    if hasattr(img, "isNull") and img.isNull():
+                        return False
+                    if hasattr(img, "is_open") and not img.is_open:
+                        return False
+                except Exception:
+                    pass
+            # For resolution labels original shows only when both present
+            # but we gate resolution on at least one present to avoid early waste
+            return has1 or has2
+        except Exception:
+            return False
+
     def _window_presenter(self):
         try:
             return self._resolve_window_presenter()
@@ -278,30 +304,29 @@ class ImageCompareChromeSync(QObject):
                 toolbar.update_toolbar_states()
             self.widget.toggle_edit_layout_visibility(
             self.store.viewport.render_config.include_file_names_in_saved
-        )
-        window_presenter.ui_batcher.schedule_batch_update(
-            [
-                "file_names",
-                "resolution",
-                "combobox",
-                "ratings",
-                "window_schedule",
-                "zoom_indicator",
-            ]
-        )
+            )
+            return
+        # Lazy: resolution/psnr/zoom not needed until full_res images are present
+        batch = ["file_names", "combobox", "ratings", "window_schedule"]
+        if self._has_full_res():
+            batch.extend(["resolution", "zoom_indicator"])
+        window_presenter.ui_batcher.schedule_batch_update(batch)
 
     def on_workspace_changed(self, window_presenter):
         self._refresh_active_session_canvas(window_presenter)
-        window_presenter.ui_batcher.schedule_batch_update(
-            [
-                "file_names",
-                "resolution",
-                "combobox",
-                "ratings",
-                "window_schedule",
-                "zoom_indicator",
-            ]
-        )
+        if not self._is_visible():
+            self._render_stale = True
+            try:
+                widget = self.widget
+                if widget is not None:
+                    widget._render_stale = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return
+        batch = ["file_names", "combobox", "ratings", "window_schedule"]
+        if self._has_full_res():
+            batch.extend(["resolution", "zoom_indicator"])
+        window_presenter.ui_batcher.schedule_batch_update(batch)
 
     def apply_initial_state(self, window_presenter):
         _set_slider_value_quietly(
@@ -580,7 +605,10 @@ class ImageCompareChromeSync(QObject):
         except Exception:
             pass
         try:
-            window_presenter.ui_batcher.schedule_batch_update(["file_names","resolution","combobox","ratings","window_schedule","zoom_indicator"])
+            batch = ["file_names", "combobox", "ratings", "window_schedule"]
+            if self._has_full_res():
+                batch.extend(["resolution", "zoom_indicator"])
+            window_presenter.ui_batcher.schedule_batch_update(batch)
         except Exception:
             pass
 
