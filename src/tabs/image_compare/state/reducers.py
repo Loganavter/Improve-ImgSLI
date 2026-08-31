@@ -31,7 +31,6 @@ from core.state_management.actions import (
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetPendingUnificationPathsAction,
-    SetPredictedUnifiedSizeAction,
     SetPsnrValueAction,
     SetSsimValueAction,
     SetTextAlphaPercentAction,
@@ -78,8 +77,6 @@ class RenderCacheReducer:
             return replace(cache_state, unification_in_progress=action.enabled)
         if isinstance(action, SetPendingUnificationPathsAction):
             return replace(cache_state, pending_unification_paths=action.paths)
-        if isinstance(action, SetPredictedUnifiedSizeAction):
-            return replace(cache_state, predicted_unified_size=action.predicted_size)
         if isinstance(action, InvalidateRenderCacheAction):
             for feature in sorted(
                 registry().get_widget_features(),
@@ -95,8 +92,6 @@ class RenderCacheReducer:
             ):
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
-            if getattr(cache_state, "predicted_unified_size", None) is not None:
-                return replace(cache_state, predicted_unified_size=None)
             return cache_state
         return cache_state
 

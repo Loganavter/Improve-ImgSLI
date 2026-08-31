@@ -276,7 +276,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
-      "lines": 636,
+      "lines": 492,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1264,
+      "lines": 1209,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -433,13 +433,13 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/unify.py",
-      "lines": 537,
+      "lines": 450,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"unify flow — wh deterministic predicted_unified_size + worker lifecycle, single file\"",
+      "raw": "pattern=state-machine reason=\"unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file\"",
       "parsed": {
         "pattern": "state-machine",
-        "reason": "unify flow — wh deterministic predicted_unified_size + worker lifecycle, single file"
+        "reason": "unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file"
       }
     },
     {

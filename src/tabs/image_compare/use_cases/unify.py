@@ -1,4 +1,4 @@
-# Audit-Meta: pattern=state-machine reason="unify flow — wh deterministic predicted_unified_size + worker lifecycle, single file"
+# Audit-Meta: pattern=state-machine reason="unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file"
 """Unification flow — demand-driven via PipelineCache memo."""
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from core.state_management.actions import (
     SetCachedDiffImageAction,
     SetImageSessionImageAction,
     SetPendingUnificationPathsAction,
-    SetPredictedUnifiedSizeAction,
     SetUnificationInProgressAction,
 )
 
@@ -50,7 +49,6 @@ def _clear_unification_flags(controller) -> None:
         with controller.store.batch_changes():
             d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
             d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
-            d.dispatch(SetPredictedUnifiedSizeAction(predicted_size=None), scope="viewport")
     except Exception:
         logger.error("Failed to clear unification flags", exc_info=True)
 
@@ -191,32 +189,12 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
     d = getattr(controller.store, "get_dispatcher", lambda: None)()
     if d is not None:
         try:
-            # predicted_unified_size: deterministic wh=max(w1,w2) before worker (58.352->1041)
-            wh_pred: tuple[int, int] | None = None
-            try:
-                w1p, h1p = int(getattr(s1, "width", 0) or 0), int(getattr(s1, "height", 0) or 0)
-                w2p, h2p = int(getattr(s2, "width", 0) or 0), int(getattr(s2, "height", 0) or 0)
-                if w1p == 0 or h1p == 0:
-                    from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss1
-
-                    w1p, h1p = _pss1(s1)
-                if w2p == 0 or h2p == 0:
-                    from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss2
-
-                    w2p, h2p = _pss2(s2)
-                wh_pred = (max(w1p, w2p), max(h1p, h2p))
-                if not (wh_pred[0] > 0 and wh_pred[1] > 0):
-                    wh_pred = None
-            except Exception:
-                wh_pred = None
             with controller.store.batch_changes():
                 d.dispatch(SetUnificationInProgressAction(enabled=True), scope="viewport")
                 d.dispatch(
                     SetPendingUnificationPathsAction(paths=(document.image1_path, document.image2_path)),
                     scope="viewport",
                 )
-                if wh_pred is not None:
-                    d.dispatch(SetPredictedUnifiedSizeAction(predicted_size=wh_pred), scope="viewport")
         except Exception:
             logger.error("Failed to dispatch unification pending", exc_info=True)
     try:
@@ -434,71 +412,6 @@ def on_unified_images_ready(controller, result):
                     s1_uid = image_uid(s1_src) if s1_src is not None else image_uid(u1)
                     s2_uid = image_uid(s2_src) if s2_src is not None else image_uid(u2)
                 pl.cache.put_unified(s1_uid, s2_uid, method, wh[0], wh[1], (u1, u2))
-                # Union letterbox hold: fallback only if predicted != final (58.352->1041 predicted already)
-                try:
-                    predicted_for_hold = None
-                    try:
-                        _rc_hold = getattr(getattr(controller.store.viewport, "session_data", None), "render_cache", None)
-                        predicted_for_hold = getattr(_rc_hold, "predicted_unified_size", None) if _rc_hold is not None else None
-                    except Exception:
-                        predicted_for_hold = None
-                    # if predicted matches final wh, skip HOLD (already 1041 via predicted)
-                    if predicted_for_hold is not None and tuple(predicted_for_hold) == tuple(wh) and wh[0] > 0 and wh[1] > 0:
-                        try:
-                            for _obj in (
-                                getattr(getattr(controller, "presenter", None), "widget", None),
-                                getattr(controller, "widget", None),
-                            ):
-                                if _obj is not None and hasattr(_obj, "runtime_state"):
-                                    try:
-                                        _obj.runtime_state._union_letterbox_hold_until = 0.0
-                                    except Exception:
-                                        pass
-                                try:
-                                    from tabs.image_compare.canvas.helpers import get_canvas_widget
-
-                                    _canvas = get_canvas_widget(_obj) if _obj is not None else None
-                                    if _canvas is not None and hasattr(_canvas, "runtime_state"):
-                                        try:
-                                            _canvas.runtime_state._union_letterbox_hold_until = 0.0
-                                        except Exception:
-                                            pass
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-                    else:
-                        import time as _t
-
-                        try:
-                            from shared.rendering.tile_constants import UNION_LETTERBOX_HOLD_MS as _HOLD
-                        except Exception:
-                            _HOLD = 350.0
-                        until = _t.monotonic() + _HOLD / 1000.0
-                        # Try canvas widget runtime_state first
-                        for _obj in (
-                            getattr(getattr(controller, "presenter", None), "widget", None),
-                            getattr(controller, "widget", None),
-                        ):
-                            if _obj is not None and hasattr(_obj, "runtime_state"):
-                                try:
-                                    _obj.runtime_state._union_letterbox_hold_until = until
-                                except Exception:
-                                    pass
-                            # also check image_label canvas inside widget
-                            try:
-                                from tabs.image_compare.canvas.helpers import get_canvas_widget
-
-                                _canvas = get_canvas_widget(_obj) if _obj is not None else None
-                                if _canvas is not None and hasattr(_canvas, "runtime_state"):
-                                    try:
-                                        _canvas.runtime_state._union_letterbox_hold_until = until
-                                    except Exception:
-                                        pass
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
             except Exception:
                 pass
         d = getattr(controller.store, "get_dispatcher", lambda: None)()
