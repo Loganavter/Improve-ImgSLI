@@ -14,12 +14,46 @@ def _dnd_debug(msg, *args, stack=False, **kwargs):
         logger.warning("[dnd-window] " + msg, *args, **kwargs)
         if stack:
             try:
-                s = "".join(traceback.format_stack(limit=5)[:-2])
+                s = "".join(traceback.format_stack(limit=7)[:-2])
                 logger.warning("[dnd-window] stack:\n%s", s)
             except Exception:
                 pass
     else:
         logger.debug("[dnd-window] " + msg, *args, **kwargs)
+
+
+def _dbg_overlay_state(widget) -> str:
+    """Compact overlay state for debug lines."""
+    try:
+        if widget is None:
+            return "widget=None"
+        canvas = getattr(widget, "image_label", None)
+        overlay = getattr(widget, "drag_overlay", None)
+        c_vis = "?"
+        c_geom = "?"
+        o_vis = "?"
+        o_geom = "?"
+        try:
+            c_vis = canvas.is_drag_overlay_visible() if canvas and hasattr(canvas, "is_drag_overlay_visible") else "?"
+        except Exception as e:
+            c_vis = f"err:{e}"
+        try:
+            c_geom = repr(canvas.geometry()) if canvas else "?"
+        except Exception:
+            pass
+        try:
+            o_vis = overlay.isVisible() if overlay else "?"
+            o_geom = repr(overlay.geometry()) if overlay else "?"
+        except Exception:
+            pass
+        w_vis = "?"
+        try:
+            w_vis = widget.is_drag_overlay_visible() if hasattr(widget, "is_drag_overlay_visible") else "?"
+        except Exception:
+            pass
+        return f"canvas_vis={c_vis} widget_vis={w_vis} overlay_isVisible={o_vis} canvas_geom={c_geom} overlay_geom={o_geom}"
+    except Exception as e:
+        return f"err:{e}"
 
 class WindowEventHandler(QObject):
     def __init__(self, store, main_controller, widget, parent=None):
@@ -59,26 +93,68 @@ class WindowEventHandler(QObject):
             QTimer.singleShot(0, _try_load)
 
     def handle_drag_enter(self, event: QDragEnterEvent):
+        # DEBUG: log every enter with full overlay state to diagnose "still blocks"
+        _dnd_debug(
+            "handle_drag_enter ENTER hasUrls=%s %s timerActive=%s",
+            event.mimeData().hasUrls(),
+            _dbg_overlay_state(self.widget),
+            self._drag_leave_timer.isActive(),
+            stack=True,
+        )
         if event.mimeData().hasUrls():
+            was_visible = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
             self._drag_leave_timer.stop()
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
-            _dnd_debug("handle_drag_enter -> show overlay", stack=True)
+            _dnd_debug(
+                "handle_drag_enter -> show overlay was_visible=%s %s",
+                was_visible,
+                _dbg_overlay_state(self.widget),
+                stack=False,
+            )
             self._safe_update_drag_overlays(True)
+            _dnd_debug(
+                "handle_drag_enter DONE after_show=%s %s",
+                getattr(self.widget, "is_drag_overlay_visible", lambda: "?")(),
+                _dbg_overlay_state(self.widget),
+            )
         else:
+            _dnd_debug("handle_drag_enter IGNORE no Urls")
             event.ignore()
 
     def _safe_update_drag_overlays(self, visible):
-        # Only log when visibility actually changes to avoid 60Hz spam
+        import time
         _before = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?"
+        _before_state = _dbg_overlay_state(self.widget)
+        _ts = time.monotonic()
         if self.widget is not None and hasattr(self.widget, "update_drag_overlays"):
             try:
                 self.widget.update_drag_overlays(
                     self.store.viewport.view_state.is_horizontal, visible=visible
                 )
                 _after = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if hasattr(self.widget, "is_drag_overlay_visible") else "?"
-                if _before != visible or _after != visible:
-                    _dnd_debug("_safe_update_drag_overlays visible=%s before=%s after=%s", visible, _before, _after, stack=True)
+                _after_state = _dbg_overlay_state(self.widget)
+                # Always log visibility changes, plus periodic state for post-drop blocking diagnosis
+                if _before != visible or _after != visible or visible is False:
+                    _dnd_debug(
+                        "_safe_update_drag_overlays visible=%s before=%s after=%s t=%.3f before_state=[%s] after_state=[%s]",
+                        visible,
+                        _before,
+                        _after,
+                        _ts,
+                        _before_state,
+                        _after_state,
+                        stack=True,
+                    )
+                else:
+                    _dnd_debug(
+                        "_safe_update_drag_overlays visible=%s before=%s after=%s t=%.3f [%s]",
+                        visible,
+                        _before,
+                        _after,
+                        _ts,
+                        _after_state,
+                    )
             except (AttributeError, RuntimeError) as e:
                 logger.warning(
                     f"WindowEventHandler._safe_update_drag_overlays: failed to update drag overlays: {e}"
@@ -87,16 +163,33 @@ class WindowEventHandler(QObject):
     def handle_drag_move(self, event: QDragMoveEvent):
         if event.mimeData().hasUrls():
             self._drag_leave_timer.stop()
+            # DEBUG: log if overlay should be visible but isn't (input blocked)
+            try:
+                vis = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
+                if not vis:
+                    _dnd_debug("handle_drag_move hasUrls but overlay NOT visible %s", _dbg_overlay_state(self.widget))
+            except Exception:
+                pass
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
         else:
             event.ignore()
 
     def handle_drag_leave(self, event):
+        _dnd_debug("handle_drag_leave -> start 80ms timer %s", _dbg_overlay_state(self.widget))
         self._drag_leave_timer.start()
         event.accept()
 
     def handle_drop(self, event: QDropEvent):
+        import time
+        _drop_ts = time.monotonic()
+        _dnd_debug(
+            "handle_drop ENTER %s timerActive=%s t=%.3f",
+            _dbg_overlay_state(self.widget),
+            self._drag_leave_timer.isActive(),
+            _drop_ts,
+            stack=True,
+        )
         self._drag_leave_timer.stop()
         self._safe_update_drag_overlays(False)
         # Force immediate visual hide – TopLevelInWindowOverlay hide() alone
@@ -127,7 +220,28 @@ class WindowEventHandler(QObject):
                         pass
         except Exception:
             pass
-        _dnd_debug("handle_drop hide overlay is_drag_overlay_visible=%s", getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?", stack=True)
+        _dnd_debug(
+            "handle_drop hide overlay is_drag_overlay_visible=%s %s",
+            getattr(self.widget, "is_drag_overlay_visible", lambda: "?")() if self.widget and hasattr(self.widget, "is_drag_overlay_visible") else "?",
+            _dbg_overlay_state(self.widget),
+            stack=True,
+        )
+        # DEBUG: post-drop blocking check — verify overlay stays hidden and new input not blocked
+        def _post_drop_check(delay_ms: int):
+            def _check():
+                vis = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
+                state = _dbg_overlay_state(self.widget)
+                _dnd_debug("handle_drop post-check +%dms vis=%s %s", delay_ms, vis, state, stack=False)
+                # If still visible after drop, it blocks new DnD (the reported bug)
+                if vis:
+                    _dnd_debug("handle_drop POST-CHECK BLOCKING! overlay still visible +%dms %s", delay_ms, state, stack=True)
+            return _check
+
+        for _d in (50, 200, 500, 1000):
+            try:
+                QTimer.singleShot(_d, _post_drop_check(_d))
+            except Exception:
+                pass
 
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()

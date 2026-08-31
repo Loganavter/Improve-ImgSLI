@@ -147,6 +147,8 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
 
 def load_images_from_paths(controller, file_paths: list[str], image_number: int):
+    import time as _t
+    _t0 = _t.monotonic()
     ic_preview_debug("load_images_from_paths slot=%s files=%s", image_number, file_paths)
     from tabs.image_compare.services import document_store_ops
     from core.state_management.actions import (
@@ -159,7 +161,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
     is_new = len(lst) == 0
-    ic_preview_debug("load_images_from_paths slot=%s is_new=%s len=%s other_len=%s", image_number, is_new, len(lst), len(document.image_list2 if image_number==1 else document.image_list1))
+    ic_preview_debug("load_images_from_paths slot=%s is_new=%s len=%s other_len=%s t=%.3f", image_number, is_new, len(lst), len(document.image_list2 if image_number==1 else document.image_list1), _t.monotonic() - _t0)
     if is_new:
         other = 2 if image_number == 1 else 1
         other_lst = document.image_list1 if other == 1 else document.image_list2
@@ -229,8 +231,10 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
         except Exception as e:
             ic_preview_debug("load_images_from_paths slot=%s append failed %s %s", image_number, disp, e)
             errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
-    ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s", image_number, new_idx, errors, len(lst))
+    ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s t=%.3f", image_number, new_idx, errors, len(lst), _t.monotonic() - _t0)
+    _t1 = _t.monotonic()
     _finalize_loaded_paths(controller, image_number, new_idx, errors)
+    ic_preview_debug("load_images_from_paths slot=%s _finalize done t=%.3f total=%.3f", image_number, _t.monotonic() - _t1, _t.monotonic() - _t0)
 
 
 def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> None:
