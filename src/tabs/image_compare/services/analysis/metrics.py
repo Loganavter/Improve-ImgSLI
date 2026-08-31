@@ -30,7 +30,15 @@ class MetricsService:
 
         self._show_ssim_metrics_toast_if_needed(calc_ssim)
 
-        from shared.image_processing.store_lease import StoreLease
+        # inline is_open/generation capture replaces generation token
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+
+            cap1 = (img1, getattr(img1, "generation", None)) if isinstance(img1, _TPS) else (img1, None)
+            cap2 = (img2, getattr(img2, "generation", None)) if isinstance(img2, _TPS) else (img2, None)
+        except Exception:
+            cap1 = (img1, getattr(img1, "generation", None))
+            cap2 = (img2, getattr(img2, "generation", None))
 
         self._metrics_request_id += 1
         request_id = self._metrics_request_id
@@ -41,8 +49,8 @@ class MetricsService:
             img2,
             calc_psnr,
             calc_ssim,
-            StoreLease.capture(img1),
-            StoreLease.capture(img2),
+            cap1,
+            cap2,
         )
         # Capture request_id so late results for a previous pair are ignored.
         worker.signals.result.connect(lambda r, rid=request_id: self.on_metrics_calculated(r, request_id=rid))
@@ -90,19 +98,28 @@ class MetricsService:
         return image_state.image1, image_state.image2
 
     def metrics_worker_task(
-        self, img1, img2, calc_psnr: bool, calc_ssim: bool, lease1, lease2
+        self, img1, img2, calc_psnr: bool, calc_ssim: bool, cap1, cap2
     ) -> Optional[Tuple[Optional[float], Optional[float]]]:
         """Worker task to compute metrics."""
         try:
             from shared.analysis import calculate_psnr, calculate_ssim
             from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
-            from shared.image_processing.store_lease import StoreLease
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            if lease1 is not None and not lease1.valid:
-                return None
-            if lease2 is not None and not lease2.valid:
-                return None
+            # inline is_open/generation check
+            for img, cap in ((img1, cap1), (img2, cap2)):
+                if cap is None:
+                    continue
+                if isinstance(cap, tuple) and len(cap) == 2:
+                    _, gen = cap
+                    if isinstance(img, TiledPixelStore):
+                        if gen is not None and getattr(img, "generation", None) != gen:
+                            return None
+                        if not getattr(img, "is_open", True):
+                            return None
+                elif hasattr(cap, "valid"):
+                    if not cap.valid:  # legacy lease
+                        return None
             if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
                 img1, img2 = downscale_pair_to_limit(img1, img2, 4096, allow_materialize=True)
             else:

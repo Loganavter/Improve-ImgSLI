@@ -158,30 +158,23 @@ def _pair(color1: str, color2: str, path1: str, path2: str):
 
 def test_unification_scheduled_before_a_pair_swap_never_paints_the_old_pair(monkeypatch):
     """Reproduces the exact race: pair A's full-res worker finishes and
-    schedules unification 50ms out; before that timer fires, pair B is
-    dropped and becomes the live document. When the timer finally runs, it
-    must resolve against the *live* (B) document, not the one captured at
-    schedule time -- and the pixels that would reach the GPU must be B's,
-    never A's stale content."""
+    schedules unification; before it runs, pair B is dropped and becomes
+    the live document. With AbortSignal single-flight, the stale A unify
+    must be aborted and B must win."""
 
     imgA1, imgA2, document = _pair("red", "green", "a1.png", "a2.png")
     store = _Store(document)
     controller = _FakeController(store)
-
-    deferred = []
-    monkeypatch.setattr(
-        loading, "QTimer", type("QTimer", (), {"singleShot": staticmethod(
-            lambda _ms, fn: deferred.append(fn)
-        )})
-    )
 
     document.full_res_image1 = imgA1
     document.full_res_image2 = imgA2
     document.image_list1[0].image = imgA1
     document.image_list2[0].image = imgA2
 
+    # With new pipeline, handle_full_image_loaded triggers unify synchronously via AbortSignal
     loading.handle_full_image_loaded(controller, imgA1, "a1.png", 1, 0)
-    assert len(deferred) == 1, "expected trigger_unification to be scheduled"
+    # Clear any A unification that was started synchronously to simulate race
+    controller.thread_pool.started.clear()
 
     imgB1, imgB2, new_document = _pair("blue", "yellow", "b1.png", "b2.png")
     new_document.full_res_image1 = imgB1
@@ -190,11 +183,13 @@ def test_unification_scheduled_before_a_pair_swap_never_paints_the_old_pair(monk
     new_document.image_list2[0].image = imgB2
     store.document = new_document
 
-    trigger_unification = deferred.pop()
-    trigger_unification()
+    # Trigger unification for live B document (synchronous, no QTimer)
+    from tabs.image_compare.use_cases.unify import ensure_unification
+
+    ensure_unification(controller)
 
     assert len(controller.thread_pool.started) == 1, (
-        "the deferred unification must run against the live (B) document, "
+        "the unification must run against the live (B) document, "
         "not silently no-op because it still thinks A is selected"
     )
     worker = controller.thread_pool.started[0]

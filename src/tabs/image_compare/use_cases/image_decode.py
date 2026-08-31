@@ -63,7 +63,16 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
         ic_preview_debug("load_image_async slot=%s -> load_pixel_store", image_number)
-        store = load_pixel_store(path, crop_service=crop_service)
+        # DI: pass PipelineCache embedded tier from tab context
+        _emb = None
+        try:
+            _emb = getattr(getattr(controller, "pipeline", None), "cache", None)
+            if _emb is None:
+                _sess = controller._get_image_session() if hasattr(controller, "_get_image_session") else None
+                _emb = getattr(_sess, "cache", None) if _sess is not None else None
+        except Exception:
+            _emb = None
+        store = load_pixel_store(path, crop_service=crop_service, embedded_cache=_emb)
         ic_preview_debug("load_image_async slot=%s store=%s uid=%s", image_number, store, getattr(store, "uid", None) if store else None)
         return store, path, image_number, index_in_list, False
     except Exception as e:
@@ -131,12 +140,7 @@ def on_image_loaded(controller, result):
         pil_img, path, image_number, index_in_list = result
         is_preview = False
     ic_preview_debug("on_image_loaded slot=%s path=%s idx=%s is_preview=%s pil_img=%s", image_number, path, index_in_list, is_preview, pil_img)
-    try:
-        pending = getattr(controller, "_pending_image_loads", None)
-        if pending is not None and path is not None:
-            pending.discard((int(image_number), str(path)))
-    except Exception:
-        pass
+    # single-flight cleanup via pipeline inflight + AbortSignal — handled by slot.py _clear
     document = controller.store.get_session_state_slot("document")
     target_list = document.image_list1 if image_number == 1 else document.image_list2
     ic_preview_debug("on_image_loaded slot=%s target_len=%s idx_valid=%s path_match=%s", image_number, len(target_list), 0 <= index_in_list < len(target_list), target_list[index_in_list].path == path if 0 <= index_in_list < len(target_list) else False)
@@ -275,7 +279,13 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
     def load_full_task(path_str, svc, slot_number, item_index):
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-        store = load_pixel_store(path_str, crop_service=svc)
+        # DI: try controller cache (closure capture)
+        _emb2 = None
+        try:
+            _emb2 = getattr(getattr(controller, "pipeline", None), "cache", None)
+        except Exception:
+            _emb2 = None
+        store = load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb2)
         return (
             store,
             path_str,
@@ -284,7 +294,7 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
         )
 
     # Bucket D: use ImageLoadService single-flight (path+mtime+box) instead of
-    # separate (slot,path,"full") + _pending_full_loads. Deduplicates preview
+    # separate (slot,path,"full") single-flight. Deduplicates preview
     # full chain and pyramid pending via shared _inflight.
     _svc = None
     _key = None
@@ -312,13 +322,11 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
                 ic_preview_debug("load_full_resolution_async slot=%s dedup key=%s", image_number, _key)
                 return
             _sig = alo
-            # keep legacy alias for _pending_full_loads proxy / pyramid checks
+            # keep direct pipeline._inflight alias for pyramid/toast checks via AbortSignal.is_aborted()
             try:
                 pl = getattr(controller, "pipeline", None)
                 if pl is not None and hasattr(pl, "_inflight"):
                     pl._inflight.setdefault((int(image_number), str(path), "full"), _sig)  # type: ignore[index]
-                # bump pending count alias via service release will decrement?
-                controller._pending_full_loads[image_number] = controller._pending_full_loads.get(image_number, 0) + 1  # type: ignore[union-attr]
             except Exception:
                 pass
 
@@ -357,14 +365,6 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
                             pl._inflight.pop((int(image_number), str(path), "full"), None)
                 except Exception:
                     pass
-                try:
-                    pending = getattr(controller, "_pending_full_loads", None)
-                    if pending is not None:
-                        cnt = pending.get(int(image_number), 0)
-                        if cnt > 0:
-                            pending[int(image_number)] = max(0, cnt - 1)
-                except Exception:
-                    pass
 
             worker.signals.result.connect(controller._on_full_resolution_loaded_result)
             worker.signals.error.connect(
@@ -388,7 +388,7 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
                     _svc.release(_key, _sig)
                 except Exception:
                     pass
-    # fallback legacy path (fakes without service)
+    # fallback direct pipeline inflight single-flight (fakes without service)
     _sig = None
     try:
         pl = getattr(controller, "pipeline", None)
@@ -396,7 +396,6 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             from tabs.image_compare.pipeline.abort import AbortSignal as _S
 
             _sig = _S()
-            controller._pending_full_loads[image_number] = controller._pending_full_loads.get(image_number, 0) + 1  # type: ignore[union-attr]
             pl._inflight[(int(image_number), str(path), "full")] = _sig  # type: ignore[index]
             orig_task = load_full_task
 
@@ -429,14 +428,6 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
                         pl._inflight.pop((int(image_number), str(path), "full"), None)
                 except Exception:
                     pass
-                try:
-                    pending = getattr(controller, "_pending_full_loads", None)
-                    if pending is not None:
-                        cnt = pending.get(int(image_number), 0)
-                        if cnt > 0:
-                            pending[int(image_number)] = max(0, cnt - 1)
-                except Exception:
-                    pass
 
         else:
             raise AttributeError
@@ -448,20 +439,9 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             image_number,
             index_in_list,
         )
-        try:
-            controller._pending_full_loads[image_number] += 1  # type: ignore[index]
-        except Exception:
-            pass
 
         def _clear_full():  # type: ignore[no-redef]
-            try:
-                pending = getattr(controller, "_pending_full_loads", None)
-                if pending is not None:
-                    cnt = pending.get(int(image_number), 0)
-                    if cnt > 0:
-                        pending[int(image_number)] = max(0, cnt - 1)
-            except Exception:
-                pass
+            pass
 
     worker.signals.result.connect(controller._on_full_resolution_loaded_result)
     worker.signals.error.connect(
@@ -480,16 +460,7 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
 
 
 def on_full_load_finished(controller, image_number: int) -> None:
-    # Pending count is decremented in _clear_full (single-flight) — here we only check
-    # if any full decode remains for this slot. This avoids double-decrement that
-    # would prematurely finish the toast when two full loads race for the same slot.
-    try:
-        pending = getattr(controller, "_pending_full_loads", None)
-        if pending is not None and pending.get(int(image_number), 0) > 0:
-            return
-    except Exception:
-        pass
-    # Direct inflight check for safety (covers proxy/_inflight desync)
+    # Direct pipeline._inflight check via AbortSignal.is_aborted() — single cancel token
     try:
         pl = getattr(controller, "pipeline", None)
         if pl is not None and hasattr(pl, "_inflight"):

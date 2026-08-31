@@ -39,36 +39,98 @@ def _discard_pending_loads(main_controller, image_number: int, paths: list[str])
     ctrl = main_controller
     real = getattr(ctrl, "session_ctrl", None) if ctrl is not None else None
     holder = real if real is not None else ctrl
-    # image loads dedup set
-    pending = getattr(holder, "_pending_image_loads", None) if holder is not None else None
-    if pending is not None:
-        import os as _os
 
-        if paths:
-            for p in paths:
-                if not p:
-                    continue
-                try:
-                    pending.discard((image_number, p))
-                except Exception:
-                    pass
-                try:
-                    norm = _os.path.normpath(p)
-                    pending.discard((image_number, norm))
-                except Exception:
-                    pass
-        # sweeping: also drop any stale entries for this slot that remain (e.g. clear of whole list)
+    def _abort_inflight(pipeline, slot: int, path_list: list[str] | None) -> None:
+        if pipeline is None or not hasattr(pipeline, "_inflight"):
+            return
+        inflight = pipeline._inflight
         try:
-            for key in list(pending):
-                if isinstance(key, tuple) and len(key) == 2 and key[0] == image_number:
-                    pending.discard(key)
+            import os as _os
+
+            # specific paths
+            if path_list:
+                for p in path_list:
+                    if not p:
+                        continue
+                    for key in (
+                        (slot, p),
+                        (slot, _os.path.normpath(p)),
+                        (slot, p, "full"),
+                        (slot, _os.path.normpath(p), "full"),
+                    ):
+                        sig = inflight.get(key)  # type: ignore[arg-type]
+                        if sig is not None:
+                            try:
+                                sig.abort()
+                            except Exception:
+                                pass
+                            try:
+                                inflight.pop(key, None)
+                            except Exception:
+                                pass
+            # sweep any remaining keys for this slot (covers stale entries e.g. clear of whole list)
+            for key in list(inflight.keys()):
+                if not isinstance(key, tuple):
+                    continue
+                if len(key) >= 2 and isinstance(key[0], int) and key[0] == slot:
+                    sig = inflight.get(key)
+                    try:
+                        if sig is not None and not getattr(sig, "is_aborted", lambda: False)():
+                            sig.abort()
+                    except Exception:
+                        try:
+                            if sig is not None:
+                                sig.abort()
+                        except Exception:
+                            pass
+                    try:
+                        inflight.pop(key, None)
+                    except Exception:
+                        pass
+                elif len(key) >= 2 and key[0] == "__full_count__" and len(key) > 1 and key[1] == slot:
+                    sig = inflight.get(key)
+                    try:
+                        if sig is not None:
+                            sig.abort()
+                    except Exception:
+                        pass
+                    try:
+                        inflight.pop(key, None)
+                    except Exception:
+                        pass
         except Exception:
             pass
-    # full-res decode counters — reset for the cleared slot so mixed-unify defer does not hang
+
+    # abort single-flight entries via direct pipeline._inflight + AbortSignal.is_aborted()
     try:
-        full_pending = getattr(holder, "_pending_full_loads", None) if holder is not None else None
-        if isinstance(full_pending, dict) and image_number in full_pending:
-            full_pending[image_number] = 0
+        pipelines: list = []
+        if holder is not None:
+            pl = getattr(holder, "pipeline", None)
+            if pl is not None:
+                pipelines.append(pl)
+            # all sessions (cross-session leaks similar to evict)
+            sessions = getattr(holder, "_image_sessions", None)
+            if isinstance(sessions, dict):
+                for sess in list(sessions.values()):
+                    sp = getattr(sess, "pipeline", None)
+                    if sp is not None and sp not in pipelines:
+                        pipelines.append(sp)
+            sess_single = getattr(holder, "_image_session", None)
+            if sess_single is not None:
+                sp = getattr(sess_single, "pipeline", None)
+                if sp is not None and sp not in pipelines:
+                    pipelines.append(sp)
+        for pl in pipelines:
+            _abort_inflight(pl, int(image_number), paths)
+        # fallback: if no pipeline found, try holder as tab with session_ctrl
+        if not pipelines and holder is not None:
+            # try generic scan for _inflight
+            try:
+                inflight = getattr(holder, "_inflight", None)
+                if isinstance(inflight, dict):
+                    _abort_inflight(holder, int(image_number), paths)  # type: ignore[arg-type]
+            except Exception:
+                pass
     except Exception:
         pass
 
