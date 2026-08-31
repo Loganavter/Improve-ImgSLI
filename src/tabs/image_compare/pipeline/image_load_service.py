@@ -3,9 +3,9 @@
 Single-flight via ``path+mtime+box → AbortSignal`` replacing:
 
 * ``slot._inflight[(slot,path)]`` (slot.py:475)
-* ``image_decode._inflight[(slot,path,"full")]`` + ``_pending_full_loads`` (image_decode.py:272)
+* ``image_decode._inflight[(slot,path,"full")]`` (image_decode.py:272)
 * ``unify (p1,p2)`` (unify.py:214)
-* ``pyramid _pending_full_loads`` proxy (session.py / pyramid.py)
+* ``pyramid single-flight`` (session.py / pyramid.py)
 
 Key is ``(normpath, mtime_ns, size, has_crop, box_tuple)`` — same as
 ``_pixel_key``/``_preview_key`` but without sentinel; ``box_tuple`` via
@@ -252,7 +252,12 @@ class ImageLoadService:
                 from shared.image_processing.pixel_cache_loader import load_pixel_store
                 if sig_ref.is_aborted():
                     return None, p, sl, idx, False
-                store_obj = load_pixel_store(p, crop_service=svc)
+                _emb_svc = None
+                try:
+                    _emb_svc = getattr(getattr(controller, "pipeline", None), "cache", None)
+                except Exception:
+                    _emb_svc = None
+                store_obj = load_pixel_store(p, crop_service=svc, embedded_cache=_emb_svc)
                 try:
                     if sig_ref.is_aborted():
                         return None, p, sl, idx, False

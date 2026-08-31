@@ -75,9 +75,12 @@ def _peek_both(pl, path: str | None):
 
 
 def _slot_sources(controller, document):
-    """PipelineCache is single source; fallback to viewport image_state."""
+    """PipelineCache is single source; fallback to viewport image_state + legacy document fields for tests."""
     pl = getattr(controller, "pipeline", None)
-    vp_state = getattr(controller.store.viewport.session_data, "image_state", None)
+    try:
+        vp_state = getattr(controller.store.viewport.session_data, "image_state", None)
+    except Exception:
+        vp_state = None
     s1 = s2 = None
     if document is not None:
         if pl is not None:
@@ -94,6 +97,17 @@ def _slot_sources(controller, document):
             s1 = getattr(vp_state, "image1", None)
         if s2 is None and vp_state is not None:
             s2 = getattr(vp_state, "image2", None)
+        # legacy fallback for DocumentModel with full_res/preview fields (tests compat)
+        if s1 is None:
+            try:
+                s1 = getattr(document, "full_res_image1", None) or getattr(document, "preview_image1", None)
+            except Exception:
+                pass
+        if s2 is None:
+            try:
+                s2 = getattr(document, "full_res_image2", None) or getattr(document, "preview_image2", None)
+            except Exception:
+                pass
     return s1, s2
 
 

@@ -415,7 +415,7 @@ def test_rewrite_and_embed_helpers(tmp_path):
 
 
 def test_zip_project_embeds_pixel_cache_and_registers_on_load(tmp_path, monkeypatch):
-    from shared.image_processing import pixel_cache_registry
+    from shared.image_processing import embedded_pixel_cache as pixel_cache_registry
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
     from services.io.project_io import (
         build_project_data,

@@ -188,7 +188,16 @@ def read_image(controller, path: Path, *, slot_id: int | None = None, start_pyra
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
         crop_service = _get_crop_service(controller)
-        store = load_pixel_store(path, crop_service=crop_service)
+        _emb_mc = None
+        try:
+            _emb_mc = getattr(getattr(controller, "store", None), "get_session_state_slot", lambda *_: None)("pipeline")
+            # pipeline state vs cache instance fallback
+            from shared.image_processing import embedded_pixel_cache as _emb_mod
+
+            _emb_mc = _emb_mod  # host-owned injection from tab context
+        except Exception:
+            _emb_mc = None
+        store = load_pixel_store(path, crop_service=crop_service, embedded_cache=_emb_mc)
         if start_pyramid:
             start_pyramid_build(controller, store, slot_id=slot_id)
         return store
@@ -378,8 +387,9 @@ def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
 
     def load_full_task(path_str: str, svc=crop_service):
         from shared.image_processing.pixel_cache_loader import load_pixel_store
+        from shared.image_processing import embedded_pixel_cache as _emb_mc2
 
-        return load_pixel_store(path_str, crop_service=svc)
+        return load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb_mc2)
 
     worker = GenericWorker(load_full_task, str(path))
     worker.signals.result.connect(

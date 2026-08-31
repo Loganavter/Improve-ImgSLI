@@ -41,50 +41,39 @@ logger = logging.getLogger("ImproveImgSLI")
 if TYPE_CHECKING:
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-# Embedded project pixel cache — migrated from shared.image_processing.pixel_cache_registry
-# Single process-wide dict, logically owned by PipelineCache. Alias to the legacy registry
-# dict so legacy callers (project_io, pixel_cache_loader) see the same storage.
-try:
-    from shared.image_processing import pixel_cache_registry as _pixel_registry  # type: ignore
-
-    _embedded_cache: dict[str, tuple[str, int, int]] = _pixel_registry._cache  # alias
-except Exception:  # pragma: no cover — import fallback for isolated tests
-    _pixel_registry = None  # type: ignore
-    _embedded_cache: dict[str, tuple[str, int, int]] = {}
+# Embedded project pixel cache — single source via host-owned
+# ``shared.image_processing.embedded_pixel_cache`` (host may not import tabs,
+# see test_ui_tab_sandbox; tabs may import shared). PipelineCache is the
+# logical owner; the dict is physically in shared so both layers see the same
+# storage without a host→tabs import.
+from shared.image_processing.embedded_pixel_cache import _cache as _embedded_cache
 
 
 def register_embedded_cache(media_path: str, cache_path: str, width: int, height: int) -> None:
-    """Register an extracted project cache buffer (B10). Writes to the shared alias."""
-    try:
-        if _pixel_registry is not None:
-            _pixel_registry.register(media_path, cache_path, width, height)
-            return
-    except Exception:
-        pass
-    _embedded_cache[str(media_path)] = (str(cache_path), int(width), int(height))
+    """Register an extracted project cache buffer (B10). Writes to shared host dict."""
+    from shared.image_processing import embedded_pixel_cache as _emb
+
+    _emb.register(media_path, cache_path, width, height)
     try:
         norm = os.path.normpath(str(media_path))
         if norm != str(media_path):
-            _embedded_cache[norm] = (str(cache_path), int(width), int(height))
+            _emb.register(norm, cache_path, width, height)
     except Exception:
         pass
 
 
 def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
+    from shared.image_processing import embedded_pixel_cache as _emb
+
+    v = _emb.lookup(media_path)
+    if v is not None:
+        return v
     try:
-        if _pixel_registry is not None:
-            v = _pixel_registry.lookup(media_path)
-            if v is not None:
-                return v
-            # try normalized variant
-            try:
-                norm = os.path.normpath(str(media_path))
-                if norm != str(media_path):
-                    v2 = _pixel_registry.lookup(norm)
-                    if v2 is not None:
-                        return v2
-            except Exception:
-                pass
+        norm = os.path.normpath(str(media_path))
+        if norm != str(media_path):
+            v2 = _emb.lookup(norm)
+            if v2 is not None:
+                return v2
     except Exception:
         pass
     v = _embedded_cache.get(str(media_path))
@@ -100,22 +89,22 @@ def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
 
 
 def clear_embedded_cache() -> None:
-    try:
-        if _pixel_registry is not None:
-            _pixel_registry.clear()
-    except Exception:
-        pass
+    from shared.image_processing import embedded_pixel_cache as _emb
+
+    _emb.clear()
     _embedded_cache.clear()
 
 
 def pop_embedded_cache(media_path: str) -> None:
+    from shared.image_processing import embedded_pixel_cache as _emb
+
     for key in (str(media_path), os.path.normpath(str(media_path))):
-        try:
-            if _pixel_registry is not None:
-                _pixel_registry._cache.pop(key, None)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        _emb.pop(key)
         _embedded_cache.pop(key, None)
+
+
+# Back-compat alias for isolated tests that patched the old private name.
+_pixel_registry = None  # type: ignore
 
 
 _PIXEL_CACHE_MAX = 8
@@ -540,6 +529,23 @@ class PipelineCache:
                 self._unify.popitem(last=False)
             except Exception:
                 break
+
+    # -- embedded cache DI adapter (host -> PipelineCache) --
+    # Host layers (services/io/project_io, shared/pixel_cache_loader) accept an
+    # injected ``embedded_cache`` object with ``register``/``lookup`` so they
+    # never import ``tabs``. When a tab passes its PipelineCache instance,
+    # these wrappers delegate to the host-owned storage via the module helpers.
+    def register(self, media_path: str, cache_path: str, width: int, height: int) -> None:
+        register_embedded_cache(media_path, cache_path, width, height)
+
+    def lookup(self, media_path: str) -> tuple[str, int, int] | None:
+        return lookup_embedded_cache(media_path)
+
+    def lookup_embedded_cache(self, media_path: str) -> tuple[str, int, int] | None:  # alias
+        return lookup_embedded_cache(media_path)
+
+    def register_embedded_cache(self, media_path: str, cache_path: str, width: int, height: int) -> None:  # alias
+        register_embedded_cache(media_path, cache_path, width, height)
 
     # -- introspection for tests --
 

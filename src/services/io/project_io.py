@@ -316,12 +316,16 @@ def _register_pixel_cache(
     member_to_abs: dict[str, str],
     *,
     progress: ProgressCallback | None = None,
+    embedded_cache=None,
 ) -> None:
     """Extract embedded ``cache/`` buffers (if any) and register them so the
     ``TiledPixelStore.from_path`` call sites can skip re-decoding.
 
     W3.1: clamp dims vs MAX_SUPPORTED_IMAGE_DIMENSION and verify
     ``st_size >= w*h*4`` before memmap to avoid SIGBUS on crafted projects.
+    ``embedded_cache`` — DI для embedded tier (PipelineCache или registry
+    объект с ``register``). Если ``None`` — используется host-owned
+    ``shared.image_processing.embedded_pixel_cache`` (без импорта ``tabs``).
     """
     pixel_cache = data.get("pixel_cache")
     if not pixel_cache:
@@ -335,7 +339,20 @@ def _register_pixel_cache(
 
     from core.constants import AppConstants
 
-    from shared.image_processing import pixel_cache_registry
+    # DI: prefer injected cache (PipelineCache instance / registry), fallback to host module
+    _injected_register = None
+    if embedded_cache is not None:
+        try:
+            if hasattr(embedded_cache, "register"):
+                _injected_register = embedded_cache.register  # type: ignore
+            elif hasattr(embedded_cache, "register_embedded_cache"):
+                _injected_register = embedded_cache.register_embedded_cache  # type: ignore
+        except Exception:
+            _injected_register = None
+    if _injected_register is None:
+        from shared.image_processing import embedded_pixel_cache as _emb
+
+        _injected_register = _emb.register
 
     for asset_id, entry in pixel_cache.items():
         extracted_path = asset_to_extracted.get(asset_id)
@@ -372,20 +389,21 @@ def _register_pixel_cache(
                 asset_id, st_size, expected, width, height,
             )
             continue
-        pixel_cache_registry.register(abs_media_path, extracted_path, width, height)
+        _injected_register(abs_media_path, extracted_path, width, height)
 
 
 def prepare_project_file_for_load(
     path: str | Path,
     *,
     progress: ProgressCallback | None = None,
+    embedded_cache=None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Read/extract a project file into a loadable dict (worker-safe).
 
     Returns ``(project_data, warnings)``. For ZIP packages, media is extracted
     to the project cache and path fields are rewritten to absolute cache paths.
     Does not mutate the workspace — call :func:`load_project_data` on the UI
-    thread afterward.
+    thread afterward. ``embedded_cache`` — DI для embedded tier (см. ``_register_pixel_cache``).
     """
     project_path = Path(path)
     if not project_path.is_file():
@@ -407,7 +425,9 @@ def prepare_project_file_for_load(
                 f"Missing {len(missing_members)} embedded media member(s) in project."
             )
         data = rewrite_session_paths(data, member_to_abs)
-        _register_pixel_cache(data, project_path, cache_dir, member_to_abs, progress=progress)
+        _register_pixel_cache(
+            data, project_path, cache_dir, member_to_abs, progress=progress, embedded_cache=embedded_cache
+        )
         return data, warnings
 
     data = json.loads(project_path.read_text(encoding="utf-8"))
@@ -427,12 +447,14 @@ def load_project_file(
     *,
     replace_workspace: bool = True,
     progress: ProgressCallback | None = None,
+    embedded_cache=None,
 ) -> list[Any]:
     """Load a project file (ZIP v2 or legacy plain JSON v1).
 
     Default ``replace_workspace=True`` so Open replaces the current workspace.
+    ``embedded_cache`` forwarded to ``prepare_project_file_for_load`` (DI).
     """
-    data, _warnings = prepare_project_file_for_load(path, progress=progress)
+    data, _warnings = prepare_project_file_for_load(path, progress=progress, embedded_cache=embedded_cache)
     return load_project_data(
         data,
         workspace_actions,

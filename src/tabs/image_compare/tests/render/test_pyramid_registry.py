@@ -70,17 +70,18 @@ def test_ensure_sweeps_stale_entries_of_other_stores():
 
 def test_reunification_task_id_aborts_build():
     from tabs.image_compare._session_controller import SessionController
-
-    class _Ctrl:
-        _unification_task_id = 2
+    from tabs.image_compare.pipeline.abort import AbortSignal
 
     store = _store(4096, 4096)
     pyramid = pyramid_registry.ensure_pyramid(store)
 
-    SessionController._pyramid_build_task(_Ctrl(), pyramid, task_id=1, uid=0, total_levels=1)
-    assert pyramid.level_count == 1  # stale task id: aborted before any level
+    stale = AbortSignal()
+    stale.abort()
+    fresh = AbortSignal()
+    SessionController._pyramid_build_task(object(), pyramid, task_id=stale, uid=0, total_levels=1)
+    assert pyramid.level_count == 1  # stale signal: aborted before any level
 
-    SessionController._pyramid_build_task(_Ctrl(), pyramid, task_id=2, uid=0, total_levels=3)
+    SessionController._pyramid_build_task(object(), pyramid, task_id=fresh, uid=0, total_levels=3)
     assert pyramid.is_complete()
     assert pyramid.level_count == 3
     store.close()
@@ -88,15 +89,14 @@ def test_reunification_task_id_aborts_build():
 
 def test_build_task_reports_each_level():
     from tabs.image_compare._session_controller import SessionController
-
-    class _Ctrl:
-        _unification_task_id = 1
+    from tabs.image_compare.pipeline.abort import AbortSignal
 
     store = _store(4096, 4096)
     pyramid = pyramid_registry.ensure_pyramid(store)
     levels = []
+    sig = AbortSignal()
     SessionController._pyramid_build_task(
-        _Ctrl(), pyramid, task_id=1, uid=0, total_levels=2, progress_callback=levels.append
+        object(), pyramid, task_id=sig, uid=0, total_levels=2, progress_callback=levels.append
     )
     assert len(levels) == 2
     store.close()

@@ -8,7 +8,6 @@ from sli_ui_toolkit.workers import GenericWorker
 
 from core.state_management.actions import SetCachedDiffImageAction
 
-from shared.image_processing.store_lease import StoreLease
 from shared.rendering.image_identity import image_uid
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
 
@@ -137,6 +136,15 @@ class CachedDiffService:
         )
         self._pending_request_key = request_key
 
+        # inline is_open/generation capture instead of generation token
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+
+            cap1 = (image1, getattr(image1, "generation", None)) if isinstance(image1, _TPS) else (image1, None)
+            cap2 = (image2, getattr(image2, "generation", None)) if isinstance(image2, _TPS) else (image2, None)
+        except Exception:
+            cap1 = (image1, getattr(image1, "generation", None))
+            cap2 = (image2, getattr(image2, "generation", None))
         worker = GenericWorker(
             self._generate_diff_map_task,
             image1,
@@ -144,8 +152,8 @@ class CachedDiffService:
             diff_mode,
             channel_mode,
             optimize_ssim,
-            StoreLease.capture(image1),
-            StoreLease.capture(image2),
+            cap1,
+            cap2,
         )
         worker.signals.result.connect(
             lambda diff_image, key=request_key: self._on_diff_map_ready(diff_image, key)
@@ -157,22 +165,44 @@ class CachedDiffService:
 
     @staticmethod
     def _generate_diff_map_task(
-        img1, img2, mode, channel_mode, optimize_ssim, lease1, lease2
+        img1, img2, mode, channel_mode, optimize_ssim, cap1, cap2
     ):
         started_at = time.perf_counter()
+        # inline stale check via is_open/generation
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+
+            for img, cap in ((img1, cap1), (img2, cap2)):
+                if cap is None:
+                    continue
+                # cap is (store, generation) tuple
+                if isinstance(cap, tuple) and len(cap) == 2:
+                    _, gen = cap
+                    if isinstance(img, _TPS):
+                        if gen is not None and getattr(img, "generation", None) != gen:
+                            return None
+                        if not getattr(img, "is_open", True):
+                            return None
+                elif hasattr(cap, "valid"):
+                    # fallback for legacy lease objects from other callers
+                    if not cap.valid:
+                        return None
+        except Exception:
+            pass
         try:
             from tabs.image_compare.services.analysis.background_layers import (
                 build_cached_diff_image,
             )
 
+            # background_layers now uses inline check; pass cap as lease for compat
             result = build_cached_diff_image(
                 img1,
                 img2,
                 mode,
                 channel_mode,
                 optimize_ssim=optimize_ssim,
-                lease1=lease1,
-                lease2=lease2,
+                lease1=cap1,
+                lease2=cap2,
             )
             logger.debug(
                 "[DIFF_TASK] mode=%s channel=%s size1=%s size2=%s elapsed_ms=%.1f result=%s",

@@ -18,7 +18,6 @@ from shared.analysis.differ import (
 from shared.analysis.edge_detector import create_edge_map
 from shared.analysis.ssim_source import create_ssim_map_from_sources
 from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
-from shared.image_processing.store_lease import StoreLease
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.services.analysis.analysis_pair import (
     prepare_pair_for_global_analysis,
@@ -29,6 +28,42 @@ logger = logging.getLogger("ImproveImgSLI")
 INTERACTIVE_SSIM_MAX_DIMENSION = 2048
 INTERACTIVE_SSIM_MAX_PIXELS = 4_000_000
 
+def _is_stale(store, lease) -> bool:
+    """Inline is_open/generation check replacing generation token."""
+    if lease is None:
+        return False
+    # legacy lease object (has .valid)
+    try:
+        if hasattr(lease, "valid"):
+            return not bool(lease.valid)
+    except Exception:
+        pass
+    # tuple (store, generation) capture
+    if isinstance(lease, tuple) and len(lease) == 2:
+        _, gen = lease
+        if isinstance(store, TiledPixelStore):
+            try:
+                if gen is not None and getattr(store, "generation", None) != gen:
+                    return True
+                if not getattr(store, "is_open", True):
+                    return True
+            except Exception:
+                pass
+        return False
+    # direct generation int
+    if isinstance(lease, int):
+        if isinstance(store, TiledPixelStore):
+            try:
+                if getattr(store, "generation", None) != lease:
+                    return True
+                if not getattr(store, "is_open", True):
+                    return True
+            except Exception:
+                pass
+        return False
+    return False
+
+
 def build_cached_diff_image(
     image1,
     image2,
@@ -37,8 +72,8 @@ def build_cached_diff_image(
     optimize_ssim: bool = False,
     progress_callback=None,
     *,
-    lease1: StoreLease | None = None,
-    lease2: StoreLease | None = None,
+    lease1: object | None = None,
+    lease2: object | None = None,
 ):
     if isinstance(image1, TiledPixelStore) or isinstance(image2, TiledPixelStore):
         return build_cached_diff_image_from_sources(
@@ -69,12 +104,12 @@ def build_cached_diff_image_from_sources(
     optimize_ssim: bool = False,
     progress_callback=None,
     *,
-    lease1: StoreLease | None = None,
-    lease2: StoreLease | None = None,
+    lease1: object | None = None,
+    lease2: object | None = None,
 ):
-    if lease1 is not None and not lease1.valid:
+    if _is_stale(image1, lease1):
         return None
-    if lease2 is not None and not lease2.valid:
+    if _is_stale(image2, lease2):
         return None
     if image1 is None or (image2 is None and diff_mode != "edges"):
         return None

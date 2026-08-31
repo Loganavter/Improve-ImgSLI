@@ -43,47 +43,8 @@ class SessionController(SessionApiMixin, QObject):
         self.presenter = presenter
         self.event_bus = event_bus
 
-        self._unification_task_id = 0
         from tabs.image_compare.use_cases.session_init import init_session_state
         init_session_state(self, self.store, self.thread_pool)
-
-    @property
-    def _unification_task_id(self) -> int:  # type: ignore[override]
-        s=self.__dict__.get("_image_session",None)
-        return s.unification_task_id if s is not None else self.__dict__.get("_unification_task_id_raw",0)
-    @_unification_task_id.setter
-    def _unification_task_id(self, v: int) -> None:
-        s=self.__dict__.get("_image_session",None)
-        (setattr(s,"unification_task_id",int(v)) if s is not None else self.__dict__.__setitem__("_unification_task_id_raw",int(v)))
-    @property
-    def _pending_image_loads(self):
-        s=self.__dict__.get("_image_session",None)
-        return s.pending_image_loads if s is not None else self.__dict__.get("_pending_image_loads_raw",set())
-    @_pending_image_loads.setter
-    def _pending_image_loads(self, v) -> None:
-        s=self.__dict__.get("_image_session",None)
-        (setattr(s,"pending_image_loads",v) if s is not None else self.__dict__.__setitem__("_pending_image_loads_raw",v))
-    @property
-    def _pending_full_loads(self):
-        s=self.__dict__.get("_image_session",None)
-        return s.pending_full_loads if s is not None else self.__dict__.get("_pending_full_loads_raw",{1:0,2:0})
-    @_pending_full_loads.setter
-    def _pending_full_loads(self, v) -> None:
-        s=self.__dict__.get("_image_session",None)
-        (setattr(s,"pending_full_loads",v) if s is not None else self.__dict__.__setitem__("_pending_full_loads_raw",v))
-    @property
-    def _pipeline_aborts(self):
-        try:
-            pl=self.__dict__.get("pipeline",None) or getattr(self,"pipeline",None)
-            return pl._inflight if pl is not None and hasattr(pl,"_inflight") else self.__dict__.get("_pipeline_aborts_raw",{})
-        except Exception: return self.__dict__.get("_pipeline_aborts_raw",{})
-    @_pipeline_aborts.setter
-    def _pipeline_aborts(self, v) -> None:
-        try:
-            pl=self.__dict__.get("pipeline",None) or getattr(self,"pipeline",None)
-            if pl is not None and hasattr(pl,"_inflight"): pl._inflight.clear(); (pl._inflight.update(v) if isinstance(v,dict) else None); return
-        except Exception: pass
-        self.__dict__["_pipeline_aborts_raw"]=v
 
     def _get_image_session(self, session_id: str | None = None):
         """Return ImageSession for session_id (or active). Creates on demand."""
@@ -97,7 +58,7 @@ class SessionController(SessionApiMixin, QObject):
 
             sess = ImageSession(session_id=sid)
             self._image_sessions[sid] = sess
-        # keep live proxies pointed at active session (thin owner)
+        # keep live session pointed at active session (thin owner)
         try:
             self._image_session = sess
             self._pipeline_cache = sess.cache
@@ -107,8 +68,6 @@ class SessionController(SessionApiMixin, QObject):
                     self.pipeline.set_store(self.store)
             except Exception:
                 pass
-            self._pending_full_loads = sess.pending_full_loads
-            self._pending_image_loads = sess.pending_image_loads
             self._crop_service = sess.crop_service
         except Exception:
             pass

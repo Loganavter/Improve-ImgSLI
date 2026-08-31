@@ -124,23 +124,10 @@ def test_handle_full_image_loaded_finishes_toast_for_unpaired_slot(monkeypatch):
     store = _Store(document)
     controller = _FakeController(store)
 
-    deferred = []
-    monkeypatch.setattr(
-        loading,
-        "QTimer",
-        type(
-            "QTimer",
-            (),
-            {"singleShot": staticmethod(lambda _ms, fn: deferred.append(fn))},
-        ),
-    )
-
     img = document.full_res_image1
     document.image_list1[0].image = img
 
     loading.handle_full_image_loaded(controller, img, "only1.png", 1, 0)
-    assert len(deferred) == 1
-    deferred[0]()
 
     assert controller.finished_toasts == [1]
     assert controller.thread_pool.started == []

@@ -11,10 +11,10 @@ def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool =
     # Hang fix: previous coalesce introduced infinite loop —
     # _flush → presenter.invalidate → store change → resync → set_current →
     # _invalidate → schedule → loop every event-loop turn. Keep immediate
-    # invalidate (synchronous) but break re-entrancy and throttle log.
+    # invalidate (synchronous, dispatcher reentrant dispatcher.py:186) but break re-entrancy and throttle log.
     if getattr(controller, "_invalidating", False):
         if clear_overlay_state:
-            controller._pending_clear_overlay = True  # type: ignore[attr-defined]
+            controller._deferred_clear_overlay = True  # type: ignore[attr-defined]
         return
     controller._invalidating = True  # type: ignore[attr-defined]
     try:
@@ -23,9 +23,9 @@ def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool =
         now = time.monotonic()
         last = getattr(controller, "_last_invalidate_log_ts", 0.0)
         should_log = (now - last) > 0.2
-        pending_clear = bool(getattr(controller, "_pending_clear_overlay", False))
-        clear = bool(clear_overlay_state or pending_clear)
-        controller._pending_clear_overlay = False  # type: ignore[attr-defined]
+        deferred_clear = bool(getattr(controller, "_deferred_clear_overlay", False))
+        clear = bool(clear_overlay_state or deferred_clear)
+        controller._deferred_clear_overlay = False  # type: ignore[attr-defined]
         if should_log:
             from tabs.image_compare.debug import ic_preview_debug as _preview_log
 
@@ -67,8 +67,8 @@ def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool =
                 pass
     finally:
         controller._invalidating = False  # type: ignore[attr-defined]
-        if getattr(controller, "_pending_clear_overlay", False):
-            controller._pending_clear_overlay = False  # type: ignore[attr-defined]
+        if getattr(controller, "_deferred_clear_overlay", False):
+            controller._deferred_clear_overlay = False  # type: ignore[attr-defined]
             invalidate_image_canvas_render_state(controller, clear_overlay_state=True)
 
 
