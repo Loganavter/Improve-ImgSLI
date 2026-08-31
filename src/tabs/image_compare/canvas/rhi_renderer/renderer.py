@@ -313,6 +313,7 @@ class RhiCanvasRenderer:
                 ctx,
                 texture_keys,
                 base_image,
+                updates,
                 viewport_zoom,
                 viewport_offset,
                 dirty_layers,

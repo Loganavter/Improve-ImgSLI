@@ -128,6 +128,78 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                 last_applied_uid=_last_display_uids.get(2),
                 superseded_preview_uid=_superseded_uids.get(2),
             )
+            # Joint preview hold: preview never deleted until BOTH halves have
+            # complete tile replacement. While both previews exist and at least
+            # one side's full-res store is not yet pyramid-complete OR still
+            # inflight (pyvips streaming / unify), keep both sides on preview
+            # instead of flipping one side early to a low-res intermediate
+            # store (1024/1440) that would then be used as fallback baseline
+            # for the final hires (5760) swap.
+            try:
+                _both_previews = peeked["peeked_preview1"] is not None and peeked["peeked_preview2"] is not None
+                if _both_previews:
+                    from shared.image_processing.pyramid_registry import pyramid_for
+                    from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+
+                    def _pyramid_complete(img):
+                        if img is None:
+                            return False
+                        if isinstance(img, _TPS):
+                            p = pyramid_for(img)
+                            return p is not None and p.is_complete()
+                        return False
+
+                    _s1 = presenter.store.viewport.session_data.image_state.image1
+                    _s2 = presenter.store.viewport.session_data.image_state.image2
+                    _both_stores_present = _s1 is not None and _s2 is not None
+                    # Joint hold only matters for dual comparison (both sides have
+                    # an image). Single-side / live-half case must stay per-slot
+                    # or the flip-flop test's [preview, store] sequence breaks.
+                    if not _both_stores_present:
+                        _s1_ready = _s2_ready = True
+                    else:
+                        _s1_ready = _pyramid_complete(_s1)
+                        _s2_ready = _pyramid_complete(_s2)
+                    _pending = False
+                    try:
+                        _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                        _svc = getattr(_ctrl, "_image_load_service", None) if _ctrl is not None else None
+                        if _svc is None and _ctrl is not None:
+                            _svc = getattr(_ctrl, "pipeline", None)
+                        if _svc is not None and hasattr(_svc, "is_loading"):
+                            _cs = None
+                            try:
+                                if hasattr(_ctrl, "_get_crop_service"):
+                                    _cs = _ctrl._get_crop_service()
+                            except Exception:
+                                _cs = None
+                            _path1 = peeked.get("path1")
+                            _path2 = peeked.get("path2")
+                            if _path1 and _svc.is_loading(_path1, _cs):
+                                _pending = True
+                            if _path2 and _svc.is_loading(_path2, _cs):
+                                _pending = True
+                        # also check unify still in progress via render_cache flag
+                        try:
+                            if getattr(presenter.store.viewport.session_data.render_cache, "unification_in_progress", False):
+                                _pending = True
+                        except Exception:
+                            pass
+                    except Exception:
+                        _pending = False
+                    if not (_s1_ready and _s2_ready) or _pending:
+                        # would we have flipped at least one side to store?
+                        _t1_pick = "full_res" if img1 is peeked["peeked_pixel1"] and img1 is not None else _source_tier(img1, peeked["peeked_preview1"], None, _s1)
+                        _t2_pick = "full_res" if img2 is peeked["peeked_pixel2"] and img2 is not None else _source_tier(img2, peeked["peeked_preview2"], None, _s2)
+                        if _t1_pick != "preview" or _t2_pick != "preview":
+                            _preview_log(
+                                "joint preview hold: both previews available but stores not both pyramid-complete/pending s1_ready=%s s2_ready=%s pending=%s -> force preview/preview (was %s/%s)",
+                                _s1_ready, _s2_ready, _pending, _t1_pick, _t2_pick,
+                            )
+                            img1 = peeked["peeked_preview1"]
+                            img2 = peeked["peeked_preview2"]
+            except Exception:
+                pass
             for _slot_num, _picked, _cand_preview in (
                 (1, img1, peeked["peeked_preview1"]),
                 (2, img2, peeked["peeked_preview2"]),
