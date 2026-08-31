@@ -359,7 +359,7 @@ def build_magnifier_layout(
                 local_target_centers.append((cx, cy))
             elif show_right:
                 local_target_centers.append((cx, cy))
-        if local_target_centers and guides_state is not None and guides_state.enabled:
+        if local_target_centers and guides_state is not None and guides_state.enabled and bool(getattr(model, "show_laser", True)):
             guide_sets.append(
                 GuideSet(
                     capture_center=QPointF(
