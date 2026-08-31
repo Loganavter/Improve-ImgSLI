@@ -200,6 +200,57 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                             img2 = peeked["peeked_preview2"]
             except Exception:
                 pass
+            # Unify size-mismatch gate: even when both pyramids are "complete"
+            # (small store) and is_loading/unification_in_progress flag hasn't
+            # yet propagated, a store/store pair with w1!=w2 && cache miss would
+            # still be sent to the renderer as 5760 vs 1440 (108 vs 9 tiles,
+            # half-transparent placeholder). Hold preview/preview until the
+            # unified  max(w1,w2) pair is cached. Single-side / same-size
+            # stays unaffected (need_unify False).
+            try:
+                _both_previews2 = peeked["peeked_preview1"] is not None and peeked["peeked_preview2"] is not None
+                if _both_previews2:
+                    _s1u = presenter.store.viewport.session_data.image_state.image1
+                    _s2u = presenter.store.viewport.session_data.image_state.image2
+                    if _s1u is not None and _s2u is not None:
+                        from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss
+
+                        try:
+                            _w1, _h1 = _pss(_s1u)
+                        except Exception:
+                            _w1, _h1 = int(getattr(_s1u, "width", 0) or 0), int(getattr(_s1u, "height", 0) or 0)
+                        try:
+                            _w2, _h2 = _pss(_s2u)
+                        except Exception:
+                            _w2, _h2 = int(getattr(_s2u, "width", 0) or 0), int(getattr(_s2u, "height", 0) or 0)
+                        if (_w1 != _w2 or _h1 != _h2) and _w1 > 0 and _w2 > 0:
+                            _need_unify = True
+                            _ctrl_u = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                            _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
+                            _cache_u = getattr(_pl_u, "cache", None) if _pl_u is not None else None
+                            if _cache_u is not None:
+                                try:
+                                    from shared.rendering.image_identity import image_uid as _uid2
+                                    from shared.rendering.interpolation import get_effective_main_interpolation_method as _get_method
+
+                                    _method_u = _get_method(presenter.store.viewport)
+                                    _wh_u = (max(_w1, _w2), max(_h1, _h2))
+                                    _uid1 = _uid2(_s1u)
+                                    _uid2v = _uid2(_s2u)
+                                    if _cache_u.get_unified(_uid1, _uid2v, _method_u, _wh_u[0], _wh_u[1]) is None:
+                                        _t1_u = "full_res" if img1 is peeked["peeked_pixel1"] and img1 is not None else _source_tier(img1, peeked["peeked_preview1"], None, _s1u)
+                                        _t2_u = "full_res" if img2 is peeked["peeked_pixel2"] and img2 is not None else _source_tier(img2, peeked["peeked_preview2"], None, _s2u)
+                                        if _t1_u != "preview" or _t2_u != "preview":
+                                            _preview_log(
+                                                "joint preview hold: size mismatch %sx%s vs %sx%s need_unify miss %s/%s wh=%s -> force preview/preview (was %s/%s)",
+                                                _w1, _h1, _w2, _h2, _uid1, _uid2v, _wh_u, _t1_u, _t2_u,
+                                            )
+                                            img1 = peeked["peeked_preview1"]
+                                            img2 = peeked["peeked_preview2"]
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
             for _slot_num, _picked, _cand_preview in (
                 (1, img1, peeked["peeked_preview1"]),
                 (2, img2, peeked["peeked_preview2"]),
