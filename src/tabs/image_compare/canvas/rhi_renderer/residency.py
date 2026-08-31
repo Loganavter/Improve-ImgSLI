@@ -384,14 +384,18 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                 is_tiled_store,
                 "None" if grid is None else f"{grid.total_width}x{grid.total_height}",
             )
-            # Lazy TiledPixelStore sources skip upload_source(), so the only
-            # place their grid is created is here. If a stale 1×1 grid from a
-            # previous smaller image remains, zoom>1 (use_hires) crops only
-            # that top-left window and stretches it as the full image —
-            # looks like ~1000% zoom into one tile. Always re-register when
-            # the live source size disagrees with the cached grid, or its
-            # own identity changed (see content_changed below).
-            if is_tiled_store and pil_source is not None:
+            # Both TiledPixelStore and QImage preview sources share the same
+            # stable slot keys ("stored_0"/"stored_1"). The preview QImage
+            # (≤1024) must be stashed as a fallback baseline when the full
+            # TiledPixelStore replaces it — otherwise the preview is dropped
+            # and the canvas blanks until the store's tiles land (the
+            # "qimage should stay until all tiles drawn" UX). Always
+            # re-register when the live source size disagrees with the cached
+            # grid, or its own identity changed (see content_changed below).
+            # is_tiled_store was the old gate (lazy TiledPixelStore sources
+            # skip upload_source()), but QImage previews need the same
+            # stash/restore path.
+            if pil_source is not None:
                 try:
                     from shared.image_processing.tiled_pixel_store import (
                         pixel_source_size,
