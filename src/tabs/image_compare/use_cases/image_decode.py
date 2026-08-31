@@ -18,6 +18,7 @@ from core.state_management.actions import (
     SetPendingUnificationPathsAction,
     SetUnificationInProgressAction,
 )
+from tabs.image_compare.debug import ic_preview_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -35,6 +36,7 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
     )
 
     crop_service = controller._get_crop_service()
+    ic_preview_debug("load_image_async slot=%s path=%s idx=%s crop=%s", image_number, path, index_in_list, bool(crop_service))
     try:
         use_progressive = should_use_progressive_load(path)
         from shared.image_processing.autocrop.debug import autocrop_debug
@@ -46,15 +48,22 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
             bool(crop_service),
             use_progressive,
         )
+        ic_preview_debug("load_image_async slot=%s use_progressive=%s", image_number, use_progressive)
         if use_progressive:
+            ic_preview_debug("load_image_async slot=%s -> try preview", image_number)
             preview = load_preview_image(path, crop_service=crop_service)
+            ic_preview_debug("load_image_async slot=%s preview=%s", image_number, preview)
             if preview:
+                ic_preview_debug("load_image_async slot=%s -> preview hit", image_number)
                 return preview, path, image_number, index_in_list, True
         from shared.image_processing.pixel_cache_loader import load_pixel_store
 
+        ic_preview_debug("load_image_async slot=%s -> load_pixel_store", image_number)
         store = load_pixel_store(path, crop_service=crop_service)
+        ic_preview_debug("load_image_async slot=%s store=%s uid=%s", image_number, store, getattr(store, "uid", None) if store else None)
         return store, path, image_number, index_in_list, False
     except Exception as e:
+        ic_preview_debug("load_image_async slot=%s failed %s", image_number, e)
         if controller.event_bus:
             controller.event_bus.emit(
                 CoreErrorOccurredEvent(
@@ -108,13 +117,16 @@ def cancel_pending_unification(controller, new_path1: str = "", new_path2: str =
 
 
 def on_image_loaded(controller, result):
+    ic_preview_debug("on_image_loaded result=%s", result)
     if result is None:
+        ic_preview_debug("on_image_loaded -> None")
         return
     if isinstance(result, tuple) and len(result) == 5:
         pil_img, path, image_number, index_in_list, is_preview = result
     else:
         pil_img, path, image_number, index_in_list = result
         is_preview = False
+    ic_preview_debug("on_image_loaded slot=%s path=%s idx=%s is_preview=%s pil_img=%s", image_number, path, index_in_list, is_preview, pil_img)
     try:
         pending = getattr(controller, "_pending_image_loads", None)
         if pending is not None and path is not None:
@@ -123,7 +135,9 @@ def on_image_loaded(controller, result):
         pass
     document = controller.store.get_session_state_slot("document")
     target_list = document.image_list1 if image_number == 1 else document.image_list2
+    ic_preview_debug("on_image_loaded slot=%s target_len=%s idx_valid=%s path_match=%s", image_number, len(target_list), 0 <= index_in_list < len(target_list), target_list[index_in_list].path == path if 0 <= index_in_list < len(target_list) else False)
     if not pil_img:
+        ic_preview_debug("on_image_loaded slot=%s -> pil_img None, pop if needed", image_number)
         if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
             target_list.pop(index_in_list)
             current_app_index = document.current_index1 if image_number == 1 else document.current_index2

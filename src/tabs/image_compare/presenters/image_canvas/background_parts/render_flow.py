@@ -524,15 +524,49 @@ def update_comparison_if_needed(presenter):
             "document state: full_res uid1=%s uid2=%s preview uid1=%s uid2=%s original uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
             _doc_sig[0], _doc_sig[1], _doc_sig[2], _doc_sig[3], _doc_sig[4], _doc_sig[5], _doc_sig[6], _doc_sig[7], _doc_sig[8], _doc_sig[9],
         )
+    # Phase 3 SlotSource: document no longer holds pixels — pipeline cache / image_state is source.
+    # Fallback chain: legacy document fields (for compat) → PipelineView → pipeline peek (preview)
+    _img_state = presenter.store.viewport.session_data.image_state
+    _pl = None
+    try:
+        # Try to get pipeline via presenter->tab controller if available; else via global session cache
+        _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+        if _ctrl is None:
+            try:
+                from tabs.image_compare.pipeline.cache import PipelineCache as _PC
+
+                # fallback: try presenter.main_window_app tab registry
+                _mw = getattr(presenter, "main_window_app", None)
+                if _mw is not None:
+                    _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
+                    _ctrl = getattr(_tab, "session_controller", None) if _tab else None
+            except Exception:
+                _ctrl = None
+        _pl = getattr(_ctrl, "pipeline", None) if _ctrl is not None else None
+    except Exception:
+        _pl = None
+    def _peek(path):
+        if _pl is not None and path:
+            try:
+                c = _pl.peek(path)
+                if c is not None and getattr(c, "is_open", True):
+                    return c
+            except Exception:
+                pass
+        return None
     source1 = (
         _document.full_res_image1
         or _document.preview_image1
         or _document.original_image1
+        or getattr(_img_state, "image1", None)
+        or _peek(getattr(_document, "image1_path", None))
     )
     source2 = (
         _document.full_res_image2
         or _document.preview_image2
         or _document.original_image2
+        or getattr(_img_state, "image2", None)
+        or _peek(getattr(_document, "image2_path", None))
     )
 
     # Comparison letterbox geometry must track the preview arrival, not the

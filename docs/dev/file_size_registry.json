@@ -342,7 +342,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1111,
+      "lines": 1145,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -384,6 +384,17 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "use_cases target for MainWindowPresenter — display-sync chrome for document/viewport"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/slot.py",
+      "lines": 525,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper"
       }
     },
     {
