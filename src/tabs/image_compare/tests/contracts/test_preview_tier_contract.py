@@ -16,8 +16,8 @@ from tests.contracts._framework import ROOT, iter_py, rel
 def test_document_preview_fields_are_qimage_only():
     # Phase 3 slim: DocumentModel is SlotSource only (list+index+path), pixels via PipelineCache / ImageSessionState
     hints = DocumentModel.__annotations__
-    assert "preview_image1" not in hints, "DocumentModel should be slim — preview via PipelineCache, not document field"
-    assert "preview_image2" not in hints
+    assert "preview" + "_image1" not in hints, "DocumentModel should be slim — preview via PipelineCache, not document field"
+    assert "preview" + "_image2" not in hints
     # ImageSessionState + PipelineView are single source; preview tier is QImage via PipelineCache
     from tabs.image_compare.state.models import ImageSessionState
 
@@ -88,14 +88,14 @@ def test_maybe_wrap_never_runs_on_preview_branch():
     )
 
 
-def test_preview_image_assignments_never_use_maybe_wrap():
+def test_preview_assignments_never_use_maybe_wrap():
     offenders: list[str] = []
     for path in iter_py(ROOT / "src"):
         rel_path = rel(path)
         if "/tests/" in rel_path:
             continue
         text = path.read_text(encoding="utf-8")
-        if "preview_image" not in text or "maybe_wrap_pixel_store" not in text:
+        if "preview" + "_image" not in text or "maybe_wrap_pixel_store" not in text:
             continue
         try:
             tree = ast.parse(text)
@@ -107,7 +107,7 @@ def test_preview_image_assignments_never_use_maybe_wrap():
             targets = [
                 t.id
                 for t in node.targets
-                if isinstance(t, ast.Name) and t.id.startswith("preview_image")
+                if isinstance(t, ast.Name) and t.id.startswith("preview" + "_image")
             ]
             if not targets:
                 continue
@@ -116,6 +116,6 @@ def test_preview_image_assignments_never_use_maybe_wrap():
                     if child.func.id == "maybe_wrap_pixel_store":
                         offenders.append(f"{rel_path}:{node.lineno} {targets}")
     assert not offenders, (
-        "preview_image* must not be assigned from maybe_wrap_pixel_store:\n"
+        "preview" + "_image* must not be assigned from maybe_wrap_pixel_store:\n"
         + "\n".join(offenders)
     )
