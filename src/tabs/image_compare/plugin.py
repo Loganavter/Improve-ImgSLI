@@ -12,6 +12,7 @@ from core.session_blueprints import (
 )
 from tabs.image_compare.models import ImageCompareState
 from tabs.image_compare.state.document import DocumentModel
+from tabs.image_compare.state.models import PipelineCacheState
 
 
 class _ComparisonControllerProxy:
@@ -126,6 +127,10 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
                     SessionSlotBlueprint(
                         name="document",
                         factory=DocumentModel,
+                    ),
+                    SessionSlotBlueprint(
+                        name="pipeline",
+                        factory=PipelineCacheState,
                     ),
                 ),
                 resource_namespaces=(
