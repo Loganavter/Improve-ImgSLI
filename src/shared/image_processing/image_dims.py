@@ -21,47 +21,66 @@ def get_image_dims(img) -> tuple[int, int]:
     """
     if img is None:
         return (0, 0)
+    # Closed TiledPixelStore is still truthy but width/height raise; treat as 0,0
+    try:
+        is_open = getattr(img, "is_open", None)
+        if is_open is not None:
+            try:
+                if callable(is_open):
+                    is_open = is_open()
+                if not is_open:
+                    return (0, 0)
+            except Exception:
+                return (0, 0)
+    except Exception:
+        return (0, 0)
     w, h = 0, 0
     # width
-    if hasattr(img, "width") and callable(getattr(img, "width")):
-        try:
-            w = int(img.width())  # type: ignore[operator]
-        except Exception:
-            w = 0
-    elif hasattr(img, "size") and isinstance(getattr(img, "size"), (tuple, list)):
-        try:
-            w = int(img.size[0])  # type: ignore[index]
-        except Exception:
-            w = 0
-    elif hasattr(img, "size") and callable(getattr(img, "size")):
-        try:
-            w = int(img.size().width())  # type: ignore[operator]
-        except Exception:
-            w = 0
-    else:
-        try:
-            w = int(getattr(img, "width", 0))
-        except Exception:
-            w = 0
+    try:
+        if hasattr(img, "width") and callable(getattr(img, "width")):
+            try:
+                w = int(img.width())  # type: ignore[operator]
+            except Exception:
+                w = 0
+        elif hasattr(img, "size") and isinstance(getattr(img, "size"), (tuple, list)):
+            try:
+                w = int(img.size[0])  # type: ignore[index]
+            except Exception:
+                w = 0
+        elif hasattr(img, "size") and callable(getattr(img, "size")):
+            try:
+                w = int(img.size().width())  # type: ignore[operator]
+            except Exception:
+                w = 0
+        else:
+            try:
+                w = int(getattr(img, "width", 0))
+            except Exception:
+                w = 0
+    except Exception:
+        w = 0
     # height
-    if hasattr(img, "height") and callable(getattr(img, "height")):
-        try:
-            h = int(img.height())  # type: ignore[operator]
-        except Exception:
-            h = 0
-    elif hasattr(img, "size") and isinstance(getattr(img, "size"), (tuple, list)):
-        try:
-            h = int(img.size[1])  # type: ignore[index]
-        except Exception:
-            h = 0
-    elif hasattr(img, "size") and callable(getattr(img, "size")):
-        try:
-            h = int(img.size().height())  # type: ignore[operator]
-        except Exception:
-            h = 0
-    else:
-        try:
-            h = int(getattr(img, "height", 0))
-        except Exception:
-            h = 0
+    try:
+        if hasattr(img, "height") and callable(getattr(img, "height")):
+            try:
+                h = int(img.height())  # type: ignore[operator]
+            except Exception:
+                h = 0
+        elif hasattr(img, "size") and isinstance(getattr(img, "size"), (tuple, list)):
+            try:
+                h = int(img.size[1])  # type: ignore[index]
+            except Exception:
+                h = 0
+        elif hasattr(img, "size") and callable(getattr(img, "size")):
+            try:
+                h = int(img.size().height())  # type: ignore[operator]
+            except Exception:
+                h = 0
+        else:
+            try:
+                h = int(getattr(img, "height", 0))
+            except Exception:
+                h = 0
+    except Exception:
+        h = 0
     return w, h
