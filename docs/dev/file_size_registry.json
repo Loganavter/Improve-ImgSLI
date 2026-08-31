@@ -360,7 +360,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 713,
+      "lines": 700,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -504,7 +504,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 622,
+      "lines": 698,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
@@ -526,7 +526,7 @@
     },
     {
       "path": "src/tabs/image_compare/widget.py",
-      "lines": 698,
+      "lines": 620,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"root widget thin owner — delegates to layout/magnifier/chrome_sync\"",

@@ -135,9 +135,9 @@ class ImageCompareLayoutBuilder:
         self._create_zoom_indicator()
         self._create_info_huds()
 
-        from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
-
-        ui.drag_overlay = DragDropOverlay(ui.image_container_widget)
+        # Phase 2 canvas-only overlay: QWidget DragDropOverlay removed — RHI
+        # DragDropOverlayPass now renders tiles directly (see
+        # canvas/features/drag_drop_overlay/passes.py). No drag_overlay widget.
         ui.footer_info_widget = self._footer_info_widget(page)
         ui.edit_layout_widget = ThemedBackgroundContainer(page)
         ui.edit_layout = self._edit_layout()

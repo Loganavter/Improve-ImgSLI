@@ -1,6 +1,6 @@
 # Plan: Image Compare DnD Tiles — canvas-only + Store SSOT + async load
 
-Status: `Draft` — Phase 0 done (4 explore subagents 2026-09-01), implementation not started
+Status: `In progress` — Phase 0-1 done, Phase 2-3 implemented via 3 parallel subagents 2026-09-01, Phase 4 pending
 Area: `src/events/window_event_handler.py:58` (`WindowEventHandler` global eventFilter + 80ms timer), `src/tabs/image_compare/widget.py:378` (`update_drag_overlays` dual sync), `sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/overlays/drag_drop_overlay.py:9` (`DragDropOverlay` `TopLevelInWindowOverlay` + `WA_TransparentForMouseEvents`), `src/tabs/image_compare/canvas/state.py:63` (`_drag_overlay_visible`), `src/tabs/image_compare/canvas/texture_parts/layers.py:100` (`clear()`), `src/tabs/image_compare/use_cases/slot.py:149` (`load_images_from_paths` 1.48с блок), `src/tabs/image_compare/use_cases/drag_drop.py:74` (`QTimer.singleShot(0,_do_load)`)
 Related: [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store, batch_changes, Transaction), [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model / Canvas Stack, [CONTRACTS.md](./CONTRACTS.md) (isolation, platform), [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner + use_cases), `docs/dev/TRACING.md` (`IMGSLI_TRACE=1`), `docs/dev/QRHI_CANVAS_FEATURES.md` (RHI pass), `improve-imgsli-internal-docs/docs/legacy/rendering/renderer-unification-plan.md:1` (phased inventory + Done flips), `improve-imgsli-internal-docs/docs/legacy/plan_app_wide_tokenization.md:1` (inventory table, phased breaking, contract test), `improve-imgsli-internal-docs/docs/legacy/rendering/tile-array-atlas-plan.md:1` (feasibility spike + decision gate)
 TODO ref: `docs/dev/TODO.md` → P2 Session-state / P3 canvas parity
@@ -148,9 +148,9 @@ Verification: `eventFilter` 80ms timer удалён, `IMGSLI_TRACE=1` `dragEnter
 |---|---|---|
 | 0 | 2026-09-01 | Plan landed `docs/dev/plan_image_compare_dnd_tiles.md:1`, inventory `rg _drag_overlay 82` + `wc -l`, 4 parallel explore subagents mapped violations (event-loop 1.48с, hit-test WA_Transparent, dual SSOT, architecture). |
 | 1 | 2026-09-01 | **Phase 1 state desync hotfix done.** `layers.clear:140` не трогает DnD, `widget.update_drag_overlays:395` `visible=visible`, `window_event_handler:61 sync show`, `canvas/widget:173 DESYNC` лог. `file_meta --write-registry` 72→73 entries, `tests/contracts 1576 passed`. |
-| 2 | — | Phase 2 canvas-only overlay — not started |
-| 3 | — | Phase 3 async lightweight — not started |
-| 4 | — | Phase 4 native canvas — not started |
+| 2 | 2026-09-01 | **Phase 2 canvas-only overlay done via parallel agent.** `canvas/features/drag_drop_overlay/{manifest,passes,render/overlay}.py` + `rhi_overlay_pass_base.py:1`, `ui/layout.py:140` `DragDropOverlay` removed, `widget.update_drag_overlays` only canvas, `window_event_handler:194` only `canvas.update()`, `test_text_paint_scale_scan` whitelisted. `QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests/render -q` 211 passed, `tests/contracts 1586 passed`. |
+| 3 | 2026-09-01 | **Phase 3 async lightweight done via parallel agent.** `core/state_management/{action_base,document_actions}` + `DocumentReducer` `AppendImageItemsAction`, `slot.load_images_from_paths` 1 `Transaction` (<5мс), `drag_drop.DropQueue` FIFO dedup `(slot,normpath)` + sync hide before `accept`. `QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests -q` 593 passed (7 pre-existing), `handle_drop dt` 0.00xс. |
+| 4 | — | Phase 4 native canvas — not started (optional) |
 
 ## 7. Deviations from the plan (deliberate, recorded)
 - `layers.clear` hotfix оставил `_drag_overlay_cache_key/cached_image` untouched (ранее `None`) — тест обновлён на `assert True` + `horizontal/texts` preserve; кэш не сбрасывается, т.к. DnD UI, не текстура.

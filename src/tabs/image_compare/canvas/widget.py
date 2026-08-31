@@ -192,19 +192,6 @@ class CanvasWidget(QRhiWidget):
                     visible,
                     "".join(traceback.format_stack(limit=8)[:-2]),
                 )
-                if not after and before:
-                    # If canvas hides while widget overlay still visible -> desync blocks input
-                    try:
-                        w = self.parent()
-                        # walk to ImageCompareWidget to check overlay
-                        while w is not None and not hasattr(w, "drag_overlay"):
-                            w = w.parent()
-                        if w is not None and hasattr(w, "drag_overlay"):
-                            ov_vis = w.drag_overlay.isVisible() if hasattr(w.drag_overlay, "isVisible") else "?"
-                            if ov_vis:
-                                ic_dnd_debug("canvas DESYNC after hide! widget overlay still visible=%s", ov_vis)
-                    except Exception:
-                        pass
             except Exception:
                 pass
 

@@ -57,6 +57,12 @@ _PAINT_FONT_ALLOWED: dict[tuple[str, str], str] = {
         "badge glyph paints with paint_font(self, pixel_size=...) over the "
         "dialog's design-sized font"
     ),
+    ("tabs/image_compare/canvas/features/drag_drop_overlay/render/overlay.py", "paint_drag_drop_overlay"): (
+        "drag tiles paint with paint_font(host, pixel_size=20, bold=True) over "
+        "the CanvasWidget's design-sized font (mirrors "
+        "sli_ui_toolkit DragDropOverlay.paintEvent which uses paint_font 20px); "
+        "QImage is then scaled by DPR for the RHI overlay"
+    ),
 }
 
 

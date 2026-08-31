@@ -128,7 +128,6 @@ class ImageCompareTab(TabContract):
             )
         self._widget.assemble(ui)
         self._widget.image_label.set_drag_overlay_state(False)
-        self._widget.drag_overlay.hide()
         self._widget.install_rating_wheel_handlers()
         self._create_magnifier_flyout(ui)
         return True

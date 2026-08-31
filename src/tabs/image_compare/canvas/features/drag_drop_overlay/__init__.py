@@ -1,0 +1,1 @@
+"""Live drag/drop overlay feature for the image_compare tab (canvas-only RHI)."""
