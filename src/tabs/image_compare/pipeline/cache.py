@@ -1,7 +1,7 @@
 """PipelineCache — memoised pixel + unify cache with LRU eviction.
 
-Replaces ProgressiveImageLoader._full_cache LRU 8 + ad-hoc
-_pending_image_loads / _pending_full_loads dedup in _session_controller.py.
+Replaces ProgressiveImageLoader full and preview caches LRU 8 + ad-hoc
+legacy dedup in session controller.
 
 Keys:
   pixel: (path, mtime_ns, auto_crop, crop_box) -> TiledPixelStore

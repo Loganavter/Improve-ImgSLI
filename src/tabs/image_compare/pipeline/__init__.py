@@ -1,8 +1,8 @@
 """ImagePipeline package — demand-driven decode/unify/pyramid pipeline.
 
 Phase 1 skeleton: AbortSignal + PipelineCache + ImagePipeline are state-owning
-collaborators (CODE_PATTERNS.md) that replace _pending_* flags and QTimer
-deferrals in _session_controller.py / loading.py.
+collaborators (CODE_PATTERNS.md) that replace legacy dedup flags and QTimer
+deferrals in session controller / loading.
 
 Public surface:
   from tabs.image_compare.pipeline import ImagePipeline, PipelineCache, AbortSignal

@@ -28,13 +28,46 @@ def start_pyramid_builds(controller, *stores) -> None:
     # controllers without coordinator working.
     coord = getattr(controller, "_pyramid_coordinator", None)
     if coord is not None:
+        # Phase 2A: use AbortSignal instead of task_id staleness
+        sess = None
+        try:
+            if hasattr(controller, "_get_image_session"):
+                sess = controller._get_image_session()
+        except Exception:
+            sess = None
+        abort_sig = getattr(sess, "abort", None) if sess is not None else None
+        # fallback task_id for legacy fakes without session
         task_id = getattr(controller, "_unification_task_id", 0)
         for slot_offset, store in enumerate(stores):
             image_number = slot_offset + 1
-            slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
+            # toast liveness via single-flight: no pending full decode for slot
+            slot_toast_live = True
+            try:
+                pl = getattr(controller, "pipeline", None)
+                if pl is not None and hasattr(pl, "_inflight"):
+                    has_pending = False
+                    for k, sig in pl._inflight.items():
+                        if isinstance(k, tuple) and len(k) == 2 and k[0] == int(image_number):
+                            if not sig.is_aborted():
+                                has_pending = True
+                                break
+                        if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
+                            if not sig.is_aborted():
+                                has_pending = True
+                                break
+                    slot_toast_live = not has_pending
+                else:
+                    slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
+            except Exception:
+                try:
+                    slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
+                except Exception:
+                    slot_toast_live = True
             slot_for_coordinator = image_number if slot_toast_live else None
-            # IC abort predicate: staleness via task_id
-            should_abort = lambda tid=task_id: tid != getattr(controller, "_unification_task_id", tid)
+            if abort_sig is not None and hasattr(abort_sig, "is_aborted"):
+                should_abort = abort_sig.is_aborted  # type: ignore[assignment]
+            else:
+                should_abort = lambda tid=task_id: tid != getattr(controller, "_unification_task_id", tid)
             # coordinator handles skip->finish, already-in-flight, bump, worker
             coord.start_build(store, slot_id=slot_for_coordinator, should_abort=should_abort)
             # When toast was not live, coordinator would have mapped None;
@@ -48,7 +81,22 @@ def start_pyramid_builds(controller, *stores) -> None:
 
     from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
 
-    task_id = controller._unification_task_id
+    # ensure task_id defined for worker arg (legacy compat)
+    task_id = getattr(controller, "_unification_task_id", 0)
+    sess = None
+    try:
+        if hasattr(controller, "_get_image_session"):
+            sess = controller._get_image_session()
+    except Exception:
+        sess = None
+    abort_sig = getattr(sess, "abort", None) if sess is not None else None
+    if abort_sig is not None and hasattr(abort_sig, "is_aborted"):
+        should_abort_legacy = abort_sig.is_aborted  # type: ignore[assignment]
+        # pass signal as task_id so worker can check abort via signal
+        task_id = abort_sig
+    else:
+        should_abort_legacy = lambda tid=task_id: tid != getattr(controller, "_unification_task_id", tid)  # type: ignore
+
     for slot_offset, store in enumerate(stores):
         image_number = slot_offset + 1
         # A cheap preview-resolution unify races ahead of the real
@@ -56,7 +104,24 @@ def start_pyramid_builds(controller, *stores) -> None:
         # already-complete pyramid. Only let the toast react once the
         # slot's real decode has actually landed -- otherwise it closes
         # over stale preview data before the real progress ever starts.
-        slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0
+        try:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None and hasattr(pl, "_inflight"):
+                has_pending = False
+                for k, sig in pl._inflight.items():
+                    if isinstance(k, tuple) and len(k) == 2 and k[0] == int(image_number):
+                        if not sig.is_aborted():
+                            has_pending = True
+                            break
+                    if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
+                        if not sig.is_aborted():
+                            has_pending = True
+                            break
+                slot_toast_live = not has_pending
+            else:
+                slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
+        except Exception:
+            slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
         pyramid = pyramid_registry.ensure_pyramid(store)
         if pyramid is None:
             logger.debug(
@@ -109,8 +174,23 @@ def pyramid_build_task(
 ):
     # A newer unification supersedes this pair; abort at the next strip.
     # Base-store closure aborts independently via pyramid validity.
-    def should_abort() -> bool:
-        return task_id != controller._unification_task_id
+    # Phase 2A: task_id may be AbortSignal (new path) or int (legacy).
+    try:
+        from tabs.image_compare.pipeline.abort import AbortSignal as _S
+
+        if isinstance(task_id, _S):
+            def should_abort() -> bool:
+                return task_id.is_aborted()
+
+        else:
+            def should_abort() -> bool:  # type: ignore[no-redef]
+                return task_id != controller._unification_task_id
+    except Exception:
+        def should_abort() -> bool:  # type: ignore[no-redef]
+            try:
+                return task_id != controller._unification_task_id
+            except Exception:
+                return False
 
     while pyramid.build_next_level(should_abort=should_abort):
         complete = pyramid.is_complete()

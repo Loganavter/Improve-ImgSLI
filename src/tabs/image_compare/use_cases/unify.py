@@ -120,13 +120,74 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
         except Exception:
             logger.error("Failed to dispatch unification pending", exc_info=True)
     try:
-        controller._unification_task_id += 1
-        tid = controller._unification_task_id
+        # Phase 2A: AbortSignal single-flight (replaces _unification_task_id)
+        signal = None
+        try:
+            sess = None
+            if hasattr(controller, "_get_image_session"):
+                try:
+                    sess = controller._get_image_session()
+                except Exception:
+                    sess = None
+            if sess is not None and hasattr(sess, "new_abort"):
+                signal = sess.new_abort()
+            else:
+                raise AttributeError
+        except Exception:
+            # fallback for fakes without session
+            try:
+                controller._unification_task_id += 1  # type: ignore[attr-defined]
+                signal = controller._unification_task_id  # type: ignore[attr-defined]
+            except Exception:
+                signal = 0
+        # single-flight dedup via pipeline._inflight if available
+        method = _unify_resize_method(controller)
+        pl = getattr(controller, "pipeline", None)
+        unify_key = None
+        if pl is not None and hasattr(pl, "_inflight"):
+            try:
+                unify_key = (document.image1_path, document.image2_path, method)
+                existing = pl._inflight.get(unify_key)  # type: ignore[arg-type]
+                if existing is not None:
+                    try:
+                        if not existing.is_aborted():
+                            return
+                    except Exception:
+                        return
+                # reserve; store AbortSignal if signal is int fallback, wrap
+                if signal is not None and hasattr(signal, "is_aborted"):
+                    pl._inflight[unify_key] = signal  # type: ignore[index]
+                else:
+                    try:
+                        from tabs.image_compare.pipeline.abort import AbortSignal as _S
+
+                        _wrap = _S()
+                        pl._inflight[unify_key] = _wrap  # type: ignore[index]
+                    except Exception:
+                        pass
+            except Exception:
+                unify_key = None
         worker = GenericWorker(
             controller._unify_images_worker_task,
-            s1, s2, document.image1_path, document.image2_path, tid, _unify_resize_method(controller),
+            s1, s2, document.image1_path, document.image2_path, signal if signal is not None else 0, method,
         )
+
+        # clear single-flight on finish
+        def _clear_unify_inflight(*_a, **_kw):
+            if pl is not None and unify_key is not None:
+                try:
+                    cur = pl._inflight.get(unify_key)  # type: ignore[arg-type]
+                    # only clear if still our signal
+                    if signal is None or cur is signal or (hasattr(cur, "is_aborted") and hasattr(signal, "is_aborted")):
+                        pl._inflight.pop(unify_key, None)
+                except Exception:
+                    pass
+
         worker.signals.result.connect(controller._on_unified_images_ready)
+        try:
+            worker.signals.finished.connect(_clear_unify_inflight)
+        except Exception:
+            pass
         controller.thread_pool.start(worker, priority=1)
     except Exception:
         _clear_unification_flags(controller)
@@ -147,23 +208,51 @@ def trigger_preview_unification(controller, image_number: int):
         s2 = document.full_res_image2 or document.preview_image2
         # If exactly one side has an image and the other slot is empty (no path),
         # finish the toast for the side that just loaded.
-        # But don't finish while the slot's own full-res decode is still pending
-        # (preview-only, _pending_full_loads >0) — that would close prematurily.
+        # But don't finish while the slot's own full-res decode is still in flight
+        # via pipeline._inflight — that would close prematurely.
         try:
             from tabs.image_compare.use_cases.loading_toast import finish_toast_for_unpaired_slot
         except Exception:
             finish_toast_for_unpaired_slot = None  # type: ignore
         if finish_toast_for_unpaired_slot is not None:
             if (s1 and not s2) or (s2 and not s1):
-                pending = getattr(controller, "_pending_full_loads", None)
-                # If the triggering slot still has a full-res decode pending, wait.
-                if pending is not None and pending.get(image_number, 0) > 0:
-                    pass
-                else:
+                # Check pipeline single-flight first, then legacy pending alias
+                has_pending = False
+                pl = getattr(controller, "pipeline", None)
+                if pl is not None and hasattr(pl, "_inflight"):
                     try:
-                        finish_toast_for_unpaired_slot(controller, document, image_number)
+                        for k, sig in pl._inflight.items():
+                            if isinstance(k, tuple) and len(k) == 2 and k[0] == int(image_number):
+                                if not sig.is_aborted():
+                                    has_pending = True
+                                    break
+                            if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
+                                if not sig.is_aborted():
+                                    has_pending = True
+                                    break
                     except Exception:
+                        has_pending = False
+                    if has_pending:
                         pass
+                    else:
+                        # fallback to legacy pending_full_loads alias
+                        pending = getattr(controller, "_pending_full_loads", None)
+                        if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
+                            has_pending = True
+                        if not has_pending:
+                            try:
+                                finish_toast_for_unpaired_slot(controller, document, image_number)
+                            except Exception:
+                                pass
+                else:
+                    pending = getattr(controller, "_pending_full_loads", None)
+                    if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
+                        pass
+                    else:
+                        try:
+                            finish_toast_for_unpaired_slot(controller, document, image_number)
+                        except Exception:
+                            pass
     ensure_unification(controller)
 
 
@@ -174,13 +263,31 @@ def on_unified_images_ready(controller, result):
         return
     try:
         if isinstance(result, tuple) and len(result) == 5:
-            u1, u2, path1, path2, task_id = result
+            u1, u2, path1, path2, task_or_signal = result
         else:
             _clear_unification_flags(controller)
             controller.metrics_service.on_metrics_calculated(None)
             return
-        if task_id != controller._unification_task_id:
-            return
+        # Phase 2A: AbortSignal takes precedence over legacy task_id
+        try:
+            from tabs.image_compare.pipeline.abort import AbortSignal as _AbortSignal
+
+            if isinstance(task_or_signal, _AbortSignal):
+                if task_or_signal.is_aborted():
+                    return
+                # also check if current session has newer signal (aborted old)
+                # is_aborted already covers global new_abort, but if pipeline
+                # cleared _inflight we still reject stale via abort flag
+            else:
+                if task_or_signal != controller._unification_task_id:
+                    return
+        except Exception:
+            # fallback legacy
+            try:
+                if task_or_signal != controller._unification_task_id:  # type: ignore[attr-defined]
+                    return
+            except Exception:
+                pass
         document = controller.store.get_session_state_slot("document")
         sd = getattr(controller.store.viewport, "session_data", None)
         rc = getattr(sd, "render_cache", None) if sd else None

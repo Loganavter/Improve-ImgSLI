@@ -141,6 +141,72 @@ class SessionController(QObject):
         else:
             self.__dict__["_unification_task_id_raw"] = int(v)
 
+    @property
+    def _pending_image_loads(self):  # alias to ImagePipeline._inflight (Phase 2A)
+        sess = self.__dict__.get("_image_session", None)
+        if sess is not None:
+            try:
+                return sess.pending_image_loads
+            except Exception:
+                pass
+        # fallback for fakes without session
+        return self.__dict__.get("_pending_image_loads_raw", set())
+
+    @_pending_image_loads.setter
+    def _pending_image_loads(self, v) -> None:
+        sess = self.__dict__.get("_image_session", None)
+        if sess is not None:
+            try:
+                sess.pending_image_loads = v
+                return
+            except Exception:
+                pass
+        self.__dict__["_pending_image_loads_raw"] = v
+
+    @property
+    def _pending_full_loads(self):  # alias dict-like counts via _inflight
+        sess = self.__dict__.get("_image_session", None)
+        if sess is not None:
+            try:
+                return sess.pending_full_loads
+            except Exception:
+                pass
+        return self.__dict__.get("_pending_full_loads_raw", {1: 0, 2: 0})
+
+    @_pending_full_loads.setter
+    def _pending_full_loads(self, v) -> None:
+        sess = self.__dict__.get("_image_session", None)
+        if sess is not None:
+            try:
+                sess.pending_full_loads = v
+                return
+            except Exception:
+                pass
+        self.__dict__["_pending_full_loads_raw"] = v
+
+    @property
+    def _pipeline_aborts(self):  # legacy name for pipeline._inflight
+        try:
+            pl = self.__dict__.get("pipeline", None) or getattr(self, "pipeline", None)
+            if pl is not None and hasattr(pl, "_inflight"):
+                return pl._inflight
+        except Exception:
+            pass
+        return self.__dict__.get("_pipeline_aborts_raw", {})
+
+    @_pipeline_aborts.setter
+    def _pipeline_aborts(self, v) -> None:
+        try:
+            pl = self.__dict__.get("pipeline", None) or getattr(self, "pipeline", None)
+            if pl is not None and hasattr(pl, "_inflight"):
+                pl._inflight.clear()
+                if isinstance(v, dict):
+                    pl._inflight.update(v)
+                return
+        except Exception:
+            pass
+        self.__dict__["_pipeline_aborts_raw"] = v
+
     def _get_image_session(self, session_id: str | None = None):
         """Return ImageSession for session_id (or active). Creates on demand."""
         try:
@@ -184,12 +250,14 @@ class SessionController(QObject):
             return
         self._resyncing = True  # type: ignore[attr-defined]
         try:
-            # Dispatcher is now reentrant-safe (plan_image_pipeline.md Phase 2):
-            # resync may dispatch synchronously. Direct call is O(1) without
-            # 0ms delay; loop is broken by _resyncing guard.
+            # Dispatcher reentrant-safe (dispatcher.py:186 copy subscribers
+            # outside _lock, emit outside lock) — resync may dispatch
+            # synchronously without QTimer deferral.
             self._resync_current_image_slots_if_needed()
         except RuntimeError:
-            QTimer.singleShot(0, self._resync_current_image_slots_if_needed)
+            # Reentrant-safe: synchronous fallback without QTimer (was
+            # QTimer.singleShot(0, ...) before Phase 2B).
+            self._resync_current_image_slots_if_needed()
         finally:
             self._resyncing = False  # type: ignore[attr-defined]
 
@@ -416,18 +484,12 @@ class SessionController(QObject):
             item.image = pil_img
 
             if is_current:
+                # Dispatcher reentrant-safe — synchronous chain without QTimer
+                # (Phase 2B: QTimer.singleShot(0, set_current_image) removed).
                 if not is_preview:
-                    QTimer.singleShot(
-                        0,
-                        lambda: self.set_current_image(
-                            image_number, force_refresh=True
-                        ),
-                    )
+                    self.set_current_image(image_number, force_refresh=True)
                 else:
-                    QTimer.singleShot(
-                        0,
-                        lambda num=image_number: self._trigger_preview_unification(num),
-                    )
+                    self._trigger_preview_unification(image_number)
 
     def _on_image_loaded_from_worker(self, result):
         self._on_image_loaded(result)
@@ -454,21 +516,82 @@ class SessionController(QObject):
                 item_index,
             )
 
-        worker = GenericWorker(
-            load_full_task,
-            path,
-            crop_service,
-            image_number,
-            index_in_list,
-        )
-        self._pending_full_loads[image_number] += 1
+        # Phase 2A: single-flight via pipeline._inflight + counts proxy
+        _sig = None
+        try:
+            pl = getattr(self, "pipeline", None)
+            if pl is not None and hasattr(pl, "_inflight"):
+                from tabs.image_compare.pipeline.abort import AbortSignal as _S
+
+                _sig = _S()
+                # also use proxy counts so legacy checks see live
+                self._pending_full_loads[image_number] = self._pending_full_loads.get(image_number, 0) + 1  # type: ignore[union-attr]
+                # store per-path key as well for dedup (full tier)
+                pl._inflight[(int(image_number), str(path), "full")] = _sig  # type: ignore[index]
+
+                orig_task = load_full_task
+
+                def _wrapped(path_str, svc, slot_number, item_index, _sig=_sig, _orig=orig_task):
+                    try:
+                        if _sig is not None and _sig.is_aborted():
+                            return (None, path_str, slot_number, item_index)
+                    except Exception:
+                        pass
+                    res = _orig(path_str, svc, slot_number, item_index)
+                    try:
+                        if _sig is not None and _sig.is_aborted():
+                            return (None, path_str, slot_number, item_index)
+                    except Exception:
+                        pass
+                    return res
+
+                worker = GenericWorker(
+                    _wrapped,
+                    path,
+                    crop_service,
+                    image_number,
+                    index_in_list,
+                )
+
+                def _clear_full():
+                    try:
+                        cur = pl._inflight.get((int(image_number), str(path), "full"))  # type: ignore[arg-type]
+                        if cur is _sig:
+                            pl._inflight.pop((int(image_number), str(path), "full"), None)
+                    except Exception:
+                        pass
+
+            else:
+                raise AttributeError
+        except Exception:
+            worker = GenericWorker(
+                load_full_task,
+                path,
+                crop_service,
+                image_number,
+                index_in_list,
+            )
+            try:
+                self._pending_full_loads[image_number] += 1  # type: ignore[index]
+            except Exception:
+                pass
+
+            def _clear_full():  # type: ignore[no-redef]
+                pass
+
         worker.signals.result.connect(self._on_full_resolution_loaded_result)
         worker.signals.error.connect(
             lambda err: self._on_full_resolution_error(path, err)
         )
-        worker.signals.finished.connect(
-            lambda num=image_number: self._on_full_load_finished(num)
-        )
+
+        def _on_finished(num=image_number, _cf=_clear_full):
+            try:
+                _cf()
+            except Exception:
+                pass
+            self._on_full_load_finished(num)
+
+        worker.signals.finished.connect(_on_finished)
         self.thread_pool.start(worker)
 
     def _on_full_load_finished(self, image_number: int) -> None:
@@ -600,23 +723,38 @@ class SessionController(QObject):
         loading.set_current_image(self, image_number, force_refresh, emit_signal)
 
     def _unify_images_worker_task(
-        self, img1, img2, path1, path2, task_id, method_name
+        self, img1, img2, path1, path2, task_or_signal, method_name
     ):
         from shared.image_processing.pixel_ops.unify import unify_pair
-        from shared.image_processing.store_lease import StoreLease
+
+        # Support both legacy int task_id and AbortSignal (Phase 2A)
+        try:
+            from tabs.image_compare.pipeline.abort import AbortSignal
+        except Exception:
+            AbortSignal = None  # type: ignore
+
+        signal = None
+        legacy_task_id = None
+        if AbortSignal is not None and isinstance(task_or_signal, AbortSignal):
+            signal = task_or_signal
+            if signal.is_aborted():
+                return None
+            should_abort = signal.is_aborted  # type: ignore[assignment]
+            log_id = getattr(signal, "_generation", id(signal))
+        else:
+            legacy_task_id = task_or_signal
+            if legacy_task_id != self._unification_task_id:
+                return None
+            should_abort = lambda: legacy_task_id != self._unification_task_id  # type: ignore
+            log_id = legacy_task_id
 
         try:
-            if task_id != self._unification_task_id:
-                return None
-
-            lease1 = StoreLease.capture(img1)
-            lease2 = StoreLease.capture(img2)
             import time
 
             t0 = time.perf_counter()
             logger.info(
-                "[Unify] task %d started (%sx%s + %sx%s)",
-                task_id,
+                "[Unify] task %s started (%sx%s + %sx%s)",
+                log_id,
                 getattr(img1, "width", "?"),
                 getattr(img1, "height", "?"),
                 getattr(img2, "width", "?"),
@@ -626,22 +764,20 @@ class SessionController(QObject):
                 img1,
                 img2,
                 method_name,
-                lease1=lease1,
-                lease2=lease2,
-                should_abort=lambda: task_id != self._unification_task_id,
+                should_abort=should_abort,
             )
             if u1 is None and u2 is None:
                 logger.info(
-                    "[Unify] task %d aborted/empty after %.2fs",
-                    task_id,
+                    "[Unify] task %s aborted/empty after %.2fs",
+                    log_id,
                     time.perf_counter() - t0,
                 )
                 return None
             logger.info(
-                "[Unify] task %d finished in %.2fs", task_id, time.perf_counter() - t0
+                "[Unify] task %s finished in %.2fs", log_id, time.perf_counter() - t0
             )
 
-            return u1, u2, path1, path2, task_id
+            return u1, u2, path1, path2, task_or_signal
         except Exception as e:
             logger.error(f"Failed to unify images: {e}", exc_info=True)
             return None

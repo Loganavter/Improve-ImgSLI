@@ -339,83 +339,92 @@ def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
         return "UNKNOWN", False, False
 
 class ProgressiveImageLoader:
-    _FULL_CACHE_MAX = 8
+    """Thin wrapper delegating to PipelineCache (single source of truth).
 
-    def __init__(self):
-        from collections import OrderedDict
-        from typing import TYPE_CHECKING
-        if TYPE_CHECKING:
-            from PySide6.QtGui import QImage
-        self._preview_cache: dict[str, "QImage"] = {}
-        self._full_cache: OrderedDict[str, object] = OrderedDict()
+    Preview tier lives in PipelineCache with key (path,mtime,size,has_crop,box,1024);
+    full tier via PipelineCache pixel LRU. Legacy caches removed.
+    New code should use PipelineCache directly.
+    """
+
+    _FULL_CACHE_MAX = 8  # compat constant, limits owned by PipelineCache now
+
+    def __init__(self, cache=None):
+        # Injected PipelineCache allowed (tab layer injects), but shared layer
+        # never imports tabs.* directly (isolation contract). None → no caching,
+        # direct load (caller should use PipelineCache directly for memoised path).
+        self._cache = cache
 
     def get_preview(
         self, image_path: str, force_reload: bool = False, crop_service=None
     ) -> "QImage | None":
-        if not force_reload and image_path in self._preview_cache:
-            return self._preview_cache[image_path]
-        preview = load_preview_image(image_path, crop_service=crop_service)
-        if preview:
-            self._preview_cache[image_path] = preview
-        return preview
+        # If a PipelineCache was injected, delegate (covers preview tier caching)
+        if self._cache is not None:
+            if not force_reload:
+                try:
+                    cached = self._cache.get_preview(image_path, crop_service=crop_service)
+                    if cached is not None:
+                        return cached
+                except Exception:
+                    pass
+            try:
+                return self._cache.get_or_load_preview(image_path, crop_service=crop_service)
+            except Exception:
+                pass
+        return load_preview_image(image_path, crop_service=crop_service)
 
     def get_full(
         self, image_path: str, force_reload: bool = False, *, crop_service=None, auto_crop: bool | None = None
     ):
-        """Return a ``TiledPixelStore`` for ``image_path`` (cached, LRU-bounded)."""
+        """Return a ``TiledPixelStore`` for ``image_path`` (cached via PipelineCache)."""
         if crop_service is None and auto_crop is not None and not isinstance(auto_crop, bool):
             crop_service = auto_crop
             auto_crop = None
         if isinstance(crop_service, bool) and auto_crop is None:
             auto_crop = crop_service
             crop_service = None
-        if not force_reload and image_path in self._full_cache:
+        if self._cache is not None:
+            if not force_reload:
+                try:
+                    cached = self._cache.get_pixel(image_path, crop_service, auto_crop)
+                    if cached is not None:
+                        return cached
+                except Exception:
+                    pass
             try:
-                self._full_cache.move_to_end(image_path)
-            except Exception:
-                pass
-            return self._full_cache[image_path]
+                return self._cache.get_or_load(image_path, crop_service, auto_crop)
+            except ImageSizeLimitError:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to load full image {image_path}: {e}")
+                return None
+        # Fallback without cache (isolated tests)
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
             if crop_service is not None:
-                store = TiledPixelStore.from_path(image_path, crop_service=crop_service)
-            elif auto_crop is not None:
-                store = TiledPixelStore.from_path(image_path, auto_crop=bool(auto_crop))
-            else:
-                store = TiledPixelStore.from_path(image_path)
+                return TiledPixelStore.from_path(image_path, crop_service=crop_service)
+            if auto_crop is not None:
+                return TiledPixelStore.from_path(image_path, auto_crop=bool(auto_crop))
+            return TiledPixelStore.from_path(image_path)
         except ImageSizeLimitError:
             raise
         except Exception as e:
             logger.error(f"Failed to load full image {image_path}: {e}")
             return None
-        if store is not None:
-            self._full_cache[image_path] = store
-            try:
-                self._full_cache.move_to_end(image_path)
-            except Exception:
-                pass
-            while len(self._full_cache) > self._FULL_CACHE_MAX:
-                try:
-                    _old_path, _old_store = self._full_cache.popitem(last=False)
-                    from shared.image_processing.tiled_pixel_store import close_pixel_store
-
-                    close_pixel_store(_old_store)
-                except Exception:
-                    break
-        return store
 
     def clear_cache(self):
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
-
-        for store in self._full_cache.values():
-            close_pixel_store(store)
-        self._preview_cache.clear()
-        self._full_cache.clear()
+        if self._cache is not None:
+            try:
+                self._cache.clear()
+                return
+            except Exception:
+                pass
+        # fallback no-op if no cache
 
     def invalidate_cache(self, image_path: str):
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
-
-        old = self._full_cache.pop(image_path, None)
-        close_pixel_store(old)
-        self._preview_cache.pop(image_path, None)
+        if self._cache is not None:
+            try:
+                self._cache.evict(image_path)
+                return
+            except Exception:
+                pass

@@ -53,6 +53,15 @@ class ImagePipeline:
             return self.cache.get_pixel(path, eff, auto_crop)
         return self.cache.get_pixel(path, eff)
 
+    def peek_preview(self, path: str, crop_service=None, auto_crop: bool | None = None):
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        if auto_crop is not None:
+            return self.cache.get_preview(path, eff, auto_crop)
+        return self.cache.get_preview(path, eff)
+
     # -- ensure tiers --
 
     def ensure_pixel(
@@ -79,6 +88,32 @@ class ImagePipeline:
             return store
         except Exception as e:
             logger.error(f"Pipeline ensure_pixel failed for {path}: {e}", exc_info=True)
+            return None
+
+    def ensure_preview(
+        self, path: str, crop_service=None, auto_crop: bool | None = None, signal: AbortSignal | None = None
+    ):
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        if isinstance(signal, bool):
+            auto_crop = signal  # type: ignore
+            signal = None
+        if signal is not None and getattr(signal, "is_aborted", lambda: False)():
+            return None
+        eff = crop_service if crop_service is not None else getattr(self.cache, "crop_service", None)
+        if auto_crop is not None:
+            cached = self.cache.get_preview(path, eff, auto_crop)
+        else:
+            cached = self.cache.get_preview(path, eff)
+        if cached is not None:
+            return cached
+        try:
+            if auto_crop is not None:
+                return self.cache.get_or_load_preview(path, eff, auto_crop)
+            return self.cache.get_or_load_preview(path, eff)
+        except Exception as e:
+            logger.error(f"Pipeline ensure_preview failed for {path}: {e}", exc_info=True)
             return None
 
     def ensure_unified(
@@ -109,13 +144,10 @@ class ImagePipeline:
             return cached
         try:
             from shared.image_processing.pixel_ops.unify import unify_pair
-            from shared.image_processing.store_lease import StoreLease
 
-            lease1 = StoreLease.capture(store1)
-            lease2 = StoreLease.capture(store2)
             should_abort = signal.should_abort if signal is not None else None
             u1, u2 = unify_pair(
-                store1, store2, method, lease1=lease1, lease2=lease2, should_abort=should_abort
+                store1, store2, method, should_abort=should_abort
             )
             if u1 is not None and u2 is not None:
                 self.cache.put_unified(uid1, uid2, method, w, h, (u1, u2))
