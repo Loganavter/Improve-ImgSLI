@@ -97,15 +97,15 @@ def _slot_sources(controller, document):
             s1 = getattr(vp_state, "image1", None)
         if s2 is None and vp_state is not None:
             s2 = getattr(vp_state, "image2", None)
-        # legacy fallback for DocumentModel with full_res/preview fields (tests compat)
+        # legacy fallback for DocumentModel with full_res fields (tests compat) — only full-res, not preview
         if s1 is None:
             try:
-                s1 = getattr(document, "full_res_image1", None) or getattr(document, "preview_image1", None)
+                s1 = getattr(document, "full_res_image1", None)
             except Exception:
                 pass
         if s2 is None:
             try:
-                s2 = getattr(document, "full_res_image2", None) or getattr(document, "preview_image2", None)
+                s2 = getattr(document, "full_res_image2", None)
             except Exception:
                 pass
     return s1, s2
@@ -291,7 +291,7 @@ def trigger_preview_unification(controller, image_number: int):
             finish_toast_for_unpaired_slot = None  # type: ignore
         if finish_toast_for_unpaired_slot is not None:
             if (s1 and not s2) or (s2 and not s1):
-                has_pending = False
+                has_inflight = False
                 pl = getattr(controller, "pipeline", None)
                 if pl is not None and hasattr(pl, "_inflight"):
                     try:
@@ -301,36 +301,25 @@ def trigger_preview_unification(controller, image_number: int):
                                     continue
                             except Exception:
                                 pass
-                            # consistent with PendingFullLoadsProxy: any (slot, ...) with len>=2
                             if isinstance(k, tuple) and len(k) >= 2 and k[0] == int(image_number):
-                                has_pending = True
+                                has_inflight = True
                                 break
                             if isinstance(k, tuple) and k and k[0] == "__full_count__" and len(k) > 1 and k[1] == int(image_number):
-                                has_pending = True
+                                has_inflight = True
                                 break
                     except Exception:
-                        has_pending = False
-                    # proxy is alias to _inflight synthetic, but check for consistency
-                    try:
-                        pending = getattr(controller, "_pending_full_loads", None)
-                        if not has_pending and pending is not None and pending.get(int(image_number), 0) > 0:  # type: ignore[union-attr]
-                            has_pending = True
-                    except Exception:
-                        pass
-                    if not has_pending:
+                        has_inflight = False
+                    if not has_inflight:
                         try:
                             finish_toast_for_unpaired_slot(controller, document, image_number)
                         except Exception:
                             pass
                 else:
-                    pending = getattr(controller, "_pending_full_loads", None)
-                    if pending is not None and pending.get(image_number, 0) > 0:  # type: ignore[union-attr]
+                    # no pipeline — no inflight, finish toast synchronously
+                    try:
+                        finish_toast_for_unpaired_slot(controller, document, image_number)
+                    except Exception:
                         pass
-                    else:
-                        try:
-                            finish_toast_for_unpaired_slot(controller, document, image_number)
-                        except Exception:
-                            pass
     ensure_unification(controller)
 
 
@@ -476,6 +465,15 @@ def on_unified_images_ready(controller, result):
                     d.dispatch(SetImageSessionImageAction(slot=2, image=u2), scope="viewport")
             except Exception:
                 logger.error("Failed to dispatch unified images", exc_info=True)
+        else:
+            # fallback for SimpleNamespace fakes without dispatcher (tests)
+            try:
+                sd = getattr(controller.store.viewport, "session_data", None)
+                if sd is not None and hasattr(sd, "image_state"):
+                    sd.image_state.image1 = u1
+                    sd.image_state.image2 = u2
+            except Exception:
+                pass
         controller._start_pyramid_builds(u1, u2)
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
