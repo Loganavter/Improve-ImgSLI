@@ -92,3 +92,15 @@ class SetSsimValueAction(Action):
 
     def get_payload(self):
         return {"value": self.value}
+
+
+@dataclass
+class SetPredictedUnifiedSizeAction(Action):
+    predicted_size: Optional[tuple[int, int]]
+
+    def __init__(self, predicted_size: Optional[tuple[int, int]]):
+        super().__init__(type=ActionType.SET_PREDICTED_UNIFIED_SIZE)
+        self.predicted_size = predicted_size
+
+    def get_payload(self):
+        return {"predicted_size": self.predicted_size}
