@@ -181,7 +181,7 @@ Verification: `tests/contracts -q` green, `python src/devtools/docs_link_graph.p
 
 ## 7. Deviations from the plan (deliberate, recorded)
 
-- N/A yet — follow `internal-docs-hygiene` skill: flip Status in-place, record deviation here, do not silently skip phase write-up (`pyvips-streaming-plan.md:5` reporting requirement).
+- 2026-08-31 Phase 2B — `duplicate_image_to_slot` ветка `if path exists` переведена на синхронный `controller.set_current_image(target_slot)` вместо `QTimer.singleShot(0, ...)` (реентрант Dispatcher `dispatcher.py:186` + `AbortSignal` single-flight делают defer ненужным; `QTimer` в `slot.py` нового пути `0`). Тест `src/tabs/image_compare/tests/runtime/test_duplicate_preserves_live_side.py:73` обновлён на синхронный контракт: capture `QTimer.singleShot` оставлен для совместимости, но ожидается `timers == []` + immediate `set_current_calls == [2]`; при наличии таймера (legacy) — `timers[0][1]()` fallback. Прод-код `QTimer` не возвращался — `loading.py:44` лишь re-export для `monkeypatch` совместимости.
 
 ## 8. References
 

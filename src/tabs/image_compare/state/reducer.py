@@ -1,11 +1,8 @@
-"""Reducer for the ``document`` session state slot.
+"""Reducer for the ``document`` session state slot — SlotSource only.
 
-Owns the two-image-list domain logic (``slot == 1/2``, ``image_list1/2``,
-``current_index1/2`` etc.) — this is image_compare's ``DocumentModel``
-shape, not something core should branch on. Registered against core's
-generic slot-reducer registry (``core.state_management.slot_reducers``) by
-``ComparisonPlugin``, so ``RootReducer`` can run it without importing this
-module.
+Owns list+index domain logic (slot == 1/2, image_list1/2,
+current_index1/2). Pixels are owned by PipelineCache/PipelineView
+(viewport), not document. Registered via slot_reducers registry.
 """
 
 from __future__ import annotations
@@ -17,10 +14,6 @@ from core.state_management.actions import (
     Action,
     ClearImageSlotDataAction,
     SetCurrentIndexAction,
-    SetFullResImageAction,
-    SetImagePathAction,
-    SetOriginalImageAction,
-    SetPreviewImageAction,
 )
 
 
@@ -33,38 +26,10 @@ class DocumentReducer:
             if action.slot == 1:
                 return replace(document, current_index1=action.index)
             return replace(document, current_index2=action.index)
-        if isinstance(action, SetOriginalImageAction):
-            if action.slot == 1:
-                return replace(document, original_image1=action.image)
-            return replace(document, original_image2=action.image)
-        if isinstance(action, SetFullResImageAction):
-            if action.slot == 1:
-                return replace(document, full_res_image1=action.image)
-            return replace(document, full_res_image2=action.image)
-        if isinstance(action, SetPreviewImageAction):
-            if action.slot == 1:
-                return replace(document, preview_image1=action.image)
-            return replace(document, preview_image2=action.image)
-        if isinstance(action, SetImagePathAction):
-            if action.slot == 1:
-                return replace(document, image1_path=action.path)
-            return replace(document, image2_path=action.path)
         if isinstance(action, ClearImageSlotDataAction):
             if action.slot == 1:
-                return replace(
-                    document,
-                    original_image1=None,
-                    full_res_image1=None,
-                    preview_image1=None,
-                    image1_path=None,
-                    _last_display_name1="",
-                )
-            return replace(
-                document,
-                original_image2=None,
-                full_res_image2=None,
-                preview_image2=None,
-                image2_path=None,
-                _last_display_name2="",
-            )
+                return replace(document, _last_display_name1="")
+            return replace(document, _last_display_name2="")
+        # deprecated pixel/path actions are no-ops — SlotSource is list+index only
+        # (derived path). Keep for compat: return same document.
         return document
