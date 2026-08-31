@@ -27,6 +27,13 @@ except Exception:  # pragma: no cover
     def ic_preview_debug(msg, *a, **kw):  # type: ignore
         pass
 
+# Throttle hot-path cache probes: get_pixel is called 4× per frame from
+# render_flow (peek) + slot helpers; logging every hit at WARNING floods
+# the stream at 60Hz. Only emit when (key, hit) changes.
+_last_cache_get_pixel_sig: dict[tuple, bool | None] = {}
+_last_cache_get_unified_sig: tuple | None = None
+_last_cache_get_unified_hit: bool | None = None
+
 import logging
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -207,7 +214,19 @@ class PipelineCache:
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
         # если явно передан auto_crop, он приоритетнее сервиса
         key = _pixel_key(path, eff, auto_crop)
-        ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, key in self._pixel)
+        hit = key in self._pixel
+        # throttle: same (key, hit) repeats at 60Hz from render_flow _peek
+        try:
+            _last = _last_cache_get_pixel_sig.get(key)
+            if _last is not hit:  # type: ignore[has-type]
+                _last_cache_get_pixel_sig[key] = hit
+                ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, hit)
+            # keep dict bounded
+            if len(_last_cache_get_pixel_sig) > 64:
+                # drop oldest
+                _last_cache_get_pixel_sig.pop(next(iter(_last_cache_get_pixel_sig)))
+        except Exception:
+            ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, hit)
         store = self._pixel.get(key)
         if store is not None:
             # LRU bump
@@ -488,9 +507,24 @@ class PipelineCache:
                     except Exception:
                         # if check fails, treat as stale
                         pass
-            ic_preview_debug("cache get_unified hit key=%s", key)
+            # throttle hit/miss: same key at 60Hz from render_flow
+            try:
+                global _last_cache_get_unified_sig, _last_cache_get_unified_hit  # type: ignore[used-before-def]
+                if _last_cache_get_unified_sig != key or _last_cache_get_unified_hit is not True:  # type: ignore[has-type]
+                    _last_cache_get_unified_sig = key  # type: ignore[has-type]
+                    _last_cache_get_unified_hit = True  # type: ignore[has-type]
+                    ic_preview_debug("cache get_unified hit key=%s", key)
+            except Exception:
+                ic_preview_debug("cache get_unified hit key=%s", key)
             return val
-        ic_preview_debug("cache get_unified miss key=%s", key)
+        # throttle miss
+        try:
+            if _last_cache_get_unified_sig != key or _last_cache_get_unified_hit is not False:  # type: ignore[has-type]
+                _last_cache_get_unified_sig = key  # type: ignore[has-type]
+                _last_cache_get_unified_hit = False  # type: ignore[has-type]
+                ic_preview_debug("cache get_unified miss key=%s", key)
+        except Exception:
+            ic_preview_debug("cache get_unified miss key=%s", key)
         return None
 
     def put_unified(self, uid1, uid2, method: str, w: int, h: int, pair) -> None:
