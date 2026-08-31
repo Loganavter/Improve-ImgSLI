@@ -342,7 +342,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
-      "lines": 1036,
+      "lines": 1111,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"IC render gate: schedule/update gate + preview-tier display pick; [ic-preview] diagnostics instrument the gate's own decisions (existing Tracer records live here too)\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
-      "lines": 568,
+      "lines": 614,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",

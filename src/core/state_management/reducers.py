@@ -21,9 +21,12 @@ from .slot_reducers import iter_state_slot_reducers
 if TYPE_CHECKING:
     from core.store import Store
 
+from domain.types import Rect
+
 from .actions import (
     Action,
     ClearAllCachesAction,
+    InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
     SetAutoCropBlackBordersAction,
     SetChannelViewModeAction,
@@ -124,6 +127,10 @@ class ViewStateReducer:
             return replace(
                 view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
             )
+        if isinstance(action, InvalidateGeometryCacheAction):
+            return replace(
+                view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
+            )
         if isinstance(action, ClearAllCachesAction):
             return replace(
                 view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
@@ -175,6 +182,24 @@ class GeometryStateReducer:
     def reduce(
         geometry_state: GeometryState, action: Action, session_type: str | None = None
     ) -> GeometryState:
+        if isinstance(action, InvalidateGeometryCacheAction):
+            return replace(
+                geometry_state,
+                pixmap_width=0,
+                pixmap_height=0,
+                image_display_rect_on_label=Rect(),
+                fixed_label_width=None,
+                fixed_label_height=None,
+            )
+        if isinstance(action, ClearAllCachesAction):
+            return replace(
+                geometry_state,
+                pixmap_width=0,
+                pixmap_height=0,
+                image_display_rect_on_label=Rect(),
+                fixed_label_width=None,
+                fixed_label_height=None,
+            )
         if isinstance(action, SetPixmapDimensionsAction):
             return replace(
                 geometry_state, pixmap_width=action.width, pixmap_height=action.height
