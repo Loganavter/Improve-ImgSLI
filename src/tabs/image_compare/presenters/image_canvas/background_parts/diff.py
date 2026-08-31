@@ -17,6 +17,10 @@ def sync_diff_texture(presenter, diff_mode):
 
     current_uploaded_diff = getattr(image_label, "_diff_source_pil_image", None)
     if diff_mode != "ssim":
+        # Keep stale diff_source while source images not ready (sync shader modes
+        # highlight/grayscale/edges compute shader from sources; clearing too early flashes)
+        if not bool(getattr(image_label, "_source_images_ready", False)):
+            return
         if current_uploaded_diff is not None:
             image_label.upload_diff_source_pil_image(None)
         return

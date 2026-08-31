@@ -1165,10 +1165,27 @@ def update_comparison_if_needed(presenter):
         current_mag_sig = presenter.overlay.get_signature()
         last_mag_sig = getattr(presenter, "_last_mag_signature", None)
         image_label = presenter.widget.image_label
+        try:
+            from shared.rendering.image_identity import image_uid as _mag_image_uid
+
+            _rc = presenter.store.viewport.session_data.render_cache
+            _cached_diff = getattr(_rc, "cached_diff_image", None)
+            _cached_diff_uid = _mag_image_uid(_cached_diff) if _cached_diff is not None else None
+            _cached_diff_source_key = getattr(_rc, "cached_diff_source_key", None)
+        except Exception:
+            _cached_diff_uid = None
+            _cached_diff_source_key = None
+        try:
+            _pending_diff_key = getattr(presenter, "_pending_cached_diff_request_key", None)
+        except Exception:
+            _pending_diff_key = None
         current_mag_state = (
             current_mag_sig,
             getattr(image_label, "_source_images_ready", False),
             tuple(getattr(image_label, "_source_image_ids", []) or []),
+            _cached_diff_uid,
+            _cached_diff_source_key,
+            _pending_diff_key,
         )
         mag_is_dirty = current_mag_state != last_mag_sig
 

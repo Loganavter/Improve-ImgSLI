@@ -156,4 +156,28 @@ def ensure_cached_diff_image(
     cached = getattr(presenter, "_cached_diff_image", None)
     if cached is not None:
         return cached
+    s1 = local_source1 if local_source1 is not None else source1
+    s2 = local_source2 if local_source2 is not None else source2
+    if s1 is not None and s2 is not None:
+        try:
+            is_open1 = getattr(s1, "is_open", True)
+            is_open2 = getattr(s2, "is_open", True)
+            if callable(is_open1):
+                is_open1 = is_open1()
+            if callable(is_open2):
+                is_open2 = is_open2()
+            if not is_open1 or not is_open2:
+                return None
+        except Exception:
+            pass
+        try:
+            rc = getattr(vp.session_data, "render_cache", None)
+            if rc is not None and bool(getattr(rc, "unification_in_progress", False)):
+                return None
+        except Exception:
+            pass
+        try:
+            request_cached_diff_image_async(presenter, s1, s2, diff_mode)
+        except Exception:
+            pass
     return None

@@ -11,9 +11,15 @@ from tabs.image_compare.canvas.features.guides.state.feature_state import get_gu
 def set_slider_value_quietly(control, value: int) -> None:
     if control is None or control.get_value() == value:
         return
+    # Must not emit valueChanged on hover/sync — valueChanged is the only path that
+    # dispatches SetGuidesThicknessAction which also clears show_laser via
+    # _sync_active_laser_enabled. Emitting on hover would disable lasers.
     control.blockSignals(True)
     try:
-        control.set_value(value)
+        try:
+            control.set_value(value, emit=False)
+        except TypeError:
+            control.set_value(value)
     finally:
         control.blockSignals(False)
 

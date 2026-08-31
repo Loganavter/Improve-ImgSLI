@@ -58,6 +58,8 @@ class MagnifierSettingsHoverController(QObject):
 
         nav = NavigationManager.get_instance()
         for child in group.findChildren(QWidget):
+            if child is getattr(widget, "btn_magnifier_guides", None):
+                continue
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)
@@ -130,7 +132,6 @@ class MagnifierSettingsHoverController(QObject):
         for attr in (
             "btn_magnifier_orientation",
             "btn_orientation",
-            "btn_magnifier_guides",
             "btn_divider_width",
             "btn_magnifier_divider_width",
             "btn_magnifier_guides_width",
@@ -267,6 +268,16 @@ class MagnifierSettingsHoverController(QObject):
         group = getattr(self.widget, "magnifier_group_container", None)
         if group is None:
             return False
+        # btn_magnifier_guides is inside magnifier_group_container layout but must not
+        # trigger the magnifier sliders flyout — hover over laser button is for laser
+        # control only, not for opening the magnifier panel.
+        guides_btn = getattr(self.widget, "btn_magnifier_guides", None)
+        if guides_btn is not None and guides_btn.isVisible():
+            try:
+                if guides_btn.rect().contains(guides_btn.mapFromGlobal(QCursor.pos())):
+                    return False
+            except Exception:
+                pass
         local = group.mapFromGlobal(QCursor.pos())
         zone = group.rect().adjusted(
             -_HOVER_ZONE_PADDING_PX,

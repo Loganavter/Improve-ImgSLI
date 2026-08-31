@@ -78,6 +78,15 @@ def command_toggle_guides(actions, enabled: bool) -> None:
 def command_set_guides_thickness(actions, thickness: int) -> None:
     thickness = max(0, int(thickness))
     store = getattr(actions, "store", None)
+    if thickness == 0:
+        try:
+            viewport = getattr(store, "viewport", None) if store is not None else None
+            if viewport is not None:
+                old = int(get_guides_widget_state(viewport.view_state).thickness)
+                if old == 0:
+                    return
+        except Exception:
+            pass
     _sync_active_laser_enabled(store, thickness != 0)
     settings = getattr(actions, "settings", None)
     if settings is not None and hasattr(settings, "execute_canvas_feature_command"):
@@ -149,6 +158,15 @@ def command_viewport_set_smoothing_interpolation_method(store, method: str) -> N
 
 def command_viewport_set_guides_thickness(store, thickness: int) -> None:
     thickness = max(0, int(thickness))
+    if thickness == 0:
+        try:
+            viewport = getattr(store, "viewport", None) if store is not None else None
+            if viewport is not None:
+                old = int(get_guides_widget_state(viewport.view_state).thickness)
+                if old == 0:
+                    return
+        except Exception:
+            pass
     _sync_active_laser_enabled(store, thickness != 0)
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:

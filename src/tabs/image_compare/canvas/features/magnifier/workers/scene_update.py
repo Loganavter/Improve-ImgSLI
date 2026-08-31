@@ -20,6 +20,8 @@ from tabs.image_compare.canvas.features.magnifier.workers.common import (
     get_live_image_label,
     is_effective_magnifier_interactive,
 )
+from shared.rendering.image_identity import image_uid
+
 from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import ensure_cached_diff_image
 
 
@@ -58,6 +60,31 @@ def _resolve_magnifier_interpolation_method(vp, *, effective_interactive: bool) 
     return str(get_effective_main_interpolation_method(vp) or "BILINEAR")
 
 
+def _is_ssim_pending(presenter, diff_mode_str, tex_img1=None, tex_img2=None) -> bool:
+    if diff_mode_str != "ssim":
+        return False
+    if getattr(presenter, "_pending_cached_diff_request_key", None) is not None:
+        return True
+    try:
+        rc = presenter.store.viewport.session_data.render_cache
+        if bool(getattr(rc, "unification_in_progress", False)):
+            return True
+    except Exception:
+        pass
+    for _img in (tex_img1, tex_img2):
+        if _img is not None and hasattr(_img, "is_open") and not _img.is_open:
+            return True
+        try:
+            if _img is not None and hasattr(_img, "generation"):
+                from shared.image_processing.store_lease import StoreLease
+                lease = StoreLease.capture(_img)
+                if lease is not None and not lease.valid:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
 def rebuild_magnifier_overlay(presenter):
     vp = presenter.store.viewport
     geometry = vp.geometry_state
@@ -81,8 +108,15 @@ def rebuild_magnifier_overlay(presenter):
         _build_and_apply_scene_snapshot(presenter, image_label, geometry)
         _mark("scene_snapshot")
 
+        diff_mode_early = getattr(vp.view_state, "diff_mode", "off")
         plan = getattr(image_label, "_active_render_plan", None)
         if plan is None:
+            if _is_ssim_pending(presenter, diff_mode_early):
+                return
+            if diff_mode_early in ("highlight", "grayscale", "edges") and not bool(
+                getattr(image_label, "_source_images_ready", False)
+            ):
+                return
             reset_canvas_overlays(image_label)
             return
 
@@ -165,6 +199,13 @@ def rebuild_magnifier_overlay(presenter):
                 pass
         _mark("resolve_source_images")
         if not tex_img1 or not tex_img2:
+            diff_mode_check = getattr(vp.view_state, "diff_mode", "off")
+            if _is_ssim_pending(presenter, diff_mode_check, tex_img1, tex_img2):
+                return
+            if diff_mode_check in ("highlight", "grayscale", "edges") and not bool(
+                getattr(image_label, "_source_images_ready", False)
+            ):
+                return
             reset_canvas_overlays(image_label)
             return
 
@@ -180,12 +221,45 @@ def rebuild_magnifier_overlay(presenter):
             if diff_mode_str == "ssim"
             else None
         )
+        if diff_mode_str == "ssim" and cached_diff_image is None:
+            try:
+                pending_already = getattr(presenter, "_pending_cached_diff_request_key", None) is not None
+                rc_async = getattr(presenter.store.viewport.session_data, "render_cache", None)
+                unification_async = bool(getattr(rc_async, "unification_in_progress", False)) if rc_async is not None else False
+                if not pending_already and not unification_async:
+                    both_ready_async = tex_img1 is not None and tex_img2 is not None
+                    if both_ready_async:
+                        try:
+                            if hasattr(tex_img1, "is_open") and not tex_img1.is_open:
+                                both_ready_async = False
+                            if hasattr(tex_img2, "is_open") and not tex_img2.is_open:
+                                both_ready_async = False
+                        except Exception:
+                            pass
+                    if both_ready_async:
+                        try:
+                            from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import (
+                                request_cached_diff_image_async,
+                            )
+                            request_cached_diff_image_async(presenter, tex_img1, tex_img2, diff_mode_str)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         current_uploaded_diff = getattr(image_label, "_diff_source_pil_image", None)
         diff_image_for_magnifier = cached_diff_image or current_uploaded_diff
         if cached_diff_image is not None:
             image_label.upload_diff_source_pil_image(cached_diff_image)
-        elif diff_mode_str != "ssim":
-            image_label.upload_diff_source_pil_image(None)
+        elif diff_mode_str == "ssim":
+            if _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
+                pass
+            else:
+                pass
+        else:
+            if bool(getattr(image_label, "_source_images_ready", False)):
+                image_label.upload_diff_source_pil_image(None)
+            else:
+                pass
         _mark("diff_cache")
 
         effective_interactive = is_effective_magnifier_interactive(vp)
@@ -194,6 +268,8 @@ def rebuild_magnifier_overlay(presenter):
             effective_interactive=effective_interactive,
         )
         if diff_mode_str == "ssim":
+            if diff_image_for_magnifier is None and _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
+                return
             diff_mode_int = 4 if diff_image_for_magnifier is not None else 0
         else:
             diff_mode_int = {"highlight": 1, "grayscale": 2, "edges": 3}.get(
