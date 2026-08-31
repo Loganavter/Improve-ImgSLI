@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper"
 """Slot image operations — SlotSource + PipelineView via Transaction.
 
 Phase 3 slim: DocumentModel is list+index+derived path only; pixels
@@ -15,6 +16,7 @@ from sli_ui_toolkit.workers import GenericWorker
 from core.state_management.actions import SetCurrentIndexAction
 from tabs.image_compare.state.document import ImageItem
 from sli_ui_toolkit.i18n import tr
+from tabs.image_compare.debug import ic_preview_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -22,11 +24,14 @@ logger = logging.getLogger("ImproveImgSLI")
 def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:
     document = controller.store.get_session_state_slot("document")
     if document is None:
+        ic_preview_debug("ensure_current_slot slot=%s -> no document", image_number)
         return False
     lst = document.image_list1 if image_number == 1 else document.image_list2
     idx = document.current_index1 if image_number == 1 else document.current_index2
     path = document.image1_path if image_number == 1 else document.image2_path
+    ic_preview_debug("ensure_current_slot slot=%s idx=%s path=%s lst_len=%s", image_number, idx, path, len(lst))
     if not (0 <= idx < len(lst)):
+        ic_preview_debug("ensure_current_slot slot=%s -> idx out of range", image_number)
         return False
     item = lst[idx]
     # staleness via pipeline cache (no document pixel fields)
@@ -38,21 +43,27 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
     if path and cached is None:
         # if pipeline has no entry, treat as stale needing load
         stale = True
+    ic_preview_debug("ensure_current_slot slot=%s stale=%s cached=%s is_open=%s item.path=%s", image_number, stale, cached, is_open, item.path)
     if not stale:
         return False
     try:
         controller.set_current_image(image_number, force_refresh=force_refresh)
     except Exception:
+        logger.exception("ensure_current_slot failed slot=%s", image_number)
+        ic_preview_debug("ensure_current_slot slot=%s exception", image_number)
         pass
     return True
 
 
 def handle_full_image_loaded(controller, full_img, path, image_number, index_in_list):
+    ic_preview_debug("handle_full_image_loaded slot=%s path=%s idx=%s has_image=%s", image_number, path, index_in_list, bool(full_img))
     if not full_img:
+        ic_preview_debug("handle_full_image_loaded slot=%s -> no image", image_number)
         return
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
     if not (0 <= index_in_list < len(lst)) or lst[index_in_list].path != path:
+        ic_preview_debug("handle_full_image_loaded slot=%s -> lst mismatch len=%s path_mismatch=%s", image_number, len(lst), lst[index_in_list].path if 0 <= index_in_list < len(lst) else "oob")
         return
     from shared.image_processing.tiled_pixel_store import TiledPixelStore, close_pixel_store, maybe_wrap_pixel_store
 
@@ -66,7 +77,9 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         except Exception:
             pass
     cur = document.current_index1 if image_number == 1 else document.current_index2
+    ic_preview_debug("handle_full_image_loaded slot=%s cur=%s idx=%s path=%s", image_number, cur, index_in_list, path)
     if index_in_list != cur:
+        ic_preview_debug("handle_full_image_loaded slot=%s -> not current, skip transact cur=%s idx=%s", image_number, cur, index_in_list)
         return
     # outgoing cleanup via pipeline cache (close old store if not shared)
     try:
@@ -77,6 +90,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     except Exception:
         pass
     # Single Transaction: PipelineView + geometry invalidate (1 dispatch, 1 emit)
+    ic_preview_debug("handle_full_image_loaded slot=%s -> transact image uid=%s", image_number, getattr(full_img, "uid", id(full_img)))
     try:
         from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
@@ -84,7 +98,9 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
             [SetImageSessionImageAction(slot=image_number, image=full_img), InvalidateGeometryCacheAction()],
             scope="viewport",
         )
-    except Exception:
+        ic_preview_debug("handle_full_image_loaded slot=%s transact done", image_number)
+    except Exception as e:
+        ic_preview_debug("handle_full_image_loaded slot=%s transact failed %s", image_number, e)
         try:
             controller._update_image_slot(image_number, image=full_img, path=path, is_full_res=True)
         except Exception:
@@ -95,6 +111,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         pass
     from tabs.image_compare.use_cases.unify import ensure_unification
 
+    ic_preview_debug("handle_full_image_loaded slot=%s -> ensure_unification", image_number)
     ensure_unification(controller)
     try:
         from tabs.image_compare.use_cases.loading import QTimer  # type: ignore
@@ -118,6 +135,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
 
 def load_images_from_paths(controller, file_paths: list[str], image_number: int):
+    ic_preview_debug("load_images_from_paths slot=%s files=%s", image_number, file_paths)
     from tabs.image_compare.services import document_store_ops
     from core.state_management.actions import (
         SetCachedDiffImageAction,
@@ -129,6 +147,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
     is_new = len(lst) == 0
+    ic_preview_debug("load_images_from_paths slot=%s is_new=%s len=%s other_len=%s", image_number, is_new, len(lst), len(document.image_list2 if image_number==1 else document.image_list1))
     if is_new:
         other = 2 if image_number == 1 else 1
         other_lst = document.image_list1 if other == 1 else document.image_list2
@@ -165,25 +184,32 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
 
     errors, new_idx = [], []
     seen = {e.path for e in lst if e.path}
+    ic_preview_debug("load_images_from_paths slot=%s seen=%s", image_number, seen)
     for fp in file_paths:
         if not isinstance(fp, str) or not fp:
+            ic_preview_debug("load_images_from_paths slot=%s skip invalid %s", image_number, fp)
             errors.append(f"{fp}: {tr('msg.invalid_item_type_or_empty_path', controller.store.settings.current_language)}")
             continue
         try:
             norm = os.path.normpath(fp)
             disp = os.path.basename(norm) or "-----"
-        except Exception:
+        except Exception as e:
+            ic_preview_debug("load_images_from_paths slot=%s norm failed %s %s", image_number, fp, e)
             errors.append(f"{fp}: {tr('msg.error_normalizing_path', controller.store.settings.current_language)}")
             continue
         if norm in seen:
+            ic_preview_debug("load_images_from_paths slot=%s reload existing %s", image_number, norm)
             _reload_existing_path(controller, image_number, norm, lst)
             continue
         try:
+            ic_preview_debug("load_images_from_paths slot=%s append %s disp=%s", image_number, norm, disp)
             lst.append(ImageItem(path=norm, display_name=os.path.splitext(disp)[0], rating=0))
             seen.add(norm)
             new_idx.append(len(lst) - 1)
-        except Exception:
+        except Exception as e:
+            ic_preview_debug("load_images_from_paths slot=%s append failed %s %s", image_number, disp, e)
             errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
+    ic_preview_debug("load_images_from_paths slot=%s new_idx=%s errors=%s lst_len_after=%s", image_number, new_idx, errors, len(lst))
     _finalize_loaded_paths(controller, image_number, new_idx, errors)
 
 
@@ -318,6 +344,7 @@ def _finalize_loaded_paths(controller, image_number: int, newly_added_indices: l
 
 
 def set_current_image(controller, image_number: int, force_refresh: bool = False, emit_signal: bool = True):
+    ic_preview_debug("set_current_image slot=%s force=%s emit=%s", image_number, force_refresh, emit_signal)
     from tabs.image_compare.services import document_store_ops
     from core.state_management.actions import SetCachedDiffImageAction, SetUnificationInProgressAction, SetPendingUnificationPathsAction
     from core.events import CoreUpdateRequestedEvent
@@ -325,6 +352,7 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
     cur = document.current_index1 if image_number == 1 else document.current_index2
+    ic_preview_debug("set_current_image slot=%s cur=%s len=%s path=%s", image_number, cur, len(lst), lst[cur].path if 0 <= cur < len(lst) else None)
     if not (0 <= cur < len(lst)):
         document_store_ops.clear_image_slot_data(controller.store, image_number)
         from tabs.image_compare.use_cases.unify import _invalidate_diff_cache
@@ -359,14 +387,20 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     path = item.path
     # pipeline is single source — peek to see if cached
     pl = getattr(controller, "pipeline", None)
+    ic_preview_debug("set_current_image slot=%s path=%s pipeline=%s", image_number, path, bool(pl))
     cached = pl.peek(path) if pl is not None and path else None
+    ic_preview_debug("set_current_image slot=%s cached=%s is_open=%s", image_number, cached, getattr(cached, "is_open", None) if cached else None)
     if cached is not None and not bool(getattr(cached, "is_open", True)):
+        ic_preview_debug("set_current_image slot=%s cached closed -> None", image_number)
         cached = None
     pil_img = cached
+    ic_preview_debug("set_current_image slot=%s pil_img=%s path=%s", image_number, pil_img, path)
     if pil_img is None and path:
+        ic_preview_debug("set_current_image slot=%s -> clear slot data (cache miss)", image_number)
         document_store_ops.clear_image_slot_data(controller.store, image_number)
     # publish PipelineView via single Transaction (1 emit)
     if pil_img is not None:
+        ic_preview_debug("set_current_image slot=%s -> transact image uid=%s", image_number, getattr(pil_img, "uid", id(pil_img)))
         try:
             from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
@@ -374,13 +408,16 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 [SetImageSessionImageAction(slot=image_number, image=pil_img), InvalidateGeometryCacheAction()],
                 scope="viewport",
             )
-        except Exception:
+            ic_preview_debug("set_current_image slot=%s transact done", image_number)
+        except Exception as e:
+            ic_preview_debug("set_current_image slot=%s transact failed %s", image_number, e)
             try:
                 controller._update_image_slot(image_number, image=pil_img, path=path, is_full_res=True, emit=False)
             except Exception:
                 pass
     else:
         # still publish clear via transaction if needed
+        ic_preview_debug("set_current_image slot=%s -> transact clear image_state", image_number)
         try:
             from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
@@ -388,19 +425,25 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 [SetImageSessionImageAction(slot=image_number, image=None), InvalidateGeometryCacheAction()],
                 scope="viewport",
             )
-        except Exception:
+            ic_preview_debug("set_current_image slot=%s clear transact done", image_number)
+        except Exception as e:
+            ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
             pass
+    ic_preview_debug("set_current_image slot=%s -> invalidate_render + schedule_update", image_number)
     controller.store.invalidate_render_cache()
     controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
     if pil_img is None and path:
+        ic_preview_debug("set_current_image slot=%s -> cache miss, will start worker path=%s cur=%s", image_number, path, cur)
         pl = getattr(controller, "pipeline", None)
         key = (int(image_number), str(path))
         if pl is not None and hasattr(pl, "_inflight"):
             existing = pl._inflight.get(key)  # type: ignore[arg-type]
+            ic_preview_debug("set_current_image slot=%s inflight existing=%s", image_number, existing)
             if existing is not None:
                 try:
                     if not existing.is_aborted():
+                        ic_preview_debug("set_current_image slot=%s -> inflight exists, dedup return", image_number)
                         if emit_signal:
                             controller.store.emit_state_change("document")
                         return
@@ -413,7 +456,9 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
                 _sig = _AbortSignal()
                 pl._inflight[key] = _sig
-            except Exception:
+                ic_preview_debug("set_current_image slot=%s -> new inflight %s", image_number, _sig)
+            except Exception as e:
+                ic_preview_debug("set_current_image slot=%s inflight create failed %s", image_number, e)
                 _sig = None
 
             def _clear():
