@@ -163,38 +163,86 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     is_new = len(lst) == 0
     ic_preview_debug("load_images_from_paths slot=%s is_new=%s len=%s other_len=%s t=%.3f", image_number, is_new, len(lst), len(document.image_list2 if image_number==1 else document.image_list1), _t.monotonic() - _t0)
     if is_new:
+        # Долгосрочный правильный путь: весь is_new — одна транзакция, без
+        # промежуточных dispatch/batch. Иначе первый drop в пустую сессию
+        # делает 5 dispatch → каждый клонирует ViewportState + emit → 1.48с
+        # блок event loop, последующие дропы уже <5мс (кэш). См. plan
+        # docs/dev/plan_image_compare_dnd_tiles.md Phase 3.
         other = 2 if image_number == 1 else 1
         other_lst = document.image_list1 if other == 1 else document.image_list2
-        d = getattr(controller.store, "get_dispatcher", lambda: None)()
-        if d is not None:
-            try:
-                with controller.store.batch_changes():
-                    d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
-                    d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
-            except Exception:
-                pass
-        if len(other_lst) == 0:
-            document_store_ops.clear_image_slot_data(controller.store, 1)
-            document_store_ops.clear_image_slot_data(controller.store, 2)
+        try:
+            actions = []
+            # unify state — всегда сбрасываем
+            actions.append(SetUnificationInProgressAction(enabled=False))
+            actions.append(SetPendingUnificationPathsAction(paths=None))
+            if len(other_lst) == 0:
+                # первый файл в пустой сессии — чистим оба слота одним махом
+                from core.state_management.actions import ClearImageSlotDataAction
+
+                actions.append(ClearImageSlotDataAction(1))
+                actions.append(ClearImageSlotDataAction(2))
+                actions.append(SetImageSessionImageAction(slot=1, image=None))
+                actions.append(SetImageSessionImageAction(slot=2, image=None))
+                # дифф — либо через сервис, либо экшеном, не оба
+                if getattr(controller, "diff_service", None) is None:
+                    actions.append(SetCachedDiffImageAction(image=None))
+            else:
+                has_path = bool(document.image1_path) if image_number == 1 else bool(document.image2_path)
+                if has_path:
+                    from core.state_management.actions import ClearImageSlotDataAction
+
+                    actions.append(ClearImageSlotDataAction(image_number))
+            # одна транзакция вместо 2×batch_changes + 5 dispatch
+            controller.store.transact(actions, scope="viewport")
+        except Exception:
+            # fallback — старый путь через dispatcher, если transact недоступен (fake store в тестах)
+            d = getattr(controller.store, "get_dispatcher", lambda: None)()
             if d is not None:
                 try:
                     with controller.store.batch_changes():
-                        d.dispatch(SetImageSessionImageAction(slot=1, image=None), scope="viewport")
-                        d.dispatch(SetImageSessionImageAction(slot=2, image=None), scope="viewport")
+                        d.dispatch(SetUnificationInProgressAction(enabled=False), scope="viewport")
+                        d.dispatch(SetPendingUnificationPathsAction(paths=None), scope="viewport")
                 except Exception:
                     pass
-            if getattr(controller, "diff_service", None) is not None:
-                controller.diff_service.invalidate()
-            elif d is not None:
+            if len(other_lst) == 0:
                 try:
-                    d.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
+                    document_store_ops.clear_image_slot_data(controller.store, 1)
                 except Exception:
                     pass
-        else:
-            # stale check via derived path (no doc pixel fields)
-            has_path = bool(document.image1_path) if image_number == 1 else bool(document.image2_path)
-            if has_path:
-                document_store_ops.clear_image_slot_data(controller.store, image_number)
+                try:
+                    document_store_ops.clear_image_slot_data(controller.store, 2)
+                except Exception:
+                    pass
+                if d is not None:
+                    try:
+                        with controller.store.batch_changes():
+                            d.dispatch(SetImageSessionImageAction(slot=1, image=None), scope="viewport")
+                            d.dispatch(SetImageSessionImageAction(slot=2, image=None), scope="viewport")
+                    except Exception:
+                        pass
+                if getattr(controller, "diff_service", None) is not None:
+                    try:
+                        controller.diff_service.invalidate()
+                    except Exception:
+                        pass
+                elif d is not None:
+                    try:
+                        d.dispatch(SetCachedDiffImageAction(image=None), scope="viewport")
+                    except Exception:
+                        pass
+            else:
+                has_path = bool(document.image1_path) if image_number == 1 else bool(document.image2_path)
+                if has_path:
+                    try:
+                        document_store_ops.clear_image_slot_data(controller.store, image_number)
+                    except Exception:
+                        pass
+        # diff_service invalidate — вне транзакции, если есть (idempotent)
+        if len(other_lst) == 0 and getattr(controller, "diff_service", None) is not None:
+            try:
+                controller.diff_service.invalidate()
+            except Exception:
+                pass
 
     # Re-fetch after is_new dispatches: DocumentModel is immutable via replace()
     # which copies image_list1/2 (see debug test 2026-08-31), so old `lst` reference
