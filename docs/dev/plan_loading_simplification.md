@@ -1,6 +1,6 @@
 # Plan: Loading pipeline consolidation — 8 caches → 1, 8 cancels → 1
 
-Status: `Open` — design approved, Phase 0 preflight next
+Status: `In Progress` — Phase 0 Done (2026-08-31), Phases 1-4 Partial (~60%) — core mechanisms done, aliases/QTimer/7-fields cleanup remains (audit 2026-08-31 second explore, 6805 LOC still vs 3600 target)
 Area: `src/tabs/image_compare/pipeline/cache.py:60` (`PipelineCache`), `src/shared/image_processing/progressive_loader.py:349` (`ProgressiveImageLoader._full_cache/_preview_cache`), `src/shared/image_processing/pixel_cache_registry.py:15`, `src/shared/image_processing/pyramid_registry.py:20`, `src/shared/image_processing/autocrop/service.py:27`, `src/tabs/image_compare/_session_controller.py:60,100,123` (`_unification_task_id`, `_pending_*`), `src/tabs/image_compare/use_cases/slot.py:391` + `unify.py:251` + `loading.py:49`, `src/core/state_management/reducers.py:173` (`GeometryStateReducer`), `src/tabs/image_compare/state/document.py:44`
 Related: [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model / Canvas Stack, [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store, `Transaction`, `batch_changes`), [CONTRACTS.md](./CONTRACTS.md), [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner + `use_cases/` vs state-owning collaborator), `docs/dev/CODE_MASS_REDUCTION.md:37`, `docs/dev/TODO.md` P2/P3 IC↔MC duplication queue, `improve-imgsli-internal-docs/docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md:1`, `improve-imgsli-internal-docs/docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md:55`
 TODO ref: `docs/dev/TODO.md` → P2 Session-state follow-ups (Done wave5 — `ImageSession` + `StaleGate`), P2/P3 `tabs/_shared` consolidation (pyramid/toast/save_flow), P3 dead-code / over-engineering audit
@@ -174,14 +174,17 @@ Verification: `tests/contracts -q` green, `python src/devtools/docs_link_graph.p
 | Step | Date | Result |
 |---|---|---|
 | 0 | 2026-08-31 | Plan landed `docs/dev/plan_loading_simplification.md:1`, inventory `>15 QTimer →6`, `8 caches/8 cancels`, baseline `pipeline 4837` + full `6800` via `cloc.txt` (`./launcher.sh context --cloc-only`). Two parallel `explore` subagents mapped violations with `imgsli-devtools` skill. |
-| 1 | — | — |
-| 2 | — | — |
-| 3 | — | — |
-| 4 | — | — |
+| 0a | 2026-08-31 | `plan_image_pipeline.md:1` Phase 5 merged: `loading.py 946→49` shim `loading.py:49`, `PipelineCache` LRU8+8 `pipeline/cache.py:60`, `AbortSignal` `pipeline/abort.py:11` + `_inflight` `pipeline/pipeline.py:43`, `Transaction` `core/store.py:129`, thin owner `_session_controller 915→292`. |
+| 1 | 2026-08-31 | Partial — `ProgressiveImageLoader 349-350` → delegate `progressive_loader.py:324` done; `pixel_cache_registry.py:15` aliased to `PipelineCache.embedded` `pipeline/cache.py:44` but file + `pixel_cache_loader.py:43`/`project_io.py:375` hits remain; `pyramid_registry` sweep centralized `pipeline/cache.py:441` but file remains; `_crop_box_cache` empty alias `tiled_pixel_store.py:44` + `WeakSet` `autocrop/service.py:27` remains. `rg _full_cache` outside `cache.py` =0 done, `rg pixel_cache_registry._cache` !=0. |
+| 2 | 2026-08-31 | Partial — storage `8→1` via `AbortSignal+_inflight` done (`session.py:251 new_abort`); syntax `rg _pending\|_unification_task_id\|StoreLease\|QTimer` !=0 remain as proxies `pipeline/session.py:24` `_session_controller.py:51` `unify.py:211` `image_decode.py:542` `store_lease.py:13` (prod 0, test refs remain); `QTimer` in new dispatch path 0 but `slot.py:155 toast` + `canvas_invalidate.py:81` remain. |
+| 3 | 2026-08-31 | Partial — `DocumentModel` slim `state/document.py:66` `_deprecated:25` done + `InvalidateGeometryCache` `reducers.py:185` done, but `~15` prod reads `full_res_image/preview_image` remain (`navigation.py:8 chrome_sync.py:73 list_operations.py:214`); `PipelineView` `ImageSessionState.image1/2` `state/models.py:101` live. |
+| 4 | 2026-08-31 | Partial — `_session_controller 292` done; geometry dup functionally done (`render_flow.py:211 return if dispatcher`); `StaleGate` `use_cases/stale_gate.py:1` exists but `chrome_sync.py:452` dup remains; `HOLD 350ms` `tile_constants.py:111` + `fallback_lod atomic` `fallback_lod.py:27` done. LOC `6805` vs target `3600` (-3200 not reached). |
+| 1-4 final | — | — |
 
 ## 7. Deviations from the plan (deliberate, recorded)
 
 - 2026-08-31 Phase 2B — `duplicate_image_to_slot` ветка `if path exists` переведена на синхронный `controller.set_current_image(target_slot)` вместо `QTimer.singleShot(0, ...)` (реентрант Dispatcher `dispatcher.py:186` + `AbortSignal` single-flight делают defer ненужным; `QTimer` в `slot.py` нового пути `0`). Тест `src/tabs/image_compare/tests/runtime/test_duplicate_preserves_live_side.py:73` обновлён на синхронный контракт: capture `QTimer.singleShot` оставлен для совместимости, но ожидается `timers == []` + immediate `set_current_calls == [2]`; при наличии таймера (legacy) — `timers[0][1]()` fallback. Прод-код `QTimer` не возвращался — `loading.py:44` лишь re-export для `monkeypatch` совместимости.
+- 2026-08-31 Audit second explore (8→1) — formal `8→1` not literal: `PipelineCache` is single logical owner for pixel tier, but `pixel_cache_registry.py:15`/`pyramid_registry.py:20`/`autocrop/service.py:27` kept as aliases/compat shims for tests/project_io. Same for `8→1` cancels: storage unified to `AbortSignal+_inflight` `pipeline/pipeline.py:43`, syntax `rg _pending|task_id|StoreLease|QTimer` remains via proxies `pipeline/session.py:24` `_session_controller.py:51`. LOC target `6800→3600` not reached (still `6805`); thin-owner -623 compensated by `+~300` in `cache.py:556` + `reducers`. Plan phases marked Partial, not failed — next step is alias cleanup (breaking allowed per §1).
 
 ## 8. References
 
