@@ -46,29 +46,13 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
             ic_preview_debug("ensure_current_slot slot=%s -> idx out of range", image_number)
         return False
     item = lst[idx]
-    # staleness via pipeline cache (single source) with legacy document field fallback for tests
+    # staleness via pipeline cache — single source
     pl = getattr(controller, "pipeline", None)
     cached = pl.peek(path) if pl is not None and path else None
     is_open = bool(getattr(cached, "is_open", True)) if cached is not None else False
     stale = path != item.path or (cached is not None and not is_open)
     if path and cached is None:
-        # pipeline miss — fallback to legacy document pixel fields for compat (Phase 3 transition)
-        legacy = None
-        try:
-            legacy = getattr(document, f"full_res_image{image_number}", None) or getattr(document, f"preview_image{image_number}", None)
-        except Exception:
-            legacy = None
-        if legacy is not None and getattr(legacy, "is_open", True):
-            try:
-                # if legacy carries path-matching image, not stale
-                if path == item.path:
-                    stale = False
-                else:
-                    stale = True
-            except Exception:
-                stale = True
-        else:
-            stale = True
+        stale = True
     if _ens_should:
         ic_preview_debug("ensure_current_slot slot=%s stale=%s cached=%s is_open=%s item.path=%s", image_number, stale, cached, is_open, item.path)
     if not stale:

@@ -108,9 +108,9 @@ def ic_preview_source_tier(img, preview, original, state_img) -> str:
 
     ``pick_display_with_preview_backing`` / ``pick_display_image`` can hand
     the canvas any of: the unified full-res store (``image_state.image*``),
-    the bounded preview ``QImage`` (``document.preview_image*``), or the
-    original ``QImage`` (``document.original_image*``). Identity comparison
-    -- the tiers are distinct objects, never shared.
+    the bounded preview ``QImage`` (pipeline preview tier), or the
+    original ``QImage``. Identity comparison -- the tiers are distinct
+    objects, never shared.
     """
     if img is None:
         return "none"

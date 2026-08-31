@@ -247,8 +247,6 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         image_list2=_items(data.get("image_list2")),
         current_index1=data.get("current_index1", -1),
         current_index2=data.get("current_index2", -1),
-        image1_path=data.get("image1_path"),
-        image2_path=data.get("image2_path"),
     )
     camera = data.get("camera") or {}
     # Replace direct session.document assignment with slot API (AST-safe).

@@ -113,10 +113,10 @@ class VideoEditorDialogRuntime:
         d.shortcut_backspace = QShortcut(QKeySequence(Qt.Key.Key_Backspace), d)
         d.shortcut_backspace.activated.connect(handle_delete)
 
-    def set_preview_image(self, pixmap: QPixmap):
+    def set_preview(self, pixmap: QPixmap):
         d = self.dialog
         if not pixmap:
-            logger.warning("[set_preview_image] Received None pixmap!")
+            logger.warning("[set_preview] Received None pixmap!")
             return
         if hasattr(d.preview_label, "set_pixmap"):
             d.preview_label.set_pixmap(pixmap)

@@ -206,23 +206,23 @@ class ExportPresenter(QObject):
         dialog_state = self.state.build_export_dialog_state()
         dialog_state.virtual_canvas_active = bool(virtual_canvas_active)
         return self.ui_manager.dialogs.show_export_dialog(
-            dialog_state=dialog_state,
-            preview_image=preview_img,
-            suggested_filename=suggested_filename,
-            on_set_favorite_dir=self._set_export_favorite_dir,
-            native_size=native_size,
+            dialog_state,
+            preview_img,
+            suggested_filename,
+            self._set_export_favorite_dir,
+            native_size,
         )
 
     def open_snapshot_export_dialog(
         self,
         *,
-        preview_image,
+        preview,
         suggested_filename: str,
         native_size: tuple[int, int],
     ):
         """Open the standard image-export dialog for a host-provided snapshot."""
         return self._open_export_dialog(
-            preview_image,
+            preview,
             suggested_filename,
             native_size=native_size,
         )

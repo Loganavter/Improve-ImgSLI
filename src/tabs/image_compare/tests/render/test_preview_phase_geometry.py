@@ -16,57 +16,44 @@ from unittest.mock import MagicMock
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
+from core.state_management.dispatcher import Dispatcher
+from core.store import Store
+from core.store_viewport import SessionData
+from tabs.image_compare.pipeline.pipeline import ImagePipeline
 from tabs.image_compare.presenters.image_canvas.background_parts import render_flow
+from tabs.image_compare.state.actions import PutPreviewAction
+from tabs.image_compare.state.document import DocumentModel, ImageItem
+from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 
 
-class _ImageState:
-    def __init__(self):
-        self.image1 = None
-        self.image2 = None
+def _qapp():
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
 
 
-class _RenderCache:
-    def __init__(self, unification_in_progress=False):
-        self.unification_in_progress = unification_in_progress
-        self.pending_unification_paths = None
+def _make_store(document: DocumentModel, *, unification_in_progress: bool = False) -> Store:
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", document)
+    store.viewport.session_data = SessionData(
+        image_state=ImageSessionState(),
+        render_cache=RenderCacheState(unification_in_progress=unification_in_progress),
+    )
+    store.viewport.interaction_state.resize_in_progress = False
+    store.viewport.view_state.showing_single_image_mode = 0
+    store.viewport.view_state.diff_mode = "off"
+    store.viewport.view_state.channel_view_mode = "rgb"
+    store.viewport.geometry_state.pixmap_width = 0
+    store.viewport.geometry_state.pixmap_height = 0
+    store.viewport.geometry_state.image_display_rect_on_label = None
+    store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
+    store.set_dispatcher(Dispatcher(store))
+    return store
 
 
-class _GeometryState:
-    def __init__(self):
-        self.pixmap_width = 0
-        self.pixmap_height = 0
-        self.image_display_rect_on_label = None
-
-
-class _SessionData:
-    def __init__(self, unification_in_progress=False):
-        self.image_state = _ImageState()
-        self.render_cache = _RenderCache(unification_in_progress)
-
-
-class _Viewport:
-    def __init__(self, unification_in_progress=False):
-        self.session_data = _SessionData(unification_in_progress)
-        self.interaction_state = SimpleNamespace(resize_in_progress=False)
-        self.view_state = SimpleNamespace(
-            showing_single_image_mode=0,
-            diff_mode="off",
-            channel_view_mode="rgb",
-        )
-        self.geometry_state = _GeometryState()
-
-
-class _Store:
-    def __init__(self, document, unification_in_progress=False):
-        self.document = document
-        self.viewport = _Viewport(unification_in_progress)
-
-    def get_session_state_slot(self, name):
-        assert name == "document"
-        return self.document
-
-
-def _presenter(store):
+def _presenter(store: Store, pipeline: ImagePipeline):
     return SimpleNamespace(
         main_window_app=SimpleNamespace(
             _is_ui_stable=True,
@@ -76,6 +63,8 @@ def _presenter(store):
             ui=SimpleNamespace(workspace_stack=None),
         ),
         store=store,
+        session_controller=SimpleNamespace(pipeline=pipeline),
+        controller=SimpleNamespace(pipeline=pipeline),
         widget=SimpleNamespace(isVisible=lambda: True, image_label=SimpleNamespace(clear=lambda: None)),
         view=SimpleNamespace(
             is_canvas_widget=lambda: False,
@@ -93,35 +82,33 @@ def _presenter(store):
     )
 
 
-def _qapp():
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
-
-
 def test_geometry_updates_during_unification_deferral():
-    """The user-visible case: both previews are on the document, the unify
+    """The user-visible case: both previews are on the pipeline, the unify
     worker is in flight (image_state.image1 still None), the gate defers the
     apply -- but the letterbox rect must already be the new comparison's."""
     _qapp()
     preview1 = Image.new("RGBA", (100, 50), "red")
     preview2 = Image.new("RGBA", (60, 60), "blue")
-    document = SimpleNamespace(
-        image1_path="/a.png",
-        image2_path="/b.png",
-        full_res_image1=None,
-        full_res_image2=None,
-        preview_image1=preview1,
-        preview_image2=preview2,
-        original_image1=None,
-        original_image2=None,
+    document = DocumentModel(
+        image_list1=[ImageItem(path="/a.png", display_name="a")],
+        image_list2=[ImageItem(path="/b.png", display_name="b")],
+        current_index1=0,
+        current_index2=0,
     )
-    store = _Store(document, unification_in_progress=True)
-    presenter = _presenter(store)
+    store = _make_store(document, unification_in_progress=True)
+    store.transact([PutPreviewAction(path="/a.png", qimage=preview1)], scope="pipeline")
+    store.transact([PutPreviewAction(path="/b.png", qimage=preview2)], scope="pipeline")
+    pipeline = ImagePipeline(store=store)
+    presenter = _presenter(store, pipeline)
     geometry = store.viewport.geometry_state
 
-    assert render_flow.update_comparison_if_needed(presenter) is False
+    # keep fallback geometry path (no dispatcher) so _update_comparison_geometry mutates directly
+    orig_get_dispatcher = store.get_dispatcher
+    store.get_dispatcher = lambda: None  # type: ignore[assignment]
+    try:
+        assert render_flow.update_comparison_if_needed(presenter) is False
+    finally:
+        store.get_dispatcher = orig_get_dispatcher  # type: ignore[assignment]
     # Pair fit of 100x50 + 60x60 into 400x400: scale = min(4, 6.667) = 4
     # -> 400x200, centered.
     assert (geometry.pixmap_width, geometry.pixmap_height) == (400, 200)
@@ -135,21 +122,24 @@ def test_geometry_updates_when_one_side_missing():
     side's fit instead of staying at the previous comparison's layout."""
     _qapp()
     preview1 = Image.new("RGBA", (100, 50), "red")
-    document = SimpleNamespace(
-        image1_path="/a.png",
-        image2_path=None,
-        full_res_image1=None,
-        full_res_image2=None,
-        preview_image1=preview1,
-        preview_image2=None,
-        original_image1=None,
-        original_image2=None,
+    document = DocumentModel(
+        image_list1=[ImageItem(path="/a.png", display_name="a")],
+        image_list2=[],
+        current_index1=0,
+        current_index2=-1,
     )
-    store = _Store(document)
-    presenter = _presenter(store)
+    store = _make_store(document)
+    store.transact([PutPreviewAction(path="/a.png", qimage=preview1)], scope="pipeline")
+    pipeline = ImagePipeline(store=store)
+    presenter = _presenter(store, pipeline)
     geometry = store.viewport.geometry_state
 
-    assert render_flow.update_comparison_if_needed(presenter) is False
+    orig_get_dispatcher = store.get_dispatcher
+    store.get_dispatcher = lambda: None  # type: ignore[assignment]
+    try:
+        assert render_flow.update_comparison_if_needed(presenter) is False
+    finally:
+        store.get_dispatcher = orig_get_dispatcher  # type: ignore[assignment]
     assert (geometry.pixmap_width, geometry.pixmap_height) == (400, 200)
     rect = geometry.image_display_rect_on_label
     assert (rect.x, rect.y, rect.w, rect.h) == (0, 100, 400, 200)
@@ -158,20 +148,22 @@ def test_geometry_updates_when_one_side_missing():
 def test_geometry_unchanged_when_no_sources():
     """Nothing loaded: the previous rect is kept (no crash, no mutation)."""
     _qapp()
-    document = SimpleNamespace(
-        image1_path=None,
-        image2_path=None,
-        full_res_image1=None,
-        full_res_image2=None,
-        preview_image1=None,
-        preview_image2=None,
-        original_image1=None,
-        original_image2=None,
+    document = DocumentModel(
+        image_list1=[],
+        image_list2=[],
+        current_index1=-1,
+        current_index2=-1,
     )
-    store = _Store(document)
-    presenter = _presenter(store)
+    store = _make_store(document)
+    pipeline = ImagePipeline(store=store)
+    presenter = _presenter(store, pipeline)
     geometry = store.viewport.geometry_state
 
-    assert render_flow.update_comparison_if_needed(presenter) is False
+    orig_get_dispatcher = store.get_dispatcher
+    store.get_dispatcher = lambda: None  # type: ignore[assignment]
+    try:
+        assert render_flow.update_comparison_if_needed(presenter) is False
+    finally:
+        store.get_dispatcher = orig_get_dispatcher  # type: ignore[assignment]
     assert (geometry.pixmap_width, geometry.pixmap_height) == (0, 0)
     assert geometry.image_display_rect_on_label is None

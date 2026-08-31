@@ -75,7 +75,7 @@ def _peek_both(pl, path: str | None):
 
 
 def _slot_sources(controller, document):
-    """PipelineCache is single source; fallback to viewport image_state + legacy document fields for tests."""
+    """PipelineCache is single source; fallback to viewport image_state."""
     pl = getattr(controller, "pipeline", None)
     try:
         vp_state = getattr(controller.store.viewport.session_data, "image_state", None)
@@ -97,17 +97,6 @@ def _slot_sources(controller, document):
             s1 = getattr(vp_state, "image1", None)
         if s2 is None and vp_state is not None:
             s2 = getattr(vp_state, "image2", None)
-        # legacy fallback for DocumentModel with full_res fields (tests compat) — only full-res, not preview
-        if s1 is None:
-            try:
-                s1 = getattr(document, "full_res_image1", None)
-            except Exception:
-                pass
-        if s2 is None:
-            try:
-                s2 = getattr(document, "full_res_image2", None)
-            except Exception:
-                pass
     return s1, s2
 
 
@@ -465,15 +454,6 @@ def on_unified_images_ready(controller, result):
                     d.dispatch(SetImageSessionImageAction(slot=2, image=u2), scope="viewport")
             except Exception:
                 logger.error("Failed to dispatch unified images", exc_info=True)
-        else:
-            # fallback for SimpleNamespace fakes without dispatcher (tests)
-            try:
-                sd = getattr(controller.store.viewport, "session_data", None)
-                if sd is not None and hasattr(sd, "image_state"):
-                    sd.image_state.image1 = u1
-                    sd.image_state.image2 = u2
-            except Exception:
-                pass
         controller._start_pyramid_builds(u1, u2)
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_overlay_state=False)

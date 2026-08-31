@@ -22,13 +22,20 @@ import pytest
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
+from core.state_management.dispatcher import Dispatcher
+from core.store import Store
+from core.store_viewport import SessionData
 from shared.image_processing import pyramid_registry
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.image_identity import image_uid
+from tabs.image_compare.pipeline.pipeline import ImagePipeline
 from tabs.image_compare.presenters.image_canvas.background_parts import render_flow
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
     pick_display_with_preview_backing,
 )
+from tabs.image_compare.state.actions import PutPreviewAction
+from tabs.image_compare.state.document import DocumentModel, ImageItem
+from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 
 
 @pytest.fixture(scope="module")
@@ -100,51 +107,56 @@ def test_new_image_preview_still_replaces_previous_images_store():
         pyramid_registry.clear()
 
 
-class _ImageState:
-    def __init__(self):
-        self.image1 = None
-        self.image2 = None
+def _make_store(document: DocumentModel) -> Store:
+    import tabs.image_compare.bootstrap_reducers  # noqa: F401 — ensure PipelineCacheReducer registered
+
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", document)
+    store.viewport.session_data = SessionData(
+        image_state=ImageSessionState(), render_cache=RenderCacheState()
+    )
+    store.viewport.interaction_state.resize_in_progress = False
+    store.viewport.view_state.showing_single_image_mode = 0
+    store.viewport.view_state.diff_mode = "off"
+    store.viewport.view_state.channel_view_mode = "rgb"
+    store.viewport.geometry_state.pixmap_width = 0
+    store.viewport.geometry_state.pixmap_height = 0
+    store.viewport.geometry_state.image_display_rect_on_label = None
+    store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
+    store.set_dispatcher(Dispatcher(store))
+    # ensure pipeline slot exists
+    from tabs.image_compare.state.models import PipelineCacheState
+
+    try:
+        if store.get_session_state_slot("pipeline") is None:
+            store.set_session_state_slot("pipeline", PipelineCacheState())
+    except Exception:
+        pass
+    return store
 
 
-class _RenderCache:
-    def __init__(self):
-        self.unification_in_progress = False
-        self.pending_unification_paths = None
+class _StoreWrapper:
+    """Simple wrapper for presenter store slot access."""
 
-
-class _SessionData:
-    def __init__(self):
-        self.image_state = _ImageState()
-        self.render_cache = _RenderCache()
-
-
-class _Viewport:
-    def __init__(self):
-        self.session_data = _SessionData()
-        self.interaction_state = SimpleNamespace(resize_in_progress=False)
-        self.view_state = SimpleNamespace(
-            showing_single_image_mode=0,
-            diff_mode="off",
-            channel_view_mode="rgb",
-        )
-        self.geometry_state = SimpleNamespace(
-            pixmap_width=0,
-            pixmap_height=0,
-            image_display_rect_on_label=None,
-        )
-
-
-class _Store:
     def __init__(self, document):
         self.document = document
-        self.viewport = _Viewport()
+        self.viewport = SimpleNamespace(
+            session_data=SimpleNamespace(
+                image_state=SimpleNamespace(image1=None, image2=None),
+                render_cache=SimpleNamespace(unification_in_progress=False, pending_unification_paths=None),
+            ),
+            interaction_state=SimpleNamespace(resize_in_progress=False),
+            view_state=SimpleNamespace(showing_single_image_mode=0, diff_mode="off", channel_view_mode="rgb"),
+            geometry_state=SimpleNamespace(pixmap_width=0, pixmap_height=0, image_display_rect_on_label=None),
+        )
 
     def get_session_state_slot(self, name):
         assert name == "document"
         return self.document
 
 
-def _presenter(store, applied):
+def _presenter(store: Store, pipeline: ImagePipeline, applied):
     return SimpleNamespace(
         main_window_app=SimpleNamespace(
             _is_ui_stable=True,
@@ -154,7 +166,20 @@ def _presenter(store, applied):
             ui=SimpleNamespace(workspace_stack=None),
         ),
         store=store,
-        widget=SimpleNamespace(isVisible=lambda: True, image_label=object()),
+        session_controller=SimpleNamespace(pipeline=pipeline),
+        controller=SimpleNamespace(pipeline=pipeline),
+        widget=SimpleNamespace(
+            isVisible=lambda: True,
+            image_label=SimpleNamespace(
+                clear=lambda: None,
+                runtime_state=SimpleNamespace(
+                    _stored_pil_images=[None, None],
+                    _union_letterbox_hold_until=0,
+                    _tile_more_pending=None,
+                    _store=None,
+                ),
+            ),
+        ),
         view=SimpleNamespace(
             is_canvas_widget=lambda: True,
             display_single_image_on_label=lambda img: applied.append(img),
@@ -184,23 +209,22 @@ def test_gate_applies_preview_once_then_keeps_the_store(monkeypatch, qapp):
 
     Runs the real ``update_comparison_if_needed`` gate with fake
     store/presenter state across successive invalidation cycles."""
-    store = _complete_store()
+    complete = _complete_store()
     preview1 = Image.new("RGBA", (64, 64), "blue")
     preview2 = Image.new("RGBA", (64, 64), "green")
-    document = SimpleNamespace(
-        image1_path="/a.png",
-        image2_path="/b.png",
-        full_res_image1=None,
-        full_res_image2=None,
-        preview_image1=preview1,
-        preview_image2=preview2,
-        original_image1=None,
-        original_image2=None,
+    document = DocumentModel(
+        image_list1=[ImageItem(path="/a.png", display_name="a")],
+        image_list2=[ImageItem(path="/b.png", display_name="b")],
+        current_index1=0,
+        current_index2=0,
     )
-    store_obj = _Store(document)
-    state = store_obj.viewport.session_data.image_state
+    store = _make_store(document)
+    store.transact([PutPreviewAction(path="/a.png", qimage=preview1)], scope="pipeline")
+    store.transact([PutPreviewAction(path="/b.png", qimage=preview2)], scope="pipeline")
+    pipeline = ImagePipeline(store=store)
+    state = store.viewport.session_data.image_state
     applied: list[tuple] = []
-    presenter = _presenter(store_obj, applied)
+    presenter = _presenter(store, pipeline, applied)
 
     monkeypatch.setattr(
         render_flow,
@@ -219,9 +243,10 @@ def test_gate_applies_preview_once_then_keeps_the_store(monkeypatch, qapp):
 
     # Cycle 2: the unified store lands (complete pyramid) -- flip to store.
     _invalidate(presenter)
-    state.image1 = store
+    state.image1 = complete
+    # need to seed pixel for a.png to allow pipeline peek for complete? Actually state already holds complete, picker will use state
     render_flow.update_comparison_if_needed(presenter)
-    assert applied[-1][0] is store
+    assert applied[-1][0] is complete
     assert presenter._last_superseded_preview_uid == {1: image_uid(preview1)}
 
     # Cycle 3: nothing changed, but the render state is invalidated again
@@ -229,20 +254,22 @@ def test_gate_applies_preview_once_then_keeps_the_store(monkeypatch, qapp):
     # again. This cycle used to degrade back to preview1 (flip-flop).
     _invalidate(presenter)
     render_flow.update_comparison_if_needed(presenter)
-    assert applied[-1][0] is store, (
+    assert applied[-1][0] is complete, (
         "same-image preview re-degraded the complete store -- flip-flop"
     )
 
     # Cycle 4: a genuinely new image's preview arrives -- it must replace
     # the previous image's store immediately, even with superseded set.
     new_preview = Image.new("RGBA", (80, 80), "yellow")
-    document.preview_image1 = new_preview
+    store.transact([PutPreviewAction(path="/a.png", qimage=new_preview)], scope="pipeline")
     _invalidate(presenter)
     render_flow.update_comparison_if_needed(presenter)
     assert applied[-1][0] is new_preview
 
     assert [applied[0][0], applied[1][0], applied[2][0]] == [
         preview1,
-        store,
-        store,
+        complete,
+        complete,
     ]
+    complete.close()
+    pyramid_registry.clear()
