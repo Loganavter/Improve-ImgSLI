@@ -126,6 +126,26 @@ def _laser_trace_underline(source: str, raw_col, qcolor) -> None:
 
 
 def sync_guides_toolbar_state(presenter) -> None:
+    try:
+        import logging
+
+        from shared.debug_flags import env_flag as _env_flag
+
+        _lg = logging.getLogger("ImproveImgSLI")
+        if _env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG):
+            prefix = "[laser-debug]"
+            msg = "sync_guides_toolbar_state called state.enabled=%s thickness=%s color=%r"
+            args = (
+                getattr(get_guides_widget_state(presenter.store.viewport.view_state), "enabled", None),
+                getattr(get_guides_widget_state(presenter.store.viewport.view_state), "thickness", None),
+                getattr(get_guides_widget_state(presenter.store.viewport.view_state), "color", None),
+            )
+            if _env_flag("IMGSLI_LASER_DEBUG"):
+                _lg.warning("%s %s", prefix, msg % args)
+            else:
+                _lg.debug("%s %s", prefix, msg % args)
+    except Exception:
+        pass
     state = get_guides_widget_state(presenter.store.viewport.view_state)
     ui = getattr(presenter, "widget", None)
 
