@@ -404,11 +404,17 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         has_image1: bool,
         has_image2: bool,
     ):
-        self.resolution_label1.setText(res1_text)
-        self.resolution_label2.setText(res2_text)
+        try:
+            self.resolution_label1.setText(res1_text)
+            self.resolution_label2.setText(res2_text)
+        except RuntimeError:
+            return
         self._slot_has_image1 = has_image1
         self._slot_has_image2 = has_image2
-        self._sync_info_huds()
+        try:
+            self._sync_info_huds()
+        except RuntimeError:
+            pass
 
     def update_file_names_display(
         self,
@@ -515,20 +521,26 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         )
 
     def update_zoom_indicator(self, zoom: float):
-        pan_x = float(getattr(self.image_label, "pan_offset_x", 0.0) or 0.0)
-        pan_y = float(getattr(self.image_label, "pan_offset_y", 0.0) or 0.0)
-        self.zoom_indicator.update_zoom(zoom, pan_x, pan_y)
+        try:
+            pan_x = float(getattr(self.image_label, "pan_offset_x", 0.0) or 0.0)
+            pan_y = float(getattr(self.image_label, "pan_offset_y", 0.0) or 0.0)
+            self.zoom_indicator.update_zoom(zoom, pan_x, pan_y)
+        except RuntimeError:
+            return
 
     def update_rating_display(
         self, image_number: int, score: int | None, current_language: str
     ):
-        label = self.label_rating1 if image_number == 1 else self.label_rating2
-        if score is not None:
-            label.setText(f"<b>{score}</b>")
-            label.setVisible(True)
-        else:
-            label.setText("–")
-            label.setVisible(False)
+        try:
+            label = self.label_rating1 if image_number == 1 else self.label_rating2
+            if score is not None:
+                label.setText(f"<b>{score}</b>")
+                label.setVisible(True)
+            else:
+                label.setText("–")
+                label.setVisible(False)
+        except RuntimeError:
+            return
 
     def install_rating_wheel_handlers(self):
         self.label_rating1.wheelEvent = self._make_rating_wheel_handler(1)
