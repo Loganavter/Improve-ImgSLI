@@ -22,6 +22,7 @@ from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import UiScale, scaled_px
+from tabs.image_compare.debug import ic_label_debug
 from tabs.image_compare.icons import Icon, get_icon
 from ui.layout_spacing import control_edge_padding
 from ui.widgets.glass_hud import InfoHUD
@@ -310,7 +311,16 @@ class ImageCompareLayoutBuilder:
         return groups_layout
 
     def _button_group(self, buttons, label_key: str) -> ButtonGroup:
-        return ButtonGroup(buttons, label=tr(label_key, "en"))
+        lang = self.host._current_language() if hasattr(self.host, "_current_language") else "en"
+        label = tr(label_key, lang)
+        ic_label_debug(
+            "_button_group key=%s lang=%s -> label=%r visible=%s",
+            label_key,
+            lang,
+            label,
+            getattr(self.target, "isVisible", lambda: False)(),
+        )
+        return ButtonGroup(buttons, label=label)
 
     def _checkbox_actions_layout(self) -> QHBoxLayout:
         ui = self.target
