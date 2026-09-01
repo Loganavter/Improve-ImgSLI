@@ -379,9 +379,13 @@ class ScrollValueButton(Button):
         # (whose icon= tuple depends on it) and the split "value" region
         # (whose darkened background depends on it) are asserted explicitly
         # rather than trusting that they already picked it up.
-        self.setRegionChecked(self._icon_region_id(), checked)
+        # Must NOT emit toggled — this is a visual sync on hover/region rebuild,
+        # not a user toggle. Emitting here caused hover (enterEvent -> _set_hover_split
+        # -> _sync_regions -> this) to trigger `toggled` -> `on_magnifier_guides_toggled`
+        # -> laser disable on every hover (see [laser-debug] enterEvent stack).
+        self.setRegionChecked(self._icon_region_id(), checked, emit=False)
         if self._hovered_split:
-            self.setRegionChecked("value", checked)
+            self.setRegionChecked("value", checked, emit=False)
 
     # ---------- backward-compat value API ----------
 
