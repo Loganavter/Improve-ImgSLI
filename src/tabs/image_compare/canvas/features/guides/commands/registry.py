@@ -21,7 +21,7 @@ _laser_logger = logging.getLogger("ImproveImgSLI")
 
 
 def _laser_debug_enabled() -> bool:
-    return _env_flag("IMGSLI_LASER_DEBUG") or _laser_logger.isEnabledFor(logging.DEBUG)
+    return _env_flag("IMGSLI_LASER_DEBUG")
 
 
 def _log_laser_disable(reason: str) -> None:

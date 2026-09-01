@@ -411,7 +411,7 @@ class ScrollValueButton(Button):
                     from shared.debug_flags import env_flag as _env_flag
 
                     _lg = logging.getLogger("ImproveImgSLI")
-                    if _env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG):
+                    if _env_flag("IMGSLI_LASER_DEBUG"):
                         prefix = "[laser-debug]"
                         stack = "".join(traceback.format_stack(limit=15)[:-1])
                         msg = "LASER SCROLL emit value=0 widget=%s id=%s objectName=%r"

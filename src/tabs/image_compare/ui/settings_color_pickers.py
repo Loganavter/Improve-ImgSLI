@@ -305,7 +305,7 @@ class SettingsColorPickerCoordinator:
             from shared.debug_flags import env_flag as _env_flag
 
             _lg = logging.getLogger("ImproveImgSLI")
-            if not (_env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG)):
+            if not _env_flag("IMGSLI_LASER_DEBUG"):
                 return
             prefix = "[laser-debug]"
             msg = "pick source=%s color=QColor(r=%s,g=%s,b=%s,a=%s) extra=%s"
