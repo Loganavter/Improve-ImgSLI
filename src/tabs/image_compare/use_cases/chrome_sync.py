@@ -410,6 +410,17 @@ class ImageCompareChromeSync(QObject):
         document = _document(self.store)
         if document is None:
             return
+        # Guard: widget/labels may be deleted before batched timer fires
+        widget = getattr(self, "widget", None)
+        if widget is None:
+            return
+        try:
+            import shiboken6  # type: ignore
+
+            if not shiboken6.isValid(widget):
+                return
+        except Exception:
+            pass
         has_image1 = bool(document.image1_path)
         has_image2 = bool(document.image2_path)
         has_both_images = has_image1 and has_image2
@@ -421,54 +432,66 @@ class ImageCompareChromeSync(QObject):
                 res1_text = f"{dim[0]}x{dim[1]}"
             if dim := get_image_dimensions(self.store, 2):
                 res2_text = f"{dim[0]}x{dim[1]}"
-        self.widget.update_resolution_labels(
-            res1_text,
-            res1_text,
-            res2_text,
-            res2_text,
-            has_image1=has_image1,
-            has_image2=has_image2,
-        )
+        try:
+            self.widget.update_resolution_labels(
+                res1_text,
+                res1_text,
+                res2_text,
+                res2_text,
+                has_image1=has_image1,
+                has_image2=has_image2,
+            )
+        except RuntimeError:
+            return
 
-        psnr_visible = self.store.viewport.session_data.image_state.auto_calculate_psnr
-        self.widget.psnr_label.setVisible(psnr_visible)
-        if psnr_visible:
-            psnr = self.store.viewport.session_data.image_state.psnr_value
-            if psnr is not None:
-                self.widget.psnr_label.setText(
-                    f"{tr('ui.psnr', self.store.settings.current_language)}: {psnr:.2f} dB"
-                )
-            else:
-                self.widget.psnr_label.setText(
-                    f"{tr('ui.psnr', self.store.settings.current_language)}: --"
-                )
+        try:
+            psnr_visible = self.store.viewport.session_data.image_state.auto_calculate_psnr
+            self.widget.psnr_label.setVisible(psnr_visible)
+            if psnr_visible:
+                psnr = self.store.viewport.session_data.image_state.psnr_value
+                if psnr is not None:
+                    self.widget.psnr_label.setText(
+                        f"{tr('ui.psnr', self.store.settings.current_language)}: {psnr:.2f} dB"
+                    )
+                else:
+                    self.widget.psnr_label.setText(
+                        f"{tr('ui.psnr', self.store.settings.current_language)}: --"
+                    )
 
-        ssim_visible = (
-            self.store.viewport.session_data.image_state.auto_calculate_ssim
-            or self.store.viewport.view_state.diff_mode == "ssim"
-        )
-        self.widget.ssim_label.setVisible(ssim_visible)
-        if ssim_visible:
-            ssim = self.store.viewport.session_data.image_state.ssim_value
-            if ssim is not None:
-                self.widget.ssim_label.setText(
-                    f"{tr('ui.ssim', self.store.settings.current_language)}: {ssim:.4f}"
-                )
-            else:
-                self.widget.ssim_label.setText(
-                    f"{tr('ui.ssim', self.store.settings.current_language)}: --"
-                )
+            ssim_visible = (
+                self.store.viewport.session_data.image_state.auto_calculate_ssim
+                or self.store.viewport.view_state.diff_mode == "ssim"
+            )
+            self.widget.ssim_label.setVisible(ssim_visible)
+            if ssim_visible:
+                ssim = self.store.viewport.session_data.image_state.ssim_value
+                if ssim is not None:
+                    self.widget.ssim_label.setText(
+                        f"{tr('ui.ssim', self.store.settings.current_language)}: {ssim:.4f}"
+                    )
+                else:
+                    self.widget.ssim_label.setText(
+                        f"{tr('ui.ssim', self.store.settings.current_language)}: --"
+                    )
 
-        self.widget.footer_info_widget.setVisible(psnr_visible or ssim_visible)
+            self.widget.footer_info_widget.setVisible(psnr_visible or ssim_visible)
+        except RuntimeError:
+            return
 
     def do_sync_zoom_indicator(self, window_presenter):
-        zoom_indicator = getattr(self.widget, "zoom_indicator", None)
-        image_label = getattr(self.widget, "image_label", None)
-        if zoom_indicator is None or image_label is None or not zoom_indicator.isVisible():
+        try:
+            zoom_indicator = getattr(self.widget, "zoom_indicator", None)
+            image_label = getattr(self.widget, "image_label", None)
+            if zoom_indicator is None or image_label is None or not zoom_indicator.isVisible():
+                return
+        except RuntimeError:
             return
         from ui.canvas_infra.viewport.state import get_zoom_level
 
-        self.widget.update_zoom_indicator(get_zoom_level(image_label))
+        try:
+            self.widget.update_zoom_indicator(get_zoom_level(image_label))
+        except RuntimeError:
+            return
 
     def do_update_file_names_display(self, window_presenter):
         document = _document(self.store)
