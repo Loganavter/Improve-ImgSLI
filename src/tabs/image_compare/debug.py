@@ -37,11 +37,7 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _ic_debug_enabled() -> bool:
-    return (
-        _env_flag("IMGSLI_IMAGE_COMPARE_DEBUG")
-        or _env_flag("IMGSLI_IC_DEBUG")
-        or logger.isEnabledFor(logging.DEBUG)
-    )
+    return _env_flag("IMGSLI_IMAGE_COMPARE_DEBUG") or _env_flag("IMGSLI_IC_DEBUG")
 
 
 def _emit(prefix: str, msg: str, *args, env_flags=("IMGSLI_IMAGE_COMPARE_DEBUG", "IMGSLI_IC_DEBUG"), **kwargs) -> None:
@@ -70,7 +66,7 @@ def ic_dnd_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_preview_debug_enabled() -> bool:
-    return _env_flag("IMGSLI_IC_PREVIEW_DEBUG") or logger.isEnabledFor(logging.DEBUG)
+    return _env_flag("IMGSLI_IC_PREVIEW_DEBUG")
 
 
 def ic_preview_debug(msg: str, *args, **kwargs) -> None:
@@ -85,11 +81,7 @@ def ic_preview_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_gap_debug_enabled() -> bool:
-    return (
-        _env_flag("IMGSLI_IC_GAP_DEBUG")
-        or _env_flag("IMGSLI_IC_PREVIEW_DEBUG")
-        or logger.isEnabledFor(logging.DEBUG)
-    )
+    return _env_flag("IMGSLI_IC_GAP_DEBUG") or _env_flag("IMGSLI_IC_PREVIEW_DEBUG")
 
 
 def ic_gap_debug(msg: str, *args, **kwargs) -> None:
@@ -104,7 +96,7 @@ def ic_gap_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_label_debug_enabled() -> bool:
-    return _env_flag("IMGSLI_IC_LABEL_DEBUG") or logger.isEnabledFor(logging.DEBUG)
+    return _env_flag("IMGSLI_IC_LABEL_DEBUG")
 
 
 def ic_label_debug(msg: str, *args, **kwargs) -> None:
