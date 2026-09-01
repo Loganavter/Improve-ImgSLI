@@ -790,7 +790,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 776,
+      "lines": 794,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

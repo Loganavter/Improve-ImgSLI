@@ -134,6 +134,7 @@ class MagnifierSettingsHoverController(QObject):
             "btn_orientation",
             "btn_divider_width",
             "btn_magnifier_divider_width",
+            "btn_magnifier_guides",
             "btn_magnifier_guides_width",
         ):
             button = getattr(widget, attr, None)
@@ -268,16 +269,6 @@ class MagnifierSettingsHoverController(QObject):
         group = getattr(self.widget, "magnifier_group_container", None)
         if group is None:
             return False
-        # btn_magnifier_guides is inside magnifier_group_container layout but must not
-        # trigger the magnifier sliders flyout — hover over laser button is for laser
-        # control only, not for opening the magnifier panel.
-        guides_btn = getattr(self.widget, "btn_magnifier_guides", None)
-        if guides_btn is not None and guides_btn.isVisible():
-            try:
-                if guides_btn.rect().contains(guides_btn.mapFromGlobal(QCursor.pos())):
-                    return False
-            except Exception:
-                pass
         local = group.mapFromGlobal(QCursor.pos())
         zone = group.rect().adjusted(
             -_HOVER_ZONE_PADDING_PX,
@@ -295,6 +286,21 @@ class MagnifierSettingsHoverController(QObject):
             try:
                 if flyout.contains_global(QCursor.pos()):
                     return True
+            except Exception:
+                pass
+            # Also consider linked scroll-value flyouts (e.g. guides button pill)
+            # as safe zone — mirrors AnchoredFlyoutAutoHide._cursor_in_linked_child.
+            try:
+                from sli_ui_toolkit.managers import FlyoutManager
+
+                manager = FlyoutManager.get_instance()
+                for child in manager.linked_children(flyout):
+                    try:
+                        contains_global = getattr(child, "contains_global", None)
+                        if child.isVisible() and contains_global and contains_global(QCursor.pos()):
+                            return True
+                    except Exception:
+                        continue
             except Exception:
                 pass
         return False

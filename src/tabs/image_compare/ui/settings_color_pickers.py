@@ -150,10 +150,32 @@ class SettingsColorPickerCoordinator:
                 "overlay.settings.set_border_color",
                 qcolor_to_color(border_color),
             )
+            self._laser_trace_pick("smart:guides.settings.set_color", QColor(color), "smart")
             settings_controller.execute_canvas_feature_alias(
                 "guides.settings.set_color",
                 qcolor_to_color(QColor(color)),
             )
+            # Keep active magnifier in sync (see _apply_guides_color).
+            try:
+                from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+                from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
+
+                store = getattr(self.store, "viewport", None) and self.store
+                if store is not None:
+                    svc = MagnifierStoreService(store)
+                    model = svc.get_active_or_first_magnifier()
+                    if model is not None:
+                        self._laser_trace_pick("smart:magnifier.guides_color sync", QColor(color), model.id)
+                        update_magnifier_model(
+                            store.viewport.view_state,
+                            store.viewport.render_config,
+                            model.id,
+                            guides_color=qcolor_to_color(QColor(color)),
+                        )
+                        if hasattr(store, "emit_viewport_change"):
+                            store.emit_viewport_change()
+            except Exception:
+                pass
             settings_controller.execute_canvas_feature_alias(
                 "capture.settings.set_color",
                 qcolor_to_color(capture_ring_color),
@@ -243,12 +265,57 @@ class SettingsColorPickerCoordinator:
             )
 
     def _apply_guides_color(self, color):
+        self._laser_trace_pick("guides.settings.set_color", color, "single")
         settings_controller = self._settings_controller()
         if settings_controller is not None:
             settings_controller.execute_canvas_feature_alias(
                 "guides.settings.set_color",
                 qcolor_to_color(color),
             )
+        # Keep active magnifier's per-instance guides_color in sync, otherwise
+        # the toolbar underline (which must show the actually rendered laser color
+        # `magnifier.guides_color or guides_state.color` per feature.py:99) stays
+        # on the auto-palette blue while the global picker appears to do nothing
+        # — the reported "expert mode still blue" mismatch.
+        try:
+            from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+            from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
+
+            store = getattr(self.store, "viewport", None) and self.store
+            if store is not None:
+                svc = MagnifierStoreService(store)
+                model = svc.get_active_or_first_magnifier()
+                if model is not None:
+                    self._laser_trace_pick("magnifier.guides_color sync", color, model.id)
+                    update_magnifier_model(
+                        store.viewport.view_state,
+                        store.viewport.render_config,
+                        model.id,
+                        guides_color=qcolor_to_color(color),
+                    )
+                    if hasattr(store, "emit_viewport_change"):
+                        store.emit_viewport_change()
+        except Exception:
+            pass
+
+    def _laser_trace_pick(self, source: str, qcolor: QColor, extra: str = "") -> None:
+        try:
+            import logging
+
+            from shared.debug_flags import env_flag as _env_flag
+
+            _lg = logging.getLogger("ImproveImgSLI")
+            if not (_env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG)):
+                return
+            prefix = "[laser-debug]"
+            msg = "pick source=%s color=QColor(r=%s,g=%s,b=%s,a=%s) extra=%s"
+            args = (source, qcolor.red(), qcolor.green(), qcolor.blue(), qcolor.alpha(), extra)
+            if _env_flag("IMGSLI_LASER_DEBUG"):
+                _lg.warning("%s %s", prefix, msg % args)
+            else:
+                _lg.debug("%s %s", prefix, msg % args)
+        except Exception:
+            pass
 
     def _settings_controller(self):
         return getattr(self.main_controller, "settings", None)

@@ -40,6 +40,25 @@ def show_guides_color_picker(presenter) -> None:
 
 
 def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
+    if not bool(enabled):
+        try:
+            import logging
+            import traceback
+
+            from shared.debug_flags import env_flag as _env_flag
+
+            _lg = logging.getLogger("ImproveImgSLI")
+            if _env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG):
+                prefix = "[laser-debug]"
+                stack = "".join(traceback.format_stack(limit=15)[:-1])
+                msg = "_toggle_active_magnifier_laser(enabled=False) presenter=%s"
+                args = (type(presenter).__name__,)
+                if _env_flag("IMGSLI_LASER_DEBUG"):
+                    _lg.warning("%s LASER DISABLE [%s]\n%s", prefix, msg % args, stack)
+                else:
+                    _lg.debug("%s LASER DISABLE [%s]\n%s", prefix, msg % args, stack)
+        except Exception:
+            pass
     store = getattr(presenter, "store", None)
     if store is None:
         return
@@ -60,9 +79,57 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
             toggle_cmd(store, enabled)
 
 
+def _resolve_laser_underline_qcolor(presenter, fallback_state) -> object:
+    # Underline must match what the canvas actually draws (feature.py:58
+    # `guides_color or guides_state.color`): per active magnifier guides_color
+    # if present, else global guides_state.color. Previously only the global
+    # was used, so auto-palette instances (store.py:_apply_auto_instance_color)
+    # showed white underline while the laser rendered yellow/blue.
+    source = "fallback"
+    col = None
+    try:
+        active_cmd = registry().get_feature_command_by_alias("overlay.active_state")
+        if active_cmd is not None:
+            active_state = active_cmd(presenter.store)
+            if active_state is not None:
+                col = active_state.get("guides_color")
+                if col is not None and hasattr(col, "r"):
+                    source = "active_magnifier"
+                    q = ensure_visible_qcolor(col)
+                    _laser_trace_underline(source, col, q)
+                    return q
+    except Exception:
+        pass
+    q = ensure_visible_qcolor(fallback_state.color)
+    _laser_trace_underline(f"{source}:global", fallback_state.color, q)
+    return q
+
+
+def _laser_trace_underline(source: str, raw_col, qcolor) -> None:
+    try:
+        import logging
+
+        from shared.debug_flags import env_flag as _env_flag
+
+        _lg = logging.getLogger("ImproveImgSLI")
+        if not (_env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG)):
+            return
+        prefix = "[laser-debug]"
+        msg = "underline resolve source=%s raw=%r -> QColor(r=%s,g=%s,b=%s,a=%s)"
+        args = (source, raw_col, qcolor.red(), qcolor.green(), qcolor.blue(), qcolor.alpha())
+        if _env_flag("IMGSLI_LASER_DEBUG"):
+            _lg.warning("%s %s", prefix, msg % args)
+        else:
+            _lg.debug("%s %s", prefix, msg % args)
+    except Exception:
+        pass
+
+
 def sync_guides_toolbar_state(presenter) -> None:
     state = get_guides_widget_state(presenter.store.viewport.view_state)
     ui = getattr(presenter, "widget", None)
+
+    resolved_qcolor = _resolve_laser_underline_qcolor(presenter, state)
 
     btn_guides = getattr(ui, "btn_magnifier_guides", None)
     if btn_guides is not None:
@@ -74,14 +141,14 @@ def sync_guides_toolbar_state(presenter) -> None:
                 btn_guides.set_saved_value(btn_guides.get_value())
             set_slider_value_quietly(btn_guides, 0)
             set_checked_quietly(btn_guides, True)
-        btn_guides.setUnderlineColor(ensure_visible_qcolor(state.color))
+        btn_guides.setUnderlineColor(resolved_qcolor)
     set_checked_quietly(
         getattr(ui, "btn_magnifier_guides_simple", None), bool(state.enabled)
     )
     btn_guides_width = getattr(ui, "btn_magnifier_guides_width", None)
     if btn_guides_width is not None:
         set_slider_value_quietly(btn_guides_width, int(state.thickness))
-        btn_guides_width.setUnderlineColor(ensure_visible_qcolor(state.color))
+        btn_guides_width.setUnderlineColor(resolved_qcolor)
 
 
 def build_guides_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:

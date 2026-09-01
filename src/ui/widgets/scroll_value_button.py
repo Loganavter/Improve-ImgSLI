@@ -400,6 +400,24 @@ class ScrollValueButton(Button):
         self._sync_regions()
         if emit:
             logger.debug("[scroll-value] valueChanged emit %s widget=%s", clamped, id(self))
+            if clamped == 0:
+                try:
+                    import traceback
+
+                    from shared.debug_flags import env_flag as _env_flag
+
+                    _lg = logging.getLogger("ImproveImgSLI")
+                    if _env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG):
+                        prefix = "[laser-debug]"
+                        stack = "".join(traceback.format_stack(limit=15)[:-1])
+                        msg = "LASER SCROLL emit value=0 widget=%s id=%s objectName=%r"
+                        args = (type(self).__name__, id(self), self.objectName())
+                        if _env_flag("IMGSLI_LASER_DEBUG"):
+                            _lg.warning("%s %s\n%s", prefix, msg % args, stack)
+                        else:
+                            _lg.debug("%s %s\n%s", prefix, msg % args, stack)
+                except Exception:
+                    pass
             self.valueChanged.emit(clamped)
 
     # ---------- saved-value memory (restore previous width after hide/show) ----------

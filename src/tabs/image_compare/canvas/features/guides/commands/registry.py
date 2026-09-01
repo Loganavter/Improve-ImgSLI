@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+import traceback
+
 from core.state_management.actions import InvalidateRenderCacheAction
+from shared.debug_flags import env_flag as _env_flag
 from tabs.image_compare.canvas.registry import registry
 
 from tabs.image_compare.canvas.features.guides.input.actions import (
@@ -13,12 +17,34 @@ from tabs.image_compare.canvas.features.guides.input.actions import (
 )
 from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
 
+_laser_logger = logging.getLogger("ImproveImgSLI")
+
+
+def _laser_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_LASER_DEBUG") or _laser_logger.isEnabledFor(logging.DEBUG)
+
+
+def _log_laser_disable(reason: str) -> None:
+    if not _laser_debug_enabled():
+        return
+    try:
+        stack = "".join(traceback.format_stack(limit=15)[:-1])
+        prefix = "[laser-debug]"
+        if _env_flag("IMGSLI_LASER_DEBUG"):
+            _laser_logger.warning("%s LASER DISABLE [%s]\n%s", prefix, reason, stack)
+        else:
+            _laser_logger.debug("%s LASER DISABLE [%s]\n%s", prefix, reason, stack)
+    except Exception:
+        pass
+
 
 def _sync_active_laser_enabled(store, enabled: bool) -> None:
     # Scrolling the thickness slider to 0 must also clear the active
     # magnifier's show_laser flag, mirroring what clicking the toggle does —
     # otherwise sync_guides_toolbar_state() sees show_laser still True and
     # forces the slider back to a minimum of 1, so it can never reach 0.
+    if not enabled:
+        _log_laser_disable(f"_sync_active_laser_enabled(enabled=False) store={getattr(store, 'viewport', None) is not None}")
     if store is None:
         return
     cmd = registry().get_feature_command_by_alias("overlay.set_active_laser_enabled")
@@ -79,6 +105,7 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
     thickness = max(0, int(thickness))
     store = getattr(actions, "store", None)
     if thickness == 0:
+        _log_laser_disable(f"command_set_guides_thickness(thickness=0) actions={type(actions).__name__}")
         try:
             viewport = getattr(store, "viewport", None) if store is not None else None
             if viewport is not None:
@@ -159,6 +186,7 @@ def command_viewport_set_smoothing_interpolation_method(store, method: str) -> N
 def command_viewport_set_guides_thickness(store, thickness: int) -> None:
     thickness = max(0, int(thickness))
     if thickness == 0:
+        _log_laser_disable("command_viewport_set_guides_thickness(thickness=0)")
         try:
             viewport = getattr(store, "viewport", None) if store is not None else None
             if viewport is not None:
