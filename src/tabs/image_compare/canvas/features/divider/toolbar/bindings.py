@@ -143,10 +143,25 @@ def sync_toolbar_state(presenter) -> None:
             ui.btn_divider_width.set_value(divider_thickness, emit=False)
     if hasattr(ui, "btn_divider_color"):
         ui.btn_divider_color.setUnderlineColor(ensure_visible_qcolor(divider_state.color))
+    # btn_magnifier_divider_width is the *magnifier's* internal divider, not the
+    # global split line — must show the active magnifier's divider_color
+    # (per-instance, auto-palette aware) like src/tabs/image_compare/canvas/features/magnifier/toolbar/sync.py:26,
+    # not the global DividerWidgetState.color. Otherwise white global underline
+    # mismatches the actual loupe divider (auto palette yellow/blue etc).
     if hasattr(ui, "btn_magnifier_divider_width"):
-        ui.btn_magnifier_divider_width.setUnderlineColor(
-            ensure_visible_qcolor(divider_state.color)
-        )
+        try:
+            from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
+            from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+            from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_color
+
+            _m = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
+            if _m is not None:
+                _c = _m.divider_color
+            else:
+                _c = active_or_default_divider_color(viewport.view_state)
+            ui.btn_magnifier_divider_width.setUnderlineColor(ensure_visible_qcolor(_c))
+        except Exception:
+            ui.btn_magnifier_divider_width.setUnderlineColor(ensure_visible_qcolor(divider_state.color))
 
 
 class ToolbarViewportAdapter:

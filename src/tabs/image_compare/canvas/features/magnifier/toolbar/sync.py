@@ -34,6 +34,9 @@ def sync_magnifier_toolbar_state(presenter) -> None:
         getattr(ui, "btn_magnifier_divider_width", None),
         divider_thickness,
     )
+    btn_divider_width = getattr(ui, "btn_magnifier_divider_width", None)
+    if btn_divider_width is not None:
+        btn_divider_width.setUnderlineColor(ensure_visible_qcolor(divider_color))
     orientation_btn = getattr(ui, "btn_magnifier_orientation", None)
     if orientation_btn is not None:
         orientation_btn.setUnderlineColor(ensure_visible_qcolor(divider_color))

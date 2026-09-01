@@ -108,6 +108,23 @@ def viewport_set_active_divider_color(store, color):
 
 
 def viewport_set_active_laser_enabled(store, enabled: bool):
+    if not bool(enabled):
+        try:
+            import logging
+            import traceback
+
+            from shared.debug_flags import env_flag as _env_flag
+
+            _lg = logging.getLogger("ImproveImgSLI")
+            if _env_flag("IMGSLI_LASER_DEBUG") or _lg.isEnabledFor(logging.DEBUG):
+                prefix = "[laser-debug]"
+                stack = "".join(traceback.format_stack(limit=15)[:-1])
+                if _env_flag("IMGSLI_LASER_DEBUG"):
+                    _lg.warning("%s LASER DISABLE [viewport_set_active_laser_enabled(enabled=False)]\n%s", prefix, stack)
+                else:
+                    _lg.debug("%s LASER DISABLE [viewport_set_active_laser_enabled(enabled=False)]\n%s", prefix, stack)
+        except Exception:
+            pass
     from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
     from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
 
