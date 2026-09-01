@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sli_ui_toolkit.i18n import (
+    get_current_language,
     tr,
     translatable_callback,
     translatable_placeholder,
@@ -8,12 +9,19 @@ from sli_ui_toolkit.i18n import (
     translatable_tooltip,
 )
 
+from tabs.image_compare.debug import ic_label_debug
+
 # Image Compare lives in a QStackedWidget page — skip language fan-out while
 # the session picker (or another tab) is current; flush on next Show.
 _DEFER = True
 
 
 def install_image_compare_translations(ui) -> None:
+    ic_label_debug(
+        "install_image_compare_translations current=%s visible=%s",
+        get_current_language(),
+        ui.isVisible(),
+    )
     _bind_labels(ui)
     _bind_placeholders(ui)
     _bind_button_texts(ui)
@@ -130,10 +138,33 @@ def _bind_group_titles(ui) -> None:
     )
     for attr_name, key in groups:
         container = getattr(ui, attr_name)
+        # Group titles must not defer: toolbar is pinned visible; pending Show
+        # flush on CustomGroupWidget is unreliable when page is hidden in
+        # QStackedWidget (child Show not always delivered). Immediate update
+        # guarantees correct language on tab switch without extra flush logic.
+        # Keep other image_compare bindings deferred (_DEFER=True).
+        def _make_callback(c, k, attr):
+            def _cb(lang: str) -> None:
+                translated = tr(k, lang)
+                is_fallback = translated == k
+                ic_label_debug(
+                    "_bind_group_titles attr=%s key=%s lang=%s -> %r fallback=%s visible=%s current=%s",
+                    attr,
+                    k,
+                    lang,
+                    translated,
+                    is_fallback,
+                    c.isVisible(),
+                    get_current_language(),
+                )
+                c.set_label_text(translated)
+
+            return _cb
+
         translatable_callback(
             container,
-            lambda lang, c=container, k=key: c.set_label_text(tr(k, lang)),
-            defer_when_hidden=_DEFER,
+            _make_callback(container, key, attr_name),
+            defer_when_hidden=False,
         )
 
 
