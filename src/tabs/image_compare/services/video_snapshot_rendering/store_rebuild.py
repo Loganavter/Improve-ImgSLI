@@ -40,8 +40,6 @@ def rebuild_snapshot_store(
     store.viewport.session_data.image_state.image1 = entry.display_img1
     store.viewport.session_data.image_state.image2 = entry.display_img2
     document = store.get_session_state_slot("document")
-    document.image1_path = getattr(snap, "image1_path", None)
-    document.image2_path = getattr(snap, "image2_path", None)
     document.image_list1 = [
         ImageItem(
             path=getattr(snap, "image1_path", None) or "",

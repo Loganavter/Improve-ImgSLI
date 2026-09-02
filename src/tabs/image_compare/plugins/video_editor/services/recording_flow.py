@@ -36,15 +36,18 @@ class RecordingFlow:
     def toggle_recording(self, checked: bool | None = None):
         del checked
         controller = self.controller
+        _video_debug("toggle_recording called has_data=%s is_recording=%s finalize=%s recorder=%s store=%s", controller.recorder.has_recording_data() if controller.recorder else None, getattr(controller.recorder, "is_recording", None), controller._recording_finalize_in_progress, controller.recorder, getattr(controller.recorder, "store", None) if controller.recorder else None)
         if (
             controller._toggle_recording_in_progress
             or controller._recording_finalize_in_progress
         ):
+            _video_debug("toggle_recording REJECT in_progress toggle=%s finalize=%s", controller._toggle_recording_in_progress, controller._recording_finalize_in_progress)
             return
         controller._toggle_recording_in_progress = True
 
         try:
             if controller.recorder.is_recording:
+                _video_debug("toggle_recording STOP is_recording True -> stop finalize=False")
                 controller.recorder.stop(finalize=False)
                 self._sync_controls(
                     is_recording=False,
@@ -53,20 +56,24 @@ class RecordingFlow:
                 )
                 self._finalize_recording_async()
             else:
+                _video_debug("toggle_recording START is_recording False -> start")
                 controller.recorder.start()
                 self._sync_controls(
                     is_recording=True,
                     is_paused=False,
                     pause_enabled=True,
                 )
+                _video_debug("toggle_recording START done timeline_len=%s", len(getattr(getattr(controller.recorder, "_recording", None), "timeline", {}).sample_timestamps) if hasattr(getattr(controller.recorder, "_recording", None), "timeline") and getattr(getattr(controller.recorder, "_recording", None), "timeline", None) is not None else "no-timeline")
         except Exception as exc:
             logger.error("Recorder toggle failed: %s", exc, exc_info=True)
+            _video_debug("toggle_recording EXCEPTION %s", exc)
             self._emit_error(f"Recording toggle failed: {exc}")
             controller._toggle_recording_in_progress = False
             return
         finally:
             if not controller._recording_finalize_in_progress:
                 controller._toggle_recording_in_progress = False
+            _video_debug("toggle_recording DONE is_recording=%s has_data=%s", getattr(controller.recorder, "is_recording", None), controller.recorder.has_recording_data() if controller.recorder else None)
 
     def toggle_pause_recording(self, checked: bool | None = None):
         del checked

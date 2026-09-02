@@ -5,6 +5,8 @@ import time
 
 from PySide6.QtCore import QObject, QTimer
 
+from shared.debug_flags import env_flag as _env_flag
+
 from tabs.image_compare.plugins.video_editor.services.keyframing import (
     FrameSnapshot,
     KeyframeToolAdapter,
@@ -12,6 +14,13 @@ from tabs.image_compare.plugins.video_editor.services.keyframing import (
 )
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _video_debug(msg: str, *args, **kwargs) -> None:
+    if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+        logger.warning("[video-editor-debug] " + msg, *args, **kwargs)
+    else:
+        logger.debug("[video-editor-debug] " + msg, *args, **kwargs)
 
 class Recorder(QObject):
     def __init__(
@@ -106,7 +115,9 @@ class Recorder(QObject):
 
     def capture_frame(self, force_advance_frame: bool = False):
         if not self.store or self.is_paused:
+            _video_debug("capture_frame SKIP store=%s is_paused=%s is_recording=%s force=%s", self.store, self.is_paused, self.is_recording, force_advance_frame)
             return
+        _video_debug("capture_frame ENTER is_recording=%s elapsed=%.3f force=%s timeline_len_before=%s", self.is_recording, (time.time() - self.start_time) - self.total_paused_time if self.start_time else 0, force_advance_frame, len(self._recording.timeline.sample_timestamps) if self._recording and self._recording.timeline else 0)
 
         elapsed = (time.time() - self.start_time) - self.total_paused_time
         if force_advance_frame:
@@ -168,6 +179,7 @@ class Recorder(QObject):
                 )
             self._last_recorded_mag_count = n_models
             self._last_recorded_mag_enabled = enabled
-        except Exception:
-            pass
+        except Exception as exc:
+            _video_debug("capture_frame gateway exc %s", exc)
         self._recording.append(snapshot)
+        _video_debug("capture_frame APPEND done timeline_len_after=%s ts=%.3f", len(self._recording.timeline.sample_timestamps), snapshot.timestamp)
