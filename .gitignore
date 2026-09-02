@@ -1,13 +1,14 @@
 __pycache__/
 *.pyc
 
-# Agent tooling (committed rules + skills under .cursor/)
+# Agent tooling (committed rules + skills under .cursor/ + ordinary skills/)
 .claude/
 .agents/
 .codex/
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/skills
 !.cursor/skills/
 !.cursor/skills/**
 .windsurf/
