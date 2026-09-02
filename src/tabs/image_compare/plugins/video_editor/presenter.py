@@ -194,6 +194,10 @@ class VideoEditorPresenter(QObject):
                 self.thumbnail_coordinator.on_timeline_viewport_changed
             )
             self.view.timeline.resized.connect(self.thumbnail_coordinator.on_timeline_resized)
+            if hasattr(self.view.timeline, "layoutSettled"):
+                self.view.timeline.layoutSettled.connect(
+                    self.thumbnail_coordinator.on_layout_settled
+                )
         self.view.windowResized.connect(self.preview_coordinator.on_window_resized)
 
     def _on_view_destroyed(self, *_args):
