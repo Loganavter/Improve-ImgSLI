@@ -115,9 +115,14 @@ class Recorder(QObject):
 
     def capture_frame(self, force_advance_frame: bool = False):
         if not self.store or self.is_paused:
-            _video_debug("capture_frame SKIP store=%s is_paused=%s is_recording=%s force=%s", self.store, self.is_paused, self.is_recording, force_advance_frame)
+            # Throttled skip log — per-frame would flood at 60fps
+            if int(time.time() * 2) % 7 == 0:  # ~0.3 Hz
+                _video_debug("capture_frame SKIP store=%s is_paused=%s is_recording=%s force=%s", bool(self.store), self.is_paused, self.is_recording, force_advance_frame)
             return
-        _video_debug("capture_frame ENTER is_recording=%s elapsed=%.3f force=%s timeline_len_before=%s", self.is_recording, (time.time() - self.start_time) - self.total_paused_time if self.start_time else 0, force_advance_frame, len(self._recording.timeline.sample_timestamps) if self._recording and self._recording.timeline else 0)
+        # Throttled enter log — per-frame at 60fps would kill perf (WARNING flush)
+        if getattr(self, "_capture_log_counter", 0) % 60 == 0:
+            _video_debug("capture_frame ENTER is_recording=%s elapsed=%.3f force=%s timeline_len_before=%s", self.is_recording, (time.time() - self.start_time) - self.total_paused_time if self.start_time else 0, force_advance_frame, len(self._recording.timeline.sample_timestamps) if self._recording and self._recording.timeline else 0)
+        self._capture_log_counter = getattr(self, "_capture_log_counter", 0) + 1
 
         elapsed = (time.time() - self.start_time) - self.total_paused_time
         if force_advance_frame:
@@ -180,6 +185,8 @@ class Recorder(QObject):
             self._last_recorded_mag_count = n_models
             self._last_recorded_mag_enabled = enabled
         except Exception as exc:
-            _video_debug("capture_frame gateway exc %s", exc)
+            if getattr(self, "_capture_log_counter", 0) % 60 == 0:
+                _video_debug("capture_frame gateway exc %s", exc)
         self._recording.append(snapshot)
-        _video_debug("capture_frame APPEND done timeline_len_after=%s ts=%.3f", len(self._recording.timeline.sample_timestamps), snapshot.timestamp)
+        if getattr(self, "_capture_log_counter", 0) % 60 == 1:
+            _video_debug("capture_frame APPEND done timeline_len_after=%s ts=%.3f", len(self._recording.timeline.sample_timestamps), snapshot.timestamp)
