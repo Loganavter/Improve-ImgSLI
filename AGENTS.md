@@ -167,8 +167,7 @@ Use this mental model for `src/`:
 ## Auto-Backup Daemon
 
 A local daemon periodically commits the working tree as
-`auto: periodic backup YYYY-MM-DD HH:MM` and pushes it (see the commit
-history; observed cadence ~15–90 min, not strict). Consequences for agents:
+`auto: periodic backup YYYY-MM-DD HH:MM` and pushes to `backup/autopush` (not `main`, see `~/.local/bin/*-autopush.sh` `BRANCH=backup/autopush`) — `main` is PR-only. Consequences for agents:
 
 - **Working-tree edits get swept into backup commits mid-task.** Nothing is
   lost — your changes persist whether they are uncommitted or inside a
