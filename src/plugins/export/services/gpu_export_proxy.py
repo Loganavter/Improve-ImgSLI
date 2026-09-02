@@ -13,8 +13,7 @@ from shared.rendering.export_tiling import (
 from shared.rendering.offscreen_canvas import (
     configure_offscreen_widget,
     render_widget_frame,
-    resize_offscreen_widget,
-    show_offscreen_widget,
+    resize_and_show_offscreen_widget,
     shutdown_offscreen_widget,
 )
 from shared.rendering.tab_canvas_services import create_canvas_widget
@@ -31,6 +30,9 @@ class GpuExportProxy(QObject):
         self._resource_manager = resource_manager
         self._last_widget_size = None
         self._shutting_down = False
+        self._last_grab_ts = 0.0
+        self._last_grab_key = None
+        self._last_grab_image = None
         self.render_requested.connect(self._render_on_main_thread)
 
     def _ensure_widget(self):
@@ -130,12 +132,23 @@ class GpuExportProxy(QObject):
     ):
         from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
 
-        resize_show_started = time.perf_counter()
+        # Throttle duplicate grabs for identical plan within short window
         target_widget_size = (int(plan.canvas_w), int(plan.canvas_h))
+        grab_key = (target_widget_size, id(plan), id(diff_image) if diff_image is not None else None)
+        now = time.perf_counter()
+        if grab_key == self._last_grab_key and (now - self._last_grab_ts) < 0.05 and self._last_grab_image is not None:
+            debug_timings["grab_throttled"] = 1.0
+            debug_timings["grab_raw_ms"] = 0.0
+            debug_timings["grab_framebuffer_ms"] = 0.0
+            debug_timings["widget_resize_show_ms"] = 0.0
+            debug_timings["configure_widget_ms"] = 0.0
+            debug_timings["paint_gl_ms"] = 0.0
+            return self._last_grab_image.copy()
+
+        resize_show_started = time.perf_counter()
         widget_size_changed = self._last_widget_size != target_widget_size
         if widget_size_changed:
-            resize_offscreen_widget(widget, target_widget_size)
-            show_offscreen_widget(widget)
+            resize_and_show_offscreen_widget(widget, target_widget_size)
             self._last_widget_size = target_widget_size
         debug_timings["widget_resize_show_ms"] = (
             time.perf_counter() - resize_show_started
@@ -147,9 +160,6 @@ class GpuExportProxy(QObject):
         debug_timings["configure_widget_ms"] = (
             time.perf_counter() - configure_started
         ) * 1000.0
-
-        if widget_size_changed:
-            self._render_widget_frame(widget)
 
         paint_started = time.perf_counter()
         self._render_widget_frame(widget)
@@ -191,6 +201,13 @@ class GpuExportProxy(QObject):
         ) * 1000.0
         debug_timings["readback_width"] = float(image.width)
         debug_timings["readback_height"] = float(image.height)
+        # Update throttle cache
+        try:
+            self._last_grab_key = grab_key
+            self._last_grab_image = image.copy()
+            self._last_grab_ts = time.perf_counter()
+        except Exception:
+            pass
         return image
 
     @Slot(object)

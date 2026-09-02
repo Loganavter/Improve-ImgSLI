@@ -32,6 +32,13 @@ def resize_offscreen_widget(widget: QWidget, target_size: tuple[int, int]) -> No
     QApplication.processEvents()
 
 
+def resize_and_show_offscreen_widget(widget: QWidget, target_size: tuple[int, int]) -> None:
+    """Resize and show with a single event flush — avoids double processEvents."""
+    widget.resize(*target_size)
+    widget.show()
+    QApplication.processEvents()
+
+
 def render_widget_frame(widget: QWidget) -> None:
     """Request a repaint and flush events so ``grabFramebuffer`` sees the frame.
 
