@@ -149,19 +149,20 @@ class ThumbnailCoordinator:
         self._refresh_visible_thumbnails()
 
     def _refresh_visible_thumbnails(self):
-        # If the toolkit is still waiting for its layout settle, the visible
-        # window is stale (old zoom_level/logical_width). Defer until
-        # layoutSettled fires instead of queuing empty/wrong indices.
+        # NOTE: TimelineWidget.resizeEvent already updates zoom/logical_width
+        # synchronously, so visible window is fresh even while _layout_settle
+        # is pending (that's only for update_layout_width). Previous guard
+        # `if settle.is_pending(): return` deferred forever during drag and
+        # caused the strip to die — see plan 2026-09-02 Phase 2.
         try:
             tl = getattr(self.view, "timeline", None) if self.view is not None else None
             settle = getattr(tl, "_layout_settle", None) if tl is not None else None
             if settle is not None and hasattr(settle, "is_pending") and settle.is_pending():
                 try:
                     from tabs.image_compare.debug import ic_video_debug
-                    ic_video_debug("thumb_coord _refresh DEFERRED layout_settle pending")
+                    ic_video_debug("thumb_coord _refresh layout_settle pending but proceed anyway (resizeEvent already fresh)")
                 except Exception:
                     pass
-                return
         except Exception:
             pass
         visible_indices = self.get_visible_frame_indices()
