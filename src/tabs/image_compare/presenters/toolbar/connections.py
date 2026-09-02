@@ -477,9 +477,18 @@ def _connect_session_comboboxes(presenter):
     )
     def _emit_open_editor():
         from shared.debug_flags import env_flag as _env_flag
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("video.editor.toolbar_click", "btn_video_editor clicked", {})
+        except Exception:
+            pass
         _has_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
-        if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
-            logger.warning("[video-editor-debug] toolbar btn_video_editor clicked -> emit ExportOpenVideoEditorEvent bus=%s subscribers=%s", event_bus, _has_subs)
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        if _dbg:
+            logger.warning("[video-editor-debug] CLICK btn_video_editor -> ExportOpenVideoEditorEvent bus=%s subscribers=%s has_recorder=%s", event_bus, _has_subs, getattr(getattr(presenter, "main_controller", None), "_recorder", None) is not None)
+        else:
+            logger.debug("[video-editor-debug] CLICK btn_video_editor subscribers=%s", _has_subs)
         # Deferred host plugins (export/video_editor) may not be loaded yet when
         # bootstrap tab is active — ensure they are before emitting, otherwise
         # the event would be lost (0 subscribers) and button appears to do nothing.
@@ -487,12 +496,36 @@ def _connect_session_comboboxes(presenter):
             try:
                 ctx = getattr(presenter.main_controller, "context", None)
                 if ctx is not None and hasattr(ctx, "ensure_deferred_plugins_loaded"):
-                    ctx.ensure_deferred_plugins_loaded()
-                    if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+                    loaded = ctx.ensure_deferred_plugins_loaded()
+                    if _dbg:
+                        logger.warning("[video-editor-debug] ensure_deferred_plugins_loaded -> %s deferred_loaded=%s", loaded, getattr(ctx, "_deferred_plugins_loaded", None))
+                    # Deferred plugins are loaded but not yet bound to window shell
+                    # (subscription happens in attach_deferred_plugins). Bind now.
+                    try:
+                        mc = presenter.main_controller
+                        window_shell = getattr(mc, "window_shell", None) or getattr(presenter, "main_window_app", None)
+                        if window_shell is None:
+                            w = getattr(presenter, "widget", None)
+                            window_shell = w.window() if w is not None and hasattr(w, "window") else None
+                        if window_shell is not None and hasattr(mc, "attach_deferred_plugins"):
+                            mc.attach_deferred_plugins(window_shell)
+                            if _dbg:
+                                logger.warning("[video-editor-debug] attach_deferred_plugins window_shell=%s", type(window_shell).__name__)
+                    except Exception as exc2:
+                        logger.warning("[video-editor-debug] attach_deferred failed: %s", exc2) if _dbg else logger.debug("[video-editor-debug] attach_deferred failed: %s", exc2)
+                    if _dbg:
                         new_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
-                        logger.warning("[video-editor-debug] after ensure_deferred_plugins_loaded subscribers=%s", new_subs)
+                        subs_map = list(getattr(event_bus, "_subscribers", {}).keys()) if event_bus and hasattr(event_bus, "_subscribers") else []
+                        logger.warning("[video-editor-debug] AFTER ensure+attach subscribers=%s all_events=%s", new_subs, [c.__name__ for c in subs_map])
+                        if new_subs == 0:
+                            logger.warning("[video-editor-debug] REJECT: still 0 subscribers after deferred load — export plugin not subscribed, check ExportPlugin.configure_controller")
             except Exception as exc:
-                logger.debug("[video-editor-debug] ensure_deferred failed: %s", exc)
+                if _dbg:
+                    logger.warning("[video-editor-debug] ensure_deferred failed: %s", exc)
+                else:
+                    logger.debug("[video-editor-debug] ensure_deferred failed: %s", exc)
+        if _dbg:
+            logger.warning("[video-editor-debug] EMIT ExportOpenVideoEditorEvent")
         event_bus.emit(ExportOpenVideoEditorEvent())
 
     ui.btn_video_editor.clicked.connect(_emit_open_editor)

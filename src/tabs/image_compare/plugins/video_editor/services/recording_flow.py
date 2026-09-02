@@ -11,6 +11,14 @@ logger = logging.getLogger("ImproveImgSLI")
 
 def _video_debug(msg: str, *args, **kwargs) -> None:
     # Per-zone gated: only IMGSLI_VIDEO_EDITOR_DEBUG / IMGSLI_IC_VIDEO_DEBUG, not default --debug
+    # Always log via Tracer if enabled (IMGSLI_TRACE=1 / --debug) for causal chain
+    try:
+        from core.tracing.tracer import Tracer
+
+        if Tracer.enabled():
+            Tracer.instance().record("video.editor.debug", msg % args if args else msg, kwargs)
+    except Exception:
+        pass
     if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
         logger.warning("[video-editor-debug] " + msg, *args, **kwargs)
     else:
@@ -91,7 +99,20 @@ class RecordingFlow:
             controller.video_editor_plugin,
         )
         if not controller.recorder.has_recording_data():
-            _video_debug("open_video_editor -> no recording data, emit error")
+            rec = controller.recorder
+            try:
+                tl = getattr(getattr(rec, "_recording", None), "timeline", None)
+                ts_len = len(getattr(tl, "sample_timestamps", [])) if tl else "no-timeline"
+            except Exception:
+                ts_len = "error"
+            _video_debug(
+                "open_video_editor REJECT: has_recording_data=False timeline_len=%s is_recording=%s finalize_in_progress=%s recorder=%s pending=%s",
+                ts_len,
+                getattr(rec, "is_recording", None),
+                controller._recording_finalize_in_progress,
+                rec,
+                controller._pending_open_editor,
+            )
             self._emit_error("No recording available to edit.")
             return
 
@@ -106,10 +127,36 @@ class RecordingFlow:
             controller._pending_open_editor = True
             return
 
+        # Lazily ensure video_editor_plugin if deferred load happened after controller creation
+        if controller.video_editor_plugin is None:
+            try:
+                from plugins.export.plugin import ExportPlugin  # type: ignore
+                # Try to find ExportPlugin instance via plugin_coordinator
+                coordinator = getattr(controller, "main_controller", None)
+                coordinator = getattr(coordinator, "plugin_coordinator", None) if coordinator else getattr(controller, "event_bus", None)
+                # Fallback: try global plugin_coordinator from context
+                if hasattr(controller, "main_controller") and hasattr(controller.main_controller, "context"):
+                    ctx = controller.main_controller.context
+                    if hasattr(ctx, "plugin_coordinator") and ctx.plugin_coordinator:
+                        plugin = ctx.plugin_coordinator.get_plugin("video_editor")
+                        if plugin:
+                            controller.video_editor_plugin = plugin
+                            _video_debug("open_video_editor -> lazily resolved video_editor_plugin=%s", plugin)
+                if controller.video_editor_plugin is None and hasattr(controller, "event_bus"):
+                    # Try via ExportPlugin instance's own _ensure
+                    try:
+                        from core.plugin_system.registry import PluginRegistry  # type: ignore
+                        pass
+                    except Exception:
+                        pass
+            except Exception as exc:
+                _video_debug("open_video_editor -> lazy resolve failed: %s", exc)
+
         if controller.presenter and hasattr(controller.presenter, "open_video_editor"):
             _video_debug(
-                "open_video_editor -> presenter.open_video_editor snapshots=%s",
+                "open_video_editor -> presenter.open_video_editor snapshots=%s plugin=%s",
                 len(controller.recorder.recording.timeline.sample_timestamps) if hasattr(controller.recorder.recording, "timeline") else "unknown",
+                controller.video_editor_plugin,
             )
             controller.presenter.open_video_editor(
                 controller.recorder.recording,
@@ -118,7 +165,7 @@ class RecordingFlow:
             )
             return
 
-        _video_debug("open_video_editor -> presenter unavailable, emit error")
+        _video_debug("open_video_editor -> presenter unavailable presenter=%s, emit error", controller.presenter)
         self._emit_error("Video editor is unavailable.")
 
     def finalize_recording_async(self) -> None:
@@ -180,8 +227,13 @@ class RecordingFlow:
             )
 
     def _emit_error(self, message: str) -> None:
+        _video_debug("_emit_error message=%r bus=%s has_error_signal=%s", message, self.controller.event_bus, hasattr(self.controller, "error_occurred"))
         controller = self.controller
         if controller.event_bus:
             controller.event_bus.emit(CoreErrorOccurredEvent(message))
         else:
-            controller.error_occurred.emit(message)
+            try:
+                controller.error_occurred.emit(message)
+            except Exception as exc:
+                _video_debug("_emit_error fallback failed: %s", exc)
+                logger.warning("[video-editor-debug] _emit_error fallback failed: %s", exc)
