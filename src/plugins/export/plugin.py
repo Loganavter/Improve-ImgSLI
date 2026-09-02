@@ -48,6 +48,44 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             if self.plugin_coordinator
             else None
         )
+        # video_editor is deferred — at bootstrap time it is not yet discovered,
+        # so the above is None. Resolve lazily on first use (see _ensure_video_editor_plugin).
+        logger.debug("[video-editor-debug] ExportPlugin.initialize video_editor_plugin=%s deferred_loaded=%s", self.video_editor_plugin, getattr(context, "_deferred_plugins_loaded", None))
+
+    def _ensure_video_editor_plugin(self) -> Any | None:
+        if self.video_editor_plugin is not None:
+            return self.video_editor_plugin
+        if self.plugin_coordinator is None:
+            return None
+        # Ensure deferred tier is loaded before lookup — toolbar button may be
+        # clicked while bootstrap session is active and deferred plugins not yet
+        # initialized (event would have 0 subscribers and appear to do nothing).
+        try:
+            ctx = getattr(self.plugin_coordinator, "_context", None) or getattr(self.plugin_coordinator, "context", None)
+            if ctx is None:
+                # Fallback: try to get ApplicationContext via store context
+                from core.bootstrap import ApplicationContext  # type: ignore
+                # No direct handle — try plugin_coordinator's internal context
+                pass
+        except Exception:
+            pass
+        try:
+            # If context has ensure_deferred, call it (may be no-op if already loaded)
+            for attr in ("ensure_deferred_plugins_loaded", "load_deferred_plugins"):
+                maybe_ctx = getattr(self.plugin_coordinator, "context", None) or getattr(self.store, "_context", None)
+                if maybe_ctx is not None and hasattr(maybe_ctx, attr):
+                    getattr(maybe_ctx, attr)()
+                    break
+        except Exception as exc:
+            logger.debug("[video-editor-debug] ensure_deferred failed: %s", exc)
+        try:
+            self.video_editor_plugin = self.plugin_coordinator.get_plugin("video_editor")
+        except Exception:
+            pass
+        from shared.debug_flags import env_flag as _env_flag
+        if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+            logger.warning("[video-editor-debug] _ensure_video_editor_plugin -> %s", self.video_editor_plugin)
+        return self.video_editor_plugin
 
     def configure_controller(
         self,
@@ -151,7 +189,7 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         *,
         main_controller: Any | None,
         presenter: Any | None,
-        extra_adapters: tuple[Any, ...],
+        extra_adapters: tuple[Any, ...] = (),
     ) -> tuple[Any, Any]:
         plugin = self.video_editor_plugin
         if plugin is None or not hasattr(plugin, "create_recording_services"):
