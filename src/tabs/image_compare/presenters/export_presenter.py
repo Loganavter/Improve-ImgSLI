@@ -125,7 +125,15 @@ class ExportPresenter(QObject):
             ui.btn_pause.setChecked(is_paused)
 
     def open_video_editor(self, snapshots, export_controller, video_editor_plugin):
+        from shared.debug_flags import env_flag as _env_flag
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        if _dbg:
+            logger.warning("[video-editor-debug] ExportPresenter.open_video_editor snapshots=%s plugin=%s", bool(snapshots), video_editor_plugin)
+        else:
+            logger.debug("[video-editor-debug] ExportPresenter.open_video_editor snapshots=%s", bool(snapshots))
         if not snapshots or export_controller is None or video_editor_plugin is None:
+            if _dbg:
+                logger.warning("[video-editor-debug] ExportPresenter unavailable snapshots=%s controller=%s plugin=%s", bool(snapshots), export_controller, video_editor_plugin)
             self.ui_manager.messages.show_non_modal_message(
                 kind=MessageKind.WARNING,
                 title=self._tr("image_compare.common.warning"),
@@ -134,6 +142,8 @@ class ExportPresenter(QObject):
             return
 
         try:
+            if _dbg:
+                logger.warning("[video-editor-debug] ExportPresenter -> video_editor_plugin.open_editor")
             video_editor_plugin.open_editor(
                 snapshots, export_controller, self.main_window_app
             )
