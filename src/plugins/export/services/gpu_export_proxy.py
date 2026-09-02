@@ -161,6 +161,13 @@ class GpuExportProxy(QObject):
         grab_started = time.perf_counter()
         qimg = widget.grabFramebuffer()
         debug_timings["grab_raw_ms"] = (time.perf_counter() - grab_started) * 1000.0
+        try:
+            from tabs.image_compare.debug import ic_perf_debug
+
+            if debug_timings["grab_raw_ms"] > 5.0:
+                ic_perf_debug("grabFramebuffer took %.1fms target=%s", debug_timings["grab_raw_ms"], target_widget_size)
+        except Exception:
+            pass
 
         convert_started = time.perf_counter()
         image = qimage_to_pil_rgba(qimg)
