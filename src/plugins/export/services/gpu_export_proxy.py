@@ -174,35 +174,10 @@ class GpuExportProxy(QObject):
         grab_started = time.perf_counter()
         qimg = widget.grabFramebuffer()
         debug_timings["grab_raw_ms"] = (time.perf_counter() - grab_started) * 1000.0
-        try:
-            from tabs.image_compare.debug import ic_thumbnail_debug, ic_perf_debug
-            is_null = qimg.isNull()
-            # Quick transparency check: peek center pixel alpha
-            try:
-                _ext = image_extrema if 'image_extrema' in locals() else None
-            except Exception:
-                pass
-            ic_thumbnail_debug("gpu_export grab qimg_null=%s size=%sx%s bytes=%s target=%s widget_size=%s isVisible=%s", is_null, qimg.width(), qimg.height(), qimg.sizeInBytes() if not is_null else -1, target_widget_size, (widget.width(), widget.height()), widget.isVisible())
-            if is_null or qimg.width() == 0:
-                ic_thumbnail_debug("gpu_export grab FAILED null or 0 size — offscreen widget not ready, will return transparent")
-            if debug_timings["grab_raw_ms"] > 5.0:
-                ic_perf_debug("grabFramebuffer took %.1fms target=%s", debug_timings["grab_raw_ms"], target_widget_size)
-        except Exception:
-            pass
 
         convert_started = time.perf_counter()
         image = qimage_to_pil_rgba(qimg)
         debug_timings["qimage_convert_ms"] = (time.perf_counter() - convert_started) * 1000.0
-        try:
-            from tabs.image_compare.debug import ic_thumbnail_debug
-            ext = image.getextrema()
-            # ext is ((rmin,rmax),(gmin,gmax),(bmin,bmax),(amin,amax)) for RGBA
-            is_transparent = ext[3][1] == 0 if len(ext) > 3 else False
-            ic_thumbnail_debug("gpu_export converted pil size=%s extrema=%s transparent=%s", image.size, ext, is_transparent)
-            if is_transparent:
-                ic_thumbnail_debug("gpu_export WARNING pil is fully transparent — offscreen render produced empty frame")
-        except Exception:
-            pass
 
         raw_bytes = image.tobytes()
         image._raw_rgba_bytes = raw_bytes

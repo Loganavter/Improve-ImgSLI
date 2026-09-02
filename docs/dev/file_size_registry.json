@@ -393,7 +393,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
-      "lines": 617,
+      "lines": 587,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
@@ -404,7 +404,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
-      "lines": 743,
+      "lines": 700,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
@@ -426,7 +426,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
-      "lines": 508,
+      "lines": 504,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",
@@ -459,7 +459,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
-      "lines": 584,
+      "lines": 665,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
