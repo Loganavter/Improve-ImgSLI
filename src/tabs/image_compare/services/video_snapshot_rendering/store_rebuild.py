@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+import threading
+
 from tabs.image_compare.services.video_snapshot_rendering.models import ImagePrepCacheEntry
+
+_thread_local = threading.local()
+
+
+def _get_reusable_store():
+    from core.store import Store
+    from tabs.image_compare.state.document import DocumentModel
+
+    store = getattr(_thread_local, "reusable_store", None)
+    if store is not None:
+        return store
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", DocumentModel())
+    _thread_local.reusable_store = store
+    return store
 
 
 def rebuild_snapshot_store(
@@ -15,30 +33,32 @@ def rebuild_snapshot_store(
     import time
 
     t0 = time.perf_counter()
-    from core.store import Store
     from tabs.image_compare.state.document import DocumentModel, ImageItem
     from tabs.image_compare.canvas.registry import registry
 
-    store = Store()
+    store = _get_reusable_store()
+    # Reuse cached Store — reset document slot that will be overwritten below
+    doc = store.get_session_state_slot("document")
+    if doc is None:
+        from tabs.image_compare.state.document import DocumentModel as _DM
+
+        store.set_session_state_slot("document", _DM())
+    else:
+        try:
+            doc.image_list1 = []
+            doc.image_list2 = []
+        except Exception:
+            pass
     try:
         from tabs.image_compare.debug import ic_perf_debug
 
-        # Throttled: log every 30th rebuild (~0.5Hz at 60fps) or if slow
         cnt = getattr(rebuild_snapshot_store, "_cnt", 0) + 1
         rebuild_snapshot_store._cnt = cnt
         dt = (time.perf_counter() - t0) * 1000.0
         if cnt % 30 == 0 or dt > 2.0:
-            ic_perf_debug("rebuild_snapshot_store Store() took %.2fms cnt=%s", dt, cnt)
+            ic_perf_debug("rebuild_snapshot_store reused Store took %.2fms cnt=%s", dt, cnt)
     except Exception:
         pass
-    # `resolve_feature_virtual_layout` (invoked via SnapshotRenderPlanBuilder
-    # below) looks up the canvas feature registry keyed by the active
-    # session's `session_type`; the default session `Store()` creates is
-    # "session_picker", which has no registered features, so it must be
-    # switched to an "image_compare" session before any layout-dependent
-    # feature (e.g. magnifier) can be resolved.
-    store.create_workspace_session(session_type="image_compare", activate=True)
-    store.set_session_state_slot("document", DocumentModel())
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.runtime_cache.overlay_clip_rect = None

@@ -12,7 +12,7 @@ from sli_ui_toolkit.workers import GenericWorker
 logger = logging.getLogger("ImproveImgSLI")
 _thlog = logging.getLogger("ImproveImgSLI.video_thumbnails")
 
-DEFAULT_THUMBNAIL_RENDER_SCALE = 2.0
+DEFAULT_THUMBNAIL_RENDER_SCALE = 1.0
 
 def _thumbnail_render_target_size(
     thumbnail_size: Tuple[int, int], render_scale: float
@@ -71,7 +71,12 @@ class ThumbnailService(QObject):
         self._is_generating = False
         self._current_task_id = 0
         self._thread_pool = QThreadPool(self)
-        self._thread_pool.setMaxThreadCount(1)
+        try:
+            ideal = QThreadPool.globalInstance().maxThreadCount()
+        except Exception:
+            ideal = 4
+        adaptive = max(2, min(4, int(ideal) if ideal else 4))
+        self._thread_pool.setMaxThreadCount(adaptive)
         self._generated_indices = set()
         self._pending_indices = set()
         self._recording = None

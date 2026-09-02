@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import threading
+
 from PIL import Image
 
 from core.store import Store
 from tabs.image_compare.state.document import DocumentModel, ImageItem
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
+
+_thread_local = threading.local()
+
+
+def _get_reusable_snapshot_store() -> Store:
+    store = getattr(_thread_local, "reusable_snapshot_store", None)
+    if store is not None:
+        return store
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", DocumentModel())
+    _thread_local.reusable_snapshot_store = store
+    return store
 
 
 def _get_unified_images(
@@ -49,15 +64,19 @@ def _build_snapshot_store(
     resize_method: str = "LANCZOS",
     normalize_snapshot: bool = True,
 ):
-    store = Store()
-    # `resolve_feature_virtual_layout` (called further below via
-    # `build_render_frame_presentation`) looks up the canvas feature registry
-    # keyed by the active session's `session_type`; the default session
-    # `Store()` creates is "session_picker", which has no registered
-    # features, so it must be switched to an "image_compare" session before
-    # any layout-dependent feature (e.g. magnifier) can be resolved.
-    store.create_workspace_session(session_type="image_compare", activate=True)
-    store.set_session_state_slot("document", DocumentModel())
+    store = _get_reusable_snapshot_store()
+    # Reuse cached Store — avoid Store() + create_workspace_session per frame.
+    # Reset mutable slots that _build_snapshot_store mutates.
+    existing_doc = store.get_session_state_slot("document")
+    if existing_doc is None:
+        store.set_session_state_slot("document", DocumentModel())
+    else:
+        # Clear previous document lists to avoid stale references; will be overwritten below
+        try:
+            existing_doc.image_list1 = []
+            existing_doc.image_list2 = []
+        except Exception:
+            pass
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.runtime_cache.overlay_clip_rect = None
