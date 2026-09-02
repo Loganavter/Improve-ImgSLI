@@ -110,6 +110,21 @@ def ic_label_debug(msg: str, *args, **kwargs) -> None:
         )
 
 
+def ic_video_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+
+
+def ic_video_debug(msg: str, *args, **kwargs) -> None:
+    if ic_video_debug_enabled():
+        _emit(
+            "[video-editor-debug]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_VIDEO_EDITOR_DEBUG", "IMGSLI_IC_VIDEO_DEBUG"),
+            **kwargs,
+        )
+
+
 def ic_preview_source_tier(img, preview, original, state_img) -> str:
     """Human-readable display tier for ``img`` (``[ic-preview]`` payload).
 

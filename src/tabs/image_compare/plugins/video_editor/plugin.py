@@ -43,10 +43,16 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
     def open_editor(
         self, snapshots: list[Any], export_controller: Any, main_window_app: Any
     ) -> None:
+        from shared.debug_flags import env_flag as _env_flag
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        if _dbg:
+            logger.warning("[video-editor-debug] VideoEditorPlugin.open_editor snapshots=%s controller=%s existing_dialog=%s", bool(snapshots), bool(export_controller), self._editor_dialog is not None)
         if not snapshots or not export_controller:
             logger.warning(
                 "VideoEditorPlugin.open_editor: snapshots or export_controller is None"
             )
+            if _dbg:
+                logger.warning("[video-editor-debug] open_editor abort snapshots=%s controller=%s", bool(snapshots), bool(export_controller))
             return
 
         try:

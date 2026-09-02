@@ -475,9 +475,27 @@ def _connect_session_comboboxes(presenter):
     ui.btn_pause.toggled.connect(
         lambda checked: event_bus.emit(ExportTogglePauseRecordingEvent())
     )
-    ui.btn_video_editor.clicked.connect(
-        lambda: event_bus.emit(ExportOpenVideoEditorEvent())
-    )
+    def _emit_open_editor():
+        from shared.debug_flags import env_flag as _env_flag
+        _has_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
+        if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+            logger.warning("[video-editor-debug] toolbar btn_video_editor clicked -> emit ExportOpenVideoEditorEvent bus=%s subscribers=%s", event_bus, _has_subs)
+        # Deferred host plugins (export/video_editor) may not be loaded yet when
+        # bootstrap tab is active — ensure they are before emitting, otherwise
+        # the event would be lost (0 subscribers) and button appears to do nothing.
+        if _has_subs == 0:
+            try:
+                ctx = getattr(presenter.main_controller, "context", None)
+                if ctx is not None and hasattr(ctx, "ensure_deferred_plugins_loaded"):
+                    ctx.ensure_deferred_plugins_loaded()
+                    if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+                        new_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
+                        logger.warning("[video-editor-debug] after ensure_deferred_plugins_loaded subscribers=%s", new_subs)
+            except Exception as exc:
+                logger.debug("[video-editor-debug] ensure_deferred failed: %s", exc)
+        event_bus.emit(ExportOpenVideoEditorEvent())
+
+    ui.btn_video_editor.clicked.connect(_emit_open_editor)
 
 def _connect_image_load_buttons(presenter):
     from tabs.image_compare.presenters.toolbar.actions import open_image_dialog
