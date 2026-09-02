@@ -164,9 +164,11 @@ class GpuExportProxy(QObject):
 
         paint_started = time.perf_counter()
         self._render_widget_frame(widget)
-        debug_timings["paint_gl_ms"] = (
+        debug_timings["rhi_render_ms"] = (
             time.perf_counter() - paint_started
         ) * 1000.0
+        # Legacy alias — keep for old log parsers
+        debug_timings["paint_gl_ms"] = debug_timings["rhi_render_ms"]
 
         framebuffer_started = time.perf_counter()
         grab_started = time.perf_counter()

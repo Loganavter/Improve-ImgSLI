@@ -48,15 +48,11 @@ class VideoExporterService:
         self.main_store = store
         self.main_controller = main_controller
         self.gpu_export_service = gpu_export_service
-        thumbnail_resource_manager = None
-        if gpu_export_service is not None:
-            thumbnail_resource_manager = getattr(
-                getattr(gpu_export_service, "_proxy", None),
-                "_resource_manager",
-                None,
-            )
+        # Thumbnails render at 160×90, preview/export at 640×480 — sharing one
+        # QRhiWidget forces resize thrash (paint_gl_ms 50→1100ms) and size
+        # mismatch transparent grabs. Keep separate offscreen widgets.
         self._thumbnail_gpu_export_service = (
-            GpuExportService(resource_manager=thumbnail_resource_manager)
+            GpuExportService(resource_manager=None)
             if gpu_export_service is not None
             else None
         )
