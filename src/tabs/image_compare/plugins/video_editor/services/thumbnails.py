@@ -32,13 +32,18 @@ def _finish_thumbnail_image(
         return None
     out_w, out_h = thumbnail_size
     rendered = rendered.convert("RGBA")
-    if rendered.height == out_h:
+    if rendered.size == (out_w, out_h):
         return rendered
-    if rendered.height <= 0:
+    if rendered.width <= 0 or rendered.height <= 0:
         return None
-    fit_scale = float(out_h) / float(rendered.height)
-    final_w = max(1, int(round(rendered.width * fit_scale)))
-    return rendered.resize((final_w, out_h), Image.Resampling.LANCZOS)
+    # Cover: scale to fill out_w×out_h, center-crop (long-term uniform 72px strip, no letterbox)
+    scale = max(out_w / float(rendered.width), out_h / float(rendered.height))
+    new_w = max(1, int(round(rendered.width * scale)))
+    new_h = max(1, int(round(rendered.height * scale)))
+    resized = rendered.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    left = max(0, (new_w - out_w) // 2)
+    top = max(0, (new_h - out_h) // 2)
+    return resized.crop((left, top, left + out_w, top + out_h))
 
 
 def _render_thumbnail_using_renderer(
