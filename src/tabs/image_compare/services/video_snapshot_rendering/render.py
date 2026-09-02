@@ -113,8 +113,25 @@ def render_prepared_async(
 
     def _on_gpu_done(frame_pil, gpu_debug, error):
         if error is not None:
+            try:
+                from tabs.image_compare.debug import ic_thumbnail_debug
+                ic_thumbnail_debug("render async ERROR %s", error)
+            except Exception:
+                pass
             callback(_finish_rendered_frame(None, {}, debug, prepared, request))
             return
+        try:
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            if frame_pil is None:
+                ic_thumbnail_debug("render async frame_pil is None gpu_debug=%s", gpu_debug)
+            else:
+                try:
+                    ext = frame_pil.getextrema() if hasattr(frame_pil, "getextrema") else None
+                except Exception:
+                    ext = None
+                ic_thumbnail_debug("render async frame_pil size=%s extrema=%s gpu_debug=%s", getattr(frame_pil, "size", None), ext, gpu_debug)
+        except Exception:
+            pass
         debug["gpu_render_ms"] = (time.perf_counter() - gpu_render_started) * 1000.0
         callback(
             _finish_rendered_frame(frame_pil, gpu_debug or {}, debug, prepared, request)
