@@ -140,6 +140,21 @@ def ic_perf_debug(msg: str, *args, **kwargs) -> None:
         )
 
 
+def ic_thumbnail_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_THUMBNAIL_DEBUG") or _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+
+
+def ic_thumbnail_debug(msg: str, *args, **kwargs) -> None:
+    if ic_thumbnail_debug_enabled():
+        _emit(
+            "[thumbnail-debug]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_THUMBNAIL_DEBUG", "IMGSLI_VIDEO_EDITOR_DEBUG", "IMGSLI_IC_VIDEO_DEBUG"),
+            **kwargs,
+        )
+
+
 def ic_preview_source_tier(img, preview, original, state_img) -> str:
     """Human-readable display tier for ``img`` (``[ic-preview]`` payload).
 

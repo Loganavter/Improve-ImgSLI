@@ -457,6 +457,27 @@ class ThumbnailService(QObject):
 
         if pil_image:
             try:
+                # Debug dump first thumbnail to verify not black/null — gated
+                try:
+                    import os
+                    if os.getenv("IMGSLI_THUMBNAIL_DEBUG") == "1" or os.getenv("IMGSLI_VIDEO_EDITOR_DEBUG") == "1":
+                        from tabs.image_compare.debug import ic_thumbnail_debug
+                        ext = pil_image.getextrema() if hasattr(pil_image, "getextrema") else None
+                        is_trans = False
+                        try:
+                            if pil_image.mode == "RGBA" and ext and len(ext) > 3:
+                                is_trans = ext[3][1] == 0
+                        except Exception:
+                            pass
+                        ic_thumbnail_debug("thumb_svc pil idx=%s size=%s mode=%s extrema=%s transparent=%s", index, pil_image.size, pil_image.mode, ext, is_trans)
+                        if index == 0 and not hasattr(self, "_thumb_dump_done"):
+                            self._thumb_dump_done = True
+                            pil_image.save("/tmp/thumb_debug_0.png")
+                            ic_thumbnail_debug("thumb_debug saved /tmp/thumb_debug_0.png size=%s", pil_image.size)
+                            if is_trans:
+                                ic_thumbnail_debug("thumb_debug WARNING transparent — offscreen render empty")
+                except Exception:
+                    pass
                 pil_image = pil_image.convert("RGBA")
                 data = pil_image.tobytes("raw", "RGBA")
                 qimg = QImage(
