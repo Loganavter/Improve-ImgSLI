@@ -96,7 +96,7 @@ class ThumbnailCoordinator:
         self.thumbnail_service.generate_thumbnails(
             recording,
             target_count=cnt,
-            auto_crop=VIDEO_EDITOR_AUTO_CROP,
+            auto_crop=True,
             priority_indices=vis,
             fps=self.editor_service.get_fps(),
         )
