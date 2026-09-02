@@ -227,6 +227,12 @@ class VideoEditorDialog(ThemedDialog):
         bottom_layout.addWidget(self.toolbar_frame)
 
         self.scroll_area = create_timeline_scroll_area(self)
+        try:
+            import os, logging
+            if os.getenv("IMGSLI_VIDEO_EDITOR_DEBUG") == "1" or os.getenv("IMGSLI_TIMELINE_DEBUG") == "1":
+                logging.getLogger("ImproveImgSLI").warning("[timeline-debug] create_timeline_scroll_area timeline_id=%s scroll_id=%s viewport_id=%s", id(self.timeline) if hasattr(self, 'timeline') else -1, id(self.scroll_area), id(self.scroll_area.viewport()))
+        except Exception:
+            pass
         bottom_layout.addWidget(self.scroll_area, stretch=1)
         self.bottom_container.setMinimumHeight(scaled_px(250))
         self.vertical_splitter.addWidget(self.bottom_container)
