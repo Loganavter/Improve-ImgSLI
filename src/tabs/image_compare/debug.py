@@ -125,6 +125,21 @@ def ic_video_debug(msg: str, *args, **kwargs) -> None:
         )
 
 
+def ic_perf_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_VIDEO_PERF_DEBUG") or _env_flag("IMGSLI_IC_PERF_DEBUG")
+
+
+def ic_perf_debug(msg: str, *args, **kwargs) -> None:
+    if ic_perf_debug_enabled():
+        _emit(
+            "[video-perf-debug]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_VIDEO_PERF_DEBUG", "IMGSLI_IC_PERF_DEBUG"),
+            **kwargs,
+        )
+
+
 def ic_preview_source_tier(img, preview, original, state_img) -> str:
     """Human-readable display tier for ``img`` (``[ic-preview]`` payload).
 

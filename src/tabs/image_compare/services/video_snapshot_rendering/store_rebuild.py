@@ -12,11 +12,25 @@ def rebuild_snapshot_store(
     scaled_global_bounds,
     normalize_snapshot_store_enabled,
 ):
+    import time
+
+    t0 = time.perf_counter()
     from core.store import Store
     from tabs.image_compare.state.document import DocumentModel, ImageItem
     from tabs.image_compare.canvas.registry import registry
 
     store = Store()
+    try:
+        from tabs.image_compare.debug import ic_perf_debug
+
+        # Throttled: log every 30th rebuild (~0.5Hz at 60fps) or if slow
+        cnt = getattr(rebuild_snapshot_store, "_cnt", 0) + 1
+        rebuild_snapshot_store._cnt = cnt
+        dt = (time.perf_counter() - t0) * 1000.0
+        if cnt % 30 == 0 or dt > 2.0:
+            ic_perf_debug("rebuild_snapshot_store Store() took %.2fms cnt=%s", dt, cnt)
+    except Exception:
+        pass
     # `resolve_feature_virtual_layout` (invoked via SnapshotRenderPlanBuilder
     # below) looks up the canvas feature registry keyed by the active
     # session's `session_type`; the default session `Store()` creates is
@@ -71,4 +85,13 @@ def rebuild_snapshot_store(
                 virtual_layout=scaled_global_bounds.to_virtual_layout(),
             )
 
+    try:
+        dt_full = (time.perf_counter() - t0) * 1000.0
+        cnt = getattr(rebuild_snapshot_store, "_cnt", 0)
+        if cnt % 30 == 0 or dt_full > 5.0:
+            from tabs.image_compare.debug import ic_perf_debug
+
+            ic_perf_debug("rebuild_snapshot_store FULL took %.2fms cnt=%s", dt_full, cnt)
+    except Exception:
+        pass
     return store

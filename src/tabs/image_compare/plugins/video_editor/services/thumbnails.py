@@ -126,6 +126,12 @@ class ThumbnailService(QObject):
         )
 
         self._active_workers = len(indices_to_generate)
+        try:
+            from tabs.image_compare.debug import ic_perf_debug
+
+            ic_perf_debug("thumbnails_generate task=%s count=%s target=%s fps=%s queue=%s pool_max=%s", task_id, count, target_count, self._fps, len(indices_to_generate), self._thread_pool.maxThreadCount())
+        except Exception:
+            pass
         _thlog.debug(
             "thumbnails_generate task=%s count=%s target=%s fps=%s queue=%s",
             task_id,
