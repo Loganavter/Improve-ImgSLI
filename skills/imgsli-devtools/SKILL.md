@@ -12,7 +12,7 @@ Pick a tool by symptom. Read the linked doc only when you need filtering or inte
 | Symptom | Command | Doc |
 |---|---|---|
 | Weird after click / zoom / state change | `./launcher.sh run --debug` or `IMGSLI_TRACE=1 ./launcher.sh run` | [docs/dev/TRACING.md](../../../docs/dev/TRACING.md) |
-| MC zoom “jumps” on first flyout (chip unchanged) | re-check mitigations; see gotchas | [qrhi-gotchas.md (private sibling repo)](../../../../improve-imgsli-internal-docs/docs/dev/rendering/qrhi-gotchas.md#display-lags-store) |
+| MC zoom “jumps” on first flyout (chip unchanged) | re-check mitigations; see gotchas | [qrhi-gotchas.md (private sibling repo)](../../../../improve-imgsli-internal-docs/docs/dev/rendering/qrhi-gotchas.md#display-lags-store) (sharded: `docs/dev/rendering/cases/display-lags-store.md`) |
 | Widget color / palette / theme token / QSS candidate | `./launcher.sh run --ui-inspector` | [docs/dev/UI_INSPECTOR.md](../../../docs/dev/UI_INSPECTOR.md) |
 | Slow or unclear startup | `IMGSLI_STARTUP_TRACE=1 ./launcher.sh run` | `src/core/startup_trace.py` |
 | Where is the code mass? | `./launcher.sh context --cloc-only` → `cloc.txt` (`--toolkit-dir DIR` if the sibling toolkit is not auto-found) | [AGENTS.md](../../../AGENTS.md) |
@@ -37,7 +37,7 @@ Tracer output: `~/.local/share/ImproveImgSLI/trace.jsonl`. Plain logs: `~/.local
 - `context --cloc-only` is for code-size orientation only — do not expect a doc bundle.
 - UI inspector is a dev diagnostic overlay, not a user-facing feature.
 - Contract tests are fast AST checks — run them before large import or layout refactors.
-- Known Qt quirks: [KNOWN_BUGS.md (private sibling repo)](../../../../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md) before assuming a new bug.
+- Known Qt quirks: [KNOWN_BUGS.md (private sibling repo)](../../../../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md) (sharded: `docs/bugs/cases/`) before assuming a new bug.
 - After moving/renaming/adding docs under `docs/` or `src/tabs/*/docs/`, run `python src/devtools/docs_link_graph.py --write-index` — a stale `DOC_INDEX.md` or a broken relative doc link fails `tests/devtools/test_docs_link_graph.py`.
 
 ## Private docs (sibling `improve-imgsli-internal-docs`)
