@@ -469,14 +469,58 @@ def _connect_session_comboboxes(presenter):
     ui.btn_channel_mode_picker.selected.connect(
         lambda data: event_bus.emit(AnalysisSetChannelViewModeEvent(data))
     )
-    ui.btn_record.toggled.connect(
-        lambda checked: event_bus.emit(ExportToggleRecordingEvent())
-    )
-    ui.btn_pause.toggled.connect(
-        lambda checked: event_bus.emit(ExportTogglePauseRecordingEvent())
-    )
+    def _ensure_deferred():
+        from shared.debug_flags import env_flag as _env_flag
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        try:
+            ctx = getattr(presenter.main_controller, "context", None)
+            if ctx is not None and hasattr(ctx, "ensure_deferred_plugins_loaded"):
+                loaded = ctx.ensure_deferred_plugins_loaded()
+                if _dbg:
+                    logger.warning("[video-editor-debug] ensure_deferred_plugins_loaded -> %s", loaded)
+                try:
+                    mc = presenter.main_controller
+                    window_shell = getattr(mc, "window_shell", None) or getattr(presenter, "main_window_app", None)
+                    if window_shell is None:
+                        w = getattr(presenter, "widget", None)
+                        try:
+                            import shiboken6
+                            if w is not None and not shiboken6.Shiboken.isValid(w):
+                                w = None
+                        except Exception:
+                            pass
+                        window_shell = w.window() if w is not None and hasattr(w, "window") else None
+                    if window_shell is not None and hasattr(mc, "attach_deferred_plugins"):
+                        mc.attach_deferred_plugins(window_shell)
+                except Exception as exc2:
+                    logger.warning("[video-editor-debug] attach_deferred failed: %s", exc2) if _dbg else logger.debug("[video-editor-debug] attach_deferred failed: %s", exc2)
+        except Exception as exc:
+            if _dbg:
+                logger.warning("[video-editor-debug] ensure_deferred failed: %s", exc)
+
+    def _emit_with_ensure(event_factory, name: str):
+        from shared.debug_flags import env_flag as _env_flag
+        from PySide6.QtCore import QTimer
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        subs = len(getattr(event_bus, "_subscribers", {}).get(event_factory, [])) if event_bus else 0
+        if _dbg:
+            logger.warning("[video-editor-debug] CLICK %s subscribers=%s", name, subs)
+        if subs == 0:
+            def _do():
+                _ensure_deferred()
+                if _dbg:
+                    new_subs = len(getattr(event_bus, "_subscribers", {}).get(event_factory, [])) if event_bus else 0
+                    logger.warning("[video-editor-debug] AFTER ensure %s subscribers=%s", name, new_subs)
+                event_bus.emit(event_factory())
+            QTimer.singleShot(0, _do)
+            return
+        event_bus.emit(event_factory())
+
+    ui.btn_record.toggled.connect(lambda checked: _emit_with_ensure(ExportToggleRecordingEvent, "ExportToggleRecordingEvent"))
+    ui.btn_pause.toggled.connect(lambda checked: _emit_with_ensure(ExportTogglePauseRecordingEvent, "ExportTogglePauseRecordingEvent"))
     def _emit_open_editor():
         from shared.debug_flags import env_flag as _env_flag
+        from PySide6.QtCore import QTimer
         try:
             from core.tracing.tracer import Tracer
             if Tracer.enabled():
@@ -489,44 +533,30 @@ def _connect_session_comboboxes(presenter):
             logger.warning("[video-editor-debug] CLICK btn_video_editor -> ExportOpenVideoEditorEvent bus=%s subscribers=%s has_recorder=%s", event_bus, _has_subs, getattr(getattr(presenter, "main_controller", None), "_recorder", None) is not None)
         else:
             logger.debug("[video-editor-debug] CLICK btn_video_editor subscribers=%s", _has_subs)
+
+        def _do_emit():
+            if _dbg:
+                logger.warning("[video-editor-debug] EMIT ExportOpenVideoEditorEvent (deferred)")
+            event_bus.emit(ExportOpenVideoEditorEvent())
+
         # Deferred host plugins (export/video_editor) may not be loaded yet when
         # bootstrap tab is active — ensure they are before emitting, otherwise
         # the event would be lost (0 subscribers) and button appears to do nothing.
+        # Do ensure+attach async to avoid re-entrancy segfault (plugin init
+        # creates QObjects while Qt is processing the click).
         if _has_subs == 0:
-            try:
-                ctx = getattr(presenter.main_controller, "context", None)
-                if ctx is not None and hasattr(ctx, "ensure_deferred_plugins_loaded"):
-                    loaded = ctx.ensure_deferred_plugins_loaded()
-                    if _dbg:
-                        logger.warning("[video-editor-debug] ensure_deferred_plugins_loaded -> %s deferred_loaded=%s", loaded, getattr(ctx, "_deferred_plugins_loaded", None))
-                    # Deferred plugins are loaded but not yet bound to window shell
-                    # (subscription happens in attach_deferred_plugins). Bind now.
-                    try:
-                        mc = presenter.main_controller
-                        window_shell = getattr(mc, "window_shell", None) or getattr(presenter, "main_window_app", None)
-                        if window_shell is None:
-                            w = getattr(presenter, "widget", None)
-                            window_shell = w.window() if w is not None and hasattr(w, "window") else None
-                        if window_shell is not None and hasattr(mc, "attach_deferred_plugins"):
-                            mc.attach_deferred_plugins(window_shell)
-                            if _dbg:
-                                logger.warning("[video-editor-debug] attach_deferred_plugins window_shell=%s", type(window_shell).__name__)
-                    except Exception as exc2:
-                        logger.warning("[video-editor-debug] attach_deferred failed: %s", exc2) if _dbg else logger.debug("[video-editor-debug] attach_deferred failed: %s", exc2)
-                    if _dbg:
-                        new_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
-                        subs_map = list(getattr(event_bus, "_subscribers", {}).keys()) if event_bus and hasattr(event_bus, "_subscribers") else []
-                        logger.warning("[video-editor-debug] AFTER ensure+attach subscribers=%s all_events=%s", new_subs, [c.__name__ for c in subs_map])
-                        if new_subs == 0:
-                            logger.warning("[video-editor-debug] REJECT: still 0 subscribers after deferred load — export plugin not subscribed, check ExportPlugin.configure_controller")
-            except Exception as exc:
+            def _ensure_and_emit():
+                _ensure_deferred()
                 if _dbg:
-                    logger.warning("[video-editor-debug] ensure_deferred failed: %s", exc)
-                else:
-                    logger.debug("[video-editor-debug] ensure_deferred failed: %s", exc)
-        if _dbg:
-            logger.warning("[video-editor-debug] EMIT ExportOpenVideoEditorEvent")
-        event_bus.emit(ExportOpenVideoEditorEvent())
+                    new_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
+                    subs_map = list(getattr(event_bus, "_subscribers", {}).keys()) if event_bus and hasattr(event_bus, "_subscribers") else []
+                    logger.warning("[video-editor-debug] AFTER ensure+attach subscribers=%s all_events=%s", new_subs, [c.__name__ for c in subs_map])
+                    if new_subs == 0:
+                        logger.warning("[video-editor-debug] REJECT: still 0 subscribers after deferred load — export plugin not subscribed, check ExportPlugin.configure_controller")
+                _do_emit()
+            QTimer.singleShot(0, _ensure_and_emit)
+            return
+        _do_emit()
 
     ui.btn_video_editor.clicked.connect(_emit_open_editor)
 
