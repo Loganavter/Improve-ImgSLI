@@ -284,6 +284,8 @@ backlinks). `tests/devtools/test_docs_link_graph.py` fails the suite on any
 broken relative doc link or a stale `DOC_INDEX.md` — treat that failure as
 "you moved a doc and didn't update links," not a flaky test.
 
+Private sibling docs: hard-won QRhi/Wayland gotchas live in `../improve-imgsli-internal-docs` (locally `/home/jorj/Загрузки/projects/improve-imgsli-internal-docs`, not committed) — see `skills/imgsli-devtools/SKILL.md` `qrhi-gotchas.md`/`KNOWN_BUGS.md` links. Check there before re-diagnosing rendering quirks.
+
 ## Good Defaults For Agents
 
 - Read [docs/dev/README.md](docs/dev/README.md) for misconceptions before assuming web-app patterns.
