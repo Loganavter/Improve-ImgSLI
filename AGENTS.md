@@ -2,7 +2,7 @@
 
 This file is for CLI AI agents and other automated coding assistants. Read it before making changes.
 
-Human-oriented cheat sheet: [docs/dev/README.md](docs/dev/README.md). IDE-specific entry points: [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/improve-imgsli.mdc](.cursor/rules/improve-imgsli.mdc). Cursor skills: [.cursor/skills/imgsli-devtools/](.cursor/skills/imgsli-devtools/), [.cursor/skills/sli-ui-toolkit-docs-first/](.cursor/skills/sli-ui-toolkit-docs-first/).
+Human-oriented cheat sheet: [docs/dev/README.md](docs/dev/README.md). IDE-specific entry points: [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/improve-imgsli.mdc](.cursor/rules/improve-imgsli.mdc). Skills: [skills/imgsli-devtools/](skills/imgsli-devtools/), [skills/sli-ui-toolkit-docs-first/](skills/sli-ui-toolkit-docs-first/) (symlink `.cursor/skills` for Cursor compat).
 
 The codebase is a Python/PySide6 application under `src/` (production, declarative, well-decomposed).
 
@@ -22,7 +22,7 @@ Commands and facilities wired for automated assistants:
 | Startup phases | `IMGSLI_STARTUP_TRACE=1` | Bootstrap timing via `src/core/startup_trace.py`. |
 | Focused tests | `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` | Offscreen Qt for headless runs. |
 
-Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor/rules/` and `.cursor/skills/`), `.claude/`, `.agents/`, `.codex/`, `.windsurf/`, `.aider*`.
+Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor/rules/` + symlink `.cursor/skills` → `skills/`), `skills/` is ordinary source (Cursor compat via symlink), `.claude/`, `.agents/`, `.codex/`, `.windsurf/`, `.aider*`.
 
 ### Task routing
 
@@ -89,7 +89,7 @@ already has it.** Do not default to stock Qt (`QVBoxLayout`, `QPushButton`,
 toolkit later; read the toolkit docs first, then build on
 `sli_ui_toolkit.widgets` / the painter pipeline. Stock Qt is the fallback
 for the rare case the toolkit genuinely has no equivalent, not the default
-starting point. Cursor users: the `.cursor/skills/sli-ui-toolkit-docs-first/`
+starting point. Skills: `skills/sli-ui-toolkit-docs-first/` (`.cursor/skills` symlink)
 skill automates this same check.
 
 **Before touching anything toolkit-related — reading it as source of truth,
