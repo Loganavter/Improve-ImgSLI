@@ -77,7 +77,17 @@ def _widget(*, zoned=False):
     return widget
 
 
-def test_gesture_summary_counts_moves_and_handler_cost(monkeypatch, tmp_path, caplog):
+def _pump():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+
+
+def test_gesture_summary_counts_moves_and_handler_cost(
+    qapp, monkeypatch, tmp_path, caplog
+):
     img = tmp_path / "a.png"
     img.write_bytes(b"x")
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
@@ -85,6 +95,7 @@ def test_gesture_summary_counts_moves_and_handler_cost(monkeypatch, tmp_path, ca
     mime = _mime([_url(img)])
     with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
         drag_drop.drag_enter_event(widget, _event(mime))
+        _pump()  # deferred enter preview (accept itself is synchronous)
         for _ in range(3):
             drag_drop.drag_move_event(widget, _event(mime))
         drag_drop.drag_leave_event(widget, _event(mime))
@@ -95,7 +106,23 @@ def test_gesture_summary_counts_moves_and_handler_cost(monkeypatch, tmp_path, ca
     assert len(widget.dispatched_calls) == 2
 
 
-def test_zone_change_redispatches(monkeypatch, tmp_path, caplog):
+def test_flick_through_never_resurrects_preview(qapp, monkeypatch, tmp_path, caplog):
+    """enter → leave within one tick: the deferred enter preview must die."""
+    img = tmp_path / "a.png"
+    img.write_bytes(b"x")
+    monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
+    widget = _widget()
+    mime = _mime([_url(img)])
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        drag_drop.drag_enter_event(widget, _event(mime))
+        drag_drop.drag_leave_event(widget, _event(mime))
+        _pump()
+    assert len(widget.dispatched_calls) == 1  # leave's active=False only
+    assert widget.dispatched_calls[0].active is False
+    assert "preview internal=" not in caplog.text
+
+
+def test_zone_change_redispatches(qapp, monkeypatch, tmp_path, caplog):
     img = tmp_path / "a.png"
     img.write_bytes(b"x")
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
@@ -103,6 +130,7 @@ def test_zone_change_redispatches(monkeypatch, tmp_path, caplog):
     mime = _mime([_url(img)])
     with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
         drag_drop.drag_enter_event(widget, _event(mime, pos=QPoint(10, 10)))
+        _pump()
         drag_drop.drag_move_event(widget, _event(mime, pos=QPoint(80, 10)))
         drag_drop.drag_move_event(widget, _event(mime, pos=QPoint(80, 10)))
         drag_drop.drag_leave_event(widget, _event(mime))

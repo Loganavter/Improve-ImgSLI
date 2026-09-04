@@ -129,11 +129,24 @@ def resolve_drop_target(widget, pos, *, internal: bool):
 def apply_drag_preview(widget, event, internal: bool) -> None:
     t0 = time.monotonic()
     pos = event.position().toPoint()
-    tgt_path, side, root_tgt, swap_id = resolve_drop_target(
-        widget, pos, internal=internal
-    )
     source_id = (
         internal_source_slot_id(event.mimeData()) if internal else None
+    )
+    _apply_preview_at(
+        widget, pos, internal=internal, source_id=source_id, t0=t0
+    )
+
+
+def _apply_preview_at(
+    widget, pos, *, internal: bool, source_id: int | None, t0: float
+) -> None:
+    """Preview core working on resolved values (no Qt event touched).
+
+    Split out so dragEnter can defer past ``accept()``: capturing the event
+    itself for a later tick would be use-after-free, plain values are safe.
+    """
+    tgt_path, side, root_tgt, swap_id = resolve_drop_target(
+        widget, pos, internal=internal
     )
     # dragMove fires per mouse tick — log only when the resolved target
     # changes, otherwise one gesture floods the log with identical lines.
@@ -291,16 +304,17 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     widget._dnd_ph_sig = None  # ...and its placeholder decision
     _timing_reset(widget)
     widget._dnd_light_logged = False
+    widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
     mime = event.mimeData()
     if has_internal_slot(mime):
         _dnd_log(
             "dragEnter internal source=%s", internal_source_slot_id(mime)
         )
         # Echo: internal drags propose MoveAction (interaction.py) and the
-        # answered action must stay Move. Accept FIRST so the Status answer
-        # never waits on the preview work below.
+        # answered action must stay Move. Accept FIRST, then defer the
+        # preview work past it: Status must not wait on resolve/dispatch.
         event.acceptProposedAction()
-        _safe_preview(widget, event, internal=True)
+        _defer_enter_preview(widget, event, internal=True)
         _schedule_placeholder_recheck(widget)
         return
     if has_image_urls(mime):
@@ -308,14 +322,50 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
         # Force Copy like image_compare's window handler: echoing the
         # compositor's early proposal (Move/unset on the first motions)
         # makes the source show move/forbidden cursors until negotiation
-        # converges. Accept FIRST, preview work after.
+        # converges. Accept FIRST, preview work deferred past it.
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
-        _safe_preview(widget, event, internal=False)
+        _defer_enter_preview(widget, event, internal=False)
         _schedule_placeholder_recheck(widget)
         return
     _dnd_log("dragEnter ignored (no slot mime, no image urls)")
     event.ignore()
+
+
+def _defer_enter_preview(widget, event, *, internal: bool) -> None:
+    """Run the enter preview on the next tick, past ``accept()``.
+
+    Only the mime verdict stays synchronous (it gates accept vs ignore);
+    resolve/dispatch/dismiss cost ~7-20ms and would otherwise delay the
+    Status answer by that much. Captures plain values, never the event.
+    A generation guard drops the deferred work if leave/drop (or a newer
+    enter) already ended this gesture — a flick-through must not resurrect
+    a stale preview.
+    """
+    try:
+        from PySide6.QtCore import QTimer
+
+        gen = getattr(widget, "_dnd_gen", 0)
+        pos = event.position().toPoint()
+        source_id = (
+            internal_source_slot_id(event.mimeData()) if internal else None
+        )
+        t0 = time.monotonic()
+
+        def _tick() -> None:
+            try:
+                if gen != getattr(widget, "_dnd_gen", None):
+                    return
+                _apply_preview_at(
+                    widget, pos,
+                    internal=internal, source_id=source_id, t0=t0,
+                )
+            except Exception:
+                logger.exception("[mc-dnd] deferred enter preview failed")
+
+        QTimer.singleShot(0, _tick)
+    except Exception:
+        logger.exception("[mc-dnd] deferring enter preview failed")
 
 
 def drag_move_event(widget, event: QDragMoveEvent) -> None:
@@ -352,6 +402,7 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
 def drag_leave_event(widget, event: QDragLeaveEvent) -> None:
     _dnd_log("dragLeave")
     widget._dnd_preview_sig = None
+    widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
     _timing_emit(widget, "leave")
     widget.store.dispatch(actions.set_drag_state(active=False))
     event.accept()
@@ -370,6 +421,7 @@ def drop_event(widget, event: QDropEvent) -> None:
         )
         _timing_emit(widget, "drop")
         widget._dnd_preview_sig = None
+        widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
         widget.store.dispatch(actions.set_drag_state(active=False))
         if source_id is not None and side is not None:
             apply_internal_drop(widget, source_id, tgt_path, side, swap_id)
@@ -393,6 +445,8 @@ def drop_event(widget, event: QDropEvent) -> None:
         len(paths), tgt_path, side, root_tgt,
     )
     _timing_emit(widget, "drop")
+    widget._dnd_preview_sig = None
+    widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
     if paths:
         widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
         event.acceptProposedAction()
