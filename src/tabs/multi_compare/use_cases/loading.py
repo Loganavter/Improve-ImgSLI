@@ -342,34 +342,50 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
 
 
 def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
+    """Full-res second stage (A2): per-slot workers via ``preview_decode``'s bounded FIFO."""
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
         store = read_image(controller, path, start_pyramid=False)
         apply_full_resolution(controller, slot_id, path, store)
         return
 
-    from sli_ui_toolkit.workers import GenericWorker
+    from tabs.multi_compare.use_cases import preview_decode as _preview
 
-    crop_service = _get_crop_service(controller)
-
-    def load_full_task(path_str: str, svc=crop_service):
-        from shared.image_processing.pixel_cache_loader import load_pixel_store
-        from shared.image_processing import embedded_pixel_cache as _emb_mc2
-
-        return load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb_mc2)
-
-    worker = GenericWorker(load_full_task, str(path))
-    worker.signals.result.connect(
-        lambda store, p=path, sid=slot_id: controller._apply_full_resolution(sid, p, store)
-    )
-    worker.signals.error.connect(
-        lambda err, p=path, sid=slot_id: controller._on_full_resolution_error(p, sid, err)
-    )
-    thread_pool.start(worker)
+    _preview.queue_full_resolution(controller, path, slot_id)
 
 
 def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
+    """Full-res worker failed: orphan/recycled stays silent, live slot reports via bus."""
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        slots = None
+    if slots is not None:
+        slot = next((s for s in slots if s.id == slot_id), None)
+        if slot is None:
+            # Orphan (slot removed mid-load, e.g. user-cancelled): silent
+            # dismiss, no error-toast — the load was abandoned on purpose.
+            dismiss_loading_toast(controller, slot_id)
+            return
+        try:
+            same = _same_fs_path(slot.path, path)
+        except Exception:
+            same = False
+        if not same:
+            # Id recycled by a newer slot: its toast is live, don't touch it.
+            return
     logger.error("Failed to load full resolution for %s: %s", path, err, exc_info=True)
+    if slot.image is None:
+        # Imageless (preview-miss path): sync-UX parity — drop the
+        # pre-created slot instead of leaving an imageless leaf (blank
+        # hole). A slot holding its preview tier keeps it; only its toast
+        # is dismissed.
+        from tabs.multi_compare.scene import actions as mc_actions
+
+        try:
+            controller.widget.store.dispatch(mc_actions.remove_slot(slot_id))
+        except Exception:
+            logger.exception("Failed to remove failed-load slot %s", slot_id)
     dismiss_loading_toast(controller, slot_id)
     _emit_mc_load_error(controller, path, err)
 
@@ -379,16 +395,23 @@ def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
         dismiss_loading_toast(controller, slot_id)
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
-    if slot is None or not _same_fs_path(slot.path, path):
-        # Slot was removed/replaced while the full-res decode was in
-        # flight -- the preview it belonged to is already gone from the
-        # tree, so this store would just leak. Compared normalized
-        # (P8): textual variants (str-vs-Path, "./") must not read as
-        # a stale slot and orphan a good decode.
+    if slot is None:
+        # Slot was removed while the full-res decode was in flight — the
+        # store would just leak. Dismiss (never finish: an orphan must not
+        # show toast-done).
         from shared.image_processing.tiled_pixel_store import close_pixel_store
 
         close_pixel_store(store)
-        finish_loading_toast(controller, slot_id)
+        dismiss_loading_toast(controller, slot_id)
+        return
+    if not _same_fs_path(slot.path, path):
+        # Id recycled (``max+1``): the newer generation owns id+toast —
+        # touch neither. Close this ownerless store (memmap leak guard).
+        # Normalized compare (P8): str-vs-Path/"./" variants must not read
+        # as stale and orphan a good decode.
+        from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+        close_pixel_store(store)
         return
     mark_full_res_ready(controller, slot_id)
     from tabs.multi_compare.scene import actions as mc_actions
