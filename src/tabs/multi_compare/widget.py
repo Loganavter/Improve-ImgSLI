@@ -294,10 +294,11 @@ class MultiCompareWidget(QWidget):
         )
 
     def add_image_auto(
-        self, path: Path, image: "TiledPixelStore | QImage | None", label: str = ""
+        self, path: Path, image: "TiledPixelStore | QImage | None", label: str = "",
+        *, leaf_entries=None,
     ) -> int | None:
         """Append an image by splitting the largest leaf along its longer axis."""
-        return placement.add_image_auto(self, path, image, label)
+        return placement.add_image_auto(self, path, image, label, leaf_entries=leaf_entries)
 
     def add_image_at(
         self,
@@ -307,14 +308,17 @@ class MultiCompareWidget(QWidget):
         target_path: tuple[int, ...] | None,
         side: str | None,
         target_root: bool,
+        *,
+        leaf_entries=None,
     ) -> int | None:
         return placement.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, image, label, target_path, side, target_root,
+            leaf_entries=leaf_entries,
         )
 
-    def _pick_auto_target(self) -> tuple[tuple[int, ...], str]:
+    def _pick_auto_target(self, leaf_entries=None) -> tuple[tuple[int, ...], str]:
         """Pick the existing leaf with the largest rect; split along its longer axis."""
-        return placement.pick_auto_target(self)
+        return placement.pick_auto_target(self, leaf_entries=leaf_entries)
 
     def remove_slot(self, slot_id: int) -> None:
         placement.remove_slot(self, slot_id)

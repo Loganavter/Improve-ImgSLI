@@ -306,9 +306,9 @@ class MultiCompareController:
 
     def _on_add_requested(self) -> None:
         start_dir = export_use_cases.default_dir(self)
-        from shared.image_extensions import IMAGE_FILTER_GLOB
+        from shared.image_extensions import build_image_dialog_filter
 
-        filters = f"Images ({IMAGE_FILTER_GLOB});;All files (*)"
+        filters = build_image_dialog_filter()
         paths, _ = QFileDialog.getOpenFileNames(
             self.widget, "Add images to compare", start_dir, filters
         )
