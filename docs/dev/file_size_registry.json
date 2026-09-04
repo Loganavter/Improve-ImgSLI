@@ -537,6 +537,113 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/controller.py",
+      "lines": 892,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/artifacts.py",
+      "lines": 668,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
+      "parsed": {
+        "pattern": "tiled-pipeline",
+        "size": "670",
+        "reason": "7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/tab.py",
+      "lines": 531,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "tab contract — lifecycle wiring delegates to controller/widget"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/clean_review.py",
+      "lines": 743,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view.py",
+      "lines": 806,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look.py",
+      "lines": 429,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
+      "lines": 592,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/triage.py",
+      "lines": 549,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/widget.py",
+      "lines": 889,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag"
+      }
+    },
+    {
       "path": "src/tabs/multi_compare/controller.py",
       "lines": 535,
       "limit": 500,
