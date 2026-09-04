@@ -69,7 +69,8 @@ def dismiss_placeholder_for_dnd(widget) -> bool:
     # every frame while the cover is up.
     alive = isinstance(presents, int) and presents > 0
     sig = (placeholder is None, ph_visible, alive)
-    if sig != getattr(widget, "_dnd_ph_sig", None):
+    changed = sig != getattr(widget, "_dnd_ph_sig", None)
+    if changed:
         widget._dnd_ph_sig = sig
         _dnd_log(
             "placeholder check: present=%s visible=%s presents=%s first_frame=%s",
@@ -78,7 +79,10 @@ def dismiss_placeholder_for_dnd(widget) -> bool:
     if placeholder is None or not ph_visible:
         return False
     if not alive:
-        _dnd_log("placeholder KEPT (surface never presented)")
+        # Inside the sig gate: without this, per-move re-checks flood the
+        # log with identical KEPT lines while presents==0.
+        if changed:
+            _dnd_log("placeholder KEPT (surface never presented)")
         return False
     placeholder.hide()
     release_transition_mask(widget)

@@ -586,7 +586,29 @@ class MultiCompareCanvasWidget(QRhiWidget):
     def initialize(self, command_buffer) -> None:
         mc_first_frame_debug(self, "initialize() renderer init starts")
         self._renderer.initialize(command_buffer)
-        mc_first_frame_debug(self, "initialize() renderer ready")
+        if getattr(self._renderer, "initialized", False):
+            self._init_retry_count = 0
+            mc_first_frame_debug(self, "initialize() renderer ready")
+            return
+        # Init aborted (rhi/renderTarget not realized yet) — retry shortly.
+        # Otherwise a cold canvas sits at presents==0 until the first DnD
+        # drives a frame, and that first drag-driven frame pays the full
+        # cold-init cost (~160ms GUI stall → visible lag + frozen DnD cursor
+        # while the event loop is stuck compiling pipelines). Bounded: gives
+        # up after ~5s; the drag path still initializes as fallback.
+        # (image_compare never hits this: continuous repaints init at startup.)
+        mc_first_frame_debug(self, "initialize() deferred (not realized), retry scheduled")
+        retries = getattr(self, "_init_retry_count", 0)
+        if retries < 50:
+            self._init_retry_count = retries + 1
+            QTimer.singleShot(100, self._schedule_init_retry)
+
+    def _schedule_init_retry(self) -> None:
+        try:
+            if not getattr(self._renderer, "initialized", False):
+                self.update()
+        except Exception:
+            pass
 
     def releaseResources(self) -> None:
         self._renderer.release()
