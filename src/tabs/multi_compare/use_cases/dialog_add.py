@@ -56,16 +56,21 @@ def load_images(controller, paths) -> int:
     """Toolbar-dialog entry (P8 invariant).
 
     Dialog confirm with ≥1 valid file → slot + preview/error-toast, never
-    a silent 0 slots: valid files go through ``load_single_auto`` (slot +
-    loading toast + preview worker now, error-toast via the bus when the
-    slot cannot be created or the decode fails); non-image/missing
-    entries are skipped like every other entry skips them. A grid that is
-    already full short-circuits to a single error-toast instead of one
-    per file.
+    a silent 0 slots: valid files go through a single ``store.transact``
+    of planned ``AddSlot`` actions (A3: 1 dispatch / 1 emit for the whole
+    confirm — same end state as N sequential ``load_single_auto`` calls);
+    loading toast + preview worker stay per created slot, and files past
+    capacity surface one error-toast each via the bus like the single-add
+    path does. A grid that is already full short-circuits to a single
+    error-toast instead of one per file.
 
     Returns the number of slots created synchronously.
     """
+    from tabs.multi_compare.scene import actions as mc_actions
+    from tabs.multi_compare.scene.store import reduce as mc_reduce
     from tabs.multi_compare.use_cases import loading as _loading
+    from tabs.multi_compare.use_cases import preview_decode as _preview
+    from tabs.multi_compare.use_cases.loading import resolve_auto_triple
 
     valid: list[Path] = []
     for raw in paths or []:
@@ -84,10 +89,53 @@ def load_images(controller, paths) -> int:
         logger.warning("load_images: grid full, rejecting %d file(s)", len(valid))
         _loading._emit_mc_load_error(controller, valid[0], _grid_full_reason(controller))
         return 0
-    created = 0
+    widget = controller.widget
+    scratch = widget.state
+    built: list = []
+    planned: list[tuple[int, Path]] = []
+    overflow: list[Path] = []
     for path in valid:
-        if load_single_auto(controller, path) is not None:
-            created += 1
+        if len(scratch.slots) >= scratch.max_slots:
+            overflow.append(path)
+            continue
+        auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
+        action = mc_actions.add_slot(
+            path=path,
+            image=None,
+            label=path.stem,
+            target_path=auto_path,
+            side=auto_side,
+            target_root=auto_root,
+        )
+        before = len(scratch.slots)
+        scratch = mc_reduce(scratch, action)
+        if len(scratch.slots) <= before:
+            overflow.append(path)
+            continue
+        built.append(action)
+        planned.append((scratch.slots[-1].id, path))
+    if not built:
+        for path in overflow:
+            _loading._emit_mc_load_error(controller, path, _grid_full_reason(controller))
+        return 0
+    store = widget.store
+    transact = getattr(store, "transact", None)
+    if callable(transact):
+        store.transact(built)
+    else:  # headless fakes pre-dating the batch API: same end state, N dispatches
+        for sub in built:
+            store.dispatch(sub)
+    live_ids = {s.id for s in widget.state.slots}
+    created = 0
+    for sid, path in planned:
+        if sid not in live_ids:
+            continue
+        created += 1
+        _loading.show_loading_toast(controller, sid)
+        _preview.load_preview_async(controller, path, sid)
+    for path in overflow:
+        logger.warning("load_images: no slot created for %s (grid full?)", path)
+        _loading._emit_mc_load_error(controller, path, _grid_full_reason(controller))
     return created
 
 
