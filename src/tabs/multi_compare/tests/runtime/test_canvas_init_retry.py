@@ -23,6 +23,8 @@ def _fake_self(monkeypatch, *, initialized: bool):
         _schedule_init_retry=MagicMock(),
         update=MagicMock(),
     )
+    # initialize() delegates to the real _nudge_init_retry.
+    self._nudge_init_retry = lambda: MultiCompareCanvasWidget._nudge_init_retry(self)
     return self, scheduled
 
 
@@ -57,3 +59,23 @@ def test_retry_tick_updates_only_until_ready(monkeypatch):
     self.update.reset_mock()
     MultiCompareCanvasWidget._schedule_init_retry(self)
     self.update.assert_not_called()
+
+
+def test_nudge_resets_budget_once_ready(monkeypatch):
+    self, scheduled = _fake_self(monkeypatch, initialized=True)
+    self._init_retry_count = 41
+    MultiCompareCanvasWidget._nudge_init_retry(self)
+    assert self._init_retry_count == 0
+    assert scheduled == []
+
+
+def test_nudge_spends_shared_budget(monkeypatch):
+    self, scheduled = _fake_self(monkeypatch, initialized=False)
+    MultiCompareCanvasWidget._nudge_init_retry(self)
+    MultiCompareCanvasWidget._nudge_init_retry(self)
+    assert self._init_retry_count == 2
+    assert len(scheduled) == 2
+    self._init_retry_count = 50
+    scheduled.clear()
+    MultiCompareCanvasWidget._nudge_init_retry(self)
+    assert scheduled == []

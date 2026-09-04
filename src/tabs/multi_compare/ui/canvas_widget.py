@@ -297,6 +297,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
             mc_first_frame_debug(
                 self, "render() returned NOT-painted (engine not ready yet)"
             )
+            # Cold canvas would otherwise sit at presents==0 until the first
+            # DnD drives a frame — and that frame then pays the full cold-init
+            # cost as visible lag. Keep nudging until frames flow (bounded;
+            # the drag path still initializes as fallback).
+            self._nudge_init_retry()
             return
 
         self._rhi_presents_completed += 1
@@ -367,6 +372,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.request_view_update()
         if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
             QTimer.singleShot(0, self._settle_first_presents)
+        if self._rhi_presents_completed == 0:
+            # Cold canvas: this single update() can vanish pre-exposure
+            # without ever reaching render()/initialize(). Nudge until
+            # frames flow so the first DnD doesn't pay cold-init as lag.
+            self._nudge_init_retry()
 
     def _start_first_frame_sampler(self) -> None:
         """Periodically log what the canvas region actually shows on screen.
@@ -598,6 +608,19 @@ class MultiCompareCanvasWidget(QRhiWidget):
         # up after ~5s; the drag path still initializes as fallback.
         # (image_compare never hits this: continuous repaints init at startup.)
         mc_first_frame_debug(self, "initialize() deferred (not realized), retry scheduled")
+        self._nudge_init_retry()
+
+    def _nudge_init_retry(self) -> None:
+        """Schedule one more paint attempt while the renderer is cold.
+
+        Shared budget with ``initialize()`` (~5s): gives up on persistently
+        broken surfaces instead of update-spamming forever. Hidden widgets
+        never reach ``render()``/``initialize()``, so the chain self-stops
+        off-screen by construction.
+        """
+        if getattr(self._renderer, "initialized", False):
+            self._init_retry_count = 0
+            return
         retries = getattr(self, "_init_retry_count", 0)
         if retries < 50:
             self._init_retry_count = retries + 1
