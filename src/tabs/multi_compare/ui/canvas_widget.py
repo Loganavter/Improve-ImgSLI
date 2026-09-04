@@ -310,10 +310,48 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self._rhi_presents_completed, mc_first_frame_readiness_repr(self),
         )
         if self._rhi_presents_completed <= _FIRST_PRESENT_SETTLE_COUNT:
-            self._settle_first_presents()
+            # P4 settle-pump collapse (plan-mc-pipeline-refactor A4): the
+            # count invariant is untouched -- every painted present still
+            # counts toward the ``presents >= 10`` visual gate -- but only
+            # the boundary presents pay the full compositor restack. The
+            # first present needs it (makes the frame compositor-visible on
+            # Wayland/Vulkan) and the tenth needs it (pre-emit restack, so
+            # firstFrameRendered fires onto a genuinely visible frame);
+            # intermediate presents just pump one canvas repaint to keep the
+            # chain alive until the gate, without the raise_/activate +
+            # win/parent/overlay update churn of flush_qrhi_compositor.
+            if (
+                self._rhi_presents_completed == 1
+                or self._rhi_presents_completed >= _FIRST_PRESENT_SETTLE_COUNT
+            ):
+                self._settle_first_presents()
+            else:
+                self._pump_intermediate_present()
+
+    def _pump_intermediate_present(self) -> None:
+        """Keep the settle chain alive with a single canvas repaint.
+
+        A direct ``update()`` only marks the widget dirty for the next
+        frame (safe to call from inside ``render()``'s own paint), so the
+        next present still happens without the raise_/activate +
+        win/parent/overlay update churn of ``flush_qrhi_compositor``.
+        Guarded: the pump must never break a frame on a half-torn-down
+        widget (teardown races, ``__new__``-only unit fakes). Full
+        ``flush_qrhi_compositor`` stays reserved for the first/tenth
+        present (see ``render()``).
+        """
+        try:
+            self.update()
+        except (RuntimeError, AttributeError):
+            pass
 
     def _settle_first_presents(self) -> None:
-        """Second present + window restack so D3D does not show a see-through hole."""
+        """Boundary-present restack (first + tenth) + pre-emit gate check.
+
+        Runs only where restack matters (see ``render()``'s P4 split):
+        intermediate presents pump via ``_pump_intermediate_present``
+        instead, so D3D still never shows a see-through hole while the
+        per-present flush churn collapses to two full flushes total."""
 
         def _flush() -> None:
             try:
