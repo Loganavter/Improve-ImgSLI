@@ -20,25 +20,142 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_accepted_image_path
 from tabs.multi_compare.debug import (
     mc_dnd_debug as _dnd_log,
     mc_dnd_diag_light_move_enabled,
 )
-from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
+from tabs.multi_compare.models import slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
+from tabs.multi_compare.use_cases import placement as _placement
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _normpath_str(p) -> str:
+    """Normalized path string for DropQueue dedup keys (IC ``slot.py`` parity).
+
+    ``os.path.normpath`` over ``os.fspath`` heals textual variants of the
+    same file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``) without
+    ever equating distinct files.
+    """
+    import os as _os
+
+    try:
+        return _os.path.normpath(_os.fspath(p))
+    except Exception:
+        return str(p)
+
+
+class DropQueue:
+    """FIFO dedup queue for MC external drops — A1 IC mirror.
+
+    Dedup key ``(anchor_slot, normpath)`` (``anchor_slot`` is the pure
+    :func:`placement.anchor_slot_for_path` verdict, ``0`` for root/empty).
+    Max 1 inflight per anchor slot: the next entry for a busy slot waits
+    while entries for free slots flow — same shape as IC's
+    ``image_compare.use_cases.drag_drop.DropQueue`` (there the key is the
+    1/2 slot number). Delivery is one ``images_dropped`` emit per entry,
+    scheduled past the P7 accept via ``QTimer.singleShot(0)``. The
+    internal-drag Move echo never enters the queue (untouched branch in
+    :func:`drop_event`).
+    """
+
+    def __init__(self) -> None:
+        from collections import deque as _dq
+
+        self._queue: _dq[tuple[int, list, object, object]] = _dq()
+        self._inflight_slots: set[int] = set()
+        self._queued_keys: set[tuple[int, str]] = set()
+        self._inflight_keys: set[tuple[int, str]] = set()
+
+    def enqueue(self, anchor_slot: int | None, paths, widget, target, side) -> bool:
+        slot = int(anchor_slot) if anchor_slot is not None else 0
+        uniq: list = []
+        for raw in paths:
+            n = _normpath_str(raw)
+            key = (slot, n)
+            if key in self._queued_keys or key in self._inflight_keys:
+                _dnd_log("DropQueue dedup skip slot=%s path=%s", slot, n)
+                continue
+            uniq.append(raw)
+            self._queued_keys.add(key)
+        if not uniq:
+            _dnd_log("DropQueue enqueue slot=%s -> all deduped, skip", slot)
+            return False
+        self._queue.append((slot, uniq, widget, target, side))
+        _dnd_log(
+            "DropQueue enqueue slot=%s paths=%s queued=%s inflight=%s",
+            slot, [str(p) for p in uniq][:3], len(self._queue),
+            sorted(self._inflight_slots),
+        )
+        self._try_process()
+        return True
+
+    def _try_process(self) -> None:
+        from PySide6.QtCore import QTimer as _QTimer
+
+        entry = None
+        for slot, paths, widget, target, side in list(self._queue):
+            if slot not in self._inflight_slots:
+                entry = (slot, paths, widget, target, side)
+                break
+        if entry is None:
+            return
+        slot, paths, widget, target, side = entry
+        try:
+            self._queue.remove(entry)  # type: ignore[arg-type]
+        except Exception:
+            from collections import deque as _dq
+
+            new_q = _dq(x for x in self._queue if x is not entry)
+            self._queue = new_q
+        normed: list[str] = []
+        for raw in paths:
+            n = _normpath_str(raw)
+            normed.append(n)
+            self._queued_keys.discard((slot, n))
+            self._inflight_keys.add((slot, n))
+        self._inflight_slots.add(slot)
+        _dnd_log("DropQueue _try_process start slot=%s paths=%s", slot, normed[:3])
+
+        def _do_emit(
+            q=self, sl=slot, keys=normed, wid=widget, tgt=target,
+            sd=side, ps=list(paths),
+        ):
+            try:
+                wid.images_dropped.emit(list(ps), tgt, sd)
+            except Exception:
+                logger.exception("[mc-dnd] DropQueue emit failed")
+            for _n in keys:
+                q._inflight_keys.discard((int(sl), _n))
+            q._inflight_slots.discard(int(sl))
+            _dnd_log("DropQueue finish slot=%s remaining queued=%s", sl, len(q._queue))
+            q._try_process()
+
+        _QTimer.singleShot(0, _do_emit)
+
+    def clear(self) -> None:
+        self._queue.clear()
+        self._inflight_slots.clear()
+        self._queued_keys.clear()
+        self._inflight_keys.clear()
+
+
+_drop_queue = DropQueue()
+
+
+def get_drop_queue() -> DropQueue:
+    return _drop_queue
 
 
 def has_image_urls(mime) -> bool:
     if not mime.hasUrls():
         return False
     for url in mime.urls():
-        path = Path(url.toLocalFile())
-        if path.suffix.lower() in _IMAGE_EXTENSIONS:
+        if is_accepted_image_path(url.toLocalFile()):
             return True
     return False
 
@@ -449,7 +566,7 @@ def drop_event(widget, event: QDropEvent) -> None:
         except Exception:
             continue
         local_files.append(local)
-        if Path(local).suffix.lower() in _IMAGE_EXTENSIONS:
+        if is_accepted_image_path(local):
             suffix_hit = True
     if not suffix_hit:
         _dnd_log("drop external ignored (no supported image files)")
@@ -488,8 +605,9 @@ def drop_event(widget, event: QDropEvent) -> None:
 def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop: float) -> None:
     """Deferred half of an external drop: runs past accept/return.
 
-    Resolve → clear-drag dispatch → is_file filter → emit. Stale
-    generations (a newer gesture started first) are dropped.
+    Resolve → clear-drag dispatch → is_file filter → DropQueue enqueue
+    (FIFO dedup, one emit per entry). Stale generations (a newer gesture
+    started first) are dropped.
     """
     try:
         if gen != getattr(widget, "_dnd_gen", None):
@@ -506,7 +624,7 @@ def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop:
         paths = []
         for local in local_files:
             path = Path(local)
-            if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+            if not is_accepted_image_path(path):
                 continue
             try:
                 ok = path.is_file()
@@ -521,7 +639,16 @@ def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop:
         )
         _timing_emit(widget, "drop")
         if paths:
-            widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
+            # Pure-placement anchor for the DropQueue slot key: first leaf
+            # under the resolved target (0 for root/empty) — tree data in,
+            # no live-canvas read. A rapid double-drop of the same file
+            # dedups on (anchor, normpath) instead of double-loading.
+            anchor = _placement.anchor_slot_for_path(widget.state.root, tgt_path)
+            queued = get_drop_queue().enqueue(
+                anchor, paths, widget, (tgt_path, root_tgt), side
+            )
+            if not queued:
+                _dnd_log("drop external deduped (all files already queued/inflight)")
         else:
             _dnd_log("drop external ignored (no supported image files)")
     except Exception:
@@ -564,12 +691,13 @@ def apply_internal_drop(
 
 
 def anchor_slot_for_path(widget, path: tuple[int, ...]) -> int | None:
-    """Return slot_id of the first leaf inside the subtree at ``path``."""
-    node = node_at_path(widget.state.root, path)
-    if node is None:
-        return None
-    first = leaves(node)
-    return first[0].slot_id if first else None
+    """Return slot_id of the first leaf inside the subtree at ``path``.
+
+    Thin shell over the pure :func:`placement.anchor_slot_for_path`
+    (tree data in, no canvas reads) — kept under this name so the
+    internal-drop Move path stays byte-identical.
+    """
+    return _placement.anchor_slot_for_path(widget.state.root, path)
 
 
 def begin_pending_duplicate(widget, source_slot_id: int) -> None:

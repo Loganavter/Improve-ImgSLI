@@ -8,12 +8,22 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_accepted_image_path
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
 from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _filter_image_paths(paths: list[Path]) -> list[Path]:
+    """Suffix-only image filter from the single shared source (bug-a1 guard).
+
+    No ``is_file`` stat here — verdicts that gate accept/route must stay
+    synchronous and cheap; existence is validated downstream
+    (``load_external_paths`` / deferred drop finish).
+    """
+    return [p for p in paths if is_accepted_image_path(p)]
 
 
 def _default_state():
@@ -341,9 +351,7 @@ class MultiCompareTab(TabContract):
             image_paths = [
                 p if isinstance(p, Path) else Path(p) for p in paths
             ]
-            image_paths = [
-                p for p in image_paths if p.suffix.lower() in _IMAGE_EXTENSIONS
-            ]
+            image_paths = _filter_image_paths(image_paths)
             if not image_paths:
                 return False
             # P3A: load directly like IC instead of arming begin_pending_paste
@@ -391,7 +399,7 @@ class MultiCompareTab(TabContract):
         from tabs.multi_compare.debug import mc_dnd_debug
 
         mc_dnd_debug("Tab accepts_drop: %d paths", len(paths))
-        ok = any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        ok = any(is_accepted_image_path(p) for p in paths)
         mc_dnd_debug("Tab accepts_drop -> %s", ok)
         return ok
 
@@ -402,7 +410,7 @@ class MultiCompareTab(TabContract):
         if self._widget is None:
             mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
             return
-        image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
+        image_paths = _filter_image_paths(paths)
         if not image_paths:
             mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
             return
