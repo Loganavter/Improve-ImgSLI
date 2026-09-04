@@ -13,6 +13,7 @@ methods on ``MultiCompareWidget`` that delegate into this module.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -28,6 +29,8 @@ from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def has_image_urls(mime) -> bool:
@@ -268,6 +271,20 @@ def _timing_emit(widget, why: str) -> None:
     )
 
 
+def _safe_preview(widget, event, *, internal: bool) -> None:
+    """Run ``apply_drag_preview`` without ever swallowing ``accept()``.
+
+    Mirrors image_compare's ``_safe_update_drag_overlays``: the accept
+    verdict is already sent (see callers), so a preview failure must degrade
+    to a missing highlight, never to a missing Status answer (which the
+    drag source reads as "wait").
+    """
+    try:
+        apply_drag_preview(widget, event, internal=internal)
+    except Exception:
+        logger.exception("[mc-dnd] apply_drag_preview failed")
+
+
 def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     cancel_pending_placements(widget)
     widget._dnd_preview_sig = None  # new gesture — log its first preview
@@ -279,15 +296,23 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
         _dnd_log(
             "dragEnter internal source=%s", internal_source_slot_id(mime)
         )
-        apply_drag_preview(widget, event, internal=True)
-        _schedule_placeholder_recheck(widget)
+        # Echo: internal drags propose MoveAction (interaction.py) and the
+        # answered action must stay Move. Accept FIRST so the Status answer
+        # never waits on the preview work below.
         event.acceptProposedAction()
+        _safe_preview(widget, event, internal=True)
+        _schedule_placeholder_recheck(widget)
         return
     if has_image_urls(mime):
         _dnd_log("dragEnter external urls=%s", _mime_url_count(mime))
-        apply_drag_preview(widget, event, internal=False)
+        # Force Copy like image_compare's window handler: echoing the
+        # compositor's early proposal (Move/unset on the first motions)
+        # makes the source show move/forbidden cursors until negotiation
+        # converges. Accept FIRST, preview work after.
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+        _safe_preview(widget, event, internal=False)
         _schedule_placeholder_recheck(widget)
-        event.acceptProposedAction()
         return
     _dnd_log("dragEnter ignored (no slot mime, no image urls)")
     event.ignore()
@@ -297,21 +322,28 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
     if mc_dnd_diag_light_move_enabled():
         # Diagnostic-only: image_compare semantics (accept, no work).
         mime = event.mimeData()
-        if has_internal_slot(mime) or has_image_urls(mime):
+        if has_internal_slot(mime):
             if not getattr(widget, "_dnd_light_logged", False):
                 widget._dnd_light_logged = True
                 _dnd_log("dragMove DIAG-LIGHT (accept-only, no dispatch/render)")
             event.acceptProposedAction()
+        elif has_image_urls(mime):
+            if not getattr(widget, "_dnd_light_logged", False):
+                widget._dnd_light_logged = True
+                _dnd_log("dragMove DIAG-LIGHT (accept-only, no dispatch/render)")
+            event.setDropAction(Qt.DropAction.CopyAction)
+            event.accept()
         else:
             event.ignore()
         return
     if has_internal_slot(event.mimeData()):
-        apply_drag_preview(widget, event, internal=True)
         event.acceptProposedAction()
+        _safe_preview(widget, event, internal=True)
         return
     if has_image_urls(event.mimeData()):
-        apply_drag_preview(widget, event, internal=False)
-        event.acceptProposedAction()
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+        _safe_preview(widget, event, internal=False)
         return
     _dnd_log("dragMove ignored (no slot mime, no image urls)")
     event.ignore()

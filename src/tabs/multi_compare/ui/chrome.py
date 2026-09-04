@@ -48,8 +48,9 @@ def dismiss_placeholder_for_dnd(widget) -> bool:
     whole first drag — RASTER+COMMIT happen underneath it, invisibly. After
     the first drop, uploads/mip-cascades drive enough frames to cross the
     gate and the placeholder dismisses itself, which is why only the first
-    DnD looks empty. (image_compare repaints continuously, so its gate
-    crosses at startup and it never hits this.)
+    DnD looks empty. (Both canvases are on-demand; image_compare usually
+    crosses its gate at startup simply by rendering restored session
+    content, so it rarely hits this.)
     Placeholder bg == canvas bg, so hiding is seamless. Kept only while the
     surface never presented (presents == 0): then nothing renders yet and
     the placeholder still covers a real transparent hole.
