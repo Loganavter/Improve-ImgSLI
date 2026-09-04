@@ -47,7 +47,9 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
                 self._source.reset_debug_state()
                 if mc_dnd_debug_enabled():
                     mc_dnd_debug(
-                        "overlay HIDDEN (drag_active=%s)", state.drag_active
+                        "overlay HIDDEN (drag_active=%s presents=%s)",
+                        state.drag_active,
+                        getattr(widget, "_rhi_presents_completed", "?"),
                     )
             return None
         self._dbg_was_active = True
@@ -85,9 +87,10 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         state = widget.state if widget is not None else None
         if recorded:
             mc_dnd_debug(
-                "overlay COMMIT path=%s side=%s (quad recorded, awaiting present)",
+                "overlay COMMIT path=%s side=%s presents=%s (quad recorded, awaiting present)",
                 getattr(state, "drag_target_path", None),
                 getattr(state, "drag_target_side", None),
+                getattr(widget, "_rhi_presents_completed", "?"),
             )
         else:
             mc_dnd_debug(

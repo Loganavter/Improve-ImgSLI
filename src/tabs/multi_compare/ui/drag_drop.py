@@ -22,6 +22,7 @@ from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIO
 from tabs.multi_compare.debug import mc_dnd_debug as _dnd_log
 from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
 from tabs.multi_compare.scene import actions
+from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
 
 
@@ -44,6 +45,56 @@ def _mime_url_count(mime) -> int:
         return len(mime.urls())
     except Exception:
         return -1
+
+
+def _schedule_placeholder_recheck(widget) -> None:
+    """Re-evaluate the placeholder cover shortly after drag-enter.
+
+    The dismiss check in ``apply_drag_preview`` runs synchronously, i.e. one
+    frame behind: at drag-enter presents is still 0 even though the just
+    dispatched ``update()`` is about to present frame #1. Moves re-check
+    every tick, but a user who enters and holds still would never re-check,
+    so retry once after the frame has had time to land. No-op if the drag
+    already ended (or the widget is gone).
+    """
+    try:
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(150, lambda: _placeholder_recheck_tick(widget))
+    except Exception:
+        pass
+
+
+def _placeholder_recheck_tick(widget) -> None:
+    try:
+        if not bool(getattr(getattr(widget, "state", None), "drag_active", False)):
+            return
+        chrome.dismiss_placeholder_for_dnd(widget)
+    except Exception:
+        pass
+
+
+def _canvas_gate_snapshot(widget) -> str:
+    """One-line first-frame-gate status for preview logs.
+
+    Tells whether overlay pixels can actually reach the screen yet:
+    presents vs the 10-frame gate, firstFrameRendered emitted or not,
+    startup placeholder still covering or not. All reads are defensive
+    (fakes in tests may lack any of these).
+    """
+    canvas = getattr(widget, "canvas", None)
+    presents = getattr(canvas, "_rhi_presents_completed", "?")
+    first_frame = getattr(canvas, "_first_frame_emitted", "?")
+    ph = getattr(widget, "_startup_placeholder", None)
+    try:
+        ph_state = (
+            "visible" if ph.isVisible()
+            else "dismissed" if getattr(ph, "_dismissed", False)
+            else "hidden"
+        )
+    except Exception:
+        ph_state = "?" if ph is not None else "none"
+    return f"presents={presents} first_frame={first_frame} placeholder={ph_state}"
 
 
 def internal_source_slot_id(mime) -> int | None:
@@ -83,9 +134,15 @@ def apply_drag_preview(widget, event, internal: bool) -> None:
     if sig != getattr(widget, "_dnd_preview_sig", None):
         widget._dnd_preview_sig = sig
         _dnd_log(
-            "preview internal=%s pos=%s source=%s target_path=%s side=%s root=%s swap=%s",
+            "preview internal=%s pos=%s source=%s target_path=%s side=%s root=%s swap=%s %s",
             internal, pos, source_id, tgt_path, side, root_tgt, swap_id,
+            _canvas_gate_snapshot(widget),
         )
+    # Runs per dragMove, not just on target change: the check is synchronous
+    # (one frame behind the dispatched update), so the first evaluation above
+    # always sees presents==0 on a fresh canvas. Its own logging is deduped
+    # inside the helper; the dispatch below is untouched either way.
+    chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
     widget.store.dispatch(
         actions.set_drag_state(
             active=True,
@@ -102,17 +159,20 @@ def apply_drag_preview(widget, event, internal: bool) -> None:
 def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     cancel_pending_placements(widget)
     widget._dnd_preview_sig = None  # new gesture — log its first preview
+    widget._dnd_ph_sig = None  # ...and its placeholder decision
     mime = event.mimeData()
     if has_internal_slot(mime):
         _dnd_log(
             "dragEnter internal source=%s", internal_source_slot_id(mime)
         )
         apply_drag_preview(widget, event, internal=True)
+        _schedule_placeholder_recheck(widget)
         event.acceptProposedAction()
         return
     if has_image_urls(mime):
         _dnd_log("dragEnter external urls=%s", _mime_url_count(mime))
         apply_drag_preview(widget, event, internal=False)
+        _schedule_placeholder_recheck(widget)
         event.acceptProposedAction()
         return
     _dnd_log("dragEnter ignored (no slot mime, no image urls)")
@@ -305,6 +365,7 @@ def update_pending_drag_preview(widget, pos, *, internal: bool) -> None:
                 target_swap_slot_id=swap_id,
             )
         )
+        chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
         return
     if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
         widget.store.dispatch(actions.set_drag_state(active=False))
@@ -319,6 +380,7 @@ def update_pending_drag_preview(widget, pos, *, internal: bool) -> None:
             target_root=root_tgt,
         )
     )
+    chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
 
 
 def event_filter(widget, watched, event) -> bool:
