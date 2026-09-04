@@ -1,5 +1,7 @@
 """Drag & drop / pending-placement orchestration for ``MultiCompareWidget``.
 
+Audit-Meta: pattern=thin-owner reason="DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites"
+
 Split out of ``widget.py`` to keep that class down to composition/wiring --
 mirrors the ``use_cases`` split applied to ``MultiCompareController``. Every
 function here takes the widget as its first argument and reads/writes its
