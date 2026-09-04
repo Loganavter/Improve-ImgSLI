@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter
 
 from tabs.multi_compare.canvas.rhi_overlay_pass_base import FullscreenOverlayTexturePass
+from tabs.multi_compare.debug import mc_dnd_debug, mc_dnd_debug_enabled
 from tabs.multi_compare.scene.passes.drag_overlay import DragDropOverlaySource
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
@@ -30,6 +31,8 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
     def __init__(self) -> None:
         super().__init__()
         self._source = DragDropOverlaySource()
+        self._dbg_was_active = False
+        self._dbg_recorded = False
 
     def should_paint(self, ctx) -> bool:
         if ctx.widget is None:
@@ -39,7 +42,15 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
     def _raster(self, widget, ctx) -> QImage | None:
         state = widget.state
         if not self._source.should_paint(ctx.composition, state):
+            if self._dbg_was_active:
+                self._dbg_was_active = False
+                self._source.reset_debug_state()
+                if mc_dnd_debug_enabled():
+                    mc_dnd_debug(
+                        "overlay HIDDEN (drag_active=%s)", state.drag_active
+                    )
             return None
+        self._dbg_was_active = True
         fb_w, fb_h = ctx.framebuffer_size
         img = QImage(
             max(1, int(fb_w)),
@@ -57,6 +68,34 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         painter.restore()
         painter.end()
         return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
+
+    def record(self, command_buffer, widget, ctx) -> None:
+        super().record(command_buffer, widget, ctx)
+        # COMMIT = the quad was actually written into this frame's command
+        # buffer (raster + texture upload in prepare, then draw here).
+        # RASTER without COMMIT means the pass produced an image that never
+        # reached the framebuffer (culled pass / missing pipeline).
+        if not mc_dnd_debug_enabled():
+            self._dbg_recorded = bool(self.active and self.pipeline is not None)
+            return
+        recorded = bool(self.active and self.pipeline is not None)
+        if recorded == self._dbg_recorded:
+            return
+        self._dbg_recorded = recorded
+        state = widget.state if widget is not None else None
+        if recorded:
+            mc_dnd_debug(
+                "overlay COMMIT path=%s side=%s (quad recorded, awaiting present)",
+                getattr(state, "drag_target_path", None),
+                getattr(state, "drag_target_side", None),
+            )
+        else:
+            mc_dnd_debug(
+                "overlay quad NOT recorded (active=%s pipeline=%s) — "
+                "rasterized but not drawn",
+                self.active,
+                self.pipeline is not None,
+            )
 
 
 RENDER_PASSES: list[FullscreenOverlayTexturePass] = [DragDropOverlayPass()]

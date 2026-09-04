@@ -36,6 +36,12 @@ def maybe_start_slot_drag(handler, local_pos: QPointF) -> None:
     slot_id = handler._lmb_press_slot_id
     handler._lmb_press_pos = None
     handler._lmb_press_slot_id = None
+    try:
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("internal drag: kickoff source_slot=%s", slot_id)
+    except Exception:
+        pass
     handler._start_internal_drag(slot_id)
 
 

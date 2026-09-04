@@ -19,6 +19,7 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
 from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from tabs.multi_compare.debug import mc_dnd_debug as _dnd_log
 from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
@@ -36,6 +37,13 @@ def has_image_urls(mime) -> bool:
 
 def has_internal_slot(mime) -> bool:
     return mime.hasFormat(INTERNAL_SLOT_MIME)
+
+
+def _mime_url_count(mime) -> int:
+    try:
+        return len(mime.urls())
+    except Exception:
+        return -1
 
 
 def internal_source_slot_id(mime) -> int | None:
@@ -61,12 +69,23 @@ def resolve_drop_target(widget, pos, *, internal: bool):
 
 
 def apply_drag_preview(widget, event, internal: bool) -> None:
+    pos = event.position().toPoint()
     tgt_path, side, root_tgt, swap_id = resolve_drop_target(
-        widget, event.position().toPoint(), internal=internal
+        widget, pos, internal=internal
     )
     source_id = (
         internal_source_slot_id(event.mimeData()) if internal else None
     )
+    # dragMove fires per mouse tick — log only when the resolved target
+    # changes, otherwise one gesture floods the log with identical lines.
+    # The dispatch below stays per-tick (unchanged runtime behavior).
+    sig = (internal, source_id, tgt_path, side, root_tgt, swap_id)
+    if sig != getattr(widget, "_dnd_preview_sig", None):
+        widget._dnd_preview_sig = sig
+        _dnd_log(
+            "preview internal=%s pos=%s source=%s target_path=%s side=%s root=%s swap=%s",
+            internal, pos, source_id, tgt_path, side, root_tgt, swap_id,
+        )
     widget.store.dispatch(
         actions.set_drag_state(
             active=True,
@@ -82,14 +101,21 @@ def apply_drag_preview(widget, event, internal: bool) -> None:
 
 def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     cancel_pending_placements(widget)
-    if has_internal_slot(event.mimeData()):
+    widget._dnd_preview_sig = None  # new gesture — log its first preview
+    mime = event.mimeData()
+    if has_internal_slot(mime):
+        _dnd_log(
+            "dragEnter internal source=%s", internal_source_slot_id(mime)
+        )
         apply_drag_preview(widget, event, internal=True)
         event.acceptProposedAction()
         return
-    if has_image_urls(event.mimeData()):
+    if has_image_urls(mime):
+        _dnd_log("dragEnter external urls=%s", _mime_url_count(mime))
         apply_drag_preview(widget, event, internal=False)
         event.acceptProposedAction()
         return
+    _dnd_log("dragEnter ignored (no slot mime, no image urls)")
     event.ignore()
 
 
@@ -102,10 +128,13 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
         apply_drag_preview(widget, event, internal=False)
         event.acceptProposedAction()
         return
+    _dnd_log("dragMove ignored (no slot mime, no image urls)")
     event.ignore()
 
 
 def drag_leave_event(widget, event: QDragLeaveEvent) -> None:
+    _dnd_log("dragLeave")
+    widget._dnd_preview_sig = None
     widget.store.dispatch(actions.set_drag_state(active=False))
     event.accept()
 
@@ -117,24 +146,38 @@ def drop_event(widget, event: QDropEvent) -> None:
         tgt_path, side, _, swap_id = resolve_drop_target(
             widget, event.position().toPoint(), internal=True
         )
+        _dnd_log(
+            "drop internal source=%s target_path=%s side=%s swap=%s",
+            source_id, tgt_path, side, swap_id,
+        )
+        widget._dnd_preview_sig = None
         widget.store.dispatch(actions.set_drag_state(active=False))
         if source_id is not None and side is not None:
             apply_internal_drop(widget, source_id, tgt_path, side, swap_id)
+        else:
+            _dnd_log("drop internal ignored (source=%s side=%s)", source_id, side)
         event.acceptProposedAction()
         return
 
     tgt_path, side, root_tgt, _ = resolve_drop_target(
         widget, event.position().toPoint(), internal=False
     )
+    widget._dnd_preview_sig = None
     widget.store.dispatch(actions.set_drag_state(active=False))
     paths = []
     for url in mime.urls():
         path = Path(url.toLocalFile())
         if path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS:
             paths.append(path)
+    _dnd_log(
+        "drop external files=%d target_path=%s side=%s root=%s",
+        len(paths), tgt_path, side, root_tgt,
+    )
     if paths:
         widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
         event.acceptProposedAction()
+    else:
+        _dnd_log("drop external ignored (no supported image files)")
 
 
 def apply_internal_drop(
@@ -145,13 +188,23 @@ def apply_internal_drop(
     swap_slot_id: int | None,
 ) -> None:
     if side == "center" and swap_slot_id is not None and swap_slot_id != source_id:
+        _dnd_log("internal drop: swap %s <-> %s", source_id, swap_slot_id)
         widget.store.dispatch(actions.swap_slots(source_id, swap_slot_id))
         return
     if target_path is None:
+        _dnd_log("internal drop: ignored (target_path=None side=%s)", side)
         return
     anchor_slot = anchor_slot_for_path(widget, target_path)
     if anchor_slot is None or anchor_slot == source_id:
+        _dnd_log(
+            "internal drop: ignored (source=%s anchor=%s side=%s)",
+            source_id, anchor_slot, side,
+        )
         return
+    _dnd_log(
+        "internal drop: move %s anchor=%s path=%s side=%s",
+        source_id, anchor_slot, target_path, side,
+    )
     widget.store.dispatch(
         actions.move_slot(
             source_slot_id=source_id,
@@ -175,9 +228,12 @@ def begin_pending_duplicate(widget, source_slot_id: int) -> None:
     cancel_pending_placements(widget)
     source = next((s for s in widget.state.slots if s.id == source_slot_id), None)
     if source is None or source.image is None:
+        _dnd_log("pending duplicate: ignored (no image source=%s)", source_slot_id)
         return
     if len(widget.state.slots) >= widget.state.max_slots:
+        _dnd_log("pending duplicate: ignored (max_slots reached)")
         return
+    _dnd_log("pending duplicate: armed source=%s", source_slot_id)
     widget._pending_duplicate_source = source_slot_id
     arm_pending_placement_input(widget)
     update_pending_drag_preview(widget, canvas_cursor_pos(widget), internal=True)
@@ -188,9 +244,12 @@ def begin_pending_paste(widget, paths: list[Path]) -> None:
     cancel_pending_placements(widget)
     valid = [Path(p) for p in paths if Path(p).is_file()]
     if not valid:
+        _dnd_log("pending paste: ignored (no valid files)")
         return
     if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
+        _dnd_log("pending paste: ignored (max_slots reached)")
         return
+    _dnd_log("pending paste: armed files=%d", len(valid))
     widget._pending_paste_paths = valid
     arm_pending_placement_input(widget)
     update_pending_drag_preview(widget, canvas_cursor_pos(widget), internal=False)
@@ -314,7 +373,12 @@ def finalize_pending_paste(
     # Empty canvas: compute_drop_target returns (None, None, True, None).
     # Real file dropEvent still emits; add_image_at treats target_root.
     if side is None and not target_root:
+        _dnd_log("pending paste: ignored (side=None root=False)")
         return
+    _dnd_log(
+        "pending paste: finalize files=%d path=%s side=%s root=%s",
+        len(paths), target_path, side, target_root,
+    )
     widget.images_dropped.emit(list(paths), (target_path, target_root), side)
 
 
@@ -329,9 +393,15 @@ def finalize_pending_duplicate(
         return
     source = next((s for s in widget.state.slots if s.id == source_id), None)
     if source is None or source.image is None:
+        _dnd_log("pending duplicate: ignored (source gone=%s)", source_id)
         return
     if len(widget.state.slots) >= widget.state.max_slots:
+        _dnd_log("pending duplicate: ignored (max_slots reached)")
         return
+    _dnd_log(
+        "pending duplicate: finalize source=%s path=%s side=%s root=%s",
+        source_id, target_path, side, target_root,
+    )
     image = source.image.copy() if hasattr(source.image, "copy") else source.image
     widget.store.dispatch(
         actions.add_slot(

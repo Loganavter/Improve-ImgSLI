@@ -378,15 +378,27 @@ class MultiCompareTab(TabContract):
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:
-        return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab accepts_drop: %d paths", len(paths))
+        ok = any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        mc_dnd_debug("Tab accepts_drop -> %s", ok)
+        return ok
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab handle_drop: ENTER %d paths hint=%r", len(paths), hint)
         if self._widget is None:
+            mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
             return
         image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
         if image_paths:
+            mc_dnd_debug("Tab handle_drop: begin_pending_paste %d paths", len(image_paths))
             # Same placement UX as external DnD / clipboard paste.
             self._widget.begin_pending_paste(image_paths)
+        else:
+            mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
 
     def dispose(self) -> None:
         if self._widget is not None:
