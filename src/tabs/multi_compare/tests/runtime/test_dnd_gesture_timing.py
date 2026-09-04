@@ -38,6 +38,7 @@ def _event(mime, *, pos=QPoint(10, 10)):
         position=lambda: SimpleNamespace(toPoint=lambda: pos),
         mimeData=lambda: mime,
         acceptProposedAction=lambda: setattr(_event, "accepted", True),
+        setDropAction=lambda action: setattr(_event, "drop_action", action),
         accept=lambda: None,
         ignore=lambda: None,
     )
@@ -136,10 +137,15 @@ def test_diag_light_move_skips_dispatch(monkeypatch, tmp_path):
     event = SimpleNamespace(
         mimeData=lambda: _mime([_url(img)]),
         acceptProposedAction=lambda: accepted.append(True),
+        setDropAction=lambda action: accepted.append(("drop_action", action)),
+        accept=lambda: accepted.append("accept"),
         ignore=lambda: None,
     )
     drag_drop.drag_move_event(widget, event)
-    assert accepted == [True]
+    from PySide6.QtCore import Qt as _Qt
+
+    assert ("drop_action", _Qt.DropAction.CopyAction) in accepted
+    assert "accept" in accepted
     assert widget.dispatched_calls == []
 
 
@@ -152,6 +158,8 @@ def test_diag_light_move_off_by_default(monkeypatch, tmp_path):
         position=lambda: SimpleNamespace(toPoint=lambda: QPoint(10, 10)),
         mimeData=lambda: _mime([_url(img)]),
         acceptProposedAction=lambda: None,
+        setDropAction=lambda action: None,
+        accept=lambda: None,
         ignore=lambda: None,
     )
     drag_drop.drag_move_event(widget, event)
