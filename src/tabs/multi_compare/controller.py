@@ -21,6 +21,7 @@ from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
 from tabs.multi_compare.use_cases import export as export_use_cases
 from tabs.multi_compare.use_cases import loading as loading_use_cases
+from tabs.multi_compare.use_cases import preview_decode as preview_decode_use_cases
 from tabs.multi_compare.widget import MultiCompareWidget
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -367,6 +368,12 @@ class MultiCompareController:
 
     def _apply_full_resolution(self, slot_id: int, path: Path, store) -> None:
         loading_use_cases.apply_full_resolution(self, slot_id, path, store)
+
+    def _on_preview_ready(self, slot_id: int, path: Path, result) -> None:
+        preview_decode_use_cases.on_preview_ready(self, slot_id, path, result)
+
+    def _on_preview_error(self, path: Path, slot_id: int, err) -> None:
+        preview_decode_use_cases.on_preview_error(self, path, slot_id, err)
 
     def _load_single_auto(self, path: Path) -> None:
         loading_use_cases.load_single_auto(self, path)
