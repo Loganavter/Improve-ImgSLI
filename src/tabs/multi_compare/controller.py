@@ -280,12 +280,14 @@ class MultiCompareController:
         self.widget.store.dispatch(mc_actions.clear())
 
     def _on_images_dropped(self, paths: list, target, side) -> None:
-        # Deferred like image_compare's drop load (it uses singleShot(150)):
-        # decoding the dropped files synchronously here blocks the GUI
-        # thread *inside* the drop handler (measured 381ms drop→finish on
-        # Wayland), and the drag source shows its busy cursor until
-        # wl_data_offer.finish() arrives. Next-tick is enough — the point
-        # is to let the drop handler (and Qt's finish()) return first.
+        # P7: kept (not collapsed into drop_event's defer) on purpose. The
+        # canvas dropEvent already returns past accept before emitting, but
+        # other emitters (tab.handle_drop's no-controller fallback,
+        # finalize_pending_paste) can fire inside a window-accept window, so
+        # this singleShot(0) is the load-past-finish guarantee for ALL of
+        # them. Cost is one extra event-loop hop (~0ms), not cursor-relevant:
+        # decoding already happens in GenericWorkers (P2), and the pre-accept
+        # sync segment (resolve/dispatch/stat) moved to _finish_external_drop.
         from PySide6.QtCore import QTimer
 
         QTimer.singleShot(

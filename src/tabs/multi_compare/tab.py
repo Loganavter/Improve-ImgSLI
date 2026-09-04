@@ -411,9 +411,20 @@ class MultiCompareTab(TabContract):
         # begin_pending_paste arming, so no click-to-place and no Esc
         # cancel; the chrome/carry hint carries no canvas position and is
         # ignored for placement. Same placement UX as external canvas DnD.
+        # P7: this runs synchronously inside the window's
+        # acceptProposedAction window (window_event_handler accepts right
+        # after route_drop returns), so only the suffix-only verdict stays
+        # synchronous — slot/toast/worker-start move past accept via
+        # singleShot, otherwise the DnD source holds its busy cursor.
         if self._controller is not None:
-            mc_dnd_debug("Tab handle_drop: direct-load %d paths", len(image_paths))
-            self._controller.load_external_paths(image_paths)
+            mc_dnd_debug("Tab handle_drop: direct-load %d paths (deferred past accept)", len(image_paths))
+            from PySide6.QtCore import QTimer
+
+            controller = self._controller
+            deferred = list(image_paths)
+            QTimer.singleShot(
+                0, lambda: controller.load_external_paths(deferred)
+            )
         else:
             mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
             self._widget.images_dropped.emit(list(image_paths), (None, False), None)
