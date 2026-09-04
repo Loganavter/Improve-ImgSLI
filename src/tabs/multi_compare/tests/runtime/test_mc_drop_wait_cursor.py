@@ -162,12 +162,12 @@ class _FakeWidget:
         if cb is not None:
             cb(list(paths), target, side)
 
-    def add_image_auto(self, path, image, label=""):
-        return placement_use_cases.add_image_auto(self, path, image, label)
+    def add_image_auto(self, path, label=""):
+        return placement_use_cases.add_image_auto(self, path, label)
 
-    def add_image_at(self, path, image, label, target_path, side, target_root):
+    def add_image_at(self, path, label, target_path, side, target_root):
         return placement_use_cases.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, label, target_path, side, target_root
         )
 
 
@@ -239,8 +239,8 @@ def test_internal_drop_stays_synchronous(qapp):
     holder: dict = {}
     widget = _FakeWidget(mc_store, holder)
     # Two slots so the move has somewhere to go: anchor != source.
-    placement_use_cases.add_image_auto(widget, Path("a.png"), None, "a")
-    placement_use_cases.add_image_auto(widget, Path("b.png"), None, "b")
+    placement_use_cases.add_image_auto(widget, Path("a.png"), "a")
+    placement_use_cases.add_image_auto(widget, Path("b.png"), "b")
     n_before = len(mc_store.dispatched)
     mime = SimpleNamespace(
         hasUrls=lambda: False,
@@ -277,7 +277,9 @@ def test_tab_handle_drop_returns_before_slot(qapp, tmp_path):
     _pump(qapp)
     assert len(widget.state.slots) == 1
     assert widget.state.slots[0].path == path
-    assert widget.state.slots[0].image is None  # imageless until worker lands
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    assert resolve_slot_source(controller.pixel_cache, widget.state.slots[0]) is None  # imageless until worker lands
     assert len(toast_manager.shown) == 1
     assert len(pool.workers) == 1
 

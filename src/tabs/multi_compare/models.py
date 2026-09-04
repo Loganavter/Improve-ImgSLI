@@ -4,39 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
-
-if TYPE_CHECKING:
-    from PySide6.QtGui import QImage
-
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from typing import Union
 
 
 @dataclass
 class CompareSlot:
     """One image slot referenced by a Leaf in the layout tree.
 
-    ``image`` starts life as a bounded ``QImage`` preview (progressive load,
-    see ``shared.image_processing.progressive_loader``) for large sources and
-    is later replaced in-place by a ``TiledPixelStore`` once the full-res
-    decode finishes (``scene.store.ReplaceSlotImage``). Small/fast sources
-    skip the preview tier and go straight to ``TiledPixelStore``.
+    Path-only ``SlotSource`` (B1, IC ``ImageItem`` parity): pixels live in
+    the session-owned :class:`pipeline.cache.MultiComparePixelCache`
+    (keyed ``(normpath, mtime, size)``), never here — so Redux snapshots
+    (incl. undo) stay small, serializable, and free of closable stores.
+    ``revision`` bumps once per decoded-tier arrival (``NoteSlotPixels``)
+    so tier fills still produce a new state object for subscribers without
+    carrying any pixels through the reducer.
     """
 
     id: int
     path: Path | None = None
     label: str = ""
-    image: "TiledPixelStore | QImage | None" = None
-
-    @property
-    def is_loaded(self) -> bool:
-        return self.image is not None
-
-    @property
-    def is_preview_only(self) -> bool:
-        from PySide6.QtGui import QImage
-
-        return isinstance(self.image, QImage)
+    revision: int = 0
 
 
 @dataclass

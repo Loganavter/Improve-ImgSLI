@@ -1,10 +1,12 @@
 """Multi Compare first-image DnD must not decode on the GUI thread (P2).
 
 ``on_images_dropped`` only does placement + imageless slot creation
-synchronously; the bounded preview decodes in a ``GenericWorker`` and fills
-the slot via ``replace_slot_image`` on result (IC ``ensure_async`` parity),
-with full-res as the second stage. A failed load removes its pre-created
-slot (sync-UX parity: the old path skipped slot creation on failure).
+synchronously; the bounded preview decodes in a ``GenericWorker`` and lands
+in the session pixel cache + ``note_slot_pixels`` on result (IC
+``ensure_async`` parity), with full-res as the second stage. A failed load
+removes its pre-created slot (sync-UX parity: the old path skipped slot
+creation on failure). B1: slots stay path-only throughout — tiers are
+asserted via the controller cache.
 """
 
 from __future__ import annotations
@@ -91,12 +93,12 @@ class _FakeWidget:
     def state(self):
         return self.store.state
 
-    def add_image_auto(self, path, image, label=""):
-        return placement_use_cases.add_image_auto(self, path, image, label)
+    def add_image_auto(self, path, label=""):
+        return placement_use_cases.add_image_auto(self, path, label)
 
-    def add_image_at(self, path, image, label, target_path, side, target_root):
+    def add_image_at(self, path, label, target_path, side, target_root):
         return placement_use_cases.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, label, target_path, side, target_root
         )
 
 
@@ -149,15 +151,18 @@ def test_drop_handler_returns_fast_with_imageless_slot(tmp_path, monkeypatch):
     assert len(widget.state.slots) == 1
     slot = widget.state.slots[0]
     assert slot.path == path
-    assert slot.image is None  # imageless until the worker lands
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    assert resolve_slot_source(controller.pixel_cache, slot) is None  # imageless until the worker lands
     assert 0 in controller._loading_toasts  # toast armed synchronously
     assert calls == []  # nothing decoded on the GUI thread
     assert len(pool.workers) == 1  # preview worker queued
 
 
 def test_preview_fills_slot_then_full_res_second_stage(tmp_path):
-    """Worker preview → replace_slot_image → full-res worker → store."""
+    """Worker preview → cache + note_slot_pixels → full-res worker → store."""
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
 
     pool = _CapturingPool()
     controller, widget, mc_store, toast_manager, _ = _make_controller(pool)
@@ -167,8 +172,10 @@ def test_preview_fills_slot_then_full_res_second_stage(tmp_path):
     pool.run_one()  # preview worker lands
 
     slot = widget.state.slots[0]
-    assert isinstance(slot.image, QImage)
-    assert not slot.image.isNull()
+    preview = resolve_slot_source(controller.pixel_cache, slot)
+    assert isinstance(preview, QImage)
+    assert not preview.isNull()
+    assert slot.revision == 1  # preview tier noted through dispatch, no pixels in state
     # Full-res second stage queued by the preview fill.
     assert len(pool.workers) >= 1
 
@@ -176,8 +183,10 @@ def test_preview_fills_slot_then_full_res_second_stage(tmp_path):
     pool.run_all()  # pyramid worker drains
 
     slot = widget.state.slots[0]
-    assert isinstance(slot.image, TiledPixelStore)
-    assert slot.image.is_open
+    full = resolve_slot_source(controller.pixel_cache, slot)
+    assert isinstance(full, TiledPixelStore)
+    assert full.is_open
+    assert slot.revision == 2  # full tier noted; pixels live in the cache only
     # Toast ran the full lifecycle: shown once, finished with success.
     assert len(toast_manager.shown) == 1
     assert toast_manager.updated[-1][2]["success"] is True
@@ -227,10 +236,12 @@ def test_stale_preview_never_touches_reused_slot_id(tmp_path):
     n_dispatched = len(mc_store.dispatched)
     preview_decode_use_cases.on_preview_ready(controller, 0, path_a, (stale_preview, True))
 
-    # Newer slot untouched: still imageless, no replace dispatched for it.
+    # Newer slot untouched: still imageless, no note dispatched for it.
     assert widget.state.slots[0].path == path_b
-    assert widget.state.slots[0].image is None
-    replaces = [
-        a for a in mc_store.dispatched[n_dispatched:] if type(a).__name__ == "ReplaceSlotImage"
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    assert resolve_slot_source(controller.pixel_cache, widget.state.slots[0]) is None
+    notes = [
+        a for a in mc_store.dispatched[n_dispatched:] if type(a).__name__ == "NoteSlotPixels"
     ]
-    assert replaces == []
+    assert notes == []

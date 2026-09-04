@@ -73,9 +73,10 @@ _UNDOABLE_TYPES = frozenset(
         "SET_CAPTURE_SIZE_RELATIVE",
         "SET_CAPTURE_VISIBLE",
         "SET_CAPTURE_COLOR",
-        # multi_compare session state (slot "multi_compare.state"). Store
-        # closing for removed slots is deferred (GC/session teardown), so a
-        # reference-snapshot undo of add/remove restores a still-open store.
+        # multi_compare session state (slot "multi_compare.state"). Slots
+        # are path-only (pixels live in the tab's session cache, never in
+        # state), so a reference-snapshot undo of add/remove restores paths
+        # that re-resolve against the still-warm cache.
         "multi_compare/add_slot",
         "multi_compare/remove_slot",
         "multi_compare/rename_slot",

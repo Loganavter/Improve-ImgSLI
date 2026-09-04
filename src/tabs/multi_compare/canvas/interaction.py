@@ -32,12 +32,17 @@ def clamp_pan_values(
     return pan_x, pan_y
 
 
-def fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-    if slot.image is None or rect.width() <= 0 or rect.height() <= 0:
+def fit_scale_for(slot: CompareSlot, rect: QRect, source=None) -> tuple[float, float]:
+    """Fit scale from the slot's cached tier (B1: ``source`` passed by the caller).
+
+    ``None`` source (imageless slot) reads as ``(1.0, 1.0)``, same as an
+    imageless slot before B1.
+    """
+    if source is None or rect.width() <= 0 or rect.height() <= 0:
         return 1.0, 1.0
     from shared.image_processing.tiled_pixel_store import pixel_source_size
 
-    w, h = pixel_source_size(slot.image)
+    w, h = pixel_source_size(source)
     if h <= 0 or w <= 0:
         return 1.0, 1.0
     img_ar = w / h
@@ -45,6 +50,16 @@ def fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
     if img_ar > cell_ar:
         return 1.0, cell_ar / img_ar
     return img_ar / cell_ar, 1.0
+
+
+def _source_for(widget, slot):
+    """Cached tier for hit-test math (canvas owns the ``pixel_cache`` ref)."""
+    try:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        return resolve_slot_source(getattr(widget, "pixel_cache", None), slot)
+    except Exception:
+        return None
 
 
 def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
@@ -110,7 +125,7 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
         event.ignore()
         return
 
-    fit_x, fit_y = fit_scale_for(slot, rect)
+    fit_x, fit_y = fit_scale_for(slot, rect, _source_for(widget, slot))
     cell_u = (pos.x() - rect.x()) / rect.width()
     cell_v = (pos.y() - rect.y()) / rect.height()
 
@@ -241,7 +256,9 @@ def handle_mouse_press_event(widget, event: QMouseEvent) -> None:
             slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
             widget._pan_ref_rect = rect
             widget._pan_ref_fit = (
-                fit_scale_for(slot, rect) if slot is not None else (1.0, 1.0)
+                fit_scale_for(slot, rect, _source_for(widget, slot))
+                if slot is not None
+                else (1.0, 1.0)
             )
         else:
             widget._pan_ref_rect = widget.rect()
@@ -327,7 +344,20 @@ def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
             split_path, _idx, _drect, _direction, weights = div
             n = len(weights)
             if n > 0:
-                widget._do_dispatch(actions.set_split_weights(split_path, [1.0] * n))
+                from tabs.multi_compare.pipeline.cache import sizes_for_slots
+                from tabs.multi_compare.scene import actions as _mc_actions
+
+                sizes = None
+                try:
+                    sizes = sizes_for_slots(
+                        getattr(widget, "pixel_cache", None),
+                        getattr(getattr(widget, "state", None), "slots", None),
+                    )
+                except Exception:
+                    sizes = None
+                widget._do_dispatch(
+                    _mc_actions.set_split_weights(split_path, [1.0] * n, sizes=sizes)
+                )
             event.accept()
 
 
@@ -351,7 +381,7 @@ def _keyboard_pan_reference(widget) -> tuple[QRect, tuple[float, float]]:
                 (s for s in widget.state.slots if s.id == leaf.slot_id), None
             )
             if slot is not None:
-                return rect, fit_scale_for(slot, rect)
+                return rect, fit_scale_for(slot, rect, _source_for(widget, slot))
     return widget.rect(), (1.0, 1.0)
 
 
@@ -414,15 +444,17 @@ def start_internal_drag(widget, slot_id: int) -> None:
 
     rects = widget._leaf_rects()
     rect = next((r for l, r in rects if l.slot_id == slot_id), None)
-    if rect is not None and slot is not None and slot.image is not None:
+    if rect is not None and slot is not None:
         from PySide6.QtGui import QPixmap
 
         from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
 
-        qimg = qimage_from_pixel_source(slot.image)
-        preview = QPixmap.fromImage(qimg).scaledToWidth(
-            160, Qt.TransformationMode.SmoothTransformation
-        )
-        drag.setPixmap(preview)
-        drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
+        source = _source_for(widget, slot)
+        if source is not None:
+            qimg = qimage_from_pixel_source(source)
+            preview = QPixmap.fromImage(qimg).scaledToWidth(
+                160, Qt.TransformationMode.SmoothTransformation
+            )
+            drag.setPixmap(preview)
+            drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
     drag.exec(Qt.DropAction.MoveAction)

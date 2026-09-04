@@ -22,12 +22,7 @@ import dataclasses
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from PySide6.QtGui import QImage
-
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from typing import Callable
 
 from tabs.multi_compare.models import (
     CompareSlot,
@@ -57,7 +52,6 @@ class MultiCompareAction:
 @dataclass(frozen=True)
 class AddSlot(MultiCompareAction):
     path: Path
-    image: "TiledPixelStore | QImage | None"
     label: str
     target_path: tuple[int, ...] | None
     side: str | None
@@ -65,14 +59,19 @@ class AddSlot(MultiCompareAction):
 
 
 @dataclass(frozen=True)
-class ReplaceSlotImage(MultiCompareAction):
-    """Swap a slot's image tier: imageless → progressive-preview ``QImage``,
-    then preview → the real full-res ``TiledPixelStore`` once background
-    decoding finishes — see ``MultiCompareController._load_full_resolution_async``
-    / ``use_cases/preview_decode.load_preview_async``."""
+class NoteSlotPixels(MultiCompareAction):
+    """A decoded tier landed in the session pixel cache for ``slot_id``.
+
+    B1 replacement for ``ReplaceSlotImage``: pixels travel
+    worker → :class:`pipeline.cache.MultiComparePixelCache`, never through
+    the action/reducer — this only bumps the slot's ``revision`` (pure
+    ``dataclasses.replace``) so subscribers rebuild composition / re-sync
+    textures exactly as they did on the old image-carrying action. Tier is
+    ``"preview"`` (bounded ``QImage``) or ``"full"`` (``TiledPixelStore``).
+    """
 
     slot_id: int
-    image: "TiledPixelStore | QImage"
+    tier: str
 
 
 @dataclass(frozen=True)
@@ -138,6 +137,11 @@ class SetDragState(MultiCompareAction):
 class SetSplitWeights(MultiCompareAction):
     path: tuple[int, ...]
     weights: tuple[float, ...]
+    # Natural ``(w, h)`` sizes per slot id, resolved from the session pixel
+    # cache at the dispatch call site — the reducer stays pure (B1: pixels
+    # are no longer on the slot). ``None``/missing = imageless (same outcome
+    # as an imageless slot before B1: min-share clamp only).
+    sizes: tuple[tuple[int, tuple[int, int]], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -168,7 +172,6 @@ class actions:
     @staticmethod
     def add_slot(
         path: Path,
-        image: "TiledPixelStore",
         label: str,
         target_path: tuple[int, ...] | None = None,
         side: str | None = None,
@@ -177,7 +180,6 @@ class actions:
         return AddSlot(
             type="multi_compare/add_slot",
             path=path,
-            image=image,
             label=label,
             target_path=target_path,
             side=side,
@@ -185,11 +187,11 @@ class actions:
         )
 
     @staticmethod
-    def replace_slot_image(slot_id: int, image: "TiledPixelStore") -> ReplaceSlotImage:
-        return ReplaceSlotImage(
-            type="multi_compare/replace_slot_image",
+    def note_slot_pixels(slot_id: int, tier: str) -> NoteSlotPixels:
+        return NoteSlotPixels(
+            type="multi_compare/note_slot_pixels",
             slot_id=slot_id,
-            image=image,
+            tier=tier,
         )
 
     @staticmethod
@@ -272,12 +274,15 @@ class actions:
 
     @staticmethod
     def set_split_weights(
-        path: tuple[int, ...], weights: tuple[float, ...] | list[float]
+        path: tuple[int, ...],
+        weights: tuple[float, ...] | list[float],
+        sizes: dict[int, tuple[int, int]] | None = None,
     ) -> SetSplitWeights:
         return SetSplitWeights(
             type="multi_compare/set_split_weights",
             path=tuple(path),
             weights=tuple(weights),
+            sizes=tuple(sorted(sizes.items())) if sizes else None,
         )
 
     @staticmethod
@@ -328,7 +333,6 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             id=slot_id,
             path=action.path,
             label=action.label or (action.path.stem if action.path else ""),
-            image=action.image,
         )
         new_slots = list(state.slots) + [slot]
         if action.target_root or state.root is None:
@@ -342,13 +346,15 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             new_root = state.root
         return _replace(state, slots=new_slots, root=new_root)
 
-    if isinstance(action, ReplaceSlotImage):
+    if isinstance(action, NoteSlotPixels):
         found = False
         new_slots = []
         for slot in state.slots:
             if slot.id == action.slot_id:
                 found = True
-                new_slots.append(dataclasses.replace(slot, image=action.image))
+                new_slots.append(
+                    dataclasses.replace(slot, revision=slot.revision + 1)
+                )
             else:
                 new_slots.append(slot)
         if not found:
@@ -356,12 +362,11 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, slots=new_slots)
 
     if isinstance(action, RemoveSlot):
-        # Deliberately NOT closing the removed slot's TiledPixelStore: undo
-        # restores the pre-removal state by reference-snapshot, and a closed
-        # store would render as broken after undo. Deferred closing (GC /
-        # session teardown, `TiledPixelStore.__del__`) is bounded by the undo
-        # cap — see state-unification-plan.md Phase 1 (private
-        # improve-imgsli-internal-docs repo).
+        # Nothing closable lives in state after B1 (pixels are owned by the
+        # session pixel cache, snapshots hold paths only) — removal just
+        # drops the path reference. The cache entry stays warm under LRU so
+        # undo of this removal re-resolves instantly; eviction close can
+        # never break an undo snapshot (it holds no stores).
         new_slots = [s for s in state.slots if s.id != action.slot_id]
         new_root = tree_ops.remove_leaf(state.root, action.slot_id)
         focused = (
@@ -467,12 +472,14 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         )
 
     if isinstance(action, SetSplitWeights):
+        sizes = dict(action.sizes) if action.sizes else None
         weights = layout_constraints.constrain_split_weights(
             state.root,
             action.path,
             action.weights,
             state.slots,
             zoom=state.zoom,
+            sizes=sizes,
         )
         new_root = tree_ops.set_split_weights(state.root, action.path, weights)
         if new_root is state.root:
@@ -497,7 +504,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, root=action.root, focused_slot_id=focused)
 
     if isinstance(action, Clear):
-        # Store closing deferred to GC/session teardown (see RemoveSlot above).
+        # Nothing closable lives in state after B1 (see RemoveSlot above).
         return MultiCompareState()
 
     logger.warning("multi_compare reducer: unhandled action %s", type(action).__name__)

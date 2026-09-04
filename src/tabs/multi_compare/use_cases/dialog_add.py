@@ -101,7 +101,6 @@ def load_images(controller, paths) -> int:
         auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
         action = mc_actions.add_slot(
             path=path,
-            image=None,
             label=path.stem,
             target_path=auto_path,
             side=auto_side,
@@ -158,7 +157,7 @@ def load_single_auto(controller, path: Path | str) -> int | None:
     if not _is_loadable_image(path):
         logger.debug("load_single_auto: skipped non-image/missing file %s", path)
         return None
-    sid = controller.widget.add_image_auto(path, None, path.stem)
+    sid = controller.widget.add_image_auto(path, path.stem)
     if sid is None:
         logger.warning("load_single_auto: no slot created for %s (grid full?)", path)
         _loading._emit_mc_load_error(controller, path, _grid_full_reason(controller))

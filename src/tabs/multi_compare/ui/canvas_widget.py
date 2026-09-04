@@ -127,6 +127,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         self.state = MultiCompareState()
 
+        # B1: session pixel cache (owned by the controller, shared across
+        # this page's MC sessions — keys are content-addressed). ``None``
+        # until the controller wires it (headless canvases read imageless).
+        self.pixel_cache = None
+
         self._dispatch: Callable | None = None
 
         self._active_composition = None
@@ -532,6 +537,22 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if self._dispatch is not None:
             self._dispatch(action)
 
+    def _slot_sources(self) -> dict[int, object]:
+        """Resolved pixel sources for the current state (B1).
+
+        One ``cache.resolve`` per slot with a path — pixel tier first, then
+        preview, imageless slots omitted. Closed/evicted stores never
+        surface here (the cache validates before returning).
+        """
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        sources: dict[int, object] = {}
+        for slot in self.state.slots:
+            source = resolve_slot_source(self.pixel_cache, slot)
+            if source is not None:
+                sources[int(slot.id)] = source
+        return sources
+
     def _rebuild_composition(self) -> None:
         """Build the CompositionPlan from state and apply it to ``self``.
 
@@ -546,7 +567,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         )
         from ui.canvas_presentation.composition import resolve_composition
 
-        plan = build_composition_plan(self.state)
+        plan = build_composition_plan(self.state, sources=self._slot_sources())
         if plan is None:
             self._active_composition = None
             return
@@ -592,9 +613,12 @@ class MultiCompareCanvasWidget(QRhiWidget):
     # --- textures / RHI ---
 
     def upload_image(self, slot: CompareSlot) -> None:
-        if slot.image is None:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        source = resolve_slot_source(self.pixel_cache, slot)
+        if source is None:
             return
-        self.upload_pixel_source(slot.id, slot.image)
+        self.upload_pixel_source(slot.id, source)
 
     def upload_pixel_source(self, slot_id: int, source) -> None:
         self._renderer.queue_upload(slot_id, source)
@@ -609,13 +633,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         Union of ``state.slots`` (live data ownership — includes hidden slots
         during focused mode) and ``_active_composition.layers`` (export path
-        when ``state`` is empty). Texture eviction tracks the union so toggling
+        when ``state`` is empty). Slot pixels resolve from the session cache
+        (B1); texture eviction tracks the union so toggling
         focus never evicts a still-loaded slot.
         """
-        sources: dict[int, object] = {}
-        for slot in self.state.slots:
-            if slot.image is not None:
-                sources.setdefault(int(slot.id), slot.image)
+        sources: dict[int, object] = self._slot_sources()
         if self._active_composition is not None:
             for layer in self._active_composition.layers:
                 if layer.image is not None:
@@ -710,9 +732,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
     ) -> tuple[float, float]:
         return canvas_interaction.clamp_pan_values(pan_x, pan_y, zoom)
 
-    @staticmethod
-    def _fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-        return canvas_interaction.fit_scale_for(slot, rect)
+    def _fit_scale_for(self, slot: CompareSlot, rect: QRect) -> tuple[float, float]:
+        return canvas_interaction.fit_scale_for(
+            slot, rect, canvas_interaction._source_for(self, slot)
+        )
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         canvas_interaction.handle_wheel_event(self, event)

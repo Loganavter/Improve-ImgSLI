@@ -95,12 +95,12 @@ class _FakeWidget:
     def state(self):
         return self.store.state
 
-    def add_image_auto(self, path, image, label=""):
-        return placement_use_cases.add_image_auto(self, path, image, label)
+    def add_image_auto(self, path, label=""):
+        return placement_use_cases.add_image_auto(self, path, label)
 
-    def add_image_at(self, path, image, label, target_path, side, target_root):
+    def add_image_at(self, path, label, target_path, side, target_root):
         return placement_use_cases.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, label, target_path, side, target_root
         )
 
 
@@ -137,6 +137,8 @@ def _err_text(event) -> str:
 def test_dialog_add_valid_file_creates_slot_and_fills_preview(tmp_path):
     """Happy path: dialog confirm → imageless slot + toast + worker now,
     image tier once the worker lands, no error bus traffic."""
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
     pool = _CapturingPool()
     controller, widget, _, toast_manager, event_bus = _make_controller(pool)
     path = _png(tmp_path)
@@ -147,13 +149,13 @@ def test_dialog_add_valid_file_creates_slot_and_fills_preview(tmp_path):
     assert len(widget.state.slots) == 1
     slot = widget.state.slots[0]
     assert slot.path == path
-    assert slot.image is None  # imageless until the worker lands
+    assert resolve_slot_source(controller.pixel_cache, slot) is None  # imageless until the worker lands
     assert len(toast_manager.shown) == 1
     assert len(pool.workers) == 1
 
     pool.run_all()
 
-    assert widget.state.slots[0].image is not None
+    assert resolve_slot_source(controller.pixel_cache, widget.state.slots[0]) is not None
     assert event_bus.emitted == []
 
 
@@ -166,7 +168,7 @@ def test_dialog_add_full_grid_reports_single_error(tmp_path):
     first = _png(tmp_path, "first.png")
     widget.store.dispatch(
         mc_actions.add_slot(
-            path=first, image=None, label="first",
+            path=first, label="first",
             target_path=None, side=None, target_root=True,
         )
     )
@@ -213,7 +215,9 @@ def test_dialog_add_accepts_str_paths(tmp_path):
     assert created == 1
     assert [s.path for s in widget.state.slots] == [path]
     pool.run_all()
-    assert widget.state.slots[0].image is not None
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve
+
+    assert _resolve(controller.pixel_cache, widget.state.slots[0]) is not None
     assert event_bus.emitted == []
 
 
@@ -244,12 +248,14 @@ def test_stale_guard_tolerates_textual_path_variants(tmp_path):
 
     # Legacy/other-entries slots may hold a str path while the worker
     # reports a Path (strict ``==`` differs) — the guard must still match.
-    sid = widget.add_image_auto(str(path), None, "img")
+    sid = widget.add_image_auto(str(path), "img")
     assert sid is not None
     assert widget.state.slots[0].path != path  # strict == really differs
     preview = QImage(4, 4, QImage.Format.Format_RGBA8888)
     assert not preview.isNull()
     preview_decode_use_cases.on_preview_ready(controller, sid, path, (preview, True))
 
-    assert widget.state.slots[0].image is not None
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve2
+
+    assert _resolve2(controller.pixel_cache, widget.state.slots[0]) is not None
     assert event_bus.emitted == []

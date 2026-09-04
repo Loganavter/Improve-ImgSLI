@@ -705,9 +705,18 @@ def anchor_slot_for_path(widget, path: tuple[int, ...]) -> int | None:
 def begin_pending_duplicate(widget, source_slot_id: int) -> None:
     cancel_pending_placements(widget)
     source = next((s for s in widget.state.slots if s.id == source_slot_id), None)
-    if source is None or source.image is None:
+    if source is None or source.path is None:
         _dnd_log("pending duplicate: ignored (no image source=%s)", source_slot_id)
         return
+    try:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        canvas = getattr(widget, "canvas", None)
+        if resolve_slot_source(getattr(canvas, "pixel_cache", None), source) is None:
+            _dnd_log("pending duplicate: ignored (source not loaded=%s)", source_slot_id)
+            return
+    except Exception:
+        pass
     if len(widget.state.slots) >= widget.state.max_slots:
         _dnd_log("pending duplicate: ignored (max_slots reached)")
         return
@@ -890,9 +899,19 @@ def finalize_pending_duplicate(
     if source_id is None or side is None:
         return
     source = next((s for s in widget.state.slots if s.id == source_id), None)
-    if source is None or source.image is None:
+    if source is None or source.path is None:
         _dnd_log("pending duplicate: ignored (source gone=%s)", source_id)
         return
+    try:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        canvas = getattr(widget, "canvas", None)
+        cache = getattr(canvas, "pixel_cache", None)
+        if resolve_slot_source(cache, source) is None:
+            _dnd_log("pending duplicate: ignored (source not loaded=%s)", source_id)
+            return
+    except Exception:
+        pass
     if len(widget.state.slots) >= widget.state.max_slots:
         _dnd_log("pending duplicate: ignored (max_slots reached)")
         return
@@ -900,14 +919,25 @@ def finalize_pending_duplicate(
         "pending duplicate: finalize source=%s path=%s side=%s root=%s",
         source_id, target_path, side, target_root,
     )
-    image = source.image.copy() if hasattr(source.image, "copy") else source.image
+    # B1: path-only duplicate — pixels resolve from the session cache (same
+    # content key), no pixel copy through the action.
+    before = len(widget.state.slots)
     widget.store.dispatch(
         actions.add_slot(
-            path=source.path or Path(),
-            image=image,
+            path=source.path,
             label=source.label,
             target_path=tuple(target_path or ()),
             side=side,
             target_root=target_root,
         )
     )
+    if len(widget.state.slots) > before:
+        try:
+            new_id = widget.state.slots[-1].id
+            controller = getattr(widget, "_controller", None)
+            if controller is not None:
+                controller.ensure_visible_slots_loading()
+            else:
+                _dnd_log("pending duplicate: created slot %s (cache-warm fill)", new_id)
+        except Exception:
+            pass

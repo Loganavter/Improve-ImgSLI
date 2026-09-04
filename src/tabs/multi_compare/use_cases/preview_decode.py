@@ -1,6 +1,6 @@
-# Audit-Meta: pattern=thin-owner reason="A2 preview single-flight + bounded full-res stage fan-out via replace_slot_image"
+# Audit-Meta: pattern=thin-owner reason="A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)"
 """Async first-image staging for the Multi Compare tab — preview decode in a
-``GenericWorker`` with ``replace_slot_image`` slot fill on result.
+``GenericWorker`` with ``note_slot_pixels`` slot fill on result.
 
 Split out of ``use_cases/loading.py`` (file-size policy per
 ``docs/dev/CODE_PATTERNS.md``): ``loading.py`` keeps the sync decode
@@ -25,7 +25,6 @@ reused the ``max+1`` id with a different path) is left untouched.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -78,23 +77,13 @@ def _same_fs_path(a: Path | str, b: Path | str) -> bool:
 def _fs_key(path: Path | str) -> tuple:
     """Single-flight key ``(normpath, mtime_ns, size)`` (IC ``key_for`` parity).
 
-    ``mtime+size`` keeps an overwritten-in-place file from colliding with
-    its own stale decode; ``normpath`` heals textual variants of the same
-    file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``).
+    Single construction site: :func:`pipeline.cache.cache_key_for_path`
+    (the session cache keys its tiers identically, so inflight waiters and
+    cached tiers can never disagree about file identity).
     """
-    try:
-        norm = os.path.normpath(os.fspath(path))
-    except Exception:
-        return (str(path), 0, 0)
-    try:
-        st = os.stat(norm)
-        return (
-            norm,
-            int(getattr(st, "st_mtime_ns", 0) or 0),
-            int(getattr(st, "st_size", 0) or 0),
-        )
-    except OSError:
-        return (norm, 0, 0)
+    from tabs.multi_compare.pipeline.cache import cache_key_for_path
+
+    return cache_key_for_path(path)
 
 
 def _preview_inflight(controller) -> dict:
@@ -122,7 +111,7 @@ def _full_active(controller) -> dict:
 
 
 def _full_queue(controller) -> list:
-    """Full-stage FIFO queue: ``[(slot_id, path)]`` waiting for a bound slot."""
+    """Full-stage FIFO queue: ``[(slot_id, path, keep_slot_on_error)]`` waiting for a bound slot."""
     queue = getattr(controller, "_mc_full_queue", None)
     if queue is None:
         queue = []
@@ -131,6 +120,52 @@ def _full_queue(controller) -> list:
         except Exception:
             return []
     return queue if isinstance(queue, list) else []
+
+
+def has_pending_load(controller, slot_id: int, path: Path | str) -> bool:
+    """True when ``slot_id`` already has preview/full work inflight for ``path``.
+
+    B1 demand-fill gate (``ensure_visible_slots_loading``): activation must
+    not stack a second worker behind one the drop path already queued.
+    Recycled ids (same id, different path) read as not-pending — the newer
+    generation owns its own fill.
+    """
+    key = _fs_key(path)
+    try:
+        ent = _preview_inflight(controller).get(key)
+        if ent is not None:
+            try:
+                if ent["signal"].is_aborted():
+                    ent = None
+                else:
+                    for sid, p, _keep in ent.get("waiters", ()):
+                        if sid == slot_id and _same_fs_path(p, path):
+                            return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        cur = _full_active(controller).get(slot_id)
+        if cur is not None:
+            try:
+                if _same_fs_path(cur.get("path", path), path):
+                    return True
+            except Exception:
+                return True
+    except Exception:
+        pass
+    try:
+        for sid, p, _keep in _full_queue(controller):
+            if sid == slot_id:
+                try:
+                    if _same_fs_path(p, path):
+                        return True
+                except Exception:
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 def load_initial_image(controller, path: Path) -> tuple[Any, bool]:
@@ -189,16 +224,18 @@ def load_initial_image(controller, path: Path) -> tuple[Any, bool]:
     return image, False
 
 
-def load_preview_async(controller, path: Path, slot_id: int) -> None:
+def load_preview_async(
+    controller, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
+) -> None:
     """Decode the display-tier preview off the GUI thread (P2, single-flight A2).
 
     Mirrors image_compare's ``ImageLoadService.ensure_async`` first stage:
     the drop handler (already deferred past ``finish()`` via
     ``singleShot(0)``) only creates the imageless slot + toast
     synchronously; the bounded ``load_preview_image`` decode runs in a
-    ``GenericWorker`` and fills the slot via ``replace_slot_image`` on
+    ``GenericWorker`` and fills the slot via ``note_slot_pixels`` on
     result (``PutPreviewAction``-style), with the full-res decode as the
-    second stage.
+    second stage. Pixels land in the session cache (B1), never in state.
 
     Single-flight: a second ``load_preview_async`` for the same
     ``(normpath, mtime, size)`` key while the first is still in flight
@@ -207,6 +244,11 @@ def load_preview_async(controller, path: Path, slot_id: int) -> None:
     The worker decodes the preview ONLY — a preview-miss no longer
     stalls inside a full decode in the preview worker; it kicks the
     bounded full stage per waiter instead.
+
+    ``keep_slot_on_error`` (B1 restore fills): a failed waiter keeps its
+    imageless slot (error toast only) instead of the fresh-add behavior of
+    dropping the pre-created slot — a reopened project must keep its
+    layout even when a file went corrupt.
     """
     from tabs.multi_compare.use_cases import loading as _loading
 
@@ -219,7 +261,7 @@ def load_preview_async(controller, path: Path, slot_id: int) -> None:
         except Exception:
             aborted = True
         if not aborted:
-            ent["waiters"].append((slot_id, path))
+            ent["waiters"].append((slot_id, path, keep_slot_on_error))
             logger.debug(
                 "[mc-preview-singleflight] dedup %s key=%s waiters=%d",
                 path,
@@ -229,7 +271,7 @@ def load_preview_async(controller, path: Path, slot_id: int) -> None:
             return
         entries.pop(key, None)
     sig = _AbortSignal()
-    entries[key] = {"signal": sig, "waiters": [(slot_id, path)]}
+    entries[key] = {"signal": sig, "waiters": [(slot_id, path, keep_slot_on_error)]}
 
     thread_pool = getattr(controller.context, "thread_pool", None) if getattr(controller, "context", None) else None
     if thread_pool is None:
@@ -239,9 +281,9 @@ def load_preview_async(controller, path: Path, slot_id: int) -> None:
         try:
             image, is_preview = load_initial_image(controller, path)
         except Exception as err:
-            on_preview_error(controller, path, slot_id, err)
+            on_preview_error(controller, path, slot_id, err, keep_slot_on_error=keep_slot_on_error)
             return
-        on_preview_ready(controller, slot_id, path, (image, is_preview))
+        on_preview_ready(controller, slot_id, path, (image, is_preview), keep_slot_on_error=keep_slot_on_error)
         return
 
     from sli_ui_toolkit.workers import GenericWorker
@@ -327,7 +369,7 @@ def _deliver_preview_worker_result(controller, key, preview) -> None:
     if aborted:
         # Orphan delivery (all waiters cancelled): silent dismiss, no
         # toast-done, no bus event — remove-mid-load stays clean.
-        for sid, _p in waiters:
+        for sid, _p, _keep in waiters:
             try:
                 _loading.dismiss_loading_toast(controller, sid)
             except Exception:
@@ -337,15 +379,17 @@ def _deliver_preview_worker_result(controller, key, preview) -> None:
         # Preview-miss: the preview tier stays imageless; each waiter goes
         # through the bounded full stage (own decode — this worker already
         # returned, nothing is blocked here).
-        for sid, p in waiters:
+        for sid, p, keep in waiters:
             try:
-                _loading.load_full_resolution_async(controller, p, sid)
+                _loading.load_full_resolution_async(
+                    controller, p, sid, keep_slot_on_error=keep
+                )
             except Exception:
                 logger.exception("Failed to kick full-res stage for %s", p)
         return
-    for sid, p in waiters:
+    for sid, p, keep in waiters:
         try:
-            on_preview_ready(controller, sid, p, (preview, True))
+            on_preview_ready(controller, sid, p, (preview, True), keep_slot_on_error=keep)
         except Exception:
             logger.exception("Failed to deliver preview to slot %s", sid)
 
@@ -363,15 +407,15 @@ def _deliver_preview_worker_error(controller, key, err) -> None:
         aborted = False
     waiters = list(ent.get("waiters", ()))
     if aborted:
-        for sid, _p in waiters:
+        for sid, _p, _keep in waiters:
             try:
                 _loading.dismiss_loading_toast(controller, sid)
             except Exception:
                 pass
         return
-    for sid, p in waiters:
+    for sid, p, keep in waiters:
         try:
-            on_preview_error(controller, p, sid, err)
+            on_preview_error(controller, p, sid, err, keep_slot_on_error=keep)
         except Exception:
             logger.exception("Failed to deliver preview error to slot %s", sid)
 
@@ -394,7 +438,7 @@ def cancel_slot_loads(controller, slot_id: int) -> None:
             if not ent:
                 continue
             waiters = list(ent.get("waiters", ()))
-            kept = [(s, p) for (s, p) in waiters if s != slot_id]
+            kept = [(s, p, k) for (s, p, k) in waiters if s != slot_id]
             if len(kept) == len(waiters):
                 continue
             ent["waiters"] = kept
@@ -430,19 +474,22 @@ def remove_slot_with_cancel(controller, slot_id: int) -> None:
         logger.exception("Failed to remove slot %s", slot_id)
 
 
-def queue_full_resolution(controller, path: Path, slot_id: int) -> None:
+def queue_full_resolution(
+    controller, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
+) -> None:
     """Bounded full-res second stage (A2): per-slot workers, FIFO overflow.
 
-    Stores are NEVER shared between slots (the reducer keeps removed
-    slots' stores alive for undo — sharing would alias undo snapshots and
-    ``close_pixel_store`` on a stale delivery would break the live slot).
-    At most ``_FULL_MAX_CONCURRENT`` decodes run at once; the rest wait in
-    ``_mc_full_queue`` and start as workers finish.
+    B1: decoded stores land in the session pixel cache (never in state),
+    so a cached store may be shared by same-path slots — the cache owns
+    the lifecycle and stale deliveries never close a cached entry (only
+    worker-fresh orphans are closed). At most ``_FULL_MAX_CONCURRENT``
+    decodes run at once; the rest wait in ``_mc_full_queue`` and start as
+    workers finish.
     """
     try:
         queue = _full_queue(controller)
-        queue[:] = [(s, p) for (s, p) in queue if s != slot_id]
-        queue.append((slot_id, path))
+        queue[:] = [(s, p, k) for (s, p, k) in queue if s != slot_id]
+        queue.append((slot_id, path, keep_slot_on_error))
     except Exception:
         logger.exception("Failed to queue full-res load for %s", path)
         return
@@ -462,19 +509,19 @@ def _pump_full_stage(controller) -> None:
     if thread_pool is None:
         # Headless/tests without a pool: drain inline (legacy sync shape).
         while queue:
-            sid, p = queue.pop(0)
+            sid, p, keep = queue.pop(0)
             try:
                 store = _loading.read_image(controller, p, start_pyramid=False)
             except Exception as err:
-                _on_full_worker_error(controller, sid, p, err, None)
+                _on_full_worker_error(controller, sid, p, err, None, keep_slot_on_error=keep)
                 continue
-            _on_full_worker_result(controller, sid, p, store, None)
+            _on_full_worker_result(controller, sid, p, store, None, keep_slot_on_error=keep)
         return
 
     from sli_ui_toolkit.workers import GenericWorker
 
     while queue and len(active) < _FULL_MAX_CONCURRENT:
-        sid, p = queue.pop(0)
+        sid, p, keep = queue.pop(0)
         if sid in active:
             cur = active.get(sid) or {}
             try:
@@ -513,7 +560,7 @@ def _pump_full_stage(controller) -> None:
                 continue
         crop_service = _loading._get_crop_service(controller)
         sig = _AbortSignal()
-        active[sid] = {"signal": sig, "path": p}
+        active[sid] = {"signal": sig, "path": p, "keep": keep}
 
         def load_full_task(path_str: str, svc, sig_ref=sig):
             try:
@@ -540,13 +587,13 @@ def _pump_full_stage(controller) -> None:
 
         worker = GenericWorker(load_full_task, str(p), crop_service)
         worker.signals.result.connect(
-            lambda store, sid=sid, p=p, sig_ref=sig: _on_full_worker_result(
-                controller, sid, p, store, sig_ref
+            lambda store, sid=sid, p=p, sig_ref=sig, keep=keep: _on_full_worker_result(
+                controller, sid, p, store, sig_ref, keep_slot_on_error=keep
             )
         )
         worker.signals.error.connect(
-            lambda err, sid=sid, p=p, sig_ref=sig: _on_full_worker_error(
-                controller, sid, p, err, sig_ref
+            lambda err, sid=sid, p=p, sig_ref=sig, keep=keep: _on_full_worker_error(
+                controller, sid, p, err, sig_ref, keep_slot_on_error=keep
             )
         )
 
@@ -572,35 +619,59 @@ def _pump_full_stage(controller) -> None:
             except Exception:
                 pass
             _on_full_worker_error(
-                controller, sid, p, RuntimeError("full-res worker failed to start"), sig
+                controller, sid, p, RuntimeError("full-res worker failed to start"), sig,
+                keep_slot_on_error=keep,
             )
 
 
-def _on_full_worker_result(controller, slot_id: int, path: Path, store, sig_ref) -> None:
+def _close_unless_cached(controller, path, store) -> None:
+    """Close a worker-fresh store unless it is the cache's live entry.
+
+    B1: same-path slots share the cached store object, so a superseded
+    delivery must not close what the cache (and a live sibling slot) still
+    references — only genuinely ownerless decodes are closed here.
+    """
+    if store is None:
+        return
+    try:
+        cache = getattr(controller, "pixel_cache", None)
+        if cache is not None and cache.get_pixel(path) is store:
+            return
+    except Exception:
+        pass
+    try:
+        from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+        close_pixel_store(store)
+    except Exception:
+        pass
+
+
+def _on_full_worker_result(
+    controller, slot_id: int, path: Path, store, sig_ref, *, keep_slot_on_error: bool = False
+) -> None:
     """Deliver a finished full-res worker: superseded/cancelled drops silently."""
     try:
         cur = _full_active(controller).get(slot_id)
         if sig_ref is not None and (cur is None or cur.get("signal") is not sig_ref):
-            if store is not None:
-                try:
-                    from shared.image_processing.tiled_pixel_store import close_pixel_store
-
-                    close_pixel_store(store)
-                except Exception:
-                    pass
+            _close_unless_cached(controller, path, store)
             _pump_full_stage(controller)
             return
         _full_active(controller).pop(slot_id, None)
     except Exception:
         pass
     try:
-        controller._apply_full_resolution(slot_id, path, store)
+        controller._apply_full_resolution(
+            slot_id, path, store, keep_slot_on_error=keep_slot_on_error
+        )
     except Exception:
         logger.exception("Failed to apply full resolution to slot %s", slot_id)
     _pump_full_stage(controller)
 
 
-def _on_full_worker_error(controller, slot_id: int, path: Path, err, sig_ref) -> None:
+def _on_full_worker_error(
+    controller, slot_id: int, path: Path, err, sig_ref, *, keep_slot_on_error: bool = False
+) -> None:
     """Deliver a failed full-res worker (orphan/recycled stays silent via guards)."""
     try:
         cur = _full_active(controller).get(slot_id)
@@ -611,7 +682,9 @@ def _on_full_worker_error(controller, slot_id: int, path: Path, err, sig_ref) ->
     except Exception:
         pass
     try:
-        controller._on_full_resolution_error(path, slot_id, err)
+        controller._on_full_resolution_error(
+            path, slot_id, err, keep_slot_on_error=keep_slot_on_error
+        )
     except Exception:
         logger.exception("Failed to deliver full-res error to slot %s", slot_id)
     _pump_full_stage(controller)
@@ -621,7 +694,7 @@ def cancel_full_for_slot(controller, slot_id: int) -> None:
     """Drop queued + abort active full-res work for ``slot_id`` (silent orphan)."""
     try:
         _full_queue(controller)[:] = [
-            (s, p) for (s, p) in _full_queue(controller) if s != slot_id
+            (s, p, k) for (s, p, k) in _full_queue(controller) if s != slot_id
         ]
     except Exception:
         pass
@@ -636,12 +709,14 @@ def cancel_full_for_slot(controller, slot_id: int) -> None:
         pass
 
 
-def on_preview_ready(controller, slot_id: int, path: Path, result) -> None:
+def on_preview_ready(
+    controller, slot_id: int, path: Path, result, *, keep_slot_on_error: bool = False
+) -> None:
     """Fill a pre-created imageless slot with the worker-decoded tier.
 
     ``result`` is the ``(image, is_preview)`` tuple from
-    ``load_preview_async``'s worker: a ``QImage`` preview takes the
-    ``replace_slot_image`` preview tier and kicks the full-res second
+    ``load_preview_async``'s worker: a ``QImage`` preview lands in the
+    session cache + ``note_slot_pixels`` and kicks the full-res second
     stage; a ``TiledPixelStore`` (preview-miss decoded in the same worker)
     goes through the regular full-res apply path.
     """
@@ -649,24 +724,32 @@ def on_preview_ready(controller, slot_id: int, path: Path, result) -> None:
 
     image, is_preview = result
     if image is None:
-        on_preview_error(controller, path, slot_id, RuntimeError("preview decode returned no image"))
+        on_preview_error(
+            controller, path, slot_id, RuntimeError("preview decode returned no image"),
+            keep_slot_on_error=keep_slot_on_error,
+        )
         return
     if is_preview:
-        apply_preview(controller, slot_id, path, image)
+        apply_preview(controller, slot_id, path, image, keep_slot_on_error=keep_slot_on_error)
         return
-    _loading.apply_full_resolution(controller, slot_id, path, image)
+    _loading.apply_full_resolution(
+        controller, slot_id, path, image, keep_slot_on_error=keep_slot_on_error
+    )
 
 
-def apply_preview(controller, slot_id: int, path: Path, preview) -> None:
+def apply_preview(
+    controller, slot_id: int, path: Path, preview, *, keep_slot_on_error: bool = False
+) -> None:
     """``PutPreviewAction``-style slot fill: imageless slot → preview tier.
 
-    Dispatches ``replace_slot_image`` (pure reducer, dispatch-only mutation
-    per STORE invariants) and kicks the full-res second stage. Tiers stay
-    visible throughout: a stale slot (removed/replaced mid-decode) only
-    drops its toast — the ``QImage`` needs no lifecycle handling, unlike
-    the ``TiledPixelStore`` close in ``apply_full_resolution``. A recycled
-    id (newer slot, different path) is left untouched — its toast belongs
-    to the live generation.
+    Puts the ``QImage`` into the session cache (B1) then dispatches
+    ``note_slot_pixels`` (pure reducer, dispatch-only mutation per STORE
+    invariants) and kicks the full-res second stage. Tiers stay visible
+    throughout: a stale slot (removed/replaced mid-decode) only drops its
+    toast — the ``QImage`` needs no lifecycle handling, unlike the
+    ``TiledPixelStore`` close in ``apply_full_resolution``. A recycled id
+    (newer slot, different path) is left untouched — its toast belongs to
+    the live generation.
     """
     from tabs.multi_compare.use_cases import loading as _loading
 
@@ -684,13 +767,23 @@ def apply_preview(controller, slot_id: int, path: Path, preview) -> None:
         same = False
     if not same:
         return
+    try:
+        cache = getattr(controller, "pixel_cache", None)
+        if cache is not None:
+            cache.put_preview(path, preview)
+    except Exception:
+        logger.exception("mc: preview cache put failed for slot %s", slot_id)
     from tabs.multi_compare.scene import actions as mc_actions
 
-    controller.widget.store.dispatch(mc_actions.replace_slot_image(slot_id, preview))
-    _loading.load_full_resolution_async(controller, path, slot_id)
+    controller.widget.store.dispatch(mc_actions.note_slot_pixels(slot_id, "preview"))
+    _loading.load_full_resolution_async(
+        controller, path, slot_id, keep_slot_on_error=keep_slot_on_error
+    )
 
 
-def on_preview_error(controller, path: Path, slot_id: int, err) -> None:
+def on_preview_error(
+    controller, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
+) -> None:
     """A preview worker failed: drop the pre-created imageless slot.
 
     Sync-UX parity: the old synchronous path skipped slot creation on
@@ -701,6 +794,9 @@ def on_preview_error(controller, path: Path, slot_id: int, err) -> None:
     must never remove a newer slot that reused the id — and an orphan
     (slot already gone) stays silent: no toast-done, no error-toast, the
     user cancelled it.
+
+    B1 restore fills pass ``keep_slot_on_error``: the restored slot keeps
+    its layout position (error toast only) instead of being deleted.
     """
     from tabs.multi_compare.use_cases import loading as _loading
 
@@ -722,11 +818,12 @@ def on_preview_error(controller, path: Path, slot_id: int, err) -> None:
     if not same:
         return
     logger.error("Failed to load preview for %s: %s", path, err, exc_info=True)
-    try:
-        from tabs.multi_compare.scene import actions as mc_actions
+    if not keep_slot_on_error:
+        try:
+            from tabs.multi_compare.scene import actions as mc_actions
 
-        controller.widget.store.dispatch(mc_actions.remove_slot(slot_id))
-    except Exception:
-        logger.exception("Failed to remove failed-load slot %s", slot_id)
+            controller.widget.store.dispatch(mc_actions.remove_slot(slot_id))
+        except Exception:
+            logger.exception("Failed to remove failed-load slot %s", slot_id)
     _loading.dismiss_loading_toast(controller, slot_id)
     _loading._emit_mc_load_error(controller, path, err)

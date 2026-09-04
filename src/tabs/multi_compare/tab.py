@@ -134,6 +134,15 @@ class MultiCompareTab(TabContract):
         if session_id is not None:
             self._active_session_id = session_id
             self._widget.refresh_from_session()
+            # Deferred page after early activation (P6/B1): same
+            # refresh-then-fill ordering as on_active_session_changed.
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on deferred bind for %s", session_id
+                )
 
         return page
 
@@ -211,9 +220,19 @@ class MultiCompareTab(TabContract):
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         # The session slot is authoritative; the bound facade re-reads it.
+        # P6/B1 ordering: refresh first, then demand-fill imageless slots —
+        # a restored (path-only) session must start its async fills on
+        # activation, not depend on the load-time conditional rehydrate.
         if self._widget is not None:
             self._active_session_id = session_id
             self._widget.refresh_from_session()
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on activation for %s", session_id
+                )
         else:
             self._active_session_id = session_id
 

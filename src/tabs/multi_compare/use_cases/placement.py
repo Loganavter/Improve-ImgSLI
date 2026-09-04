@@ -9,25 +9,22 @@ state directly.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from tabs.multi_compare.scene import actions
-
-if TYPE_CHECKING:
-    from PySide6.QtGui import QImage
-
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
 def add_image_auto(
     widget,
     path: Path,
-    image: "TiledPixelStore | QImage | None",
     label: str = "",
     *,
     leaf_entries=None,
 ) -> int | None:
-    """Append an image by splitting the largest leaf along its longer axis."""
+    """Append an image by splitting the largest leaf along its longer axis.
+
+    B1: path-only — the slot is created imageless; callers kick the async
+    preview fill (``preview_decode.load_preview_async``) after dispatch.
+    """
     if len(widget.state.slots) >= widget.state.max_slots:
         return None
     if widget.state.root is None:
@@ -39,7 +36,6 @@ def add_image_auto(
     widget.store.dispatch(
         actions.add_slot(
             path=path,
-            image=image,
             label=label or path.stem,
             target_path=target_path,
             side=side,
@@ -52,7 +48,6 @@ def add_image_auto(
 def add_image_at(
     widget,
     path: Path,
-    image: "TiledPixelStore | QImage | None",
     label: str,
     target_path: tuple[int, ...] | None,
     side: str | None,
@@ -73,7 +68,6 @@ def add_image_at(
     widget.store.dispatch(
         actions.add_slot(
             path=path,
-            image=image,
             label=label or path.stem,
             target_path=target_path,
             side=side,
