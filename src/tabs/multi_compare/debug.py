@@ -6,11 +6,17 @@ Mirrors ``tabs/image_compare/debug.py``:
 Env vars:
     IMGSLI_MULTI_COMPARE_DEBUG=1 — official
     IMGSLI_MC_DEBUG=1            — short alias (same flag)
+    IMGSLI_MC_DND_DIAG_LIGHT_MOVE=1 — diagnostic-only experiment: dragMove
+        becomes accept-only (no dispatch, no re-render), i.e. temporary
+        image_compare semantics. If the DnD cursor freeze disappears with
+        it, per-move dispatch+render is the cause. Never ship behavior
+        behind this flag; it exists to split the diagnosis.
 
 Tags:
     [mc-dnd]   — drag-enter / move / leave / drop routing, drop-target
                  resolution (path/side/root/swap), internal move-vs-swap,
-                 pending duplicate/paste placement lifecycle
+                 pending duplicate/paste placement lifecycle, per-gesture
+                 timing summary (handler/render cost — cursor-freeze diagnosis)
     [mc-debug] — generic lifecycle (currently same gate as [mc-dnd])
 
 All helpers emit ``WARNING`` when their explicit env flag is set (visible
@@ -56,3 +62,8 @@ def mc_debug(msg: str, *args, **kwargs) -> None:
 def mc_dnd_debug(msg: str, *args, **kwargs) -> None:
     if mc_dnd_debug_enabled():
         _emit("[mc-dnd]", msg, *args, **kwargs)
+
+
+def mc_dnd_diag_light_move_enabled() -> bool:
+    """Diagnostic-only dragMove short-circuit (see env list above)."""
+    return _env_flag("IMGSLI_MC_DND_DIAG_LIGHT_MOVE")

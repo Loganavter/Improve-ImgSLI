@@ -432,6 +432,26 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, zoom=1.0, pan_x=0.0, pan_y=0.0)
 
     if isinstance(action, SetDragState):
+        # Same equality-guard shape as SetFocus/SetZoom/SetPan above: an
+        # unchanged drag payload returns the same instance, so neither the
+        # standalone dispatch loop (``new_state is self._state`` early-out)
+        # nor the bound facade (slot-identity guard in ``_on_core_change``)
+        # notifies subscribers — no composition rebuild, no render, no
+        # session-slot rewrite for a no-op. dragMove fires per mouse tick
+        # with usually-identical targets; without this every tick pays the
+        # full dispatch→render pipeline and starves the event loop (visible
+        # as a frozen DnD cursor). Mirrors image_compare's
+        # ``set_drag_overlay_state`` early-return on identical payload.
+        if (
+            state.drag_active == action.active
+            and state.drag_internal == action.internal
+            and state.drag_source_slot_id == action.source_slot_id
+            and state.drag_target_path == action.target_path
+            and state.drag_target_side == action.target_side
+            and state.drag_target_root == action.target_root
+            and state.drag_target_swap_slot_id == action.target_swap_slot_id
+        ):
+            return state
         return _replace(
             state,
             drag_active=action.active,

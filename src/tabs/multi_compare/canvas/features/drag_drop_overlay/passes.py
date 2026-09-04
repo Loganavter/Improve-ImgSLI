@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter
 
@@ -53,6 +55,7 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
                     )
             return None
         self._dbg_was_active = True
+        t0 = time.monotonic()
         fb_w, fb_h = ctx.framebuffer_size
         img = QImage(
             max(1, int(fb_w)),
@@ -69,6 +72,11 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         self._source.paint(painter, host=widget)
         painter.restore()
         painter.end()
+        raster_ms = (time.monotonic() - t0) * 1000.0
+        facc = getattr(widget, "_dnd_frame_stats", None)
+        if isinstance(facc, dict):
+            facc["frames"] += 1
+            facc["raster_ms"] += raster_ms
         return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
 
     def record(self, command_buffer, widget, ctx) -> None:
