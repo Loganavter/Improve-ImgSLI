@@ -242,9 +242,16 @@ class MultiCompareController:
             self._gpu_exporter.shutdown()
             self._gpu_exporter = None
 
-    def load_images(self, paths: list[Path]) -> None:
-        for path in paths:
-            self._load_single_auto(path)
+    def load_images(self, paths: list[Path]) -> int:
+        """Toolbar "Add images" dialog entry — thin delegate (P8).
+
+        Returns slots created synchronously; dialog confirm with ≥1
+        valid file always yields a slot + preview/error-toast, never a
+        silent 0 slots (see ``use_cases.dialog_add.load_images``).
+        """
+        from tabs.multi_compare.use_cases import dialog_add as dialog_add_use_cases
+
+        return dialog_add_use_cases.load_images(self, paths)
 
     def load_external_paths(self, paths) -> int:
         """Direct-load for chrome/carry/paste drops (P3A) — thin delegate."""
@@ -387,8 +394,10 @@ class MultiCompareController:
     def _on_preview_error(self, path: Path, slot_id: int, err) -> None:
         preview_decode_use_cases.on_preview_error(self, path, slot_id, err)
 
-    def _load_single_auto(self, path: Path) -> None:
-        loading_use_cases.load_single_auto(self, path)
+    def _load_single_auto(self, path: Path) -> int | None:
+        from tabs.multi_compare.use_cases import dialog_add as dialog_add_use_cases
+
+        return dialog_add_use_cases.load_single_auto(self, path)
 
     def _native_canvas_size(self) -> tuple[int, int] | None:
         return export_use_cases.native_canvas_size(self)

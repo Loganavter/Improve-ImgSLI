@@ -10,11 +10,28 @@ same calling convention as image_compare's use_cases modules.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from core.events import CoreErrorOccurredEvent
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _same_fs_path(a: Path | str, b: Path | str) -> bool:
+    """Normalized path equality for slot-ownership guards.
+
+    ``slot.path`` strict ``==`` false-positives on textual variants of the
+    same file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``,
+    trailing separators): the guard then dismisses a good preview and the
+    slot stays imageless forever with no error surfaced. ``normpath``
+    over ``os.fspath`` keeps identical paths equal and heals those
+    variants; it never equates distinct files.
+    """
+    try:
+        return os.path.normpath(os.fspath(a)) == os.path.normpath(os.fspath(b))
+    except Exception:
+        return a == b
 
 
 def _format_worker_error(err) -> str:
@@ -362,10 +379,12 @@ def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
         dismiss_loading_toast(controller, slot_id)
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
-    if slot is None or slot.path != path:
+    if slot is None or not _same_fs_path(slot.path, path):
         # Slot was removed/replaced while the full-res decode was in
         # flight -- the preview it belonged to is already gone from the
-        # tree, so this store would just leak.
+        # tree, so this store would just leak. Compared normalized
+        # (P8): textual variants (str-vs-Path, "./") must not read as
+        # a stale slot and orphan a good decode.
         from shared.image_processing.tiled_pixel_store import close_pixel_store
 
         close_pixel_store(store)
@@ -376,19 +395,6 @@ def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
 
     controller.widget.store.dispatch(mc_actions.replace_slot_image(slot_id, store))
     start_pyramid_build(controller, store, slot_id=slot_id)
-
-
-def load_single_auto(controller, path: Path) -> None:
-    # P2: slot first (imageless), decode in a worker — the dialog-add path
-    # shares the drop path's async shape instead of stalling the GUI inside
-    # load_initial_image.
-    from tabs.multi_compare.use_cases import preview_decode as _preview
-
-    sid = controller.widget.add_image_auto(path, None, path.stem)
-    if sid is None:
-        return
-    show_loading_toast(controller, sid)
-    _preview.load_preview_async(controller, path, sid)
 
 
 def load_external_paths(controller, paths) -> int:
