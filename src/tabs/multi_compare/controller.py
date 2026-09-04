@@ -269,7 +269,20 @@ class MultiCompareController:
         self.widget.store.dispatch(mc_actions.clear())
 
     def _on_images_dropped(self, paths: list, target, side) -> None:
-        loading_use_cases.on_images_dropped(self, paths, target, side)
+        # Deferred like image_compare's drop load (it uses singleShot(150)):
+        # decoding the dropped files synchronously here blocks the GUI
+        # thread *inside* the drop handler (measured 381ms drop→finish on
+        # Wayland), and the drag source shows its busy cursor until
+        # wl_data_offer.finish() arrives. Next-tick is enough — the point
+        # is to let the drop handler (and Qt's finish()) return first.
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(
+            0,
+            lambda p=list(paths), t=target, s=side: loading_use_cases.on_images_dropped(
+                self, p, t, s
+            ),
+        )
 
     def _on_add_requested(self) -> None:
         start_dir = export_use_cases.default_dir(self)
