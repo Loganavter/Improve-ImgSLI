@@ -246,9 +246,19 @@ class MultiCompareController:
         for path in paths:
             self._load_single_auto(path)
 
+    def load_external_paths(self, paths) -> int:
+        """Direct-load for chrome/carry/paste drops (P3A) — thin delegate."""
+        return loading_use_cases.load_external_paths(self, paths)
+
     def begin_paste_placement(self, paths: list[Path]) -> None:
-        """Start cursor-tracked DnD highlight, same cycle as external file drop."""
-        self.widget.begin_pending_paste(paths)
+        """Paste entry — direct-loads like IC (P3A), no pending-paste arming.
+
+        Previously armed ``widget.begin_pending_paste`` (highlight + click
+        to place, ``Esc`` to cancel); now auto-places through the P2 async
+        path (``load_external_paths``) so clipboard/carry content appears
+        with a loading toast immediately.
+        """
+        self.load_external_paths(paths)
 
     def rehydrate_slots(self, state) -> bool:
         """Decode ``path`` into ``slot.image`` for persisted slots (project load).
