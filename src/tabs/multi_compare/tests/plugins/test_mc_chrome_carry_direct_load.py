@@ -6,6 +6,10 @@
 through the P2 async path (``load_external_paths`` → ``on_images_dropped``
 → ``load_preview_async``): imageless slot + loading toast synchronously,
 preview worker queued, no armed pending state.
+
+P7: ``tab.handle_drop`` additionally defers that direct load one tick past
+the window ``acceptProposedAction`` (no slot/toast/stat before accept), so
+these tests pump the event loop after the call.
 """
 
 from __future__ import annotations
@@ -116,6 +120,12 @@ def _make_tab(pool):
     return tab, controller, widget, mc_store, toast_manager, pool
 
 
+def _pump(qapp, rounds: int = 5) -> None:
+    """Flush QTimer.singleShot(0) chains (P7 deferred loads)."""
+    for _ in range(rounds):
+        qapp.processEvents()
+
+
 def _png(tmp_path, name="img.png", size=(800, 600)):
     path = tmp_path / name
     Image.new("RGB", size, (10, 120, 200)).save(path)
@@ -138,15 +148,21 @@ def _assert_direct_loaded(tab_bundle, path, *, workers=1):
     assert _drag_drop.has_pending_placement(widget) is False
 
 
-def test_handle_drop_loads_directly_without_arming(tmp_path):
-    """Window-chrome route_drop → tab.handle_drop: slot + worker, no pending."""
+def test_handle_drop_loads_directly_without_arming(qapp, tmp_path):
+    """Window-chrome route_drop → tab.handle_drop: slot + worker, no pending.
+
+    P7: the load is deferred one tick past the window accept (busy-cursor
+    fix), so the call itself only validates + schedules; pump to observe
+    the P3A direct-load shape (slot + toast + worker, nothing armed)."""
     pool = _CapturingPool()
     bundle = _make_tab(pool)
-    tab, _, _, _, _, _ = bundle
+    tab, _, widget, _, _, _ = bundle
     path = _png(tmp_path)
 
     tab.handle_drop([path], hint={"slot": 2})
 
+    assert widget.state.slots == []  # nothing synchronous before accept
+    _pump(qapp)
     _assert_direct_loaded(bundle, path)
 
 
@@ -201,7 +217,7 @@ def test_begin_paste_placement_loads_directly(tmp_path):
     _assert_direct_loaded(bundle, path)
 
 
-def test_chrome_drop_chains_multiple_files(tmp_path):
+def test_chrome_drop_chains_multiple_files(qapp, tmp_path):
     """Each file gets its own slot + toast + worker (adjacent chaining)."""
     pool = _CapturingPool()
     bundle = _make_tab(pool)
@@ -210,6 +226,7 @@ def test_chrome_drop_chains_multiple_files(tmp_path):
 
     tab.handle_drop(paths, hint=None)
 
+    _pump(qapp)
     assert [s.path for s in widget.state.slots] == paths
     assert all(s.image is None for s in widget.state.slots)
     assert len(toast_manager.shown) == 3
@@ -217,7 +234,7 @@ def test_chrome_drop_chains_multiple_files(tmp_path):
     assert widget._pending_paste_paths is None
 
 
-def test_missing_file_skipped_without_slot(tmp_path):
+def test_missing_file_skipped_without_slot(qapp, tmp_path):
     """is_file filter (begin_pending_paste parity): no slot, no worker."""
     pool = _CapturingPool()
     bundle = _make_tab(pool)
@@ -225,6 +242,7 @@ def test_missing_file_skipped_without_slot(tmp_path):
 
     tab.handle_drop([tmp_path / "gone.png"], hint=None)
 
+    _pump(qapp)
     assert widget.state.slots == []
     assert toast_manager.shown == []
     assert pool.workers == []

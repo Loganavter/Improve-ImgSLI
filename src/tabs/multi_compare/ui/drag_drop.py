@@ -430,28 +430,102 @@ def drop_event(widget, event: QDropEvent) -> None:
         event.acceptProposedAction()
         return
 
-    tgt_path, side, root_tgt, _ = resolve_drop_target(
-        widget, event.position().toPoint(), internal=False
-    )
-    widget._dnd_preview_sig = None
-    widget.store.dispatch(actions.set_drag_state(active=False))
-    paths = []
-    for url in mime.urls():
-        path = Path(url.toLocalFile())
-        if path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS:
-            paths.append(path)
-    _dnd_log(
-        "drop external files=%d target_path=%s side=%s root=%s",
-        len(paths), tgt_path, side, root_tgt,
-    )
-    _timing_emit(widget, "drop")
+    # P7: accept FIRST on a suffix-only verdict — no resolve, no dispatch,
+    # no filesystem stat, no emit before accept. The drag source (Mutter)
+    # holds busy/waiting until Qt's finish() fires after dropEvent returns,
+    # so every GUI millisecond before accept/return holds that cursor. The
+    # rest runs deferred on the next tick (value capture only, never the
+    # event). The internal echo above is intentionally untouched.
+    t_drop = time.monotonic()
+    try:
+        urls = mime.urls()
+    except Exception:
+        urls = []
+    local_files: list[str] = []
+    suffix_hit = False
+    for url in urls:
+        try:
+            local = url.toLocalFile()
+        except Exception:
+            continue
+        local_files.append(local)
+        if Path(local).suffix.lower() in _IMAGE_EXTENSIONS:
+            suffix_hit = True
+    if not suffix_hit:
+        _dnd_log("drop external ignored (no supported image files)")
+        try:
+            event.ignore()
+        except Exception:
+            pass
+        return
+    try:
+        pos = event.position().toPoint()
+    except Exception:
+        pos = None
     widget._dnd_preview_sig = None
     widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
-    if paths:
-        widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
+    gen = getattr(widget, "_dnd_gen", 0)
+    try:
         event.acceptProposedAction()
-    else:
-        _dnd_log("drop external ignored (no supported image files)")
+    except Exception:
+        logger.exception("[mc-dnd] drop accept failed")
+        return
+    _dnd_log(
+        "drop external accept-first files=%d (deferring resolve/dispatch/emit)",
+        len(local_files),
+    )
+    try:
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(
+            0,
+            lambda: _finish_external_drop(widget, local_files, pos, gen, t_drop),
+        )
+    except Exception:
+        logger.exception("[mc-dnd] deferring drop work failed")
+
+
+def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop: float) -> None:
+    """Deferred half of an external drop: runs past accept/return.
+
+    Resolve → clear-drag dispatch → is_file filter → emit. Stale
+    generations (a newer gesture started first) are dropped.
+    """
+    try:
+        if gen != getattr(widget, "_dnd_gen", None):
+            _dnd_log("drop external deferred skipped (stale gen=%s)", gen)
+            return
+        t0 = time.monotonic()
+        if pos is None:
+            tgt_path, side, root_tgt = None, None, False
+        else:
+            tgt_path, side, root_tgt, _ = resolve_drop_target(
+                widget, pos, internal=False
+            )
+        widget.store.dispatch(actions.set_drag_state(active=False))
+        paths = []
+        for local in local_files:
+            path = Path(local)
+            if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+                continue
+            try:
+                ok = path.is_file()
+            except Exception:
+                ok = False
+            if ok:
+                paths.append(path)
+        _dnd_log(
+            "drop external files=%d target_path=%s side=%s root=%s accept_ms=%.1f work_ms=%.1f",
+            len(paths), tgt_path, side, root_tgt,
+            (t0 - t_drop) * 1000.0, (time.monotonic() - t0) * 1000.0,
+        )
+        _timing_emit(widget, "drop")
+        if paths:
+            widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
+        else:
+            _dnd_log("drop external ignored (no supported image files)")
+    except Exception:
+        logger.exception("[mc-dnd] deferred drop failed")
 
 
 def apply_internal_drop(
