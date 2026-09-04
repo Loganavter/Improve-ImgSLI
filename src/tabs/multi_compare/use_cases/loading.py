@@ -5,6 +5,7 @@ that class down to wiring/composition, mirroring image_compare's own
 its first argument and reads/writes its instance state
 (``_loading_toasts``, ``_pyramid_builds``, ``_pyramid_toast_slot``) directly,
 same calling convention as image_compare's use_cases modules.
+Audit-Meta: pattern=thin-owner reason="Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages"
 """
 
 from __future__ import annotations
@@ -455,6 +456,24 @@ def load_external_paths(controller, paths) -> int:
     return len(controller.widget.state.slots) - before
 
 
+def resolve_auto_triple(widget, scratch):
+    """Auto-placement triple ``(target_path, side, target_root)`` without dispatch.
+
+    Read-only replica of ``placement.add_image_auto`` target resolution
+    (``placement.py`` itself is untouched — A1 owns it): empty tree →
+    root, otherwise the widget's auto target. A canvas that cannot answer
+    (headless fakes) falls back to the deterministic ``((), "right")``
+    A1 will converge on, instead of raising mid-drop.
+    """
+    if scratch.root is None:
+        return None, None, True
+    try:
+        target_path, side = widget._pick_auto_target()
+        return target_path, side, False
+    except Exception:
+        return (), "right", False
+
+
 def on_images_dropped(controller, paths: list, target, side) -> None:
     """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/...
 
@@ -465,34 +484,95 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     fills the slot on result, with full-res as the second stage.
     Internal-drag Move semantics live in ``ui/drag_drop`` and are
     untouched by this path.
+
+    A3: the N per-file ``add_image_at/auto`` dispatches are planned first
+    against a scratch state through the pure ``scene.store.reduce`` (same
+    chain rule — file 0 at the drop target, later files beside the
+    previously added slot, auto fallback when its path is gone, capacity
+    guard per file) and committed with one ``store.transact`` → 1
+    dispatch / 1 emit. Toast + preview workers stay per-slot (not store
+    dispatches) and run after the single commit.
     """
     from tabs.multi_compare.models import find_path
+    from tabs.multi_compare.scene import actions as mc_actions
+    from tabs.multi_compare.scene.store import reduce as mc_reduce
     from tabs.multi_compare.use_cases import preview_decode as _preview
 
     target_path, target_root = (
         target if isinstance(target, tuple) else (None, False)
     )
 
+    widget = controller.widget
+    scratch = widget.state
+    built: list = []
+    planned: list[tuple[int, Path]] = []
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
+        if len(scratch.slots) >= scratch.max_slots:
+            continue
         if i == 0:
-            sid = controller.widget.add_image_at(
-                path, None, path.stem, target_path, side, target_root
+            eff_path, eff_side, eff_root = target_path, side, target_root
+            if (
+                not eff_root
+                and (eff_path is None or eff_side is None)
+                and scratch.root is not None
+            ):
+                eff_path, eff_side, eff_root = resolve_auto_triple(widget, scratch)
+            else:
+                eff_root = bool(eff_root or scratch.root is None)
+            action = mc_actions.add_slot(
+                path=path,
+                image=None,
+                label=path.stem,
+                target_path=eff_path,
+                side=eff_side,
+                target_root=eff_root,
             )
         else:
             next_side = "right" if side in ("left", "right") else "bottom"
             next_path: tuple[int, ...] | None = None
             if last_added is not None:
-                found = find_path(controller.widget.state.root, last_added)
+                found = find_path(scratch.root, last_added)
                 next_path = tuple(found) if found is not None else None
             if next_path is None:
-                sid = controller.widget.add_image_auto(path, None, path.stem)
-            else:
-                sid = controller.widget.add_image_at(
-                    path, None, path.stem, next_path, next_side, False
+                auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
+                action = mc_actions.add_slot(
+                    path=path,
+                    image=None,
+                    label=path.stem,
+                    target_path=auto_path,
+                    side=auto_side,
+                    target_root=auto_root,
                 )
-        if sid is not None:
-            last_added = sid
-            show_loading_toast(controller, sid)
-            _preview.load_preview_async(controller, path, sid)
+            else:
+                action = mc_actions.add_slot(
+                    path=path,
+                    image=None,
+                    label=path.stem,
+                    target_path=next_path,
+                    side=next_side,
+                    target_root=False,
+                )
+        before = len(scratch.slots)
+        scratch = mc_reduce(scratch, action)
+        if len(scratch.slots) <= before:
+            continue
+        built.append(action)
+        last_added = scratch.slots[-1].id
+        planned.append((last_added, path))
+    if not built:
+        return
+    store = widget.store
+    transact = getattr(store, "transact", None)
+    if callable(transact):
+        store.transact(built)
+    else:  # headless fakes pre-dating the batch API: same end state, N dispatches
+        for sub in built:
+            store.dispatch(sub)
+    live_ids = {s.id for s in widget.state.slots}
+    for sid, path in planned:
+        if sid not in live_ids:
+            continue
+        show_loading_toast(controller, sid)
+        _preview.load_preview_async(controller, path, sid)
