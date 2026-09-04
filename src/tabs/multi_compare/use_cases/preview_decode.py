@@ -168,7 +168,7 @@ def apply_preview(controller, slot_id: int, path: Path, preview) -> None:
     from tabs.multi_compare.use_cases import loading as _loading
 
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
-    if slot is None or slot.path != path:
+    if slot is None or not _loading._same_fs_path(slot.path, path):
         _loading.dismiss_loading_toast(controller, slot_id)
         return
     from tabs.multi_compare.scene import actions as mc_actions
@@ -192,7 +192,7 @@ def on_preview_error(controller, path: Path, slot_id: int, err) -> None:
     logger.error("Failed to load preview for %s: %s", path, err, exc_info=True)
     try:
         slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
-        if slot is not None and slot.path == path:
+        if slot is not None and _loading._same_fs_path(slot.path, path):
             from tabs.multi_compare.scene import actions as mc_actions
 
             controller.widget.store.dispatch(mc_actions.remove_slot(slot_id))
