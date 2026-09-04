@@ -71,6 +71,20 @@ def build_composition_plan(
     visibly wired all the way through, which read as "thickness doesn't
     update until you touch color" (docs/dev/KNOWN_BUGS.md
     same-slot-swap SSIM follow-up investigation's divider side-quest).
+
+    Imageless-leaf policy (A4 decision, fixed -- do not drift): leaves
+    whose slot has no image yet (``slot is None or slot.image is None``)
+    are *skipped*, never rendered as placeholder layers. Rationale: a
+    placeholder would need invented geometry (native-size computation
+    reads real image extents) and would leak into the export canon --
+    live and export share one ``CompositionPlan``, so a live-only
+    placeholder desyncs export parity. The never-presented hole stays
+    covered one layer up instead: the canvas chrome's startup
+    placeholder (``ui/chrome.py``) owns the empty-canvas surface, same
+    posture as image_compare's canvas-only overlay. An all-imageless
+    tree therefore yields ``None`` (clear-color canvas under the chrome
+    placeholder); session-restore ordering that leaves every leaf
+    imageless is B1/P6 territory and must not be papered over here.
     """
     root = state.root
     if root is None or not slot_ids_in_tree(root):
@@ -130,6 +144,10 @@ def _convert_node(
             return None
         slot = slots_by_id.get(node.slot_id)
         if slot is None or slot.image is None:
+            # Imageless-leaf policy: documented skip (see
+            # build_composition_plan's docstring) -- no placeholder layer,
+            # no drift. A partially-loaded split collapses onto its loaded
+            # children; an all-imageless tree yields plan None.
             return None
 
         label = (

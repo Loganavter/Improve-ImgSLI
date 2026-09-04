@@ -132,6 +132,22 @@ def test_missing_slot_image_is_skipped():
     assert plan.root.layer_id == 1
 
 
+def test_all_imageless_leaves_return_none():
+    """A4 imageless-leaf policy pin: imageless leaves are *skipped*, never
+    placeholder layers -- so an all-imageless tree yields plan None (the
+    chrome placeholder owns the empty surface; session-restore ordering is
+    B1/P6, not papered over here). Do not drift toward invented geometry."""
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[CompareSlot(id=1), CompareSlot(id=2)],
+    )
+    assert build_composition_plan(state) is None
+
+
 def test_focused_slot_isolates_single_leaf():
     state = MultiCompareState(
         root=SplitNode(
