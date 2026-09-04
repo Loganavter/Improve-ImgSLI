@@ -11,6 +11,8 @@ delegate into this module.
 
 from __future__ import annotations
 
+from tabs.multi_compare.debug import mc_dnd_debug as _dnd_log
+
 
 def sync_zoom_indicator(widget) -> None:
     indicator = getattr(widget, "zoom_indicator", None)
@@ -35,6 +37,53 @@ def sync_zoom_indicator(widget) -> None:
         float(getattr(st, "pan_x", 0.0)),
         float(getattr(st, "pan_y", 0.0)),
     )
+
+
+def dismiss_placeholder_for_dnd(widget) -> bool:
+    """Hide the startup placeholder once a live drop preview is dispatched.
+
+    Empty canvas rarely accumulates the 10 presents the first-frame gate
+    needs (on-demand repaints: ~2 frames at startup, then idle), so the
+    opaque placeholder would otherwise cover the drop-zone overlay for the
+    whole first drag — RASTER+COMMIT happen underneath it, invisibly. After
+    the first drop, uploads/mip-cascades drive enough frames to cross the
+    gate and the placeholder dismisses itself, which is why only the first
+    DnD looks empty. (image_compare repaints continuously, so its gate
+    crosses at startup and it never hits this.)
+    Placeholder bg == canvas bg, so hiding is seamless. Kept only while the
+    surface never presented (presents == 0): then nothing renders yet and
+    the placeholder still covers a real transparent hole.
+    Returns True when it actually hid something (for ``[mc-dnd]`` logging).
+    """
+    placeholder = getattr(widget, "_startup_placeholder", None)
+    canvas = getattr(widget, "canvas", None)
+    presents = getattr(canvas, "_rhi_presents_completed", -1)
+    first_frame = getattr(canvas, "_first_frame_emitted", "?")
+    try:
+        ph_visible = bool(placeholder.isVisible()) if placeholder is not None else None
+    except Exception:
+        ph_visible = "?"
+    # Log the decision (deduped): this is the line that tells whether the
+    # drop zone was covered, and why the cover was kept or lifted. presents
+    # enters the sig as alive/not-alive only — exact counts would re-log
+    # every frame while the cover is up.
+    alive = isinstance(presents, int) and presents > 0
+    sig = (placeholder is None, ph_visible, alive)
+    if sig != getattr(widget, "_dnd_ph_sig", None):
+        widget._dnd_ph_sig = sig
+        _dnd_log(
+            "placeholder check: present=%s visible=%s presents=%s first_frame=%s",
+            placeholder is not None, ph_visible, presents, first_frame,
+        )
+    if placeholder is None or not ph_visible:
+        return False
+    if not alive:
+        _dnd_log("placeholder KEPT (surface never presented)")
+        return False
+    placeholder.hide()
+    release_transition_mask(widget)
+    _dnd_log("placeholder DISMISSED (was covering drop preview)")
+    return True
 
 
 def on_first_frame(widget) -> None:
@@ -63,7 +112,7 @@ def release_transition_mask(widget) -> None:
     its whole ``max_duration`` (400 ms) on every tab enter, because the
     mask force-releases only on its deadline unless told otherwise.
     """
-    context = widget._context
+    context = getattr(widget, "_context", None)
     services = getattr(context, "services", None) if context else None
     if not services:
         return
