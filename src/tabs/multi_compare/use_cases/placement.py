@@ -14,11 +14,13 @@ from typing import TYPE_CHECKING
 from tabs.multi_compare.scene import actions
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
 def add_image_auto(
-    widget, path: Path, image: "TiledPixelStore", label: str = ""
+    widget, path: Path, image: "TiledPixelStore | QImage | None", label: str = ""
 ) -> int | None:
     """Append an image by splitting the largest leaf along its longer axis."""
     if len(widget.state.slots) >= widget.state.max_slots:
@@ -45,7 +47,7 @@ def add_image_auto(
 def add_image_at(
     widget,
     path: Path,
-    image: "TiledPixelStore",
+    image: "TiledPixelStore | QImage | None",
     label: str,
     target_path: tuple[int, ...] | None,
     side: str | None,

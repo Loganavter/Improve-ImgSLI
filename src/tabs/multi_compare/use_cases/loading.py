@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from core.events import CoreErrorOccurredEvent
 
@@ -325,55 +324,6 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
         set_loading_toast_progress(controller, slot_id, percent)
 
 
-def load_initial_image(controller, path: Path) -> tuple[Any, bool]:
-    """Fast path for large sources: a bounded preview shown immediately
-    while the full-res ``TiledPixelStore`` decodes in the background --
-    mirrors image_compare's progressive load
-    (``tabs.image_compare._session_controller._load_image_async``).
-
-    Returns ``(image, is_preview)``; ``image`` is ``None`` on failure.
-    """
-    import time
-
-    from shared.image_processing.progressive_loader import (
-        load_preview_image,
-        should_use_progressive_load,
-    )
-
-    t0 = time.perf_counter()
-    crop_service = _get_crop_service(controller)
-    try:
-        if should_use_progressive_load(str(path)):
-            preview = load_preview_image(str(path), crop_service=crop_service)
-            if preview is not None:
-                logger.debug(
-                    "[preview-load] %s: preview ready in %.3fs (%dx%d)",
-                    path,
-                    time.perf_counter() - t0,
-                    preview.width(),
-                    preview.height(),
-                )
-                return preview, True
-    except Exception:
-        logger.debug(
-            "Progressive preview failed for %s, falling back to full load",
-            path,
-            exc_info=True,
-        )
-    # start_pyramid=False: the slot this image will land in doesn't exist
-    # yet at this point (callers create it from the returned image), so
-    # there is no slot_id yet to drive the loading toast through the
-    # pyramid stage. Callers start the pyramid themselves once the slot
-    # (and its toast) exists -- see on_images_dropped/load_single_auto.
-    image = read_image(controller, path, start_pyramid=False)
-    logger.debug(
-        "[preview-load] %s: no preview, full read in %.3fs",
-        path,
-        time.perf_counter() - t0,
-    )
-    return image, False
-
-
 def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
@@ -429,22 +379,31 @@ def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
 
 
 def load_single_auto(controller, path: Path) -> None:
-    image, is_preview = load_initial_image(controller, path)
-    if image is None:
+    # P2: slot first (imageless), decode in a worker — the dialog-add path
+    # shares the drop path's async shape instead of stalling the GUI inside
+    # load_initial_image.
+    from tabs.multi_compare.use_cases import preview_decode as _preview
+
+    sid = controller.widget.add_image_auto(path, None, path.stem)
+    if sid is None:
         return
-    sid = controller.widget.add_image_auto(path, image, label=path.stem)
-    if sid is not None:
-        show_loading_toast(controller, sid)
-        if is_preview:
-            load_full_resolution_async(controller, path, sid)
-        else:
-            mark_full_res_ready(controller, sid)
-            start_pyramid_build(controller, image, slot_id=sid)
+    show_loading_toast(controller, sid)
+    _preview.load_preview_async(controller, path, sid)
 
 
 def on_images_dropped(controller, paths: list, target, side) -> None:
-    """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/..."""
+    """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/...
+
+    P2: only placement + imageless slot creation run on the GUI thread —
+    no decode here (a preview-miss used to be a full synchronous
+    ``read_image`` stall, measured 381ms drop→finish). Each slot's
+    preview decodes in a ``GenericWorker`` (``load_preview_async``) and
+    fills the slot on result, with full-res as the second stage.
+    Internal-drag Move semantics live in ``ui/drag_drop`` and are
+    untouched by this path.
+    """
     from tabs.multi_compare.models import find_path
+    from tabs.multi_compare.use_cases import preview_decode as _preview
 
     target_path, target_root = (
         target if isinstance(target, tuple) else (None, False)
@@ -453,12 +412,9 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
-        image, is_preview = load_initial_image(controller, path)
-        if image is None:
-            continue
         if i == 0:
             sid = controller.widget.add_image_at(
-                path, image, path.stem, target_path, side, target_root
+                path, None, path.stem, target_path, side, target_root
             )
         else:
             next_side = "right" if side in ("left", "right") else "bottom"
@@ -467,16 +423,12 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
                 found = find_path(controller.widget.state.root, last_added)
                 next_path = tuple(found) if found is not None else None
             if next_path is None:
-                sid = controller.widget.add_image_auto(path, image, path.stem)
+                sid = controller.widget.add_image_auto(path, None, path.stem)
             else:
                 sid = controller.widget.add_image_at(
-                    path, image, path.stem, next_path, next_side, False
+                    path, None, path.stem, next_path, next_side, False
                 )
         if sid is not None:
             last_added = sid
             show_loading_toast(controller, sid)
-            if is_preview:
-                load_full_resolution_async(controller, path, sid)
-            else:
-                mark_full_res_ready(controller, sid)
-                start_pyramid_build(controller, image, slot_id=sid)
+            _preview.load_preview_async(controller, path, sid)

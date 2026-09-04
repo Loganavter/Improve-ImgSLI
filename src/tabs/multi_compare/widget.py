@@ -31,6 +31,8 @@ from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.glass_hud import ZoomIndicator
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 FOCUS_DIM_COLOR = QColor(0, 0, 0, 235)
@@ -292,7 +294,7 @@ class MultiCompareWidget(QWidget):
         )
 
     def add_image_auto(
-        self, path: Path, image: "TiledPixelStore", label: str = ""
+        self, path: Path, image: "TiledPixelStore | QImage | None", label: str = ""
     ) -> int | None:
         """Append an image by splitting the largest leaf along its longer axis."""
         return placement.add_image_auto(self, path, image, label)
@@ -300,7 +302,7 @@ class MultiCompareWidget(QWidget):
     def add_image_at(
         self,
         path: Path,
-        image: "TiledPixelStore",
+        image: "TiledPixelStore | QImage | None",
         label: str,
         target_path: tuple[int, ...] | None,
         side: str | None,

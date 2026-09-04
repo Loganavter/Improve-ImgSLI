@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 from tabs.multi_compare.models import (
@@ -55,7 +57,7 @@ class MultiCompareAction:
 @dataclass(frozen=True)
 class AddSlot(MultiCompareAction):
     path: Path
-    image: "TiledPixelStore"
+    image: "TiledPixelStore | QImage | None"
     label: str
     target_path: tuple[int, ...] | None
     side: str | None
@@ -64,12 +66,13 @@ class AddSlot(MultiCompareAction):
 
 @dataclass(frozen=True)
 class ReplaceSlotImage(MultiCompareAction):
-    """Swap a slot's progressive-preview ``QImage`` for the real full-res
-    ``TiledPixelStore`` once background decoding finishes — see
-    ``MultiCompareController._load_full_resolution_async``."""
+    """Swap a slot's image tier: imageless → progressive-preview ``QImage``,
+    then preview → the real full-res ``TiledPixelStore`` once background
+    decoding finishes — see ``MultiCompareController._load_full_resolution_async``
+    / ``use_cases/preview_decode.load_preview_async``."""
 
     slot_id: int
-    image: "TiledPixelStore"
+    image: "TiledPixelStore | QImage"
 
 
 @dataclass(frozen=True)
