@@ -65,7 +65,17 @@ def load_images(controller, paths) -> int:
     error-toast instead of one per file.
 
     Returns the number of slots created synchronously.
+
+    Multi-file chaining (B2, DnD parity): only file 0 resolves its auto
+    target against the live canvas — files 1..N chain beside the previously
+    added slot via ``find_path`` on the scratch state (same rule as
+    ``loading.on_images_dropped``). Re-resolving every file against the
+    live widget reads the pre-confirm tree (the ``transact`` commits only
+    after the loop), so files 1..N re-targeted file 0's anchor and each
+    ``((), side)`` re-hit wrapped the whole root instead of sibling-chaining
+    (``S(h,[S(h,[L0,L1]),L2])`` — uneven panes vs DnD's flat chain).
     """
+    from tabs.multi_compare.models import find_path
     from tabs.multi_compare.scene import actions as mc_actions
     from tabs.multi_compare.scene.store import reduce as mc_reduce
     from tabs.multi_compare.use_cases import loading as _loading
@@ -94,24 +104,52 @@ def load_images(controller, paths) -> int:
     built: list = []
     planned: list[tuple[int, Path]] = []
     overflow: list[Path] = []
-    for path in valid:
+    file0_side: str | None = None
+    last_added: int | None = None
+    for i, path in enumerate(valid):
         if len(scratch.slots) >= scratch.max_slots:
             overflow.append(path)
             continue
-        auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
-        action = mc_actions.add_slot(
-            path=path,
-            label=path.stem,
-            target_path=auto_path,
-            side=auto_side,
-            target_root=auto_root,
-        )
+        if i == 0:
+            auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
+            file0_side = auto_side
+            action = mc_actions.add_slot(
+                path=path,
+                label=path.stem,
+                target_path=auto_path,
+                side=auto_side,
+                target_root=auto_root,
+            )
+        else:
+            next_side = "right" if file0_side in ("left", "right") else "bottom"
+            next_path: tuple[int, ...] | None = None
+            if last_added is not None:
+                found = find_path(scratch.root, last_added)
+                next_path = tuple(found) if found is not None else None
+            if next_path is None:
+                auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
+                action = mc_actions.add_slot(
+                    path=path,
+                    label=path.stem,
+                    target_path=auto_path,
+                    side=auto_side,
+                    target_root=auto_root,
+                )
+            else:
+                action = mc_actions.add_slot(
+                    path=path,
+                    label=path.stem,
+                    target_path=next_path,
+                    side=next_side,
+                    target_root=False,
+                )
         before = len(scratch.slots)
         scratch = mc_reduce(scratch, action)
         if len(scratch.slots) <= before:
             overflow.append(path)
             continue
         built.append(action)
+        last_added = scratch.slots[-1].id
         planned.append((scratch.slots[-1].id, path))
     if not built:
         for path in overflow:
