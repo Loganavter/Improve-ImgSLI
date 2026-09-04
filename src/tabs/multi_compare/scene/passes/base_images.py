@@ -217,7 +217,7 @@ class BaseImagesPass(CanvasRenderPass):
     QImage uploads — never an uncapped full-res QImage dict.
 
     A slot's source may also be a bounded ``QImage`` progressive preview
-    (``CompareSlot.is_preview_only``) while the real ``TiledPixelStore`` is
+    (cached preview tier) while the real ``TiledPixelStore`` is
     still decoding in the background — previews are capped at 1024px, always
     land in a 1x1 tile grid, and upload through the same single-tile branch
     below (``host_cache.qimage_from_source`` already round-trips a QImage as

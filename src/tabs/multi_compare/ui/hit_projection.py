@@ -26,7 +26,7 @@ def letterbox_transform(
     return sr, ox, oy
 
 
-def composition_canvas_size(active_comp, state) -> tuple[int, int] | None:
+def composition_canvas_size(active_comp, state, sources=None) -> tuple[int, int] | None:
     """Pure canvas-size resolution: active composition wins, else plan it.
 
     Data in, sizes out — no widget reads (``state`` is the tree data, not
@@ -38,7 +38,7 @@ def composition_canvas_size(active_comp, state) -> tuple[int, int] | None:
         build_composition_plan,
     )
 
-    plan = build_composition_plan(state, include_labels=False)
+    plan = build_composition_plan(state, include_labels=False, sources=sources)
     if plan is None:
         return None
     if plan.canvas_w <= 0 or plan.canvas_h <= 0:
@@ -66,8 +66,14 @@ def canvas_layout(widget) -> tuple[int, int, float, float, float] | None:
     """
     if widget.state.root is None or widget.width() <= 0 or widget.height() <= 0:
         return None
+    slot_sources = getattr(widget, "_slot_sources", None)
+    if callable(slot_sources):
+        sources = slot_sources()
+    else:
+        canvas = getattr(widget, "canvas", None)
+        sources = canvas._slot_sources() if canvas is not None else None
     size = composition_canvas_size(
-        getattr(widget, "_active_composition", None), widget.state
+        getattr(widget, "_active_composition", None), widget.state, sources
     )
     if size is None:
         return None

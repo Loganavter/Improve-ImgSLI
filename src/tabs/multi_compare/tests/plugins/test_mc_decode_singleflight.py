@@ -3,8 +3,10 @@
 Preview-stage single-flight keyed ``(normpath, mtime, size)`` (IC
 ``ImageLoadService`` parity): a double Add of the same file starts ONE
 preview decode fanned out to both slots; the full-res second stage stays
-per-slot (stores are never shared — undo keeps removed slots' stores
-alive) but bounded (``_FULL_MAX_CONCURRENT`` FIFO).
+per-slot workers but bounded (``_FULL_MAX_CONCURRENT`` FIFO). B1: decoded
+tiers land in the session pixel cache — same-path slots share the one
+cached store object (the cache owns the lifecycle, so sharing can never
+break undo), asserted below.
 
 Never-silent invariant: every accepted entry lands a slot or an
 error-toast — nothing vanishes quietly. Orphan deliveries
@@ -74,12 +76,19 @@ def test_double_add_same_file_single_preview_decode(tmp_path, monkeypatch):
     assert preview_calls and len(preview_calls) == 1
     # Both slots filled from the one decode (preview tier, then full tier).
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
 
     assert len(widget.state.slots) == 2
+    stores = set()
     for slot in widget.state.slots:
-        assert isinstance(slot.image, TiledPixelStore)
-        assert slot.image.is_open
-    # Full stage stays per-slot (no shared stores): one full decode each.
+        source = resolve_slot_source(controller.pixel_cache, slot)
+        assert isinstance(source, TiledPixelStore)
+        assert source.is_open
+        assert slot.revision == 2  # preview + full noted, pixels in cache only
+        stores.add(id(source))
+    # Same-path slots share the one cached store (cache-owned, undo-safe).
+    assert len(stores) == 1
+    # Full stage stays per-slot workers: one full decode each.
     assert len(full_calls) == 2
 
 
@@ -97,8 +106,12 @@ def test_full_stage_bounded_two_concurrent(tmp_path):
     for _ in range(3):
         pool.run_one()
     assert len(widget.state.slots) == 3
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
     for slot in widget.state.slots:
-        assert isinstance(slot.image, QImage)
+        assert isinstance(
+            resolve_slot_source(controller.pixel_cache, slot), QImage
+        )
 
     full_started = len(pool.workers)
     queued = list(getattr(controller, "_mc_full_queue", []))
@@ -109,9 +122,10 @@ def test_full_stage_bounded_two_concurrent(tmp_path):
     assert getattr(controller, "_mc_full_queue", []) == []
     assert getattr(controller, "_mc_full_active", {}) == {}
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve
 
     for slot in widget.state.slots:
-        assert isinstance(slot.image, TiledPixelStore)
+        assert isinstance(_resolve(controller.pixel_cache, slot), TiledPixelStore)
 
 
 def test_remove_before_ready_no_done_no_crash(tmp_path):
@@ -165,7 +179,9 @@ def test_stale_full_res_never_finishes_orphan_toast(tmp_path):
 
     loading_use_cases.on_images_dropped(controller, [path], (None, True), None)
     pool.run_one()  # preview lands → full-res worker queued
-    assert isinstance(widget.state.slots[0].image, QImage)
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve2
+
+    assert isinstance(_resolve2(controller.pixel_cache, widget.state.slots[0]), QImage)
 
     widget.store.dispatch(mc_actions.remove_slot(0))
     _drain(pool)  # late full-res lands after removal

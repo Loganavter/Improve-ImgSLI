@@ -342,21 +342,32 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
         set_loading_toast_progress(controller, slot_id, percent)
 
 
-def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
+def load_full_resolution_async(
+    controller, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
+) -> None:
     """Full-res second stage (A2): per-slot workers via ``preview_decode``'s bounded FIFO."""
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
         store = read_image(controller, path, start_pyramid=False)
-        apply_full_resolution(controller, slot_id, path, store)
+        apply_full_resolution(
+            controller, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
+        )
         return
 
     from tabs.multi_compare.use_cases import preview_decode as _preview
 
-    _preview.queue_full_resolution(controller, path, slot_id)
+    _preview.queue_full_resolution(
+        controller, path, slot_id, keep_slot_on_error=keep_slot_on_error
+    )
 
 
-def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
+def on_full_resolution_error(
+    controller, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
+) -> None:
     """Full-res worker failed: orphan/recycled stays silent, live slot reports via bus."""
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    slot = None
     try:
         slots = list(controller.widget.state.slots)
     except Exception:
@@ -376,11 +387,21 @@ def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
             # Id recycled by a newer slot: its toast is live, don't touch it.
             return
     logger.error("Failed to load full resolution for %s: %s", path, err, exc_info=True)
-    if slot.image is None:
+    has_tier = False
+    if slots is not None and slot is not None:
+        try:
+            has_tier = (
+                resolve_slot_source(getattr(controller, "pixel_cache", None), slot)
+                is not None
+            )
+        except Exception:
+            has_tier = False
+    if not has_tier and not keep_slot_on_error:
         # Imageless (preview-miss path): sync-UX parity — drop the
         # pre-created slot instead of leaving an imageless leaf (blank
         # hole). A slot holding its preview tier keeps it; only its toast
-        # is dismissed.
+        # is dismissed. B1 restore fills (keep_slot_on_error) keep the
+        # restored slot regardless.
         from tabs.multi_compare.scene import actions as mc_actions
 
         try:
@@ -391,33 +412,70 @@ def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
     _emit_mc_load_error(controller, path, err)
 
 
-def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
+def apply_full_resolution(
+    controller, slot_id: int, path: Path, store, *, keep_slot_on_error: bool = False
+) -> None:
+    """Full-res tier arrival: cache the store, note it, build its pyramid.
+
+    B1: the store lands in the session cache (sole owner — eviction close
+    can never break an undo snapshot, which holds paths only), then a
+    ``note_slot_pixels`` dispatch bumps the slot revision so subscribers
+    rebuild. A same-path sibling's cached store wins on collision (one
+    shared object, no duplicate decode); the displaced worker-fresh store
+    is closed. Ownerless stores (orphan/recycled slot) are closed unless
+    they are the cache's live entry (shared with a live slot).
+    """
+    _ = keep_slot_on_error  # full tier never drops the slot (preview stage owns that call)
     if store is None:
         dismiss_loading_toast(controller, slot_id)
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
     if slot is None:
-        # Slot was removed while the full-res decode was in flight — the
-        # store would just leak. Dismiss (never finish: an orphan must not
-        # show toast-done).
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
+        # Slot was removed while the full-res decode was in flight —
+        # dismiss (never finish: an orphan must not show toast-done).
+        from tabs.multi_compare.use_cases.preview_decode import (
+            _close_unless_cached as _close_shared,
+        )
 
-        close_pixel_store(store)
+        _close_shared(controller, path, store)
         dismiss_loading_toast(controller, slot_id)
         return
     if not _same_fs_path(slot.path, path):
         # Id recycled (``max+1``): the newer generation owns id+toast —
-        # touch neither. Close this ownerless store (memmap leak guard).
+        # touch neither. Close this ownerless store unless shared.
         # Normalized compare (P8): str-vs-Path/"./" variants must not read
         # as stale and orphan a good decode.
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
+        from tabs.multi_compare.use_cases.preview_decode import (
+            _close_unless_cached as _close_shared,
+        )
 
-        close_pixel_store(store)
+        _close_shared(controller, path, store)
         return
+    try:
+        cache = getattr(controller, "pixel_cache", None)
+        if cache is not None:
+            try:
+                existing = cache.get_pixel(path)
+            except Exception:
+                existing = None
+            if existing is not None and existing is not store:
+                # Same-path sibling already cached (double-add dedup):
+                # share it, close the duplicate decode.
+                from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+                try:
+                    close_pixel_store(store)
+                except Exception:
+                    pass
+                store = existing
+            else:
+                cache.put_pixel(path, store)
+    except Exception:
+        logger.exception("mc: pixel cache put failed for slot %s", slot_id)
     mark_full_res_ready(controller, slot_id)
     from tabs.multi_compare.scene import actions as mc_actions
 
-    controller.widget.store.dispatch(mc_actions.replace_slot_image(slot_id, store))
+    controller.widget.store.dispatch(mc_actions.note_slot_pixels(slot_id, "full"))
     start_pyramid_build(controller, store, slot_id=slot_id)
 
 
@@ -523,7 +581,6 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
                 eff_root = bool(eff_root or scratch.root is None)
             action = mc_actions.add_slot(
                 path=path,
-                image=None,
                 label=path.stem,
                 target_path=eff_path,
                 side=eff_side,
@@ -539,7 +596,6 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
                 auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
                 action = mc_actions.add_slot(
                     path=path,
-                    image=None,
                     label=path.stem,
                     target_path=auto_path,
                     side=auto_side,
@@ -548,7 +604,6 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
             else:
                 action = mc_actions.add_slot(
                     path=path,
-                    image=None,
                     label=path.stem,
                     target_path=next_path,
                     side=next_side,

@@ -88,12 +88,12 @@ class _FakeWidget:
     def state(self):
         return self.store.state
 
-    def add_image_auto(self, path, image, label=""):
-        return placement_use_cases.add_image_auto(self, path, image, label)
+    def add_image_auto(self, path, label=""):
+        return placement_use_cases.add_image_auto(self, path, label)
 
-    def add_image_at(self, path, image, label, target_path, side, target_root):
+    def add_image_at(self, path, label, target_path, side, target_root):
         return placement_use_cases.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, label, target_path, side, target_root
         )
 
 
@@ -133,11 +133,13 @@ def _png(tmp_path, name="img.png", size=(800, 600)):
 
 
 def _assert_direct_loaded(tab_bundle, path, *, workers=1):
-    _, _, widget, _, toast_manager, pool = tab_bundle
+    _, controller, widget, _, toast_manager, pool = tab_bundle
     assert len(widget.state.slots) == 1
     slot = widget.state.slots[0]
     assert slot.path == path
-    assert slot.image is None  # imageless until the worker lands
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    assert resolve_slot_source(controller.pixel_cache, slot) is None  # imageless until the worker lands
     assert len(toast_manager.shown) == 1  # IC-like loading feedback, no click needed
     assert len(pool.workers) == workers  # preview worker queued, nothing decoded inline
     # No armed pending state: nothing for Esc/click to cancel.
@@ -191,7 +193,9 @@ def test_begin_pending_image_insert_service_loads_directly(tmp_path):
     _assert_direct_loaded(bundle, path)
     # Worker still lands through the P2 path (preview tier).
     pool.run_one()
-    assert isinstance(bundle[2].state.slots[0].image, QImage)
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve
+
+    assert isinstance(_resolve(bundle[1].pixel_cache, bundle[2].state.slots[0]), QImage)
 
 
 def test_begin_pending_image_insert_rejects_non_images(tmp_path):
@@ -228,7 +232,11 @@ def test_chrome_drop_chains_multiple_files(qapp, tmp_path):
 
     _pump(qapp)
     assert [s.path for s in widget.state.slots] == paths
-    assert all(s.image is None for s in widget.state.slots)
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve2
+
+    assert all(
+        _resolve2(bundle[1].pixel_cache, s) is None for s in widget.state.slots
+    )
     assert len(toast_manager.shown) == 3
     assert len(pool.workers) == 3
     assert widget._pending_paste_paths is None

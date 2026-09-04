@@ -1,4 +1,9 @@
-"""MultiCompareState → CompositionPlan conversion."""
+"""MultiCompareState → CompositionPlan conversion.
+
+B1: slots are path-only — pixel sources arrive via ``sources={slot_id:
+image}`` (resolved from the session cache in production). Imageless leaves
+(no entry) are skipped per the A4 policy pin below.
+"""
 
 from __future__ import annotations
 
@@ -18,21 +23,27 @@ from ui.canvas_presentation.composition import (
 )
 
 
-def _slot(slot_id: int, w: int, h: int, label: str = "") -> CompareSlot:
-    return CompareSlot(id=slot_id, image=slot_image(w, h), label=label or f"slot{slot_id}")
+def _slot(slot_id: int, label: str = "") -> CompareSlot:
+    return CompareSlot(id=slot_id, label=label or f"slot{slot_id}")
+
+
+def _plan(state, *specs, **kw):
+    """Build with explicit sources; each spec is ``(slot_id, w, h)``."""
+    sources = {sid: slot_image(w, h) for sid, w, h in specs}
+    return build_composition_plan(state, sources=sources, **kw)
 
 
 def test_empty_tree_returns_none():
     state = MultiCompareState()
-    assert build_composition_plan(state) is None
+    assert _plan(state) is None
 
 
 def test_single_leaf_maps_to_single_layer():
     state = MultiCompareState(
         root=LeafNode(slot_id=1),
-        slots=[_slot(1, 800, 600)],
+        slots=[_slot(1)],
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 800, 600))
     assert plan is not None
     assert isinstance(plan.root, LayerNode)
     assert plan.canvas_w == 800 and plan.canvas_h == 600
@@ -45,9 +56,9 @@ def test_split_with_two_leaves_maps_to_split_node():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        slots=[_slot(1), _slot(2)],
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 200, 200), (2, 200, 200))
     assert plan is not None
     assert isinstance(plan.root, CompSplitNode)
     assert plan.root.direction == "h"
@@ -72,10 +83,10 @@ def test_split_gap_defaults_to_divider_thickness():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        slots=[_slot(1), _slot(2)],
         divider_settings=MultiCompareDividerSettings(thickness=20),
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 200, 200), (2, 200, 200))
     assert plan is not None
     assert isinstance(plan.root, CompSplitNode)
     assert plan.root.gap_px == 20
@@ -93,10 +104,10 @@ def test_split_gap_collapses_to_zero_when_divider_hidden():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        slots=[_slot(1), _slot(2)],
         divider_settings=MultiCompareDividerSettings(visible=False, thickness=6),
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 200, 200), (2, 200, 200))
     assert plan is not None
     assert plan.root.gap_px == 0
 
@@ -108,10 +119,10 @@ def test_split_gap_explicit_override_wins_over_divider_thickness():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        slots=[_slot(1), _slot(2)],
         divider_settings=MultiCompareDividerSettings(thickness=20),
     )
-    plan = build_composition_plan(state, split_gap_px=7)
+    plan = _plan(state, (1, 200, 200), (2, 200, 200), split_gap_px=7)
     assert plan is not None
     assert plan.root.gap_px == 7
 
@@ -123,9 +134,9 @@ def test_missing_slot_image_is_skipped():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), CompareSlot(id=2)],
+        slots=[_slot(1), CompareSlot(id=2)],
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 200, 200))
     # Split collapses to its single loaded child
     assert plan is not None
     assert isinstance(plan.root, LayerNode)
@@ -145,7 +156,7 @@ def test_all_imageless_leaves_return_none():
         ),
         slots=[CompareSlot(id=1), CompareSlot(id=2)],
     )
-    assert build_composition_plan(state) is None
+    assert _plan(state) is None
 
 
 def test_focused_slot_isolates_single_leaf():
@@ -155,10 +166,10 @@ def test_focused_slot_isolates_single_leaf():
             children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
             weights=[1.0, 1.0],
         ),
-        slots=[_slot(1, 200, 200), _slot(2, 400, 400)],
+        slots=[_slot(1), _slot(2)],
         focused_slot_id=2,
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 200, 200), (2, 400, 400))
     assert plan is not None
     assert isinstance(plan.root, LayerNode)
     assert plan.root.layer_id == 2
@@ -168,12 +179,12 @@ def test_focused_slot_isolates_single_leaf():
 def test_zoom_pan_propagate_to_layers():
     state = MultiCompareState(
         root=LeafNode(slot_id=1),
-        slots=[_slot(1, 100, 100)],
+        slots=[_slot(1)],
         zoom=2.5,
         pan_x=0.1,
         pan_y=-0.2,
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 100, 100))
     resolved = resolve_composition(plan)
     assert resolved.layers[0].zoom == 2.5
     assert resolved.layers[0].pan_x == 0.1
@@ -183,9 +194,9 @@ def test_zoom_pan_propagate_to_layers():
 def test_labels_included_by_default():
     state = MultiCompareState(
         root=LeafNode(slot_id=1),
-        slots=[_slot(1, 100, 100, label="image-A")],
+        slots=[_slot(1, label="image-A")],
     )
-    plan = build_composition_plan(state)
+    plan = _plan(state, (1, 100, 100))
     assert plan.root.label is not None
     assert plan.root.label.text == "image-A"
 
@@ -193,17 +204,17 @@ def test_labels_included_by_default():
 def test_labels_disabled_when_include_labels_false():
     state = MultiCompareState(
         root=LeafNode(slot_id=1),
-        slots=[_slot(1, 100, 100, label="image-A")],
+        slots=[_slot(1, label="image-A")],
     )
-    plan = build_composition_plan(state, include_labels=False)
+    plan = _plan(state, (1, 100, 100), include_labels=False)
     assert plan.root.label is None
 
 
 def test_explicit_canvas_size_overrides_native():
     state = MultiCompareState(
         root=LeafNode(slot_id=1),
-        slots=[_slot(1, 800, 600)],
+        slots=[_slot(1)],
     )
-    plan = build_composition_plan(state, canvas_w=1920, canvas_h=1080)
+    plan = _plan(state, (1, 800, 600), canvas_w=1920, canvas_h=1080)
     assert plan.canvas_w == 1920
     assert plan.canvas_h == 1080

@@ -537,110 +537,14 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/controller.py",
-      "lines": 892,
+      "path": "src/tabs/multi_compare/controller.py",
+      "lines": 535,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "size": "exempt",
-        "reason": "one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 668,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
-      "parsed": {
-        "pattern": "tiled-pipeline",
-        "size": "670",
-        "reason": "7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/tab.py",
-      "lines": 531,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
+      "raw": "pattern=thin-owner reason=\"B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)\"",
       "parsed": {
         "pattern": "thin-owner",
-        "size": "exempt",
-        "reason": "tab contract — lifecycle wiring delegates to controller/widget"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 743,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "size": "exempt",
-        "reason": "one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 806,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "size": "exempt",
-        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 429,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip\"",
-      "parsed": {
-        "pattern": "thin-owner",
-        "reason": "thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
-      "lines": 592,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
-      "parsed": {
-        "pattern": "thin-owner-target",
-        "size": "exempt",
-        "reason": "ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 549,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
-      "parsed": {
-        "pattern": "thin-owner",
-        "size": "exempt",
-        "reason": "thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/widget.py",
-      "lines": 889,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
-      "parsed": {
-        "pattern": "thin-owner",
-        "size": "exempt",
-        "reason": "thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag"
+        "reason": "B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)"
       }
     },
     {
@@ -656,7 +560,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 779,
+      "lines": 786,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
@@ -667,7 +571,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/canvas_widget.py",
-      "lines": 742,
+      "lines": 765,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -678,7 +582,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 913,
+      "lines": 943,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites\"",
@@ -689,7 +593,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 578,
+      "lines": 633,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -700,13 +604,13 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/preview_decode.py",
-      "lines": 732,
+      "lines": 829,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via replace_slot_image\"",
+      "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)\"",
       "parsed": {
         "pattern": "thin-owner",
-        "reason": "A2 preview single-flight + bounded full-res stage fan-out via replace_slot_image"
+        "reason": "A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)"
       }
     },
     {
