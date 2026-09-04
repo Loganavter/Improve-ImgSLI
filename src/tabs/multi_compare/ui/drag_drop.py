@@ -13,13 +13,17 @@ methods on ``MultiCompareWidget`` that delegate into this module.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
 from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
-from tabs.multi_compare.debug import mc_dnd_debug as _dnd_log
+from tabs.multi_compare.debug import (
+    mc_dnd_debug as _dnd_log,
+    mc_dnd_diag_light_move_enabled,
+)
 from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
@@ -120,6 +124,7 @@ def resolve_drop_target(widget, pos, *, internal: bool):
 
 
 def apply_drag_preview(widget, event, internal: bool) -> None:
+    t0 = time.monotonic()
     pos = event.position().toPoint()
     tgt_path, side, root_tgt, swap_id = resolve_drop_target(
         widget, pos, internal=internal
@@ -129,7 +134,6 @@ def apply_drag_preview(widget, event, internal: bool) -> None:
     )
     # dragMove fires per mouse tick — log only when the resolved target
     # changes, otherwise one gesture floods the log with identical lines.
-    # The dispatch below stays per-tick (unchanged runtime behavior).
     sig = (internal, source_id, tgt_path, side, root_tgt, swap_id)
     if sig != getattr(widget, "_dnd_preview_sig", None):
         widget._dnd_preview_sig = sig
@@ -141,18 +145,126 @@ def apply_drag_preview(widget, event, internal: bool) -> None:
     # Runs per dragMove, not just on target change: the check is synchronous
     # (one frame behind the dispatched update), so the first evaluation above
     # always sees presents==0 on a fresh canvas. Its own logging is deduped
-    # inside the helper; the dispatch below is untouched either way.
+    # inside the helper.
     chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
-    widget.store.dispatch(
-        actions.set_drag_state(
-            active=True,
-            internal=internal,
-            source_slot_id=source_id,
-            target_path=tgt_path,
-            target_side=side,
-            target_root=root_tgt,
-            target_swap_slot_id=swap_id,
+    # No state change → no dispatch (STORE.md invariant 2 covers *changes*).
+    # Per-tick dispatches of an identical SetDragState each pay the full
+    # core-Dispatcher pipeline (lock, RootReducer, slot write, emit) plus a
+    # composition rebuild and a full re-render downstream — at 60Hz mouse
+    # ticks that starves the event loop and freezes the DnD cursor feedback.
+    # Same-target moves degrade to IC semantics: accept (by the caller), no
+    # work. The reducer's own SetDragState equality guard is the backstop
+    # for the other dispatch sites (pending preview).
+    dispatched = False
+    if _drag_preview_changed(
+        widget,
+        internal=internal,
+        source_id=source_id,
+        tgt_path=tgt_path,
+        side=side,
+        root_tgt=root_tgt,
+        swap_id=swap_id,
+    ):
+        widget.store.dispatch(
+            actions.set_drag_state(
+                active=True,
+                internal=internal,
+                source_slot_id=source_id,
+                target_path=tgt_path,
+                target_side=side,
+                target_root=root_tgt,
+                target_swap_slot_id=swap_id,
+            )
         )
+        dispatched = True
+    _timing_add(widget, (time.monotonic() - t0) * 1000.0, dispatched)
+
+
+def _drag_preview_changed(
+    widget,
+    *,
+    internal: bool,
+    source_id: int | None,
+    tgt_path: tuple[int, ...] | None,
+    side: str | None,
+    root_tgt: bool,
+    swap_id: int | None,
+) -> bool:
+    """True when the resolved preview differs from current drag state.
+
+    Compared against live state (not the last-dispatched payload) so a
+    mid-gesture external change (drop/leave/cancel) can never desync the
+    gate. Fail-open (True) when state is unreadable — preserves the old
+    always-dispatch behavior rather than dropping a real update.
+    """
+    try:
+        st = widget.state
+        return (
+            st.drag_active is not True
+            or st.drag_internal != internal
+            or st.drag_source_slot_id != source_id
+            or st.drag_target_path != tgt_path
+            or st.drag_target_side != side
+            or st.drag_target_root != root_tgt
+            or st.drag_target_swap_slot_id != swap_id
+        )
+    except Exception:
+        return True
+
+
+def _timing_reset(widget) -> None:
+    """Start per-gesture cost accounting (moves/handler-ms on the widget,
+    frames/raster-ms on the canvas — see passes.py). Summary is emitted on
+    leave/drop; all reads are defensive for test fakes."""
+    widget._dnd_timing = {
+        "t0": time.monotonic(),
+        "moves": 0,
+        "handler_ms": 0.0,
+        "dispatched": 0,
+    }
+    canvas = getattr(widget, "canvas", None)
+    if canvas is not None:
+        canvas._dnd_frame_stats = {"frames": 0, "raster_ms": 0.0}
+
+
+def _timing_add(widget, handler_ms: float, dispatched: bool) -> None:
+    acc = getattr(widget, "_dnd_timing", None)
+    if acc is None:
+        return
+    acc["moves"] += 1
+    acc["handler_ms"] += handler_ms
+    if dispatched:
+        acc["dispatched"] += 1
+
+
+def _timing_emit(widget, why: str) -> None:
+    acc = getattr(widget, "_dnd_timing", None)
+    if acc is None:
+        return
+    widget._dnd_timing = None
+    canvas = getattr(widget, "canvas", None)
+    facc = getattr(canvas, "_dnd_frame_stats", None)
+    dur_ms = (time.monotonic() - acc["t0"]) * 1000.0
+    moves, handler_ms = acc["moves"], acc["handler_ms"]
+    dispatched = acc.get("dispatched", "?")
+    skipped = moves - dispatched if isinstance(dispatched, int) else "?"
+    if isinstance(facc, dict):
+        frames, raster_ms = facc["frames"], facc["raster_ms"]
+        facc["frames"] = 0
+        facc["raster_ms"] = 0.0
+    else:
+        frames, raster_ms = "?", "?"
+    avg_handler = handler_ms / moves if moves else 0.0
+    if isinstance(frames, int) and frames:
+        avg_raster = raster_ms / frames
+        raster_part = f"raster_total={raster_ms:.1f}ms raster_avg={avg_raster:.2f}ms"
+    else:
+        raster_part = f"raster_total={raster_ms}ms"
+    _dnd_log(
+        "gesture %s: moves=%d dispatched=%s skipped=%s duration=%.0fms "
+        "handler_total=%.1fms handler_avg=%.2fms frames=%s %s",
+        why, moves, dispatched, skipped, dur_ms, handler_ms, avg_handler,
+        frames, raster_part,
     )
 
 
@@ -160,6 +272,8 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     cancel_pending_placements(widget)
     widget._dnd_preview_sig = None  # new gesture — log its first preview
     widget._dnd_ph_sig = None  # ...and its placeholder decision
+    _timing_reset(widget)
+    widget._dnd_light_logged = False
     mime = event.mimeData()
     if has_internal_slot(mime):
         _dnd_log(
@@ -180,6 +294,17 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
 
 
 def drag_move_event(widget, event: QDragMoveEvent) -> None:
+    if mc_dnd_diag_light_move_enabled():
+        # Diagnostic-only: image_compare semantics (accept, no work).
+        mime = event.mimeData()
+        if has_internal_slot(mime) or has_image_urls(mime):
+            if not getattr(widget, "_dnd_light_logged", False):
+                widget._dnd_light_logged = True
+                _dnd_log("dragMove DIAG-LIGHT (accept-only, no dispatch/render)")
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+        return
     if has_internal_slot(event.mimeData()):
         apply_drag_preview(widget, event, internal=True)
         event.acceptProposedAction()
@@ -195,6 +320,7 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
 def drag_leave_event(widget, event: QDragLeaveEvent) -> None:
     _dnd_log("dragLeave")
     widget._dnd_preview_sig = None
+    _timing_emit(widget, "leave")
     widget.store.dispatch(actions.set_drag_state(active=False))
     event.accept()
 
@@ -210,6 +336,7 @@ def drop_event(widget, event: QDropEvent) -> None:
             "drop internal source=%s target_path=%s side=%s swap=%s",
             source_id, tgt_path, side, swap_id,
         )
+        _timing_emit(widget, "drop")
         widget._dnd_preview_sig = None
         widget.store.dispatch(actions.set_drag_state(active=False))
         if source_id is not None and side is not None:
@@ -233,6 +360,7 @@ def drop_event(widget, event: QDropEvent) -> None:
         "drop external files=%d target_path=%s side=%s root=%s",
         len(paths), tgt_path, side, root_tgt,
     )
+    _timing_emit(widget, "drop")
     if paths:
         widget.images_dropped.emit(paths, (tgt_path, root_tgt), side)
         event.acceptProposedAction()
@@ -354,32 +482,50 @@ def update_pending_drag_preview(widget, pos, *, internal: bool) -> None:
         tgt_path, side, root_tgt, swap_id = widget.canvas.compute_drop_target(
             pos, include_center=include_center
         )
-        widget.store.dispatch(
-            actions.set_drag_state(
-                active=True,
-                internal=True,
-                source_slot_id=widget._pending_duplicate_source,
-                target_path=tgt_path,
-                target_side=side,
-                target_root=root_tgt,
-                target_swap_slot_id=swap_id,
+        if _drag_preview_changed(
+            widget,
+            internal=True,
+            source_id=widget._pending_duplicate_source,
+            tgt_path=tgt_path,
+            side=side,
+            root_tgt=root_tgt,
+            swap_id=swap_id,
+        ):
+            widget.store.dispatch(
+                actions.set_drag_state(
+                    active=True,
+                    internal=True,
+                    source_slot_id=widget._pending_duplicate_source,
+                    target_path=tgt_path,
+                    target_side=side,
+                    target_root=root_tgt,
+                    target_swap_slot_id=swap_id,
+                )
             )
-        )
         chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
         return
     if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
         widget.store.dispatch(actions.set_drag_state(active=False))
         return
     tgt_path, side, root_tgt, _ = widget.canvas.compute_drop_target(pos)
-    widget.store.dispatch(
-        actions.set_drag_state(
-            active=True,
-            internal=False,
-            target_path=tgt_path,
-            target_side=side,
-            target_root=root_tgt,
+    if _drag_preview_changed(
+        widget,
+        internal=False,
+        source_id=None,
+        tgt_path=tgt_path,
+        side=side,
+        root_tgt=root_tgt,
+        swap_id=None,
+    ):
+        widget.store.dispatch(
+            actions.set_drag_state(
+                active=True,
+                internal=False,
+                target_path=tgt_path,
+                target_side=side,
+                target_root=root_tgt,
+            )
         )
-    )
     chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
 
 
