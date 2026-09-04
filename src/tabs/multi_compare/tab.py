@@ -339,11 +339,21 @@ class MultiCompareTab(TabContract):
             if paths is None or self._widget is None:
                 return False
             image_paths = [
-                p for p in (Path(x) for x in paths) if p.suffix.lower() in _IMAGE_EXTENSIONS
+                p if isinstance(p, Path) else Path(p) for p in paths
+            ]
+            image_paths = [
+                p for p in image_paths if p.suffix.lower() in _IMAGE_EXTENSIONS
             ]
             if not image_paths:
                 return False
-            self._widget.begin_pending_paste(image_paths)
+            # P3A: load directly like IC instead of arming begin_pending_paste
+            # (no click-to-place, no Esc cancel); carry drops carry no canvas
+            # position, so placement is auto (load_external_paths).
+            if self._controller is not None:
+                return bool(self._controller.load_external_paths(image_paths))
+            self._widget.images_dropped.emit(
+                list(image_paths), (None, False), None
+            )
             return True
         if service_id == "toast_anchor_widget":
             if self._widget is None:
@@ -393,12 +403,20 @@ class MultiCompareTab(TabContract):
             mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
             return
         image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
-        if image_paths:
-            mc_dnd_debug("Tab handle_drop: begin_pending_paste %d paths", len(image_paths))
-            # Same placement UX as external DnD / clipboard paste.
-            self._widget.begin_pending_paste(image_paths)
-        else:
+        if not image_paths:
             mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
+            return
+        # P3A: load directly like IC — auto-place via the P2 async path
+        # (imageless slot + toast now, preview worker decode). No
+        # begin_pending_paste arming, so no click-to-place and no Esc
+        # cancel; the chrome/carry hint carries no canvas position and is
+        # ignored for placement. Same placement UX as external canvas DnD.
+        if self._controller is not None:
+            mc_dnd_debug("Tab handle_drop: direct-load %d paths", len(image_paths))
+            self._controller.load_external_paths(image_paths)
+        else:
+            mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
+            self._widget.images_dropped.emit(list(image_paths), (None, False), None)
 
     def dispose(self) -> None:
         if self._widget is not None:

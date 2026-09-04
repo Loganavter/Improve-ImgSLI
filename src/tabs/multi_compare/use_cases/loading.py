@@ -391,6 +391,41 @@ def load_single_auto(controller, path: Path) -> None:
     _preview.load_preview_async(controller, path, sid)
 
 
+def load_external_paths(controller, paths) -> int:
+    """Chrome/carry/paste drops without a canvas position (P3A).
+
+    Direct-load like IC (``image_compare.use_cases.drag_drop.handle_drop``):
+    auto-place each file through the P2 async path — imageless slot +
+    loading toast synchronously, bounded preview in a ``GenericWorker``
+    (``load_preview_async``), full-res second stage. No
+    ``begin_pending_paste`` arming: nothing waits for a canvas click, so
+    there is no armed highlight and ``Esc`` has nothing to cancel for this
+    path. The ``(None, False)`` target falls back to auto placement inside
+    ``add_image_at`` (empty canvas → root, otherwise largest-leaf split),
+    so window-chrome ``slot`` hints and carry drops with no position both
+    map to append-like placement. Internal-drag Move stays in
+    ``ui/drag_drop`` and is untouched by this path.
+
+    Returns the number of slots created synchronously.
+    """
+    from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTENSIONS
+
+    valid: list[Path] = []
+    for raw in paths or []:
+        path = raw if isinstance(raw, Path) else Path(raw)
+        if path.suffix.lower() not in _EXTENSIONS:
+            continue
+        if not path.is_file():
+            logger.debug("load_external_paths: skipped missing file %s", path)
+            continue
+        valid.append(path)
+    if not valid:
+        return 0
+    before = len(controller.widget.state.slots)
+    on_images_dropped(controller, valid, (None, False), None)
+    return len(controller.widget.state.slots) - before
+
+
 def on_images_dropped(controller, paths: list, target, side) -> None:
     """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/...
 

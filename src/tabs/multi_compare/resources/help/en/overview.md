@@ -10,6 +10,7 @@ Choose {{tr:workspace.session_types.multi_compare}} in the Session Picker, or ru
 
 - **Grid** — arrange slots; drop files onto a cell or use {{tr:multi_compare.action.add_images}} (`Ctrl+O`).
 - **Empty slots** — stay open for new drops.
+- **Outside drops** — files dropped from a file manager, clipboard paste, or **Move** from another tab load immediately into auto-placed slots with a loading toast; there is no click-to-place step and no armed highlight to cancel.
 - **Gap drop** — drop onto a gap between cells to split and create a new cell recursively.
 - **Weights** — drag grid dividers to change relative sizes.
 - **Layout change** — keeps loaded images where possible.
@@ -33,7 +34,7 @@ Choose {{tr:workspace.session_types.multi_compare}} in the Session Picker, or ru
 
 ### Slot context menu {#context-menu}
 
-Right-click a slot for per-image actions, including [Image Properties](help://image_properties) (file metadata and slot position) and **Move** (drag ghost → click another workspace tab to start placement like DnD / paste).
+Right-click a slot for per-image actions, including [Image Properties](help://image_properties) (file metadata and slot position) and **Move** (drag ghost → drop onto another workspace tab to load the image there immediately, auto-placed).
 
 ### Save and export {#save-and-export}
 
