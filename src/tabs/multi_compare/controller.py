@@ -286,6 +286,19 @@ class MultiCompareController:
     def clear(self) -> None:
         self.widget.store.dispatch(mc_actions.clear())
 
+    def remove_slot(self, slot_id: int) -> None:
+        """Remove a slot, aborting its inflight preview/full decodes first (A2).
+
+        Thin delegate over ``preview_decode.remove_slot_with_cancel`` —
+        the AbortSignal-style cancel-on-remove entry point (the widget's
+        direct ``placement.remove_slot`` path stays safe via stale guards).
+        """
+        preview_decode_use_cases.remove_slot_with_cancel(self, slot_id)
+
+    def cancel_slot_loads(self, slot_id: int) -> None:
+        """Abort inflight decodes for ``slot_id`` without removing the slot."""
+        preview_decode_use_cases.cancel_slot_loads(self, slot_id)
+
     def _on_images_dropped(self, paths: list, target, side) -> None:
         # P7: kept (not collapsed into drop_event's defer) on purpose. The
         # canvas dropEvent already returns past accept before emitting, but
