@@ -681,6 +681,90 @@ class MultiCompareStore:
         self._dispatching = False
         return self._read_slot()
 
+    def transact(self, actions_list: list[MultiCompareAction]) -> MultiCompareState:
+        """Coalesce N actions into one dispatch/emit (A3, IC-parity).
+
+        Additive batch API — the pure ``reduce`` above and every existing
+        action are untouched. N-file add (DnD/chrome/carry/dialog) plans N
+        ``AddSlot`` actions against a scratch state and commits them here,
+        so one user-visible multi-add pays one dispatch → one
+        ``emit_state_change("multi_compare")`` instead of N (IC precedent:
+        ``image_compare.use_cases.slot.load_images_from_paths`` single
+        transact of ``Append + SetCurrentIndex``,
+        ``core.state_management.transaction.TransactionAction``).
+
+        - **standalone** (tests): the ``reduce`` chain runs over a local
+          copy; subscribers are notified once with the *last* inner action
+          (keeps the ``persistence`` divider/label guards and canvas
+          behavior identical to N sequential dispatches).
+        - **bound** (production): a single ``core_store.transact([...],
+          scope="multi_compare")`` → one core ``Dispatcher.dispatch`` of
+          the ``TRANSACTION`` wrapper → one emit. Facade subscribers
+          observe the last inner action rather than the core wrapper, so
+          the action vocabulary they filter on is unchanged. Falls back to
+          the single ``dispatch`` path for one action and to sequential
+          dispatch when the core store has neither ``transact`` nor a
+          dispatcher.
+
+        Undo note: the outer ``TRANSACTION`` type is outside
+        ``Dispatcher._UNDOABLE_TYPES`` (same as every IC transact), so a
+        batched multi-add commits atomically outside undo while single-add
+        ``dispatch`` stays undoable. ``MoveSlot`` and the reducer are
+        untouched by this method.
+        """
+        pending = list(actions_list or [])
+        if not pending:
+            return self.state
+        if self._core_store is None:
+            current = self._state
+            try:
+                for sub in pending:
+                    current = reduce(current, sub)
+            except Exception:
+                logger.exception(
+                    "multi_compare transact failed (%d actions)", len(pending)
+                )
+                return self._state
+            if current is self._state:
+                return self._state
+            self._state = current
+            self._last_action = pending[-1]
+            for sub_cb in list(self._subscribers):
+                try:
+                    sub_cb(pending[-1], current)
+                except Exception:
+                    logger.exception(
+                        "multi_compare subscriber raised on transact",
+                    )
+            return current
+
+        # bound mode: one core transaction → one dispatch → one emit.
+        if len(pending) == 1:
+            return self.dispatch(pending[0])
+        self._last_action = pending[-1]
+        self._dispatching = True
+        try:
+            transact = getattr(self._core_store, "transact", None)
+            if callable(transact):
+                transact(pending, scope="multi_compare")
+            else:
+                dispatcher = getattr(self._core_store, "get_dispatcher", lambda: None)()
+                if dispatcher is not None:
+                    from core.state_management.transaction import (
+                        TransactionAction,
+                    )
+
+                    dispatcher.dispatch(
+                        TransactionAction(pending), scope="multi_compare"
+                    )
+        except Exception:
+            logger.exception(
+                "multi_compare transact failed (%d actions)", len(pending)
+            )
+        finally:
+            self._dispatching = False
+        return self._read_slot()
+
     def subscribe(
         self,
         callback: Callable[[MultiCompareAction, MultiCompareState], None],
