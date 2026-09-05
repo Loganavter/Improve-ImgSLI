@@ -56,7 +56,13 @@ def _make_controller(qapp, monkeypatch, cursor_global):
     fw = _FakeWidget()
     fw.checkbox_widget.setGeometry(0, 0, 600, 80)
     fw.magnifier_group_container.setGeometry(50, 10, 200, 60)
+    fw.show()
     fw.checkbox_widget.show()
+    # Panel starts hidden in production (overlay attach hides it); showing
+    # the fake tree would otherwise leave it visible and Enter becomes a
+    # no-op cancel instead of a show.
+    fw.magnifier_settings_flyout.hide()
+    fw.magnifier_settings_flyout.hide_calls = 0
     qapp.processEvents()
     monkeypatch.setattr(
         transient.QCursor, "pos", staticmethod(lambda: cursor_global)
@@ -96,14 +102,14 @@ def test_hover_in_zone_starts_open_timer(qapp, monkeypatch):
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: center))
 
     # Entering the zone opens immediately (binary, no open timer).
-    qapp.sendEvent(group, _hover_event(QEvent.Type.HoverEnter, center))
+    qapp.notify(group, _hover_event(QEvent.Type.HoverEnter, center))
     assert fw.magnifier_settings_flyout.shown_for == [group]
 
     # Leaving to dead space hides immediately.
     outside = group.mapToGlobal(QPoint(-100, -100))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: outside))
     fw.magnifier_settings_flyout.show()
-    qapp.sendEvent(group, _hover_event(QEvent.Type.HoverLeave, center))
+    qapp.notify(group, _hover_event(QEvent.Type.HoverLeave, center))
     assert fw.magnifier_settings_flyout.hide_calls == 1
 
 
@@ -116,7 +122,7 @@ def test_toolbar_fringe_within_padding_triggers(qapp, monkeypatch):
     fringe = group.mapToGlobal(QPoint(-pad, 30))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: fringe))
 
-    qapp.sendEvent(
+    qapp.notify(
         fw.checkbox_widget, _hover_event(QEvent.Type.HoverEnter, fringe)
     )
     assert fw.magnifier_settings_flyout.shown_for
@@ -124,7 +130,7 @@ def test_toolbar_fringe_within_padding_triggers(qapp, monkeypatch):
     far = group.mapToGlobal(QPoint(-pad - 30, 30))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: far))
     fw.magnifier_settings_flyout.show()
-    qapp.sendEvent(
+    qapp.notify(
         fw.checkbox_widget, _hover_event(QEvent.Type.HoverMove, far)
     )
     assert fw.magnifier_settings_flyout.hide_calls == 1
@@ -159,7 +165,7 @@ def test_leave_to_linked_child_arms_backstop(qapp, monkeypatch):
     linked_pos = group.mapToGlobal(QPoint(500, 300))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: linked_pos))
 
-    qapp.sendEvent(group, _hover_event(QEvent.Type.HoverLeave, linked_pos))
+    qapp.notify(group, _hover_event(QEvent.Type.HoverLeave, linked_pos))
     assert flyout.schedule_calls, "backstop timer must be armed on linked transition"
     assert flyout.hide_calls == 0, "must not hide while cursor is on a linked sibling"
     assert flyout.isVisible()

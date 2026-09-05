@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.constants import AppConstants
-from sli_ui_toolkit.managers import DelayedActionTimer
-
-logger = logging.getLogger("ImproveImgSLI")
+from sli_ui_toolkit.managers import DecisionJournal, DelayedActionTimer
 
 
 _HOVER_ZONE_PADDING_PX = 10
@@ -38,7 +34,39 @@ class MagnifierSettingsHoverController(QObject):
         self._hover_timer = DelayedActionTimer(self._show, parent=widget)
         self._mode_picker_flyouts_wired: set = set()
         self._group_buttons: set = set()
+        # Decision journal (shared toolkit helper): every show/hide/schedule
+        # lands here with cursor pos + zone reason — one log excerpt shows
+        # the full causal chain for "panel hangs open" post-mortems.
+        self._journal = DecisionJournal("magnifier-hover")
         self._wire()
+
+    def _note(self, what: str, detail: str = "") -> None:
+        try:
+            pos = QCursor.pos()
+            detail = f"{detail} cursor={pos.x()},{pos.y()}".strip()
+        except Exception:
+            pass
+        self._journal.note(what, detail)
+
+    def describe_state(self) -> dict:
+        """Snapshot for diagnostics (UI inspector hook)."""
+        flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+        try:
+            visible = bool(flyout.isVisible()) if flyout is not None else False
+        except Exception:
+            visible = False
+        try:
+            focus_name = type(QApplication.focusWidget()).__name__
+        except Exception:
+            focus_name = "?"
+        timer = getattr(flyout, "_auto_hide", None)
+        return {
+            "visible": visible,
+            "timer_active": bool(timer._timer.isActive()) if timer is not None else False,
+            "focus": focus_name,
+            "zone": self._combined_reason(),
+            "journal": self._journal.snapshot(),
+        }
 
     def _wire(self) -> None:
         widget = self.widget
@@ -183,6 +211,7 @@ class MagnifierSettingsHoverController(QObject):
                 # Binary without timer for cursor as well (user request)
                 reason = self._combined_reason()
                 if reason is None:
+                    self._note("hover-move:outside", "")
                     self._hide_immediately()
                 elif reason == "group":
                     self._cancel_hide()
@@ -193,15 +222,19 @@ class MagnifierSettingsHoverController(QObject):
                     # orphan the panel if the cursor next leaves to an
                     # unwatched surface (linked dropdown, native CSD) — no
                     # later event would ever close it.
+                    self._note(f"hover-move:inside-{reason}", "")
                     self._schedule_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._hover_timer.stop()
             reason = self._combined_reason()
             if reason is None:
+                self._note("leave:outside", "")
                 self._hide_immediately()
             elif reason == "group":
+                self._note("leave:group", "")
                 self._cancel_hide()
             else:
+                self._note(f"leave:inside-{reason}", "")
                 self._schedule_hide()
 
     def _handle_button_focus_event(self, event) -> None:
@@ -313,8 +346,7 @@ class MagnifierSettingsHoverController(QObject):
             # Linked siblings are part of the safe zone (see
             # _link_sibling_flyouts) but carry no event filter of their own:
             # leaving the cursor on one with no backstop timer pending
-            # orphans the panel open — no later event ever closes it
-            # (native CSD chrome is unwatched too).
+            # orphans the panel open — no later event ever closes it.
             try:
                 from sli_ui_toolkit.managers import FlyoutManager
 
@@ -336,10 +368,7 @@ class MagnifierSettingsHoverController(QObject):
     def _hide_immediately(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
-            logger.debug(
-                "[magnifier-hover] _hide_immediately cursor=%s",
-                QCursor.pos(),
-            )
+            self._note("hide:immediate", "")
             flyout.hide()
 
     def _handle_flyout_event(self, event) -> None:
@@ -368,6 +397,7 @@ class MagnifierSettingsHoverController(QObject):
         # keeps working while this panel is open.
         flyout.show_for_group(group)
         flyout.cancel_auto_hide()
+        self._note("show", "")
 
     def _refresh_slider_labels(self) -> None:
         # The three sliders' real values get applied via signal-blocked
@@ -451,17 +481,20 @@ class MagnifierSettingsHoverController(QObject):
     def _schedule_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None:
-            logger.debug(
-                "[magnifier-hover] _schedule_hide cursor=%s focus=%s",
-                QCursor.pos(),
-                type(QApplication.focusWidget()).__name__
-                if QApplication.focusWidget() is not None
-                else None,
-            )
+            try:
+                focus_name = type(QApplication.focusWidget()).__name__
+            except Exception:
+                focus_name = "?"
+            self._note("hide:schedule-backstop", f"focus={focus_name}")
             flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def _cancel_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
-        if flyout is not None:
-            logger.debug("[magnifier-hover] _cancel_hide")
-            flyout.cancel_auto_hide()
+        if flyout is None:
+            return
+        # Journal (and flag-gated log) only when something was actually
+        # pending — HoverMove storms would otherwise flood both.
+        timer = getattr(flyout, "_auto_hide", None)
+        if timer is None or bool(timer._timer.isActive()):
+            self._note("hide:cancel", "")
+        flyout.cancel_auto_hide()
