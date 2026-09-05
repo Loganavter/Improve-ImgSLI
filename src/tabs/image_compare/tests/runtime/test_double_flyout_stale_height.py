@@ -1,15 +1,19 @@
 """DOUBLE-mode stale single-height guard (PLAN 1 fallback/protection).
 
 Regression: ``showAsSingle(1)`` leaves each panel clamped to its own list's
-natural height (panel min/max == natural). ``switchToDoubleMode`` computes
-equal-height shared panel rects, but Qt silently clamps ``setGeometry`` to
-the stale ``maximumHeight`` — the shorter panel never grows (e.g. 154 vs 82)
-and, worse, the unchanged size emits no Resize event, so the virtual-list
-controller never rebinds and rows stay frozen at the hidden-panel width,
-huddled top-left.
+natural height (panel min/max == natural). ``switchToDoubleMode`` used to
+compute equal-height shared panel rects, but Qt silently clamps
+``setGeometry`` to the stale ``maximumHeight`` — the shorter panel never
+grew (e.g. 154 vs 82) and, worse, the unchanged size emits no Resize event,
+so the virtual-list controller never rebinds and rows stay frozen at the
+hidden-panel width, huddled top-left.
+
+Heights are per-side now (each panel keeps its own natural height, tops
+aligned — no stretched short side with dead band under its last row), so
+the stale-clamp guard only has to admit each panel's OWN height.
 
 Invariant under test: after ``showAsSingle(1) + switchToDoubleMode`` with
-unequal lists, both panels synchronously take the shared height and both
+unequal lists, both panels synchronously take their own heights and both
 row windows span the full content width (no event-loop pass required —
 mid-drag there may be none before the user looks).
 """
@@ -64,11 +68,15 @@ def test_switch_to_double_equalizes_stale_single_heights(qapp):
         # Synchronous: no processEvents between switch and assertions.
         left_geom = picker.panel_left.geometry()
         right_geom = picker.panel_right.geometry()
-        assert left_geom.height() == right_geom.height()
+        # Per-side heights: each panel takes its OWN natural height (the
+        # fixture lists differ: 4 vs 2 items) with tops aligned — the
+        # short side is never stretched to the tall one.
+        assert left_geom.height() != right_geom.height()
+        assert left_geom.y() == right_geom.y()
         assert left_geom.height() == picker.panel_left._container_height
         assert right_geom.height() == picker.panel_right._container_height
-        # Stale max clamps must have been relaxed to admit the shared height.
-        # The scroll area admits the shared height minus the panel chrome
+        # Stale max clamps must have been relaxed to admit each own height.
+        # The scroll area admits its panel height minus the panel chrome
         # (own layout margins) — it must never overshoot the panel, or the
         # viewport stretches the content (dead band under the last row).
         assert picker.panel_left.maximumHeight() >= left_geom.height()
