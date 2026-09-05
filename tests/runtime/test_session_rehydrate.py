@@ -17,7 +17,7 @@ from tabs.multi_compare.widget import MultiCompareWidget
 class _FakeDocument:
     def __init__(self):
         from tabs.image_compare.state.document import ImageItem
-        self.image_list1 = [ImageItem(image=None, path="/one.png", display_name="one", rating=0)]
+        self.image_list1 = [ImageItem(path="/one.png", display_name="one", rating=0)]
         self.image_list2 = []
         self.image1_path = "/one.png"
         self.image2_path = None

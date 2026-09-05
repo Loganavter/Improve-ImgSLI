@@ -11,8 +11,13 @@ from ui.widgets.unified_list_picker.common import (
     FlyoutMode,
     ListItemType,
     _UnifiedFlyoutBase,
-    current_index_for_list,
     items_for_list,
+)
+from ui.widgets.unified_list_picker.double_geometry import (
+    compute_double_mode_geometry,
+    ensure_double_mode_scroll_behavior,
+    resolve_double_mode_top,
+    sync_double_mode_button_state,
 )
 
 class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
@@ -190,6 +195,10 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
             self._minimum_scrollable_panel_height(panel),
         )
 
+        # Invariant: when the panel fits below the anchor, the content top is
+        # exactly anchor.bottom + SINGLE_PANEL_GAP_Y (never shifted upward);
+        # the outer widget top is then content_top - SHADOW_RADIUS, symmetric
+        # with _apply_container_geometry (the inverse adjusted()).
         below_y = preferred_y
         below_space = available.bottom() - below_y + 1
         if below_space >= min_scroll_height:
@@ -253,8 +262,22 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         ):
             return
 
-        if self._anim and self._anim.state() == QPropertyAnimation.State.Running:
-            self._anim.stop()
+        # Interrupted show animations rest at start_pos (above end): tear the
+        # animation down now; the double geometry below snaps to end_pos.
+        anim, self._anim = self._anim, None
+        end_pos = None
+        if anim is not None:
+            try:
+                end_pos = anim.endValue()
+                if anim.state() == QPropertyAnimation.State.Running:
+                    anim.stop()
+                anim.finished.disconnect(self._on_animation_finished)
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                anim.deleteLater()
+            except RuntimeError:
+                pass
 
         self.mode = FlyoutMode.DOUBLE
         self.panel_left.show()
@@ -262,6 +285,12 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self._sync_anchor_open_state(None)
         self._apply_style()
         self._update_geometry_in_double_mode_internal()
+        if end_pos is not None and (
+            self._anchor_left is None or self._anchor_right is None
+        ):
+            # _update_geometry_in_double_mode_internal early-returns without
+            # both anchors — still snap to end, never to the start_pos above.
+            self.move(end_pos)
         self.raise_()
 
     def _apply_panel_geometries(self, local1: QRect, local2: QRect):
@@ -336,125 +365,28 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self._ensure_double_mode_scroll_behavior()
 
     def _sync_double_mode_button_state(self, button1, button2):
-        list1 = items_for_list(self._document(), 1)
-        list2 = items_for_list(self._document(), 2)
-        idx1 = current_index_for_list(self._document(), 1)
-        idx2 = current_index_for_list(self._document(), 2)
-        items1 = [item.display_name for item in list1] if list1 else []
-        items2 = [item.display_name for item in list2] if list2 else []
-        text1 = items1[idx1] if 0 <= idx1 < len(items1) else ""
-        text2 = items2[idx2] if 0 <= idx2 < len(items2) else ""
-        if hasattr(button1, "updateState"):
-            button1.updateState(len(list1), idx1, text=text1, items=items1)
-        if hasattr(button2, "updateState"):
-            button2.updateState(len(list2), idx2, text=text2, items=items2)
+        # Body lives in double_geometry.py (pure function over the picker
+        # owner); this delegator keeps the Plan 1 method name on the mixin.
+        return sync_double_mode_button_state(self, button1, button2)
+
+    def _resolve_double_mode_top(
+        self, button1, button2, geom1_content: QRect, geom2_content: QRect
+    ) -> int:
+        """Shared content height for DOUBLE mode, honoring the resolved top.
+
+        Body lives in double_geometry.py; see resolve_double_mode_top.
+        """
+        return resolve_double_mode_top(
+            self, button1, button2, geom1_content, geom2_content
+        )
 
     def _compute_double_mode_geometry(self, button1, button2):
-        left_size = self._calc_panel_total_size(1)
-        right_size = self._calc_panel_total_size(2)
-        geom1_content = self._calculate_ideal_geometry(
-            button1, left_size, content_only=True
-        )
-        geom2_content = self._calculate_ideal_geometry(
-            button2, right_size, content_only=True
-        )
-        source_anchor = button1 if self.source_list_num == 1 else button2
-        source_panel = self.panel_left if self.source_list_num == 1 else self.panel_right
-        source_rect = geom1_content if self.source_list_num == 1 else geom2_content
-        _source_y, shared_height = self._resolve_content_y_and_height(
-            source_anchor,
-            source_rect.y(),
-            max(geom1_content.height(), geom2_content.height()),
-            source_panel,
-        )
-        if shared_height < max(
-            self.panel_left._container_height,
-            self.panel_right._container_height,
-        ):
-            self.panel_left.recalculate_and_set_height(max_height=shared_height)
-            self.panel_right.recalculate_and_set_height(max_height=shared_height)
-            left_size = self._calc_panel_total_size(1)
-            right_size = self._calc_panel_total_size(2)
-            geom1_content = self._calculate_ideal_geometry(
-                button1, left_size, content_only=True
-            )
-            geom2_content = self._calculate_ideal_geometry(
-                button2, right_size, content_only=True
-            )
-            source_panel = self.panel_left if self.source_list_num == 1 else self.panel_right
-            source_rect = geom1_content if self.source_list_num == 1 else geom2_content
-            _source_y, shared_height = self._resolve_content_y_and_height(
-                source_anchor,
-                source_rect.y(),
-                max(geom1_content.height(), geom2_content.height()),
-                source_panel,
-            )
-        geom1_content.setHeight(shared_height)
-        geom2_content.setHeight(shared_height)
-
-        unified_content = geom1_content.united(geom2_content)
-        final_unified_geom = self._clamp_outer_rect(
-            self._outer_from_content_rect(unified_content),
-            allow_resize=False,
-        )
-        clamped_content = final_unified_geom.adjusted(
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
-            -self.SHADOW_RADIUS,
-            -self.SHADOW_RADIUS,
-        )
-        delta = clamped_content.topLeft() - unified_content.topLeft()
-        max_panel_height = max(1, clamped_content.height())
-        if max_panel_height < max(
-            self.panel_left._container_height,
-            self.panel_right._container_height,
-        ):
-            self.panel_left.recalculate_and_set_height(max_height=max_panel_height)
-            self.panel_right.recalculate_and_set_height(max_height=max_panel_height)
-            geom1_content.setHeight(self.panel_left._container_height)
-            geom2_content.setHeight(self.panel_right._container_height)
-            unified_content = geom1_content.united(geom2_content)
-            final_unified_geom = self._clamp_outer_rect(
-                self._outer_from_content_rect(unified_content),
-                allow_resize=True,
-            )
-            clamped_content = final_unified_geom.adjusted(
-                self.SHADOW_RADIUS,
-                self.SHADOW_RADIUS,
-                -self.SHADOW_RADIUS,
-                -self.SHADOW_RADIUS,
-            )
-            delta = clamped_content.topLeft() - unified_content.topLeft()
-        geom1_content = QRect(
-            geom1_content.x() + delta.x(),
-            geom1_content.y() + delta.y(),
-            geom1_content.width(),
-            min(geom1_content.height(), max_panel_height),
-        )
-        geom2_content = QRect(
-            geom2_content.x() + delta.x(),
-            geom2_content.y() + delta.y(),
-            geom2_content.width(),
-            min(geom2_content.height(), max_panel_height),
-        )
-        panel1_local = QRect(
-            geom1_content.x() - clamped_content.x(),
-            geom1_content.y() - clamped_content.y(),
-            geom1_content.width(),
-            geom1_content.height(),
-        )
-        panel2_local = QRect(
-            geom2_content.x() - clamped_content.x(),
-            geom2_content.y() - clamped_content.y(),
-            geom2_content.width(),
-            geom2_content.height(),
-        )
-        return panel1_local, panel2_local, final_unified_geom
+        # Body lives in double_geometry.py; this delegator keeps the Plan 1
+        # method name on the mixin.
+        return compute_double_mode_geometry(self, button1, button2)
 
     def _ensure_double_mode_scroll_behavior(self):
-        for panel in (self.panel_left, self.panel_right):
-            if hasattr(panel, "scroll_area"):
-                panel.scroll_area.setWidgetResizable(True)
+        return ensure_double_mode_scroll_behavior(self)
 
     def updateGeometryInDoubleMode(self):
         if self.mode != FlyoutMode.DOUBLE:
