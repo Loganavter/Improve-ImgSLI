@@ -157,6 +157,16 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py",
+      "lines": 419,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat per-field viewport setters sharing one guard/emit",
+      "parsed": {
+        "reason": "flat per-field viewport setters sharing one guard/emit"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/features/magnifier/geometry/layout_plan.py",
       "lines": 470,
       "limit": 400,
@@ -194,6 +204,16 @@
       "raw": "one cohesive pure-geometry pipeline (tc-range math ->",
       "parsed": {
         "reason": "one cohesive pure-geometry pipeline (tc-range math ->"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/widget.py",
+      "lines": 405,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat command/query/alias tables — one entry per command",
+      "parsed": {
+        "reason": "flat command/query/alias tables — one entry per command"
       }
     },
     {
@@ -422,6 +442,18 @@
       "parsed": {
         "pattern": "state-machine",
         "reason": "single export config assembly — encoding/bounds/images"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
+      "lines": 541,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
       }
     },
     {

@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
 from ui.widgets.color import ColorPickerDialog
 
@@ -155,25 +156,28 @@ class SettingsColorPickerCoordinator:
                 "guides.settings.set_color",
                 qcolor_to_color(QColor(color)),
             )
-            # Keep active magnifier in sync (see _apply_guides_color).
+            # Keep active magnifier in sync (see _apply_guides_color) via
+            # capability alias — no direct feature imports in shared/ui code.
             try:
-                from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
-                from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
-
                 store = getattr(self.store, "viewport", None) and self.store
                 if store is not None:
-                    svc = MagnifierStoreService(store)
-                    model = svc.get_active_or_first_magnifier()
-                    if model is not None:
-                        self._laser_trace_pick("smart:magnifier.guides_color sync", QColor(color), model.id)
-                        update_magnifier_model(
-                            store.viewport.view_state,
-                            store.viewport.render_config,
-                            model.id,
-                            guides_color=qcolor_to_color(QColor(color)),
+                    cmd = registry().get_feature_command_by_alias(
+                        "overlay.set_active_guides_color"
+                    )
+                    if cmd is not None:
+                        state_cmd = registry().get_feature_command_by_alias(
+                            "overlay.active_state"
                         )
-                        if hasattr(store, "emit_viewport_change"):
-                            store.emit_viewport_change()
+                        model_id = "active"
+                        if state_cmd is not None:
+                            try:
+                                _state = state_cmd(store)
+                                if _state is not None:
+                                    model_id = _state.get("id", "active")
+                            except Exception:
+                                pass
+                        self._laser_trace_pick("smart:magnifier.guides_color sync", QColor(color), model_id)
+                        cmd(store, qcolor_to_color(QColor(color)))
             except Exception:
                 pass
             settings_controller.execute_canvas_feature_alias(
@@ -276,25 +280,28 @@ class SettingsColorPickerCoordinator:
         # the toolbar underline (which must show the actually rendered laser color
         # `magnifier.guides_color or guides_state.color` per feature.py:99) stays
         # on the auto-palette blue while the global picker appears to do nothing
-        # — the reported "expert mode still blue" mismatch.
+        # — the reported "expert mode still blue" mismatch. Via capability
+        # alias — no direct feature imports in shared/ui code.
         try:
-            from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
-            from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
-
             store = getattr(self.store, "viewport", None) and self.store
             if store is not None:
-                svc = MagnifierStoreService(store)
-                model = svc.get_active_or_first_magnifier()
-                if model is not None:
-                    self._laser_trace_pick("magnifier.guides_color sync", color, model.id)
-                    update_magnifier_model(
-                        store.viewport.view_state,
-                        store.viewport.render_config,
-                        model.id,
-                        guides_color=qcolor_to_color(color),
+                cmd = registry().get_feature_command_by_alias(
+                    "overlay.set_active_guides_color"
+                )
+                if cmd is not None:
+                    state_cmd = registry().get_feature_command_by_alias(
+                        "overlay.active_state"
                     )
-                    if hasattr(store, "emit_viewport_change"):
-                        store.emit_viewport_change()
+                    model_id = "active"
+                    if state_cmd is not None:
+                        try:
+                            _state = state_cmd(store)
+                            if _state is not None:
+                                model_id = _state.get("id", "active")
+                        except Exception:
+                            pass
+                    self._laser_trace_pick("magnifier.guides_color sync", color, model_id)
+                    cmd(store, qcolor_to_color(color))
         except Exception:
             pass
 
