@@ -2,9 +2,9 @@
 for the Multi Compare tab -- split out of ``MultiCompareController`` to keep
 that class down to wiring/composition, mirroring image_compare's own
 ``use_cases/loading.py`` split. Every function here takes the controller as
-its first argument and reads/writes its instance state
-(``_loading_toasts``, ``_pyramid_builds``, ``_pyramid_toast_slot``) directly,
-same calling convention as image_compare's use_cases modules.
+its first argument and delegates toast/pyramid lifecycle to the tab's
+``LoadingToastCoordinator`` / ``PyramidBuildCoordinator`` (owned by the
+controller, which aliases their state dicts); no direct state writes remain.
 Audit-Meta: pattern=thin-owner reason="Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages"
 """
 
@@ -112,18 +112,6 @@ def show_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.show(slot_id)
         return
-    if slot_id in controller._loading_toasts:
-        return
-    toast_manager = get_toast_manager(controller)
-    if toast_manager is None:
-        return
-    message = controller.translate("msg.loading_full_image_in_progress")
-    try:
-        controller._loading_toasts[slot_id] = toast_manager.show_toast(
-            message, duration=0, progress=0
-        )
-    except Exception:
-        logger.exception("Failed to show full-image loading toast")
 
 
 def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
@@ -131,20 +119,6 @@ def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
     if coord is not None:
         coord.set_progress(slot_id, percent)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.get(slot_id)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_in_progress"),
-            success=False,
-            duration=0,
-            progress=max(0, min(99, percent)),
-        )
-    except Exception:
-        logger.exception("Failed to update full-image loading toast")
 
 
 def mark_full_res_ready(controller, slot_id: int) -> None:
@@ -152,7 +126,6 @@ def mark_full_res_ready(controller, slot_id: int) -> None:
     if coord is not None:
         coord.mark_full_res_ready(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
@@ -160,7 +133,6 @@ def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
     if coord is not None:
         coord.bump_pyramid_started(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, slot_id: int) -> None:
@@ -168,20 +140,6 @@ def finish_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.finish(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_done"),
-            success=True,
-            duration=2000,
-            progress=100,
-        )
-    except Exception:
-        logger.exception("Failed to complete full-image loading toast")
 
 
 def dismiss_loading_toast(controller, slot_id: int) -> None:
@@ -192,14 +150,6 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.dismiss(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.close_toast(toast_id)
-    except Exception:
-        logger.exception("Failed to dismiss full-image loading toast")
 
 
 def _get_crop_service(controller):
@@ -283,54 +233,6 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
 
         coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
         return
-    from shared.image_processing.pyramid_registry import ensure_pyramid
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
-    from shared.rendering.image_identity import image_uid
-
-    if not isinstance(store, TiledPixelStore) or not store.is_open:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    pyramid = ensure_pyramid(store)
-    if pyramid is None or pyramid.is_complete():
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    uid = image_uid(store)
-    if uid in controller._pyramid_builds:
-        return
-    thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
-    if thread_pool is None:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-
-    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
-    from sli_ui_toolkit.workers import GenericWorker
-
-    controller._pyramid_builds.add(uid)
-    if slot_id is not None:
-        controller._pyramid_toast_slot[uid] = slot_id
-        bump_loading_toast_pyramid_started(controller, slot_id)
-    total_levels = estimate_total_levels(store.width, store.height)
-
-    def should_abort() -> bool:
-        return not pyramid.valid
-
-    def build_task(progress_callback=None):
-        while pyramid.build_next_level(should_abort=should_abort):
-            complete = pyramid.is_complete()
-            if progress_callback is not None:
-                progress_callback((uid, pyramid.level_count, total_levels, complete))
-        return None
-
-    worker = GenericWorker(build_task)
-    worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
-    worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
-    worker.signals.finished.connect(
-        lambda uid=uid: controller._pyramid_builds.discard(uid)
-    )
-    thread_pool.start(worker)
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
@@ -347,24 +249,6 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
         except Exception:
             pass
         return
-    canvas = getattr(controller.widget, "canvas", None)
-    if canvas is not None:
-        canvas.request_view_update()
-    if not isinstance(payload, tuple) or len(payload) != 4:
-        return
-    uid, level_count, total_levels, complete = payload
-    slot_id = controller._pyramid_toast_slot.get(uid)
-    if slot_id is None:
-        return
-    if complete:
-        controller._pyramid_toast_slot.pop(uid, None)
-        finish_loading_toast(controller, slot_id)
-    else:
-        fraction = level_count / max(total_levels, 1)
-        percent = PYRAMID_START_PROGRESS + int(
-            fraction * (100 - PYRAMID_START_PROGRESS)
-        )
-        set_loading_toast_progress(controller, slot_id, percent)
 
 
 def load_full_resolution_async(

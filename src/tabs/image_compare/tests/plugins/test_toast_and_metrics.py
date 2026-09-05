@@ -104,9 +104,9 @@ def test_export_save_flow_updates_toast_progress():
         state_coordinator=None,
         export_service=SimpleNamespace(export_image=lambda **_kwargs: None),
     )
-    coordinator._save_cancellation[5] = object()
+    coordinator._flow._save_cancellation[5] = object()
 
-    coordinator._on_save_worker_progress(5, "/tmp/result.png", 30)
+    coordinator._flow._on_save_worker_progress(5, "/tmp/result.png", 30)
 
     assert toast_manager.updated[0][0] == 5
     assert toast_manager.updated[0][2]["progress"] == 30
