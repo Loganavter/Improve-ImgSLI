@@ -294,13 +294,51 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self.raise_()
 
     def _apply_panel_geometries(self, local1: QRect, local2: QRect):
+        # DOUBLE mode computes equal-height panel rects, but each panel still
+        # carries the stale single-mode min/max clamp (natural height of its
+        # own list). Qt silently clamps setGeometry to maximumHeight, so the
+        # shorter panel never grows: panels end up asymmetric (e.g. 154 vs 82)
+        # and — worse — the unchanged size emits no Resize event, so the
+        # virtual-list controller never rebinds and rows stay frozen at the
+        # hidden-panel width, huddled top-left. Relax the stale limits first
+        # (grow-only), then rebind synchronously so row widths settle without
+        # waiting on deferred resize/scrollbar timers mid-drag.
+        self._relax_panel_limits_for_double(self.panel_left, local1.height())
+        self._relax_panel_limits_for_double(self.panel_right, local2.height())
         self.panel_left.setGeometry(local1)
         self.panel_right.setGeometry(local2)
+        for panel in (self.panel_left, self.panel_right):
+            try:
+                panel._controller.rebind()
+            except (AttributeError, RuntimeError):
+                pass
 
         if hasattr(self.panel_left, "_check_scrollbar"):
             self.panel_left._check_scrollbar()
         if hasattr(self.panel_right, "_check_scrollbar"):
             self.panel_right._check_scrollbar()
+
+    @staticmethod
+    def _relax_panel_limits_for_double(panel, height: int) -> None:
+        """Grow-only guard: let the DOUBLE shared height actually apply."""
+        height = max(1, int(height))
+        try:
+            if panel.maximumHeight() < height:
+                panel.setMaximumHeight(height)
+            if panel.minimumHeight() > height:
+                panel.setMinimumHeight(height)
+            scroll_area = getattr(panel, "scroll_area", None)
+            if scroll_area is not None:
+                if scroll_area.maximumHeight() < height:
+                    scroll_area.setMaximumHeight(height)
+                if scroll_area.minimumHeight() > height:
+                    scroll_area.setMinimumHeight(height)
+        except RuntimeError:
+            return
+        try:
+            panel._container_height = height
+        except AttributeError:
+            pass
 
     def _position_panels_for_single(self):
         inner = self.container_widget.rect()
