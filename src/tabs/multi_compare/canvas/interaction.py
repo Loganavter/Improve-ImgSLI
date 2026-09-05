@@ -32,12 +32,6 @@ from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
 #: a full fan-out for float dust (e.g. clamp-boundary remainders).
 _ZOOM_IDENTICAL_EPS = 1e-6
 
-#: Wayland re-activation (``ensure_window_active_for_qrhi``) only needs to
-#: fire once per gesture burst, not once per wheel tick -- the
-#: raise_/activateWindow round-trip is the most expensive per-tick call while
-#: scrolling. Throttled; no-op ticks never reach it at all.
-_ZOOM_ACTIVATE_THROTTLE_MS = 500.0
-
 #: Fit-scale memo bound (entries are tiny tuples; cleared oldest-first).
 _FIT_CACHE_MAX = 128
 
@@ -129,21 +123,6 @@ def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, flo
     except Exception:
         pass
     return value
-
-
-def _ensure_window_active_for_zoom_tick(widget) -> None:
-    """Throttled ``ensure_window_active_for_qrhi`` for zoom dispatches only."""
-    try:
-        now_ms = time.monotonic() * 1000.0
-        last_ms = float(getattr(widget, "_last_zoom_activate_ms", 0.0) or 0.0)
-        if now_ms - last_ms < _ZOOM_ACTIVATE_THROTTLE_MS:
-            return
-        widget._last_zoom_activate_ms = now_ms
-    except Exception:
-        pass
-    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
-
-    ensure_window_active_for_qrhi(widget)
 
 
 def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
@@ -244,14 +223,14 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
             1.0 / z2 - 1.0 / z1
         )
         new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
-    # Wayland+Vulkan often marks the app Inactive while the user still
-    # scrolls the MC canvas; keep the window active so presents stay visible.
-    # Runs only for ticks that actually change the view (throttled to one
-    # activation per gesture burst) -- no-op ticks skip it entirely.
+    # IC parity: the wheel path never kicks window activation (no per-tick
+    # raise/activate round-trip). That storm is what Mutter answers with
+    # busy-cursor feedback; the Wayland/Vulkan stale-canvas catch-up is
+    # handled on gesture settle by the debounced compositor sync
+    # (see divider_sync) instead.
     pre_dispatch_ms = (
         (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
     )
-    _ensure_window_active_for_zoom_tick(widget)
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
     if debug_ticks:
         mc_dnd_debug(

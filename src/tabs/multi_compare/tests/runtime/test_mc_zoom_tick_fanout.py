@@ -3,7 +3,8 @@
 Covers the mc-zoom-fanout findings (wheelEvent -> handle_wheel_event ->
 set_zoom dispatch fan-out): at most 1 dispatch per tick, zero dispatches for
 clamped/float-dust ticks, no texture uploads on zoom-only changes, toolbar
-sync skipped for pure view actions, ``ensure_window_active`` throttled, and
+sync skipped for pure view actions, ``ensure_window_active`` never fires on
+wheel ticks (F1: IC parity -- settle sync owns the catch-up), and
 the cursor-anchor math + clamps pinned byte-identical.
 """
 
@@ -333,7 +334,12 @@ def test_divider_toolbar_skipped_for_view_actions(qapp, monkeypatch):
     assert fired == ["multi_compare/set_zoom", "multi_compare/set_divider_settings"]
 
 
-def test_ensure_active_throttled_to_burst(tmp_path, monkeypatch):
+def test_ensure_active_never_fires_on_wheel_ticks(tmp_path, monkeypatch):
+    # F1 (task-mc-zoom-remove-wheel-kick): the wheel path no longer kicks
+    # window activation at all (IC parity) -- was throttled to one per
+    # burst before. The Wayland stale-canvas catch-up is handled on gesture
+    # settle by schedule_compositor_sync instead (see
+    # test_mc_zoom_no_busy_cursor.py catch-up guard).
     from ui.canvas_infra.rhi import rhi_present_sync as present_sync
 
     calls = []
@@ -352,11 +358,11 @@ def test_ensure_active_throttled_to_burst(tmp_path, monkeypatch):
     mc_interaction.handle_wheel_event(w, _WheelEvent(120))
     mc_interaction.handle_wheel_event(w, _WheelEvent(120))
     assert w.dispatched and len(w.dispatched) == 2
-    assert calls == [1]
-    # after the throttle window, the next real tick reactivates once more
-    w._last_zoom_activate_ms -= 10_000.0
+    assert calls == []
+    # a longer burst still never kicks -- no widget-level throttle attr left
+    assert not hasattr(w, "_last_zoom_activate_ms")
     mc_interaction.handle_wheel_event(w, _WheelEvent(120))
-    assert calls == [1, 1]
+    assert calls == []
 
 
 def _indicator_widget(zoom=2.0, pan_x=0.0, pan_y=0.0, lang="en"):
