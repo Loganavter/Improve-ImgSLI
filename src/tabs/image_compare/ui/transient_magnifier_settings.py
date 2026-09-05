@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 _HOVER_ZONE_PADDING_PX = 10
@@ -308,6 +312,10 @@ class MagnifierSettingsHoverController(QObject):
     def _hide_immediately(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
+            logger.debug(
+                "[magnifier-hover] _hide_immediately cursor=%s",
+                QCursor.pos(),
+            )
             flyout.hide()
 
     def _handle_flyout_event(self, event) -> None:
@@ -419,9 +427,17 @@ class MagnifierSettingsHoverController(QObject):
     def _schedule_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None:
+            logger.debug(
+                "[magnifier-hover] _schedule_hide cursor=%s focus=%s",
+                QCursor.pos(),
+                type(QApplication.focusWidget()).__name__
+                if QApplication.focusWidget() is not None
+                else None,
+            )
             flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def _cancel_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None:
+            logger.debug("[magnifier-hover] _cancel_hide")
             flyout.cancel_auto_hide()
