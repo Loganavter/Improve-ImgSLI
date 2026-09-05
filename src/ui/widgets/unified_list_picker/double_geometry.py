@@ -16,7 +16,7 @@ import os
 
 from PySide6.QtCore import QRect
 
-from ui.widgets.flyout_debug import flyout_debug
+from ui.widgets.unified_list_picker.debug import double_geom_debug
 from ui.widgets.unified_list_picker.common import (
     _UnifiedFlyoutBase,
     current_index_for_list,
@@ -105,8 +105,8 @@ def compute_double_mode_geometry(
 ) -> tuple[QRect, QRect, QRect]:
     left_size = picker._calc_panel_total_size(1)
     right_size = picker._calc_panel_total_size(2)
-    flyout_debug(
-        "double in anchors w1=%s w2=%s same=%s sizes l=%sx%s r=%sx%s "
+    double_geom_debug(
+        "in anchors w1=%s w2=%s same=%s sizes l=%sx%s r=%sx%s "
         "cont_h l=%s r=%s n1=%s n2=%s",
         getattr(button1, "width", lambda: -1)(),
         getattr(button2, "width", lambda: -1)(),
@@ -154,8 +154,8 @@ def compute_double_mode_geometry(
         picker._outer_from_content_rect(unified_content),
         allow_resize=False,
     )
-    flyout_debug(
-        "double content g1=%s g2=%s united=%s shared_h=%s",
+    double_geom_debug(
+        "content g1=%s g2=%s united=%s shared_h=%s",
         _r(geom1_content),
         _r(geom2_content),
         _r(unified_content),
@@ -213,8 +213,8 @@ def compute_double_mode_geometry(
         geom2_content.width(),
         geom2_content.height(),
     )
-    flyout_debug(
-        "double out final=%s cont=%s delta=(%s,%s) p1=%s p2=%s",
+    double_geom_debug(
+        "out final=%s cont=%s delta=(%s,%s) p1=%s p2=%s",
         _r(final_unified_geom),
         _r(clamped_content),
         delta.x(),
