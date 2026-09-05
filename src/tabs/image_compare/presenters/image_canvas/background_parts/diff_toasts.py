@@ -115,11 +115,21 @@ def update_diff_toast_progress(presenter, request_key, progress_payload):
 def complete_diff_toast(presenter, request_key):
     toast_manager = getattr(presenter.main_window_app, "toast_manager", None)
     toast_id = getattr(presenter, "_active_diff_toast_id", None)
-    if toast_manager is None or toast_id is None:
+    if toast_id is None:
         presenter._active_diff_toast_id = None
         presenter._active_diff_toast_key = None
         return
+    if toast_manager is None:
+        # No manager to close with — keep the id so a later manager can close it.
+        return
     if getattr(presenter, "_active_diff_toast_key", None) != request_key:
+        try:
+            toast_manager.close_toast(toast_id)
+        except Exception:
+            logger.exception("Failed to close stale diff toast")
+            return
+        presenter._active_diff_toast_id = None
+        presenter._active_diff_toast_key = None
         return
 
     diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")

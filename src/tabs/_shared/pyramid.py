@@ -222,6 +222,7 @@ class PyramidBuildCoordinator:
                 uid,
             )
             logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
+            _finish_toast_if_needed()
             return False
 
         thread_pool = self._get_thread_pool()
@@ -275,13 +276,22 @@ class PyramidBuildCoordinator:
         and the slot's toast will hang forever.
         """
         self._pyramid_builds.discard(uid)
-        slot_id = self._pyramid_toast_slot.get(uid)
+        slot_id = self._pyramid_toast_slot.pop(uid, None)
         toast_debug(
             "pyramid finished: uid=%s slot=%s mapping_stuck=%s",
             uid,
             slot_id,
             slot_id is not None,
         )
+        if slot_id is not None and self._toast is not None:
+            try:
+                dismiss = getattr(self._toast, "dismiss", None)
+                if callable(dismiss):
+                    dismiss(slot_id)
+                else:
+                    self._toast.finish(slot_id)
+            except Exception:
+                pass
 
     def on_level_ready(self, payload) -> None:
         # Phase 5: publish lod_available per level instead of invalidate_render

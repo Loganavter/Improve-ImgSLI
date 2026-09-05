@@ -16,6 +16,9 @@ class MetricsService:
         self.store = store
         self.runtime = runtime
         self._active_ssim_toast_id: int | None = None
+        # Which metrics request currently owns the active toast. A stale
+        # result must not close a toast that a newer request reused.
+        self._ssim_toast_request_id: int | None = None
         # Staleness token: every async calculation bumps this; stale results
         # landing after a pair switch are dropped (same pattern as unify's
         # _unification_task_id and cached-diff request_key).
@@ -42,6 +45,8 @@ class MetricsService:
 
         self._metrics_request_id += 1
         request_id = self._metrics_request_id
+        if self._active_ssim_toast_id is not None:
+            self._ssim_toast_request_id = request_id
 
         worker = GenericWorker(
             self.metrics_worker_task,
@@ -59,6 +64,8 @@ class MetricsService:
         )
         if self.runtime.thread_pool:
             self.runtime.thread_pool.start(worker)
+        else:
+            self._close_ssim_metrics_toast()
 
     def _on_metrics_error(self, request_id: int) -> None:
         if request_id != self._metrics_request_id:
@@ -142,8 +149,14 @@ class MetricsService:
     ):
         # Stale result from a previous pair: ignore (metrics worker has no
         # ordering guarantee; the last finish must not overwrite the current
-        # pair's numbers).
+        # pair's numbers). Close the toast only if it still belongs to the
+        # stale request (no newer request reused it for its own run).
         if request_id is not None and request_id != self._metrics_request_id:
+            if (
+                self._active_ssim_toast_id is not None
+                and self._ssim_toast_request_id == request_id
+            ):
+                self._close_ssim_metrics_toast()
             return
         if result:
             psnr_val, ssim_val = result
@@ -184,6 +197,7 @@ class MetricsService:
         if not calc_ssim:
             return
         if self.store.viewport.view_state.diff_mode == "ssim":
+            self._close_ssim_metrics_toast()
             return
 
         toast_manager = self.runtime.get_toast_manager()
@@ -208,6 +222,7 @@ class MetricsService:
             except Exception:
                 logger.exception("Failed to refresh SSIM metrics toast")
                 self._active_ssim_toast_id = None
+                self._ssim_toast_request_id = None
 
         try:
             self._active_ssim_toast_id = toast_manager.show_toast(
@@ -215,15 +230,18 @@ class MetricsService:
                 duration=0,
                 progress=0,
             )
+            self._ssim_toast_request_id = self._metrics_request_id
         except Exception:
             logger.exception("Failed to show SSIM metrics toast")
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
 
     def _complete_ssim_metrics_toast(self, *, success: bool) -> None:
         toast_manager = self.runtime.get_toast_manager()
         toast_id = self._active_ssim_toast_id
         if toast_manager is None or toast_id is None:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
             return
 
         current_language = getattr(self.store.settings, "current_language", "en")
@@ -248,12 +266,14 @@ class MetricsService:
             logger.exception("Failed to complete SSIM metrics toast")
         finally:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
 
     def _close_ssim_metrics_toast(self) -> None:
         toast_manager = self.runtime.get_toast_manager()
         toast_id = self._active_ssim_toast_id
         if toast_manager is None or toast_id is None:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
             return
         try:
             toast_manager.close_toast(toast_id)
@@ -261,3 +281,4 @@ class MetricsService:
             logger.exception("Failed to close SSIM metrics toast")
         finally:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
