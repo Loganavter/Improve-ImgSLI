@@ -694,17 +694,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                     if pl is not None and hasattr(pl, "_inflight") and sig is not None:
                         key = (int(image_number), str(path))
                         pl._inflight.setdefault(key, sig)  # type: ignore[index]
-                        try:
-                            from tabs._shared.loading_toast import toast_debug
-
-                            toast_debug(
-                                "inflight alias set: key=%s sig=%s dict=%s (service path)",
-                                key,
-                                id(sig),
-                                id(pl._inflight),
-                            )
-                        except Exception:
-                            pass
                 except Exception:
                     pass
                 if sig is not None:
@@ -751,17 +740,6 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
                 _sig = _AbortSignal()
                 pl._inflight[key] = _sig
-                try:
-                    from tabs._shared.loading_toast import toast_debug
-
-                    toast_debug(
-                        "inflight alias set: key=%s sig=%s dict=%s (legacy path)",
-                        key,
-                        id(_sig),
-                        id(pl._inflight),
-                    )
-                except Exception:
-                    pass
                 if _should_log_set:
                     ic_preview_debug("set_current_image slot=%s -> new inflight %s", image_number, _sig)
             except Exception as e:
@@ -770,23 +748,10 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 _sig = None
 
             def _clear():
-                cur_sig = None
-                ours = False
                 try:
                     cur_sig = pl._inflight.get(key)  # type: ignore[arg-type]
                     if _sig is None or cur_sig is _sig:
-                        ours = True
                         pl._inflight.pop(key, None)
-                except Exception:
-                    pass
-                try:
-                    from tabs._shared.loading_toast import toast_debug as _td
-
-                    _td(
-                        "inflight alias clear: key=%s ours=%s",
-                        key,
-                        ours,
-                    )
                 except Exception:
                     pass
 

@@ -32,26 +32,6 @@ from typing import Any, Callable
 
 logger = logging.getLogger("ImproveImgSLI")
 
-
-def toast_debug_enabled() -> bool:
-    """Env-gated toast/pyramid diagnostic stream (LOGGING.md convention)."""
-    import os
-
-    return os.environ.get("IMGSLI_TOAST_DEBUG", "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    )
-
-
-def toast_debug(message: str, *args) -> None:
-    """Temporary [toast-debug] diagnostic: warning level (no --debug needed),
-    gated on IMGSLI_TOAST_DEBUG. Remove together with all call sites."""
-    if toast_debug_enabled():
-        logger.warning("[toast-debug] " + message, *args)
-
 # Progress checkpoints for "loading full version of image" toast:
 # 0 at quick preview, DECODE_DONE_PROGRESS once full-res decode lands,
 # PYRAMID_START_PROGRESS..100 tracking pyramid level build-out.
@@ -105,17 +85,14 @@ class LoadingToastCoordinator:
 
     def show(self, slot_id: int) -> None:
         if slot_id in self._loading_toasts:
-            toast_debug("show: slot=%s already tracked, skip", slot_id)
             return
         toast_manager = self._get_toast_manager()
         if toast_manager is None:
-            toast_debug("show: slot=%s NO manager, toast never created", slot_id)
             return
         message = self._tr("msg.loading_full_image_in_progress", "Loading full image…")
         try:
             toast_id = toast_manager.show_toast(message, duration=0, progress=0)
             self._loading_toasts[slot_id] = toast_id
-            toast_debug("show: slot=%s toast_id=%s created", slot_id, toast_id)
             logger.debug(
                 "[FullImageLoad] toast shown (slot=%s toast_id=%s)",
                 slot_id,
@@ -132,13 +109,6 @@ class LoadingToastCoordinator:
         toast_manager = self._get_toast_manager()
         toast_id = self._loading_toasts.get(slot_id)
         if toast_manager is None or toast_id is None:
-            toast_debug(
-                "progress: slot=%s has_manager=%s toast_id=%s percent=%d SKIPPED",
-                slot_id,
-                toast_manager is not None,
-                toast_id,
-                percent,
-            )
             logger.debug(
                 "[FullImageLoad] skip toast update (slot=%s has_manager=%s toast_id=%s percent=%d)",
                 slot_id,
@@ -171,12 +141,6 @@ class LoadingToastCoordinator:
         toast_manager = self._get_toast_manager()
         toast_id = self._loading_toasts.pop(slot_id, None)
         if toast_manager is None or toast_id is None:
-            toast_debug(
-                "finish: slot=%s has_manager=%s toast_id=%s SKIPPED",
-                slot_id,
-                toast_manager is not None,
-                toast_id,
-            )
             return
         try:
             toast_manager.update_toast(
@@ -186,7 +150,6 @@ class LoadingToastCoordinator:
                 duration=2000,
                 progress=100,
             )
-            toast_debug("finish: slot=%s toast_id=%s DONE", slot_id, toast_id)
             logger.debug("[FullImageLoad] toast done (slot=%s toast_id=%s)", slot_id, toast_id)
         except Exception:
             logger.exception("Failed to complete full-image loading toast")
