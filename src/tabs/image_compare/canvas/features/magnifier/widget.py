@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# File-Size-Exempt: flat command/query/alias tables — one entry per command
+# role; splitting the tuples across modules would add import indirection
+# without reducing coupling (every entry is an independent one-liner).
+
 from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
     CanvasFeatureStateCommand,
@@ -298,6 +302,9 @@ MAGNIFIER_COMMAND_ALIASES = (
     ),
     CanvasFeatureCommandAlias(
         "overlay.set_active_divider_color", "viewport.set_active_divider_color"
+    ),
+    CanvasFeatureCommandAlias(
+        "overlay.set_active_guides_color", "viewport.set_active_guides_color"
     ),
     CanvasFeatureCommandAlias(
         "overlay.set_active_laser_enabled", "viewport.set_active_laser_enabled"
