@@ -1,5 +1,7 @@
 """Chrome input handling for multi-compare canvas (zoom/pan/keys/context).
 
+Audit-Meta: pattern=thin-owner reason="Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features"
+
 Feature-specific gestures (dividers, slot drag) stay in
 ``canvas/features/*/input/`` and are routed via ``gesture_resolver``.
 """
