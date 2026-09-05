@@ -18,6 +18,7 @@ from ui.widgets.unified_list_picker.common import (
 from ui.widgets.unified_list_picker.double_geometry import (
     compute_double_mode_geometry,
     ensure_double_mode_scroll_behavior,
+    relax_panel_limits_for_double,
     resolve_double_mode_top,
     sync_double_mode_button_state,
 )
@@ -371,35 +372,9 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
     def _relax_panel_limits_for_double(panel, height: int) -> None:
         """Grow-only guard: let the DOUBLE shared height actually apply.
 
-        ``height`` is the *panel* height; the scroll area gets the panel
-        chrome (own layout margins) subtracted so the viewport never
-        overshoots the panel and stretches the content.
+        Body lives in double_geometry.py; see relax_panel_limits_for_double.
         """
-        height = max(1, int(height))
-        try:
-            chrome = 2
-            try:
-                margins = panel.layout_outer.contentsMargins()
-                chrome = int(margins.top() + margins.bottom())
-            except (AttributeError, RuntimeError):
-                pass
-            scroll_height = max(0, height - chrome)
-            if panel.maximumHeight() < height:
-                panel.setMaximumHeight(height)
-            if panel.minimumHeight() > height:
-                panel.setMinimumHeight(height)
-            scroll_area = getattr(panel, "scroll_area", None)
-            if scroll_area is not None:
-                if scroll_area.maximumHeight() < scroll_height:
-                    scroll_area.setMaximumHeight(scroll_height)
-                if scroll_area.minimumHeight() > scroll_height:
-                    scroll_area.setMinimumHeight(scroll_height)
-        except RuntimeError:
-            return
-        try:
-            panel._container_height = height
-        except AttributeError:
-            pass
+        return relax_panel_limits_for_double(panel, height)
 
     def _position_panels_for_single(self):
         inner = self.container_widget.rect()

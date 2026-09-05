@@ -68,10 +68,18 @@ def test_switch_to_double_equalizes_stale_single_heights(qapp):
         assert left_geom.height() == picker.panel_left._container_height
         assert right_geom.height() == picker.panel_right._container_height
         # Stale max clamps must have been relaxed to admit the shared height.
+        # The scroll area admits the shared height minus the panel chrome
+        # (own layout margins) — it must never overshoot the panel, or the
+        # viewport stretches the content (dead band under the last row).
         assert picker.panel_left.maximumHeight() >= left_geom.height()
         assert picker.panel_right.maximumHeight() >= right_geom.height()
-        assert picker.panel_left.scroll_area.maximumHeight() >= left_geom.height()
-        assert picker.panel_right.scroll_area.maximumHeight() >= right_geom.height()
+        for panel, geom in (
+            (picker.panel_left, left_geom),
+            (picker.panel_right, right_geom),
+        ):
+            margins = panel.layout_outer.contentsMargins()
+            chrome = margins.top() + margins.bottom()
+            assert panel.scroll_area.maximumHeight() >= geom.height() - chrome
     finally:
         _teardown(host, picker, qapp)
 
