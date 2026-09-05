@@ -21,7 +21,6 @@ from tabs.image_compare.use_cases.loading_toast import (  # noqa: F401
 )
 from tabs.image_compare.use_cases.loading_pyramid import (  # noqa: F401
     on_pyramid_level_ready,
-    pyramid_build_task,
     start_pyramid_builds,
 )
 from tabs.image_compare.use_cases.session_bootstrap import (  # noqa: F401

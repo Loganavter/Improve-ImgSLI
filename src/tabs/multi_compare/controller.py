@@ -258,7 +258,7 @@ class MultiCompareController:
 
     def shutdown(self) -> None:
         if self._save_flow is not None:
-            self._save_flow.cancel_all_exports()
+            self._save_flow._flow.cancel_all_exports()
         if self._gpu_exporter is not None:
             self._gpu_exporter.shutdown()
             self._gpu_exporter = None
@@ -428,60 +428,32 @@ class MultiCompareController:
         )
 
     def _start_pyramid_build(self, store, *, slot_id: int | None = None) -> None:
-        # Prefer coordinator when present (covers thread_pool + toast routing)
-        coord = getattr(self, "_pyramid_coordinator", None)
-        if coord is not None:
-            # MC abort predicate: not pyramid.valid
-            # need pyramid reference for predicate; capture via closure after ensure
-            # coordinator's start_build will create predicate if None, but we want
-            # correct MC semantics (pyramid.valid). Provide explicit predicate
-            # that closes over the resolved pyramid.
-            from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+        # Coordinator owns thread_pool + toast routing.
+        # MC abort predicate: not pyramid.valid (capture resolved pyramid).
+        from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
 
-            _pyr = _ensure(store)
+        _pyr = _ensure(store)
 
-            def _should_abort(_p=_pyr):
-                return not getattr(_p, "valid", True) if _p is not None else False
+        def _should_abort(_p=_pyr):
+            return not getattr(_p, "valid", True) if _p is not None else False
 
-            # If pyramid is None, coordinator will handle finishing toast itself.
-            coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
-            return
-        loading_use_cases.start_pyramid_build(self, store, slot_id=slot_id)
+        # If pyramid is None, coordinator will handle finishing toast itself.
+        self._pyramid_coordinator.start_build(store, slot_id=slot_id, should_abort=_should_abort)
 
     def _on_pyramid_level_ready(self, payload=None) -> None:
-        coord = getattr(self, "_pyramid_coordinator", None)
-        if coord is not None:
-            coord.on_level_ready(payload)
-            return
-        loading_use_cases.on_pyramid_level_ready(self, payload)
+        self._pyramid_coordinator.on_level_ready(payload)
 
     def _show_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.show(slot_id)
-            return
-        loading_use_cases.show_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.show(slot_id)
 
     def _mark_full_res_ready(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.mark_full_res_ready(slot_id)
-            return
-        loading_use_cases.mark_full_res_ready(self, slot_id)
+        self._loading_toast_coordinator.mark_full_res_ready(slot_id)
 
     def _finish_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.finish(slot_id)
-            return
-        loading_use_cases.finish_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.finish(slot_id)
 
     def _dismiss_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.dismiss(slot_id)
-            return
-        loading_use_cases.dismiss_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.dismiss(slot_id)
 
     def _load_full_resolution_async(
         self, path: Path, slot_id: int, *, keep_slot_on_error: bool = False

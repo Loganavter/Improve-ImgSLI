@@ -275,4 +275,4 @@ class ExportPresenter(QObject):
             )
 
     def cancel_all_exports(self):
-        self.save_flow.cancel_all_exports()
+        self.save_flow._flow.cancel_all_exports()
