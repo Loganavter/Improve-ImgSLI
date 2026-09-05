@@ -69,35 +69,22 @@ def start_pyramid_builds(controller, *stores) -> None:
             # toast liveness via single-flight: no pending full decode for slot
             pl = getattr(controller, "pipeline", None)
             has_inflight = _has_inflight_for_slot(pl, int(image_number))
-            try:
-                from tabs._shared.loading_toast import toast_debug
-
-                inflight_keys = (
-                    [repr(k) for k in list(pl._inflight.keys())]
-                    if pl is not None and hasattr(pl, "_inflight")
-                    else None
-                )
-                toast_debug(
-                    "pyramid start: slot=%s toast_live=%s pipe=%s dict=%s inflight_keys=%s",
-                    image_number,
-                    not has_inflight,
-                    id(pl),
-                    id(pl._inflight) if pl is not None and hasattr(pl, "_inflight") else None,
-                    inflight_keys,
-                )
-            except Exception:
-                pass
             slot_toast_live = not has_inflight
-            slot_for_coordinator = image_number if slot_toast_live else None
             if abort_sig is not None and hasattr(abort_sig, "is_aborted"):
                 should_abort = abort_sig.is_aborted  # type: ignore[assignment]
             else:
                 should_abort = lambda: False  # type: ignore[assignment]
-            # coordinator handles skip->finish, already-in-flight, bump, worker
-            coord.start_build(store, slot_id=slot_for_coordinator, should_abort=should_abort)
-            # When toast was not live, coordinator would have mapped None;
-            # but legacy behavior left no mapping and no bump -- coordinator already
-            # respects slot_id=None (no toast). Nothing else to do.
+            # coordinator handles skip->finish, already-in-flight, bump, worker.
+            # The slot is always mapped so a later complete finds its toast
+            # even if the decode lands after the pyramid; toast_live gates
+            # only progress bumps and skip-path finishes (preview-tier race
+            # must not close a toast whose real decode is still pending).
+            coord.start_build(
+                store,
+                slot_id=image_number,
+                toast_live=slot_toast_live,
+                should_abort=should_abort,
+            )
         return
 
 

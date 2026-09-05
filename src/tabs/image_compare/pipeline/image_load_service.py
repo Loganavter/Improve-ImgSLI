@@ -318,18 +318,8 @@ class ImageLoadService:
                 dicts.append(pl_d)
             for d in dicts:
                 try:
-                    cur_alias = d.get(alias)
-                    if cur_alias is sig:
+                    if d.get(alias) is sig:
                         d.pop(alias, None)
-                        toast_debug("inflight alias pop: key=%s dict=%s", alias, id(d))
-                    else:
-                        toast_debug(
-                            "inflight alias KEEP: key=%s dict=%s cur=%s ours=%s",
-                            alias,
-                            id(d),
-                            id(cur_alias),
-                            id(sig),
-                        )
                 except Exception:
                     pass
 
