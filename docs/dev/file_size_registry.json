@@ -558,7 +558,7 @@
     },
     {
       "path": "src/tabs/image_compare/widget.py",
-      "lines": 632,
+      "lines": 635,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"root widget thin owner — delegates to layout/magnifier/chrome_sync\"",

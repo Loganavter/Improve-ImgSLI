@@ -535,10 +535,13 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             label = self.label_rating1 if image_number == 1 else self.label_rating2
             if score is not None:
                 label.setText(f"<b>{score}</b>")
-                label.setVisible(True)
             else:
                 label.setText("–")
-                label.setVisible(False)
+            # Always visible (even as "–"): hiding collapses the rated-combo
+            # layout and the two combos end up different widths (1268 vs 1234
+            # with one side loaded), shifting the anchors and both flyout
+            # panels. The label is fixed-width, so this reserves the space.
+            label.setVisible(True)
         except RuntimeError:
             return
 
