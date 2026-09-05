@@ -369,19 +369,31 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
 
     @staticmethod
     def _relax_panel_limits_for_double(panel, height: int) -> None:
-        """Grow-only guard: let the DOUBLE shared height actually apply."""
+        """Grow-only guard: let the DOUBLE shared height actually apply.
+
+        ``height`` is the *panel* height; the scroll area gets the panel
+        chrome (own layout margins) subtracted so the viewport never
+        overshoots the panel and stretches the content.
+        """
         height = max(1, int(height))
         try:
+            chrome = 2
+            try:
+                margins = panel.layout_outer.contentsMargins()
+                chrome = int(margins.top() + margins.bottom())
+            except (AttributeError, RuntimeError):
+                pass
+            scroll_height = max(0, height - chrome)
             if panel.maximumHeight() < height:
                 panel.setMaximumHeight(height)
             if panel.minimumHeight() > height:
                 panel.setMinimumHeight(height)
             scroll_area = getattr(panel, "scroll_area", None)
             if scroll_area is not None:
-                if scroll_area.maximumHeight() < height:
-                    scroll_area.setMaximumHeight(height)
-                if scroll_area.minimumHeight() > height:
-                    scroll_area.setMinimumHeight(height)
+                if scroll_area.maximumHeight() < scroll_height:
+                    scroll_area.setMaximumHeight(scroll_height)
+                if scroll_area.minimumHeight() > scroll_height:
+                    scroll_area.setMinimumHeight(scroll_height)
         except RuntimeError:
             return
         try:
