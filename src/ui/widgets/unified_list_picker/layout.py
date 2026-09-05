@@ -1,3 +1,5 @@
+from ui.widgets.flyout_debug import flyout_debug
+
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRect, QSize
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -23,6 +25,12 @@ from ui.widgets.unified_list_picker.double_geometry import (
 class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
     mode: FlyoutMode
     _move_easing = QEasingCurve.Type.OutQuad
+
+    def _dbg_rect(self, rect) -> str:
+        try:
+            return f"({rect.x()},{rect.y()},{rect.width()}x{rect.height()})"
+        except Exception:
+            return "?"
 
     def showAsSingle(
         self,
@@ -255,6 +263,15 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self._anim.start()
 
     def switchToDoubleMode(self):
+        flyout_debug(
+            "double switchToDouble mode=%s visible=%s simple=%s "
+            "anchors l=%s r=%s",
+            getattr(self.mode, "name", self.mode),
+            self.isVisible(),
+            self._is_simple_mode,
+            "ok" if self._anchor_left is not None else None,
+            "ok" if self._anchor_right is not None else None,
+        )
         if (
             self.mode == FlyoutMode.DOUBLE
             or not self.isVisible()
@@ -294,6 +311,12 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self.raise_()
 
     def _apply_panel_geometries(self, local1: QRect, local2: QRect):
+        flyout_debug(
+            "double apply req p1=%s p2=%s cont=%s",
+            self._dbg_rect(local1),
+            self._dbg_rect(local2),
+            self._dbg_rect(self.container_widget.rect()),
+        )
         # DOUBLE mode computes equal-height panel rects, but each panel still
         # carries the stale single-mode min/max clamp (natural height of its
         # own list). Qt silently clamps setGeometry to maximumHeight, so the
@@ -307,6 +330,11 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self._relax_panel_limits_for_double(self.panel_right, local2.height())
         self.panel_left.setGeometry(local1)
         self.panel_right.setGeometry(local2)
+        flyout_debug(
+            "double applied got p1=%s p2=%s (mismatch vs req = silent clamp)",
+            self._dbg_rect(self.panel_left.geometry()),
+            self._dbg_rect(self.panel_right.geometry()),
+        )
         for panel in (self.panel_left, self.panel_right):
             try:
                 panel._controller.rebind()
@@ -362,6 +390,14 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         # its anchor. Fall back to a 200 px floor only if the button has not
         # been sized yet.
         width = related_button.width() if related_button is not None and related_button.width() > 0 else 200
+        flyout_debug(
+            "double panel_size list=%s w=%s (anchor=%s) cont_h=%s n_items=%s",
+            list_num,
+            width,
+            type(related_button).__name__ if related_button is not None else None,
+            panel._container_height,
+            len(panel._items),
+        )
         return QSize(width, panel._container_height)
 
     def _calculate_ideal_geometry(
@@ -392,6 +428,12 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         button1 = self._anchor_left
         button2 = self._anchor_right
         if button1 is None or button2 is None:
+            flyout_debug(
+                "double SKIP double geometry: anchors missing l=%s r=%s "
+                "(panels keep stale geometry!)",
+                button1 is not None,
+                button2 is not None,
+            )
             return
         self._sync_double_mode_button_state(button1, button2)
         panel1_local, panel2_local, final_unified_geom = (
@@ -401,6 +443,10 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self._apply_container_geometry()
         self._apply_panel_geometries(panel1_local, panel2_local)
         self._ensure_double_mode_scroll_behavior()
+        flyout_debug(
+            "double double applied outer=%s",
+            self._dbg_rect(self.geometry()),
+        )
 
     def _sync_double_mode_button_state(self, button1, button2):
         # Body lives in double_geometry.py (pure function over the picker

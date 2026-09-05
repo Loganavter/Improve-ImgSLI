@@ -1,3 +1,4 @@
+from ui.widgets.flyout_debug import flyout_debug
 from ui.widgets.unified_list_picker.common import (
     FlyoutMode,
     ListItemType,
@@ -21,6 +22,14 @@ class _UnifiedFlyoutContentMixin(_UnifiedFlyoutBase):
         )
         panel.clear_and_rebuild(
             items, self.item_height, self.item_font, list_type, current_index
+        )
+        flyout_debug(
+            "double populate list=%s n=%s cur=%s mode=%s panel_h=%s",
+            list_num,
+            len(items),
+            current_index,
+            getattr(self.mode, "name", self.mode),
+            panel._container_height,
         )
         if self.mode == FlyoutMode.DOUBLE:
             self.refreshGeometry()

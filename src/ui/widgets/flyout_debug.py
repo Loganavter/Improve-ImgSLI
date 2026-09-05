@@ -22,7 +22,13 @@ def flyout_debug_enabled() -> bool:
 
 
 def flyout_debug(message: str, *args) -> None:
+    # Hybrid per gallery fix 2026-08-26 (see docs/dev/LOGGING.md
+    # "Collaborative debugging"): WARNING when the explicit env flag is set
+    # (visible without --debug, no flag-flipping needed to collaborate),
+    # DEBUG otherwise (visible with global --debug).
     if flyout_debug_enabled():
+        logger.warning("[flyout-debug] " + message, *args)
+    else:
         logger.debug("[flyout-debug] " + message, *args)
 
 

@@ -16,11 +16,16 @@ import os
 
 from PySide6.QtCore import QRect
 
+from ui.widgets.flyout_debug import flyout_debug
 from ui.widgets.unified_list_picker.common import (
     _UnifiedFlyoutBase,
     current_index_for_list,
     items_for_list,
 )
+
+
+def _r(rect: QRect) -> str:
+    return f"({rect.x()},{rect.y()},{rect.width()}x{rect.height()})"
 
 
 def sync_double_mode_button_state(
@@ -100,6 +105,21 @@ def compute_double_mode_geometry(
 ) -> tuple[QRect, QRect, QRect]:
     left_size = picker._calc_panel_total_size(1)
     right_size = picker._calc_panel_total_size(2)
+    flyout_debug(
+        "double in anchors w1=%s w2=%s same=%s sizes l=%sx%s r=%sx%s "
+        "cont_h l=%s r=%s n1=%s n2=%s",
+        getattr(button1, "width", lambda: -1)(),
+        getattr(button2, "width", lambda: -1)(),
+        button1 is button2,
+        left_size.width(),
+        left_size.height(),
+        right_size.width(),
+        right_size.height(),
+        picker.panel_left._container_height,
+        picker.panel_right._container_height,
+        len(picker.panel_left._items),
+        len(picker.panel_right._items),
+    )
     geom1_content = picker._calculate_ideal_geometry(
         button1, left_size, content_only=True
     )
@@ -133,6 +153,13 @@ def compute_double_mode_geometry(
     final_unified_geom = picker._clamp_outer_rect(
         picker._outer_from_content_rect(unified_content),
         allow_resize=False,
+    )
+    flyout_debug(
+        "double content g1=%s g2=%s united=%s shared_h=%s",
+        _r(geom1_content),
+        _r(geom2_content),
+        _r(unified_content),
+        shared_height,
     )
     clamped_content = final_unified_geom.adjusted(
         picker.SHADOW_RADIUS,
@@ -185,6 +212,15 @@ def compute_double_mode_geometry(
         geom2_content.y() - clamped_content.y(),
         geom2_content.width(),
         geom2_content.height(),
+    )
+    flyout_debug(
+        "double out final=%s cont=%s delta=(%s,%s) p1=%s p2=%s",
+        _r(final_unified_geom),
+        _r(clamped_content),
+        delta.x(),
+        delta.y(),
+        _r(panel1_local),
+        _r(panel2_local),
     )
     return panel1_local, panel2_local, final_unified_geom
 
