@@ -19,6 +19,38 @@ def sync_zoom_indicator(widget) -> None:
     if indicator is None:
         return
     st = widget.store.state
+    zoom = float(getattr(st, "zoom", 1.0))
+    pan_x = float(getattr(st, "pan_x", 0.0))
+    pan_y = float(getattr(st, "pan_y", 0.0))
+    # Skip redundant Qt churn (setText + reposition + raise per zoom tick):
+    # the chip only renders an int percent and a visible/hidden state, so
+    # ticks that change neither (pan drift, sub-percent repeats) reuse the
+    # current chip as-is. Key mirrors ``ZoomIndicator.update_zoom``'s own
+    # percent/visibility formulas -- if those change, this key must follow.
+    # The chip label is language-sensitive, so the language joins the key: a
+    # language switch still refreshes the chip via show/event-driven resync
+    # even when the numbers are unchanged (read off the indicator's own
+    # provider -- tab code must not import app i18n ``resources.translations``
+    # here, see the tabs-isolation contract). Target geometry joins too: a
+    # resize with an unchanged zoom still needs a reposition.
+    percent = int(round(zoom * 100))
+    visible = (
+        abs(zoom - 1.0) > 1e-3 or abs(pan_x) > 1e-4 or abs(pan_y) > 1e-4
+    )
+    try:
+        lang_provider = getattr(indicator, "_lang_provider", None)
+        lang = lang_provider() if callable(lang_provider) else "en"
+    except Exception:
+        lang = "en"
+    target = getattr(indicator, "_target_widget", None)
+    try:
+        geom = (target.width(), target.height()) if target is not None else None
+    except Exception:
+        geom = None
+    sig = (lang, percent, visible, geom)
+    if sig == getattr(widget, "_zoom_indicator_sig", None):
+        return
+    widget._zoom_indicator_sig = sig
     from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
 
     if flyout_debug_enabled():
@@ -32,11 +64,7 @@ def sync_zoom_indicator(widget) -> None:
             widget._canvas_container.size(),
             widget.canvas.size(),
         )
-    indicator.update_zoom(
-        float(getattr(st, "zoom", 1.0)),
-        float(getattr(st, "pan_x", 0.0)),
-        float(getattr(st, "pan_y", 0.0)),
-    )
+    indicator.update_zoom(zoom, pan_x, pan_y)
 
 
 def dismiss_placeholder_for_dnd(widget) -> bool:

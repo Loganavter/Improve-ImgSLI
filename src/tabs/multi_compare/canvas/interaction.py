@@ -6,6 +6,8 @@ Feature-specific gestures (dividers, slot drag) stay in
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QMimeData, QPoint, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
@@ -16,11 +18,26 @@ from tabs.multi_compare.canvas.gesture_resolver import (
     iter_active,
     resolve_press,
 )
+from tabs.multi_compare.debug import mc_dnd_debug, mc_dnd_debug_enabled
 from tabs.multi_compare.models import CompareSlot, LeafNode
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui.canvas_helpers import INTERNAL_SLOT_MIME, _dividers_locked
 from ui.context_menu.manager import open_context_menu
 from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
+
+#: IC parity (``compute_zoom_wheel_transform``): zoom deltas at/below this
+#: absolute epsilon are invisible -- swallow the tick instead of dispatching
+#: a full fan-out for float dust (e.g. clamp-boundary remainders).
+_ZOOM_IDENTICAL_EPS = 1e-6
+
+#: Wayland re-activation (``ensure_window_active_for_qrhi``) only needs to
+#: fire once per gesture burst, not once per wheel tick -- the
+#: raise_/activateWindow round-trip is the most expensive per-tick call while
+#: scrolling. Throttled; no-op ticks never reach it at all.
+_ZOOM_ACTIVATE_THROTTLE_MS = 500.0
+
+#: Fit-scale memo bound (entries are tiny tuples; cleared oldest-first).
+_FIT_CACHE_MAX = 128
 
 
 def clamp_pan_values(
@@ -62,6 +79,71 @@ def _source_for(widget, slot):
         return None
 
 
+def _cache_generation(cache) -> int:
+    try:
+        return int(getattr(cache, "generation", 0) or 0)
+    except Exception:
+        return 0
+
+
+def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, float]:
+    """``fit_scale_for`` memoized on the zoom hot path.
+
+    The size inputs (source dims via an ``os.stat``-keyed cache resolve +
+    rect dims) do not change between wheel ticks of one gesture, so repeat
+    ticks hit the cache and skip the resolve entirely. The key carries the
+    slot ``revision`` (bumps per decoded-tier arrival) and the pixel-cache
+    ``generation`` (bumps on any put/evict, e.g. an on-disk file replacement
+    resolving to a new content key), plus the rect size, so stale dims can
+    never stick. Cursor-anchor math and clamping are untouched -- only the
+    redundant re-resolve is skipped.
+    """
+    store = None
+    key = None
+    try:
+        store = getattr(widget, "_zoom_fit_cache", None)
+        if store is None:
+            store = {}
+            widget._zoom_fit_cache = store
+        key = (
+            getattr(slot, "id", None),
+            getattr(slot, "revision", 0),
+            _cache_generation(getattr(widget, "pixel_cache", None)),
+            rect.width(),
+            rect.height(),
+        )
+        hit = store.get(key)
+        if hit is not None:
+            return hit
+    except Exception:
+        store = None
+        key = None
+    value = fit_scale_for(slot, rect, _source_for(widget, slot))
+    try:
+        if store is not None and key is not None:
+            store[key] = value
+            while len(store) > _FIT_CACHE_MAX:
+                store.pop(next(iter(store)))
+    except Exception:
+        pass
+    return value
+
+
+def _ensure_window_active_for_zoom_tick(widget) -> None:
+    """Throttled ``ensure_window_active_for_qrhi`` for zoom dispatches only."""
+    try:
+        now_ms = time.monotonic() * 1000.0
+        last_ms = float(getattr(widget, "_last_zoom_activate_ms", 0.0) or 0.0)
+        if now_ms - last_ms < _ZOOM_ACTIVATE_THROTTLE_MS:
+            return
+        widget._last_zoom_activate_ms = now_ms
+    except Exception:
+        pass
+    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
+
+    ensure_window_active_for_qrhi(widget)
+
+
 def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
     for leaf, rect in leaf_rects:
         if rect.contains(pos):
@@ -101,12 +183,12 @@ def _swallow_focus_dim_click(widget, pos: QPoint) -> bool:
 
 
 def handle_wheel_event(widget, event: QWheelEvent) -> None:
-    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
-
-    # Wayland+Vulkan often marks the app Inactive while the user still
-    # scrolls the MC canvas; keep the window active so presents stay visible.
-    ensure_window_active_for_qrhi(widget)
+    debug_ticks = mc_dnd_debug_enabled()
+    tick_t0 = time.perf_counter() if debug_ticks else 0.0
     delta = event.angleDelta().y()
+    if delta == 0:
+        event.accept()
+        return
     leaf_rects = widget._leaf_rects()
     if not leaf_rects:
         event.ignore()
@@ -125,13 +207,10 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
         event.ignore()
         return
 
-    fit_x, fit_y = fit_scale_for(slot, rect, _source_for(widget, slot))
+    fit_x, fit_y = fit_scale_cached(widget, slot, rect)
     cell_u = (pos.x() - rect.x()) / rect.width()
     cell_v = (pos.y() - rect.y()) / rect.height()
 
-    if delta == 0:
-        event.accept()
-        return
     # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
     # just sign -- see docs/dev/rendering/tile-array-atlas-plan.md Findings
     # (image_compare's compute_zoom_wheel_transform had the same fixed-step-
@@ -141,7 +220,10 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     factor = widget.ZOOM_STEP**notches
     z1 = widget.state.zoom
     z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
-    if z2 == z1:
+    if abs(z2 - z1) <= _ZOOM_IDENTICAL_EPS:
+        # IC parity (``compute_zoom_wheel_transform`` swallows <= 1e-6):
+        # invisible change -- skip the whole dispatch fan-out (reducer,
+        # subscribers, composition rebuild, uploads check, LOD switch).
         event.accept()
         return
 
@@ -160,7 +242,27 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
             1.0 / z2 - 1.0 / z1
         )
         new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
+    # Wayland+Vulkan often marks the app Inactive while the user still
+    # scrolls the MC canvas; keep the window active so presents stay visible.
+    # Runs only for ticks that actually change the view (throttled to one
+    # activation per gesture burst) -- no-op ticks skip it entirely.
+    pre_dispatch_ms = (
+        (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
+    )
+    _ensure_window_active_for_zoom_tick(widget)
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+    if debug_ticks:
+        mc_dnd_debug(
+            "[mc-zoom] tick delta=%d zoom=%.6f->%.6f pan=(%.4f,%.4f) "
+            "pre_dispatch_ms=%.3f dispatch_ms=%.3f",
+            delta,
+            z1,
+            z2,
+            new_pan_x,
+            new_pan_y,
+            pre_dispatch_ms,
+            (time.perf_counter() - tick_t0) * 1000.0 - pre_dispatch_ms,
+        )
     event.accept()
 
 
