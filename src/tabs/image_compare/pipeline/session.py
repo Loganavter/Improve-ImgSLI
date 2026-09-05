@@ -26,7 +26,6 @@ class ImageSession:
     abort: AbortSignal = field(default_factory=AbortSignal)
     _seq: int = 0
     pyramid_builds: set[int] = field(default_factory=set)
-    loading_toast_uid_slot: dict[int, int] = field(default_factory=dict)
 
     def __post_init__(self):
         # wire pipeline to this session's cache + crop_service
