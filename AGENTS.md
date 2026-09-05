@@ -166,8 +166,8 @@ Use this mental model for `src/`:
 
 ## Auto-Backup Daemon
 
-A local daemon periodically commits the working tree as
-`auto: periodic backup YYYY-MM-DD HH:MM` and pushes to `backup/autopush` (not `main`, see `~/.local/bin/*-autopush.sh` `BRANCH=backup/autopush`) — `main` is PR-only. Consequences for agents:
+A local daemon commits the working tree every 15 min (`systemd --user *-autopush.timer`, `~/.local/bin/*-autopush.sh`) as
+`auto: periodic backup YYYY-MM-DD HH:MM [from $CUR_BRANCH]` and pushes to `backup/autopush` (not `main`, `BRANCH=backup/autopush`) — `main` is PR-only. Same scheme in all three repos (`Improve-ImgSLI`, `improve-imgsli-internal-docs`, `sli-ui-toolkit`). Consequences for agents:
 
 - **Working-tree edits get swept into backup commits mid-task.** The script
   (`git add -A` + commit + `git branch -f backup/autopush HEAD` + push)
@@ -287,7 +287,7 @@ backlinks). `tests/devtools/test_docs_link_graph.py` fails the suite on any
 broken relative doc link or a stale `DOC_INDEX.md` — treat that failure as
 "you moved a doc and didn't update links," not a flaky test.
 
-Private sibling docs: hard-won QRhi/Wayland gotchas live in `../improve-imgsli-internal-docs` (locally `/home/jorj/Загрузки/projects/improve-imgsli-internal-docs`, not committed) — see `skills/imgsli-devtools/SKILL.md` `qrhi-gotchas.md`/`KNOWN_BUGS.md` links. Check there before re-diagnosing rendering quirks.
+Private sibling docs: hard-won QRhi/Wayland gotchas live in `../improve-imgsli-internal-docs` (sibling checkout, not committed) — see `skills/imgsli-devtools/SKILL.md` `qrhi-gotchas.md`/`KNOWN_BUGS.md` links. Check there before re-diagnosing rendering quirks.
 
 ## Good Defaults For Agents
 
