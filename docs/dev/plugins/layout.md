@@ -25,7 +25,12 @@ interfaces — it only subscribes to `SettingsUIModeChangedEvent`.
 
 - The layout manager itself is owned by a tab (see
   [tabs/index.md](../tabs/index.md) `create_startup_service`); the plugin is
-  only the mode-fanout subscriber.
-- `toast_manager` is exposed for host convenience.
+  only the mode-fanout subscriber. It may legitimately be `None` at setup
+  (tab pages are lazy — only `session_picker` exists then).
+- `toast_manager` is host-owned, never `None` after `setup_ui_reference`:
+  the plugin always builds `ToastManager(parent_window)` (anchor optional
+  per toolkit `FEEDBACK_API.md`) and repoints it at the active tab's
+  `toast_anchor_widget` when one answers. See
+  [plan_toast_refactor.md](../plan_toast_refactor.md).
 - UI modes: `beginner`, `advanced`, `expert`, `minimal` (validation lives in
   the settings plugin controller).

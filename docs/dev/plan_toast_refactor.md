@@ -1,6 +1,6 @@
 # Plan: host-owned ToastManager + toast refactor for both canvas tabs
 
-Status: `Draft` — Phase 0 inventory verified 2026-09-05, awaiting execution branch
+Status: `Done` — Phases 1–4 executed 2026-09-05 on `feat/toast-host-owned` (3 parallel workers + supervisor fixups); Phase 5 manual verify pending
 Area: `src/plugins/layout/plugin.py:27`, `src/ui/main_window/window.py:247`, `src/ui/main_window/ui.py:118`, `src/tabs/image_compare/ui/layout_manager.py:15`, `src/tabs/image_compare/service_factory.py:98`, `src/tabs/_shared/save_flow.py:106`, `src/tabs/_shared/loading_toast.py:42`, `src/tabs/multi_compare/use_cases/loading.py:45`
 Related: [tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md) §host→tab `create_startup_service` + Known gaps, [tabs/background-tab-policy.md](./tabs/background-tab-policy.md) (lazy pages), [plugins/layout.md](./plugins/layout.md), `sli-ui-toolkit` [FEEDBACK_API.md](../../../sli-ui-toolkit/docs/user/FEEDBACK_API.md) (`ToastManager(parent_window, image_label=None)` — anchor optional)
 TODO ref: internal-docs `bug-a1-multi-compare-load-silently-skips` (MC silent load failures, no toast)
