@@ -104,12 +104,10 @@ def test_save_done_on_external_cancel_updates_canceled_and_finalizes():
     cancel_event = threading.Event()
     cancel_event.set()
     flow._save_cancellation[55] = cancel_event
-    flow._save_workers[55] = object()
 
     flow._on_save_worker_done(55, cancel_event, "/tmp/out.png")
 
     assert 55 not in flow._save_cancellation
-    assert 55 not in flow._save_workers
     assert mgr.updated
     toast_id, message, kwargs = mgr.updated[-1]
     assert toast_id == 55
@@ -141,7 +139,6 @@ def test_save_signal_connect_failure_routes_via_error_not_bare_finalize():
     assert "Error saving" in message
     assert kwargs["success"] is False
     assert not flow._save_cancellation
-    assert not flow._save_workers
 
 
 def test_save_sync_cancel_swallow_updates_canceled_and_finalizes():
