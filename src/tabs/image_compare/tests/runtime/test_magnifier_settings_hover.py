@@ -3,6 +3,12 @@
 Regression: the flyout previously opened on any hover over the whole
 toolbar row (``checkbox_widget``). It must open only when the cursor is
 inside ``magnifier_group_container`` or within the padding around it.
+
+Open/close is binary (no open timer, no close delay): entering the zone
+shows immediately, leaving it hides immediately — except when the cursor
+rests on the panel body or a linked sibling, where a backstop timer is
+armed instead (leaving to an unwatched surface from there must still
+close the panel; see test_leave_to_linked_child_arms_backstop).
 """
 
 from __future__ import annotations
@@ -18,6 +24,8 @@ class _FakeFlyout(QWidget):
         super().__init__(parent)
         self.schedule_calls: list[int] = []
         self.cancel_calls = 0
+        self.shown_for: list = []
+        self.hide_calls = 0
 
     def cancel_auto_hide(self):
         self.cancel_calls += 1
@@ -26,7 +34,14 @@ class _FakeFlyout(QWidget):
         self.schedule_calls.append(ms)
 
     def show_for_group(self, group):
-        pass
+        self.shown_for.append(group)
+
+    def contains_global(self, _pos) -> bool:
+        return False
+
+    def hide(self) -> None:
+        self.hide_calls += 1
+        super().hide()
 
 
 class _FakeWidget(QWidget):
@@ -80,12 +95,16 @@ def test_hover_in_zone_starts_open_timer(qapp, monkeypatch):
     center = group.mapToGlobal(QPoint(100, 30))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: center))
 
+    # Entering the zone opens immediately (binary, no open timer).
     qapp.sendEvent(group, _hover_event(QEvent.Type.HoverEnter, center))
-    assert controller._hover_timer.is_active()
+    assert fw.magnifier_settings_flyout.shown_for == [group]
 
+    # Leaving to dead space hides immediately.
+    outside = group.mapToGlobal(QPoint(-100, -100))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: outside))
+    fw.magnifier_settings_flyout.show()
     qapp.sendEvent(group, _hover_event(QEvent.Type.HoverLeave, center))
-    assert not controller._hover_timer.is_active()
-    assert fw.magnifier_settings_flyout.schedule_calls
+    assert fw.magnifier_settings_flyout.hide_calls == 1
 
 
 def test_toolbar_fringe_within_padding_triggers(qapp, monkeypatch):
@@ -100,12 +119,52 @@ def test_toolbar_fringe_within_padding_triggers(qapp, monkeypatch):
     qapp.sendEvent(
         fw.checkbox_widget, _hover_event(QEvent.Type.HoverEnter, fringe)
     )
-    assert controller._hover_timer.is_active()
+    assert fw.magnifier_settings_flyout.shown_for
 
     far = group.mapToGlobal(QPoint(-pad - 30, 30))
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: far))
+    fw.magnifier_settings_flyout.show()
     qapp.sendEvent(
         fw.checkbox_widget, _hover_event(QEvent.Type.HoverMove, far)
     )
-    assert not controller._hover_timer.is_active()
-    assert fw.magnifier_settings_flyout.schedule_calls
+    assert fw.magnifier_settings_flyout.hide_calls == 1
+
+
+class _FakeLinkedChild:
+    def isVisible(self) -> bool:
+        return True
+
+    def contains_global(self, _pos) -> bool:
+        return True
+
+
+def test_leave_to_linked_child_arms_backstop(qapp, monkeypatch):
+    """Leaving the group onto a linked sibling (dropdown, color-options)
+    must arm the backstop timer, not just cancel: the sibling carries no
+    event filter of its own, so a bare cancel would orphan the panel open
+    once the cursor moves on to an unwatched surface (native CSD chrome)."""
+    fw, controller = _make_controller(
+        qapp, monkeypatch, cursor_global=QPoint(0, 0)
+    )
+    group = fw.magnifier_group_container
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+
+    from sli_ui_toolkit import managers as _managers
+
+    fake_manager = _FakeManager()
+    monkeypatch.setattr(
+        _managers.FlyoutManager, "get_instance", staticmethod(lambda: fake_manager)
+    )
+    linked_pos = group.mapToGlobal(QPoint(500, 300))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: linked_pos))
+
+    qapp.sendEvent(group, _hover_event(QEvent.Type.HoverLeave, linked_pos))
+    assert flyout.schedule_calls, "backstop timer must be armed on linked transition"
+    assert flyout.hide_calls == 0, "must not hide while cursor is on a linked sibling"
+    assert flyout.isVisible()
+
+
+class _FakeManager:
+    def linked_children(self, _flyout):
+        return (_FakeLinkedChild(),)
