@@ -95,6 +95,19 @@ class MultiComparePixelCache:
         self._preview: OrderedDict[tuple, Any] = OrderedDict()
         self._max_pixel = int(max_pixel)
         self._max_preview = int(max_preview)
+        # Monotonic mutation counter (zoom-fanout fit cache invalidation):
+        # bumped on every put/evict/clear, so a memoized per-slot size can
+        # key on it and never go stale when an on-disk file replacement (or
+        # eviction) swaps the resolved tier without a slot revision bump.
+        self._generation = 0
+
+    @property
+    def generation(self) -> int:
+        """Monotonic mutation counter (see ``__init__``)."""
+        return self._generation
+
+    def _bump_generation(self) -> None:
+        self._generation += 1
 
     # -- pixel tier (TiledPixelStore, close on evict) --
 
@@ -117,6 +130,7 @@ class MultiComparePixelCache:
             return
         key = cache_key_for_path(path)
         self._pixel[key] = store
+        self._bump_generation()
         try:
             self._pixel.move_to_end(key)
         except Exception:
@@ -179,6 +193,7 @@ class MultiComparePixelCache:
             return
         key = cache_key_for_path(path)
         self._preview[key] = qimage
+        self._bump_generation()
         try:
             self._preview.move_to_end(key)
         except Exception:
@@ -229,12 +244,14 @@ class MultiComparePixelCache:
         old = self._pixel.pop(key, None)
         self._close_store(old)
         self._preview.pop(key, None)
+        self._bump_generation()
 
     def clear(self) -> None:
         for store in list(self._pixel.values()):
             self._close_store(store)
         self._pixel.clear()
         self._preview.clear()
+        self._bump_generation()
 
     def open_pixel_sources(self) -> dict[str, Any]:
         """``{normpath: open TiledPixelStore}`` snapshot for project save."""
