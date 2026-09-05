@@ -42,11 +42,14 @@ def _format_worker_error(err) -> str:
 
 
 def _emit_mc_load_error(controller, path: Path | str, err) -> None:
-    """Surface a failed MC load via the shared EventBus/toast plumbing (IC parity).
+    """Surface a failed MC load via the shared EventBus plumbing (IC parity).
 
     Mirrors ``image_compare._session_controller._load_image_async`` /
     ``_on_full_resolution_error`` — a dropped corrupt file must not silently
-    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows a toast.
+    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows its
+    warning dialog (``error_occurred`` → ``AppMessageDialog.warning`` in
+    ``ui/presenters/main_window/actions.py`` — a dialog by policy, not a
+    toast; see plan §3.3).
     """
     try:
         event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
@@ -67,6 +70,28 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
                 fallback_bus.emit(CoreErrorOccurredEvent(message))
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
+
+def _grid_full_reason(controller) -> str:
+    """Grid-full error detail, mirroring ``dialog_add._grid_full_reason``.
+
+    Local copy (not an import — ``dialog_add`` imports this module, so an
+    import back would be circular). Reuses the same ``msg.compare_grid_full``
+    key + default wording, so no new i18n keys.
+    """
+    try:
+        max_slots = controller.widget.state.max_slots
+    except Exception:
+        max_slots = None
+    default = (
+        f"Comparison grid is full ({max_slots} images max)"
+        if max_slots is not None
+        else "Comparison grid is full"
+    )
+    try:
+        return controller.translate("msg.compare_grid_full", default)
+    except Exception:
+        return default
+
 
 # Single source now in tabs._shared.loading_toast (B2 dedup).
 from tabs._shared.loading_toast import DECODE_DONE_PROGRESS, PYRAMID_START_PROGRESS  # noqa: F401
@@ -349,6 +374,11 @@ def load_full_resolution_async(
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
         store = read_image(controller, path, start_pyramid=False)
+        if store is None:
+            # read_image already reported via _emit_mc_load_error — just
+            # drop the toast so the failure surfaces exactly once.
+            dismiss_loading_toast(controller, slot_id)
+            return
         apply_full_resolution(
             controller, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
         )
@@ -427,7 +457,27 @@ def apply_full_resolution(
     """
     _ = keep_slot_on_error  # full tier never drops the slot (preview stage owns that call)
     if store is None:
+        # Full-res decode yielded no tier (worker abort / empty decode):
+        # orphan/recycled stays silent (toast belongs to nobody / the newer
+        # generation); a live slot reports via the shared helper like every
+        # other load failure instead of just dismissing its toast.
+        try:
+            _slots = list(controller.widget.state.slots)
+        except Exception:
+            _slots = []
+        _slot = next((s for s in _slots if s.id == slot_id), None)
+        if _slot is None:
+            dismiss_loading_toast(controller, slot_id)
+            return
+        try:
+            _same = _same_fs_path(_slot.path, path)
+        except Exception:
+            _same = False
+        if not _same:
+            return
+        logger.error("Failed to load full resolution for %s: decode returned no data", path)
         dismiss_loading_toast(controller, slot_id)
+        _emit_mc_load_error(controller, path, RuntimeError("decode returned no image data"))
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
     if slot is None:
@@ -564,10 +614,12 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     scratch = widget.state
     built: list = []
     planned: list[tuple[int, Path]] = []
+    overflow: list[Path] = []
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
         if len(scratch.slots) >= scratch.max_slots:
+            overflow.append(path)
             continue
         if i == 0:
             eff_path, eff_side, eff_root = target_path, side, target_root
@@ -612,11 +664,14 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
         before = len(scratch.slots)
         scratch = mc_reduce(scratch, action)
         if len(scratch.slots) <= before:
+            overflow.append(path)
             continue
         built.append(action)
         last_added = scratch.slots[-1].id
         planned.append((last_added, path))
     if not built:
+        for path in overflow:
+            _emit_mc_load_error(controller, path, _grid_full_reason(controller))
         return
     store = widget.store
     transact = getattr(store, "transact", None)
@@ -631,3 +686,6 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
             continue
         show_loading_toast(controller, sid)
         _preview.load_preview_async(controller, path, sid)
+    for path in overflow:
+        logger.warning("on_images_dropped: no slot created for %s (grid full?)", path)
+        _emit_mc_load_error(controller, path, _grid_full_reason(controller))
