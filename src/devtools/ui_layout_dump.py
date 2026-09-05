@@ -174,7 +174,11 @@ def _range_of(widget: QWidget) -> dict[str, int] | None:
     return {"value": value, "min": minimum, "max": maximum}
 
 
-def _node(widget: QWidget, action_map: dict[int, list[str]]) -> dict[str, Any]:
+def _node(
+    widget: QWidget,
+    action_map: dict[int, list[str]],
+    used_families: dict[str, tuple] | None = None,
+) -> dict[str, Any]:
     geo = widget.geometry()
     node: dict[str, Any] = {
         "class": type(widget).__name__,
@@ -198,13 +202,26 @@ def _node(widget: QWidget, action_map: dict[int, list[str]]) -> dict[str, Any]:
     family, state = _spec_state(widget)
     if family:
         node["family"] = family
+        if used_families is not None:
+            try:
+                from sli_ui_toolkit.ui.inspector.spec import spec_of
+            except Exception:
+                spec_of = None  # type: ignore[assignment]
+            if spec_of is not None:
+                try:
+                    spec = spec_of(widget)
+                    tokens = tuple(getattr(spec, "token_family", None) or ())
+                except Exception:
+                    tokens = ()
+                if tokens:
+                    used_families.setdefault(family, tokens)
     if state:
         node["state"] = state
     action_ids = action_map.get(id(widget))
     if action_ids:
         node["action_ids"] = sorted(action_ids)
     children = [
-        _node(child, action_map)
+        _node(child, action_map, used_families)
         for child in widget.findChildren(
             QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly
         )
@@ -214,11 +231,80 @@ def _node(widget: QWidget, action_map: dict[int, list[str]]) -> dict[str, Any]:
     return node
 
 
+def _resolve_theme_tokens(used_families: dict[str, tuple]) -> dict[str, Any]:
+    """Resolve ``token_family`` tokens per widget family: alias chain + value.
+
+    Answers "where does this color come from" for any dumped widget —
+    including toolkit-side ``ALIAS`` indirection (e.g.
+    ``button.toggle.background.normal`` → ``surface.list``), which neither
+    themes.json nor the inspector's Theme page shows. Best-effort: never
+    breaks the dump.
+    """
+    try:
+        from sli_ui_toolkit.theme import ThemeManager
+    except Exception:
+        return {}
+    try:
+        from sli_ui_toolkit.ui.managers.theme_manager import ALIAS
+    except Exception:
+        ALIAS = {}
+    try:
+        from devtools.ui_inspector.theme_sources import token_sources
+    except Exception:
+        token_sources = None  # type: ignore[assignment]
+    try:
+        manager = ThemeManager.get_instance()
+    except Exception:
+        return {}
+    try:
+        sources = token_sources(manager) if token_sources is not None else {}
+    except Exception:
+        sources = {}
+    theme: dict[str, Any] = {}
+    for family, tokens in used_families.items():
+        resolved: dict[str, Any] = {}
+        for token in tokens:
+            try:
+                chain = [str(token)]
+                seen = {str(token)}
+                while chain[-1] in ALIAS and ALIAS[chain[-1]] not in seen:
+                    chain.append(ALIAS[chain[-1]])
+                    seen.add(chain[-1])
+                try:
+                    value = manager.get_color(str(token)).name()
+                except Exception:
+                    value = None
+                terminal = chain[-1]
+                if terminal in sources:
+                    source = sources[terminal]
+                elif value is None:
+                    source = "missing"
+                elif len(chain) > 1:
+                    source = "toolkit ALIAS"
+                else:
+                    source = "palette"
+                resolved[str(token)] = {
+                    "value": value,
+                    "chain": chain if len(chain) > 1 else None,
+                    "source": source,
+                }
+            except Exception:
+                continue
+        if resolved:
+            theme[family] = resolved
+    return theme
+
+
 def dump_ui_layout(root: QWidget, registry: ActionRegistry) -> dict[str, Any]:
     """Recursively snapshot ``root``'s widget tree, tagging each node with the
     Find Action ids (if any) whose ``ActionTarget.widget`` is that exact widget.
     """
-    return _node(root, _widget_action_map(registry))
+    used_families: dict[str, tuple] = {}
+    node = _node(root, _widget_action_map(registry), used_families)
+    theme = _resolve_theme_tokens(used_families)
+    if theme:
+        node["theme"] = theme
+    return node
 
 
 def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
@@ -233,4 +319,10 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     action_map = _widget_action_map(registry)
     app = QApplication.instance()
     windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []  # ALLOWED: devtools dump — enumerates all top-level windows generically, not tab-specific
-    return {"windows": [_node(w, action_map) for w in windows]}
+    used_families: dict[str, tuple] = {}
+    nodes = [_node(w, action_map, used_families) for w in windows]
+    out: dict[str, Any] = {"windows": nodes}
+    theme = _resolve_theme_tokens(used_families)
+    if theme:
+        out["theme"] = theme
+    return out

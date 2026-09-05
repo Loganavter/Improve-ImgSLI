@@ -301,16 +301,21 @@ class RatingListItem(Button):
             )
             self.rating_label.setFont(rating_font)
 
+            # Ghost: no opaque base (the default toggle wash #f0f0f0 never
+            # matches the white row) — the row color shows through idle,
+            # hover/press washes paint over the live row background.
             self.btn_minus = Button(
                 resolve_icon(DEFAULT_MINUS_ICON),
                 icon_size=14,
                 size=(22, 22),
+                variant="ghost",
                 parent=self,
             )
             self.btn_plus = Button(
                 resolve_icon(DEFAULT_PLUS_ICON),
                 icon_size=14,
                 size=(22, 22),
+                variant="ghost",
                 parent=self,
             )
             self.btn_minus.setObjectName("minusButton")
