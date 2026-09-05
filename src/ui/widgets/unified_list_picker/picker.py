@@ -138,6 +138,10 @@ UnifiedListPicker.inspect_spec = InspectSpec(
     state=(
         SpecField("drag_enabled", "is_drag_enabled"),
         SpecField("flyout_group", "flyout_group"),
+        # Mode/source survive while hidden — the layout dump reads these so
+        # a closed flyout still explains itself (single vs double, side).
+        SpecField("mode", lambda w: w.mode.name),
+        SpecField("source_list_num", "source_list_num"),
     ),
     docs="docs/dev/widgets/unified_list_picker.md",
 )
