@@ -167,6 +167,13 @@ class SaveFlowCoordinator(SaveToastMixin):
     ) -> None:
         try:
             if cancel_event.is_set():
+                self._update_toast_safe(
+                    save_task_id,
+                    self._tr("msg.saving_canceled", "Canceled"),
+                    success=False,
+                    duration=3000,
+                )
+                self._finalize_save_worker(save_task_id)
                 return
         except Exception:
             pass
@@ -275,7 +282,7 @@ class SaveFlowCoordinator(SaveToastMixin):
             )
         except Exception as exc:
             logger.error("Failed to connect worker signals: %s", exc, exc_info=True)
-            self._finalize_save_worker(save_task_id)
+            self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, (type(exc), exc, exc.__traceback__))
             return
 
         thread_pool = self._get_thread_pool()
@@ -287,6 +294,12 @@ class SaveFlowCoordinator(SaveToastMixin):
                 except RuntimeError as exc:
                     # mirrors _save_worker_task cancel swallow (SAVE_CANCELED_MESSAGE / legacy export message)
                     if str(exc) in (SAVE_CANCELED_MESSAGE, "Export canceled by user"):
+                        self._update_toast_safe(
+                            save_task_id,
+                            self._tr("msg.saving_canceled", "Canceled"),
+                            success=False,
+                            duration=3000,
+                        )
                         self._finalize_save_worker(save_task_id)
                         return
                     logger.error("Synchronous save failed: %s", exc, exc_info=True)
