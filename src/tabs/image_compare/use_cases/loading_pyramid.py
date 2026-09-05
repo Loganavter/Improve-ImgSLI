@@ -78,9 +78,11 @@ def start_pyramid_builds(controller, *stores) -> None:
                     else None
                 )
                 toast_debug(
-                    "pyramid start: slot=%s toast_live=%s inflight_keys=%s",
+                    "pyramid start: slot=%s toast_live=%s pipe=%s dict=%s inflight_keys=%s",
                     image_number,
                     not has_inflight,
+                    id(pl),
+                    id(pl._inflight) if pl is not None and hasattr(pl, "_inflight") else None,
                     inflight_keys,
                 )
             except Exception:
