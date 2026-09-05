@@ -71,6 +71,22 @@ def start_pyramid_builds(controller, *stores) -> None:
             # toast liveness via single-flight: no pending full decode for slot
             pl = getattr(controller, "pipeline", None)
             has_inflight = _has_inflight_for_slot(pl, int(image_number))
+            try:
+                from tabs._shared.loading_toast import toast_debug
+
+                inflight_keys = (
+                    [repr(k) for k in list(pl._inflight.keys())]
+                    if pl is not None and hasattr(pl, "_inflight")
+                    else None
+                )
+                toast_debug(
+                    "pyramid start: slot=%s toast_live=%s inflight_keys=%s",
+                    image_number,
+                    not has_inflight,
+                    inflight_keys,
+                )
+            except Exception:
+                pass
             slot_toast_live = not has_inflight
             slot_for_coordinator = image_number if slot_toast_live else None
             if abort_sig is not None and hasattr(abort_sig, "is_aborted"):
