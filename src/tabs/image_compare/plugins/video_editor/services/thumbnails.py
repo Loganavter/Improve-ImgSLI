@@ -1,3 +1,8 @@
+"""Video-editor thumbnail pipeline — queue, workers, convert, emit.
+
+Audit-Meta: pattern=state-machine size=exempt reason="one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
+"""
+
 import logging
 import math
 from typing import Callable, Dict, List, Optional, Tuple

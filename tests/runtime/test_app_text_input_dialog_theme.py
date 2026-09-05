@@ -96,7 +96,10 @@ def test_app_text_input_dialog_paints_light_window_body(qapp):
         w, h = img.width(), img.height()
         assert w > 0 and h > 0
         body = img.pixelColor(w // 2, (h * 2) // 3)
-        expected = QColor(LIGHT_THEME_PALETTE["Window"])
+        # CSD paints the ``Window`` token, which the token-unification
+        # alias resolves to ``surface.background`` — compare against the
+        # resolved token, not the raw ``palette["Window"]`` entry.
+        expected = QColor(tm.get_color("Window"))
         assert body.red() == expected.red()
         assert body.green() == expected.green()
         assert body.blue() == expected.blue()
