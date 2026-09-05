@@ -208,20 +208,17 @@ class MagnifierSettingsHoverController(QObject):
                     self._cancel_hide()
             else:
                 self._hover_timer.stop()
-                # Binary without timer for cursor as well (user request)
+                # Binary without timer for cursor as well (user request).
+                # Here reason is flyout/linked ("group" is impossible — the
+                # branch above already excluded the group zone): arm the
+                # backstop, which hides once the cursor is truly outside
+                # (a bare cancel would orphan the panel on travel through
+                # unwatched surfaces: linked dropdown, native CSD).
                 reason = self._combined_reason()
                 if reason is None:
                     self._note("hover-move:outside", "")
                     self._hide_immediately()
-                elif reason == "group":
-                    self._cancel_hide()
                 else:
-                    # Cursor rests on the panel body or a linked sibling:
-                    # arm the backstop timer (it re-checks and retries while
-                    # inside, hides once outside). A bare cancel here would
-                    # orphan the panel if the cursor next leaves to an
-                    # unwatched surface (linked dropdown, native CSD) — no
-                    # later event would ever close it.
                     self._note(f"hover-move:inside-{reason}", "")
                     self._schedule_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
@@ -230,10 +227,12 @@ class MagnifierSettingsHoverController(QObject):
             if reason is None:
                 self._note("leave:outside", "")
                 self._hide_immediately()
-            elif reason == "group":
-                self._note("leave:group", "")
-                self._cancel_hide()
             else:
+                # Leave fires on widget exit but the sampled cursor may still
+                # sit in the padding rim (no second Leave fires for the rim
+                # itself): arm the backstop, which hides on real departure
+                # and is canceled by jitter back in. A bare cancel would
+                # orphan the panel on travel through unwatched space.
                 self._note(f"leave:inside-{reason}", "")
                 self._schedule_hide()
 

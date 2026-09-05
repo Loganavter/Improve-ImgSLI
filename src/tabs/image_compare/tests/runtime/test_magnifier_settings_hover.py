@@ -174,3 +174,25 @@ def test_leave_to_linked_child_arms_backstop(qapp, monkeypatch):
 class _FakeManager:
     def linked_children(self, _flyout):
         return (_FakeLinkedChild(),)
+
+
+def test_leave_in_padding_rim_arms_backstop(qapp, monkeypatch):
+    """Leave fires on widget exit; the sampled cursor may still sit in the
+    ±10px padding rim (pos lags the boundary crossing, and no second Leave
+    fires for the rim itself). A bare cancel here orphans the panel when
+    the cursor keeps traveling through unwatched space (canvas, native
+    CSD) — arm the backstop timer instead."""
+    pad = transient._HOVER_ZONE_PADDING_PX
+    fw, controller = _make_controller(
+        qapp, monkeypatch, cursor_global=QPoint(0, 0)
+    )
+    group = fw.magnifier_group_container
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+    rim = group.mapToGlobal(QPoint(-pad, 30))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: rim))
+
+    qapp.notify(group, QEvent(QEvent.Type.Leave))
+
+    assert flyout.schedule_calls, "backstop must be armed on rim Leave"
+    assert flyout.isVisible()
