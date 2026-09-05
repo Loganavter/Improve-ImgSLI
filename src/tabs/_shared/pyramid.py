@@ -34,7 +34,7 @@ from typing import Any, Callable
 
 from sli_ui_toolkit.workers import GenericWorker
 
-from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
+from tabs._shared.loading_toast import PYRAMID_START_PROGRESS, toast_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -54,18 +54,40 @@ def _pyramid_build_loop(
     """
     import time
 
+    ran_levels = 0
+    last_complete = False
     while pyramid.build_next_level(should_abort=should_abort):
-        complete = pyramid.is_complete()
+        ran_levels += 1
+        last_complete = pyramid.is_complete()
         if progress_callback is not None:
-            progress_callback((uid, pyramid.level_count, total_levels, complete))
+            progress_callback((uid, pyramid.level_count, total_levels, last_complete))
         # idle between levels: yield to UI / other workers
-        if not complete:
+        if not last_complete:
             try:
                 time.sleep(0.002)
             except Exception:
                 pass
             if should_abort is not None and should_abort():
                 break
+    if ran_levels:
+        exit_reason = "complete" if last_complete else "abort"
+    else:
+        try:
+            if pyramid.is_complete():
+                exit_reason = "complete-unreported"
+            elif should_abort is not None and should_abort():
+                exit_reason = "abort-before-first-level"
+            else:
+                exit_reason = "stalled-no-level"
+        except Exception:
+            exit_reason = "stalled-no-level"
+    toast_debug(
+        "pyramid loop exit: uid=%s levels=%s/%s reason=%s",
+        uid,
+        ran_levels,
+        total_levels,
+        exit_reason,
+    )
     return None
 
 
@@ -173,6 +195,7 @@ class PyramidBuildCoordinator:
 
         pyramid = get_pyramid(store)
         if pyramid is None:
+            toast_debug("pyramid skip: slot=%s reason=no-pyramid", slot_id)
             logger.debug(
                 "[Pyramid] skip build: no pyramid for store %sx%s",
                 getattr(store, "width", -1),
@@ -181,6 +204,7 @@ class PyramidBuildCoordinator:
             _finish_toast_if_needed()
             return False
         if pyramid.is_complete():
+            toast_debug("pyramid skip: slot=%s reason=already-complete", slot_id)
             logger.debug(
                 "[Pyramid] skip build: already complete for store %sx%s (levels=%d)",
                 getattr(store, "width", -1),
@@ -192,11 +216,17 @@ class PyramidBuildCoordinator:
 
         uid = image_uid(store)
         if uid in self._pyramid_builds:
+            toast_debug(
+                "pyramid skip: slot=%s reason=already-in-flight uid=%s (toast NOT remapped)",
+                slot_id,
+                uid,
+            )
             logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
             return False
 
         thread_pool = self._get_thread_pool()
         if thread_pool is None:
+            toast_debug("pyramid skip: slot=%s reason=no-thread-pool", slot_id)
             _finish_toast_if_needed()
             return False
 
@@ -233,9 +263,25 @@ class PyramidBuildCoordinator:
         # level progress
         target = on_level_ready if on_level_ready is not None else self.on_level_ready
         worker.signals.partial_result.connect(target)
-        worker.signals.finished.connect(lambda uid=uid: self._pyramid_builds.discard(uid))
+        worker.signals.finished.connect(lambda uid=uid: self._on_build_finished(uid))
         thread_pool.start(worker)
         return True
+
+    def _on_build_finished(self, uid: int) -> None:
+        """Worker done: drop the in-flight mark; report a stuck toast mapping.
+
+        Temporary [toast-debug] diagnostic: if the uid→slot mapping is still
+        present here, no complete payload ever arrived (abort / stalled loop)
+        and the slot's toast will hang forever.
+        """
+        self._pyramid_builds.discard(uid)
+        slot_id = self._pyramid_toast_slot.get(uid)
+        toast_debug(
+            "pyramid finished: uid=%s slot=%s mapping_stuck=%s",
+            uid,
+            slot_id,
+            slot_id is not None,
+        )
 
     def on_level_ready(self, payload) -> None:
         # Phase 5: publish lod_available per level instead of invalidate_render
@@ -270,6 +316,7 @@ class PyramidBuildCoordinator:
                 pass
 
         if not isinstance(payload, tuple) or len(payload) != 4:
+            toast_debug("level_ready: bad payload=%r", payload)
             return
         uid, level_count, total_levels, complete = payload
 
@@ -282,7 +329,22 @@ class PyramidBuildCoordinator:
 
         slot_id = self._pyramid_toast_slot.get(uid)
         if slot_id is None:
+            toast_debug(
+                "level_ready: uid=%s level=%s/%s complete=%s NO slot mapping",
+                uid,
+                level_count,
+                total_levels,
+                complete,
+            )
             return
+        toast_debug(
+            "level_ready: uid=%s slot=%s level=%s/%s complete=%s",
+            uid,
+            slot_id,
+            level_count,
+            total_levels,
+            complete,
+        )
         if self._toast is None:
             if complete:
                 self._pyramid_toast_slot.pop(uid, None)
