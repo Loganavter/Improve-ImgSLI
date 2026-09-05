@@ -1,4 +1,4 @@
-from ui.widgets.flyout_debug import flyout_debug
+from ui.widgets.unified_list_picker.debug import double_geom_debug
 from ui.widgets.unified_list_picker.common import (
     FlyoutMode,
     _UnifiedFlyoutBase,
@@ -21,8 +21,8 @@ class _UnifiedFlyoutRefreshMixin(_UnifiedFlyoutBase):
 
         list1 = items_for_list(self._document(), 1)
         list2 = items_for_list(self._document(), 2)
-        flyout_debug(
-            "double refresh mode=%s n1=%s n2=%s",
+        double_geom_debug(
+            "refresh mode=%s n1=%s n2=%s",
             getattr(self.mode, "name", self.mode),
             len(list1),
             len(list2),
@@ -70,10 +70,10 @@ class _UnifiedFlyoutRefreshMixin(_UnifiedFlyoutBase):
     def _handle_mode_transitions_for_lists(self, list1, list2) -> bool:
         if self.mode == FlyoutMode.DOUBLE:
             if not list1:
-                flyout_debug("double DOUBLE→SINGLE_RIGHT (list1 empty)")
+                double_geom_debug("DOUBLE→SINGLE_RIGHT (list1 empty)")
                 self._switch_double_to_single(2)
             elif not list2:
-                flyout_debug("double DOUBLE→SINGLE_LEFT (list2 empty)")
+                double_geom_debug("DOUBLE→SINGLE_LEFT (list2 empty)")
                 self._switch_double_to_single(1)
             return False
         if self.mode == FlyoutMode.SINGLE_LEFT and not list1:
