@@ -126,6 +126,10 @@ def compute_double_mode_geometry(
     geom2_content = picker._calculate_ideal_geometry(
         button2, right_size, content_only=True
     )
+    # Per-side heights: each panel keeps its own natural height with tops
+    # aligned. shared_height below only resolves the common top (space
+    # below/above the source anchor) and caps the tall side — the short
+    # side is never stretched, so no dead band hangs under its last row.
     shared_height = resolve_double_mode_top(
         picker, button1, button2, geom1_content, geom2_content
     )
@@ -146,8 +150,8 @@ def compute_double_mode_geometry(
         shared_height = resolve_double_mode_top(
             picker, button1, button2, geom1_content, geom2_content
         )
-    geom1_content.setHeight(shared_height)
-    geom2_content.setHeight(shared_height)
+    geom1_content.setHeight(min(geom1_content.height(), shared_height))
+    geom2_content.setHeight(min(geom2_content.height(), shared_height))
 
     unified_content = geom1_content.united(geom2_content)
     final_unified_geom = picker._clamp_outer_rect(
