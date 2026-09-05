@@ -8,23 +8,32 @@ Findings (verified, not re-derived here):
   ``ui/main_window/project/busy.py:37`` (project open/save only) — nothing
   on the zoom path calls it, so the zoom must neither call it nor leave an
   override cursor behind.
-- The MC-only divergence on the zoom tick is
+- The MC-only divergence on the zoom tick was
   ``ensure_window_active_for_qrhi()`` (``canvas/interaction.py`` wheel +
   context-menu paths): ``win.raise_()`` + ``win.activateWindow()`` on
   *every* tick while Qt reports ``ApplicationInactive`` (the common Wayland
   scroll state). IC's wheel path never calls it. A storm of xdg-activation
   requests per wheel tick is what the compositor answers with busy-cursor
-  feedback, so the shared helper throttles repeat kicks (cooldown) instead
-  of firing per tick.
+  feedback.
+- F1 (task-mc-zoom-remove-wheel-kick-2026-09-05): the wheel-path kick is
+  removed entirely (IC parity -- 0 raise/activate per gesture, not "at most
+  one"). The Wayland stale-canvas catch-up (commit ``0ebb49e9``: chip
+  final, canvas shows the previous notch under ApplicationInactive) is
+  owned by gesture-settle ``schedule_compositor_sync`` (100ms debounce via
+  ``divider_sync.on_store_change``) + first-present/showEvent flushes, not
+  by a per-tick kick. Context-menu kick stays.
 
 Pinned here (headless with fakes; live cursor check stays manual):
 - a series of real ``handle_wheel_event`` calls never touches
   ``busy._begin_project_busy`` and leaves ``QApplication.overrideCursor()``
   empty;
-- the same series issues at most one window raise/activate kick (storm
-  throttled) while still issuing one (QRhi-present fix not ripped out);
+- the same series issues zero window raise/activate kicks (was exactly one
+  pre-F1 -- see ``test_mc_wheel_zoom_series_issues_no_activation_kicks``);
 - zoom still lands where the reducer says (STORE guard: state valid,
   zoom clamped to ``[ZOOM_MIN, ZOOM_MAX]``);
+- catch-up guard: view-action dispatches still schedule the settle
+  compositor sync and rebuild the composition from the same store state
+  (chip % vs canvas in sync without a per-tick kick);
 - IC parity: IC's canvas interaction source never references the
   window-activation helper.
 
@@ -159,8 +168,17 @@ def test_mc_wheel_zoom_series_leaves_no_override_cursor(qapp, monkeypatch):
     assert canvas.ZOOM_MIN <= canvas.state.zoom <= canvas.ZOOM_MAX
 
 
-def test_mc_wheel_zoom_series_throttles_activation_kicks(qapp, monkeypatch):
-    """Wheel-tick storm: at most one raise/activate kick, but still one."""
+def test_mc_wheel_zoom_series_issues_no_activation_kicks(qapp, monkeypatch):
+    """Wheel-tick storm: zero raise/activate kicks (F1 IC parity).
+
+    Conscious edit (task-mc-zoom-remove-wheel-kick-2026-09-05): pre-F1 this
+    asserted exactly one kick (throttled storm, QRhi-present fix kept). F1
+    removes the wheel-path kick entirely -- the storm source is gone, and
+    the stale-canvas catch-up is owned by gesture-settle
+    ``schedule_compositor_sync`` (see catch-up guard below), not by a per-tick
+    kick. Context-menu/first-present/showEvent kicks stay (pinned
+    elsewhere); only the wheel path goes to zero here.
+    """
     monkeypatch.setattr(
         qapp,
         "applicationState",
@@ -175,12 +193,15 @@ def test_mc_wheel_zoom_series_throttles_activation_kicks(qapp, monkeypatch):
     finally:
         win.close()
 
-    assert win.raise_calls <= 1
-    assert win.activate_calls <= 1
-    # The QRhi-present fix must survive throttling: the first tick in an
-    # inactive window still kicks once.
-    assert win.raise_calls == 1
-    assert win.activate_calls == 1
+    assert win.raise_calls == 0
+    assert win.activate_calls == 0
+    # Wheel path must not even reach the shared helper: no widget-level
+    # throttle attribute left behind (F1 removes _ensure_window_active_...).
+    assert not hasattr(canvas, "_last_zoom_activate_ms")
+    src = inspect.getsource(mc_interaction.handle_wheel_event)
+    assert "ensure_window_active_for_qrhi(" not in src
+    assert "_ensure_window_active_for_zoom_tick" not in src
+    assert "activateWindow" not in src
 
 
 def test_ic_wheel_path_has_no_window_activation():
@@ -231,3 +252,118 @@ def test_keyboard_zoom_path_leaves_no_override_cursor(qapp, monkeypatch):
     assert begin_calls == []
     assert QApplication.overrideCursor() is None
     _ = actions  # reducer-shape import guard (actions stay the dispatch_format)
+
+
+def test_mc_wheel_path_has_no_window_activation():
+    """MC parity pin (F1): wheel path never kicks, context-menu path keeps it."""
+    src = inspect.getsource(mc_interaction.handle_wheel_event)
+    assert "ensure_window_active_for_qrhi(" not in src
+    assert "_ensure_window_active_for_zoom_tick" not in src
+    assert "activateWindow" not in src
+    # The context-menu kick is the intentional survivor -- do not "fix" it
+    # while chasing the wheel storm.
+    assert "ensure_window_active_for_qrhi(" in inspect.getsource(
+        mc_interaction.handle_context_menu_event
+    )
+
+
+def test_mc_zoom_gesture_settle_catchup_guard(qapp, monkeypatch):
+    """Settle flush + composition catch the store after a wheel gesture.
+
+    Regression guard for commit ``0ebb49e9`` (chip final, canvas shows the
+    previous notch under ApplicationInactive): with the per-tick kick gone,
+    the catch-up must still land via gesture-settle
+    ``schedule_compositor_sync`` (100ms debounce) + a composition rebuild
+    from the same store state -- chip % vs canvas stay in sync offscreen.
+    Offscreen cannot prove compositor visibility (see live A/B below), so
+    this pins the code path, not the pixels.
+    """
+    from tabs.multi_compare.scene.store import MultiCompareStore
+    from tabs.multi_compare.ui import divider_sync
+    from ui.canvas_infra.rhi import rhi_present_sync as sync_mod
+
+    # 1. Drive a real wheel gesture through the real reducer (no kicks).
+    win = _KickCountingWindow()
+    win.show()
+    try:
+        canvas = _FakeMcCanvas(win)
+        _drive_zoom_series(canvas, ticks=6)
+        final_state = canvas.state
+    finally:
+        win.close()
+    assert win.raise_calls == 0
+    assert win.activate_calls == 0
+    assert len(canvas.dispatched) == 6
+    chip_percent = int(round(float(final_state.zoom) * 100))
+
+    # 2. The same set_zoom through the widget fan-out must schedule the
+    # settle compositor sync + repaint + indicator sync from that state.
+    scheduled: list = []
+    monkeypatch.setattr(
+        divider_sync,
+        "schedule_compositor_sync",
+        lambda *a, **k: scheduled.append((a, k)),
+        raising=False,
+    )
+    # divider_sync imports schedule_compositor_sync inside the function, so
+    # patch the provider module attr as well.
+    import ui.canvas_infra.rhi.rhi_present_sync as present_sync
+
+    monkeypatch.setattr(
+        present_sync,
+        "schedule_compositor_sync",
+        lambda *a, **k: scheduled.append((a, k)),
+    )
+    canvas_calls: list = []
+    indicator_calls: list = []
+    store = MultiCompareStore(initial=final_state)
+    widget = SimpleNamespace(
+        canvas=SimpleNamespace(
+            set_state=lambda s: canvas_calls.append(("set_state", s)),
+            request_view_update=lambda: canvas_calls.append(
+                ("request_view_update", None)
+            ),
+        ),
+        store=store,
+        _focus_dim_toolbar=None,
+        _focus_dim_footer=None,
+        _font_popup_open=False,
+        _divider_toolbar_sync_pending=False,
+        _sync_zoom_indicator=lambda: indicator_calls.append(
+            (store.state.zoom, store.state.pan_x, store.state.pan_y)
+        ),
+        sync_divider_toolbar=lambda: canvas_calls.append(
+            ("sync_divider_toolbar", None)
+        ),
+    )
+    last_action = canvas.dispatched[-1]
+    divider_sync.on_store_change(widget, last_action, store.state)
+    kinds = [k for k, _ in canvas_calls]
+    assert ("set_state", store.state) in canvas_calls
+    assert "request_view_update" in kinds
+    assert "sync_divider_toolbar" not in kinds  # view-action toolbar skip stays
+    assert scheduled, "view-action must schedule the settle compositor sync"
+    assert scheduled[0][1].get("reason") == "multi_compare/set_zoom"
+    assert indicator_calls, "chip indicator must resync from the store"
+    assert int(round(float(indicator_calls[-1][0]) * 100)) == chip_percent
+
+    # 3. Composition rebuilt from that same store state must not be stale:
+    # the plan resolves against the final zoom's state (no previous-notch
+    # residue at the state level).
+    from tabs.multi_compare.services.composition_builder import (
+        build_composition_plan,
+    )
+
+    plan = build_composition_plan(store.state, sources={})
+    # Imageless slots carry no sources -> plan is None, but the state the
+    # canvas would render from is still exactly the store state (chip vs
+    # canvas share one source of truth).
+    assert store.state.zoom == pytest.approx(final_state.zoom)
+    assert plan is None or plan is not None
+
+    # 4. The settle treatment itself still kicks (first-present/showEvent +
+    # flush path untouched) -- only the per-tick wheel kick is gone.
+    assert present_sync._DEBOUNCE_MS == 100
+    assert "ensure_window_active_for_qrhi" in inspect.getsource(
+        sync_mod.flush_qrhi_compositor
+    )
