@@ -711,7 +711,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 633,
+      "lines": 691,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",

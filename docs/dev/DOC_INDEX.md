@@ -80,6 +80,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Plan: RhiCanvasRenderer decomposition (1611 → <500)](plan_rhi_renderer_decomposition.md)** — `docs/dev/plan_rhi_renderer_decomposition.md`
 - **[Plan: Store/Redux direct mutation elimination and dogma hardening](plan_store_redux_repair.md)** — `docs/dev/plan_store_redux_repair.md`
 - **[Plan: host-owned ToastManager + toast refactor for both canvas tabs](plan_toast_refactor.md)** — `docs/dev/plan_toast_refactor.md`
+  Referenced by: [docs/dev/plugins/layout.md](plugins/layout.md)
 
 ## docs/dev/plugins/
 

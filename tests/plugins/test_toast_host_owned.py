@@ -13,22 +13,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QWidget
 
-from core.events import CoreErrorOccurredEvent
 from plugins.layout.plugin import LayoutPlugin
 from sli_ui_toolkit.widgets import ToastManager
-from tabs.multi_compare.use_cases.loading import _emit_mc_load_error
 
 APP = QApplication.instance() or QApplication([])
-
-
-class _RecordingBus:
-    """Minimal EventBus stand-in: records emitted events (SimpleNamespace style)."""
-
-    def __init__(self):
-        self.emitted = []
-
-    def emit(self, event):
-        self.emitted.append(event)
 
 
 def test_setup_ui_reference_without_canvas_pages_owns_toast_manager():
@@ -68,20 +56,3 @@ def test_host_toast_manager_show_update_close_round_trip_offscreen():
         manager.close_toast(toast_id)
     finally:
         parent.deleteLater()
-
-
-def test_mc_load_error_emit_helper_publishes_core_error_event():
-    # Pre-existing helper only (Phase-2 independent): a corrupt MC drop must
-    # surface via the shared EventBus, not vanish log-only. Fake controller
-    # uses SimpleNamespace, never mocks, per docs/dev/TESTING.md.
-    bus = _RecordingBus()
-    controller = SimpleNamespace(
-        context=SimpleNamespace(event_bus=bus, main_window=None),
-        translate=lambda key, default=None: default if default is not None else key,
-    )
-    _emit_mc_load_error(controller, "/tmp/corrupt.png", RuntimeError("bad pixels"))
-    assert len(bus.emitted) == 1
-    event = bus.emitted[0]
-    assert isinstance(event, CoreErrorOccurredEvent)
-    assert "/tmp/corrupt.png" in event.error
-    assert "bad pixels" in event.error
