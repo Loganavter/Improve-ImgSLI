@@ -31,58 +31,6 @@ class MultiCompareSaveFlowCoordinator:
             sync_fallback=True,
         )
 
-    @property
-    def _save_cancellation(self):
-        return self._flow._save_cancellation
-
-    @_save_cancellation.setter
-    def _save_cancellation(self, value):
-        self._flow._save_cancellation = value
-
-    @property
-    def _save_workers(self):
-        return self._flow._save_workers
-
-    @_save_workers.setter
-    def _save_workers(self, value):
-        self._flow._save_workers = value
-
-    def _get_thread_pool(self):
-        return self._flow._get_thread_pool()
-
-    def _get_toast_manager(self):
-        return self._flow._get_toast_manager()
-
-    def _update_toast_safe(self, *a, **kw):
-        return self._flow._update_toast_safe(*a, **kw)
-
-    def _build_toast_path_line(self, *a, **kw):
-        return self._flow._build_toast_path_line(*a, **kw)
-
-    def _build_display_path(self, *a, **kw):
-        return self._flow._build_display_path(*a, **kw)
-
-    def _next_save_task_id(self):
-        return self._flow._next_save_task_id()
-
-    def _create_save_toast(self, *a, **kw):
-        return self._flow._create_save_toast(*a, **kw)
-
-    def _on_save_worker_progress(self, *a, **kw):
-        return self._flow._on_save_worker_progress(*a, **kw)
-
-    def _on_save_worker_done(self, *a, **kw):
-        return self._flow._on_save_worker_done(*a, **kw)
-
-    def _on_save_worker_error(self, *a, **kw):
-        return self._flow._on_save_worker_error(*a, **kw)
-
-    def _finalize_save_worker(self, *a, **kw):
-        return self._flow._finalize_save_worker(*a, **kw)
-
-    def cancel_all_exports(self):
-        return self._flow.cancel_all_exports()
-
     def start_save_worker(self, pil_image: Image.Image, options: dict) -> None:
         """``pil_image`` must already be a plain ``PIL.Image`` (converted on the GUI thread)."""
 

@@ -13,8 +13,7 @@ progress/error handlers) parameterized for both tabs:
   synchronous GUI-thread ``sync_fn`` instead of error toast.
 - ``on_success_notify``: IC's ``set_last_saved_path`` + ``notify_system``.
 
-Both tab coordinators delegate to this object; it owns ``_save_cancellation``
-and ``_save_workers``. ``SAVE_CANCELED_MESSAGE`` is imported from the single
+Both tab coordinators delegate to this object; it owns ``_save_cancellation``. ``SAVE_CANCELED_MESSAGE`` is imported from the single
 source ``shared.image_processing.pil_save`` (re-exported via
 ``shared.image_processing.export_encoding``).
 
@@ -59,7 +58,6 @@ class SaveFlowCoordinator(SaveToastMixin):
         self.sync_fallback = bool(sync_fallback)
         self._on_success_notify = on_success_notify
         self._save_cancellation: dict[int, threading.Event] = {}
-        self._save_workers: dict[int, Any] = {}
         self._save_task_counter = 0
 
     # --- SaveToastMixin overrides -------------------------------------------------
@@ -157,7 +155,6 @@ class SaveFlowCoordinator(SaveToastMixin):
                 duration=2000,
             )
         self._save_cancellation.clear()
-        self._save_workers.clear()
 
     def _on_save_worker_done(
         self,
@@ -237,7 +234,6 @@ class SaveFlowCoordinator(SaveToastMixin):
 
     def _finalize_save_worker(self, save_task_id: int) -> None:
         self._save_cancellation.pop(save_task_id, None)
-        self._save_workers.pop(save_task_id, None)
 
     # --- generic worker launch ---------------------------------------------------
     def start_with_worker(
@@ -269,7 +265,6 @@ class SaveFlowCoordinator(SaveToastMixin):
             worker.kwargs["progress_callback"] = worker.signals.progress
         except Exception:
             pass
-        self._save_workers[save_task_id] = worker
         try:
             worker.signals.progress.connect(
                 lambda value: self._on_save_worker_progress(save_task_id, final_path_for_display, value)
