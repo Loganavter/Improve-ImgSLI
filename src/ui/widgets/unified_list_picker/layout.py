@@ -57,6 +57,18 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         if self._anim:
             self._anim.stop()
 
+        try:
+            anchor_geom = anchor_widget.geometry()
+            anchor_box = f"({anchor_geom.x()},{anchor_geom.y()},{anchor_geom.width()}x{anchor_geom.height()})"
+        except Exception:
+            anchor_box = "?"
+        double_geom_debug(
+            "showSingle list=%s anchor=%s item_h=%s",
+            list_num,
+            anchor_box,
+            getattr(anchor_widget, "getItemHeight", lambda: 34)(),
+        )
+
         self.source_list_num = list_num
         self._is_simple_mode = list_type == "simple"
         self._set_single_mode(list_num)
@@ -81,6 +93,15 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         self.move(start_pos)
         self._apply_container_geometry()
         self._position_panels_for_single()
+        double_geom_debug(
+            "single shown outer=%s cont=%s pL=%s pR=%s visL=%s visR=%s",
+            self._dbg_rect(self.geometry()),
+            self._dbg_rect(self.container_widget.rect()),
+            self._dbg_rect(self.panel_left.geometry()),
+            self._dbg_rect(self.panel_right.geometry()),
+            self.panel_left.isVisible(),
+            self.panel_right.isVisible(),
+        )
         self.show()
         self.raise_()
         self._start_show_animation(start_pos, end_pos)
