@@ -33,7 +33,7 @@ def test_timeline_scroll_uses_surface_scroll_area_token_mode(qapp):
     scroll = create_timeline_scroll_area(dialog)
     try:
         assert isinstance(scroll, SurfaceScrollArea)
-        assert scroll._surface_token == "dialog.background"
+        assert scroll._surface_token == "surface.background"
         assert scroll.minimumHeight() > 0
         assert dialog.timeline is not None
         assert scroll.widget() is dialog.timeline
