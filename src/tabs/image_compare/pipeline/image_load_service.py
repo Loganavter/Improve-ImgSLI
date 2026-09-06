@@ -58,6 +58,16 @@ def _unify_key(path1: str, path2: str, method: str) -> tuple:
     return (os.path.normpath(str(path1)), os.path.normpath(str(path2)), str(method))
 
 
+def _pipeline_inflight(controller: Any) -> dict | None:
+    """Return controller.pipeline._inflight (may alias the service dict)."""
+    try:
+        pl = getattr(controller, "pipeline", None)
+        d = getattr(pl, "_inflight", None)
+        return d if isinstance(d, dict) else None
+    except Exception:
+        return None
+
+
 class ImageLoadService:
     """Single-flight loader with path+mtime+box dedup and progressive inside."""
 
@@ -291,6 +301,28 @@ class ImageLoadService:
         except Exception:
             pool = getattr(controller, "thread_pool", None)
 
+        def _pop_alias():
+            # Pipeline alias (slot, path) set by the slot.py service path in
+            # the shared _inflight dict. The service never knew this key shape,
+            # so it leaked with a live signal forever: every later pyramid
+            # start saw "decode in flight" and skipped the uid->slot toast
+            # mapping, hanging the toast. Pop only if the entry is still ours
+            # (a newer load may have reused the key).
+            try:
+                alias = (int(slot), str(path))
+            except Exception:
+                return
+            dicts = [self._inflight]
+            pl_d = _pipeline_inflight(controller)
+            if pl_d is not None and pl_d is not self._inflight:
+                dicts.append(pl_d)
+            for d in dicts:
+                try:
+                    if d.get(alias) is sig:
+                        d.pop(alias, None)
+                except Exception:
+                    pass
+
         def _on_result(result):
             try:
                 cur = self._inflight.get(key)
@@ -298,6 +330,7 @@ class ImageLoadService:
                     self._inflight.pop(key, None)
             except Exception:
                 pass
+            _pop_alias()
             try:
                 controller._on_image_loaded(result)
             except Exception as e:
@@ -311,6 +344,7 @@ class ImageLoadService:
                     self._inflight.pop(key, None)
             except Exception:
                 pass
+            _pop_alias()
 
         worker = GenericWorker(_worker_body, path, crop_service, int(slot), int(index_in_list), sig)
         worker.signals.result.connect(_on_result)

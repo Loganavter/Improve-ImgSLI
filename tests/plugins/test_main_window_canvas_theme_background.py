@@ -33,6 +33,12 @@ class _ThemeManager:
     def get_color(self, _key: str) -> QColor:
         return QColor(self.color)
 
+    def try_get_color(self, _key: str) -> QColor:
+        # Production resolves via try_get_color (see ui.theming
+        # .try_resolve_theme_color); the fake must offer the same hook or
+        # ThemedSurface falls back to the white placeholder.
+        return QColor(self.color)
+
 
 def test_themed_surface_repaints_on_theme_change():
     app = _app()

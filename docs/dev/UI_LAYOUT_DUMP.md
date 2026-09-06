@@ -131,6 +131,14 @@ otherwise ignored.
 - Tab actions only appear once the tab has run its `contribute_actions`
   (i.e. once it's the active tab) — a dump taken at the Session Picker will
   show host/platform actions only, not `image_compare.*` / `multi_compare.*`.
+- `family` / `state` carry the widget's declared inspector state
+  (`InspectSpec.state` / `WidgetDescriptor.inspect.state`), resolved live and
+  JSON-sanitized — omitted when the widget declares no spec. This is what
+  makes hidden subtrees readable: a closed `UnifiedListPicker` still reports
+  `mode` (`HIDDEN` / `SINGLE_LEFT` / `DOUBLE` …) and `source_list_num`, a row
+  reports `index` / `full_path` / `is_current`, even though `visible` is
+  false everywhere below it. Stock Qt widgets have no spec and stay
+  geometry-only.
 
 ## Ownership
 

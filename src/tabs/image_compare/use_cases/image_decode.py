@@ -30,6 +30,71 @@ def _format_worker_error(err) -> str:
     return str(err)
 
 
+def _dismiss_ic_loading_toast(controller, image_number) -> None:
+    """Close a slot's loading toast on decode failure (MC parity: dismiss+emit).
+
+    Prefers the coordinator's dismiss (no success banner); falls back to a
+    legacy dict pop + close for controllers without a coordinator.
+    """
+    try:
+        coord = getattr(controller, "_loading_toast_coordinator", None)
+        if coord is not None:
+            dismiss = getattr(coord, "dismiss", None)
+            if callable(dismiss):
+                dismiss(image_number)
+                return
+            finish = getattr(coord, "finish", None)
+            if callable(finish):
+                finish(image_number)
+                return
+    except Exception:
+        pass
+    try:
+        toasts = getattr(controller, "_loading_toasts", None)
+        toast_id = toasts.pop(image_number, None) if isinstance(toasts, dict) else None
+        if toast_id is None:
+            return
+        manager = None
+        try:
+            getter = getattr(controller, "_get_toast_manager", None)
+            if callable(getter):
+                manager = getter()
+        except Exception:
+            manager = None
+        if manager is None:
+            try:
+                presenter = getattr(controller, "presenter", None)
+                manager = getattr(
+                    getattr(presenter, "main_window_app", None), "toast_manager", None
+                )
+            except Exception:
+                manager = None
+        if manager is not None:
+            try:
+                closer = getattr(manager, "close_toast", None)
+                if callable(closer):
+                    closer(toast_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _resolve_ic_slot_for_path(controller, path: str) -> int | None:
+    try:
+        document = controller.store.get_session_state_slot("document")
+    except Exception:
+        return None
+    try:
+        if getattr(document, "image1_path", None) == path:
+            return 1
+        if getattr(document, "image2_path", None) == path:
+            return 2
+    except Exception:
+        pass
+    return None
+
+
 def load_image_async(controller, path, image_number, index_in_list, target_size=None):
     from shared.image_processing.progressive_loader import (
         load_preview_image,
@@ -77,6 +142,10 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
         return store, path, image_number, index_in_list, False
     except Exception as e:
         ic_preview_debug("load_image_async slot=%s failed %s", image_number, e)
+        try:
+            _dismiss_ic_loading_toast(controller, image_number)
+        except Exception:
+            pass
         if controller.event_bus:
             controller.event_bus.emit(
                 CoreErrorOccurredEvent(
@@ -520,6 +589,18 @@ def on_full_resolution_loaded_result(controller, result) -> None:
 
 def on_full_resolution_error(controller, path: str, err) -> None:
     logger.error(f"Failed to load full resolution: {err}", exc_info=True)
+    try:
+        slot = _resolve_ic_slot_for_path(controller, path)
+        if slot is not None:
+            _dismiss_ic_loading_toast(controller, slot)
+        else:
+            for candidate in (1, 2):
+                try:
+                    _dismiss_ic_loading_toast(controller, candidate)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     message = (
         f"{tr('msg.failed_to_load_image', controller.store.settings.current_language)}:\n"
         f"{path}\n\n{_format_worker_error(err)}"

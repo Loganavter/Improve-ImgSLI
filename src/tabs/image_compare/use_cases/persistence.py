@@ -11,6 +11,7 @@ ever called from those delegators.
 from __future__ import annotations
 
 import logging
+import os
 
 from PySide6.QtCore import QTimer
 
@@ -233,14 +234,21 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         # path; the existing load pipeline decodes it from disk lazily,
         # the same way `ImageSessionState.loaded_image*_paths` already
         # tracks history without holding pixels.
-        return [
-            ImageItem(
-                path=e.get("path", ""),
-                display_name=e.get("display_name", ""),
-                rating=e.get("rating", 0),
+        rebuilt = []
+        for e in entries or []:
+            path = e.get("path", "") or ""
+            display_name = e.get("display_name", "") or ""
+            if not (isinstance(display_name, str) and display_name.strip()):
+                stem = os.path.splitext(os.path.basename(path))[0] if path else ""
+                display_name = stem if stem and stem.strip(" .") else "-----"
+            rebuilt.append(
+                ImageItem(
+                    path=path,
+                    display_name=display_name,
+                    rating=e.get("rating", 0),
+                )
             )
-            for e in entries or []
-        ]
+        return rebuilt
 
     doc = DocumentModel(
         image_list1=_items(data.get("image_list1")),
