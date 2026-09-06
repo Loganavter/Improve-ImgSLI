@@ -45,3 +45,11 @@
 ### 视频编辑器窗口 {#video-editor}
 
 编辑器打开时：`Space` 播放/暂停，`Ctrl+Z` / `Ctrl+Y` 撤销/重做，`Delete` / `Backspace` 删除所选内容。完整编码流程见[视频编辑器](help://video)。
+
+### 键盘导航 {#keyboard-navigation}
+
+- `F1` — 显示聚焦控件的上下文帮助。当焦点与某个操作关联时，{{tr:menu.find_action}} 中的匹配项会高亮；否则按主题预过滤打开命令面板。
+- 在 {{tr:menu.find_action}}（`Ctrl+Shift+P`）中：`↑` / `↓` 移动选择，`Enter` 运行，`Ctrl+Enter` 打开 {{tr:action.palette.learn_more}}，`Esc` 关闭面板。
+- 在 {{tr:workspace.session_types.multi_compare}} 概览中，槽位焦点跟随指针：单击切换单图聚焦，`Esc` 退出。方向键用于平移画布，不会在槽位之间移动焦点。
+- 在会话选择器中，方向键在卡片之间移动焦点，`Enter` 打开聚焦的卡片，等同于单击该卡片。
+- 画布槽位之间没有 `Tab` 遍历：焦点跟随指针，键盘通过命令面板驱动操作。

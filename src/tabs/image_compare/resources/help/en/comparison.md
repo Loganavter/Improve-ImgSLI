@@ -33,7 +33,7 @@ With the magnifier off, drag the divider across the pair.
 
 ### Metrics {#metrics}
 
-- **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings#analysis).
+- **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings).
 - **Properties** — [Image Properties](help://image_properties) from a list-row context menu (file metadata and in-app side / rating).
 - **Move** — canvas or list context menu places a drag ghost of the image under the pointer (hanging bottom-left); move slightly, then click another workspace tab (or the canvas) to start the same insert flow as Duplicate / paste. `Esc` or right-click cancels.
 

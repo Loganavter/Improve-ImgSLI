@@ -106,7 +106,7 @@ class VideoEditorDialog(ThemedDialog):
         self.install_dialog_geometry(self._update_settings_panel_width)
         self.mark_theme_ui_ready()
         decorate_dialog(self, title=tr("video.video_editor_exporter", self.current_language))
-        install_dialog_help_menu(self, page="export")
+        install_dialog_help_menu(self, page="video")
 
         main_controller = (
             export_controller.presenter.main_controller
