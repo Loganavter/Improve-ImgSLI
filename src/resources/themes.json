@@ -1,10 +1,14 @@
 {
   "light": {
+    "AlternateBase": "#e1e1e1",
+    "Base": "#ffffff",
     "BrightText": "#ff0000",
+    "Button": "#e1e1e1",
     "ButtonText": "#1f1f1f",
     "Highlight": "#0078D4",
     "HighlightedText": "#ffffff",
     "Text": "#1f1f1f",
+    "ToolTipBase": "#ffffff",
     "ToolTipText": "#1f1f1f",
     "WindowText": "#1f1f1f",
     "accent": "#0078D4",
@@ -96,11 +100,15 @@
     "list_item.text.normal": "#1f1f1f"
   },
   "dark": {
+    "AlternateBase": "#3c3c3c",
+    "Base": "#2b2b2b",
     "BrightText": "#ff0000",
+    "Button": "#3c3c3c",
     "ButtonText": "#dfdfdf",
     "Highlight": "#0096FF",
     "HighlightedText": "#ffffff",
     "Text": "#dfdfdf",
+    "ToolTipBase": "#2b2b2b",
     "ToolTipText": "#dfdfdf",
     "WindowText": "#dfdfdf",
     "accent": "#0096FF",
