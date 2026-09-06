@@ -315,7 +315,7 @@ class GlassHUD(BaseFlyout):
         recoloring was tried and removed for reading as "liquid"/fluid (see
         improve-imgsli-internal-docs/docs/legacy/rendering/
         glass-panel-soft-threshold-adaptive-tint-plan.md)."""
-        base = resolve_theme_color(self.theme_manager, "flyout.background")
+        base = resolve_theme_color(self.theme_manager, "surface.background")
         tint = QColor(base)
         tint.setAlpha(70 if self.theme_manager.is_dark() else 80)
         return tint

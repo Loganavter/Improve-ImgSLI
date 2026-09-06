@@ -68,7 +68,7 @@ class _PopupBubble(QWidget):
     def _apply_surface_colors(self) -> None:
         """Re-read the flyout tokens; fall back to the palette Window role."""
         try:
-            bg = self._theme_manager.get_color("flyout.background")
+            bg = self._theme_manager.get_color("surface.background")
             border = self._theme_manager.get_color("flyout.border")
         except Exception:
             bg = border = None

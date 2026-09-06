@@ -21,7 +21,6 @@ from PySide6.QtWidgets import QApplication
 
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from sli_ui_toolkit.managers import ThemeManager
-from sli_ui_toolkit.ui.managers.theme_manager import ALIAS
 from sli_ui_toolkit.ui.widgets.buttons.layers.background import (
     BgResolveParams,
     resolve_button_background,
@@ -76,20 +75,21 @@ def _resolved_last(btn, states, tm) -> QColor:
 
 
 def _token_color(theme: str, key: str) -> QColor:
-    """Palette value for a token key (following the toolkit ALIAS chain),
-    without going through ThemeManager color getters."""
+    """Direct palette lookup for a token key (no remapping), without going
+    through ThemeManager color getters (cf. test_no_manual_theming contract).
+
+    Fails loudly on unknown tokens — no silent canonical fallthrough.
+    """
     palette = DARK_THEME_PALETTE if theme == "dark" else LIGHT_THEME_PALETTE
-    cur = key
-    for _ in range(len(ALIAS) + 1):
-        if cur not in ALIAS:
-            break
-        cur = ALIAS[cur]
-    return QColor(palette[cur])
+    assert key in palette, f"unknown theme token: {key!r} (theme={theme})"
+    return QColor(palette[key])
 
 
-# State set -> token key the retired QSS used for the same state.
+# State set -> token key the painter resolves for the same state. The
+# toggle-normal state paints ``surface.list`` directly (the old
+# ``button.toggle.background.normal`` key was dropped from themes.json).
 _QSS_STATE_TOKENS = [
-    ((), "button.toggle.background.normal"),
+    ((), "surface.list"),
     ((ButtonState.HOVERED,), "button.toggle.background.hover"),
     ((ButtonState.PRESSED,), "button.toggle.background.pressed"),
     ((ButtonState.CHECKED,), "button.toggle.background.checked"),
@@ -122,7 +122,7 @@ def test_editor_toggle_buttons_paint_qss_intended_background():
             btn.show()
             app.processEvents()
 
-            normal = _token_color(theme, "button.toggle.background.normal")
+            normal = _token_color(theme, "surface.list")
             hover = _token_color(theme, "button.toggle.background.hover")
             checked = _token_color(theme, "button.toggle.background.checked")
             checked_hover = _token_color(
