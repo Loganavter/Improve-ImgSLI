@@ -6,7 +6,7 @@
 
 - **开始 / 暂停 / 停止** — {{tr:image_compare.action.record}}（`R`）、{{tr:image_compare.action.pause_recording}}，之后可用同一组控件停止录制。
 - **记录内容** — 记录的是随时间变化的画布操作（缩放/平移、分割线、放大镜、加载的图像及相关设置）所构成的控制轨道与采样点，而非原始屏幕录像。
-- **采集帧率** — 见 [设置 → {{tr:settings.optimization}}](help://settings#performance)（{{tr:settings.recording_fps}}）。
+- **采集帧率** — 见 [设置 → 优化](help://settings#performance)（{{tr:settings.recording_fps}}）。
 
 ### 打开编辑器 {#open-editor}
 

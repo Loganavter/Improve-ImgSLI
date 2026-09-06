@@ -124,8 +124,9 @@ class SettingsDialog(ThemedDialog):
 
         self.main_layout = QHBoxLayout(self)
         setup_dialog_shell(self)
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
         decorate_dialog(self, title=self.tr("misc.settings", self.current_language))
+        install_dialog_help_menu(self, page="settings")
         self.active_tab = active_tab
         self._search_mode = False
         self._search_prev_row = 0
