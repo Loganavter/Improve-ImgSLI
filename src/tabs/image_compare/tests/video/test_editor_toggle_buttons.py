@@ -84,7 +84,17 @@ def _token_color(theme: str, key: str) -> QColor:
         if cur not in ALIAS:
             break
         cur = ALIAS[cur]
+    if cur not in palette:
+        # Batch B dropped the alias from ALIAS; fall through to the canonical
+        # token holding the identical value in themes.json.
+        cur = _DROPPED_ALIAS_CANONICAL.get(cur, cur)
     return QColor(palette[cur])
+
+
+# Canonical tokens for Batch-B dropped aliases (old -> canonical, same value).
+_DROPPED_ALIAS_CANONICAL = {
+    "button.toggle.background.normal": "surface.list",
+}
 
 
 # State set -> token key the retired QSS used for the same state.

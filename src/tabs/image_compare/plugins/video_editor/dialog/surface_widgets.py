@@ -106,7 +106,7 @@ class ThemedExportProgressBar(ThemedWidget, QProgressBar):
     def _read_colors(self) -> None:
         fallback = self.palette().window().color()
         self._track_color = _token_color(
-            self._theme_manager, "dialog.input.background", fallback
+            self._theme_manager, "surface.background", fallback
         )
         self._chunk_color = _token_color(self._theme_manager, "accent", fallback)
         self._success_color = _token_color(

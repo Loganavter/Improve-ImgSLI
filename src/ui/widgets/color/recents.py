@@ -240,7 +240,7 @@ class RecentColorsRow(ShelfWidget):
     def __init__(self, parent: QWidget | None = None, *, caption: str = "") -> None:
         super().__init__(
             parent,
-            surface_token="dialog.background",
+            surface_token="surface.background",
             content_well=True,
         )
         self.set_title(caption)

@@ -39,7 +39,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
     def _read_strip_color(self) -> None:
         try:
             resolved = try_resolve_theme_color(
-                self._theme_manager, "button.toggle.background.normal"
+                self._theme_manager, "surface.list"
             )
         except Exception:
             resolved = None
