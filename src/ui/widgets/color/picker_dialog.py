@@ -176,7 +176,7 @@ class _SVSquare(QWidget):
         hue_color = QColor.fromHsvF(self._hue / 360.0, 1.0, 1.0)
         sat_gradient = QLinearGradient(rect.topLeft(), rect.topRight())
         # Saturation endpoint: intrinsic white (HSV model) — keep visual white
-        # but allow theme override via surface.background alias (dialog.background)
+        # but allow theme override via surface.background
         # with fallback to hardcoded white so HSV square stays correct if token missing.
         sat_white = _themed_or_fallback(
             self.theme_manager, "surface.background", QColor(255, 255, 255)
@@ -207,7 +207,7 @@ class _SVSquare(QWidget):
         center = self._thumb_center(rect)
         thumb_radius = self.THUMB_RADIUS
         # Thumb rings: high-contrast white + soft dark outline — tokenized via
-        # slider.thumb.outer (alias surface.background) and shadow.color
+        # slider.thumb.outer and shadow.color
         thumb_outer = _themed_or_fallback(
             self.theme_manager, "slider.thumb.outer", QColor("#ffffff")
         )
@@ -307,7 +307,7 @@ class ColorPickerDialog(ThemedDialog):
     ) -> None:
         super().__init__(parent)
         self.theme_manager = ThemeManager.get_instance()
-        # Fallback initial white via theme token (surface.background alias dialog.background)
+        # Fallback initial white via theme token surface.background
         _fallback_init = _themed_or_fallback(
             self.theme_manager, "surface.background", QColor(255, 255, 255)
         )
