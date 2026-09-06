@@ -22,6 +22,19 @@ from tabs.multi_compare.canvas.features.grid_dividers.input.hit import (
 from tabs.multi_compare.scene import actions
 
 
+def _sizes_for(handler):
+    """Natural sizes from the session cache (B1: keeps the reducer pure)."""
+    try:
+        from tabs.multi_compare.pipeline.cache import sizes_for_slots
+
+        return sizes_for_slots(
+            getattr(handler, "pixel_cache", None),
+            getattr(getattr(handler, "state", None), "slots", None),
+        )
+    except Exception:
+        return None
+
+
 def begin_divider_drag(handler, local_pos: QPointF) -> None:
     div = divider_at(handler, local_pos)
     if div is None:
@@ -64,7 +77,9 @@ def update_divider_drag(handler, local_pos: QPointF) -> None:
         new_right = total_pair - new_left
     ws[idx] = new_left
     ws[idx + 1] = new_right
-    handler._do_dispatch(actions.set_split_weights(split_path, ws))
+    handler._do_dispatch(
+        actions.set_split_weights(split_path, ws, sizes=_sizes_for(handler))
+    )
 
 
 def end_divider_drag(handler) -> None:

@@ -59,7 +59,11 @@ def test_multi_compare_uses_host_export_dialog_service():
 
 
 def _slot(slot_id: int, w: int, h: int) -> CompareSlot:
-    return CompareSlot(id=slot_id, image=slot_image(w, h))
+    return CompareSlot(id=slot_id)
+
+
+def _sources(*specs):
+    return {sid: slot_image(w, h) for sid, w, h in specs}
 
 
 def test_multi_compare_quick_save_skips_export_dialog(monkeypatch, tmp_path):
@@ -153,7 +157,7 @@ def test_multi_compare_export_uses_focused_slot_as_full_frame():
         slots=[_slot(7, 20, 20), _slot(8, 40, 30)],
         focused_slot_id=7,
     )
-    plan = build_composition_plan(state)
+    plan = build_composition_plan(state, sources=_sources((7, 20, 20), (8, 40, 30)))
     assert isinstance(plan.root, LayerNode)
     assert plan.root.layer_id == 7
     resolved = resolve_composition(plan)

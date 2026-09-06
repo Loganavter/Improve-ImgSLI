@@ -30,6 +30,9 @@ class MultiCompareContextMenuProvider:
         slot = self._slot(request)
         if slot is None:
             return ()
+        can_duplicate = self._has_pixels(slot) and (
+            len(self.widget.state.slots) < self.widget.state.max_slots
+        )
         return (
             ContextMenuAction(
                 "multi_compare.rename_slot",
@@ -41,8 +44,7 @@ class MultiCompareContextMenuProvider:
                 "multi_compare.duplicate_slot",
                 self._tr("context.duplicate", "Duplicate"),
                 icon=Icon.ADD,
-                enabled=slot.image is not None
-                and len(self.widget.state.slots) < self.widget.state.max_slots,
+                enabled=can_duplicate,
                 data=slot.id,
             ),
             ContextMenuAction(
@@ -103,6 +105,28 @@ class MultiCompareContextMenuProvider:
             return None
         return next((slot for slot in self.widget.state.slots if slot.id == sid), None)
 
+    @staticmethod
+    def _cache(widget):
+        canvas = getattr(widget, "canvas", None)
+        return getattr(canvas, "pixel_cache", None)
+
+    def _has_pixels(self, slot: CompareSlot) -> bool:
+        """B1: tier presence resolves from the session cache, not the slot."""
+        try:
+            from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+            return resolve_slot_source(self._cache(self.widget), slot) is not None
+        except Exception:
+            return False
+
+    def _pixel_source(self, slot: CompareSlot):
+        try:
+            from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+            return resolve_slot_source(self._cache(self.widget), slot)
+        except Exception:
+            return None
+
     def _rename_slot(self, slot: CompareSlot) -> None:
         text, ok = AppTextInputDialog.get_text(
             self.widget,
@@ -114,7 +138,7 @@ class MultiCompareContextMenuProvider:
             self.widget.store.dispatch(actions.rename_slot(slot.id, text.strip()))
 
     def _duplicate_slot(self, slot: CompareSlot) -> None:
-        if slot.image is None or self.widget.state.root is None:
+        if not self._has_pixels(slot) or self.widget.state.root is None:
             return
         self.widget.begin_pending_duplicate(slot.id)
 
@@ -123,7 +147,7 @@ class MultiCompareContextMenuProvider:
             return
         from events.image_carry import begin_image_carry
 
-        begin_image_carry([slot.path], image=slot.image)
+        begin_image_carry([slot.path], image=self._pixel_source(slot))
 
     def _show_properties(self, slot: CompareSlot) -> None:
         ordered = [leaf.slot_id for leaf in leaves(self.widget.state.root)]
@@ -136,7 +160,7 @@ class MultiCompareContextMenuProvider:
         open_image_properties_dialog(
             path=slot.path,
             display_name=slot.label,
-            image=slot.image,
+            image=self._pixel_source(slot),
             app_rows=(("image_properties.position", "Position", position_text),),
             language=get_current_language() or "en",
             tr_func=app_tr,

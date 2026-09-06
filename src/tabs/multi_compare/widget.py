@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
@@ -29,9 +28,6 @@ from ui.context_menu.manager import install_context_menu_provider
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.glass_hud import ZoomIndicator
-
-if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 FOCUS_DIM_COLOR = QColor(0, 0, 0, 235)
 
@@ -292,27 +288,30 @@ class MultiCompareWidget(QWidget):
         )
 
     def add_image_auto(
-        self, path: Path, image: "TiledPixelStore", label: str = ""
+        self, path: Path, label: str = "",
+        *, leaf_entries=None,
     ) -> int | None:
         """Append an image by splitting the largest leaf along its longer axis."""
-        return placement.add_image_auto(self, path, image, label)
+        return placement.add_image_auto(self, path, label, leaf_entries=leaf_entries)
 
     def add_image_at(
         self,
         path: Path,
-        image: "TiledPixelStore",
         label: str,
         target_path: tuple[int, ...] | None,
         side: str | None,
         target_root: bool,
+        *,
+        leaf_entries=None,
     ) -> int | None:
         return placement.add_image_at(
-            self, path, image, label, target_path, side, target_root
+            self, path, label, target_path, side, target_root,
+            leaf_entries=leaf_entries,
         )
 
-    def _pick_auto_target(self) -> tuple[tuple[int, ...], str]:
+    def _pick_auto_target(self, leaf_entries=None) -> tuple[tuple[int, ...], str]:
         """Pick the existing leaf with the largest rect; split along its longer axis."""
-        return placement.pick_auto_target(self)
+        return placement.pick_auto_target(self, leaf_entries=leaf_entries)
 
     def remove_slot(self, slot_id: int) -> None:
         placement.remove_slot(self, slot_id)
