@@ -232,22 +232,16 @@ def _node(
 
 
 def _resolve_theme_tokens(used_families: dict[str, tuple]) -> dict[str, Any]:
-    """Resolve ``token_family`` tokens per widget family: alias chain + value.
+    """Resolve ``token_family`` tokens per widget family: direct value.
 
-    Answers "where does this color come from" for any dumped widget —
-    including toolkit-side ``ALIAS`` indirection (e.g.
-    ``button.toggle.background.normal`` → ``surface.list``), which neither
-    themes.json nor the inspector's Theme page shows. Best-effort: never
-    breaks the dump.
+    Answers "where does this color come from" for any dumped widget.
+    Tokens resolve directly via ``try_get_color`` — no remapping, no
+    alias chains. Best-effort: never breaks the dump.
     """
     try:
         from sli_ui_toolkit.theme import ThemeManager
     except Exception:
         return {}
-    try:
-        from sli_ui_toolkit.ui.managers.theme_manager import ALIAS
-    except Exception:
-        ALIAS = {}
     try:
         from devtools.ui_inspector.theme_sources import token_sources
     except Exception:
@@ -266,12 +260,9 @@ def _resolve_theme_tokens(used_families: dict[str, tuple]) -> dict[str, Any]:
         for token in tokens:
             try:
                 chain = [str(token)]
-                seen = {str(token)}
-                while chain[-1] in ALIAS and ALIAS[chain[-1]] not in seen:
-                    chain.append(ALIAS[chain[-1]])
-                    seen.add(chain[-1])
                 try:
-                    value = manager.get_color(str(token)).name()
+                    color = manager.try_get_color(str(token))
+                    value = color.name() if color is not None else None
                 except Exception:
                     value = None
                 terminal = chain[-1]
@@ -279,8 +270,6 @@ def _resolve_theme_tokens(used_families: dict[str, tuple]) -> dict[str, Any]:
                     source = sources[terminal]
                 elif value is None:
                     source = "missing"
-                elif len(chain) > 1:
-                    source = "toolkit ALIAS"
                 else:
                     source = "palette"
                 resolved[str(token)] = {
