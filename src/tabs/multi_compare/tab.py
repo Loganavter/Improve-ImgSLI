@@ -8,12 +8,22 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_accepted_image_path
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
 from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _filter_image_paths(paths: list[Path]) -> list[Path]:
+    """Suffix-only image filter from the single shared source (bug-a1 guard).
+
+    No ``is_file`` stat here — verdicts that gate accept/route must stay
+    synchronous and cheap; existence is validated downstream
+    (``load_external_paths`` / deferred drop finish).
+    """
+    return [p for p in paths if is_accepted_image_path(p)]
 
 
 def _default_state():
@@ -124,6 +134,15 @@ class MultiCompareTab(TabContract):
         if session_id is not None:
             self._active_session_id = session_id
             self._widget.refresh_from_session()
+            # Deferred page after early activation (P6/B1): same
+            # refresh-then-fill ordering as on_active_session_changed.
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on deferred bind for %s", session_id
+                )
 
         return page
 
@@ -201,9 +220,19 @@ class MultiCompareTab(TabContract):
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         # The session slot is authoritative; the bound facade re-reads it.
+        # P6/B1 ordering: refresh first, then demand-fill imageless slots —
+        # a restored (path-only) session must start its async fills on
+        # activation, not depend on the load-time conditional rehydrate.
         if self._widget is not None:
             self._active_session_id = session_id
             self._widget.refresh_from_session()
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on activation for %s", session_id
+                )
         else:
             self._active_session_id = session_id
 
@@ -339,11 +368,19 @@ class MultiCompareTab(TabContract):
             if paths is None or self._widget is None:
                 return False
             image_paths = [
-                p for p in (Path(x) for x in paths) if p.suffix.lower() in _IMAGE_EXTENSIONS
+                p if isinstance(p, Path) else Path(p) for p in paths
             ]
+            image_paths = _filter_image_paths(image_paths)
             if not image_paths:
                 return False
-            self._widget.begin_pending_paste(image_paths)
+            # P3A: load directly like IC instead of arming begin_pending_paste
+            # (no click-to-place, no Esc cancel); carry drops carry no canvas
+            # position, so placement is auto (load_external_paths).
+            if self._controller is not None:
+                return bool(self._controller.load_external_paths(image_paths))
+            self._widget.images_dropped.emit(
+                list(image_paths), (None, False), None
+            )
             return True
         if service_id == "toast_anchor_widget":
             if self._widget is None:
@@ -378,15 +415,46 @@ class MultiCompareTab(TabContract):
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:
-        return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab accepts_drop: %d paths", len(paths))
+        ok = any(is_accepted_image_path(p) for p in paths)
+        mc_dnd_debug("Tab accepts_drop -> %s", ok)
+        return ok
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab handle_drop: ENTER %d paths hint=%r", len(paths), hint)
         if self._widget is None:
+            mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
             return
-        image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
-        if image_paths:
-            # Same placement UX as external DnD / clipboard paste.
-            self._widget.begin_pending_paste(image_paths)
+        image_paths = _filter_image_paths(paths)
+        if not image_paths:
+            mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
+            return
+        # P3A: load directly like IC — auto-place via the P2 async path
+        # (imageless slot + toast now, preview worker decode). No
+        # begin_pending_paste arming, so no click-to-place and no Esc
+        # cancel; the chrome/carry hint carries no canvas position and is
+        # ignored for placement. Same placement UX as external canvas DnD.
+        # P7: this runs synchronously inside the window's
+        # acceptProposedAction window (window_event_handler accepts right
+        # after route_drop returns), so only the suffix-only verdict stays
+        # synchronous — slot/toast/worker-start move past accept via
+        # singleShot, otherwise the DnD source holds its busy cursor.
+        if self._controller is not None:
+            mc_dnd_debug("Tab handle_drop: direct-load %d paths (deferred past accept)", len(image_paths))
+            from PySide6.QtCore import QTimer
+
+            controller = self._controller
+            deferred = list(image_paths)
+            QTimer.singleShot(
+                0, lambda: controller.load_external_paths(deferred)
+            )
+        else:
+            mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
+            self._widget.images_dropped.emit(list(image_paths), (None, False), None)
 
     def dispose(self) -> None:
         if self._widget is not None:

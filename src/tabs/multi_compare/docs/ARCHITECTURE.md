@@ -25,8 +25,14 @@ in `scene/store.py` is used both by the core slot reducer and by the
 standalone store mode (tests). Tree operations live in
 `scene/tree_ops`; divider constraints in `scene/layout_constraints`.
 
-`RemoveSlot`/`Clear` defer closing the removed slots' `TiledPixelStore`s to
-GC/session teardown (so undo of a removal restores a still-open store).
+`RemoveSlot`/`Clear` drop path references only — pixels live in the
+tab's session-owned `pipeline/cache.py` (`MultiComparePixelCache`, keyed
+`(normpath, mtime, size)`, close on evict), never in state, so undo
+snapshots hold paths that re-resolve against the still-warm cache.
+Decoded-tier arrivals land in the cache first, then dispatch
+`NoteSlotPixels` (revision bump only, STORE replace-only) so subscribers
+rebuild composition / re-sync textures. `build_composition_plan()` takes
+the resolved `sources={slot_id: pixels}` alongside the state.
 
 The `_session_harness.py` test helper fakes the narrow core slice the facade
 depends on.

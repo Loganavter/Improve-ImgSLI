@@ -50,6 +50,7 @@ def build_composition_plan(
     label_font_pt: int = DEFAULT_LABEL_FONT_PX,
     split_gap_px: int | None = None,
     include_labels: bool = True,
+    sources: dict[int, object] | None = None,
 ) -> CompositionPlan | None:
     """Translate state into a CompositionPlan, or None if there is nothing to draw.
 
@@ -71,11 +72,29 @@ def build_composition_plan(
     visibly wired all the way through, which read as "thickness doesn't
     update until you touch color" (docs/dev/KNOWN_BUGS.md
     same-slot-swap SSIM follow-up investigation's divider side-quest).
+
+    Imageless-leaf policy (A4 decision, fixed -- do not drift): leaves
+    whose slot has no image yet (``slot is None or sources has no entry``)
+    are *skipped*, never rendered as placeholder layers. Rationale: a
+    placeholder would need invented geometry (native-size computation
+    reads real image extents) and would leak into the export canon --
+    live and export share one ``CompositionPlan``, so a live-only
+    placeholder desyncs export parity. The never-presented hole stays
+    covered one layer up instead: the canvas chrome's startup
+    placeholder (``ui/chrome.py``) owns the empty-canvas surface, same
+    posture as image_compare's canvas-only overlay. An all-imageless
+    tree therefore yields ``None`` (clear-color canvas under the chrome
+    placeholder); session-restore ordering that leaves every leaf
+    imageless is B1/P6 territory and must not be papered over here.
     """
     root = state.root
     if root is None or not slot_ids_in_tree(root):
         return None
     slots_by_id = {s.id: s for s in state.slots}
+    # B1: pixels live in the session cache, resolved by the caller into
+    # ``sources`` (slot_id -> TiledPixelStore | QImage). ``None`` (e.g. a
+    # headless caller without a cache) reads every leaf as imageless.
+    sources_by_id = dict(sources) if sources else {}
     focused = state.focused_slot_id if state.is_focused else None
     if split_gap_px is None:
         # ``thickness`` alone isn't enough: setting the toolbar width to 0
@@ -89,6 +108,7 @@ def build_composition_plan(
     composition_root = _convert_node(
         root,
         slots_by_id,
+        sources_by_id,
         focused_slot_id=focused,
         zoom=float(state.zoom),
         pan_x=float(state.pan_x),
@@ -116,6 +136,7 @@ def build_composition_plan(
 def _convert_node(
     node,
     slots_by_id: dict,
+    sources_by_id: dict,
     *,
     focused_slot_id: int | None,
     zoom: float,
@@ -129,7 +150,12 @@ def _convert_node(
         if focused_slot_id is not None and node.slot_id != focused_slot_id:
             return None
         slot = slots_by_id.get(node.slot_id)
-        if slot is None or slot.image is None:
+        image = sources_by_id.get(node.slot_id)
+        if slot is None or image is None:
+            # Imageless-leaf policy: documented skip (see
+            # build_composition_plan's docstring) -- no placeholder layer,
+            # no drift. A partially-loaded split collapses onto its loaded
+            # children; an all-imageless tree yields plan None.
             return None
 
         label = (
@@ -139,7 +165,7 @@ def _convert_node(
         )
         return LayerNode(
             layer_id=int(slot.id),
-            image=slot.image,
+            image=image,
             zoom=zoom,
             pan_x=pan_x,
             pan_y=pan_y,
@@ -151,6 +177,7 @@ def _convert_node(
                 resolved = _convert_node(
                     child,
                     slots_by_id,
+                    sources_by_id,
                     focused_slot_id=focused_slot_id,
                     zoom=zoom,
                     pan_x=pan_x,
@@ -168,6 +195,7 @@ def _convert_node(
             resolved = _convert_node(
                 child,
                 slots_by_id,
+                sources_by_id,
                 focused_slot_id=focused_slot_id,
                 zoom=zoom,
                 pan_x=pan_x,

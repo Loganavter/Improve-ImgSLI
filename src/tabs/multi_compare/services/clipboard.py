@@ -19,10 +19,12 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 class ClipboardService:
-    """Paste clipboard images via the same external DnD placement cycle.
+    """Paste clipboard images via direct async load (P3A, IC parity).
 
-    Starts ``begin_pending_paste`` so the drop highlight follows the cursor;
-    a click drops through ``images_dropped`` → ``_on_images_dropped``.
+    Previously started ``begin_pending_paste`` so the drop highlight
+    followed the cursor until a click; now ``begin_paste_placement``
+    auto-places through the P2 worker path (imageless slot + loading toast
+    immediately, no click-to-place, no armed highlight).
     """
 
     def __init__(self, store, main_controller, controller):
