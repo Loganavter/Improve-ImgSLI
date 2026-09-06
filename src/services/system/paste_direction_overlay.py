@@ -174,10 +174,9 @@ class PasteDirectionOverlay(TopLevelInWindowOverlay):
 
         tm = ThemeManager.get_instance()
         # Theme-aware with visual-preserving fallbacks (light values) — dark
-        # resolves via token when available. flyout.background not in
-        # app themes.json — chain through canonical aliases.
+        # resolves via token when available.
         surface = None
-        for _tok in ("flyout.background", "surface.background", "Window"):
+        for _tok in ("surface.background", "Window"):
             _r = try_resolve_theme_color(tm, _tok)
             if _r is not None and _r.isValid():
                 surface = QColor(_r)

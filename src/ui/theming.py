@@ -34,7 +34,7 @@ def refresh_application_styles(app: QApplication) -> None:
     app.setStyleSheet(app.styleSheet())
 
 
-def tint_scroll_surface(scroll_area: QWidget, color_key: str = "dialog.background") -> None:
+def tint_scroll_surface(scroll_area: QWidget, color_key: str = "surface.background") -> None:
     """Paint a stock ``QScrollArea`` surface from a theme token.
 
     Stock scroll areas and their viewports auto-fill the QPalette Window
