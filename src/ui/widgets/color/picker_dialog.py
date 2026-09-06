@@ -246,8 +246,8 @@ class _PreviewChip(QWidget):
         self.setFixedSize(scaled_px(34), scaled_px(34))
         # Neutral preview defaults: themed dialog.background / surface.background
         _tm = ThemeManager.get_instance()
-        self._before = _themed_or_fallback(_tm, "dialog.background", QColor(255, 255, 255))
-        self._after = _themed_or_fallback(_tm, "dialog.background", QColor(255, 255, 255))
+        self._before = _themed_or_fallback(_tm, "surface.background", QColor(255, 255, 255))
+        self._after = _themed_or_fallback(_tm, "surface.background", QColor(255, 255, 255))
         self.theme_manager = _tm
         self.theme_manager.theme_changed.connect(self.update)
 
