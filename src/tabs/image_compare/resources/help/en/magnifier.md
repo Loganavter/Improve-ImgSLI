@@ -18,7 +18,7 @@ The magnifier samples a region of the compared images and shows an enlarged view
 - **Lens size** — {{tr:label.magnifier_size}}.
 - **Capture size** — {{tr:label.capture_size}} (how much source area is sampled).
 - **Move** — `WASD` with the lens active; `QE` adjusts spacing when halves are separated.
-- **Speed** — on the magnifier panel when it is shown.
+- **Speed** — {{tr:magnifier.move_speed}} on the magnifier panel when it is shown.
 
 ### Freeze {#freeze}
 

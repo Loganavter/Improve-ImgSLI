@@ -174,6 +174,7 @@ def register_platform_actions(
             owner_tab=None,
             topic="app",
             shortcut="Ctrl+Q",
+            help_page="hotkeys",
             run=quit_app,
             target=file_quit,
         ),

@@ -45,3 +45,11 @@ See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 ### Video editor window {#video-editor}
 
 While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` remove selection. Full encode workflow: [Video Editor](help://video).
+
+### Keyboard navigation {#keyboard-navigation}
+
+- `F1` — contextual help for the focused control. When focus is tagged to an action, the {{tr:menu.find_action}} result pulses the match; otherwise the palette opens pre-filtered by topic.
+- In {{tr:menu.find_action}} (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens {{tr:action.palette.learn_more}}, `Esc` closes the palette.
+- In the {{tr:workspace.session_types.multi_compare}} overview, slot focus follows the pointer: a click toggles single-image focus, `Esc` exits it. Arrow keys pan the canvas instead of moving focus between slots.
+- In the session picker, arrow keys move focus between cards and `Enter` opens the focused card, same as clicking it.
+- There is no `Tab` traversal between canvas slots: focus follows the pointer, and the keyboard drives actions through the palette.

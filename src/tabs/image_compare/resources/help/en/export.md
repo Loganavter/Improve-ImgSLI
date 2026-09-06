@@ -31,7 +31,7 @@ Save what you see as a still image. Recording and the video editor have their ow
 ### Quick save {#quick-save}
 
 - **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} with the last export settings.
-- **Tray** — optional access to the last save under [Settings → General](help://settings#general).
+- **Tray** — the system-tray icon menu offers the last save once a file has been written.
 
 ### Recording and video {#video-editor}
 

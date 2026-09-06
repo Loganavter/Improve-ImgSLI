@@ -59,9 +59,10 @@ class ImagePropertiesDialog(ThemedDialog):
         self.install_dialog_geometry(self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
 
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
 
         decorate_dialog(self, title=self._tr("image_properties.title", "Properties"))
+        install_dialog_help_menu(self, page="image_properties")
         # CSD adjustSize + deferred geometry can land after first map; re-apply
         # once so the document canvas stretches across the scroll content.
         QTimer.singleShot(0, self._finalize_layout_and_size)
