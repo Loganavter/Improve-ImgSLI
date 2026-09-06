@@ -111,3 +111,44 @@ def test_mc_default_visual_gate_is_four_presents():
     gate = widget_mod._first_visual_present_count()
     assert gate >= 4
     assert widget_mod._FIRST_PRESENT_SETTLE_COUNT >= gate
+
+
+def test_mc_settle_pump_collapses_intermediate_flushes(monkeypatch):
+    """A4/P4 settle-pump collapse: only the boundary presents (1st + 10th)
+    pay the full compositor restack; intermediates pump a single canvas
+    repaint. Count invariant (every painted present counts) and the
+    ``presents >= 10`` emit gate stay untouched."""
+    from tabs.multi_compare.ui import canvas_widget as widget_mod
+    from ui.canvas_infra.rhi import rhi_present_sync
+
+    flushes: list[str] = []
+    scheduled: list[object] = []
+    monkeypatch.setattr(widget_mod, "_first_visual_present_count", lambda: 10)
+    monkeypatch.setattr(
+        rhi_present_sync, "flush_qrhi_compositor", lambda *a, **k: flushes.append("flush")
+    )
+    monkeypatch.setattr(
+        widget_mod.QTimer, "singleShot", lambda _ms, cb: scheduled.append(cb)
+    )
+
+    widget_mod, widget, emitted = _make_widget(painted=True)
+
+    for _ in range(3):
+        widget_mod.MultiCompareCanvasWidget.render(widget, object())
+    assert widget._rhi_presents_completed == 3
+    assert len(scheduled) == 1  # only present #1 restacks
+    assert emitted == []
+
+    for _ in range(6):
+        widget_mod.MultiCompareCanvasWidget.render(widget, object())
+    assert widget._rhi_presents_completed == 9
+    assert len(scheduled) == 1  # intermediates pump via update(), no flush
+
+    widget_mod.MultiCompareCanvasWidget.render(widget, object())
+    assert widget._rhi_presents_completed == 10
+    assert len(scheduled) == 2  # tenth present restacks pre-emit
+
+    for cb in scheduled:
+        cb()
+    assert emitted == ["frame"]
+    assert widget._first_frame_emitted is True

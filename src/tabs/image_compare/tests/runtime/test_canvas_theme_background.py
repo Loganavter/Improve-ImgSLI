@@ -33,7 +33,7 @@ class _ThemeManager:
     def __init__(self, color: QColor):
         self.color = color
 
-    def get_color(self, _key: str) -> QColor:
+    def try_get_color(self, _key: str) -> QColor:
         return QColor(self.color)
 
 
@@ -80,4 +80,49 @@ def test_startup_placeholder_tracks_theme_token():
 
     placeholder.deleteLater()
     parent.deleteLater()
+    app.processEvents()
+
+
+def test_apply_image_canvas_appearance_uses_tab_widget_not_host_shell():
+    """Regression: host_window.ui is the main shell (Ui_ImageComparisonApp)
+    which carries no image_label — the canvas lives on the tab widget.
+    Passing only the host must still repaint the tab-owned canvas."""
+    app = _app()
+    color = QColor("#654321")
+    image_label = QWidget()
+    container = QWidget()
+    tab_widget = SimpleNamespace(
+        image_label=image_label,
+        image_container_widget=container,
+    )
+    # Shell-shaped ui: workspace stack, no image_label.
+    window = SimpleNamespace(
+        theme_manager=_ThemeManager(color),
+        ui=SimpleNamespace(workspace_stack=None),
+        findChildren=lambda _cls: [],
+    )
+
+    apply_image_canvas_appearance(window, canvas_owner=tab_widget)
+
+    assert image_label.palette().color(QPalette.ColorRole.Window) == color
+    assert image_label.palette().color(QPalette.ColorRole.Base) == color
+    assert container.palette().color(QPalette.ColorRole.Window) == color
+    assert container.autoFillBackground() is True
+
+    container.deleteLater()
+    image_label.deleteLater()
+    app.processEvents()
+
+
+def test_apply_image_canvas_appearance_host_shell_alone_is_noop_safe():
+    """Shell ui without canvas must not raise (early startup, tab not built)."""
+    app = _app()
+    window = SimpleNamespace(
+        theme_manager=_ThemeManager(QColor("#654321")),
+        ui=SimpleNamespace(workspace_stack=None),
+        findChildren=lambda _cls: [],
+    )
+
+    apply_image_canvas_appearance(window, canvas_owner=None)
+
     app.processEvents()

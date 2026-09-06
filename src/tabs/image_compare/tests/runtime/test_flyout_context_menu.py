@@ -25,8 +25,6 @@ def _store_with_lists():
         ],
         current_index1=0,
         current_index2=0,
-        image1_path="/tmp/a.png",
-        image2_path="/tmp/c.png",
     )
     return SimpleNamespace(
         get_session_state_slot=lambda _name: document,

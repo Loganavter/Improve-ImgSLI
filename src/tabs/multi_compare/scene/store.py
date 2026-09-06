@@ -22,10 +22,7 @@ import dataclasses
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from typing import Callable
 
 from tabs.multi_compare.models import (
     CompareSlot,
@@ -55,7 +52,6 @@ class MultiCompareAction:
 @dataclass(frozen=True)
 class AddSlot(MultiCompareAction):
     path: Path
-    image: "TiledPixelStore"
     label: str
     target_path: tuple[int, ...] | None
     side: str | None
@@ -63,13 +59,19 @@ class AddSlot(MultiCompareAction):
 
 
 @dataclass(frozen=True)
-class ReplaceSlotImage(MultiCompareAction):
-    """Swap a slot's progressive-preview ``QImage`` for the real full-res
-    ``TiledPixelStore`` once background decoding finishes — see
-    ``MultiCompareController._load_full_resolution_async``."""
+class NoteSlotPixels(MultiCompareAction):
+    """A decoded tier landed in the session pixel cache for ``slot_id``.
+
+    B1 replacement for ``ReplaceSlotImage``: pixels travel
+    worker → :class:`pipeline.cache.MultiComparePixelCache`, never through
+    the action/reducer — this only bumps the slot's ``revision`` (pure
+    ``dataclasses.replace``) so subscribers rebuild composition / re-sync
+    textures exactly as they did on the old image-carrying action. Tier is
+    ``"preview"`` (bounded ``QImage``) or ``"full"`` (``TiledPixelStore``).
+    """
 
     slot_id: int
-    image: "TiledPixelStore"
+    tier: str
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,11 @@ class SetDragState(MultiCompareAction):
 class SetSplitWeights(MultiCompareAction):
     path: tuple[int, ...]
     weights: tuple[float, ...]
+    # Natural ``(w, h)`` sizes per slot id, resolved from the session pixel
+    # cache at the dispatch call site — the reducer stays pure (B1: pixels
+    # are no longer on the slot). ``None``/missing = imageless (same outcome
+    # as an imageless slot before B1: min-share clamp only).
+    sizes: tuple[tuple[int, tuple[int, int]], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -165,7 +172,6 @@ class actions:
     @staticmethod
     def add_slot(
         path: Path,
-        image: "TiledPixelStore",
         label: str,
         target_path: tuple[int, ...] | None = None,
         side: str | None = None,
@@ -174,7 +180,6 @@ class actions:
         return AddSlot(
             type="multi_compare/add_slot",
             path=path,
-            image=image,
             label=label,
             target_path=target_path,
             side=side,
@@ -182,11 +187,11 @@ class actions:
         )
 
     @staticmethod
-    def replace_slot_image(slot_id: int, image: "TiledPixelStore") -> ReplaceSlotImage:
-        return ReplaceSlotImage(
-            type="multi_compare/replace_slot_image",
+    def note_slot_pixels(slot_id: int, tier: str) -> NoteSlotPixels:
+        return NoteSlotPixels(
+            type="multi_compare/note_slot_pixels",
             slot_id=slot_id,
-            image=image,
+            tier=tier,
         )
 
     @staticmethod
@@ -269,12 +274,15 @@ class actions:
 
     @staticmethod
     def set_split_weights(
-        path: tuple[int, ...], weights: tuple[float, ...] | list[float]
+        path: tuple[int, ...],
+        weights: tuple[float, ...] | list[float],
+        sizes: dict[int, tuple[int, int]] | None = None,
     ) -> SetSplitWeights:
         return SetSplitWeights(
             type="multi_compare/set_split_weights",
             path=tuple(path),
             weights=tuple(weights),
+            sizes=tuple(sorted(sizes.items())) if sizes else None,
         )
 
     @staticmethod
@@ -325,7 +333,6 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             id=slot_id,
             path=action.path,
             label=action.label or (action.path.stem if action.path else ""),
-            image=action.image,
         )
         new_slots = list(state.slots) + [slot]
         if action.target_root or state.root is None:
@@ -339,13 +346,15 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             new_root = state.root
         return _replace(state, slots=new_slots, root=new_root)
 
-    if isinstance(action, ReplaceSlotImage):
+    if isinstance(action, NoteSlotPixels):
         found = False
         new_slots = []
         for slot in state.slots:
             if slot.id == action.slot_id:
                 found = True
-                new_slots.append(dataclasses.replace(slot, image=action.image))
+                new_slots.append(
+                    dataclasses.replace(slot, revision=slot.revision + 1)
+                )
             else:
                 new_slots.append(slot)
         if not found:
@@ -353,12 +362,11 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, slots=new_slots)
 
     if isinstance(action, RemoveSlot):
-        # Deliberately NOT closing the removed slot's TiledPixelStore: undo
-        # restores the pre-removal state by reference-snapshot, and a closed
-        # store would render as broken after undo. Deferred closing (GC /
-        # session teardown, `TiledPixelStore.__del__`) is bounded by the undo
-        # cap — see state-unification-plan.md Phase 1 (private
-        # improve-imgsli-internal-docs repo).
+        # Nothing closable lives in state after B1 (pixels are owned by the
+        # session pixel cache, snapshots hold paths only) — removal just
+        # drops the path reference. The cache entry stays warm under LRU so
+        # undo of this removal re-resolves instantly; eviction close can
+        # never break an undo snapshot (it holds no stores).
         new_slots = [s for s in state.slots if s.id != action.slot_id]
         new_root = tree_ops.remove_leaf(state.root, action.slot_id)
         focused = (
@@ -432,6 +440,26 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, zoom=1.0, pan_x=0.0, pan_y=0.0)
 
     if isinstance(action, SetDragState):
+        # Same equality-guard shape as SetFocus/SetZoom/SetPan above: an
+        # unchanged drag payload returns the same instance, so neither the
+        # standalone dispatch loop (``new_state is self._state`` early-out)
+        # nor the bound facade (slot-identity guard in ``_on_core_change``)
+        # notifies subscribers — no composition rebuild, no render, no
+        # session-slot rewrite for a no-op. dragMove fires per mouse tick
+        # with usually-identical targets; without this every tick pays the
+        # full dispatch→render pipeline and starves the event loop (visible
+        # as a frozen DnD cursor). Mirrors image_compare's
+        # ``set_drag_overlay_state`` early-return on identical payload.
+        if (
+            state.drag_active == action.active
+            and state.drag_internal == action.internal
+            and state.drag_source_slot_id == action.source_slot_id
+            and state.drag_target_path == action.target_path
+            and state.drag_target_side == action.target_side
+            and state.drag_target_root == action.target_root
+            and state.drag_target_swap_slot_id == action.target_swap_slot_id
+        ):
+            return state
         return _replace(
             state,
             drag_active=action.active,
@@ -444,12 +472,14 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         )
 
     if isinstance(action, SetSplitWeights):
+        sizes = dict(action.sizes) if action.sizes else None
         weights = layout_constraints.constrain_split_weights(
             state.root,
             action.path,
             action.weights,
             state.slots,
             zoom=state.zoom,
+            sizes=sizes,
         )
         new_root = tree_ops.set_split_weights(state.root, action.path, weights)
         if new_root is state.root:
@@ -474,7 +504,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, root=action.root, focused_slot_id=focused)
 
     if isinstance(action, Clear):
-        # Store closing deferred to GC/session teardown (see RemoveSlot above).
+        # Nothing closable lives in state after B1 (see RemoveSlot above).
         return MultiCompareState()
 
     logger.warning("multi_compare reducer: unhandled action %s", type(action).__name__)
@@ -656,6 +686,90 @@ class MultiCompareStore:
         if dispatcher is not None:
             dispatcher.dispatch(action, scope="multi_compare")
         self._dispatching = False
+        return self._read_slot()
+
+    def transact(self, actions_list: list[MultiCompareAction]) -> MultiCompareState:
+        """Coalesce N actions into one dispatch/emit (A3, IC-parity).
+
+        Additive batch API — the pure ``reduce`` above and every existing
+        action are untouched. N-file add (DnD/chrome/carry/dialog) plans N
+        ``AddSlot`` actions against a scratch state and commits them here,
+        so one user-visible multi-add pays one dispatch → one
+        ``emit_state_change("multi_compare")`` instead of N (IC precedent:
+        ``image_compare.use_cases.slot.load_images_from_paths`` single
+        transact of ``Append + SetCurrentIndex``,
+        ``core.state_management.transaction.TransactionAction``).
+
+        - **standalone** (tests): the ``reduce`` chain runs over a local
+          copy; subscribers are notified once with the *last* inner action
+          (keeps the ``persistence`` divider/label guards and canvas
+          behavior identical to N sequential dispatches).
+        - **bound** (production): a single ``core_store.transact([...],
+          scope="multi_compare")`` → one core ``Dispatcher.dispatch`` of
+          the ``TRANSACTION`` wrapper → one emit. Facade subscribers
+          observe the last inner action rather than the core wrapper, so
+          the action vocabulary they filter on is unchanged. Falls back to
+          the single ``dispatch`` path for one action and to sequential
+          dispatch when the core store has neither ``transact`` nor a
+          dispatcher.
+
+        Undo note: the outer ``TRANSACTION`` type is outside
+        ``Dispatcher._UNDOABLE_TYPES`` (same as every IC transact), so a
+        batched multi-add commits atomically outside undo while single-add
+        ``dispatch`` stays undoable. ``MoveSlot`` and the reducer are
+        untouched by this method.
+        """
+        pending = list(actions_list or [])
+        if not pending:
+            return self.state
+        if self._core_store is None:
+            current = self._state
+            try:
+                for sub in pending:
+                    current = reduce(current, sub)
+            except Exception:
+                logger.exception(
+                    "multi_compare transact failed (%d actions)", len(pending)
+                )
+                return self._state
+            if current is self._state:
+                return self._state
+            self._state = current
+            self._last_action = pending[-1]
+            for sub_cb in list(self._subscribers):
+                try:
+                    sub_cb(pending[-1], current)
+                except Exception:
+                    logger.exception(
+                        "multi_compare subscriber raised on transact",
+                    )
+            return current
+
+        # bound mode: one core transaction → one dispatch → one emit.
+        if len(pending) == 1:
+            return self.dispatch(pending[0])
+        self._last_action = pending[-1]
+        self._dispatching = True
+        try:
+            transact = getattr(self._core_store, "transact", None)
+            if callable(transact):
+                transact(pending, scope="multi_compare")
+            else:
+                dispatcher = getattr(self._core_store, "get_dispatcher", lambda: None)()
+                if dispatcher is not None:
+                    from core.state_management.transaction import (
+                        TransactionAction,
+                    )
+
+                    dispatcher.dispatch(
+                        TransactionAction(pending), scope="multi_compare"
+                    )
+        except Exception:
+            logger.exception(
+                "multi_compare transact failed (%d actions)", len(pending)
+            )
+        finally:
+            self._dispatching = False
         return self._read_slot()
 
     def subscribe(

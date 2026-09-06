@@ -1,10 +1,14 @@
 """Chrome input handling for multi-compare canvas (zoom/pan/keys/context).
 
+Audit-Meta: pattern=thin-owner reason="Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features"
+
 Feature-specific gestures (dividers, slot drag) stay in
 ``canvas/features/*/input/`` and are routed via ``gesture_resolver``.
 """
 
 from __future__ import annotations
+
+import time
 
 from PySide6.QtCore import QMimeData, QPoint, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
@@ -16,11 +20,20 @@ from tabs.multi_compare.canvas.gesture_resolver import (
     iter_active,
     resolve_press,
 )
+from tabs.multi_compare.debug import mc_dnd_debug, mc_dnd_debug_enabled
 from tabs.multi_compare.models import CompareSlot, LeafNode
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui.canvas_helpers import INTERNAL_SLOT_MIME, _dividers_locked
 from ui.context_menu.manager import open_context_menu
 from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
+
+#: IC parity (``compute_zoom_wheel_transform``): zoom deltas at/below this
+#: absolute epsilon are invisible -- swallow the tick instead of dispatching
+#: a full fan-out for float dust (e.g. clamp-boundary remainders).
+_ZOOM_IDENTICAL_EPS = 1e-6
+
+#: Fit-scale memo bound (entries are tiny tuples; cleared oldest-first).
+_FIT_CACHE_MAX = 128
 
 
 def clamp_pan_values(
@@ -32,12 +45,17 @@ def clamp_pan_values(
     return pan_x, pan_y
 
 
-def fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-    if slot.image is None or rect.width() <= 0 or rect.height() <= 0:
+def fit_scale_for(slot: CompareSlot, rect: QRect, source=None) -> tuple[float, float]:
+    """Fit scale from the slot's cached tier (B1: ``source`` passed by the caller).
+
+    ``None`` source (imageless slot) reads as ``(1.0, 1.0)``, same as an
+    imageless slot before B1.
+    """
+    if source is None or rect.width() <= 0 or rect.height() <= 0:
         return 1.0, 1.0
     from shared.image_processing.tiled_pixel_store import pixel_source_size
 
-    w, h = pixel_source_size(slot.image)
+    w, h = pixel_source_size(source)
     if h <= 0 or w <= 0:
         return 1.0, 1.0
     img_ar = w / h
@@ -45,6 +63,66 @@ def fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
     if img_ar > cell_ar:
         return 1.0, cell_ar / img_ar
     return img_ar / cell_ar, 1.0
+
+
+def _source_for(widget, slot):
+    """Cached tier for hit-test math (canvas owns the ``pixel_cache`` ref)."""
+    try:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        return resolve_slot_source(getattr(widget, "pixel_cache", None), slot)
+    except Exception:
+        return None
+
+
+def _cache_generation(cache) -> int:
+    try:
+        return int(getattr(cache, "generation", 0) or 0)
+    except Exception:
+        return 0
+
+
+def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, float]:
+    """``fit_scale_for`` memoized on the zoom hot path.
+
+    The size inputs (source dims via an ``os.stat``-keyed cache resolve +
+    rect dims) do not change between wheel ticks of one gesture, so repeat
+    ticks hit the cache and skip the resolve entirely. The key carries the
+    slot ``revision`` (bumps per decoded-tier arrival) and the pixel-cache
+    ``generation`` (bumps on any put/evict, e.g. an on-disk file replacement
+    resolving to a new content key), plus the rect size, so stale dims can
+    never stick. Cursor-anchor math and clamping are untouched -- only the
+    redundant re-resolve is skipped.
+    """
+    store = None
+    key = None
+    try:
+        store = getattr(widget, "_zoom_fit_cache", None)
+        if store is None:
+            store = {}
+            widget._zoom_fit_cache = store
+        key = (
+            getattr(slot, "id", None),
+            getattr(slot, "revision", 0),
+            _cache_generation(getattr(widget, "pixel_cache", None)),
+            rect.width(),
+            rect.height(),
+        )
+        hit = store.get(key)
+        if hit is not None:
+            return hit
+    except Exception:
+        store = None
+        key = None
+    value = fit_scale_for(slot, rect, _source_for(widget, slot))
+    try:
+        if store is not None and key is not None:
+            store[key] = value
+            while len(store) > _FIT_CACHE_MAX:
+                store.pop(next(iter(store)))
+    except Exception:
+        pass
+    return value
 
 
 def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
@@ -86,12 +164,12 @@ def _swallow_focus_dim_click(widget, pos: QPoint) -> bool:
 
 
 def handle_wheel_event(widget, event: QWheelEvent) -> None:
-    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
-
-    # Wayland+Vulkan often marks the app Inactive while the user still
-    # scrolls the MC canvas; keep the window active so presents stay visible.
-    ensure_window_active_for_qrhi(widget)
+    debug_ticks = mc_dnd_debug_enabled()
+    tick_t0 = time.perf_counter() if debug_ticks else 0.0
     delta = event.angleDelta().y()
+    if delta == 0:
+        event.accept()
+        return
     leaf_rects = widget._leaf_rects()
     if not leaf_rects:
         event.ignore()
@@ -110,13 +188,10 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
         event.ignore()
         return
 
-    fit_x, fit_y = fit_scale_for(slot, rect)
+    fit_x, fit_y = fit_scale_cached(widget, slot, rect)
     cell_u = (pos.x() - rect.x()) / rect.width()
     cell_v = (pos.y() - rect.y()) / rect.height()
 
-    if delta == 0:
-        event.accept()
-        return
     # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
     # just sign -- see docs/dev/rendering/tile-array-atlas-plan.md Findings
     # (image_compare's compute_zoom_wheel_transform had the same fixed-step-
@@ -126,7 +201,10 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     factor = widget.ZOOM_STEP**notches
     z1 = widget.state.zoom
     z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
-    if z2 == z1:
+    if abs(z2 - z1) <= _ZOOM_IDENTICAL_EPS:
+        # IC parity (``compute_zoom_wheel_transform`` swallows <= 1e-6):
+        # invisible change -- skip the whole dispatch fan-out (reducer,
+        # subscribers, composition rebuild, uploads check, LOD switch).
         event.accept()
         return
 
@@ -145,7 +223,27 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
             1.0 / z2 - 1.0 / z1
         )
         new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
+    # IC parity: the wheel path never kicks window activation (no per-tick
+    # raise/activate round-trip). That storm is what Mutter answers with
+    # busy-cursor feedback; the Wayland/Vulkan stale-canvas catch-up is
+    # handled on gesture settle by the debounced compositor sync
+    # (see divider_sync) instead.
+    pre_dispatch_ms = (
+        (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
+    )
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+    if debug_ticks:
+        mc_dnd_debug(
+            "[mc-zoom] tick delta=%d zoom=%.6f->%.6f pan=(%.4f,%.4f) "
+            "pre_dispatch_ms=%.3f dispatch_ms=%.3f",
+            delta,
+            z1,
+            z2,
+            new_pan_x,
+            new_pan_y,
+            pre_dispatch_ms,
+            (time.perf_counter() - tick_t0) * 1000.0 - pre_dispatch_ms,
+        )
     event.accept()
 
 
@@ -241,7 +339,9 @@ def handle_mouse_press_event(widget, event: QMouseEvent) -> None:
             slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
             widget._pan_ref_rect = rect
             widget._pan_ref_fit = (
-                fit_scale_for(slot, rect) if slot is not None else (1.0, 1.0)
+                fit_scale_for(slot, rect, _source_for(widget, slot))
+                if slot is not None
+                else (1.0, 1.0)
             )
         else:
             widget._pan_ref_rect = widget.rect()
@@ -327,7 +427,20 @@ def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
             split_path, _idx, _drect, _direction, weights = div
             n = len(weights)
             if n > 0:
-                widget._do_dispatch(actions.set_split_weights(split_path, [1.0] * n))
+                from tabs.multi_compare.pipeline.cache import sizes_for_slots
+                from tabs.multi_compare.scene import actions as _mc_actions
+
+                sizes = None
+                try:
+                    sizes = sizes_for_slots(
+                        getattr(widget, "pixel_cache", None),
+                        getattr(getattr(widget, "state", None), "slots", None),
+                    )
+                except Exception:
+                    sizes = None
+                widget._do_dispatch(
+                    _mc_actions.set_split_weights(split_path, [1.0] * n, sizes=sizes)
+                )
             event.accept()
 
 
@@ -351,7 +464,7 @@ def _keyboard_pan_reference(widget) -> tuple[QRect, tuple[float, float]]:
                 (s for s in widget.state.slots if s.id == leaf.slot_id), None
             )
             if slot is not None:
-                return rect, fit_scale_for(slot, rect)
+                return rect, fit_scale_for(slot, rect, _source_for(widget, slot))
     return widget.rect(), (1.0, 1.0)
 
 
@@ -414,15 +527,17 @@ def start_internal_drag(widget, slot_id: int) -> None:
 
     rects = widget._leaf_rects()
     rect = next((r for l, r in rects if l.slot_id == slot_id), None)
-    if rect is not None and slot is not None and slot.image is not None:
+    if rect is not None and slot is not None:
         from PySide6.QtGui import QPixmap
 
         from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
 
-        qimg = qimage_from_pixel_source(slot.image)
-        preview = QPixmap.fromImage(qimg).scaledToWidth(
-            160, Qt.TransformationMode.SmoothTransformation
-        )
-        drag.setPixmap(preview)
-        drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
+        source = _source_for(widget, slot)
+        if source is not None:
+            qimg = qimage_from_pixel_source(source)
+            preview = QPixmap.fromImage(qimg).scaledToWidth(
+                160, Qt.TransformationMode.SmoothTransformation
+            )
+            drag.setPixmap(preview)
+            drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
     drag.exec(Qt.DropAction.MoveAction)

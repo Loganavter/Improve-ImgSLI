@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import logging
 
-from sli_ui_toolkit.workers import GenericWorker
-
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -72,129 +70,22 @@ def start_pyramid_builds(controller, *stores) -> None:
             pl = getattr(controller, "pipeline", None)
             has_inflight = _has_inflight_for_slot(pl, int(image_number))
             slot_toast_live = not has_inflight
-            slot_for_coordinator = image_number if slot_toast_live else None
             if abort_sig is not None and hasattr(abort_sig, "is_aborted"):
                 should_abort = abort_sig.is_aborted  # type: ignore[assignment]
             else:
                 should_abort = lambda: False  # type: ignore[assignment]
-            # coordinator handles skip->finish, already-in-flight, bump, worker
-            coord.start_build(store, slot_id=slot_for_coordinator, should_abort=should_abort)
-            # When toast was not live, coordinator would have mapped None;
-            # but legacy behavior left no mapping and no bump -- coordinator already
-            # respects slot_id=None (no toast). Nothing else to do.
+            # coordinator handles skip->finish, already-in-flight, bump, worker.
+            # The slot is always mapped so a later complete finds its toast
+            # even if the decode lands after the pyramid; toast_live gates
+            # only progress bumps and skip-path finishes (preview-tier race
+            # must not close a toast whose real decode is still pending).
+            coord.start_build(
+                store,
+                slot_id=image_number,
+                toast_live=slot_toast_live,
+                should_abort=should_abort,
+            )
         return
-    # Legacy path (no coordinator, e.g. SimpleNamespace fakes in tests)
-    from shared.image_processing import pyramid_registry
-    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
-    from shared.rendering.image_identity import image_uid
-
-    from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
-
-    sess = None
-    try:
-        if hasattr(controller, "_get_image_session"):
-            sess = controller._get_image_session()
-    except Exception:
-        sess = None
-    abort_sig = getattr(sess, "abort", None) if sess is not None else None
-    try:
-        from tabs.image_compare.pipeline.abort import AbortSignal as _AS
-
-        if abort_sig is None or not hasattr(abort_sig, "is_aborted"):
-            abort_sig = _AS()
-    except Exception:
-        abort_sig = None
-    # signal passed as task_id for worker (AbortSignal is the single cancel token)
-    task_id = abort_sig
-
-    for slot_offset, store in enumerate(stores):
-        image_number = slot_offset + 1
-        # A cheap preview-resolution unify races ahead of the real
-        # full-res decode and can hit this same method with a trivial,
-        # already-complete pyramid. Only let the toast react once the
-        # slot's real decode has actually landed -- otherwise it closes
-        # over stale preview data before the real progress ever starts.
-        pl = getattr(controller, "pipeline", None)
-        has_inflight = _has_inflight_for_slot(pl, int(image_number))
-        slot_toast_live = not has_inflight
-        pyramid = pyramid_registry.ensure_pyramid(store)
-        if pyramid is None:
-            logger.debug(
-                "[Pyramid] skip build: no pyramid for store %dx%d",
-                getattr(store, "width", -1),
-                getattr(store, "height", -1),
-            )
-            if slot_toast_live:
-                controller._finish_loading_toast(image_number)
-            continue
-        if pyramid.is_complete():
-            logger.debug(
-                "[Pyramid] skip build: already complete for store %dx%d "
-                "(levels=%d)",
-                store.width,
-                store.height,
-                pyramid.level_count,
-            )
-            if slot_toast_live:
-                controller._finish_loading_toast(image_number)
-            continue
-        uid = image_uid(store)
-        if uid in controller._pyramid_builds:
-            logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
-            continue
-        controller._pyramid_builds.add(uid)
-        logger.info(
-            "[Pyramid] build started for store %dx%d (uid=%s)",
-            store.width,
-            store.height,
-            uid,
-        )
-        total_levels = estimate_total_levels(store.width, store.height)
-        if slot_toast_live:
-            controller._loading_toast_uid_slot[uid] = image_number
-            controller._bump_loading_toast_pyramid_started(image_number)
-        worker = GenericWorker(
-            controller._pyramid_build_task, pyramid, task_id, uid, total_levels
-        )
-        worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
-        worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
-        worker.signals.finished.connect(
-            lambda uid=uid: controller._pyramid_builds.discard(uid)
-        )
-        controller.thread_pool.start(worker)
-
-
-def pyramid_build_task(
-    controller, pyramid, task_id, uid, total_levels, progress_callback=None
-):
-    # A newer unification supersedes this pair; abort at the next strip.
-    # Base-store closure aborts independently via pyramid validity.
-    # Single cancel token: AbortSignal via pipeline._inflight / session.abort
-    try:
-        from tabs.image_compare.pipeline.abort import AbortSignal as _S
-
-        if isinstance(task_id, _S):
-            def should_abort() -> bool:
-                return task_id.is_aborted()
-
-        else:
-            # No int task_id anymore — treat missing signal as never aborted
-            def should_abort() -> bool:  # type: ignore[no-redef]
-                try:
-                    if task_id is not None and hasattr(task_id, "is_aborted"):
-                        return bool(task_id.is_aborted())
-                except Exception:
-                    pass
-                return False
-    except Exception:
-        def should_abort() -> bool:  # type: ignore[no-redef]
-            return False
-
-    while pyramid.build_next_level(should_abort=should_abort):
-        complete = pyramid.is_complete()
-        if progress_callback is not None:
-            progress_callback((uid, pyramid.level_count, total_levels, complete))
-    return None
 
 
 def on_pyramid_level_ready(controller, payload) -> None:

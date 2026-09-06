@@ -5,7 +5,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.constants import AppConstants
-from sli_ui_toolkit.managers import DelayedActionTimer
+from sli_ui_toolkit.managers import DecisionJournal, DelayedActionTimer
 
 
 _HOVER_ZONE_PADDING_PX = 10
@@ -34,7 +34,39 @@ class MagnifierSettingsHoverController(QObject):
         self._hover_timer = DelayedActionTimer(self._show, parent=widget)
         self._mode_picker_flyouts_wired: set = set()
         self._group_buttons: set = set()
+        # Decision journal (shared toolkit helper): every show/hide/schedule
+        # lands here with cursor pos + zone reason — one log excerpt shows
+        # the full causal chain for "panel hangs open" post-mortems.
+        self._journal = DecisionJournal("magnifier-hover")
         self._wire()
+
+    def _note(self, what: str, detail: str = "") -> None:
+        try:
+            pos = QCursor.pos()
+            detail = f"{detail} cursor={pos.x()},{pos.y()}".strip()
+        except Exception:
+            pass
+        self._journal.note(what, detail)
+
+    def describe_state(self) -> dict:
+        """Snapshot for diagnostics (UI inspector hook)."""
+        flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+        try:
+            visible = bool(flyout.isVisible()) if flyout is not None else False
+        except Exception:
+            visible = False
+        try:
+            focus_name = type(QApplication.focusWidget()).__name__
+        except Exception:
+            focus_name = "?"
+        timer = getattr(flyout, "_auto_hide", None)
+        return {
+            "visible": visible,
+            "timer_active": bool(timer._timer.isActive()) if timer is not None else False,
+            "focus": focus_name,
+            "zone": self._combined_reason(),
+            "journal": self._journal.snapshot(),
+        }
 
     def _wire(self) -> None:
         widget = self.widget
@@ -58,29 +90,16 @@ class MagnifierSettingsHoverController(QObject):
 
         nav = NavigationManager.get_instance()
         for child in group.findChildren(QWidget):
-            if child is getattr(widget, "btn_magnifier_guides", None):
-                continue
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)
-                # Don't overwrite top flyouts' links (btn_magnifier -> PanelVisibility,
-                # ColorSettingsButton -> ColorOptions) — they must stay enterable
-                # via Down. Only link the remaining group buttons to the bottom panel.
-                is_top_button = False
-                try:
-                    if child is getattr(widget, "btn_magnifier", None):
-                        is_top_button = True
-                    for attr in ("btn_magnifier_color_settings", "btn_magnifier_color_settings_beginner"):
-                        if child is getattr(widget, attr, None):
-                            is_top_button = True
-                            break
-                except Exception:
-                    pass
-                if not is_top_button:
-                    # Один вызов фасада вместо link_below+side комбо
-                    from sli_ui_toolkit.managers import bind_flyout as _bind
+                # Один вызов фасада вместо link_below+side комбо. Top-кнопки
+                # (btn_magnifier -> PanelVisibility, ColorSettingsButton ->
+                # ColorOptions) тоже линкуем вниз: реестр per-side, above-линки
+                # при этом не затираются — Up идёт в верхнюю панель, Down в нижнюю.
+                from sli_ui_toolkit.managers import bind_flyout as _bind
 
-                    _bind(child, flyout, side="below")
+                _bind(child, flyout, side="below")
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
@@ -176,17 +195,33 @@ class MagnifierSettingsHoverController(QObject):
                     self._cancel_hide()
             else:
                 self._hover_timer.stop()
-                # Binary without timer for cursor as well (user request)
-                if not self._is_cursor_in_combined_zone():
+                # Binary without timer for cursor as well (user request).
+                # Here reason is flyout/linked ("group" is impossible — the
+                # branch above already excluded the group zone): arm the
+                # backstop, which hides once the cursor is truly outside
+                # (a bare cancel would orphan the panel on travel through
+                # unwatched surfaces: linked dropdown, native CSD).
+                reason = self._combined_reason()
+                if reason is None:
+                    self._note("hover-move:outside", "")
                     self._hide_immediately()
                 else:
-                    self._cancel_hide()
+                    self._note(f"hover-move:inside-{reason}", "")
+                    self._schedule_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._hover_timer.stop()
-            if not self._is_cursor_in_combined_zone():
+            reason = self._combined_reason()
+            if reason is None:
+                self._note("leave:outside", "")
                 self._hide_immediately()
             else:
-                self._cancel_hide()
+                # Leave fires on widget exit but the sampled cursor may still
+                # sit in the padding rim (no second Leave fires for the rim
+                # itself): arm the backstop, which hides on real departure
+                # and is canceled by jitter back in. A bare cancel would
+                # orphan the panel on travel through unwatched space.
+                self._note(f"leave:inside-{reason}", "")
+                self._schedule_hide()
 
     def _handle_button_focus_event(self, event) -> None:
         et = event.type()
@@ -278,18 +313,26 @@ class MagnifierSettingsHoverController(QObject):
         )
         return zone.contains(local)
 
-    def _is_cursor_in_combined_zone(self) -> bool:
+    def _combined_reason(self) -> str | None:
+        """Which part of the combined group+panel unit holds the cursor.
+
+        Returns 'group' (padded hover zone), 'flyout' (panel body),
+        'linked' (a FlyoutManager-linked sibling: dropdowns, color-options,
+        scroll pills), or None (outside — safe to hide immediately).
+        """
         if self._cursor_in_group_zone():
-            return True
+            return "group"
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
             try:
                 if flyout.contains_global(QCursor.pos()):
-                    return True
+                    return "flyout"
             except Exception:
                 pass
-            # Also consider linked scroll-value flyouts (e.g. guides button pill)
-            # as safe zone — mirrors AnchoredFlyoutAutoHide._cursor_in_linked_child.
+            # Linked siblings are part of the safe zone (see
+            # _link_sibling_flyouts) but carry no event filter of their own:
+            # leaving the cursor on one with no backstop timer pending
+            # orphans the panel open — no later event ever closes it.
             try:
                 from sli_ui_toolkit.managers import FlyoutManager
 
@@ -298,16 +341,20 @@ class MagnifierSettingsHoverController(QObject):
                     try:
                         contains_global = getattr(child, "contains_global", None)
                         if child.isVisible() and contains_global and contains_global(QCursor.pos()):
-                            return True
+                            return "linked"
                     except Exception:
                         continue
             except Exception:
                 pass
-        return False
+        return None
+
+    def _is_cursor_in_combined_zone(self) -> bool:
+        return self._combined_reason() is not None
 
     def _hide_immediately(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
+            self._note("hide:immediate", "")
             flyout.hide()
 
     def _handle_flyout_event(self, event) -> None:
@@ -336,6 +383,7 @@ class MagnifierSettingsHoverController(QObject):
         # keeps working while this panel is open.
         flyout.show_for_group(group)
         flyout.cancel_auto_hide()
+        self._note("show", "")
 
     def _refresh_slider_labels(self) -> None:
         # The three sliders' real values get applied via signal-blocked
@@ -419,9 +467,20 @@ class MagnifierSettingsHoverController(QObject):
     def _schedule_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None:
+            try:
+                focus_name = type(QApplication.focusWidget()).__name__
+            except Exception:
+                focus_name = "?"
+            self._note("hide:schedule-backstop", f"focus={focus_name}")
             flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def _cancel_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
-        if flyout is not None:
-            flyout.cancel_auto_hide()
+        if flyout is None:
+            return
+        # Journal (and flag-gated log) only when something was actually
+        # pending — HoverMove storms would otherwise flood both.
+        timer = getattr(flyout, "_auto_hide", None)
+        if timer is None or bool(timer._timer.isActive()):
+            self._note("hide:cancel", "")
+        flyout.cancel_auto_hide()

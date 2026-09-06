@@ -175,22 +175,11 @@ class SessionController(SessionApiMixin, QObject):
     def _start_pyramid_builds(self, *stores):
         loading.start_pyramid_builds(self, *stores)
 
-    def _pyramid_build_task(
-        self, pyramid, task_id, uid, total_levels, progress_callback=None
-    ):
-        return loading.pyramid_build_task(
-            self, pyramid, task_id, uid, total_levels, progress_callback
-        )
-
     def _on_pyramid_level_ready(self, payload):
         loading.on_pyramid_level_ready(self, payload)
 
     def _get_toast_manager(self):
-        # Prefer coordinator; fallback to legacy use_case for fakes without it.
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            return coord.get_toast_manager()
-        return loading.get_toast_manager(self)
+        return self._loading_toast_coordinator.get_toast_manager()
 
     # Single source for progress checkpoints: re-export from shared
     # (legacy alias kept for tests that read controller._DECODE_DONE_PROGRESS).
@@ -207,39 +196,19 @@ class SessionController(SessionApiMixin, QObject):
         return _V
 
     def _show_loading_toast(self, image_number: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.show(image_number)
-            return
-        loading.show_loading_toast(self, image_number)
+        self._loading_toast_coordinator.show(image_number)
 
     def _set_loading_toast_progress(self, image_number: int, percent: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.set_progress(image_number, percent)
-            return
-        loading.set_loading_toast_progress(self, image_number, percent)
+        self._loading_toast_coordinator.set_progress(image_number, percent)
 
     def _mark_full_res_ready(self, image_number: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.mark_full_res_ready(image_number)
-            return
-        loading.mark_full_res_ready(self, image_number)
+        self._loading_toast_coordinator.mark_full_res_ready(image_number)
 
     def _bump_loading_toast_pyramid_started(self, image_number: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.bump_pyramid_started(image_number)
-            return
-        loading.bump_loading_toast_pyramid_started(self, image_number)
+        self._loading_toast_coordinator.bump_pyramid_started(image_number)
 
     def _finish_loading_toast(self, image_number: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.finish(image_number)
-            return
-        loading.finish_loading_toast(self, image_number)
+        self._loading_toast_coordinator.finish(image_number)
 
     def _trigger_metrics_calculation_if_needed(self):
         from tabs.image_compare.use_cases.metrics_trigger import trigger_metrics_calculation_if_needed

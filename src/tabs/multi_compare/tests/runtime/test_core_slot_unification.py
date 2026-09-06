@@ -156,39 +156,45 @@ def test_focus_toggle_through_core_dispatcher():
 
 
 def test_remove_slot_undo_keeps_store_open(tmp_path):
+    """B1 undo-safety: state holds paths only — removal drops the path
+    reference while the cache keeps the store open, so undo re-resolves
+    the same usable store (no close ever touches an undo snapshot)."""
+    from pathlib import Path
+
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from tabs.multi_compare.pipeline.cache import MultiComparePixelCache
 
     store, dispatcher = _make_store_with_mc_session()
+    cache = MultiComparePixelCache()
 
-    store1 = TiledPixelStore.from_pil(
-        Image.fromarray(np.zeros((8, 8, 4), dtype=np.uint8), mode="RGBA"),
-        tmp_dir=str(tmp_path),
-    )
-    store2 = TiledPixelStore.from_pil(
-        Image.fromarray(np.zeros((8, 8, 4), dtype=np.uint8), mode="RGBA"),
-        tmp_dir=str(tmp_path),
-    )
+    file_a = tmp_path / "a.png"
+    file_b = tmp_path / "b.png"
+    Image.fromarray(np.zeros((8, 8, 4), dtype=np.uint8), mode="RGBA").save(file_a)
+    Image.fromarray(np.zeros((8, 8, 4), dtype=np.uint8), mode="RGBA").save(file_b)
+    store1 = TiledPixelStore.from_path(str(file_a))
+    store2 = TiledPixelStore.from_path(str(file_b))
+    cache.put_pixel(file_a, store1)
+    cache.put_pixel(file_b, store2)
 
     dispatcher.dispatch(
-        actions.add_slot(__import__("pathlib").Path("a.png"), store1, "A"),
+        actions.add_slot(Path("a.png"), "A"),
         scope="multi_compare",
     )
     dispatcher.dispatch(
-        actions.add_slot(__import__("pathlib").Path("b.png"), store2, "B"),
+        actions.add_slot(Path("b.png"), "B"),
         scope="multi_compare",
     )
-    slot_b = None
-    for slot in store.get_session_state_slot(_STATE_SLOT).slots:
-        if slot.image is store2:
-            slot_b = slot
-    assert slot_b is not None
-    slot_b_id = slot_b.id
+    slots = store.get_session_state_slot(_STATE_SLOT).slots
+    assert [s.path for s in slots] == [Path("a.png"), Path("b.png")]
+    assert all(s.revision == 0 for s in slots)
+    slot_b_id = slots[1].id
 
     dispatcher.dispatch(actions.remove_slot(slot_b_id), scope="multi_compare")
-    assert store2.is_open, "removed slot store stays open (deferred closing)"
+    assert store2.is_open, "removed slot store stays open (cache-owned, never closed by remove)"
 
     dispatcher.undo()
     restored = store.get_session_state_slot(_STATE_SLOT)
     restored_b = [s for s in restored.slots if s.id == slot_b_id][0]
-    assert restored_b.image is store2, "undo restores the same store reference"
-    assert restored_b.image.is_open, "restored store is still open and usable"
+    assert restored_b.path == Path("b.png"), "undo restores the slot path"
+    assert cache.get_pixel(file_b) is store2
+    assert store2.is_open, "restored slot re-resolves to the still-open store"

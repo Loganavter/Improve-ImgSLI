@@ -27,12 +27,13 @@ class _FakeSessionManager:
     def create_session(self, session_type, *, activate=True, title=None, metadata=None):
         self._counter += 1
         sid = f"dup{self._counter}"
+        doc = DocumentModel()
         session = SimpleNamespace(
             id=sid,
             session_type=session_type,
             title=title or session_type,
-            document=DocumentModel(),
-            state_slots={},
+            document=doc,
+            state_slots={"document": doc},
         )
         self._sessions[sid] = session
         self._store._sessions[sid] = session
@@ -64,6 +65,11 @@ class _FakeStore:
     def set_session_state_slot(self, slot_name, value, *, session_id=None, emit_scope=None):
         session = self._sessions[session_id]
         session.state_slots[slot_name] = value
+        # Mirror real WorkspaceSession.document (property backed by
+        # state_slots["document"]): keep the attribute in sync so
+        # serialize_session (reads session.document) sees deserialize writes.
+        if slot_name == "document":
+            session.document = value
 
 
 class _FakeTabRegistry:
@@ -154,7 +160,7 @@ def test_duplicate_session_returns_independent_snapshot_dict():
             image_list1=[ImageItem(path="/a.png", display_name="a")],
             image_list2=[],
             current_index1=0,
-            image1_path="/a.png",
+            current_index2=-1,
         ),
         state_slots={},
     )

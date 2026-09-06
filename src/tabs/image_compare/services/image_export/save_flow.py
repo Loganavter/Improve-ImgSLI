@@ -42,57 +42,6 @@ class ExportSaveFlowCoordinator:
             on_success_notify=self._on_success_notify,
         )
 
-    # -- shared state exposed for tests / external callers that poke dicts --------
-    @property
-    def _save_cancellation(self):
-        return self._flow._save_cancellation
-
-    @_save_cancellation.setter
-    def _save_cancellation(self, value):
-        self._flow._save_cancellation = value
-
-    @property
-    def _save_workers(self):
-        return self._flow._save_workers
-
-    @_save_workers.setter
-    def _save_workers(self, value):
-        self._flow._save_workers = value
-
-    # keep save_toast helpers accessible (tests may reach them)
-    def _get_toast_manager(self):
-        return self._flow._get_toast_manager()
-
-    def _update_toast_safe(self, *args, **kwargs):
-        return self._flow._update_toast_safe(*args, **kwargs)
-
-    def _build_toast_path_line(self, *args, **kwargs):
-        return self._flow._build_toast_path_line(*args, **kwargs)
-
-    def _build_display_path(self, *args, **kwargs):
-        return self._flow._build_display_path(*args, **kwargs)
-
-    def _next_save_task_id(self):
-        return self._flow._next_save_task_id()
-
-    def _create_save_toast(self, *args, **kwargs):
-        return self._flow._create_save_toast(*args, **kwargs)
-
-    def _on_save_worker_progress(self, *args, **kwargs):
-        return self._flow._on_save_worker_progress(*args, **kwargs)
-
-    def _on_save_worker_done(self, *args, **kwargs):
-        return self._flow._on_save_worker_done(*args, **kwargs)
-
-    def _on_save_worker_error(self, *args, **kwargs):
-        return self._flow._on_save_worker_error(*args, **kwargs)
-
-    def _finalize_save_worker(self, *args, **kwargs):
-        return self._flow._finalize_save_worker(*args, **kwargs)
-
-    def cancel_all_exports(self):
-        return self._flow.cancel_all_exports()
-
     # -- IC-specific ------------------------------------------------------------
     def _on_success_notify(self, out_path: str) -> None:
         try:
