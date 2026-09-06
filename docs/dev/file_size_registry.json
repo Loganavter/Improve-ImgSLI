@@ -37,7 +37,7 @@
     },
     {
       "path": "src/plugins/settings/dialog.py",
-      "lines": 648,
+      "lines": 649,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
@@ -866,7 +866,7 @@
     },
     {
       "path": "src/ui/widgets/rating_item.py",
-      "lines": 573,
+      "lines": 575,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single rating item painter — custom control\"",
