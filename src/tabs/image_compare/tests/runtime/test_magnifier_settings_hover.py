@@ -196,6 +196,11 @@ def test_keyboard_focus_on_guides_button_opens_panel(qapp, monkeypatch):
     guides = QWidget(fw.magnifier_group_container)
     guides.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     fw.btn_magnifier_guides = guides
+    # A top button (above-flyout owner): its below-link must coexist with
+    # the above-link instead of overwriting it (per-side registry).
+    top = QWidget(fw.magnifier_group_container)
+    top.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    fw.btn_magnifier = top
     fw.show()
     fw.magnifier_settings_flyout.hide()
     qapp.processEvents()
@@ -203,7 +208,9 @@ def test_keyboard_focus_on_guides_button_opens_panel(qapp, monkeypatch):
     controller = transient.MagnifierSettingsHoverController(fw)
 
     assert guides in controller._group_buttons
+    assert top in controller._group_buttons
     assert guides in bound
+    assert top in bound
 
     controller.eventFilter(
         guides, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason)
