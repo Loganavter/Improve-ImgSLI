@@ -93,24 +93,13 @@ class MagnifierSettingsHoverController(QObject):
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)
-                # Don't overwrite top flyouts' links (btn_magnifier -> PanelVisibility,
-                # ColorSettingsButton -> ColorOptions) — they must stay enterable
-                # via Down. Only link the remaining group buttons to the bottom panel.
-                is_top_button = False
-                try:
-                    if child is getattr(widget, "btn_magnifier", None):
-                        is_top_button = True
-                    for attr in ("btn_magnifier_color_settings", "btn_magnifier_color_settings_beginner"):
-                        if child is getattr(widget, attr, None):
-                            is_top_button = True
-                            break
-                except Exception:
-                    pass
-                if not is_top_button:
-                    # Один вызов фасада вместо link_below+side комбо
-                    from sli_ui_toolkit.managers import bind_flyout as _bind
+                # Один вызов фасада вместо link_below+side комбо. Top-кнопки
+                # (btn_magnifier -> PanelVisibility, ColorSettingsButton ->
+                # ColorOptions) тоже линкуем вниз: реестр per-side, above-линки
+                # при этом не затираются — Up идёт в верхнюю панель, Down в нижнюю.
+                from sli_ui_toolkit.managers import bind_flyout as _bind
 
-                    _bind(child, flyout, side="below")
+                _bind(child, flyout, side="below")
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
