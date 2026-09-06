@@ -28,6 +28,74 @@ from core.windowed_stdio import enable_faulthandler, ensure_stdio
 ensure_stdio()
 enable_faulthandler()
 
+
+def _install_activation_probe() -> None:
+    """TEMPORARY diagnostic (IMGSLI_ACTIVATION_PROBE=1) — REMOVE AFTER USE.
+
+    Logs every QWidget.activateWindow + QApplication override-cursor change
+    with a caller stack to catch who flashes the Wayland busy cursor on
+    kbd flyout toggles. Warning level so it is visible without --debug.
+    """
+    if os.environ.get("IMGSLI_ACTIVATION_PROBE", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+    import traceback as _tb
+
+    _probe = logging.getLogger("ImproveImgSLI.probe")
+    try:
+        from PySide6.QtWidgets import QWidget as _W
+
+        _orig_activate = _W.activateWindow
+
+        def _logged_activate(self):
+            try:
+                _active = self.isActiveWindow()
+            except Exception:
+                _active = "?"
+            _probe.warning(
+                "[activate-probe] activateWindow %s active=%s\n%s",
+                type(self).__name__,
+                _active,
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_activate(self)
+
+        _W.activateWindow = _logged_activate  # type: ignore[method-assign]
+    except Exception:
+        pass
+    try:
+        from PySide6.QtWidgets import QApplication as _A
+
+        _orig_set = _A.setOverrideCursor
+        _orig_restore = _A.restoreOverrideCursor
+
+        def _logged_set(cursor):
+            _probe.warning(
+                "[activate-probe] setOverrideCursor %s\n%s",
+                cursor,
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_set(cursor)
+
+        def _logged_restore():
+            _probe.warning(
+                "[activate-probe] restoreOverrideCursor\n%s",
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_restore()
+
+        _A.setOverrideCursor = staticmethod(_logged_set)  # type: ignore[method-assign]
+        _A.restoreOverrideCursor = staticmethod(_logged_restore)  # type: ignore[method-assign]
+    except Exception:
+        pass
+
+
+_install_activation_probe()
+
 from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
