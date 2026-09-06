@@ -550,6 +550,8 @@ RatingListItem.inspect_spec = InspectSpec(
         "list_item.background.normal",
         "list_item.background.hover",
         "list_item.background.selected",
+        "list_item.text.normal",
+        "list_item.text.rating",
         "accent",
     ),
     regions=True,
