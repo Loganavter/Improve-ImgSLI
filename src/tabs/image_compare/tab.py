@@ -416,7 +416,10 @@ class ImageCompareTab(TabContract):
     def apply_appearance(self, host_window) -> None:
         from tabs.image_compare.ui.appearance import apply_image_canvas_appearance
 
-        apply_image_canvas_appearance(host_window)
+        # Pass the tab-owned widget: host_window.ui is the main shell
+        # (Ui_ImageComparisonApp) and carries no image_label — the canvas
+        # and its container live on self._widget (primitives + layout).
+        apply_image_canvas_appearance(host_window, canvas_owner=self._widget)
         if self._widget is not None and self._widget.isVisible():
             self._widget.reapply_button_styles()
 

@@ -162,8 +162,16 @@ class FlyoutController:
         host = self.manager.host
         if host.unified_flyout and host.unified_flyout.isVisible():
             document = host.store.get_session_state_slot("document")
-            host.unified_flyout.populate(1, document.image_list1)
-            host.unified_flyout.populate(2, document.image_list2)
+            host.unified_flyout.populate(
+                1,
+                document.image_list1,
+                current_index=getattr(document, "current_index1", -1),
+            )
+            host.unified_flyout.populate(
+                2,
+                document.image_list2,
+                current_index=getattr(document, "current_index2", -1),
+            )
             if host.unified_flyout.mode == FlyoutMode.DOUBLE:
                 QTimer.singleShot(
                     0, lambda: host.unified_flyout.refreshGeometry(immediate=False)

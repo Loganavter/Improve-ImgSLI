@@ -5,6 +5,7 @@ from sli_ui_toolkit.config import get_dragdrop_service, get_flyout_timings, reso
 from sli_ui_toolkit.managers import FlyoutManager
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.composite.list_panel import ListPanel
+from sli_ui_toolkit.widgets import OverlayScrollbarConfig
 from ui.widgets.unified_list_picker.common import (
     FlyoutMode,
     _RoundedClipEffect,
@@ -128,6 +129,10 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
             self.update_drop_indicator,
             self.clear_drop_indicator,
             self.container_widget,
+            # Picker policy: persistent scrollbar once overflowing, no
+            # 1.2s fade; gutter itself is still overflow-gated in the
+            # toolkit (no dead 10px when capsules fit).
+            scrollbar_config=OverlayScrollbarConfig(auto_hide_seconds=None),
         )
 
     def _init_clipping(self):

@@ -255,12 +255,13 @@ class RatingListItem(Button):
 
         self._row_layout = QHBoxLayout(self)
 
-        # Right margin is wider so the + button keeps a visible gap from the
-        # (2px-inset) row background edge. Rows are rebuilt per flyout open,
-        # so build-time scaled_px keeps these in step with the row size at
+        # Symmetric side margins so content sits the same 2px inside the
+        # (2px-inset) row background edge on the left (rating label) and
+        # the right (+ button). Rows are rebuilt per flyout open, so
+        # build-time scaled_px keeps these in step with the row size at
         # the current interface scale.
         self._row_layout.setContentsMargins(
-            scaled_px(2), scaled_px(2), scaled_px(4), scaled_px(2)
+            scaled_px(4), scaled_px(2), scaled_px(4), scaled_px(2)
         )
         self._row_layout.setSpacing(scaled_px(6))
 
@@ -300,16 +301,21 @@ class RatingListItem(Button):
             )
             self.rating_label.setFont(rating_font)
 
+            # Ghost: no opaque base (the default toggle wash #f0f0f0 never
+            # matches the white row) — the row color shows through idle,
+            # hover/press washes paint over the live row background.
             self.btn_minus = Button(
                 resolve_icon(DEFAULT_MINUS_ICON),
                 icon_size=14,
                 size=(22, 22),
+                variant="ghost",
                 parent=self,
             )
             self.btn_plus = Button(
                 resolve_icon(DEFAULT_PLUS_ICON),
                 icon_size=14,
                 size=(22, 22),
+                variant="ghost",
                 parent=self,
             )
             self.btn_minus.setObjectName("minusButton")

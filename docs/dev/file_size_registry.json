@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 251,
+      "lines": 220,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -154,6 +154,16 @@
       "parsed": {
         "pattern": "thin-owner-target",
         "reason": "action contributions — one registry builder"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py",
+      "lines": 419,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat per-field viewport setters sharing one guard/emit",
+      "parsed": {
+        "reason": "flat per-field viewport setters sharing one guard/emit"
       }
     },
     {
@@ -194,6 +204,16 @@
       "raw": "one cohesive pure-geometry pipeline (tc-range math ->",
       "parsed": {
         "reason": "one cohesive pure-geometry pipeline (tc-range math ->"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/widget.py",
+      "lines": 405,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat command/query/alias tables — one entry per command",
+      "parsed": {
+        "reason": "flat command/query/alias tables — one entry per command"
       }
     },
     {
@@ -425,6 +445,18 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
+      "lines": 541,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
       "lines": 504,
       "limit": 500,
@@ -493,7 +525,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 582,
+      "lines": 663,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
@@ -526,7 +558,7 @@
     },
     {
       "path": "src/tabs/image_compare/widget.py",
-      "lines": 632,
+      "lines": 635,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"root widget thin owner — delegates to layout/magnifier/chrome_sync\"",
@@ -656,7 +688,7 @@
     },
     {
       "path": "src/tabs/multi_compare/controller.py",
-      "lines": 535,
+      "lines": 507,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)\"",
@@ -711,7 +743,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 633,
+      "lines": 575,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -834,7 +866,7 @@
     },
     {
       "path": "src/ui/widgets/rating_item.py",
-      "lines": 567,
+      "lines": 573,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single rating item painter — custom control\"",

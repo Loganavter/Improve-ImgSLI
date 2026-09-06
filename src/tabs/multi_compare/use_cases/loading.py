@@ -2,9 +2,9 @@
 for the Multi Compare tab -- split out of ``MultiCompareController`` to keep
 that class down to wiring/composition, mirroring image_compare's own
 ``use_cases/loading.py`` split. Every function here takes the controller as
-its first argument and reads/writes its instance state
-(``_loading_toasts``, ``_pyramid_builds``, ``_pyramid_toast_slot``) directly,
-same calling convention as image_compare's use_cases modules.
+its first argument and delegates toast/pyramid lifecycle to the tab's
+``LoadingToastCoordinator`` / ``PyramidBuildCoordinator`` (owned by the
+controller, which aliases their state dicts); no direct state writes remain.
 Audit-Meta: pattern=thin-owner reason="Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages"
 """
 
@@ -42,11 +42,14 @@ def _format_worker_error(err) -> str:
 
 
 def _emit_mc_load_error(controller, path: Path | str, err) -> None:
-    """Surface a failed MC load via the shared EventBus/toast plumbing (IC parity).
+    """Surface a failed MC load via the shared EventBus plumbing (IC parity).
 
     Mirrors ``image_compare._session_controller._load_image_async`` /
     ``_on_full_resolution_error`` — a dropped corrupt file must not silently
-    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows a toast.
+    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows its
+    warning dialog (``error_occurred`` → ``AppMessageDialog.warning`` in
+    ``ui/presenters/main_window/actions.py`` — a dialog by policy, not a
+    toast; see plan §3.3).
     """
     try:
         event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
@@ -68,6 +71,28 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
 
+def _grid_full_reason(controller) -> str:
+    """Grid-full error detail, mirroring ``dialog_add._grid_full_reason``.
+
+    Local copy (not an import — ``dialog_add`` imports this module, so an
+    import back would be circular). Reuses the same ``msg.compare_grid_full``
+    key + default wording, so no new i18n keys.
+    """
+    try:
+        max_slots = controller.widget.state.max_slots
+    except Exception:
+        max_slots = None
+    default = (
+        f"Comparison grid is full ({max_slots} images max)"
+        if max_slots is not None
+        else "Comparison grid is full"
+    )
+    try:
+        return controller.translate("msg.compare_grid_full", default)
+    except Exception:
+        return default
+
+
 # Single source now in tabs._shared.loading_toast (B2 dedup).
 from tabs._shared.loading_toast import DECODE_DONE_PROGRESS, PYRAMID_START_PROGRESS  # noqa: F401
 
@@ -87,18 +112,6 @@ def show_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.show(slot_id)
         return
-    if slot_id in controller._loading_toasts:
-        return
-    toast_manager = get_toast_manager(controller)
-    if toast_manager is None:
-        return
-    message = controller.translate("msg.loading_full_image_in_progress")
-    try:
-        controller._loading_toasts[slot_id] = toast_manager.show_toast(
-            message, duration=0, progress=0
-        )
-    except Exception:
-        logger.exception("Failed to show full-image loading toast")
 
 
 def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
@@ -106,20 +119,6 @@ def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
     if coord is not None:
         coord.set_progress(slot_id, percent)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.get(slot_id)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_in_progress"),
-            success=False,
-            duration=0,
-            progress=max(0, min(99, percent)),
-        )
-    except Exception:
-        logger.exception("Failed to update full-image loading toast")
 
 
 def mark_full_res_ready(controller, slot_id: int) -> None:
@@ -127,7 +126,6 @@ def mark_full_res_ready(controller, slot_id: int) -> None:
     if coord is not None:
         coord.mark_full_res_ready(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
@@ -135,7 +133,6 @@ def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
     if coord is not None:
         coord.bump_pyramid_started(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, slot_id: int) -> None:
@@ -143,20 +140,6 @@ def finish_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.finish(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_done"),
-            success=True,
-            duration=2000,
-            progress=100,
-        )
-    except Exception:
-        logger.exception("Failed to complete full-image loading toast")
 
 
 def dismiss_loading_toast(controller, slot_id: int) -> None:
@@ -167,14 +150,6 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.dismiss(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.close_toast(toast_id)
-    except Exception:
-        logger.exception("Failed to dismiss full-image loading toast")
 
 
 def _get_crop_service(controller):
@@ -258,54 +233,6 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
 
         coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
         return
-    from shared.image_processing.pyramid_registry import ensure_pyramid
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
-    from shared.rendering.image_identity import image_uid
-
-    if not isinstance(store, TiledPixelStore) or not store.is_open:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    pyramid = ensure_pyramid(store)
-    if pyramid is None or pyramid.is_complete():
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    uid = image_uid(store)
-    if uid in controller._pyramid_builds:
-        return
-    thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
-    if thread_pool is None:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-
-    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
-    from sli_ui_toolkit.workers import GenericWorker
-
-    controller._pyramid_builds.add(uid)
-    if slot_id is not None:
-        controller._pyramid_toast_slot[uid] = slot_id
-        bump_loading_toast_pyramid_started(controller, slot_id)
-    total_levels = estimate_total_levels(store.width, store.height)
-
-    def should_abort() -> bool:
-        return not pyramid.valid
-
-    def build_task(progress_callback=None):
-        while pyramid.build_next_level(should_abort=should_abort):
-            complete = pyramid.is_complete()
-            if progress_callback is not None:
-                progress_callback((uid, pyramid.level_count, total_levels, complete))
-        return None
-
-    worker = GenericWorker(build_task)
-    worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
-    worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
-    worker.signals.finished.connect(
-        lambda uid=uid: controller._pyramid_builds.discard(uid)
-    )
-    thread_pool.start(worker)
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
@@ -322,24 +249,6 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
         except Exception:
             pass
         return
-    canvas = getattr(controller.widget, "canvas", None)
-    if canvas is not None:
-        canvas.request_view_update()
-    if not isinstance(payload, tuple) or len(payload) != 4:
-        return
-    uid, level_count, total_levels, complete = payload
-    slot_id = controller._pyramid_toast_slot.get(uid)
-    if slot_id is None:
-        return
-    if complete:
-        controller._pyramid_toast_slot.pop(uid, None)
-        finish_loading_toast(controller, slot_id)
-    else:
-        fraction = level_count / max(total_levels, 1)
-        percent = PYRAMID_START_PROGRESS + int(
-            fraction * (100 - PYRAMID_START_PROGRESS)
-        )
-        set_loading_toast_progress(controller, slot_id, percent)
 
 
 def load_full_resolution_async(
@@ -349,6 +258,11 @@ def load_full_resolution_async(
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
         store = read_image(controller, path, start_pyramid=False)
+        if store is None:
+            # read_image already reported via _emit_mc_load_error — just
+            # drop the toast so the failure surfaces exactly once.
+            dismiss_loading_toast(controller, slot_id)
+            return
         apply_full_resolution(
             controller, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
         )
@@ -427,7 +341,27 @@ def apply_full_resolution(
     """
     _ = keep_slot_on_error  # full tier never drops the slot (preview stage owns that call)
     if store is None:
+        # Full-res decode yielded no tier (worker abort / empty decode):
+        # orphan/recycled stays silent (toast belongs to nobody / the newer
+        # generation); a live slot reports via the shared helper like every
+        # other load failure instead of just dismissing its toast.
+        try:
+            _slots = list(controller.widget.state.slots)
+        except Exception:
+            _slots = []
+        _slot = next((s for s in _slots if s.id == slot_id), None)
+        if _slot is None:
+            dismiss_loading_toast(controller, slot_id)
+            return
+        try:
+            _same = _same_fs_path(_slot.path, path)
+        except Exception:
+            _same = False
+        if not _same:
+            return
+        logger.error("Failed to load full resolution for %s: decode returned no data", path)
         dismiss_loading_toast(controller, slot_id)
+        _emit_mc_load_error(controller, path, RuntimeError("decode returned no image data"))
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
     if slot is None:
@@ -564,10 +498,12 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     scratch = widget.state
     built: list = []
     planned: list[tuple[int, Path]] = []
+    overflow: list[Path] = []
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
         if len(scratch.slots) >= scratch.max_slots:
+            overflow.append(path)
             continue
         if i == 0:
             eff_path, eff_side, eff_root = target_path, side, target_root
@@ -612,11 +548,14 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
         before = len(scratch.slots)
         scratch = mc_reduce(scratch, action)
         if len(scratch.slots) <= before:
+            overflow.append(path)
             continue
         built.append(action)
         last_added = scratch.slots[-1].id
         planned.append((last_added, path))
     if not built:
+        for path in overflow:
+            _emit_mc_load_error(controller, path, _grid_full_reason(controller))
         return
     store = widget.store
     transact = getattr(store, "transact", None)
@@ -631,3 +570,6 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
             continue
         show_loading_toast(controller, sid)
         _preview.load_preview_async(controller, path, sid)
+    for path in overflow:
+        logger.warning("on_images_dropped: no slot created for %s (grid full?)", path)
+        _emit_mc_load_error(controller, path, _grid_full_reason(controller))

@@ -43,24 +43,6 @@ def show_loading_toast(controller, image_number: int) -> None:
     if coord is not None:
         coord.show(image_number)
         return
-    if image_number in controller._loading_toasts:
-        return
-    toast_manager = get_toast_manager(controller)
-    if toast_manager is None:
-        return
-    message = tr("msg.loading_full_image_in_progress", get_current_language())
-    try:
-        controller._loading_toasts[image_number] = toast_manager.show_toast(
-            message, duration=0, progress=0
-        )
-        logger.debug(
-            "[FullImageLoad] toast shown (slot=%s toast_id=%s msg=%r)",
-            image_number,
-            controller._loading_toasts[image_number],
-            message,
-        )
-    except Exception:
-        logger.exception("Failed to show full-image loading toast")
 
 
 def set_loading_toast_progress(controller, image_number: int, percent: int) -> None:
@@ -68,28 +50,6 @@ def set_loading_toast_progress(controller, image_number: int, percent: int) -> N
     if coord is not None:
         coord.set_progress(image_number, percent)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.get(image_number)
-    if toast_manager is None or toast_id is None:
-        logger.debug(
-            "[FullImageLoad] skip toast update (slot=%s toast_manager=%s "
-            "toast_id=%s percent=%d)",
-            image_number,
-            toast_manager is not None,
-            toast_id,
-            percent,
-        )
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            tr("msg.loading_full_image_in_progress", get_current_language()),
-            success=False,
-            duration=0,
-            progress=max(0, min(99, percent)),
-        )
-    except Exception:
-        logger.exception("Failed to update full-image loading toast")
 
 
 def mark_full_res_ready(controller, image_number: int) -> None:
@@ -97,7 +57,6 @@ def mark_full_res_ready(controller, image_number: int) -> None:
     if coord is not None:
         coord.mark_full_res_ready(image_number)
         return
-    set_loading_toast_progress(controller, image_number, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, image_number: int) -> None:
@@ -105,7 +64,6 @@ def bump_loading_toast_pyramid_started(controller, image_number: int) -> None:
     if coord is not None:
         coord.bump_pyramid_started(image_number)
         return
-    set_loading_toast_progress(controller, image_number, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, image_number: int) -> None:
@@ -113,25 +71,6 @@ def finish_loading_toast(controller, image_number: int) -> None:
     if coord is not None:
         coord.finish(image_number)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(image_number, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            tr("msg.loading_full_image_done", get_current_language()),
-            success=True,
-            duration=2000,
-            progress=100,
-        )
-        logger.debug(
-            "[FullImageLoad] toast done (slot=%s toast_id=%s)",
-            image_number,
-            toast_id,
-        )
-    except Exception:
-        logger.exception("Failed to complete full-image loading toast")
 
 
 def finish_toast_for_unpaired_slot(controller, document, image_number: int) -> None:

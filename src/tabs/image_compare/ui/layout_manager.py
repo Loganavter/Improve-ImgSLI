@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from sli_ui_toolkit.widgets import ToastManager
-
 from tabs.image_compare.ui.layout_definitions import (
     ALL_KNOWN_WIDGETS,
     LAYOUT_DEFINITIONS,
@@ -27,10 +25,6 @@ class ImageCompareLayoutManager:
         # docs/dev/tabs/isolation.md "No Implied Lookups").
         self.ui = ui
         self.parent_window = parent_window
-        self.toast_manager = None
-
-        if parent_window is not None:
-            self.toast_manager = ToastManager(parent_window, ui.image_label)
 
     def apply_mode(self, mode_name: str):
         if mode_name not in LAYOUT_DEFINITIONS:
