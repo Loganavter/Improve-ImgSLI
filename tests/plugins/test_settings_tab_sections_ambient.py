@@ -2,9 +2,10 @@
 
 Contract: ``SettingsRegistry.sections_for`` returns every registered section
 (built-in + tab-owned) regardless of the active workspace session, and the
-Settings dialog sidebar shows tab sections titled by the tab's localized name
-from any context (the session picker included — the app's start screen where
-tab settings used to be invisible).
+Settings dialog sidebar shows tab sections from any context (the session
+picker included — the app's start screen where tab settings used to be
+invisible). Section titles come from each section's own ``title_key``
+(e.g. the gallery AI section uses ``image_gallery.settings.ai_title``).
 """
 
 from __future__ import annotations
@@ -51,7 +52,10 @@ def test_sections_for_is_identical_across_session_contexts(registry):
 def test_tab_sections_titled_after_the_tab(registry):
     by_id = {s.section_id: s for s in registry.all_sections()}
     assert by_id["image_compare.analysis"].title_key == "image_compare.session_type"
-    assert by_id["image_gallery.ai"].title_key == "image_gallery.tab_name"
+    # The gallery section owns only the AI settings, so it carries its own
+    # section title (``image_gallery.settings.ai_title`` → "Image Gallery —
+    # AI"), not the whole tab name.
+    assert by_id["image_gallery.ai"].title_key == "image_gallery.settings.ai_title"
     # owner_tab stays as metadata on the section.
     assert by_id["image_compare.analysis"].owner_tab == "image_compare"
     assert by_id["image_gallery.ai"].owner_tab == "image_gallery"
@@ -87,7 +91,7 @@ def test_dialog_sidebar_shows_tab_sections_from_session_picker(app, registry):
     try:
         titles = [title for title, _icon in dialog._sidebar_items_data]
         assert "Image Compare" in titles
-        assert "Image Gallery" in titles
+        assert "Image Gallery — AI" in titles
         # The tab page hosts the tab-owned perf extras (interactive
         # optimization); the platform page hosts the render-backend group.
         dialog.select_section("image_compare.analysis")

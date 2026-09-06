@@ -15,6 +15,20 @@ from domain.types import Color
 from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA, MultiCompareDividerSettings
 from tabs.multi_compare.scene import actions
 
+#: Pure camera actions never touch divider settings (their reducers only
+#: replace zoom/pan), so syncing the divider toolbar per zoom/pan tick is
+#: pure Qt churn (button setChecked/value/color + a queued resync timer on
+#: every wheel tick of a gesture). Skipped here; every other action still
+#: syncs. The canvas state, zoom indicator, and compositor settle sync below
+#: are unaffected.
+_VIEW_ONLY_ACTIONS = frozenset(
+    {
+        "multi_compare/set_zoom",
+        "multi_compare/set_pan",
+        "multi_compare/reset_view",
+    }
+)
+
 
 def on_store_change(widget, _action, new_state) -> None:
     widget.canvas.set_state(new_state)
@@ -35,11 +49,7 @@ def on_store_change(widget, _action, new_state) -> None:
     # still intercept it.
     widget._sync_zoom_indicator()
     action_type = getattr(_action, "type", "") or ""
-    if action_type in {
-        "multi_compare/set_zoom",
-        "multi_compare/set_pan",
-        "multi_compare/reset_view",
-    }:
+    if action_type in _VIEW_ONLY_ACTIONS:
         from ui.canvas_infra.rhi.rhi_present_sync import schedule_compositor_sync
 
         widget.canvas.request_view_update()
@@ -47,7 +57,8 @@ def on_store_change(widget, _action, new_state) -> None:
         # the first flyout after zoom restacks and the image jumps while
         # the zoom % chip stays unchanged.
         schedule_compositor_sync(widget.canvas, reason=action_type)
-    widget.sync_divider_toolbar()
+    else:
+        widget.sync_divider_toolbar()
     if widget._font_popup_open:
         widget._sync_font_settings_flyout()
 

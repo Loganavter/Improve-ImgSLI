@@ -27,7 +27,11 @@ def qapp():
 def theme_manager(qapp):
     tm = ThemeManager.get_instance()
     tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
-    tm.set_theme("dark")
+    # Apply synchronously: the default set_theme defers via a ripple-timer
+    # when a button ripple is active anywhere, leaving get_color on the old
+    # theme while the popup already cached its surface color (flaky).
+    tm.set_theme("dark", qapp, await_ripples=False)
+    qapp.processEvents()
     yield tm
 
 
@@ -48,6 +52,10 @@ def test_popup_center_is_flyout_background(qapp, theme_manager):
     host.resize(400, 300)
     host.show()
     popup = _make_popup(theme_manager, host)
+    # Let the ToolTip window map and paint before grabbing: an immediate
+    # grab offscreen can catch the first (empty) frame.
+    qapp.processEvents()
+    qapp.processEvents()
 
     img = popup.grab().toImage()
     center = img.pixelColor(img.width() // 2, img.height() // 2)
@@ -71,7 +79,9 @@ def test_popup_retints_on_theme_change(qapp, theme_manager):
     host.show()
     popup = _make_popup(theme_manager, host)
 
-    theme_manager.set_theme("light")
+    theme_manager.set_theme("light", qapp, await_ripples=False)
+    qapp.processEvents()
+    qapp.processEvents()
     img = popup.grab().toImage()
     center = img.pixelColor(img.width() // 2, img.height() // 2)
     expected = QColor(theme_manager.get_color("flyout.background"))

@@ -118,13 +118,47 @@ def live_view_size(controller) -> tuple[int, int]:
     return width, height
 
 
+def _export_sources(controller) -> dict[int, object]:
+    """Resolved pixel sources for export composition (B1).
+
+    Cache first; on miss a synchronous demand fill (export already runs
+    synchronously, so an evicted-but-present file must not silently drop
+    out of the saved image the way an imageless leaf would). Unreadable
+    files stay imageless (documented skip, same as before B1).
+    """
+    sources: dict[int, object] = {}
+    cache = getattr(controller, "pixel_cache", None)
+    if cache is None:
+        return sources
+    try:
+        crop_service = controller._get_crop_service()
+    except Exception:
+        crop_service = None
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        return sources
+    for slot in slots:
+        try:
+            source = cache.resolve(slot.path)
+            if source is None and slot.path is not None:
+                source = cache.get_or_load_pixel(slot.path, crop_service=crop_service)
+            if source is not None:
+                sources[int(slot.id)] = source
+        except Exception:
+            continue
+    return sources
+
+
 def native_canvas_size(controller) -> tuple[int, int] | None:
     """Smallest canvas where every loaded slot renders at native resolution.
 
     Delegates to the composition module so live render, export, and the
     export dialog's suggested resolution all share one source of truth.
     """
-    plan = build_composition_plan(controller.widget.state, include_labels=False)
+    plan = build_composition_plan(
+        controller.widget.state, include_labels=False, sources=_export_sources(controller)
+    )
     if plan is None:
         return None
     return compute_native_canvas_size(plan.root)
@@ -145,7 +179,7 @@ def compose_image(
     canvas into it via ``sr = min(w/canvas_w, h/canvas_h)``.
     """
     state = controller.widget.state
-    composition = build_composition_plan(state)
+    composition = build_composition_plan(state, sources=_export_sources(controller))
     if composition is None:
         return QImage(
             max(1, int(w or controller.SAVE_OUTPUT_W)),

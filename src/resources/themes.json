@@ -160,7 +160,7 @@
     "help.separator": "#4f4f4f",
     "input.border.thin": "#3CFFFFFF",
     "list_item.background.hover": "#4d4d4d",
-    "list_item.background.normal": "#383838",
+    "list_item.background.normal": "#2b2b2b",
     "list_item.background.selected": "#424242",
     "list_item.icon.selected": "#0096FF",
     "list_item.text.rating": "#9a9a9a",

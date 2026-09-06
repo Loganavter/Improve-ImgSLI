@@ -310,6 +310,14 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
 
 
 def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> dict:
+    """Open pixel stores for this session's slots (project-save embedding).
+
+    B1: slots are path-only — sources resolve from the tab's session pixel
+    cache, filtered to this session's live slot paths (per-session contract
+    preserved; dormant-session leftovers in the LRU never leak into a save).
+    Only open ``TiledPixelStore`` instances are returned (previews are
+    re-decodable on reopen).
+    """
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
     store = getattr(context, "store", None)
@@ -321,18 +329,33 @@ def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> di
     state = session.state_slots.get(_STATE_SLOT)
     if state is None:
         return {}
+    controller = getattr(tab, "_controller", None)
+    cache = getattr(controller, "pixel_cache", None)
+    if cache is None:
+        return {}
     sources: dict = {}
     for slot in state.slots:
-        if (
-            slot.path is not None
-            and isinstance(slot.image, TiledPixelStore)
-            and slot.image.is_open
-        ):
-            sources[str(slot.path)] = slot.image
+        if slot.path is None:
+            continue
+        try:
+            source = cache.get_pixel(slot.path)
+        except Exception:
+            continue
+        if isinstance(source, TiledPixelStore) and source.is_open:
+            sources[str(slot.path)] = source
     return sources
 
 
 def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
+    """Lazy restore (B1): paths are already in the slot — 0 sync decodes.
+
+    P6 ordering (not payload shape): the widget refresh is unconditional
+    for the active session — the old ``if not changed: return`` gate
+    skipped it exactly when nothing needed decoding, which is the normal
+    warm-cache/tab-switch case, leaving a blank canvas. Demand fill is
+    kicked for the active session only; dormant sessions fill on
+    activation (``tab.on_active_session_changed``).
+    """
     store = getattr(context, "store", None)
     if store is None:
         return
@@ -348,10 +371,17 @@ def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
         )
         return
 
-    if not controller.rehydrate_slots(state):
-        return
+    is_active = session_id == tab._active_session_id
+    if not is_active:
+        try:
+            active = store.get_active_workspace_session()
+            is_active = active is not None and getattr(active, "id", None) == session_id
+        except Exception:
+            pass
+    if is_active:
+        controller.rehydrate_slots(state)
 
-    if session_id == tab._active_session_id and tab._widget is not None:
+    if is_active and tab._widget is not None:
         tab._widget.refresh_from_session()
 
 

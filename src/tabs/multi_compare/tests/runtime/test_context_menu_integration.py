@@ -47,13 +47,17 @@ def test_context_menu_manager_routes_entries_and_actions(qapp):
 
 def test_multi_compare_provider_exposes_slot_actions(qapp):
     from pathlib import Path
+    from types import SimpleNamespace as _NS
 
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
     from tabs.multi_compare.models import CompareSlot, LeafNode, MultiCompareState
+    from tabs.multi_compare.pipeline.cache import MultiComparePixelCache
     from tabs.multi_compare.scene import MultiCompareStore
     from tabs.multi_compare.tests.pixel_fixtures import slot_image
 
-    canvas = QWidget()
+    cache = MultiComparePixelCache()
+    cache.put_preview(Path("a.png"), slot_image(8, 8))
+    canvas = _NS(pixel_cache=cache)
     store = MultiCompareStore(
         MultiCompareState(
             slots=[
@@ -61,7 +65,6 @@ def test_multi_compare_provider_exposes_slot_actions(qapp):
                     id=3,
                     path=Path("a.png"),
                     label="A",
-                    image=slot_image(8, 8),
                 )
             ],
             root=LeafNode(3),
@@ -103,10 +106,9 @@ def test_multi_compare_rename_uses_app_text_input_dialog(monkeypatch):
 
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
     from tabs.multi_compare.models import CompareSlot
-    from tabs.multi_compare.tests.pixel_fixtures import slot_image
 
     dispatched: list[object] = []
-    slot = CompareSlot(id=3, path=Path("a.png"), label="A", image=slot_image(8, 8))
+    slot = CompareSlot(id=3, path=Path("a.png"), label="A")
     widget = SimpleNamespace(
         canvas=QWidget(),
         state=SimpleNamespace(slots=[slot], max_slots=8),
@@ -139,10 +141,9 @@ def test_multi_compare_rename_cancel_dispatches_nothing(monkeypatch):
 
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
     from tabs.multi_compare.models import CompareSlot
-    from tabs.multi_compare.tests.pixel_fixtures import slot_image
 
     dispatched: list[object] = []
-    slot = CompareSlot(id=3, path=Path("a.png"), label="A", image=slot_image(8, 8))
+    slot = CompareSlot(id=3, path=Path("a.png"), label="A")
     widget = SimpleNamespace(
         canvas=QWidget(),
         state=SimpleNamespace(slots=[slot], max_slots=8),

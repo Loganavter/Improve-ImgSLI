@@ -77,6 +77,7 @@ When a subsystem has its own conditionally-enabled debug stream (RHI renderer, r
 This lets you `grep '\[rhi-render-debug\]' log.txt` later instead of trying to remember which file logged what.
 
 Existing examples:
+- `src/events/router.py` + `src/events/app_event_handler.py` → `UI_NAV_DEBUG` (`ImproveImgSLI.nav`: `FOCUS →/←`, `KEY … path=…`, `[kbd-route]`, `[dnd-override]`, `[kbd-reset]`) plus the toolkit nav loggers (`[nav]` focus/key routing in `NavigationManager`, button focus/events, help canvas). Standalone: `UI_NAV_DEBUG=1` alone is enough — needs neither `--debug` nor `SLI_TOOLKIT_DEBUG` (`setup_logging` routes nav records through dedicated name-allowlisted handlers, exactly once). Without it nav stays silent even under `--debug`.
 - `src/ui/canvas_infra/rhi/rhi_render.py:_rhi_render_debug` → `IMGSLI_RESIZE_DEBUG`
 - `src/ui/main_window/runtime.py:_resize_debug` → `IMGSLI_RESIZE_DEBUG` / `IMGSLI_RESIZE_DEBUG_VISUAL`
 - `src/tabs/multi_compare/first_frame_debug.py` → `IMGSLI_MC_FIRST_FRAME_DEBUG` (first-frame timeline for Multi Compare: canvas construction → show → renderer initialize → painted presents → `firstFrameRendered` → placeholder hide; also samples what the canvas region actually shows via grab + enumerates top-level QRhi windows)

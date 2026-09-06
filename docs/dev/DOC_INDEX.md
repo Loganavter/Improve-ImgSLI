@@ -43,7 +43,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
@@ -79,6 +79,12 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Plan: Preview QImage → Unify transition — missing put, tier mismatch, uid memo](plan_preview_unify_transition_fix.md)** — `docs/dev/plan_preview_unify_transition_fix.md`
 - **[Plan: RhiCanvasRenderer decomposition (1611 → <500)](plan_rhi_renderer_decomposition.md)** — `docs/dev/plan_rhi_renderer_decomposition.md`
 - **[Plan: Store/Redux direct mutation elimination and dogma hardening](plan_store_redux_repair.md)** — `docs/dev/plan_store_redux_repair.md`
+- **[Plan: toast lifecycle cleanup (close-leaks + legacy removal + toolkit fix)](plan_toast_cleanup.md)** — `docs/dev/plan_toast_cleanup.md`
+  Referenced by: [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+- **[Plan: host-owned ToastManager + toast refactor for both canvas tabs](plan_toast_refactor.md)** — `docs/dev/plan_toast_refactor.md`
+  Referenced by: [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+- **[Session report: stuck loading toast — from dead manager to leaked inflight alias](toast_stuck_session_report.md)** — `docs/dev/toast_stuck_session_report.md`
+  Referenced by: [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md)
 
 ## docs/dev/plugins/
 
@@ -91,7 +97,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[App-wide plugins (`src/plugins/`)](plugins/index.md)** — `docs/dev/plugins/index.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md)
 - **[Layout plugin](plugins/layout.md)** — `docs/dev/plugins/layout.md`
-  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Onboarding plugin](plugins/onboarding.md)** — `docs/dev/plugins/onboarding.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Settings plugin](plugins/settings.md)** — `docs/dev/plugins/settings.md`
@@ -127,9 +133,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/tabs/
 
 - **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`

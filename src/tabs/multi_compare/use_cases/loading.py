@@ -2,20 +2,37 @@
 for the Multi Compare tab -- split out of ``MultiCompareController`` to keep
 that class down to wiring/composition, mirroring image_compare's own
 ``use_cases/loading.py`` split. Every function here takes the controller as
-its first argument and reads/writes its instance state
-(``_loading_toasts``, ``_pyramid_builds``, ``_pyramid_toast_slot``) directly,
-same calling convention as image_compare's use_cases modules.
+its first argument and delegates toast/pyramid lifecycle to the tab's
+``LoadingToastCoordinator`` / ``PyramidBuildCoordinator`` (owned by the
+controller, which aliases their state dicts); no direct state writes remain.
+Audit-Meta: pattern=thin-owner reason="Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages"
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
-from typing import Any
 
 from core.events import CoreErrorOccurredEvent
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _same_fs_path(a: Path | str, b: Path | str) -> bool:
+    """Normalized path equality for slot-ownership guards.
+
+    ``slot.path`` strict ``==`` false-positives on textual variants of the
+    same file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``,
+    trailing separators): the guard then dismisses a good preview and the
+    slot stays imageless forever with no error surfaced. ``normpath``
+    over ``os.fspath`` keeps identical paths equal and heals those
+    variants; it never equates distinct files.
+    """
+    try:
+        return os.path.normpath(os.fspath(a)) == os.path.normpath(os.fspath(b))
+    except Exception:
+        return a == b
 
 
 def _format_worker_error(err) -> str:
@@ -25,11 +42,14 @@ def _format_worker_error(err) -> str:
 
 
 def _emit_mc_load_error(controller, path: Path | str, err) -> None:
-    """Surface a failed MC load via the shared EventBus/toast plumbing (IC parity).
+    """Surface a failed MC load via the shared EventBus plumbing (IC parity).
 
     Mirrors ``image_compare._session_controller._load_image_async`` /
     ``_on_full_resolution_error`` — a dropped corrupt file must not silently
-    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows a toast.
+    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows its
+    warning dialog (``error_occurred`` → ``AppMessageDialog.warning`` in
+    ``ui/presenters/main_window/actions.py`` — a dialog by policy, not a
+    toast; see plan §3.3).
     """
     try:
         event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
@@ -51,6 +71,28 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
 
+def _grid_full_reason(controller) -> str:
+    """Grid-full error detail, mirroring ``dialog_add._grid_full_reason``.
+
+    Local copy (not an import — ``dialog_add`` imports this module, so an
+    import back would be circular). Reuses the same ``msg.compare_grid_full``
+    key + default wording, so no new i18n keys.
+    """
+    try:
+        max_slots = controller.widget.state.max_slots
+    except Exception:
+        max_slots = None
+    default = (
+        f"Comparison grid is full ({max_slots} images max)"
+        if max_slots is not None
+        else "Comparison grid is full"
+    )
+    try:
+        return controller.translate("msg.compare_grid_full", default)
+    except Exception:
+        return default
+
+
 # Single source now in tabs._shared.loading_toast (B2 dedup).
 from tabs._shared.loading_toast import DECODE_DONE_PROGRESS, PYRAMID_START_PROGRESS  # noqa: F401
 
@@ -70,18 +112,6 @@ def show_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.show(slot_id)
         return
-    if slot_id in controller._loading_toasts:
-        return
-    toast_manager = get_toast_manager(controller)
-    if toast_manager is None:
-        return
-    message = controller.translate("msg.loading_full_image_in_progress")
-    try:
-        controller._loading_toasts[slot_id] = toast_manager.show_toast(
-            message, duration=0, progress=0
-        )
-    except Exception:
-        logger.exception("Failed to show full-image loading toast")
 
 
 def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
@@ -89,20 +119,6 @@ def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
     if coord is not None:
         coord.set_progress(slot_id, percent)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.get(slot_id)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_in_progress"),
-            success=False,
-            duration=0,
-            progress=max(0, min(99, percent)),
-        )
-    except Exception:
-        logger.exception("Failed to update full-image loading toast")
 
 
 def mark_full_res_ready(controller, slot_id: int) -> None:
@@ -110,7 +126,6 @@ def mark_full_res_ready(controller, slot_id: int) -> None:
     if coord is not None:
         coord.mark_full_res_ready(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
@@ -118,7 +133,6 @@ def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
     if coord is not None:
         coord.bump_pyramid_started(slot_id)
         return
-    set_loading_toast_progress(controller, slot_id, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, slot_id: int) -> None:
@@ -126,20 +140,6 @@ def finish_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.finish(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            controller.translate("msg.loading_full_image_done"),
-            success=True,
-            duration=2000,
-            progress=100,
-        )
-    except Exception:
-        logger.exception("Failed to complete full-image loading toast")
 
 
 def dismiss_loading_toast(controller, slot_id: int) -> None:
@@ -150,14 +150,6 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
     if coord is not None:
         coord.dismiss(slot_id)
         return
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(slot_id, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.close_toast(toast_id)
-    except Exception:
-        logger.exception("Failed to dismiss full-image loading toast")
 
 
 def _get_crop_service(controller):
@@ -241,54 +233,6 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
 
         coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
         return
-    from shared.image_processing.pyramid_registry import ensure_pyramid
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
-    from shared.rendering.image_identity import image_uid
-
-    if not isinstance(store, TiledPixelStore) or not store.is_open:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    pyramid = ensure_pyramid(store)
-    if pyramid is None or pyramid.is_complete():
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-    uid = image_uid(store)
-    if uid in controller._pyramid_builds:
-        return
-    thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
-    if thread_pool is None:
-        if slot_id is not None:
-            finish_loading_toast(controller, slot_id)
-        return
-
-    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
-    from sli_ui_toolkit.workers import GenericWorker
-
-    controller._pyramid_builds.add(uid)
-    if slot_id is not None:
-        controller._pyramid_toast_slot[uid] = slot_id
-        bump_loading_toast_pyramid_started(controller, slot_id)
-    total_levels = estimate_total_levels(store.width, store.height)
-
-    def should_abort() -> bool:
-        return not pyramid.valid
-
-    def build_task(progress_callback=None):
-        while pyramid.build_next_level(should_abort=should_abort):
-            complete = pyramid.is_complete()
-            if progress_callback is not None:
-                progress_callback((uid, pyramid.level_count, total_levels, complete))
-        return None
-
-    worker = GenericWorker(build_task)
-    worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
-    worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
-    worker.signals.finished.connect(
-        lambda uid=uid: controller._pyramid_builds.discard(uid)
-    )
-    thread_pool.start(worker)
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
@@ -305,178 +249,327 @@ def on_pyramid_level_ready(controller, payload=None) -> None:
         except Exception:
             pass
         return
-    canvas = getattr(controller.widget, "canvas", None)
-    if canvas is not None:
-        canvas.request_view_update()
-    if not isinstance(payload, tuple) or len(payload) != 4:
-        return
-    uid, level_count, total_levels, complete = payload
-    slot_id = controller._pyramid_toast_slot.get(uid)
-    if slot_id is None:
-        return
-    if complete:
-        controller._pyramid_toast_slot.pop(uid, None)
-        finish_loading_toast(controller, slot_id)
-    else:
-        fraction = level_count / max(total_levels, 1)
-        percent = PYRAMID_START_PROGRESS + int(
-            fraction * (100 - PYRAMID_START_PROGRESS)
-        )
-        set_loading_toast_progress(controller, slot_id, percent)
 
 
-def load_initial_image(controller, path: Path) -> tuple[Any, bool]:
-    """Fast path for large sources: a bounded preview shown immediately
-    while the full-res ``TiledPixelStore`` decodes in the background --
-    mirrors image_compare's progressive load
-    (``tabs.image_compare._session_controller._load_image_async``).
-
-    Returns ``(image, is_preview)``; ``image`` is ``None`` on failure.
-    """
-    import time
-
-    from shared.image_processing.progressive_loader import (
-        load_preview_image,
-        should_use_progressive_load,
-    )
-
-    t0 = time.perf_counter()
-    crop_service = _get_crop_service(controller)
-    try:
-        if should_use_progressive_load(str(path)):
-            preview = load_preview_image(str(path), crop_service=crop_service)
-            if preview is not None:
-                logger.debug(
-                    "[preview-load] %s: preview ready in %.3fs (%dx%d)",
-                    path,
-                    time.perf_counter() - t0,
-                    preview.width(),
-                    preview.height(),
-                )
-                return preview, True
-    except Exception:
-        logger.debug(
-            "Progressive preview failed for %s, falling back to full load",
-            path,
-            exc_info=True,
-        )
-    # start_pyramid=False: the slot this image will land in doesn't exist
-    # yet at this point (callers create it from the returned image), so
-    # there is no slot_id yet to drive the loading toast through the
-    # pyramid stage. Callers start the pyramid themselves once the slot
-    # (and its toast) exists -- see on_images_dropped/load_single_auto.
-    image = read_image(controller, path, start_pyramid=False)
-    logger.debug(
-        "[preview-load] %s: no preview, full read in %.3fs",
-        path,
-        time.perf_counter() - t0,
-    )
-    return image, False
-
-
-def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
+def load_full_resolution_async(
+    controller, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
+) -> None:
+    """Full-res second stage (A2): per-slot workers via ``preview_decode``'s bounded FIFO."""
     thread_pool = getattr(controller.context, "thread_pool", None) if controller.context else None
     if thread_pool is None:
         store = read_image(controller, path, start_pyramid=False)
-        apply_full_resolution(controller, slot_id, path, store)
+        if store is None:
+            # read_image already reported via _emit_mc_load_error — just
+            # drop the toast so the failure surfaces exactly once.
+            dismiss_loading_toast(controller, slot_id)
+            return
+        apply_full_resolution(
+            controller, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
+        )
         return
 
-    from sli_ui_toolkit.workers import GenericWorker
+    from tabs.multi_compare.use_cases import preview_decode as _preview
 
-    crop_service = _get_crop_service(controller)
-
-    def load_full_task(path_str: str, svc=crop_service):
-        from shared.image_processing.pixel_cache_loader import load_pixel_store
-        from shared.image_processing import embedded_pixel_cache as _emb_mc2
-
-        return load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb_mc2)
-
-    worker = GenericWorker(load_full_task, str(path))
-    worker.signals.result.connect(
-        lambda store, p=path, sid=slot_id: controller._apply_full_resolution(sid, p, store)
+    _preview.queue_full_resolution(
+        controller, path, slot_id, keep_slot_on_error=keep_slot_on_error
     )
-    worker.signals.error.connect(
-        lambda err, p=path, sid=slot_id: controller._on_full_resolution_error(p, sid, err)
-    )
-    thread_pool.start(worker)
 
 
-def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
+def on_full_resolution_error(
+    controller, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
+) -> None:
+    """Full-res worker failed: orphan/recycled stays silent, live slot reports via bus."""
+    from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+    slot = None
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        slots = None
+    if slots is not None:
+        slot = next((s for s in slots if s.id == slot_id), None)
+        if slot is None:
+            # Orphan (slot removed mid-load, e.g. user-cancelled): silent
+            # dismiss, no error-toast — the load was abandoned on purpose.
+            dismiss_loading_toast(controller, slot_id)
+            return
+        try:
+            same = _same_fs_path(slot.path, path)
+        except Exception:
+            same = False
+        if not same:
+            # Id recycled by a newer slot: its toast is live, don't touch it.
+            return
     logger.error("Failed to load full resolution for %s: %s", path, err, exc_info=True)
+    has_tier = False
+    if slots is not None and slot is not None:
+        try:
+            has_tier = (
+                resolve_slot_source(getattr(controller, "pixel_cache", None), slot)
+                is not None
+            )
+        except Exception:
+            has_tier = False
+    if not has_tier and not keep_slot_on_error:
+        # Imageless (preview-miss path): sync-UX parity — drop the
+        # pre-created slot instead of leaving an imageless leaf (blank
+        # hole). A slot holding its preview tier keeps it; only its toast
+        # is dismissed. B1 restore fills (keep_slot_on_error) keep the
+        # restored slot regardless.
+        from tabs.multi_compare.scene import actions as mc_actions
+
+        try:
+            controller.widget.store.dispatch(mc_actions.remove_slot(slot_id))
+        except Exception:
+            logger.exception("Failed to remove failed-load slot %s", slot_id)
     dismiss_loading_toast(controller, slot_id)
     _emit_mc_load_error(controller, path, err)
 
 
-def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:
+def apply_full_resolution(
+    controller, slot_id: int, path: Path, store, *, keep_slot_on_error: bool = False
+) -> None:
+    """Full-res tier arrival: cache the store, note it, build its pyramid.
+
+    B1: the store lands in the session cache (sole owner — eviction close
+    can never break an undo snapshot, which holds paths only), then a
+    ``note_slot_pixels`` dispatch bumps the slot revision so subscribers
+    rebuild. A same-path sibling's cached store wins on collision (one
+    shared object, no duplicate decode); the displaced worker-fresh store
+    is closed. Ownerless stores (orphan/recycled slot) are closed unless
+    they are the cache's live entry (shared with a live slot).
+    """
+    _ = keep_slot_on_error  # full tier never drops the slot (preview stage owns that call)
     if store is None:
+        # Full-res decode yielded no tier (worker abort / empty decode):
+        # orphan/recycled stays silent (toast belongs to nobody / the newer
+        # generation); a live slot reports via the shared helper like every
+        # other load failure instead of just dismissing its toast.
+        try:
+            _slots = list(controller.widget.state.slots)
+        except Exception:
+            _slots = []
+        _slot = next((s for s in _slots if s.id == slot_id), None)
+        if _slot is None:
+            dismiss_loading_toast(controller, slot_id)
+            return
+        try:
+            _same = _same_fs_path(_slot.path, path)
+        except Exception:
+            _same = False
+        if not _same:
+            return
+        logger.error("Failed to load full resolution for %s: decode returned no data", path)
         dismiss_loading_toast(controller, slot_id)
+        _emit_mc_load_error(controller, path, RuntimeError("decode returned no image data"))
         return
     slot = next((s for s in controller.widget.state.slots if s.id == slot_id), None)
-    if slot is None or slot.path != path:
-        # Slot was removed/replaced while the full-res decode was in
-        # flight -- the preview it belonged to is already gone from the
-        # tree, so this store would just leak.
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
+    if slot is None:
+        # Slot was removed while the full-res decode was in flight —
+        # dismiss (never finish: an orphan must not show toast-done).
+        from tabs.multi_compare.use_cases.preview_decode import (
+            _close_unless_cached as _close_shared,
+        )
 
-        close_pixel_store(store)
-        finish_loading_toast(controller, slot_id)
+        _close_shared(controller, path, store)
+        dismiss_loading_toast(controller, slot_id)
         return
+    if not _same_fs_path(slot.path, path):
+        # Id recycled (``max+1``): the newer generation owns id+toast —
+        # touch neither. Close this ownerless store unless shared.
+        # Normalized compare (P8): str-vs-Path/"./" variants must not read
+        # as stale and orphan a good decode.
+        from tabs.multi_compare.use_cases.preview_decode import (
+            _close_unless_cached as _close_shared,
+        )
+
+        _close_shared(controller, path, store)
+        return
+    try:
+        cache = getattr(controller, "pixel_cache", None)
+        if cache is not None:
+            try:
+                existing = cache.get_pixel(path)
+            except Exception:
+                existing = None
+            if existing is not None and existing is not store:
+                # Same-path sibling already cached (double-add dedup):
+                # share it, close the duplicate decode.
+                from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+                try:
+                    close_pixel_store(store)
+                except Exception:
+                    pass
+                store = existing
+            else:
+                cache.put_pixel(path, store)
+    except Exception:
+        logger.exception("mc: pixel cache put failed for slot %s", slot_id)
     mark_full_res_ready(controller, slot_id)
     from tabs.multi_compare.scene import actions as mc_actions
 
-    controller.widget.store.dispatch(mc_actions.replace_slot_image(slot_id, store))
+    controller.widget.store.dispatch(mc_actions.note_slot_pixels(slot_id, "full"))
     start_pyramid_build(controller, store, slot_id=slot_id)
 
 
-def load_single_auto(controller, path: Path) -> None:
-    image, is_preview = load_initial_image(controller, path)
-    if image is None:
-        return
-    sid = controller.widget.add_image_auto(path, image, label=path.stem)
-    if sid is not None:
-        show_loading_toast(controller, sid)
-        if is_preview:
-            load_full_resolution_async(controller, path, sid)
-        else:
-            mark_full_res_ready(controller, sid)
-            start_pyramid_build(controller, image, slot_id=sid)
+def load_external_paths(controller, paths) -> int:
+    """Chrome/carry/paste drops without a canvas position (P3A).
+
+    Direct-load like IC (``image_compare.use_cases.drag_drop.handle_drop``):
+    auto-place each file through the P2 async path — imageless slot +
+    loading toast synchronously, bounded preview in a ``GenericWorker``
+    (``load_preview_async``), full-res second stage. No
+    ``begin_pending_paste`` arming: nothing waits for a canvas click, so
+    there is no armed highlight and ``Esc`` has nothing to cancel for this
+    path. The ``(None, False)`` target falls back to auto placement inside
+    ``add_image_at`` (empty canvas → root, otherwise largest-leaf split),
+    so window-chrome ``slot`` hints and carry drops with no position both
+    map to append-like placement. Internal-drag Move stays in
+    ``ui/drag_drop`` and is untouched by this path.
+
+    Returns the number of slots created synchronously.
+    """
+    from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTENSIONS
+
+    valid: list[Path] = []
+    for raw in paths or []:
+        path = raw if isinstance(raw, Path) else Path(raw)
+        if path.suffix.lower() not in _EXTENSIONS:
+            continue
+        if not path.is_file():
+            logger.debug("load_external_paths: skipped missing file %s", path)
+            continue
+        valid.append(path)
+    if not valid:
+        return 0
+    before = len(controller.widget.state.slots)
+    on_images_dropped(controller, valid, (None, False), None)
+    return len(controller.widget.state.slots) - before
+
+
+def resolve_auto_triple(widget, scratch):
+    """Auto-placement triple ``(target_path, side, target_root)`` without dispatch.
+
+    Read-only replica of ``placement.add_image_auto`` target resolution
+    (``placement.py`` itself is untouched — A1 owns it): empty tree →
+    root, otherwise the widget's auto target. A canvas that cannot answer
+    (headless fakes) falls back to the deterministic ``((), "right")``
+    A1 will converge on, instead of raising mid-drop.
+    """
+    if scratch.root is None:
+        return None, None, True
+    try:
+        target_path, side = widget._pick_auto_target()
+        return target_path, side, False
+    except Exception:
+        return (), "right", False
 
 
 def on_images_dropped(controller, paths: list, target, side) -> None:
-    """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/..."""
+    """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/...
+
+    P2: only placement + imageless slot creation run on the GUI thread —
+    no decode here (a preview-miss used to be a full synchronous
+    ``read_image`` stall, measured 381ms drop→finish). Each slot's
+    preview decodes in a ``GenericWorker`` (``load_preview_async``) and
+    fills the slot on result, with full-res as the second stage.
+    Internal-drag Move semantics live in ``ui/drag_drop`` and are
+    untouched by this path.
+
+    A3: the N per-file ``add_image_at/auto`` dispatches are planned first
+    against a scratch state through the pure ``scene.store.reduce`` (same
+    chain rule — file 0 at the drop target, later files beside the
+    previously added slot, auto fallback when its path is gone, capacity
+    guard per file) and committed with one ``store.transact`` → 1
+    dispatch / 1 emit. Toast + preview workers stay per-slot (not store
+    dispatches) and run after the single commit.
+    """
     from tabs.multi_compare.models import find_path
+    from tabs.multi_compare.scene import actions as mc_actions
+    from tabs.multi_compare.scene.store import reduce as mc_reduce
+    from tabs.multi_compare.use_cases import preview_decode as _preview
 
     target_path, target_root = (
         target if isinstance(target, tuple) else (None, False)
     )
 
+    widget = controller.widget
+    scratch = widget.state
+    built: list = []
+    planned: list[tuple[int, Path]] = []
+    overflow: list[Path] = []
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
-        image, is_preview = load_initial_image(controller, path)
-        if image is None:
+        if len(scratch.slots) >= scratch.max_slots:
+            overflow.append(path)
             continue
         if i == 0:
-            sid = controller.widget.add_image_at(
-                path, image, path.stem, target_path, side, target_root
+            eff_path, eff_side, eff_root = target_path, side, target_root
+            if (
+                not eff_root
+                and (eff_path is None or eff_side is None)
+                and scratch.root is not None
+            ):
+                eff_path, eff_side, eff_root = resolve_auto_triple(widget, scratch)
+            else:
+                eff_root = bool(eff_root or scratch.root is None)
+            action = mc_actions.add_slot(
+                path=path,
+                label=path.stem,
+                target_path=eff_path,
+                side=eff_side,
+                target_root=eff_root,
             )
         else:
             next_side = "right" if side in ("left", "right") else "bottom"
             next_path: tuple[int, ...] | None = None
             if last_added is not None:
-                found = find_path(controller.widget.state.root, last_added)
+                found = find_path(scratch.root, last_added)
                 next_path = tuple(found) if found is not None else None
             if next_path is None:
-                sid = controller.widget.add_image_auto(path, image, path.stem)
-            else:
-                sid = controller.widget.add_image_at(
-                    path, image, path.stem, next_path, next_side, False
+                auto_path, auto_side, auto_root = resolve_auto_triple(widget, scratch)
+                action = mc_actions.add_slot(
+                    path=path,
+                    label=path.stem,
+                    target_path=auto_path,
+                    side=auto_side,
+                    target_root=auto_root,
                 )
-        if sid is not None:
-            last_added = sid
-            show_loading_toast(controller, sid)
-            if is_preview:
-                load_full_resolution_async(controller, path, sid)
             else:
-                mark_full_res_ready(controller, sid)
-                start_pyramid_build(controller, image, slot_id=sid)
+                action = mc_actions.add_slot(
+                    path=path,
+                    label=path.stem,
+                    target_path=next_path,
+                    side=next_side,
+                    target_root=False,
+                )
+        before = len(scratch.slots)
+        scratch = mc_reduce(scratch, action)
+        if len(scratch.slots) <= before:
+            overflow.append(path)
+            continue
+        built.append(action)
+        last_added = scratch.slots[-1].id
+        planned.append((last_added, path))
+    if not built:
+        for path in overflow:
+            _emit_mc_load_error(controller, path, _grid_full_reason(controller))
+        return
+    store = widget.store
+    transact = getattr(store, "transact", None)
+    if callable(transact):
+        store.transact(built)
+    else:  # headless fakes pre-dating the batch API: same end state, N dispatches
+        for sub in built:
+            store.dispatch(sub)
+    live_ids = {s.id for s in widget.state.slots}
+    for sid, path in planned:
+        if sid not in live_ids:
+            continue
+        show_loading_toast(controller, sid)
+        _preview.load_preview_async(controller, path, sid)
+    for path in overflow:
+        logger.warning("on_images_dropped: no slot created for %s (grid full?)", path)
+        _emit_mc_load_error(controller, path, _grid_full_reason(controller))

@@ -22,8 +22,10 @@ def _luma(color) -> int:
 
 
 def test_idle_list_item_matches_panel_background():
+    # ``flyout.background`` was unified into ``surface.background`` (toolkit
+    # ThemeManager ALIAS); the panel token is now ``surface.background``.
     for palette in (LIGHT_THEME_PALETTE, DARK_THEME_PALETTE):
-        assert palette["list_item.background.normal"] == palette["flyout.background"]
+        assert palette["list_item.background.normal"] == palette["surface.background"]
         assert (
             palette["list_item.background.normal"]
             != palette["list_item.background.hover"]
@@ -32,7 +34,7 @@ def test_idle_list_item_matches_panel_background():
 
 def test_hover_fill_is_clearly_distinct_from_panel():
     for palette in (LIGHT_THEME_PALETTE, DARK_THEME_PALETTE):
-        panel = palette["flyout.background"]
+        panel = palette["surface.background"]
         hover = palette["list_item.background.hover"]
         # At least ~7% channel shift: the old dark hover (4%) read as idle.
         assert abs(_luma(hover) - _luma(panel)) >= 55
