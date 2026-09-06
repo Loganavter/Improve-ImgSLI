@@ -90,8 +90,6 @@ class MagnifierSettingsHoverController(QObject):
 
         nav = NavigationManager.get_instance()
         for child in group.findChildren(QWidget):
-            if child is getattr(widget, "btn_magnifier_guides", None):
-                continue
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)

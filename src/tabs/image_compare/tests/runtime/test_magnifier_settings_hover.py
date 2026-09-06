@@ -13,7 +13,8 @@ close the panel; see test_leave_to_linked_child_arms_backstop).
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint
+from PySide6.QtCore import QEvent, QPoint, Qt
+from PySide6.QtGui import QFocusEvent
 from PySide6.QtWidgets import QWidget
 
 import tabs.image_compare.ui.transient_magnifier_settings as transient
@@ -174,6 +175,40 @@ def test_leave_to_linked_child_arms_backstop(qapp, monkeypatch):
 class _FakeManager:
     def linked_children(self, _flyout):
         return (_FakeLinkedChild(),)
+
+
+def test_keyboard_focus_on_guides_button_opens_panel(qapp, monkeypatch):
+    """Regression: btn_magnifier_guides was skipped in _wire (continue), so
+    keyboard focus on the laser button neither opened the panel, nor counted
+    as inside on FocusOut from a sibling (an open panel hid on Tab-onto it),
+    nor got the Down-link into the panel."""
+    from sli_ui_toolkit import managers as _managers
+
+    bound = []
+    monkeypatch.setattr(
+        _managers,
+        "bind_flyout",
+        lambda anchor, flyout, **kwargs: bound.append(anchor),
+    )
+    fw = _FakeWidget()
+    fw.checkbox_widget.setGeometry(0, 0, 600, 80)
+    fw.magnifier_group_container.setGeometry(50, 10, 200, 60)
+    guides = QWidget(fw.magnifier_group_container)
+    guides.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    fw.btn_magnifier_guides = guides
+    fw.show()
+    fw.magnifier_settings_flyout.hide()
+    qapp.processEvents()
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: QPoint(0, 0)))
+    controller = transient.MagnifierSettingsHoverController(fw)
+
+    assert guides in controller._group_buttons
+    assert guides in bound
+
+    controller.eventFilter(
+        guides, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason)
+    )
+    assert fw.magnifier_settings_flyout.shown_for == [fw.magnifier_group_container]
 
 
 def test_leave_in_padding_rim_arms_backstop(qapp, monkeypatch):
