@@ -306,7 +306,11 @@ class HelpDialog(ThemedDialog):
                         pass
                     target.setFocus(Qt.FocusReason.OtherFocusReason)
                 elif win is not None and _isValid(win):
-                    win.activateWindow()
+                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
+                        request_window_activation,
+                    )
+
+                    request_window_activation(win, reason="help-hide-restore")
                     # Фолбэк — последний клавиатурный фокус внутри окна
                     try:
                         from sli_ui_toolkit.managers import NavigationManager
@@ -320,15 +324,19 @@ class HelpDialog(ThemedDialog):
                         win.setFocus(Qt.FocusReason.OtherFocusReason)
                 else:
                     # Последний фолбэк — первое topLevel MainWindow
+                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
+                        request_window_activation,
+                    )
+
                     for w in QApplication.topLevelWidgets():  # ALLOWED: focus-fallback — generic top-level MainWindow activation, not tab-specific
                         if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
-                            w.activateWindow()
+                            request_window_activation(w, reason="help-hide-fallback")
                             w.setFocus(Qt.FocusReason.OtherFocusReason)
                             break
                     else:
                         aw = QApplication.activeWindow()
                         if aw is not None and _isValid(aw):
-                            aw.activateWindow()
+                            request_window_activation(aw, reason="help-hide-fallback")
         except Exception:
             pass
         super().hideEvent(event)
