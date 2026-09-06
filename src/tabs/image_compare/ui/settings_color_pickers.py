@@ -232,8 +232,12 @@ class SettingsColorPickerCoordinator:
                 return
             try:
                 if transient_host.isVisible():
+                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
+                        request_window_activation,
+                    )
+
                     transient_host.raise_()
-                    transient_host.activateWindow()
+                    request_window_activation(transient_host, reason="color-finished")
             except RuntimeError:
                 return
 
