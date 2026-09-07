@@ -620,28 +620,6 @@ class TiledPixelStore:
         t0 = time.perf_counter()
         path_str = os.fspath(path)
         logger.info(f"[TileStore] from_path starting for {path_str} (crop_service={'yes' if crop_service else 'no'})")
-        # TEMP-DIAG [autocrop-probe]: solve the silent-[autocrop-debug] mystery.
-        # logger.debug ниже обязан печатать (env доказан, level доказан) — но
-        # молчит. Этот INFO-зонд покажет env/level/handlers/thread/ids прямо
-        # на месте загрузки. Удалить после диагностики (issue: silent debug).
-        try:
-            import threading as _th
-
-            _cur = logging.getLogger("ImproveImgSLI")
-            logger.info(
-                "[autocrop-probe] env=%r logger_id=%s fresh_id=%s level=%s "
-                "effective=%s handlers=%s thread=%s crop_service=%s",
-                os.environ.get("IMGSLI_AUTOCROP_DEBUG"),
-                id(logger),
-                id(_cur),
-                logger.level,
-                logger.getEffectiveLevel(),
-                [(type(h).__name__, h.level) for h in logger.handlers],
-                _th.current_thread().name,
-                bool(crop_service),
-            )
-        except Exception as _e:  # диагностика не должна ломать загрузку
-            logger.info("[autocrop-probe] self-check failed: %r", _e)
         autocrop_debug("from_path start path=%s crop_service=%s", path_str, bool(crop_service))
         if pyvips_can_stream(path_str):
             try:

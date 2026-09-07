@@ -57,6 +57,16 @@ class SessionController(SessionApiMixin, QObject):
             from tabs.image_compare.pipeline.session import ImageSession
 
             sess = ImageSession(session_id=sid)
+            # Как в session_init: дефолт новой сессии — по текущей настройке.
+            try:
+                _should = getattr(
+                    getattr(self.store, "settings", None),
+                    "auto_crop_black_borders",
+                    True,
+                )
+                sess.sync_crop_service(bool(_should))
+            except Exception:
+                pass
             self._image_sessions[sid] = sess
         # keep live session pointed at active session (thin owner)
         try:
