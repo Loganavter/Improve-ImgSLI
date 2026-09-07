@@ -207,6 +207,14 @@ class ApplicationContext:
             self.store.settings, "debug_mode_enabled", False
         )
         setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")
+        # Стартовый слепок env-флагов: если [autocrop-debug] молчит при
+        # IMGSLI_AUTOCROP_DEBUG=1 в командной строке — эта строка покажет,
+        # дошёл ли флаг до процесса (None/пусто = шелл не пробросил env).
+        logger.debug(
+            "[debug-flags] IMGSLI_AUTOCROP_DEBUG=%r IMGSLI_TRACE=%r",
+            os.getenv("IMGSLI_AUTOCROP_DEBUG"),
+            os.getenv("IMGSLI_TRACE"),
+        )
 
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
             from core.state_management.actions import SetDebugModeEnabledAction
