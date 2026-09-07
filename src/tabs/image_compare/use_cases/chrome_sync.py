@@ -306,6 +306,17 @@ class ImageCompareChromeSync(QObject):
             self.store.viewport.render_config.include_file_names_in_saved
             )
             return
+        # Видимая ветка тоже обязана двигать нижнюю edit-панель за флагом
+        # (как deferred-ветка выше): иначе клик btn_file_names меняет только
+        # стор, а панель не появляется — batch file_names правит лишь лейблы.
+        try:
+            widget = self.widget
+            if widget is not None:
+                widget.toggle_edit_layout_visibility(
+                    self.store.viewport.render_config.include_file_names_in_saved
+                )
+        except Exception:
+            pass
         # Lazy: resolution/psnr/zoom not needed until full_res images are present
         batch = ["file_names", "combobox", "ratings", "window_schedule"]
         if self._has_full_res():
