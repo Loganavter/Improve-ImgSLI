@@ -293,17 +293,9 @@ class SettingsApplicationService(QObject):
                 invalidate_all_services()
             except Exception:
                 pass
-            # Синхронизируем сессионные crop-дефолты: иначе fallback
-            # `else self.crop_service` в PipelineCache/ImagePipeline воскресит
-            # кроп при OFF (голый None неотличим от "дефолт сессии").
-            try:
-                from tabs.image_compare.pipeline.session import (
-                    set_sessions_crop_enabled,
-                )
-
-                set_sessions_crop_enabled(bool(data.auto_crop_black_borders))
-            except Exception:
-                pass
+            # NB: сессионные crop-дефолты (ImageSession/Cache) синхронизирует
+            # сам таб в _on_store_scoped_change — хосту запрещён импорт
+            # внутренностей таба (contract test_ui_tab_sandbox).
             # Совместимость: старый глобальный кэш (если ещё жив)
             try:
                 from shared.image_processing.autocrop_service import invalidate_all as _legacy_inv

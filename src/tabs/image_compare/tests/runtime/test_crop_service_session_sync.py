@@ -74,6 +74,37 @@ def test_preview_tier_enabled_setting_still_crops(tmp_path):
         set_sessions_crop_enabled(True)
 
 
+def test_store_toggle_syncs_sessions_via_scoped_change():
+    """Тоггл настройки долетает до сессий без импорта таба хостом.
+
+    application_service лишь диспатчит SetAutoCropBlackBordersAction;
+    _on_store_scoped_change замечает смену флага и зовёт
+    set_sessions_crop_enabled (tab-internal, sandbox-контракт цел).
+    """
+    from types import SimpleNamespace
+
+    from tabs.image_compare._session_controller import SessionController
+
+    sess = ImageSession(session_id="toggle-probe")
+    assert sess.crop_service is not None
+    fake = SimpleNamespace(
+        store=SimpleNamespace(
+            settings=SimpleNamespace(auto_crop_black_borders=False)
+        ),
+        _last_crop_enabled=None,
+    )
+    try:
+        SessionController._on_store_scoped_change(fake, "viewport")
+        assert sess.crop_service is None
+        assert sess.cache.crop_service is None
+        fake.store.settings.auto_crop_black_borders = True
+        SessionController._on_store_scoped_change(fake, "viewport")
+        assert sess.crop_service is not None
+        assert sess.cache.crop_service is not None
+    finally:
+        set_sessions_crop_enabled(True)
+
+
 def test_pixel_tier_disabled_setting_serves_uncropped(tmp_path):
     path = _bordered_png(tmp_path / "bordered.png")
     sess = ImageSession(session_id="pixel-off")

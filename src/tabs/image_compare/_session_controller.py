@@ -45,6 +45,9 @@ class SessionController(SessionApiMixin, QObject):
 
         from tabs.image_compare.use_cases.session_init import init_session_state
         init_session_state(self, self.store, self.thread_pool)
+        # Последний виденный флаг автокропа — для синхронизации сессионных
+        # crop-дефолтов при тоггле (см. _on_store_scoped_change).
+        self._last_crop_enabled: bool | None = None
 
     def _get_image_session(self, session_id: str | None = None):
         """Return ImageSession for session_id (or active). Creates on demand."""
@@ -96,6 +99,27 @@ class SessionController(SessionApiMixin, QObject):
             return getattr(self, "_crop_service", None)
 
     def _on_store_scoped_change(self, scope: str) -> None:
+        # Тоггл auto_crop_black_borders идёт через диспетчер без скоупа
+        # (дефолт viewport): синхронизируем сессионные crop-дефолты, иначе
+        # fallback `else self.crop_service` в PipelineCache воскресит кроп
+        # при OFF. Дешёвое сравнение — срабатывает только на смене флага.
+        try:
+            _cur_crop = bool(
+                getattr(
+                    getattr(self.store, "settings", None),
+                    "auto_crop_black_borders",
+                    True,
+                )
+            )
+            if _cur_crop != self._last_crop_enabled:
+                self._last_crop_enabled = _cur_crop
+                from tabs.image_compare.pipeline.session import (
+                    set_sessions_crop_enabled,
+                )
+
+                set_sessions_crop_enabled(_cur_crop)
+        except Exception:
+            pass
         if scope != "document":
             return
         if getattr(self, "_resyncing", False):
