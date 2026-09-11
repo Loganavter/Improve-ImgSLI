@@ -250,6 +250,7 @@ class CanvasWidget(QRhiWidget):
                 except Exception:
                     self._dnd_show_present_mark = None
                 # Wall-clock show edge for the show→first-present latency probe.
+                # (Per-gesture clock: reset every show, cleared on hide.)
                 try:
                     import time as _time
 

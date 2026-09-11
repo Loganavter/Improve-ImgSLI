@@ -80,23 +80,14 @@ def _text_and_border_colors(host=None) -> tuple[QColor, QColor]:
     return QColor("#ffffff"), border
 
 
-def paint_drag_drop_overlay(
-    painter: QPainter, host, horizontal: bool, text1: str, text2: str,
-    progress: float = 1.0,
-) -> None:
+def paint_drag_drop_overlay(painter: QPainter, host, horizontal: bool, text1: str, text2: str) -> None:
     """Paint the two rounded drop-target tiles into *painter*.
 
     *host* is the CanvasWidget (used only for width/height via rect()).
     Caller must have setRenderHint(Antialiasing) already if desired.
-    *progress* is the Telegram-style show fade 0→1 (linear): all alphas
-    scale with it so the first frames are a faint ghost instead of a
-    binary pop. Defaults to 1.0 (final opacity, backward compatible).
+    Binary show (full opacity on first frame) — the Telegram-style fade
+    experiment was reverted: it never addressed the display stall.
     """
-    try:
-        progress = float(progress)
-    except Exception:
-        progress = 1.0
-    progress = min(1.0, max(0.0, progress))
     margin = 10.0
     half_margin = margin / 2.0
     width = float(host.width()) if hasattr(host, "width") else float(painter.device().width())
@@ -123,16 +114,8 @@ def paint_drag_drop_overlay(
 
     accent = _accent_color(host)
     fill = QColor(accent)
-    fill.setAlpha(round(153 * progress))
+    fill.setAlpha(153)
     text_color, border = _text_and_border_colors(host)
-    try:
-        border.setAlpha(round(border.alpha() * progress))
-    except Exception:
-        pass
-    try:
-        text_color.setAlpha(round(text_color.alpha() * progress))
-    except Exception:
-        pass
 
     font = paint_font(host if hasattr(host, "font") else None, pixel_size=20, bold=True)
     # paint_font expects a widget; if host is None or fake, fallback

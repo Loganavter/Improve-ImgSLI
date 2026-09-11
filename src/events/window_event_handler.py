@@ -179,6 +179,24 @@ class WindowEventHandler(QObject):
             self._drag_leave_timer.isActive(),
             stack=True,
         )
+        # Phase-alignment probe (IMGSLI_DND_ENTER_DELAY_MS): with DND_DEBUG
+        # the enter path spends ~15 ms in traceback.format_stack and display
+        # goes instant; without it the first commit races mutter's grab setup
+        # and loses (~350 ms stall). A calibrated synchronous delay tests
+        # whether timing alone (no logs) reproduces the instant case.
+        try:
+            import os as _os2
+
+            _enter_delay = float(_os2.environ.get("IMGSLI_DND_ENTER_DELAY_MS", "0") or 0)
+        except Exception:
+            _enter_delay = 0.0
+        if _enter_delay > 0:
+            try:
+                import time as _time_sl
+
+                _time_sl.sleep(min(0.1, _enter_delay / 1000.0))
+            except Exception:
+                pass
         if event.mimeData().hasUrls():
             was_visible = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
             self._drag_leave_timer.stop()
