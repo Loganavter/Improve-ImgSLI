@@ -98,6 +98,10 @@ class CanvasWidget(QRhiWidget):
         configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
         self._rhi_presents_completed = 0
+        # DnD show→visible latency probes (env-gated logs only, see
+        # set_drag_overlay_state/render — prod-silent without IMGSLI_IC_DEBUG).
+        self._dnd_show_t0: float | None = None
+        self._dnd_first_present_t: float | None = None
         self._rhi_renderer = RhiCanvasRenderer()
         # Registered/unregistered by GlassHUD instances anchored to this
         # canvas (see ui/widgets/glass_hud/hud.py) -- consumed by
@@ -204,16 +208,49 @@ class CanvasWidget(QRhiWidget):
                     self._dnd_show_present_mark = int(self._rhi_presents_completed)
                 except Exception:
                     self._dnd_show_present_mark = None
+                # Wall-clock show edge for the show→first-present latency probe.
+                try:
+                    import time as _time
+
+                    self._dnd_show_t0 = _time.monotonic()
+                except Exception:
+                    self._dnd_show_t0 = None
+                try:
+                    self._dnd_first_present_t = None
+                except Exception:
+                    pass
             if before and not after:
                 try:
                     from tabs.image_compare.debug import ic_dnd_debug as _icdd
 
+                    import time as _time
+
                     mark = getattr(self, "_dnd_show_present_mark", None)
                     now = int(self._rhi_presents_completed)
+                    t0 = getattr(self, "_dnd_show_t0", None)
+                    t_first = getattr(self, "_dnd_first_present_t", None)
+                    t_now = _time.monotonic()
+                    if t0 is None:
+                        first_ms: object = "?"
+                        vis_ms: object = "?"
+                    else:
+                        vis_ms = round((t_now - t0) * 1000)
+                        first_ms = (
+                            round((t_first - t0) * 1000)
+                            if t_first is not None
+                            else "never"
+                        )
                     _icdd(
-                        "canvas.hide presents_during_show=%s",
+                        "canvas.hide presents_during_show=%s visible_ms=%s first_present_ms=%s",
                         (now - mark) if mark is not None else "?",
+                        vis_ms,
+                        first_ms,
                     )
+                except Exception:
+                    pass
+                try:
+                    self._dnd_show_t0 = None
+                    self._dnd_first_present_t = None
                 except Exception:
                     pass
             if after:
@@ -230,7 +267,10 @@ class CanvasWidget(QRhiWidget):
                         flush_qrhi_compositor,
                     )
 
-                    flush_qrhi_compositor(self, reason="ic-dnd-show")
+                    # activate=False on both kicks: external drag focus belongs
+                    # to the source app — activation would be denied and
+                    # banner (see _restack_on_tiles below).
+                    flush_qrhi_compositor(self, reason="ic-dnd-show", activate=False)
                     # ...and once more after the first tile-frames are
                     # flowing. The immediate flush above restacks while only
                     # the pre-tile buffer exists; a lone restack there leaves
@@ -241,8 +281,32 @@ class CanvasWidget(QRhiWidget):
 
                     def _restack_on_tiles(w=self):
                         try:
-                            if bool(w.runtime_state._drag_overlay_visible):
-                                flush_qrhi_compositor(w, reason="ic-dnd-show-settle")
+                            from tabs.image_compare.debug import (
+                                ic_dnd_debug as _icdd2,
+                            )
+
+                            import time as _time2
+
+                            t0 = getattr(w, "_dnd_show_t0", None)
+                            still = bool(w.runtime_state._drag_overlay_visible)
+                            _icdd2(
+                                "canvas.restack fired +%sms still_visible=%s",
+                                round((_time2.monotonic() - t0) * 1000)
+                                if t0 is not None
+                                else "?",
+                                still,
+                            )
+                            if still:
+                                # activate=False: during an external drag the
+                                # pointer/keyboard focus belongs to the file
+                                # manager — raise_/activateWindow here is a
+                                # guaranteed-denied xdg-activation request
+                                # and Mutter answers with the «Окно
+                                # "Improve-ImgSLI" ожидает» banner instead
+                                # (internal-docs inv-flyout-wayland rule).
+                                flush_qrhi_compositor(
+                                    w, reason="ic-dnd-show-settle", activate=False
+                                )
                         except Exception:
                             pass
 
@@ -405,6 +469,33 @@ class CanvasWidget(QRhiWidget):
             return
 
         self._rhi_presents_completed = int(self._rhi_presents_completed) + 1
+        # DnD latency probe: first completed present after the show edge.
+        # Deliberately independent of FIRST_FRAME_DEBUG (whose sampler grabs
+        # and would itself pump frames, confounding the measurement). Logs
+        # once per show window; silent when no drag is active.
+        try:
+            _t0 = getattr(self, "_dnd_show_t0", None)
+            if (
+                _t0 is not None
+                and getattr(self, "_dnd_first_present_t", None) is None
+                and bool(
+                    getattr(getattr(self, "runtime_state", None),
+                            "_drag_overlay_visible", False)
+                )
+            ):
+                import time as _time3
+
+                _t_first = _time3.monotonic()
+                self._dnd_first_present_t = _t_first
+                from tabs.image_compare.debug import ic_dnd_debug as _icdd3
+
+                _icdd3(
+                    "canvas.first-present +%sms after show (present #%s)",
+                    round((_t_first - _t0) * 1000),
+                    self._rhi_presents_completed,
+                )
+        except Exception:
+            pass
         ic_first_frame_debug(
             self, "render() painted present #%s [%s]",
             self._rhi_presents_completed, ic_first_frame_readiness_repr(self),

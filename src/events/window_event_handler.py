@@ -71,6 +71,37 @@ class WindowEventHandler(QObject):
         self._drag_pump_timer = QTimer(self)
         self._drag_pump_timer.setInterval(50)
         self._drag_pump_timer.timeout.connect(self._pump_drag_frame)
+        # Latency probes: tick count + start edge for the DnD timeline
+        # (env-gated logs only — prod-silent without IMGSLI_DND_DEBUG).
+        self._drag_pump_ticks = 0
+        self._drag_pump_t0: float | None = None
+
+    def _stop_drag_pump(self, reason: str) -> None:
+        """Stop the pump, logging tick count for the DnD latency timeline."""
+        try:
+            was_active = self._drag_pump_timer.isActive()
+        except Exception:
+            was_active = False
+        try:
+            self._drag_pump_timer.stop()
+        except Exception:
+            pass
+        try:
+            import time as _time
+
+            t0 = getattr(self, "_drag_pump_t0", None)
+            ticks = getattr(self, "_drag_pump_ticks", "?")
+            _dnd_debug(
+                "drag pump stopped reason=%s was_active=%s ticks=%s over_ms=%s",
+                reason,
+                was_active,
+                ticks,
+                round((_time.monotonic() - t0) * 1000)
+                if t0 is not None
+                else "?",
+            )
+        except Exception:
+            pass
 
     def _pump_drag_frame(self) -> None:
         """One pump tick: re-dirty the canvas while the DnD zone is shown.
@@ -85,8 +116,12 @@ class WindowEventHandler(QObject):
                     getattr(self.widget, "is_drag_overlay_visible", lambda: False)()
                 )
             if not visible:
-                self._drag_pump_timer.stop()
+                self._stop_drag_pump("overlay-gone")
                 return
+            try:
+                self._drag_pump_ticks = int(getattr(self, "_drag_pump_ticks", 0)) + 1
+            except Exception:
+                pass
             canvas = getattr(self.widget, "image_label", None)
             if canvas is None:
                 return
@@ -153,6 +188,10 @@ class WindowEventHandler(QObject):
             # Start the drag-scoped frame pump (see _pump_drag_frame): the
             # show-edge update alone may never present on Wayland.
             try:
+                import time as _time
+
+                self._drag_pump_ticks = 0
+                self._drag_pump_t0 = _time.monotonic()
                 self._drag_pump_timer.start()
             except Exception:
                 pass
@@ -235,7 +274,7 @@ class WindowEventHandler(QObject):
         )
         self._drag_leave_timer.stop()
         try:
-            self._drag_pump_timer.stop()
+            self._stop_drag_pump("drop")
         except Exception:
             pass
         self._safe_update_drag_overlays(False)
@@ -370,6 +409,6 @@ class WindowEventHandler(QObject):
     def _handle_deferred_drag_leave(self):
         self._safe_update_drag_overlays(False)
         try:
-            self._drag_pump_timer.stop()
+            self._stop_drag_pump("deferred-leave")
         except Exception:
             pass
