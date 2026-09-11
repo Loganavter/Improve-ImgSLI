@@ -55,6 +55,12 @@ class WindowEventHandler(QObject):
         self.main_controller = main_controller
         self.widget = widget
         self.main_window = parent
+        # Process-age anchor for the DnD lag hunt: every DragEnter logs
+        # app_age_s so drag timing (fresh-window vs long-idle) is recorded
+        # objectively instead of by hand-timing.
+        import time as _time
+
+        self._app_t0 = _time.monotonic()
         self._first_external_load_pending = True
         self._drag_leave_timer = QTimer(self)
         self._drag_leave_timer.setSingleShot(True)
@@ -138,6 +144,17 @@ class WindowEventHandler(QObject):
                 canvas.update()
             except Exception:
                 pass
+            # Backing-store tickle (IMGSLI_DND_BACKING_TICKLE=1): dirty a tiny
+            # main-surface rect alongside the RHI present. If the stage only
+            # repaints on backing damage during grabs (RHI commits alone are
+            # ignored), this is the trigger. 8x8 corner repaint is ~1 ms.
+            try:
+                if getattr(self, "_drag_backing_tickles", False):
+                    _win = getattr(self, "main_window", None)
+                    if _win is not None:
+                        _win.update(0, 0, 8, 8)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -192,6 +209,9 @@ class WindowEventHandler(QObject):
 
                 self._drag_pump_ticks = 0
                 self._drag_pump_t0 = _time.monotonic()
+                self._drag_backing_tickles = bool(
+                    os.environ.get("IMGSLI_DND_BACKING_TICKLE")
+                )
                 self._drag_pump_timer.start()
             except Exception:
                 pass
@@ -229,6 +249,16 @@ class WindowEventHandler(QObject):
                 getattr(self.widget, "is_drag_overlay_visible", lambda: "?")(),
                 _dbg_overlay_state(self.widget),
             )
+            try:
+                import time as _time2
+
+                _t0 = getattr(self, "_app_t0", None)
+                _dnd_debug(
+                    "handle_drag_enter app_age_s=%s",
+                    round(_time2.monotonic() - _t0, 1) if _t0 is not None else "?",
+                )
+            except Exception:
+                pass
             try:
                 from PySide6.QtWidgets import QApplication as _QApp
 

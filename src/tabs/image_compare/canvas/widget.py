@@ -336,6 +336,7 @@ class CanvasWidget(QRhiWidget):
         super().showEvent(event)
         ic_first_frame_debug(self, "showEvent (canvas visible)")
         self._start_first_frame_sampler()
+        self._ensure_dnd_keepwarm()
         # Hidden stack pages never present; the first show on Windows/D3D often
         # lands on an uninitialized swapchain buffer (see-through CSD shell).
         self._request_update()
@@ -381,6 +382,63 @@ class CanvasWidget(QRhiWidget):
             )
             if self._ffd_sampler_ticks < self._ffd_sampler_max:
                 QTimer.singleShot(50, _tick)
+
+        QTimer.singleShot(50, _tick)
+
+    def _ensure_dnd_keepwarm(self) -> None:
+        """Experimental keep-warm ticker (IMGSLI_DND_KEEPWARM_MS>0).
+
+        Bisection follow-up: sampler grabs (not its timer/logs) are what
+        kill the ~350 ms drag-feedback lag, so a persistent grab may
+        replace the one-shot sampler as the warm source. Interval from env
+        (ms); grabs a 96x96 corner like the sampler and discards it. Child
+        of the canvas so it dies with the widget. Debug-logged start only
+        (no per-tick spam).
+        """
+        try:
+            import os as _os
+
+            try:
+                _interval = int(_os.environ.get("IMGSLI_DND_KEEPWARM_MS", "0"))
+            except Exception:
+                _interval = 0
+            if _interval <= 0:
+                return
+            if getattr(self, "_dnd_keepwarm_started", False):
+                return
+            self._dnd_keepwarm_started = True
+            from PySide6.QtCore import QRect as _QRect
+            from PySide6.QtCore import QTimer as _QTimer
+
+            _timer = _QTimer(self)
+            _timer.setInterval(_interval)
+
+            def _on_tick() -> None:
+                # Full readback replica of the sampler (grab + toImage +
+                # pixel walk): a bare grab() may stay lazy, while touching
+                # pixels forces GPU completion — the suspected warm source.
+                try:
+                    _img = self.grab(_QRect(0, 0, 96, 96)).toImage()
+                    if not _img.isNull():
+                        _opaque = _total = 0
+                        for _y in range(0, _img.height(), 6):
+                            for _x in range(0, _img.width(), 6):
+                                _total += 1
+                                if _img.pixelColor(_x, _y).alpha() >= 255:
+                                    _opaque += 1
+                except Exception:
+                    pass
+
+            _timer.timeout.connect(_on_tick)
+            _timer.start()
+            try:
+                from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+                _icdd("dnd keep-warm started interval_ms=%s", _interval)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         QTimer.singleShot(50, _tick)
 
