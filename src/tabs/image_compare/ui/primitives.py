@@ -308,6 +308,14 @@ class ImageComparePrimitivesFactory:
         target = self.target
         target.edit_name1 = CustomLineEdit(parent)
         target.edit_name2 = CustomLineEdit(parent)
+        # QLineEdit accepts file drags by default (mime has text/plain), which
+        # steals the drag target from the main-window routing chain: the
+        # window gets DragLeave, the 80ms deferred-leave timer hides the DnD
+        # zone and no routed DragEnter ever restores it (regression: the DnD
+        # tiles vanish whenever the caption edit row is visible). The caption
+        # fields are not drop targets.
+        target.edit_name1.setAcceptDrops(False)
+        target.edit_name2.setAcceptDrops(False)
         target.label_magnifier_size = Label(parent=parent, variant="group-title")
         target.label_capture_size = Label(parent=parent, variant="group-title")
         target.label_movement_speed = Label(parent=parent, variant="group-title")

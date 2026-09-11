@@ -380,7 +380,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 700,
+      "lines": 953,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -513,7 +513,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 671,
+      "lines": 682,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
