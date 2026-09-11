@@ -539,6 +539,17 @@ class CanvasWidget(QRhiWidget):
                     round((_t_first - _t0) * 1000),
                     self._rhi_presents_completed,
                 )
+                # Title probe counterpart (IMGSLI_DND_TITLE_PROBE=1): stamp
+                # PRESENT so a recording separates pipeline from compositor.
+                try:
+                    import os as _os3
+
+                    if _os3.environ.get("IMGSLI_DND_TITLE_PROBE"):
+                        _w3 = self.window()
+                        if _w3 is not None:
+                            _w3.setWindowTitle("◉ DND-PRESENT")
+                except Exception:
+                    pass
         except Exception:
             pass
         ic_first_frame_debug(
@@ -554,12 +565,37 @@ class CanvasWidget(QRhiWidget):
 
         def _flush() -> None:
             try:
-                from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
-
-                flush_qrhi_compositor(self, reason="ic-first-present")
-                ic_first_frame_debug(self, "compositor settle flush ran")
+                drag_vis = bool(
+                    getattr(
+                        getattr(self, "runtime_state", None),
+                        "_drag_overlay_visible",
+                        False,
+                    )
+                )
             except Exception:
-                self._request_update()
+                drag_vis = False
+            if drag_vis:
+                # Startup settle must not fire mid-drag: its activated flush
+                # (raise_/activateWindow with default activate=True) is an
+                # xdg-activation storm while the drag source owns focus —
+                # Mutter answers with busy-cursor flashes — plus full repaint
+                # churn on the GUI thread inside the show→visible window.
+                # The DnD settle chain owns restack while the zone is shown;
+                # the pre-emit gate check below still runs.
+                try:
+                    from tabs.image_compare.debug import ic_dnd_debug as _icdd0
+
+                    _icdd0("first-present settle skipped (drag overlay visible)")
+                except Exception:
+                    pass
+            else:
+                try:
+                    from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+                    flush_qrhi_compositor(self, reason="ic-first-present")
+                    ic_first_frame_debug(self, "compositor settle flush ran")
+                except Exception:
+                    self._request_update()
             self._emit_first_frame_if_ready()
 
         QTimer.singleShot(0, _flush)

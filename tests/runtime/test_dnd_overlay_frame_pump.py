@@ -75,3 +75,27 @@ def test_frame_pump_self_stops_when_overlay_gone(qtbot):
     handler._pump_drag_frame()
     assert not handler._drag_pump_timer.isActive()
     assert updates == []
+
+
+def test_title_probe_marks_enter_and_restores_on_leave(qtbot, monkeypatch):
+    from types import SimpleNamespace as _NS
+
+    monkeypatch.setenv("IMGSLI_DND_TITLE_PROBE", "1")
+    handler, _updates = _handler(qtbot)
+    titles: list[str] = []
+    win = _NS(
+        windowTitle=lambda: "Improve ImgSLI",
+        setWindowTitle=lambda t: titles.append(t),
+    )
+    handler.widget = _NS(
+        image_label=handler.widget.image_label,
+        update_drag_overlays=handler.widget.update_drag_overlays,
+        is_drag_overlay_visible=handler.widget.is_drag_overlay_visible,
+        window=lambda: win,
+    )
+
+    handler.handle_drag_enter(_enter_event())
+    assert titles == ["◉ DND-ENTER"]
+
+    handler._handle_deferred_drag_leave()
+    assert titles == ["◉ DND-ENTER", "Improve ImgSLI"]
