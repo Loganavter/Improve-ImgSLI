@@ -358,16 +358,6 @@ class CanvasWidget(QRhiWidget):
             return
         self._ffd_sampler_started = True
         self._ffd_sampler_ticks = 0
-        # Experiment knob for the DnD lag hunt: grab-keep-warm window.
-        # Default 30 ticks (1.5 s, legacy); IMGSLI_FFD_SAMPLER_TICKS extends
-        # it (e.g. 1200 = 60 s) so a drag can land DURING grabs vs AFTER.
-        import os as _os2
-
-        try:
-            _sampler_max = int(_os2.environ.get("IMGSLI_FFD_SAMPLER_TICKS", "30"))
-        except Exception:
-            _sampler_max = 30
-        self._ffd_sampler_max = max(1, _sampler_max)
         from tabs.image_compare.first_frame_debug import (
             ic_first_frame_surface_repr,
         )
@@ -380,52 +370,57 @@ class CanvasWidget(QRhiWidget):
                 self._rhi_presents_completed,
                 ic_first_frame_surface_repr(self),
             )
-            if self._ffd_sampler_ticks < self._ffd_sampler_max:
+            if self._ffd_sampler_ticks < 30:
                 QTimer.singleShot(50, _tick)
 
         QTimer.singleShot(50, _tick)
 
     def _ensure_dnd_keepwarm(self) -> None:
-        """Experimental keep-warm ticker (IMGSLI_DND_KEEPWARM_MS>0).
+        """Idle pipeline primer: silent canvas update ticks.
 
-        Bisection follow-up: sampler grabs (not its timer/logs) are what
-        kill the ~350 ms drag-feedback lag, so a persistent grab may
-        replace the one-shot sampler as the warm source. Interval from env
-        (ms); grabs a 96x96 corner like the sampler and discards it. Child
-        of the canvas so it dies with the widget. Debug-logged start only
-        (no per-tick spam).
+        A long-static canvas shows drop feedback ~350 ms late on NVIDIA
+        Wayland (cold swapchain/fences + deprioritized static surface;
+        proven by bisection: 50 ms grabs+logs instant at any age, silent
+        grabs fail, render logs alone fail, event loop free, wire healthy).
+        A periodic no-op RHI frame keeps the pipeline primed so the first
+        drag frame displays immediately. Default 250 ms (proven value);
+        opt out with ``IMGSLI_DND_KEEPWARM_MS=0``. Ticks stand down while
+        the canvas is hidden/minimized or while the drag pump owns frames.
         """
         try:
             import os as _os
 
             try:
-                _interval = int(_os.environ.get("IMGSLI_DND_KEEPWARM_MS", "0"))
+                _interval = int(_os.environ.get("IMGSLI_DND_KEEPWARM_MS", "250"))
             except Exception:
-                _interval = 0
+                _interval = 250
             if _interval <= 0:
                 return
             if getattr(self, "_dnd_keepwarm_started", False):
                 return
             self._dnd_keepwarm_started = True
-            from PySide6.QtCore import QRect as _QRect
             from PySide6.QtCore import QTimer as _QTimer
 
             _timer = _QTimer(self)
             _timer.setInterval(_interval)
 
             def _on_tick() -> None:
-                # Full readback replica of the sampler (grab + toImage +
-                # pixel walk): a bare grab() may stay lazy, while touching
-                # pixels forces GPU completion — the suspected warm source.
                 try:
-                    _img = self.grab(_QRect(0, 0, 96, 96)).toImage()
-                    if not _img.isNull():
-                        _opaque = _total = 0
-                        for _y in range(0, _img.height(), 6):
-                            for _x in range(0, _img.width(), 6):
-                                _total += 1
-                                if _img.pixelColor(_x, _y).alpha() >= 255:
-                                    _opaque += 1
+                    if not self.isVisible():
+                        return
+                    _win = self.window()
+                    if _win is not None:
+                        try:
+                            if _win.isMinimized():
+                                return
+                        except Exception:
+                            pass
+                    try:
+                        if bool(self.runtime_state._drag_overlay_visible):
+                            return  # drag pump owns frames while shown
+                    except Exception:
+                        pass
+                    self.update()
                 except Exception:
                     pass
 
@@ -440,7 +435,10 @@ class CanvasWidget(QRhiWidget):
         except Exception:
             pass
 
-        QTimer.singleShot(50, _tick)
+            _timer.timeout.connect(_on_tick)
+            _timer.start()
+        except Exception:
+            pass
 
     def resizeEvent(self, event):
         # lib_ui's gl_surface.cpp guard: refuse to forward a resize into

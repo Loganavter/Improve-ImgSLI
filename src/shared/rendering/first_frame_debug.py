@@ -131,15 +131,8 @@ class FirstFrameDebug:
         ``0.0`` = fully transparent; ``-1.0`` = unavailable (not shown / grab
         failed). This is what the compositor-side of Qt thinks the canvas
         shows, independent of the RHI present count.
-
-        ``IMGSLI_FFD_NO_GRAB=1`` skips the grab itself (bisection knob for
-        the DnD lag hunt: sampler ticks + logs stay, only the readback goes).
         """
         try:
-            import os as _os
-
-            if _os.environ.get("IMGSLI_FFD_NO_GRAB"):
-                return -1.0
             from PySide6.QtCore import QRect
 
             w, h = widget.width(), widget.height()
