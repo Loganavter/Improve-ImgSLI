@@ -103,6 +103,26 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         text1 = texts[0] if len(texts) > 0 else ""
         text2 = texts[1] if len(texts) > 1 else ""
 
+        # Raster cache: the tiles depend only on (size, orientation, texts),
+        # all of which invalidate state._drag_overlay_cache_key on change
+        # (state flip in interaction.set_drag_overlay_state, resize in
+        # widget.resizeEvent). Without this, every pump frame re-rasters a
+        # full-canvas QImage via QPainter (~10-20ms CPU) and re-uploads ~11MB
+        # — during a drag that cost dominates the frame and slows the
+        # compositor catch-up the tiles need to become visible.
+        try:
+            key = (int(fb_w), int(fb_h), bool(horizontal), str(text1), str(text2))
+        except Exception:
+            key = None
+        if key is not None:
+            try:
+                if getattr(state, "_drag_overlay_cache_key", None) == key:
+                    cached = getattr(state, "_drag_overlay_cached_image", None)
+                    if cached is not None and not cached.isNull():
+                        return cached
+            except Exception:
+                pass
+
         img = QImage(max(1, int(fb_w)), max(1, int(fb_h)), QImage.Format.Format_RGBA8888_Premultiplied)
         img.fill(Qt.GlobalColor.transparent)
         painter = QPainter(img)
@@ -118,7 +138,14 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         paint_drag_drop_overlay(painter, w, horizontal, text1, text2)
         painter.restore()
         painter.end()
-        return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
+        img = img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
+        if key is not None:
+            try:
+                state._drag_overlay_cache_key = key
+                state._drag_overlay_cached_image = img
+            except Exception:
+                pass
+        return img
 
 
 RENDER_PASSES: list[FullscreenOverlayTexturePass] = [DragDropOverlayPass()]

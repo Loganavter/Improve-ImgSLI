@@ -73,3 +73,19 @@ def test_drag_overlay_raster_hidden_state_returns_none(qapp):
     p = DragDropOverlayPass()
     assert p.should_paint(ctx) is False
     assert p._raster(w, ctx) is None
+
+
+def test_drag_overlay_raster_uses_cache(qapp):
+    w = _widget()
+    ctx = SimpleNamespace(widget=w, framebuffer_size=(800, 600))
+    p = DragDropOverlayPass()
+    first = p._raster(w, ctx)
+    assert first is not None
+    assert w.runtime_state._drag_overlay_cache_key == (800, 600, False, "one", "two")
+    # Second call with unchanged state must hit the cache (same object, no
+    # re-raster): steady pump frames stay cheap during a drag.
+    assert p._raster(w, ctx) is first
+    # State flip invalidates (interaction.set_drag_overlay_state clears it).
+    w.runtime_state._drag_overlay_cache_key = None
+    w.runtime_state._drag_overlay_cached_image = None
+    assert p._raster(w, ctx) is not first
