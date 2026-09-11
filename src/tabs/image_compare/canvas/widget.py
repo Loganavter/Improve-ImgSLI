@@ -79,6 +79,75 @@ from shared.rendering.first_frame_gate import (
     first_visual_present_count as _first_visual_present_count,
 )
 
+# DnD show-edge settle: bounded repeated compositor kicks (drag-scoped).
+# A single fixed-delay restack can land while the compositor still holds
+# the pre-tile buffer (Wayland throttles the inactive-drag subsurface),
+# and then nothing re-kicks it — the screen stays stale while presents
+# flow. The tick re-arms while the zone stays visible, bounded so a stuck
+# True can never spin timers forever. First kick sits just past the
+# typical first-present latency (~50 ms) so it lands amid tile-frames;
+# misses are covered by the repeats.
+_DND_RESTACK_FIRST_MS = 70
+_DND_RESTACK_REPEAT_MS = 150
+_DND_RESTACK_MAX_KICKS = 4
+
+
+def _schedule_drag_restack(w) -> None:
+    """Fire the first delayed settle kick; the tick chains bounded repeats.
+
+    Kick weight is A/B-able via ``IMGSLI_DND_KICK_MODE=full|light``
+    (default ``full``): ``light`` skips the full-window/parent/overlay
+    repaints and keeps only handle ``requestUpdate`` + canvas update, to
+    test whether the repaint churn taxes the presents it unblocks.
+    """
+    import os as _os
+
+    _mode = str(_os.environ.get("IMGSLI_DND_KICK_MODE", "full")).strip().lower()
+    if _mode not in ("full", "light"):
+        _mode = "full"
+    from PySide6.QtCore import QTimer as _QTimer
+
+    _QTimer.singleShot(
+        _DND_RESTACK_FIRST_MS, lambda: _drag_restack_tick(w, 0, _mode)
+    )
+
+
+def _drag_restack_tick(w, attempt: int, mode: str = "full") -> None:
+    """One settle kick; re-arms while the zone stays visible (bounded)."""
+    try:
+        from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+        import time as _time
+
+        t0 = getattr(w, "_dnd_show_t0", None)
+        still = bool(w.runtime_state._drag_overlay_visible)
+        _icdd(
+            "canvas.restack fired +%sms still_visible=%s attempt=%s mode=%s",
+            round((_time.monotonic() - t0) * 1000) if t0 is not None else "?",
+            still,
+            attempt,
+            mode,
+        )
+        if not still:
+            return
+        # activate=False: external drag focus belongs to the source app —
+        # raise_/activateWindow is a guaranteed-denied xdg-activation
+        # request (Mutter «ожидает» banner, internal-docs inv-flyout-wayland).
+        from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+        flush_qrhi_compositor(
+            w, reason="ic-dnd-show-settle", activate=False, chrome=(mode != "light")
+        )
+        if attempt + 1 < _DND_RESTACK_MAX_KICKS:
+            from PySide6.QtCore import QTimer as _QTimer
+
+            _QTimer.singleShot(
+                _DND_RESTACK_REPEAT_MS,
+                lambda: _drag_restack_tick(w, attempt + 1, mode),
+            )
+    except Exception:
+        pass
+
 
 class CanvasWidget(QRhiWidget):
     mousePressed = Signal(object)
@@ -269,48 +338,24 @@ class CanvasWidget(QRhiWidget):
 
                     # activate=False on both kicks: external drag focus belongs
                     # to the source app — activation would be denied and
-                    # banner (see _restack_on_tiles below).
-                    flush_qrhi_compositor(self, reason="ic-dnd-show", activate=False)
-                    # ...and once more after the first tile-frames are
+                    # banner (see _schedule_drag_restack below). chrome=False
+                    # on the immediate kick: it provably restacks the
+                    # pre-tile buffer (useless for tiles) while its full
+                    # repaint churn synchronously delays the first tile
+                    # frame inside the DragEnter handler — keep it light,
+                    # the settle chain (full kicks) does the real work.
+                    flush_qrhi_compositor(
+                        self, reason="ic-dnd-show", activate=False, chrome=False
+                    )
+                    # ...and bounded repeats after the first tile-frames are
                     # flowing. The immediate flush above restacks while only
                     # the pre-tile buffer exists; a lone restack there leaves
-                    # the compositor settled on stale content. The delayed
-                    # kick lands amid presented tile-frames. Single-shot,
+                    # the compositor settled on stale content, and a single
+                    # fixed-delay kick can likewise land while the throttled
+                    # subsurface still holds it. The chain re-arms while the
+                    # zone stays visible (max _DND_RESTACK_MAX_KICKS kicks),
                     # drag-scoped; no-op if the zone already hid.
-                    from PySide6.QtCore import QTimer as _QTimer
-
-                    def _restack_on_tiles(w=self):
-                        try:
-                            from tabs.image_compare.debug import (
-                                ic_dnd_debug as _icdd2,
-                            )
-
-                            import time as _time2
-
-                            t0 = getattr(w, "_dnd_show_t0", None)
-                            still = bool(w.runtime_state._drag_overlay_visible)
-                            _icdd2(
-                                "canvas.restack fired +%sms still_visible=%s",
-                                round((_time2.monotonic() - t0) * 1000)
-                                if t0 is not None
-                                else "?",
-                                still,
-                            )
-                            if still:
-                                # activate=False: during an external drag the
-                                # pointer/keyboard focus belongs to the file
-                                # manager — raise_/activateWindow here is a
-                                # guaranteed-denied xdg-activation request
-                                # and Mutter answers with the «Окно
-                                # "Improve-ImgSLI" ожидает» banner instead
-                                # (internal-docs inv-flyout-wayland rule).
-                                flush_qrhi_compositor(
-                                    w, reason="ic-dnd-show-settle", activate=False
-                                )
-                        except Exception:
-                            pass
-
-                    _QTimer.singleShot(120, _restack_on_tiles)
+                    _schedule_drag_restack(self)
                 except Exception:
                     self._request_update()
 

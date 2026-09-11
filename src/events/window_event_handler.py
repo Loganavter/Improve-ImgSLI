@@ -200,6 +200,19 @@ class WindowEventHandler(QObject):
                 getattr(self.widget, "is_drag_overlay_visible", lambda: "?")(),
                 _dbg_overlay_state(self.widget),
             )
+            try:
+                from PySide6.QtWidgets import QApplication as _QApp
+
+                _app = _QApp.instance()
+                _state = _app.applicationState() if _app is not None else "?"
+                _focus = _app.focusWindow() if _app is not None else None
+                _dnd_debug(
+                    "handle_drag_enter app_state=%s focusWindow=%s",
+                    getattr(_state, "name", _state),
+                    type(_focus).__name__ if _focus is not None else None,
+                )
+            except Exception:
+                pass
         else:
             _dnd_debug("handle_drag_enter IGNORE no Urls")
             event.ignore()

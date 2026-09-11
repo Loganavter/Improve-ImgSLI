@@ -76,7 +76,8 @@ def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
 
 
 def flush_qrhi_compositor(
-    widget: QWidget | None, *, reason: str = "", activate: bool = True
+    widget: QWidget | None, *, reason: str = "", activate: bool = True,
+    chrome: bool = True,
 ) -> None:
     """One-shot present + window update mirroring the first-flyout restack.
 
@@ -89,6 +90,13 @@ def flush_qrhi_compositor(
     «Окно "Improve-ImgSLI" ожидает» banner instead of activating
     (see internal-docs ``inv-flyout-wayland`` rule: never restore focus
     outside a genuine user interaction with our own window).
+
+    ``chrome=False`` skips the full-window/parent/overlay repaints and
+    keeps only the window-handle ``requestUpdate`` + widget update — the
+    light variant for high-frequency drag settle kicks, where the full
+    repaint churn risks starving the RHI presents it is meant to unblock
+    (internal-docs DnD §10: full-window ``update()`` storms drove
+    ``presents_during_show`` to zero).
     """
     _ = reason
     try:
@@ -107,8 +115,11 @@ def flush_qrhi_compositor(
         handle = win.windowHandle()
         if handle is not None:
             handle.requestUpdate()
-        win.update()
+        if chrome:
+            win.update()
     widget.update()
+    if not chrome:
+        return
     parent = widget.parentWidget()
     if parent is not None:
         parent.update()
