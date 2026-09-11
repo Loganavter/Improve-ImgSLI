@@ -75,3 +75,30 @@ def test_frame_pump_self_stops_when_overlay_gone(qtbot):
     handler._pump_drag_frame()
     assert not handler._drag_pump_timer.isActive()
     assert updates == []
+
+
+def _move_event():
+    mime = SimpleNamespace(hasUrls=lambda: True)
+    return SimpleNamespace(
+        mimeData=lambda: mime,
+        setDropAction=lambda action: None,
+        accept=lambda: None,
+    )
+
+
+def test_drag_move_dirties_canvas_while_visible(qtbot):
+    """Motion-synced present: stage repaints on pointer motion during
+    grabs, so a commit riding the same event displays sooner than
+    timer-driven ones. update() coalesces at high motion rates."""
+    handler, updates = _handler(qtbot)
+    handler.handle_drag_enter(_enter_event())
+    handler.widget.update_drag_overlays(True, visible=True)
+    before = len(updates)
+    handler.handle_drag_move(_move_event())
+    assert len(updates) == before + 1
+
+
+def test_drag_move_skips_canvas_when_hidden(qtbot):
+    handler, updates = _handler(qtbot)
+    handler.handle_drag_move(_move_event())
+    assert updates == []

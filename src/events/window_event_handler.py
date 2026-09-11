@@ -301,6 +301,18 @@ class WindowEventHandler(QObject):
                 pass
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
+            # Motion-synced present: the stage repaints on pointer motion
+            # during grabs, so a commit riding the same event displays far
+            # sooner than timer-driven ones. update() coalesces at high
+            # motion rates; no-op while the zone is hidden.
+            try:
+                _vis_now = getattr(self.widget, "is_drag_overlay_visible", lambda: False)()
+                if _vis_now:
+                    _canvas = getattr(self.widget, "image_label", None)
+                    if _canvas is not None:
+                        _canvas.update()
+            except Exception:
+                pass
         else:
             event.ignore()
 
