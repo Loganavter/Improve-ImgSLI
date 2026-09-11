@@ -357,6 +357,16 @@ class CanvasWidget(QRhiWidget):
             return
         self._ffd_sampler_started = True
         self._ffd_sampler_ticks = 0
+        # Experiment knob for the DnD lag hunt: grab-keep-warm window.
+        # Default 30 ticks (1.5 s, legacy); IMGSLI_FFD_SAMPLER_TICKS extends
+        # it (e.g. 1200 = 60 s) so a drag can land DURING grabs vs AFTER.
+        import os as _os2
+
+        try:
+            _sampler_max = int(_os2.environ.get("IMGSLI_FFD_SAMPLER_TICKS", "30"))
+        except Exception:
+            _sampler_max = 30
+        self._ffd_sampler_max = max(1, _sampler_max)
         from tabs.image_compare.first_frame_debug import (
             ic_first_frame_surface_repr,
         )
@@ -369,7 +379,7 @@ class CanvasWidget(QRhiWidget):
                 self._rhi_presents_completed,
                 ic_first_frame_surface_repr(self),
             )
-            if self._ffd_sampler_ticks < 30:
+            if self._ffd_sampler_ticks < self._ffd_sampler_max:
                 QTimer.singleShot(50, _tick)
 
         QTimer.singleShot(50, _tick)
