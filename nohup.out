@@ -1,0 +1,3 @@
+[repro] window shown; drag files over GL panel, then Widget panel
+[repro] GL enter 23:56:24.589 t0 set
+[repro] GL first-paint +3ms

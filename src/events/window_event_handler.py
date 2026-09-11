@@ -195,6 +195,35 @@ class WindowEventHandler(QObject):
                 self._drag_pump_timer.start()
             except Exception:
                 pass
+            # Event-loop lag probe: a singleShot(0) cascade measures how long
+            # the GUI thread stays busy after enter (full-window repaints,
+            # rasters). If the loop is saturated ~300 ms, no tuning of kick
+            # timing can help — the hog must go.
+            try:
+                if os.environ.get("IMGSLI_DND_DEBUG") or os.environ.get(
+                    "IMGSLI_IC_DEBUG"
+                ):
+                    import time as _time2
+
+                    _lag_t0 = _time2.monotonic()
+                    _lag_n = [0]
+
+                    def _lag_tick():
+                        try:
+                            _lag_n[0] += 1
+                            _dnd_debug(
+                                "event-loop lag tick=%s +%sms after enter",
+                                _lag_n[0],
+                                round((_time2.monotonic() - _lag_t0) * 1000),
+                            )
+                            if _lag_n[0] < 4:
+                                QTimer.singleShot(0, _lag_tick)
+                        except Exception:
+                            pass
+
+                    QTimer.singleShot(0, _lag_tick)
+            except Exception:
+                pass
             _dnd_debug(
                 "handle_drag_enter DONE after_show=%s %s",
                 getattr(self.widget, "is_drag_overlay_visible", lambda: "?")(),

@@ -13,6 +13,36 @@ from tabs.image_compare.canvas.features.drag_drop_overlay.render.overlay import 
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 
+# Show fade (Telegram-style, linear): first frames are a faint ghost so
+# feedback starts on frame 1 instead of popping binary at full opacity.
+# Progress derives from the canvas show edge; quantized so the raster
+# cache still hits per step. IMGSLI_DND_NO_FADE=1 restores binary show.
+_DND_FADE_SECONDS = 0.2
+_DND_FADE_STEPS = 12
+
+
+def _fade_progress(widget) -> float:
+    """Show-fade progress 0→1 from the drag show edge (1.0 = final)."""
+    try:
+        import os as _os
+
+        if _os.environ.get("IMGSLI_DND_NO_FADE"):
+            return 1.0
+        import time as _time
+
+        t0 = getattr(widget, "_dnd_show_t0", None)
+        if t0 is None:
+            return 1.0
+        p = (_time.monotonic() - float(t0)) / _DND_FADE_SECONDS
+        if p >= 1.0:
+            return 1.0
+        if p <= 0.0:
+            return 0.0
+        return round(p * _DND_FADE_STEPS) / _DND_FADE_STEPS
+    except Exception:
+        return 1.0
+
+
 class DragDropOverlayPass(FullscreenOverlayTexturePass):
     def prepare(self, widget, ctx, resource_updates) -> None:
         super().prepare(widget, ctx, resource_updates)
@@ -103,15 +133,16 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         text1 = texts[0] if len(texts) > 0 else ""
         text2 = texts[1] if len(texts) > 1 else ""
 
-        # Raster cache: the tiles depend only on (size, orientation, texts),
-        # all of which invalidate state._drag_overlay_cache_key on change
-        # (state flip in interaction.set_drag_overlay_state, resize in
-        # widget.resizeEvent). Without this, every pump frame re-rasters a
-        # full-canvas QImage via QPainter (~10-20ms CPU) and re-uploads ~11MB
-        # — during a drag that cost dominates the frame and slows the
-        # compositor catch-up the tiles need to become visible.
+        # Raster cache: the tiles depend only on (size, orientation, texts,
+        # fade step), all of which invalidate state._drag_overlay_cache_key
+        # on change (state flip in interaction.set_drag_overlay_state,
+        # resize in widget.resizeEvent). Without this, every pump frame
+        # re-rasters a full-canvas QImage via QPainter (~10-20ms CPU) and
+        # re-uploads ~11MB — during a drag that cost dominates the frame
+        # and slows the compositor catch-up the tiles need to become visible.
+        progress = _fade_progress(w)
         try:
-            key = (int(fb_w), int(fb_h), bool(horizontal), str(text1), str(text2))
+            key = (int(fb_w), int(fb_h), bool(horizontal), str(text1), str(text2), progress)
         except Exception:
             key = None
         if key is not None:
@@ -135,7 +166,7 @@ class DragDropOverlayPass(FullscreenOverlayTexturePass):
         dpr = max(1.0, dpr)
         painter.save()
         painter.scale(dpr, dpr)
-        paint_drag_drop_overlay(painter, w, horizontal, text1, text2)
+        paint_drag_drop_overlay(painter, w, horizontal, text1, text2, progress)
         painter.restore()
         painter.end()
         img = img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
