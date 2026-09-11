@@ -106,6 +106,24 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
     def _raster(self, widget, ctx) -> QImage | None:
         raise NotImplementedError
 
+    def _dnd_edge_debug(self, sig, msg: str, *args) -> None:
+        """Edge-triggered pass-stage logging (IMGSLI_IC_DEBUG only).
+
+        Temporary instrumentation for the "SSOT True but no tiles on
+        screen" investigation: reports prepare/record stages of the drag
+        overlay pass without flooding per-frame logs.
+        """
+        import os
+
+        if not os.environ.get("IMGSLI_IC_DEBUG"):
+            return
+        if getattr(self, "_dnd_dbg_sig", None) == sig:
+            return
+        self._dnd_dbg_sig = sig
+        import logging
+
+        logging.getLogger("ImproveImgSLI").warning("[ic-dnd] %s", msg % args if args else msg)
+
     def _ensure_pipeline(self, target, *, force: bool = False) -> bool:
         if self.rhi is None or target is None or self.srb is None:
             return False

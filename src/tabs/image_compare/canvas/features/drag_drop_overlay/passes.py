@@ -14,6 +14,25 @@ from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 
 class DragDropOverlayPass(FullscreenOverlayTexturePass):
+    def prepare(self, widget, ctx, resource_updates) -> None:
+        super().prepare(widget, ctx, resource_updates)
+        img_size = getattr(self.texture_size, "toTuple", lambda: self.texture_size)()
+        self._dnd_edge_debug(
+            ("prepare", self.active, str(img_size)),
+            "dnd-prepare raster_fired active=%s texture_size=%s",
+            self.active,
+            img_size,
+        )
+
+    def record(self, command_buffer, widget, ctx) -> None:
+        fired = bool(self.active and self.pipeline is not None)
+        self._dnd_edge_debug(
+            ("record", fired),
+            "dnd-record quad_fired=%s",
+            fired,
+        )
+        super().record(command_buffer, widget, ctx)
+
     """Rasterizes live drag/drop affordances into their own overlay texture.
 
     Live-only, interaction-driven — uses ``TRANSIENT_PREVIEW`` stacking.

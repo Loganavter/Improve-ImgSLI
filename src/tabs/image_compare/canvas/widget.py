@@ -194,6 +194,23 @@ class CanvasWidget(QRhiWidget):
                 )
             except Exception:
                 pass
+            if after:
+                # Wayland quirk (docs/dev/KNOWN_BUGS / qrhi-gotchas): the
+                # compositor can keep showing the previous subsurface buffer
+                # even though a frame with the DragDropOverlayPass tiles was
+                # presented — "SSOT True, screen stale". During an external
+                # drag the app additionally reports ApplicationInactive and
+                # Wayland throttles the subsurface. Kick the compositor once
+                # on the show edge, mirroring Multi Compare's drag/DnD path
+                # and the startup first-present settle.
+                try:
+                    from ui.canvas_infra.rhi.rhi_present_sync import (
+                        flush_qrhi_compositor,
+                    )
+
+                    flush_qrhi_compositor(self, reason="ic-dnd-show")
+                except Exception:
+                    self._request_update()
 
     def is_drag_overlay_visible(self) -> bool:
         return bool(self.runtime_state._drag_overlay_visible)
