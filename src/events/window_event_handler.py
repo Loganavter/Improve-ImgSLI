@@ -60,6 +60,51 @@ class WindowEventHandler(QObject):
         self._drag_leave_timer.setSingleShot(True)
         self._drag_leave_timer.setInterval(80)
         self._drag_leave_timer.timeout.connect(self._handle_deferred_drag_leave)
+        # Frame pump while the DnD overlay is visible (~20fps, drag-scoped).
+        # PROD parity with the first-frame sampler: without a steady update
+        # source the canvas can present zero frames during an external drag
+        # (Wayland keeps showing the pre-drag subsurface buffer), so tiles
+        # never appear although the SSOT is True. Plain update() is coalesced
+        # by Qt — cheap. Deliberately no raise_/activateWindow here: stealing
+        # focus from the drag source mid-drag would be worse than a stale
+        # frame (see flush_qrhi_compositor's activation path instead).
+        self._drag_pump_timer = QTimer(self)
+        self._drag_pump_timer.setInterval(50)
+        self._drag_pump_timer.timeout.connect(self._pump_drag_frame)
+
+    def _pump_drag_frame(self) -> None:
+        """One pump tick: re-dirty the canvas while the DnD zone is shown.
+
+        Self-guarding: stops itself when the overlay is gone, so a stray
+        timer can never spin forever.
+        """
+        try:
+            visible = False
+            if self.widget is not None:
+                visible = bool(
+                    getattr(self.widget, "is_drag_overlay_visible", lambda: False)()
+                )
+            if not visible:
+                self._drag_pump_timer.stop()
+                return
+            canvas = getattr(self.widget, "image_label", None)
+            if canvas is None:
+                return
+            try:
+                handle = canvas.windowHandle()
+            except Exception:
+                handle = None
+            if handle is not None:
+                try:
+                    handle.requestUpdate()
+                except Exception:
+                    pass
+            try:
+                canvas.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _schedule_load_when_stable(
         self, image_paths: list[str], slot_num: int, delay_ms: int = 100
@@ -105,6 +150,12 @@ class WindowEventHandler(QObject):
                 stack=False,
             )
             self._safe_update_drag_overlays(True)
+            # Start the drag-scoped frame pump (see _pump_drag_frame): the
+            # show-edge update alone may never present on Wayland.
+            try:
+                self._drag_pump_timer.start()
+            except Exception:
+                pass
             _dnd_debug(
                 "handle_drag_enter DONE after_show=%s %s",
                 getattr(self.widget, "is_drag_overlay_visible", lambda: "?")(),
@@ -183,6 +234,10 @@ class WindowEventHandler(QObject):
             stack=True,
         )
         self._drag_leave_timer.stop()
+        try:
+            self._drag_pump_timer.stop()
+        except Exception:
+            pass
         self._safe_update_drag_overlays(False)
         # Phase 2 canvas-only: RHI DragDropOverlayPass reads canvas state; only
         # canvas.update() is needed — no QWidget drag_overlay repaint forces.
@@ -314,3 +369,7 @@ class WindowEventHandler(QObject):
 
     def _handle_deferred_drag_leave(self):
         self._safe_update_drag_overlays(False)
+        try:
+            self._drag_pump_timer.stop()
+        except Exception:
+            pass
