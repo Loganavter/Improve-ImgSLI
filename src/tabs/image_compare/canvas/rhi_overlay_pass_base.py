@@ -111,15 +111,20 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
 
         Temporary instrumentation for the "SSOT True but no tiles on
         screen" investigation: reports prepare/record stages of the drag
-        overlay pass without flooding per-frame logs.
+        overlay pass without flooding per-frame logs. Sigs are namespaced
+        per call site (dict slot) so prepare/record don't evict each other.
         """
         import os
 
         if not os.environ.get("IMGSLI_IC_DEBUG"):
             return
-        if getattr(self, "_dnd_dbg_sig", None) == sig:
+        seen = getattr(self, "_dnd_dbg_sigs", None)
+        if seen is None:
+            seen = {}
+            self._dnd_dbg_sigs = seen
+        if seen.get(sig[0]) == sig:
             return
-        self._dnd_dbg_sig = sig
+        seen[sig[0]] = sig
         import logging
 
         logging.getLogger("ImproveImgSLI").warning("[ic-dnd] %s", msg % args if args else msg)

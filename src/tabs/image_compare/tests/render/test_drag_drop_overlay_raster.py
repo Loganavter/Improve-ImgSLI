@@ -27,8 +27,6 @@ def _widget():
     from PySide6.QtGui import QFont
 
     font = QFont()
-    font.setPixelSize(20)
-    font.setBold(True)
     state = SimpleNamespace(
         _drag_overlay_visible=True,
         _drag_overlay_horizontal=False,

@@ -194,6 +194,28 @@ class CanvasWidget(QRhiWidget):
                 )
             except Exception:
                 pass
+            if after and not before:
+                # Mark the present counter: on hide we log how many frames
+                # actually presented during the TRUE window. Tells apart
+                # "no frames scheduled" from "frames recorded but dropped by
+                # the compositor" without needing FIRST_FRAME_DEBUG (whose
+                # sampler would itself pump frames and confound the test).
+                try:
+                    self._dnd_show_present_mark = int(self._rhi_presents_completed)
+                except Exception:
+                    self._dnd_show_present_mark = None
+            if before and not after:
+                try:
+                    from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+                    mark = getattr(self, "_dnd_show_present_mark", None)
+                    now = int(self._rhi_presents_completed)
+                    _icdd(
+                        "canvas.hide presents_during_show=%s",
+                        (now - mark) if mark is not None else "?",
+                    )
+                except Exception:
+                    pass
             if after:
                 # Wayland quirk (docs/dev/KNOWN_BUGS / qrhi-gotchas): the
                 # compositor can keep showing the previous subsurface buffer
@@ -209,6 +231,22 @@ class CanvasWidget(QRhiWidget):
                     )
 
                     flush_qrhi_compositor(self, reason="ic-dnd-show")
+                    # ...and once more after the first tile-frames are
+                    # flowing. The immediate flush above restacks while only
+                    # the pre-tile buffer exists; a lone restack there leaves
+                    # the compositor settled on stale content. The delayed
+                    # kick lands amid presented tile-frames. Single-shot,
+                    # drag-scoped; no-op if the zone already hid.
+                    from PySide6.QtCore import QTimer as _QTimer
+
+                    def _restack_on_tiles(w=self):
+                        try:
+                            if bool(w.runtime_state._drag_overlay_visible):
+                                flush_qrhi_compositor(w, reason="ic-dnd-show-settle")
+                        except Exception:
+                            pass
+
+                    _QTimer.singleShot(120, _restack_on_tiles)
                 except Exception:
                     self._request_update()
 
