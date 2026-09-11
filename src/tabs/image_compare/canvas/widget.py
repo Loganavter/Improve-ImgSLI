@@ -79,6 +79,47 @@ from shared.rendering.first_frame_gate import (
     first_visual_present_count as _first_visual_present_count,
 )
 
+# DnD show-edge settle: one delayed compositor kick (drag-scoped).
+# The immediate flush restacks while only the pre-tile buffer exists;
+# the delayed kick lands amid presented tile-frames. Single-shot, no
+# re-arm: repeated-kick and kick-weight experiments moved nothing
+# visually (whole-window stall during grabs lives outside our timing),
+# so this stays the minimal proven recipe (MC drag/DnD path parity).
+_DND_RESTACK_DELAY_MS = 120
+
+
+def _schedule_drag_restack(w) -> None:
+    """Fire the delayed settle kick; no-op if the zone already hid."""
+    from PySide6.QtCore import QTimer as _QTimer
+
+    _QTimer.singleShot(_DND_RESTACK_DELAY_MS, lambda: _drag_restack_tick(w))
+
+
+def _drag_restack_tick(w) -> None:
+    """One settle kick; stands down if the zone already hid."""
+    try:
+        from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+        import time as _time
+
+        t0 = getattr(w, "_dnd_show_t0", None)
+        still = bool(w.runtime_state._drag_overlay_visible)
+        _icdd(
+            "canvas.restack fired +%sms still_visible=%s",
+            round((_time.monotonic() - t0) * 1000) if t0 is not None else "?",
+            still,
+        )
+        if not still:
+            return
+        # activate=False: external drag focus belongs to the source app —
+        # raise_/activateWindow is a guaranteed-denied xdg-activation
+        # request (Mutter «ожидает» banner, internal-docs inv-flyout-wayland).
+        from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+        flush_qrhi_compositor(w, reason="ic-dnd-show-settle", activate=False)
+    except Exception:
+        pass
+
 
 class CanvasWidget(QRhiWidget):
     mousePressed = Signal(object)
@@ -98,6 +139,10 @@ class CanvasWidget(QRhiWidget):
         configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
         self._rhi_presents_completed = 0
+        # DnD show→visible latency probes (env-gated logs only, see
+        # set_drag_overlay_state/render — prod-silent without IMGSLI_IC_DEBUG).
+        self._dnd_show_t0: float | None = None
+        self._dnd_first_present_t: float | None = None
         self._rhi_renderer = RhiCanvasRenderer()
         # Registered/unregistered by GlassHUD instances anchored to this
         # canvas (see ui/widgets/glass_hud/hud.py) -- consumed by
@@ -194,6 +239,96 @@ class CanvasWidget(QRhiWidget):
                 )
             except Exception:
                 pass
+            if after and not before:
+                # Mark the present counter: on hide we log how many frames
+                # actually presented during the TRUE window. Tells apart
+                # "no frames scheduled" from "frames recorded but dropped by
+                # the compositor" without needing FIRST_FRAME_DEBUG (whose
+                # sampler would itself pump frames and confound the test).
+                try:
+                    self._dnd_show_present_mark = int(self._rhi_presents_completed)
+                except Exception:
+                    self._dnd_show_present_mark = None
+                # Wall-clock show edge for the show→first-present latency probe.
+                # (Per-gesture clock: reset every show, cleared on hide.)
+                try:
+                    import time as _time
+
+                    self._dnd_show_t0 = _time.monotonic()
+                except Exception:
+                    self._dnd_show_t0 = None
+                try:
+                    self._dnd_first_present_t = None
+                except Exception:
+                    pass
+            if before and not after:
+                try:
+                    from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+                    import time as _time
+
+                    mark = getattr(self, "_dnd_show_present_mark", None)
+                    now = int(self._rhi_presents_completed)
+                    t0 = getattr(self, "_dnd_show_t0", None)
+                    t_first = getattr(self, "_dnd_first_present_t", None)
+                    t_now = _time.monotonic()
+                    if t0 is None:
+                        first_ms: object = "?"
+                        vis_ms: object = "?"
+                    else:
+                        vis_ms = round((t_now - t0) * 1000)
+                        first_ms = (
+                            round((t_first - t0) * 1000)
+                            if t_first is not None
+                            else "never"
+                        )
+                    _icdd(
+                        "canvas.hide presents_during_show=%s visible_ms=%s first_present_ms=%s",
+                        (now - mark) if mark is not None else "?",
+                        vis_ms,
+                        first_ms,
+                    )
+                except Exception:
+                    pass
+                try:
+                    self._dnd_show_t0 = None
+                    self._dnd_first_present_t = None
+                except Exception:
+                    pass
+            if after:
+                # Wayland quirk (docs/dev/KNOWN_BUGS / qrhi-gotchas): the
+                # compositor can keep showing the previous subsurface buffer
+                # even though a frame with the DragDropOverlayPass tiles was
+                # presented — "SSOT True, screen stale". During an external
+                # drag the app additionally reports ApplicationInactive and
+                # Wayland throttles the subsurface. Kick the compositor once
+                # on the show edge, mirroring Multi Compare's drag/DnD path
+                # and the startup first-present settle.
+                try:
+                    from ui.canvas_infra.rhi.rhi_present_sync import (
+                        flush_qrhi_compositor,
+                    )
+
+                    # activate=False on both kicks: external drag focus belongs
+                    # to the source app — activation would be denied and
+                    # banner (see _schedule_drag_restack below). chrome=False
+                    # on the immediate kick: it provably restacks the
+                    # pre-tile buffer (useless for tiles) while its full
+                    # repaint churn synchronously delays the first tile
+                    # frame inside the DragEnter handler — keep it light,
+                    # the settle chain (full kicks) does the real work.
+                    flush_qrhi_compositor(
+                        self, reason="ic-dnd-show", activate=False, chrome=False
+                    )
+                    # ...and once more after the first tile-frames are
+                    # flowing. The immediate flush above restacks while only
+                    # the pre-tile buffer exists; a lone restack there leaves
+                    # the compositor settled on stale content. The delayed
+                    # kick lands amid presented tile-frames. Single-shot,
+                    # drag-scoped; no-op if the zone already hid.
+                    _schedule_drag_restack(self)
+                except Exception:
+                    self._request_update()
 
     def is_drag_overlay_visible(self) -> bool:
         return bool(self.runtime_state._drag_overlay_visible)
@@ -202,6 +337,7 @@ class CanvasWidget(QRhiWidget):
         super().showEvent(event)
         ic_first_frame_debug(self, "showEvent (canvas visible)")
         self._start_first_frame_sampler()
+        self._ensure_dnd_keepwarm()
         # Hidden stack pages never present; the first show on Windows/D3D often
         # lands on an uninitialized swapchain buffer (see-through CSD shell).
         self._request_update()
@@ -239,6 +375,71 @@ class CanvasWidget(QRhiWidget):
                 QTimer.singleShot(50, _tick)
 
         QTimer.singleShot(50, _tick)
+
+    def _ensure_dnd_keepwarm(self) -> None:
+        """Idle pipeline primer: silent canvas update ticks.
+
+        A long-static canvas shows drop feedback ~350 ms late on NVIDIA
+        Wayland (cold swapchain/fences + deprioritized static surface;
+        proven by bisection: 50 ms grabs+logs instant at any age, silent
+        grabs fail, render logs alone fail, event loop free, wire healthy).
+        A periodic no-op RHI frame keeps the pipeline primed so the first
+        drag frame displays immediately. Default 250 ms (proven value);
+        opt out with ``IMGSLI_DND_KEEPWARM_MS=0``. Ticks stand down while
+        the canvas is hidden/minimized or while the drag pump owns frames.
+        """
+        try:
+            import os as _os
+
+            try:
+                _interval = int(_os.environ.get("IMGSLI_DND_KEEPWARM_MS", "250"))
+            except Exception:
+                _interval = 250
+            if _interval <= 0:
+                return
+            if getattr(self, "_dnd_keepwarm_started", False):
+                return
+            self._dnd_keepwarm_started = True
+            from PySide6.QtCore import QTimer as _QTimer
+
+            _timer = _QTimer(self)
+            _timer.setInterval(_interval)
+
+            def _on_tick() -> None:
+                try:
+                    if not self.isVisible():
+                        return
+                    _win = self.window()
+                    if _win is not None:
+                        try:
+                            if _win.isMinimized():
+                                return
+                        except Exception:
+                            pass
+                    try:
+                        if bool(self.runtime_state._drag_overlay_visible):
+                            return  # drag pump owns frames while shown
+                    except Exception:
+                        pass
+                    self.update()
+                except Exception:
+                    pass
+
+            _timer.timeout.connect(_on_tick)
+            _timer.start()
+            try:
+                from tabs.image_compare.debug import ic_dnd_debug as _icdd
+
+                _icdd("dnd keep-warm started interval_ms=%s", _interval)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+            _timer.timeout.connect(_on_tick)
+            _timer.start()
+        except Exception:
+            pass
 
     def resizeEvent(self, event):
         # lib_ui's gl_surface.cpp guard: refuse to forward a resize into
@@ -350,6 +551,33 @@ class CanvasWidget(QRhiWidget):
             return
 
         self._rhi_presents_completed = int(self._rhi_presents_completed) + 1
+        # DnD latency probe: first completed present after the show edge.
+        # Deliberately independent of FIRST_FRAME_DEBUG (whose sampler grabs
+        # and would itself pump frames, confounding the measurement). Logs
+        # once per show window; silent when no drag is active.
+        try:
+            _t0 = getattr(self, "_dnd_show_t0", None)
+            if (
+                _t0 is not None
+                and getattr(self, "_dnd_first_present_t", None) is None
+                and bool(
+                    getattr(getattr(self, "runtime_state", None),
+                            "_drag_overlay_visible", False)
+                )
+            ):
+                import time as _time3
+
+                _t_first = _time3.monotonic()
+                self._dnd_first_present_t = _t_first
+                from tabs.image_compare.debug import ic_dnd_debug as _icdd3
+
+                _icdd3(
+                    "canvas.first-present +%sms after show (present #%s)",
+                    round((_t_first - _t0) * 1000),
+                    self._rhi_presents_completed,
+                )
+        except Exception:
+            pass
         ic_first_frame_debug(
             self, "render() painted present #%s [%s]",
             self._rhi_presents_completed, ic_first_frame_readiness_repr(self),
@@ -363,12 +591,37 @@ class CanvasWidget(QRhiWidget):
 
         def _flush() -> None:
             try:
-                from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
-
-                flush_qrhi_compositor(self, reason="ic-first-present")
-                ic_first_frame_debug(self, "compositor settle flush ran")
+                drag_vis = bool(
+                    getattr(
+                        getattr(self, "runtime_state", None),
+                        "_drag_overlay_visible",
+                        False,
+                    )
+                )
             except Exception:
-                self._request_update()
+                drag_vis = False
+            if drag_vis:
+                # Startup settle must not fire mid-drag: its activated flush
+                # (raise_/activateWindow with default activate=True) is an
+                # xdg-activation storm while the drag source owns focus —
+                # Mutter answers with busy-cursor flashes — plus full repaint
+                # churn on the GUI thread inside the show→visible window.
+                # The DnD settle chain owns restack while the zone is shown;
+                # the pre-emit gate check below still runs.
+                try:
+                    from tabs.image_compare.debug import ic_dnd_debug as _icdd0
+
+                    _icdd0("first-present settle skipped (drag overlay visible)")
+                except Exception:
+                    pass
+            else:
+                try:
+                    from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+                    flush_qrhi_compositor(self, reason="ic-first-present")
+                    ic_first_frame_debug(self, "compositor settle flush ran")
+                except Exception:
+                    self._request_update()
             self._emit_first_frame_if_ready()
 
         QTimer.singleShot(0, _flush)

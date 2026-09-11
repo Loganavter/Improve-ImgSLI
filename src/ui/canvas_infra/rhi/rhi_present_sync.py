@@ -75,8 +75,29 @@ def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
     return True
 
 
-def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
-    """One-shot present + window update mirroring the first-flyout restack."""
+def flush_qrhi_compositor(
+    widget: QWidget | None, *, reason: str = "", activate: bool = True,
+    chrome: bool = True,
+) -> None:
+    """One-shot present + window update mirroring the first-flyout restack.
+
+    ``activate=False`` skips the ``ensure_window_active_for_qrhi`` kick
+    (``raise_`` + ``activateWindow``) — mandatory on reactive paths where
+    the user is interacting with *another* app, e.g. an external drag
+    whose pointer/keyboard focus belongs to the file manager. On Wayland
+    such a kick is a guaranteed-denied xdg-activation request: Mutter
+    marks our (obscured) window demanding-attention and pops the
+    «Окно "Improve-ImgSLI" ожидает» banner instead of activating
+    (see internal-docs ``inv-flyout-wayland`` rule: never restore focus
+    outside a genuine user interaction with our own window).
+
+    ``chrome=False`` skips the full-window/parent/overlay repaints and
+    keeps only the window-handle ``requestUpdate`` + widget update — the
+    light variant for high-frequency drag settle kicks, where the full
+    repaint churn risks starving the RHI presents it is meant to unblock
+    (internal-docs DnD §10: full-window ``update()`` storms drove
+    ``presents_during_show`` to zero).
+    """
     _ = reason
     try:
         is_vis = getattr(widget, "isVisible", None)
@@ -85,7 +106,8 @@ def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
     except (RuntimeError, AttributeError):
         return
 
-    ensure_window_active_for_qrhi(widget)
+    if activate:
+        ensure_window_active_for_qrhi(widget)
     if widget is None:
         return
     win = widget.window()
@@ -93,8 +115,11 @@ def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
         handle = win.windowHandle()
         if handle is not None:
             handle.requestUpdate()
-        win.update()
+        if chrome:
+            win.update()
     widget.update()
+    if not chrome:
+        return
     parent = widget.parentWidget()
     if parent is not None:
         parent.update()

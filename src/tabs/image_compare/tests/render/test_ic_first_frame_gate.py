@@ -160,3 +160,52 @@ def test_ic_render_waits_required_presents_before_flush_emit(monkeypatch):
     assert widget._rhi_presents_completed == 2
     scheduled.pop()()
     assert emitted == ["frame", "visual"]
+
+
+def test_ic_settle_flush_skipped_while_drag_visible(monkeypatch):
+    """Startup settle must not fire mid-drag (xdg-activation storm).
+
+    Regression (Wayland): ``render()`` schedules ``_settle_first_presents``
+    for every present ``<= 10`` — including drag presents, whose counter
+    shares the startup sequence. Its activated flush (``raise_`` +
+    ``activateWindow``) lands while the drag source owns focus: Mutter
+    answers with busy-cursor flashes, plus full repaint churn on the GUI
+    thread inside the show→visible window. While the DnD zone is shown the
+    DnD settle chain owns restack — the pre-emit gate check still runs.
+    """
+    from tabs.image_compare.canvas import widget as widget_mod
+
+    scheduled: list[object] = []
+    monkeypatch.setattr(widget_mod, "_first_visual_present_count", lambda: 1)
+    monkeypatch.setattr(
+        widget_mod.QTimer,
+        "singleShot",
+        lambda _ms, cb: scheduled.append(cb),
+    )
+    monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+    flushes: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(
+        "ui.canvas_infra.rhi.rhi_present_sync.flush_qrhi_compositor",
+        lambda *_a, **_k: flushes.append((_a, _k)),
+    )
+
+    emitted: list[str] = []
+    widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
+    widget._first_frame_rendered_emitted = False
+    widget._rhi_presents_completed = 0
+    widget._dnd_show_t0 = None
+    widget._dnd_first_present_t = None
+    widget.runtime_state = SimpleNamespace(_drag_overlay_visible=True)
+    widget.firstFrameRendered = SimpleNamespace(emit=lambda: emitted.append("frame"))
+    widget.firstVisualFrameReady = SimpleNamespace(
+        emit=lambda: emitted.append("visual")
+    )
+    widget._request_update = lambda: None
+
+    widget_mod.CanvasWidget.render(widget, object())
+    assert widget._rhi_presents_completed == 1
+    assert scheduled  # settle still scheduled (emit gate must run)
+
+    scheduled.pop()()  # run the settle flush -> skipped, emit proceeds
+    assert flushes == []
+    assert emitted == ["frame", "visual"]
