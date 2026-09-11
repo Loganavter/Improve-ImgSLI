@@ -213,31 +213,6 @@ class WindowEventHandler(QObject):
                 )
             except Exception:
                 pass
-            # Title probe (IMGSLI_DND_TITLE_PROBE=1): stamp the window title
-            # on delivery receipt and on first present, so a single screen
-            # recording separates delivery lag (cursor-cross → ENTER title)
-            # from pipeline lag (ENTER → PRESENT title) from compositor lag
-            # (PRESENT title → tiles). Title changes are passive xdg metadata
-            # (no activation, no repaint churn); restored on hide.
-            try:
-                if os.environ.get("IMGSLI_DND_TITLE_PROBE"):
-                    _win = None
-                    try:
-                        _win = self.widget.window() if self.widget is not None else None
-                    except Exception:
-                        _win = None
-                    if _win is not None:
-                        try:
-                            if getattr(self, "_dnd_title_orig", None) is None:
-                                self._dnd_title_orig = _win.windowTitle()
-                        except Exception:
-                            pass
-                        try:
-                            _win.setWindowTitle("◉ DND-ENTER")
-                        except Exception:
-                            pass
-            except Exception:
-                pass
         else:
             _dnd_debug("handle_drag_enter IGNORE no Urls")
             event.ignore()
@@ -316,7 +291,6 @@ class WindowEventHandler(QObject):
         except Exception:
             pass
         self._safe_update_drag_overlays(False)
-        self._restore_dnd_title()
         # Phase 2 canvas-only: RHI DragDropOverlayPass reads canvas state; only
         # canvas.update() is needed — no QWidget drag_overlay repaint forces.
         try:
@@ -445,30 +419,8 @@ class WindowEventHandler(QObject):
             )
             return pos.y() < mid_y
 
-    def _restore_dnd_title(self) -> None:
-        """Restore the pre-drag window title (title-probe counterpart)."""
-        try:
-            if not os.environ.get("IMGSLI_DND_TITLE_PROBE"):
-                return
-            orig = getattr(self, "_dnd_title_orig", None)
-            if orig is None:
-                return
-            self._dnd_title_orig = None
-            try:
-                _win = self.widget.window() if self.widget is not None else None
-            except Exception:
-                _win = None
-            if _win is not None:
-                try:
-                    _win.setWindowTitle(orig)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
     def _handle_deferred_drag_leave(self):
         self._safe_update_drag_overlays(False)
-        self._restore_dnd_title()
         try:
             self._stop_drag_pump("deferred-leave")
         except Exception:

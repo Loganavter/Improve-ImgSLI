@@ -79,41 +79,24 @@ from shared.rendering.first_frame_gate import (
     first_visual_present_count as _first_visual_present_count,
 )
 
-# DnD show-edge settle: bounded repeated compositor kicks (drag-scoped).
-# A single fixed-delay restack can land while the compositor still holds
-# the pre-tile buffer (Wayland throttles the inactive-drag subsurface),
-# and then nothing re-kicks it — the screen stays stale while presents
-# flow. The tick re-arms while the zone stays visible, bounded so a stuck
-# True can never spin timers forever. First kick sits just past the
-# typical first-present latency (~50 ms) so it lands amid tile-frames;
-# misses are covered by the repeats.
-_DND_RESTACK_FIRST_MS = 70
-_DND_RESTACK_REPEAT_MS = 150
-_DND_RESTACK_MAX_KICKS = 4
+# DnD show-edge settle: one delayed compositor kick (drag-scoped).
+# The immediate flush restacks while only the pre-tile buffer exists;
+# the delayed kick lands amid presented tile-frames. Single-shot, no
+# re-arm: repeated-kick and kick-weight experiments moved nothing
+# visually (whole-window stall during grabs lives outside our timing),
+# so this stays the minimal proven recipe (MC drag/DnD path parity).
+_DND_RESTACK_DELAY_MS = 120
 
 
 def _schedule_drag_restack(w) -> None:
-    """Fire the first delayed settle kick; the tick chains bounded repeats.
-
-    Kick weight is A/B-able via ``IMGSLI_DND_KICK_MODE=full|light``
-    (default ``full``): ``light`` skips the full-window/parent/overlay
-    repaints and keeps only handle ``requestUpdate`` + canvas update, to
-    test whether the repaint churn taxes the presents it unblocks.
-    """
-    import os as _os
-
-    _mode = str(_os.environ.get("IMGSLI_DND_KICK_MODE", "full")).strip().lower()
-    if _mode not in ("full", "light"):
-        _mode = "full"
+    """Fire the delayed settle kick; no-op if the zone already hid."""
     from PySide6.QtCore import QTimer as _QTimer
 
-    _QTimer.singleShot(
-        _DND_RESTACK_FIRST_MS, lambda: _drag_restack_tick(w, 0, _mode)
-    )
+    _QTimer.singleShot(_DND_RESTACK_DELAY_MS, lambda: _drag_restack_tick(w))
 
 
-def _drag_restack_tick(w, attempt: int, mode: str = "full") -> None:
-    """One settle kick; re-arms while the zone stays visible (bounded)."""
+def _drag_restack_tick(w) -> None:
+    """One settle kick; stands down if the zone already hid."""
     try:
         from tabs.image_compare.debug import ic_dnd_debug as _icdd
 
@@ -122,11 +105,9 @@ def _drag_restack_tick(w, attempt: int, mode: str = "full") -> None:
         t0 = getattr(w, "_dnd_show_t0", None)
         still = bool(w.runtime_state._drag_overlay_visible)
         _icdd(
-            "canvas.restack fired +%sms still_visible=%s attempt=%s mode=%s",
+            "canvas.restack fired +%sms still_visible=%s",
             round((_time.monotonic() - t0) * 1000) if t0 is not None else "?",
             still,
-            attempt,
-            mode,
         )
         if not still:
             return
@@ -135,16 +116,7 @@ def _drag_restack_tick(w, attempt: int, mode: str = "full") -> None:
         # request (Mutter «ожидает» banner, internal-docs inv-flyout-wayland).
         from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
 
-        flush_qrhi_compositor(
-            w, reason="ic-dnd-show-settle", activate=False, chrome=(mode != "light")
-        )
-        if attempt + 1 < _DND_RESTACK_MAX_KICKS:
-            from PySide6.QtCore import QTimer as _QTimer
-
-            _QTimer.singleShot(
-                _DND_RESTACK_REPEAT_MS,
-                lambda: _drag_restack_tick(w, attempt + 1, mode),
-            )
+        flush_qrhi_compositor(w, reason="ic-dnd-show-settle", activate=False)
     except Exception:
         pass
 
@@ -347,13 +319,11 @@ class CanvasWidget(QRhiWidget):
                     flush_qrhi_compositor(
                         self, reason="ic-dnd-show", activate=False, chrome=False
                     )
-                    # ...and bounded repeats after the first tile-frames are
+                    # ...and once more after the first tile-frames are
                     # flowing. The immediate flush above restacks while only
                     # the pre-tile buffer exists; a lone restack there leaves
-                    # the compositor settled on stale content, and a single
-                    # fixed-delay kick can likewise land while the throttled
-                    # subsurface still holds it. The chain re-arms while the
-                    # zone stays visible (max _DND_RESTACK_MAX_KICKS kicks),
+                    # the compositor settled on stale content. The delayed
+                    # kick lands amid presented tile-frames. Single-shot,
                     # drag-scoped; no-op if the zone already hid.
                     _schedule_drag_restack(self)
                 except Exception:
@@ -539,17 +509,6 @@ class CanvasWidget(QRhiWidget):
                     round((_t_first - _t0) * 1000),
                     self._rhi_presents_completed,
                 )
-                # Title probe counterpart (IMGSLI_DND_TITLE_PROBE=1): stamp
-                # PRESENT so a recording separates pipeline from compositor.
-                try:
-                    import os as _os3
-
-                    if _os3.environ.get("IMGSLI_DND_TITLE_PROBE"):
-                        _w3 = self.window()
-                        if _w3 is not None:
-                            _w3.setWindowTitle("◉ DND-PRESENT")
-                except Exception:
-                    pass
         except Exception:
             pass
         ic_first_frame_debug(
