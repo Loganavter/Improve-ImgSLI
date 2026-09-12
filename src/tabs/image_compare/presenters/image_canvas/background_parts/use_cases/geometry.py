@@ -71,6 +71,43 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
     size1 = _size_or_none(src_resize1) or _size_or_none(source1)
     size2 = _size_or_none(src_resize2) or _size_or_none(source2)
+    # W3a: envelope fits the box-clipped content. Boxes resolve through the
+    # single-owner interface (session crop service; ``resolve_box_for_path``
+    # never blocks the GUI thread on an unwarmed service) and scale to the
+    # sizes in hand (unify-resampled stores included). None per slot keeps
+    # today's sizes identically. The dispatcher path below still returns
+    # early (Bucket A: base_images.update_common_letterbox_geometry owns the
+    # Store geometry via transact); this only affects the sizes fed to the
+    # envelope helper and the no-dispatcher fallback assignment.
+    try:
+        from tabs.image_compare.canvas.texture_parts.crop_clip import (
+            box_dims as _box_dims,
+            resolve_box_for_path as _resolve_box,
+            scaled_box_for_source as _scaled_box,
+        )
+
+        _doc = None
+        try:
+            _doc = presenter.store.get_session_state_slot("document")
+        except Exception:
+            _doc = None
+        _p1 = getattr(_doc, "image1_path", None) if _doc is not None else None
+        _p2 = getattr(_doc, "image2_path", None) if _doc is not None else None
+        _ctrl = getattr(presenter, "session_controller", None) or getattr(
+            presenter, "controller", None
+        )
+        try:
+            _svc = _ctrl._get_crop_service() if _ctrl is not None else None
+        except Exception:
+            _svc = None
+        _b1 = _scaled_box(_resolve_box(_p1, _svc), path=_p1, live_size=size1)
+        _b2 = _scaled_box(_resolve_box(_p2, _svc), path=_p2, live_size=size2)
+        if _b1 is not None and size1 is not None:
+            size1 = _box_dims(_b1, size1)
+        if _b2 is not None and size2 is not None:
+            size2 = _box_dims(_b2, size2)
+    except Exception:
+        pass
     # Eager max envelope via shared host helper — single
     # resolve_canvas_content_geometry(cw,ch,pw,ph) for both sides, no hold.
     has1 = bool(size1 and size1[0] > 0 and size1[1] > 0)
