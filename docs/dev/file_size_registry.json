@@ -168,7 +168,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/geometry/layout_plan.py",
-      "lines": 470,
+      "lines": 501,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "build_magnifier_layout is one non-decomposable per-frame",
@@ -284,7 +284,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 607,
+      "lines": 703,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -368,7 +368,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
-      "lines": 478,
+      "lines": 615,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
