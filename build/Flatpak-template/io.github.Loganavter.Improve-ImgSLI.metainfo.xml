@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.Loganavter.Improve-ImgSLI</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Improve ImgSLI</name>
+  <summary>Image comparison with advanced magnifiers</summary>
+  <description>
+    <p>
+      Improve ImgSLI is an open-source image comparison tool focused on precise visual inspection, responsive interaction, and advanced canvas rendering workflows. It is designed for artists, photographers, retouchers, AI upscaling workflows, quality control, and anyone who needs to compare images at pixel level without losing context.
+    </p>
+    <p>Key features include:</p>
+    <ul>
+      <li>Compare images with a movable horizontal or vertical split line, including zooming and panning in the main canvas.</li>
+      <li>Use one or more synchronized magnifiers with adjustable capture areas, display sizes, freeze mode, combined layouts, internal split, per-instance colors, and keyboard-assisted positioning.</li>
+      <li>Load and manage multiple images per side with drag-and-drop, list switching, swapping, and direct filename editing.</li>
+      <li>Inspect visual differences with rendering-aware preview controls and selectable interpolation modes.</li>
+      <li>Export full-resolution comparison images with overlays, labels, and comparison state preserved.</li>
+      <li>Edit recorded comparison sessions in the built-in video editor with timeline selection, trimming, preview playback, and export.</li>
+      <li>Use a feature-contract based canvas architecture that keeps overlays, magnifiers, guide lines, settings, and export behavior synchronized.</li>
+      <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
+    </ul>
+    <p>
+      The application is distributed under the GPL-3.0-or-later License.
+      It uses PySide6 and Qt 6 (LGPL-3.0-or-later). See LICENSE and
+      THIRD_PARTY_LICENSES.md in the source repository for details.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
+  <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
+      <caption>Magnifier</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
+      <caption>Difference View</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
+      <caption>Multi Compare</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_4.jpg</image>
+      <caption>Create a workspace</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_5.jpg</image>
+      <caption>Video Editor</caption>
+    </screenshot>
+  </screenshots>
+  <developer id="io.github.loganavter">
+    <name>Loganavter</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="10.0.1" date="2026-07-20">
+      <url>https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v10.0.1</url>
+      <description>
+        <p>Fix multiple inheritance crashes in UI and update to sli-ui-toolkit 3.1.9</p>
+      </description>
+    </release>
+    <release version="9.0.0" date="2026-05-30">
+      <description>
+        <p>A major release focused on smoother canvas interaction, sharper rendering, and a richer multi-magnifier workflow.</p>
+        <ul>
+          <li>Smoother zoom and panning in the main comparison canvas, with more responsive feedback during interactive movement.</li>
+          <li>Cleaner image rendering with corrected alpha handling, so anti-aliased edges, magnifier circles, and overlays look crisp both on screen and in screenshots.</li>
+          <li>Reworked multi-magnifier workflow: easier to add, hide, delete, and manage multiple magnifiers, each with its own color and settings.</li>
+          <li>Optional automatic color assignment for new magnifiers and optional intersection highlighting while dragging capture areas.</li>
+          <li>More consistent behavior across comparison modes, guide lines, capture rings, filename overlays, and exported images.</li>
+          <li>Smoother live interactions: separators, splits, and magnifier dividers move without lag and stay in sync with the cursor.</li>
+          <li>Better compatibility with Flatpak: removed the direct DBus notification path that caused integration issues.</li>
+          <li>Updated in-app help to cover the expanded magnifier behavior and new canvas controls.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="8.1.0" date="2026-03-30">
+      <description>
+        <p>A major release consolidating months of deep architectural work and introducing significant new features.</p>
+        <ul>
+          <li>Hybrid CPU-GPU rendering: a new rendering engine capable of offloading work to the GPU via OpenGL shaders for dramatically improved performance on large images.</li>
+          <li>Canvas architecture overhaul: the comparison canvas was fully rewritten for correctness and performance across all operating modes and edge cases.</li>
+          <li>Native Qt widgets: all pop-up and overlay windows are now native Qt widgets, greatly improving Wayland compatibility.</li>
+          <li>Canvas zooming and panning: the main comparison view can now be zoomed and panned interactively.</li>
+          <li>Video editor improvements: the timeline was rewritten with keyframe-based model, aspect-ratio-correct thumbnails, and dynamic spacing.</li>
+          <li>Plugin-based architecture for extensibility and a cleaner internal structure.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="7.9.0" date="2025-10-27">
+      <description>
+        <p>This release includes various improvements and bug fixes.</p>
+      </description>
+    </release>
+    <release version="6.2.0" date="2025-08-16">
+      <description>
+        <p>This is the most extensive architectural refactoring in the project's history, transitioning the entire application to a robust and modern Model-View-Presenter (MVP) pattern. This update establishes a new, stable foundation for future development and introduces a completely custom-built UI.</p>
+        <ul>
+          <li>Complete Architectural Overhaul: The codebase is now fully modular and based on the MVP pattern, significantly improving stability and maintainability. Many underlying bugs have been passively fixed as a result.</li>
+          <li>New Custom UI: The third-party `PyQt-Fluent-Widgets` library has been removed and replaced with a custom-built set of "fluent-style" components. This removes GPL licensing constraints and gives the application a more unique design.</li>
+          <li>Enhanced Image List Management: The image selection flyout is now a powerful two-panel manager with full drag-and-drop support for reordering and moving images between lists.</li>
+          <li>New and Reimagined Dialogs: Introduced a dedicated, feature-rich Export dialog and a redesigned, easier-to-navigate Help window.</li>
+          <li>Improved Caching: The caching system has been upgraded from two to three levels for even smoother performance during interactive use.</li>
+          <li>Reduced Package Size: The removal of the external UI library has decreased the application's overall size on some platforms.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="5.8.20" date="2025-07-09">
+      <description>
+        <p>This is a major quality-of-life and rendering engine update.</p>
+        <ul>
+          <li>Overhauled the core update logic to a reactive, state-driven architecture, significantly improving stability and eliminating a class of race-condition bugs.</li>
+          <li>The magnifier can now render outside the image boundaries and correctly handles horizontal split view.</li>
+          <li>Added smooth, anti-aliased borders for the magnifier and capture area for better visual quality.</li>
+          <li>Added long-press actions for swapping and clearing images/lists to speed up workflow.</li>
+          <li>Image selection dropdowns are now scrollable with the mouse wheel.</li>
+          <li>Added a new setting to permanently enable or disable debug logging.</li>
+          <li>Replaced all internal print statements with a structured logging system.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="4.9.0" date="2025-06-05">
+      <description>
+        <p>This release introduces a major user interface overhaul and performance improvements.</p>
+        <ul>
+          <li>The application interface has been completely redesigned using the modern `qfluentwidgets` style.</li>
+          <li>The image caching service has been significantly improved, resulting in a much smoother experience.</li>
+          <li>Refactored the core rendering code for better performance and easier maintenance.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="3.1.9" date="2025-04-15">
+      <description>
+        <p>This release focuses on settings persistence and bug fixes.</p>
+        <ul>
+          <li>Added window state persistence: the app now remembers its size and position between sessions.</li>
+          <li>Introduced a new Settings dialog to centralize application preferences.</li>
+          <li>Added options to configure UI language, JPEG save quality, and the maximum length of displayed filenames.</li>
+          <li>Addressed several critical bugs to improve stability.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

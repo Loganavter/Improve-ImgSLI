@@ -1,0 +1,47 @@
+{
+  "session_picker": {
+    "tab_name": "New Tab"
+  },
+  "title": "Create a workspace",
+  "subtitle": "Pick a session type to begin",
+  "types": {
+    "image_compare": "Image Compare",
+    "multi_compare": "Multi Compare"
+  },
+  "descriptions": {
+    "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
+    "multi_compare": "Grid layout for comparing several sources at once."
+  },
+  "recent": {
+    "title": "Recent",
+    "empty_title": "Load your first project",
+    "empty_hint": "Drop a .imgsli file here to pin it",
+    "empty": "Saved projects appear here after you open or save a .imgsli file. Drop a project file here to pin it to this list.",
+    "sort_modified": "Date modified",
+    "sort_created": "Date created",
+    "sort_name": "Name",
+    "sort_asc": "Ascending",
+    "sort_desc": "Descending",
+    "view_grid": "Grid",
+    "view_list": "List",
+    "missing": "File missing",
+    "cap_evicted": "Recent list is full ({cap}). Dropped “{name}” to make room for the new project — known limit for now. If you need a higher cap, open a GitHub issue ({url}); you may be the first.",
+    "action_open": "Open",
+    "action_properties": "Properties",
+    "action_remove": "Remove from list",
+    "action_remove_selected": "Remove selected ({n})",
+    "action_reveal": "Show in folder",
+    "prop_status": "Status",
+    "prop_file_modified": "Date modified",
+    "prop_file_created": "Date created",
+    "prop_pinned": "Added to Recent",
+    "prop_opened": "Last opened",
+    "prop_sessions": "Sessions",
+    "relative": {
+      "just_now": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    }
+  }
+}

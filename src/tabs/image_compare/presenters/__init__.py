@@ -1,0 +1,2 @@
+"""Image compare presenter contributions."""
+

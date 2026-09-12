@@ -1,0 +1,20 @@
+{
+  "ui": {
+    "choose_capture_ring_color": "Escolher Cor do Anel de Captura",
+    "choose_divider_line_color": "Escolher Cor da Linha Divisória",
+    "choose_magnifier_border_color": "Escolher Cor da Borda da Lupa",
+    "choose_magnifier_divider_line_color": "Escolher Cor da Linha Divisória da Lupa",
+    "choose_magnifier_guides_color": "Escolher Cor das Guias da Lupa",
+    "drop_images_1_here": "Arraste Imagem(ns) 1 Aqui",
+    "drop_images_2_here": "Arraste Imagem(ns) 2 Aqui",
+    "edit_current_image_1_name": "Editar Nome da Imagem Atual 1",
+    "edit_current_image_2_name": "Editar Nome da Imagem Atual 2",
+    "include_file_names_in_saved_image": "Incluir nomes de arq. na img salva",
+    "psnr": "PSNR",
+    "select_color": "Selecionar Cor",
+    "showhide_window": "Mostrar/Ocultar janela",
+    "ssim": "SSIM",
+    "toggle_split_orientation": "Alternar Orientação de Divisão (Horizontal/Vertical)",
+    "choose_magnifier_base_color": "Escolher Cor Base para Elementos da Lupa"
+  }
+}

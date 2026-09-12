@@ -1,0 +1,3 @@
+QDialog#ExportDialog {
+    background-color: @dialog.background;
+}

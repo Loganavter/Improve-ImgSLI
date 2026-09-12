@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from core.state_management.action_base import Action
+    from core.store_viewport import (
+        GeometryState,
+        InteractionState,
+        RenderCacheState,
+        RenderConfig,
+        ViewState,
+    )
+    from shared.keyframing.adapters_base import ChannelDescriptor
+else:
+    Action = Any
+    RenderConfig = Any
+    ViewState = Any
+    InteractionState = Any
+    GeometryState = Any
+    RenderCacheState = Any
+    ChannelDescriptor = Any
+
+@dataclass(frozen=True)
+class PropertySnapshot:
+    """Generic vessel canvas-feature properties read/write against.
+
+    Deliberately holds only `viewport_state` — no registered canvas feature
+    property reads anything else. Richer, tab-owned recording/playback
+    snapshot types are a separate concern that never crosses into this
+    generic contract.
+    """
+    viewport_state: Any
+    settings_state: Any = None
+
+ReduceViewStateFn = Callable[[ViewState, Action], ViewState]
+ReduceRenderConfigFn = Callable[[RenderConfig, Action], RenderConfig]
+ReduceInteractionStateFn = Callable[[InteractionState, Action], InteractionState]
+ReduceGeometryStateFn = Callable[[GeometryState, Action], GeometryState]
+ReduceCacheStateFn = Callable[[RenderCacheState, Action], RenderCacheState]
+PropertySnapshotReader = Callable[[PropertySnapshot], dict[str, Any]]
+PropertySnapshotWriter = Callable[[PropertySnapshot, dict[str, Any]], None]
+PropertySettingSerializer = Callable[[dict[str, Any]], Any]
+PropertySettingDeserializer = Callable[[Any], dict[str, Any]]
+ToolbarToggleHandler = Callable[[Any, bool], None]
+ToolbarValueHandler = Callable[[Any, int], None]
+ToolbarClickHandler = Callable[[Any], None]
+ToolbarSyncHandler = Callable[[Any], None]
+ToolbarSliderPressedHandler = Callable[[Any], None]
+ToolbarSliderReleasedHandler = Callable[[Any], None]
+FeatureCommandHandler = Callable[..., Any]
+SettingsEventArgsExtractor = Callable[[Any], tuple[Any, ...]]
+RenderSceneOverridesBuilder = Callable[[Any], dict[str, Any]]
+PrepareWorkerViewportFn = Callable[[Any, Any], None]
+ApplyPlanRuntimeOverlayFn = Callable[[Any, Any], None]
+ApplyLiveRuntimeOverlayFn = Callable[[Any, Any], bool]
+FeatureStateQueryHandler = Callable[..., Any]
+FeatureStateCommandHandler = Callable[..., None]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureStateQuery:
+    """Query to read feature state directly."""
+    query_id: str
+    handler: FeatureStateQueryHandler
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureStateCommand:
+    """Command to modify feature state directly."""
+    command_id: str
+    handler: FeatureStateCommandHandler
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureProperty:
+    id: str
+    label: str
+    kind: str
+    read_snapshot: PropertySnapshotReader
+    write_snapshot: PropertySnapshotWriter
+    channels: tuple[ChannelDescriptor, ...] | None = None
+    group_id: str | None = None
+    group_label: str | None = None
+    setting_key: str | None = None
+    serialize_setting: PropertySettingSerializer | None = None
+    deserialize_setting: PropertySettingDeserializer | None = None
+    order: int = 100
+
+BuildCanvasFeaturePropertiesFn = Callable[[], tuple[CanvasFeatureProperty, ...]]
+BuildCanvasFeatureStateQueriesFn = Callable[[], tuple[CanvasFeatureStateQuery, ...]]
+BuildCanvasFeatureStateCommandsFn = Callable[[], tuple[CanvasFeatureStateCommand, ...]]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureToolbarBinding:
+    control_id: str
+    on_toggled: ToolbarToggleHandler | None = None
+    on_value_changed: ToolbarValueHandler | None = None
+    on_right_clicked: ToolbarClickHandler | None = None
+    on_middle_clicked: ToolbarClickHandler | None = None
+    on_pressed: ToolbarSliderPressedHandler | None = None
+    on_released: ToolbarSliderReleasedHandler | None = None
+    sync_state: ToolbarSyncHandler | None = None
+
+BuildCanvasFeatureToolbarBindingsFn = Callable[
+    [], tuple[CanvasFeatureToolbarBinding, ...]
+]
+BuildCanvasFeatureCommandsFn = Callable[[], dict[str, FeatureCommandHandler]]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureCommandAlias:
+    capability_id: str
+    command_id: str
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureSettingsEventBinding:
+    event_type: type
+    command_id: str
+    extract_args: SettingsEventArgsExtractor
+
+BuildCanvasFeatureSettingsEventsFn = Callable[
+    [], tuple[CanvasFeatureSettingsEventBinding, ...]
+]
+
+GestureMatchFn = Callable[[Any], bool]
+GestureActiveFn = Callable[[Any], bool]
+GestureBeginFn = Callable[[Any, Any], None]
+GestureUpdateFn = Callable[[Any, Any], None]
+GestureEndFn = Callable[[Any], None]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureGestureBinding:
+    """A canvas feature declares how it claims a mouse gesture.
+
+    Shared event code (``events/image_label/mouse.py``) must not branch on
+    feature-specific flags. Instead, it walks gesture bindings provided by
+    features, runs ``matches(ctx)`` on press to find the winning candidate,
+    and ``is_active(store)`` on move/release to find the currently-driving
+    gesture. All routing decisions live in the feature, not in shared code.
+
+    ``begin``/``update``/``end`` are feature-owned closures that wrap any
+    alias lookups and event-layer geometry calls; shared code only invokes
+    them as opaque callables.
+    """
+    gesture_id: str
+    button: int
+    matches: GestureMatchFn
+    is_active: GestureActiveFn
+    begin: GestureBeginFn | None = None
+    update: GestureUpdateFn | None = None
+    end: GestureEndFn | None = None
+    owner: str | None = None
+    priority: int = 100
+
+BuildCanvasFeatureGestureBindingsFn = Callable[
+    [], tuple[CanvasFeatureGestureBinding, ...]
+]
+
+ContextMenuZoneSuppressFn = Callable[[Any], bool]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureContextMenuZone:
+    """A canvas feature declares territory where host context menus are suppressed.
+
+    Shared canvas code (``contextMenuEvent``) must not hard-code feature geometry.
+    Instead it walks zones from ``build_context_menu_zones`` and, if any
+    ``suppresses(ctx)`` returns True, skips opening the slot/image menu.
+
+    ``ctx`` is a ``ContextMenuHitContext`` (store, canvas, local_pos, session_type).
+    Predicates live in the feature package and may use scene hit-tests / aliases.
+    """
+
+    zone_id: str
+    suppresses: ContextMenuZoneSuppressFn
+    priority: int = 100
+    owner: str | None = None
+
+BuildCanvasFeatureContextMenuZonesFn = Callable[
+    [], tuple[CanvasFeatureContextMenuZone, ...]
+]
+
+@dataclass(frozen=True, slots=True)
+class CanvasWidgetFeature:
+    name: str
+    reduce_view_state: ReduceViewStateFn
+    reduce_render_config: ReduceRenderConfigFn
+    reduce_interaction_state: ReduceInteractionStateFn | None = None
+    reduce_geometry_state: ReduceGeometryStateFn | None = None
+    reduce_cache_state: ReduceCacheStateFn | None = None
+    build_properties: BuildCanvasFeaturePropertiesFn | None = None
+    build_toolbar_bindings: BuildCanvasFeatureToolbarBindingsFn | None = None
+    build_commands: BuildCanvasFeatureCommandsFn | None = None
+    command_aliases: tuple[CanvasFeatureCommandAlias, ...] = ()
+    build_settings_event_bindings: BuildCanvasFeatureSettingsEventsFn | None = None
+    build_gesture_bindings: BuildCanvasFeatureGestureBindingsFn | None = None
+    build_context_menu_zones: BuildCanvasFeatureContextMenuZonesFn | None = None
+    build_state_queries: BuildCanvasFeatureStateQueriesFn | None = None
+    build_state_commands: BuildCanvasFeatureStateCommandsFn | None = None
+    build_render_scene_overrides: RenderSceneOverridesBuilder | None = None
+    prepare_worker_viewport: PrepareWorkerViewportFn | None = None
+    apply_plan_runtime_overlay: ApplyPlanRuntimeOverlayFn | None = None
+    apply_live_runtime_overlay: ApplyLiveRuntimeOverlayFn | None = None
+    i18n_namespace: str | None = None
+    reducer_order: int = 100
+    property_order: int = 100

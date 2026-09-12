@@ -1,0 +1,589 @@
+"""Controller for multi-compare tab — load/save with container-tree layout."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtWidgets import QDialog, QFileDialog
+
+from tabs.multi_compare.models import slot_ids_in_tree
+from tabs.multi_compare.scene import actions as mc_actions
+from tabs.multi_compare.services.composition_builder import build_composition_plan
+from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
+from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
+from tabs.multi_compare.widget import MultiCompareWidget
+from ui.canvas_presentation.composition import compute_native_canvas_size
+
+logger = logging.getLogger("ImproveImgSLI")
+
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
+
+
+class MultiCompareController:
+    """Manages image loading and save composition for the multi-compare widget."""
+
+    SAVE_OUTPUT_W = 1920
+    SAVE_OUTPUT_H = 1080
+    PREVIEW_MAX_EDGE = 1024
+
+    def __init__(
+        self,
+        widget: MultiCompareWidget,
+        store: Any = None,
+        *,
+        translate=None,
+        dialog_parent=None,
+        open_export_dialog=None,
+        context=None,
+    ):
+        self.widget = widget
+        self.store = store
+        self.translate = translate or (lambda _key, default=None: default or _key)
+        self.dialog_parent = dialog_parent or widget
+        self.open_export_dialog = open_export_dialog
+        self.context = context
+        self._gpu_exporter: MultiCompareGpuExporter | None = None
+        self._save_flow: MultiCompareSaveFlowCoordinator | None = None
+        self._last_applied_ui_mode: str | None = None
+
+        self.widget.images_dropped.connect(self._on_images_dropped)
+        self.widget.add_requested.connect(self._on_add_requested)
+        self.widget.save_requested.connect(self._on_save_requested)
+        self.widget.quick_save_requested.connect(self._on_quick_save_requested)
+        self.widget.settings_requested.connect(self._on_settings_requested)
+        self.widget.help_requested.connect(self._on_help_requested)
+        self.widget.divider_color_picker_requested.connect(
+            self._on_divider_color_picker_requested
+        )
+        self._apply_ui_mode_to_toolbar()
+        self._subscribe_to_ui_mode_changes()
+        self._subscribe_to_settings_store_changes()
+
+    def _call_service(self, name: str) -> None:
+        if self.context is None:
+            return
+        try:
+            self.context.call_service(name)
+        except Exception:
+            logger.exception("Tab service %s failed", name)
+
+    def _on_settings_requested(self) -> None:
+        self._call_service("show_settings_dialog")
+
+    def _apply_ui_mode_to_toolbar(self) -> None:
+        settings = getattr(self.store, "settings", None) if self.store else None
+        mode = getattr(settings, "ui_mode", "beginner") or "beginner"
+        self._apply_ui_mode(mode, source="initial-or-store-read")
+
+    def _subscribe_to_ui_mode_changes(self) -> None:
+        """React to global ui_mode switches the same way image-compare's LayoutPlugin does."""
+        event_bus = getattr(self.context, "event_bus", None) if self.context else None
+        if event_bus is None:
+            return
+        try:
+            from plugins.settings.events import SettingsUIModeChangedEvent
+        except Exception:
+            return
+        event_bus.subscribe(
+            SettingsUIModeChangedEvent,
+            self._on_ui_mode_changed_event,
+        )
+
+    def _on_ui_mode_changed_event(self, event) -> None:
+        mode = getattr(event, "ui_mode", "beginner") or "beginner"
+        self._apply_ui_mode(mode, source="event")
+
+    def _subscribe_to_settings_store_changes(self) -> None:
+        if self.store is None or not hasattr(self.store, "on_change"):
+            return
+        self.store.on_change(self._on_store_changed)
+
+    def _on_store_changed(self, scope: str) -> None:
+        settings = getattr(self.store, "settings", None) if self.store else None
+        mode = getattr(settings, "ui_mode", "beginner") or "beginner"
+        mode_changed = mode != self._last_applied_ui_mode
+        if scope != "settings" and not mode_changed:
+            return
+        self._apply_ui_mode(mode, source=f"store:{scope}")
+
+    def _apply_ui_mode(self, mode: str, *, source: str) -> None:
+        toolbar = getattr(self.widget, "toolbar", None)
+        if not hasattr(toolbar, "apply_ui_mode"):
+            return
+        toolbar.apply_ui_mode(mode)
+        self.widget.sync_divider_toolbar()
+        self._last_applied_ui_mode = mode
+        # Hidden toolbar slots must drop Find Action rows and shortcuts.
+        self._resync_action_shortcuts_after_mode_change()
+
+    def _resync_action_shortcuts_after_mode_change(self) -> None:
+        try:
+            from ui.actions.binder import resync_action_shortcuts
+
+            window = self.widget.window() if self.widget is not None else None
+            resync_action_shortcuts(window, active_tab="multi_compare")
+        except Exception:
+            logger.debug(
+                "[mc-actions] shortcut resync after ui_mode failed",
+                exc_info=True,
+            )
+    def _on_divider_color_picker_requested(self) -> None:
+        from PySide6.QtWidgets import QColorDialog
+
+        current = QColor(*self.widget.state.divider_settings.color_rgba)
+        chosen = QColorDialog.getColor(
+            current,
+            None,
+            self.translate("ui.choose_divider_line_color", "Choose divider color"),
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
+        )
+        if chosen.isValid():
+            self.widget.apply_divider_color(chosen)
+
+    def _on_help_requested(self) -> None:
+        self._call_service("show_help_dialog")
+
+    def _on_quick_save_requested(self) -> None:
+        """Save immediately with last export settings — no dialog."""
+        if not slot_ids_in_tree(self.widget.state.root):
+            return
+        try:
+            options = self._build_quick_export_options()
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.dialog_parent,
+                int(options["width"]),
+                int(options["height"]),
+                translate=self.translate,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
+            image = self._compose_image(
+                int(options["width"]),
+                int(options["height"]),
+                background_color=QColor(*options["background_color"]),
+                fill_background=bool(options["fill_background"]),
+            )
+            from shared.image_processing.qt_conversion import qimage_to_pil
+
+            self._get_save_flow().start_save_worker(qimage_to_pil(image), options)
+        except Exception:
+            logger.exception("Multi Compare quick save failed")
+
+    def _build_quick_export_options(self) -> dict:
+        """Options for quick save — last export prefs, no dialog interaction."""
+        settings = getattr(self.store, "settings", None)
+        native_w, native_h = self._native_canvas_size() or self._live_view_size()
+        scale = float(
+            getattr(settings, "export_resolution_scale", 1.0) or 1.0
+        ) if settings is not None else 1.0
+        bg = self._background_color_from_settings(settings)
+        keep_comment = bool(
+            getattr(settings, "export_comment_keep_default", False)
+        ) if settings is not None else False
+        return {
+            "output_dir": self._resolve_quick_save_output_dir(),
+            "file_name": "multi_compare",
+            "format": (
+                getattr(settings, "export_last_format", "PNG") or "PNG"
+            ) if settings is not None else "PNG",
+            "quality": int(
+                getattr(settings, "export_quality", 95) or 95
+            ) if settings is not None else 95,
+            "png_compress_level": int(
+                getattr(settings, "export_png_compress_level", 9) or 9
+            ) if settings is not None else 9,
+            "png_optimize": bool(
+                getattr(settings, "export_png_optimize", True)
+            ) if settings is not None else True,
+            "fill_background": bool(
+                getattr(settings, "export_fill_background", False)
+            ) if settings is not None else False,
+            "background_color": (bg.red(), bg.green(), bg.blue(), bg.alpha()),
+            "comment_text": (
+                getattr(settings, "export_comment_text", "") or ""
+            ) if keep_comment and settings is not None else "",
+            "include_metadata": keep_comment,
+            "width": max(1, int(round(native_w * scale))),
+            "height": max(1, int(round(native_h * scale))),
+            "is_quick_save": True,
+        }
+
+    def _resolve_quick_save_output_dir(self) -> str:
+        settings = getattr(self.store, "settings", None) if self.store else None
+        if settings is not None:
+            if (
+                getattr(settings, "export_use_default_dir", True)
+                and getattr(settings, "export_default_dir", None)
+            ):
+                return settings.export_default_dir
+            favorite = getattr(settings, "export_favorite_dir", None)
+            if favorite:
+                return favorite
+            default = getattr(settings, "export_default_dir", None)
+            if default:
+                return default
+        return str(Path.home())
+
+    def _get_save_flow(self) -> MultiCompareSaveFlowCoordinator:
+        if self._save_flow is None:
+            main_window = getattr(self.context, "main_window", None)
+            thread_pool = getattr(self.context, "thread_pool", None)
+            self._save_flow = MultiCompareSaveFlowCoordinator(
+                main_window_app=main_window,
+                tr_func=self.translate,
+                thread_pool=thread_pool,
+            )
+        return self._save_flow
+
+    def shutdown(self) -> None:
+        if self._save_flow is not None:
+            self._save_flow.cancel_all_exports()
+        if self._gpu_exporter is not None:
+            self._gpu_exporter.shutdown()
+            self._gpu_exporter = None
+
+    def load_images(self, paths: list[Path]) -> None:
+        for path in paths:
+            self._load_single_auto(path)
+
+    def begin_paste_placement(self, paths: list[Path]) -> None:
+        """Start cursor-tracked DnD highlight, same cycle as external file drop."""
+        self.widget.begin_pending_paste(paths)
+
+    def rehydrate_slots(self, state) -> bool:
+        """Decode ``path`` into ``slot.image`` for persisted slots (project load).
+
+        Uses the same ``_read_image`` path as drag-open / file dialog loading.
+        """
+        changed = False
+        for slot in state.slots:
+            if slot.path is None or slot.image is not None:
+                continue
+            path = slot.path if isinstance(slot.path, Path) else Path(slot.path)
+            arr = self._read_image(path)
+            if arr is not None:
+                slot.image = arr
+                changed = True
+        return changed
+
+    def clear(self) -> None:
+        self.widget.store.dispatch(mc_actions.clear())
+
+    def _on_images_dropped(self, paths: list, target, side) -> None:
+        """target: tuple (target_path_or_None, target_root_bool); side: 'left'/'right'/..."""
+        from tabs.multi_compare.models import find_path
+
+        target_path, target_root = (
+            target if isinstance(target, tuple) else (None, False)
+        )
+
+        last_added: int | None = None
+        for i, raw_path in enumerate(paths):
+            path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
+            arr = self._read_image(path)
+            if arr is None:
+                continue
+            if i == 0:
+                sid = self.widget.add_image_at(
+                    path, arr, path.stem, target_path, side, target_root
+                )
+            else:
+                next_side = "right" if side in ("left", "right") else "bottom"
+                next_path: tuple[int, ...] | None = None
+                if last_added is not None:
+                    found = find_path(self.widget.state.root, last_added)
+                    next_path = tuple(found) if found is not None else None
+                if next_path is None:
+                    sid = self.widget.add_image_auto(path, arr, path.stem)
+                else:
+                    sid = self.widget.add_image_at(
+                        path, arr, path.stem, next_path, next_side, False
+                    )
+            if sid is not None:
+                last_added = sid
+
+    def _on_add_requested(self) -> None:
+        start_dir = self._default_dir()
+        filters = "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp);;All files (*)"
+        paths, _ = QFileDialog.getOpenFileNames(
+            self.widget, "Add images to compare", start_dir, filters
+        )
+        if paths:
+            self.load_images([Path(p) for p in paths])
+
+    def _on_save_requested(self) -> None:
+        import time
+
+        t_start = time.perf_counter()
+        if not slot_ids_in_tree(self.widget.state.root):
+            return
+
+        t0 = time.perf_counter()
+        native_size = self._native_canvas_size() or self._live_view_size()
+
+        if not callable(self.open_export_dialog):
+            logger.error("MultiCompareController: no export dialog service wired")
+            return
+
+        t0 = time.perf_counter()
+        preview = self._render_export_preview(
+            *native_size,
+            self._background_color_from_settings(getattr(self.store, "settings", None)),
+            bool(
+                getattr(
+                    getattr(self.store, "settings", None),
+                    "export_fill_background",
+                    False,
+                )
+            ),
+        )
+
+        t0 = time.perf_counter()
+        result_code, options = self.open_export_dialog(
+            dialog_state=self._export_dialog_state_kwargs(),
+            preview_image=preview,
+            suggested_filename="multi_compare",
+            native_size=native_size,
+            on_set_favorite_dir=self._set_favorite_dir,
+        )
+
+        if int(result_code) != int(QDialog.DialogCode.Accepted):
+            return
+        try:
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.dialog_parent,
+                int(options["width"]),
+                int(options["height"]),
+                translate=self.translate,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
+            t0 = time.perf_counter()
+            image = self._compose_image(
+                int(options["width"]),
+                int(options["height"]),
+                background_color=QColor(*options["background_color"]),
+                fill_background=bool(options["fill_background"]),
+            )
+
+            t0 = time.perf_counter()
+            from shared.image_processing.qt_conversion import qimage_to_pil
+
+            pil_image = qimage_to_pil(image)
+
+            self._persist_export_preferences(options)
+            self._get_save_flow().start_save_worker(pil_image, options)
+        except Exception:
+            logger.exception("Composite save failed")
+
+    def _export_dialog_state_kwargs(self) -> dict:
+        """Raw field values for the host's export dialog state.
+
+        Kept as a plain dict (not a dataclass import) so this module never
+        imports the host's export-dialog package — the
+        "open_image_export_dialog" host service (see ui/main_window/layouts.py)
+        owns building the actual dialog-state object.
+        """
+        from domain.qt_adapters import qcolor_to_color
+
+        settings = getattr(self.store, "settings", None)
+        return dict(
+            current_language=getattr(settings, "current_language", "en"),
+            output_dir=self._default_dir(),
+            favorite_dir=getattr(settings, "export_favorite_dir", None),
+            last_format=getattr(settings, "export_last_format", "PNG"),
+            quality=int(getattr(settings, "export_quality", 95) or 95),
+            png_compress_level=int(
+                getattr(settings, "export_png_compress_level", 9) or 9
+            ),
+            fill_background=bool(getattr(settings, "export_fill_background", False)),
+            background_color=qcolor_to_color(
+                self._background_color_from_settings(settings)
+            ),
+            comment_text=getattr(settings, "export_comment_text", "") or "",
+            comment_keep_default=bool(
+                getattr(settings, "export_comment_keep_default", False)
+            ),
+            resolution_scale=float(
+                getattr(settings, "export_resolution_scale", 1.0) or 1.0
+            ),
+            virtual_canvas_active=True,
+        )
+
+    def _live_view_size(self) -> tuple[int, int]:
+        width = max(1, int(self.widget.canvas.width()))
+        height = max(1, int(self.widget.canvas.height()))
+        return width, height
+
+    def _native_canvas_size(self) -> tuple[int, int] | None:
+        """Smallest canvas where every loaded slot renders at native resolution.
+
+        Delegates to the composition module so live render, export, and the
+        export dialog's suggested resolution all share one source of truth.
+        """
+        plan = build_composition_plan(self.widget.state, include_labels=False)
+        if plan is None:
+            return None
+        return compute_native_canvas_size(plan.root)
+
+    def _render_export_preview(
+        self,
+        width: int,
+        height: int,
+        background_color: QColor,
+        fill_background: bool,
+    ) -> QPixmap:
+
+        longest = max(int(width), int(height))
+        if longest > self.PREVIEW_MAX_EDGE:
+            scale = self.PREVIEW_MAX_EDGE / float(longest)
+            width = max(1, int(round(width * scale)))
+            height = max(1, int(round(height * scale)))
+        return QPixmap.fromImage(
+            self._compose_image(
+                width,
+                height,
+                background_color=background_color,
+                fill_background=fill_background,
+            )
+        )
+
+    def _default_dir(self) -> str:
+        if self.store is not None:
+            settings = getattr(self.store, "settings", None)
+            if settings is not None:
+                d = getattr(settings, "export_default_dir", None)
+                if d:
+                    return d
+        return str(Path.home())
+
+    @staticmethod
+    def _background_color_from_settings(settings) -> QColor:
+        color = getattr(settings, "export_background_color", None)
+        if color is None:
+            return QColor(20, 20, 20)
+        if isinstance(color, QColor):
+            return QColor(color)
+        channels = (
+            getattr(color, "r", 20),
+            getattr(color, "g", 20),
+            getattr(color, "b", 20),
+            getattr(color, "a", 255),
+        )
+        return QColor(*channels)
+
+    def _untested_export_suppressed(self) -> bool:
+        settings = getattr(self.store, "settings", None)
+        return bool(
+            getattr(settings, "export_suppress_untested_resolution_warning", False)
+        )
+
+    def _suppress_untested_export_warning(self) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is not None:
+            settings.export_suppress_untested_resolution_warning = True
+        main_window = getattr(self.context, "main_window", None) if self.context else None
+        manager = getattr(main_window, "settings_manager", None) if main_window else None
+        if manager is not None:
+            manager._save_setting(
+                "export_suppress_untested_resolution_warning", True
+            )
+
+    def _persist_export_preferences(self, options: dict) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is None:
+            return
+        settings.export_default_dir = options["output_dir"]
+        if "favorite_dir" in options:
+            settings.export_favorite_dir = options["favorite_dir"]
+        settings.export_last_format = options["format"]
+        settings.export_quality = int(options["quality"])
+        if "png_compress_level" in options:
+            settings.export_png_compress_level = int(options["png_compress_level"])
+        if "png_optimize" in options:
+            settings.export_png_optimize = bool(options["png_optimize"])
+        if bool(options.get("fill_background_editable", True)):
+            settings.export_fill_background = bool(options["fill_background"])
+        if "resolution_scale" in options:
+            settings.export_resolution_scale = float(options["resolution_scale"])
+        if "comment_text" in options:
+            settings.export_comment_text = options["comment_text"]
+        if "comment_keep_default" in options:
+            settings.export_comment_keep_default = bool(options["comment_keep_default"])
+        try:
+            from domain.types import Color
+
+            settings.export_background_color = Color(*options["background_color"])
+        except Exception:
+            pass
+
+    def _set_favorite_dir(self, path: str) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is not None:
+            settings.export_favorite_dir = path
+
+    def _read_image(self, path: Path):
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+            return TiledPixelStore.from_path(path)
+        except Exception as e:
+            logger.error("Failed to load %s: %s", path, e)
+            return None
+
+    def _load_single_auto(self, path: Path) -> None:
+        arr = self._read_image(path)
+        if arr is None:
+            return
+        self.widget.add_image_auto(path, arr, label=path.stem)
+
+    def _compose_image(
+        self,
+        w: int | None = None,
+        h: int | None = None,
+        *,
+        background_color: QColor | None = None,
+        fill_background: bool = False,
+    ) -> QImage:
+        """Render the multi-compare scene at ``w × h``.
+
+        The composition canvas is always the native size (image-extent driven);
+        ``w × h`` is the framebuffer / output. The renderer letterboxes the
+        canvas into it via ``sr = min(w/canvas_w, h/canvas_h)``.
+        """
+        import time
+
+        t0 = time.perf_counter()
+        state = self.widget.state
+        composition = build_composition_plan(state)
+        if composition is None:
+            return QImage(
+                max(1, int(w or self.SAVE_OUTPUT_W)),
+                max(1, int(h or self.SAVE_OUTPUT_H)),
+                QImage.Format.Format_RGBA8888,
+            )
+        output_w = int(w) if w else composition.canvas_w
+        output_h = int(h) if h else composition.canvas_h
+        if self._gpu_exporter is None:
+            self._gpu_exporter = MultiCompareGpuExporter()
+        t0 = time.perf_counter()
+        image = self._gpu_exporter.render_to_qimage(
+            composition,
+            output_w=output_w,
+            output_h=output_h,
+            background_color=background_color,
+            fill_background=fill_background,
+        )
+        return image

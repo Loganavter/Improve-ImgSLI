@@ -1,0 +1,9 @@
+openblas
+pybind11==2.13.2
+pillow==11.2.1
+meson-python==0.18.0
+numpy==2.3.4
+poetry-core==2.2.1
+pythran==0.18.0
+scipy==1.16.2
+scikit-image==0.25.2

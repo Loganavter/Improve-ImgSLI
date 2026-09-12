@@ -1,0 +1,69 @@
+"""Footer bar for multi-compare tab."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
+from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
+from sli_ui_toolkit.widgets import Button, ThemedWidget
+
+from sli_ui_toolkit.i18n import tr
+from tabs.multi_compare.icons import Icon
+from ui.theming import resolve_theme_color
+
+
+def _save_result_tr(_key: str, lang: str) -> str:
+    result = tr("save_result", lang)
+    return result if result != "save_result" else "Save result"
+
+
+def _save_tooltip_tr(_key: str, lang: str) -> str:
+    result = tr("tooltip.multi_compare_save_grid", lang)
+    return (
+        result
+        if result != "tooltip.multi_compare_save_grid"
+        else "Export the composed comparison grid"
+    )
+
+
+class MultiCompareFooter(ThemedWidget, QWidget):
+    """Bottom bar: save composed grid (mirrors main workspace btn_save)."""
+
+    save_clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setFixedHeight(44)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        text = _save_result_tr("save_result", "en")
+        self.btn_save = Button(Icon.SAVE, text=text, variant="surface", parent=self)
+        translatable_text(
+            self.btn_save, "save_result", tr_func=_save_result_tr, defer_when_hidden=True
+        )
+        translatable_tooltip(
+            self.btn_save,
+            "tooltip.multi_compare_save_grid",
+            tr_func=_save_tooltip_tr,
+            defer_when_hidden=True,
+        )
+        self.btn_save.setMinimumHeight(32)
+        self.btn_save.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.btn_save.clicked.connect(self.save_clicked)
+
+        layout.addWidget(self.btn_save, 1)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._bg_color)
+        painter.end()
+
+    def on_theme_changed(self) -> None:
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        super().on_theme_changed()

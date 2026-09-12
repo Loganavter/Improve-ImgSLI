@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+
+# Agent tooling (committed rules + skills under .cursor/)
+.claude/
+.agents/
+.codex/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/skills/
+!.cursor/skills/**
+.windsurf/
+.aider*
+
+# Generated AI context bundles (./launcher.sh context)
+context.txt
+app_context.txt
+cloc.txt
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+venv/

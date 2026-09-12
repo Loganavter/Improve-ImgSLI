@@ -1,0 +1,43 @@
+---
+description: Improve-ImgSLI agent guide — architecture, tooling, and hard rules
+alwaysApply: true
+---
+
+# Improve-ImgSLI
+
+Read [AGENTS.md](../../AGENTS.md) and [docs/dev/README.md](../../docs/dev/README.md) before making changes.
+
+Cursor skills (auto-invoked when relevant): `imgsli-devtools`, `sli-ui-toolkit-docs-first` under `.cursor/skills/`.
+
+## Hard rules
+
+- Redux-style store only: `Action → Dispatcher → RootReducer → Store`. EventBus is for past facts, not state.
+- Toolkit widgets: painter pipeline; no QSS on toolkit controls; no raw form layouts for construction.
+- New workspace tab: `src/tabs/<name>/` with `TabContract` — keep tab logic out of `core/`.
+- Canvas / export / video snapshot rendering must stay visually consistent.
+- User-visible strings and Help topics update with the feature.
+
+## Tooling
+
+```bash
+./launcher.sh context --cloc-only  # code-size stats → cloc.txt (gitignored)
+./launcher.sh test tests/contracts # architectural contract tests first
+./launcher.sh run --debug          # enables runtime tracer
+./launcher.sh run --ui-inspector   # widget / palette / QSS diagnostics
+```
+
+Docs: search `docs/dev/` and read [AGENTS.md](../../AGENTS.md) in-repo — no bundled doc dump.
+
+Runtime tracer: `docs/dev/TRACING.md` (`IMGSLI_TRACE=1`, output `~/.local/share/ImproveImgSLI/trace.jsonl`).
+
+## Task routing
+
+| Task | Start |
+|---|---|
+| Canvas / diff / magnifier | `docs/dev/QRHI_CANVAS_FEATURES.md` |
+| Export / video snapshots | `src/tabs/image_compare/services/image_export/` |
+| Help UI / topics | `docs/dev/HELP_SYSTEM.md` |
+| Toolkit buttons / flyouts | external `sli-ui-toolkit` `docs/user/BUTTON_API.md` |
+| Find Action palette | `docs/dev/ACTIONS.md` |
+| Store / tabs / plugins | `docs/dev/STORE.md`, `docs/dev/tabs/index.md` |
+| Weird after click/zoom | `docs/dev/TRACING.md` |

@@ -1,0 +1,19 @@
+{
+  "button": {
+    "add_images_1": "Adicionar Imagem(ns) 1",
+    "add_images_2": "Adicionar Imagem(ns) 2",
+    "browse": "Procurar...",
+    "hold_clear_entire_list": "Segure: Limpar lista inteira",
+    "pause": "Pausar",
+    "pauseresume_recording": "Pausar/Retomar Gravação",
+    "play": "Reproduzir",
+    "record": "Gravar",
+    "redo": "Refazer",
+    "save_result": "Salvar Resultado",
+    "select_images": "Selecionar Imagem(ns)",
+    "startstop_recording": "Iniciar/Parar Gravação",
+    "stop": "Parar",
+    "trim_to_selection": "Cortar para Seleção",
+    "undo_ctrlz": "Desfazer (Ctrl+Z)"
+  }
+}

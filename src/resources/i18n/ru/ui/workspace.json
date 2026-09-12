@@ -1,0 +1,18 @@
+{
+  "workspace": {
+    "session_types": {
+      "image_compare": "Сравнение изображений",
+      "video_compare": "Сравнение видео",
+      "multi_compare": "Мультисравнение",
+      "session_picker": "Новая вкладка"
+    },
+    "tab_menu": {
+      "close": "Закрыть вкладку",
+      "rename": "Переименовать вкладку",
+      "rename_prompt": "Имя",
+      "duplicate": "Дублировать вкладку",
+      "close_others": "Закрыть остальные вкладки",
+      "new": "Новая вкладка"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "error": "Erro",
+    "file_type": {
+      "all_files": "Todos os Arquivos",
+      "image_files": "Arquivos de Imagem"
+    },
+    "ok": "OK",
+    "position": {
+      "bottom": "Inferior",
+      "center": "Centro",
+      "down": "Para baixo",
+      "left": "Esquerda",
+      "right": "Direita",
+      "top": "Superior",
+      "up": "Para cima"
+    },
+    "switch": {
+      "off": "Desligado",
+      "switch_off": "Desligado",
+      "switch_on": "Ligado"
+    },
+    "warning": "Aviso"
+  }
+}

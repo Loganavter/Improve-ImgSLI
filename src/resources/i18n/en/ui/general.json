@@ -1,0 +1,20 @@
+{
+  "ui": {
+    "choose_capture_ring_color": "Choose Capture Ring Color",
+    "choose_divider_line_color": "Choose Divider Line Color",
+    "choose_magnifier_border_color": "Choose Magnifier Border Color",
+    "choose_magnifier_divider_line_color": "Choose Magnifier Divider Line Color",
+    "choose_magnifier_guides_color": "Choose Magnifier Guides Color",
+    "drop_images_1_here": "Drop Image(s) 1 Here",
+    "drop_images_2_here": "Drop Image(s) 2 Here",
+    "edit_current_image_1_name": "Edit Current Image 1 Name",
+    "edit_current_image_2_name": "Edit Current Image 2 Name",
+    "include_file_names_in_saved_image": "Include file names in saved image",
+    "psnr": "PSNR",
+    "select_color": "Select Color",
+    "showhide_window": "Show/Hide window",
+    "ssim": "SSIM",
+    "toggle_split_orientation": "Toggle Split Orientation (Horizontal/Vertical)",
+    "choose_magnifier_base_color": "Choose Base Color for Magnifier Elements"
+  }
+}

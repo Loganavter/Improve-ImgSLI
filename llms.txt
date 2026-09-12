@@ -1,0 +1,495 @@
+# Improve-ImgSLI Documentation
+
+> Improve-ImgSLI is a declarative, highly-optimized image comparison tool for developers, QA, and content creators. It features a responsive UI, advanced canvas rendering, and extensive diffing tools.
+
+
+## About
+
+*What Improve ImgSLI is*
+
+
+#### About
+
+{{tr:app.name}} is a desktop workspace for precise image and media comparison. Build clear side-by-side or multi-image views, inspect differences at pixel scale, export stills, and record comparison video when you need a timeline.
+
+##### What it is for {#purpose}
+
+Use it when you need to judge visual change without losing context: retouching, upscaling QA, photography, or any workflow where a split, magnifier, and exportable result matter more than a one-off screenshot.
+
+##### Workspace modes {#modes}
+
+- **{{tr:workspace.session_types.image_compare}}** — two lists, a movable split, magnifiers, difference modes, export, and a video editor. Start with [Getting Started](help://introduction) or [Comparison](help://comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — a grid of slots for many images at once. See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- **Session Picker** — open, resume, and manage sessions. Covered in [Workspace Tabs](help://session_picker).
+
+##### License and source {#license}
+
+Released under the GNU GPL version 3 (or later). Uses PySide6 / Qt under LGPL. The UI widget library [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) is separate and distributed under the MIT License. Project home: [improve-imgsli.ru](https://improve-imgsli.ru/).
+
+##### Next topics {#next}
+
+[Getting Started](help://introduction), [Hotkeys](help://hotkeys), [Settings](help://settings), [Files and Projects](help://file_management).
+
+
+
+
+## Workspace
+
+Session types and compare tools
+
+
+## UI
+
+Controls, lists, canvas chrome
+
+
+### Buttons and Controls
+
+*Toolbar and panel gestures*
+
+
+##### Buttons and Controls
+
+The toolbar sits above the canvas in a compare session. It holds the tools for that session — split line, view modes, magnifier, recording — while lists, add/save, and the settings gear live in the surrounding chrome.
+
+###### The toolbar {#toolbar}
+
+- **Where** — a strip of icon controls above the canvas.
+- **What** — toggles, value nudges, and buttons that open panels or dialogs for the active session type.
+- **How dense** — depends on {{tr:settings.ui_mode}} (first-run onboarding or [Settings → Appearance](help://settings#interface)).
+
+:::figure{side=block height=107}
+![Session toolbar]({{img:ui.buttons.toolbar}})
+Toolbar above the canvas.
+:::
+
+###### UI modes {#ui-modes}
+
+The same tools are laid out differently in each {{tr:settings.ui_mode}}. Pick a mode once at first run; change it later under Settings.
+
+###### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
+
+More separate buttons — one control ≈ one job. Friendly with the mouse; good for learning where each tool lives.
+
+:::figure{side=block height=65}
+![Beginner toolbar layout]({{img:ui.buttons.mode_beginner}})
+{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
+:::
+
+###### {{tr:settings.ui_mode_advanced}} {#mode-advanced}
+
+Fewer icons. Some controls already combine a short click with a scroll (for example orientation + thickness).
+
+:::figure{side=block height=65}
+![Advanced toolbar layout]({{img:ui.buttons.mode_advanced}})
+{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
+:::
+
+###### {{tr:settings.ui_mode_expert}} {#mode-expert}
+
+Densest strip: one control can carry click, scroll, and other mouse buttons so more of the window stays on the image.
+
+:::figure{side=block height=65}
+![Expert toolbar layout]({{img:ui.buttons.mode_expert}})
+{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
+:::
+
+###### Multi-action controls {#multi-action}
+
+In {{tr:settings.ui_mode_advanced}} and especially {{tr:settings.ui_mode_expert}}, the same icon often does more than one thing:
+
+- **Short click** — primary action or toggle.
+- **Scroll** — nudge a numeric value (divider thickness, magnifier size, …) without opening a dialog.
+- **Long-press** — stronger variant on some list buttons (clear a whole list; swap both lists).
+- **Other mouse buttons** (expert) — for example right-click for color or middle-click to reset on compact divider controls.
+
+{{tr:settings.ui_mode_beginner}} keeps those jobs on separate buttons instead of stacking them.
+
+:::figure{side=block height=44}
+![Long-press on a list button]({{img:ui.buttons.long_press}})
+List button — short click vs long-press.
+:::
+
+###### Product examples {#examples}
+
+- **{{tr:workspace.session_types.image_compare}}** — in denser modes, scroll divider width or magnifier size on one control; long-press clear / swap on list buttons. Details: [Lists and Panels](help://ui.lists_flyouts).
+- **{{tr:workspace.session_types.multi_compare}}** — same thickness / visibility habits on grid lines (`D`).
+
+###### Find a control by name {#find-action}
+
+Press `Ctrl+Shift+P` ({{tr:menu.find_action}}), type part of the label, then run the action or open {{tr:action.palette.learn_more}} / `Ctrl+Enter` when the row has a help topic.
+
+
+
+
+### Lists and Panels
+
+*Image lists and menus*
+
+
+##### Lists and Panels
+
+Dropdowns open in-window panels over the main window. Work inside the panel, then dismiss with an outside click or `Esc`. Toolbar layout and multi-action gestures: [Buttons and Controls](help://ui.buttons). Filename label styling: [Comparison](help://comparison).
+
+###### List manager {#list-manager}
+
+In a {{tr:workspace.session_types.image_compare}} session each side has a list dropdown. A click opens that side’s list-manager panel (rows, ratings, drag). The panel stays closed if the list is empty. Click the same dropdown again, click outside, or pick a row to close it. While rename or properties is open, the panel does not dismiss on focus loss.
+
+:::figure{side=block width=320}
+![List manager panel]({{img:ui.lists_flyouts.list_manager}})
+List dropdown → list-manager panel.
+:::
+
+###### Scroll {#scroll-lists}
+
+- **Dropdown wheel** — steps the current image on that side without opening the panel.
+- **Canvas wheel** — steps the side under the cursor; `Shift` + wheel steps both sides. Full rules: [Comparison → Scroll through images](help://comparison#scroll-images).
+- **Rating wheel** — changes the row score only, not the current index.
+
+###### Rows {#rows}
+
+- **Select** — click a row to make it current; the panel closes and the canvas updates.
+- **Multi-select** — `Ctrl`/`Cmd`+click toggles rows; drag on empty space in the panel for a marquee. Dragging any selected row moves the whole set (ghost shows the count).
+- **Reorder** — drag within one list.
+- **Move across lists** — drag a row outside the single panel to expand double mode, then drop on the other list.
+- **Path tip** — hover a truncated name for the full path.
+
+###### Rating {#rating}
+
+Each row has a rating chip. Use minus / plus, or scroll the chip, without leaving the panel.
+
+###### Context menu {#context-menu}
+
+- **List row** — rename, copy path, properties, or remove.
+- **Canvas (current frame)** — same menu plus duplicate; rename is list-only.
+
+Properties opens [Image Properties](help://image_properties).
+
+###### Toolbar buttons {#quick-list-actions}
+
+- **Add files** — button beside each dropdown; appends to that side only.
+- **Swap** (`X`) — short click exchanges the current pair; long-press swaps both lists.
+- **Remove** — short click drops the current frame on that side; long-press clears the whole list for that side.
+
+###### Loading {#loading}
+
+Drag-and-drop onto the window asks which list should receive the files. `Ctrl+V` pastes a clipboard image and may show a side overlay — see [Files and Projects](help://file_management).
+
+###### Label settings panel {#toolbar-flyouts}
+
+Open with {{tr:image_compare.action.text_settings}} or right-click {{tr:image_compare.action.file_names}}. Close with `Esc` or an outside click.
+
+The panel covers font size, weight, opacity, text and background colors, draw-background, and label placement (edges / split line).
+
+:::figure{side=block width=280}
+![Label settings panel]({{img:ui.lists_flyouts.toolbar_flyouts}})
+{{tr:image_compare.action.text_settings}}.
+:::
+
+Split-line color and magnifier option panels are separate — [Comparison](help://comparison) and [Magnifier](help://magnifier).
+
+###### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
+
+A {{tr:workspace.session_types.multi_compare}} session has no dual-list panel — images go into grid slots. Label text settings still open a panel (without the placement radios from {{tr:workspace.session_types.image_compare}}). Details: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+
+
+
+
+### Canvas Navigation
+
+*Zoom, pan, fit*
+
+
+##### Canvas Navigation
+
+Move inside the compare canvas: zoom toward the cursor, pan with the middle button, and hold `Space` for a temporary full-side preview.
+
+###### Zoom and pan {#zoom}
+
+- **Zoom** — hold `Ctrl` and scroll the wheel over the canvas; zoom is cursor-centered.
+- **Pan** — hold the middle mouse button and drag, including at `100%` zoom.
+- **Mode** — there is no separate navigation tool; these gestures work on the live canvas.
+
+:::figure{side=block width=280}
+![Canvas zoom and pan]({{img:ui.canvas_navigation.zoom}})
+{{tr:workspace.session_types.image_compare}} → canvas.
+:::
+
+###### Quick side preview {#quick-side-preview}
+
+- **Side 1** — hold `Space`, then `LMB`.
+- **Side 2** — hold `Space`, then `RMB`.
+- **Release** — return to the normal split.
+- **With combined magnifier** — hold `Space+Shift` to force a side inside the lens.
+
+###### While zoomed {#zoom-side-effects}
+
+- **Filename labels** — visible only at `100%` zoom; they return automatically when you fit again.
+- **Split line** — keeps a stable screen position as zoom changes.
+- **Quality** — preview cache and interpolation live under [Settings → Performance](help://settings#performance).
+
+
+
+
+## Platform
+
+Settings, files, shortcuts
+
+
+### Getting Started
+
+*Quick orientation*
+
+
+##### Getting Started
+
+Open a session, load images, compare, then save. When you forget a control name, use {{tr:menu.find_action}} (`Ctrl+Shift+P`) instead of hunting the toolbar. Tabs and the Session Picker are covered in [Workspace Tabs](help://session_picker).
+
+###### {{tr:workspace.session_types.image_compare}} workflow {#basic-workflow}
+
+1. Open {{tr:workspace.session_types.image_compare}} from the Session Picker (or {{tr:menu.find_action}} → {{tr:action.workspace.new_image_compare}}).
+2. Add images to the left and right lists.
+3. Drag the split line or enable the [Magnifier](help://magnifier).
+4. Save with {{tr:image_compare.action.save}} or `Ctrl+S`. For recording and encode, see [Video Editor](help://video).
+
+###### {{tr:workspace.session_types.multi_compare}} path {#multi-compare}
+
+Open {{tr:workspace.session_types.multi_compare}} from the Session Picker, drop images into slots (or onto gaps to split cells), then save the grid. Details: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+
+###### Discover features {#discover}
+
+`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. F1 on a focused control can jump to its page when the action is tagged. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).
+
+
+
+
+### Workspace Tabs
+
+*Session picker and tab strip*
+
+
+##### Workspace Tabs and Session Picker
+
+Manage sessions in the tab strip and open new compare types from the Session Picker home page.
+
+###### Session Picker {#session-picker}
+
+- **Open** — {{tr:action.workspace.open_session_picker}} (or the add-tab control).
+- **Choose** — card for {{tr:workspace.session_types.image_compare}} or {{tr:workspace.session_types.multi_compare}}.
+- **Recent** — recent ``.imgsli`` projects (grid or list, sort by last opened or name). Click to reopen. Cards show a canvas preview from ``preview.png`` inside the project when available (older packages with ``preview.jpg`` still work; otherwise the session-type icon is used). Drop a project file onto the panel to pin it to the list without opening it. Right-click to remove / reveal in the folder.
+
+:::figure{side=block width=420}
+![Session Picker]({{img:platform.workspace.session_picker}})
+{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
+:::
+
+###### Open a session without the picker {#new-session-actions}
+
+From {{tr:menu.find_action}} (`Ctrl+Shift+P`):
+
+- {{tr:action.workspace.new_image_compare}}
+- {{tr:action.workspace.new_multi_compare}}
+
+{{tr:action.workspace.open_session_picker}} returns you to the home page when you want to choose visually.
+
+###### Tab strip {#tab-strip}
+
+- **Switch** — click a tab.
+- **Close** — removes that session; if it was the last one, the Session Picker opens instead of quitting.
+- **Context menu** — rename, close, or close other tabs.
+
+###### Rename a tab {#rename}
+
+Use the tab context menu rename action, enter a name, and confirm. Auto titles stay language-aware until you set a custom name.
+
+###### Next topics {#next-topics}
+
+Quick workflows: [Getting Started](help://introduction). Session tools: [Comparison](help://comparison) or [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+
+
+
+
+### Image Properties
+
+*File metadata and in-app context*
+
+
+##### Image Properties
+
+Inspect file metadata and in-app context for one loaded image without leaving the session.
+
+###### Open the dialog {#open}
+
+Right-click a row in a {{tr:workspace.session_types.image_compare}} list, or a {{tr:workspace.session_types.multi_compare}} slot, and choose {{tr:image_properties.title}}. The dialog is read-only except for {{tr:image_properties.copy_all}}, which copies every visible row to the clipboard.
+
+:::figure{side=block width=280}
+![Image Properties dialog]({{img:platform.image_properties.open}})
+{{tr:image_properties.title}}.
+:::
+
+###### Sections {#sections}
+
+Rows are grouped into:
+
+- {{tr:image_properties.section_file}} — name, path, size on disk, format, modified time
+- {{tr:image_properties.section_image}} — pixel size, aspect, orientation, channels, color mode / profile when available
+- {{tr:image_properties.section_app}} — how the app places this image in the current session (see below)
+- {{tr:image_properties.section_metadata}} — camera / EXIF-style fields when the file provides them
+
+Missing values stay blank; a read error on the file is shown as {{tr:image_properties.read_error}}.
+
+###### In-app context {#in-app}
+
+{{tr:image_properties.section_app}} depends on the session type. A {{tr:workspace.session_types.image_compare}} session may show {{tr:image_properties.side}} (left / right) and {{tr:image_properties.rating}}. {{tr:workspace.session_types.multi_compare}} may show {{tr:image_properties.position}} or {{tr:image_properties.slot}} for the cell. Those rows describe session state, not the file on disk.
+
+###### Close {#close}
+
+{{tr:image_properties.close}} dismisses the dialog. Closing does not change lists, ratings, or the canvas.
+
+
+
+
+### Settings
+
+*Appearance and performance*
+
+
+##### Settings
+
+Settings are grouped by job — general, appearance, performance, analysis, and keyboard — so you change one concern at a time.
+
+###### Open Settings {#open-settings}
+
+- **Menu / gear** — {{tr:menu.settings}} or the toolbar gear.
+- **Find Action** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) and type a page name ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
+- **{{tr:action.palette.learn_more}}** — on a settings action jumps here with the matching anchor when tagged.
+
+###### General {#general}
+
+- **{{tr:label.language}}** — en / ru / zh / pt_BR.
+- **{{tr:label.theme}}** — auto / light / dark.
+- **{{tr:settings.system_notifications}}** — desktop OS notifications after save (in-app toast is separate).
+- **{{tr:settings.enable_debug_logging}}** — verbose logs for troubleshooting.
+
+###### Appearance {#interface}
+
+- **{{tr:settings.ui_mode}}** — {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}}.
+- **{{tr:settings.ui_font}}** — builtin, system, or custom family.
+- **Limits** — related caps such as max displayed name length.
+
+###### Performance {#performance}
+
+- **{{tr:settings.render_backend_label}}** — platform-dependent; may need a restart.
+- **{{tr:settings.display_cache_resolution}}** — caps the main preview size; magnifier and export still use originals ({{tr:workspace.session_types.image_compare}}).
+- **Interpolation** — zoom / magnifier / laser resampling quality.
+- **{{tr:settings.optimize_magnifier_movement}}** — smoother lens motion (and its interpolation method on the same page).
+- **{{tr:settings.magnifier_intersection_highlight}}** — highlight where lenses overlap.
+- **{{tr:settings.magnifier_auto_color_new_instances}}** — distinct colors for new lenses.
+- **{{tr:settings.recording_fps}}** — capture rate for [Video Editor](help://video).
+
+###### Analysis {#analysis}
+
+Only for {{tr:workspace.session_types.image_compare}}:
+
+- **{{tr:settings.autocrop_black_borders_on_load}}** — trim black borders when loading.
+- **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — under the canvas (off by default).
+
+Open this page while an {{tr:workspace.session_types.image_compare}} session is active if the tab contributes the section.
+
+###### Keyboard {#keyboard}
+
+- **Remap** — search actions; chords per platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}} groups.
+- **Reset** — one shortcut or all.
+- **Fixed** — canvas `WASD` and `Space` stay fixed — see [Hotkeys](help://hotkeys).
+
+
+
+
+### Hotkeys
+
+*Defaults and overrides*
+
+
+##### Hotkeys
+
+Default chords below. Remap most action shortcuts under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD` and `Space` movement stay fixed and are not remappable.
+
+###### Discover first {#discover}
+
+Press `Ctrl+Shift+P` and type a name before memorizing a list. Run the action from the palette, or open {{tr:action.palette.learn_more}} when you need the illustrated topic. F1 can pulse the matching action when focus is tagged.
+
+###### Platform {#platform}
+
+- `Ctrl+,` — Settings
+- `Ctrl+F1` — Help
+- `Ctrl+N` — Session picker / new session
+- `Ctrl+Shift+P` — {{tr:menu.find_action}}
+- `Ctrl+V` — Paste image
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
+- `Ctrl+Q` — Quit
+
+Exact labels follow your language pack; remap under Settings → Keyboard → platform group.
+
+###### {{tr:workspace.session_types.image_compare}} {#image-compare}
+
+- `M` / `F` — Magnifier / freeze
+- `N` / `D` — Filename labels / divider visibility
+- `H` / `C` — Difference mode / channel mode
+- `X` — Swap
+- `R` / `Ctrl+E` — Record / Video Editor
+- `Ctrl+S` — Quick save
+- `WASD` / `QE` / `Space` — Magnifier move / spacing / side preview (fixed)
+
+Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
+
+###### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
+
+- `Ctrl+O` — Add images (when bound)
+- `D` — Grid visibility
+- `Ctrl+S` — Quick save
+- `Esc` — Exit slot focus
+
+See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+
+###### Video editor window {#video-editor}
+
+While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` remove selection. Full encode workflow: [Video Editor](help://video).
+
+
+
+
+### Files and Projects
+
+*Load, paste, project files*
+
+
+##### Files and Projects
+
+Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.
+
+###### Loading images {#loading-images}
+
+- **Add files** — use the side add buttons (or {{tr:menu.find_action}}) to pick one or more files.
+- **Drag-and-drop** — drop into the window and choose which list or {{tr:workspace.session_types.multi_compare}} slot receives them.
+- **Paste** (`Ctrl+V`) — clipboard image; when the direction overlay appears, arrows or `WASD` pick the side, `Esc` cancels.
+
+:::figure{side=block width=280}
+![Paste direction overlay]({{img:platform.file_project.paste_overlay}})
+`Ctrl+V` — paste direction overlay.
+:::
+
+###### Lists {#lists}
+
+- **{{tr:workspace.session_types.image_compare}}** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — [Lists and Panels](help://ui.lists_flyouts).
+- **{{tr:workspace.session_types.multi_compare}}** — per-slot drops instead of dual lists — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+
+###### Projects {#projects}
+
+- **Open / save** — `.imgsli` from the File menu (`Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S`, or {{tr:menu.find_action}}): **Save** writes the current file (or opens **Save As** when none yet); **Save As** suggests a renamed tab title when the active tab is custom, otherwise {{tr:menu.project_untitled}}. **Save** also retargets the file basename when the tab was renamed. Opening a project names the active tab after the file. Restores workspace sessions, compare settings (split, diff, magnifier, and related features), and embedded image copies.
+- **Double-click on Windows** — the installer associates `.imgsli` with Improve ImgSLI (document icon). Frozen builds also register the association on startup; if Properties still says “Choose application”, pick Improve ImgSLI once or run with `--register-file-types`.
+- **Portable package** — the file is a ZIP: session JSON plus a `media/` folder with byte-copies of the originals (not re-encoded pixel buffers).
+- **Missing sources on save** — if a listed path no longer exists, the project still saves; that image is omitted and you are warned.
+- **App preferences** — theme, language, and hotkeys stay in application settings; they are not part of the project file.
+
+
+

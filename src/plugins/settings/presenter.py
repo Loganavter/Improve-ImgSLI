@@ -1,0 +1,111 @@
+import logging
+
+from PySide6.QtCore import QObject
+from core.store import Store
+from plugins.settings.presenter_parts import SettingsViewStateCoordinator
+from resources.translations import tr
+
+logger = logging.getLogger("ImproveImgSLI")
+
+class SettingsPresenter(QObject):
+
+    def __init__(
+        self, store: Store, main_controller, ui_manager, main_window_app, parent=None
+    ):
+        super().__init__(parent)
+        self.store = store
+        self.main_controller = main_controller
+        self.ui_manager = ui_manager
+        self.main_window_app = main_window_app
+        self.color_pickers = self._create_color_picker_coordinator(
+            store=store,
+            main_controller=main_controller,
+            main_window_app=main_window_app,
+            tr_func=self._tr,
+        )
+        self.view_state = SettingsViewStateCoordinator(
+            store=store,
+            tr_func=self._tr,
+        )
+
+    def show_canvas_feature_color_picker(
+        self,
+        *,
+        key: str,
+        setting_key: str,
+        title_key: str,
+        on_selected,
+        post_apply=None,
+    ):
+        self.color_pickers.show_canvas_feature_color_picker(
+            key=key,
+            setting_key=setting_key,
+            title_key=title_key,
+            on_selected=on_selected,
+            post_apply=post_apply,
+        )
+
+    def show_magnifier_divider_color_picker(self):
+        self.color_pickers.show_magnifier_divider_color_picker()
+
+    def show_magnifier_border_color_picker(self):
+        self.color_pickers.show_magnifier_border_color_picker()
+
+    def show_laser_color_picker(self):
+        self.color_pickers.show_laser_color_picker()
+
+    def show_capture_ring_color_picker(self):
+        self.color_pickers.show_capture_ring_color_picker()
+
+    def show_color_picker(
+        self,
+        *,
+        key: str,
+        current_color,
+        title_key: str,
+        on_selected,
+        post_apply=None,
+        show_alpha: bool = False,
+        parent_window=None,
+    ):
+        self.color_pickers.show_color_picker(
+            key=key,
+            current_color=current_color,
+            title_key=title_key,
+            on_selected=on_selected,
+            post_apply=post_apply,
+            show_alpha=show_alpha,
+            parent_window=parent_window,
+        )
+
+    def apply_smart_magnifier_colors(self):
+        self.color_pickers.apply_smart_magnifier_colors()
+
+    def update_interpolation_combo_box_ui(self):
+        self.view_state.update_interpolation_combo_box_ui()
+
+    def setup_view_buttons(self):
+        self.view_state.setup_view_buttons()
+
+    def _tr(self, text):
+        return tr(text, self.store.settings.current_language)
+
+    def _create_color_picker_coordinator(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        coordinator = registry.create_startup_service(
+            "settings_color_picker_coordinator",
+            **kwargs,
+        )
+        if coordinator is None:
+            raise RuntimeError(
+                "No tab provides settings_color_picker_coordinator; "
+                "canvas feature color pickers must be supplied by the tab owner."
+            )
+        return coordinator
+
+    def on_language_changed(self):
+        self.update_interpolation_combo_box_ui()
+        self.setup_view_buttons()
