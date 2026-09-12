@@ -30,6 +30,7 @@ from tabs.image_compare.canvas.texture_parts.crop_clip import (
     box_dims,
     clip_box_for_image,
     clip_image_for_upload,
+    crop_service_for_widget,
     resolve_box_for_path,
     resolve_slot_boxes,
     sanitize_box,
@@ -135,6 +136,94 @@ def test_resolve_box_queries_test_fakes_without_warm_check():
 def test_resolve_slot_boxes_none_without_service():
     widget = _letterbox_widget()
     assert resolve_slot_boxes(widget) == (None, None)
+
+
+# -- W3f: live controller-service resolution (production activation) -----------
+
+
+class _WarmedFakeService:
+    """Warmed CropService fake: already cached, serves via ``get`` only."""
+
+    def __init__(self, box):
+        self._box = box
+
+    def _has_cached(self, path):
+        return True
+
+    def get(self, path):
+        return self._box
+
+
+def test_crop_service_for_widget_resolves_live_controller_service():
+    # Production canvas carries no slot service (PipelineCacheState mirror);
+    # the seam must resolve the live session service via the controller
+    # backlink — both the pre-provider stash and the installed-provider
+    # shape — so bordered pairs clip instead of showing full-frame borders.
+    box = CropBox(10, 10, 60, 80)
+    svc = _WarmedFakeService(box)
+    for widget in (
+        SimpleNamespace(
+            runtime_state=SimpleNamespace(),
+            _pending_session_controller=SimpleNamespace(
+                _get_crop_service=lambda: svc
+            ),
+        ),
+        SimpleNamespace(
+            runtime_state=SimpleNamespace(),
+            _context_menu_provider=SimpleNamespace(
+                _session_ctrl=SimpleNamespace(_get_crop_service=lambda: svc)
+            ),
+        ),
+    ):
+        assert crop_service_for_widget(widget) is svc
+        boxes = resolve_slot_boxes(widget, source_key=("/a.png", "/b.png"))
+        assert boxes == (box, box)
+
+
+def test_crop_service_for_widget_off_gate_is_none_parity():
+    # OFF (or unwarmed/absent controller): _get_crop_service() -> None, so
+    # the seam stays None — identical to today, no clipping anywhere.
+    off = SimpleNamespace(_get_crop_service=lambda: None)
+    assert (
+        crop_service_for_widget(
+            SimpleNamespace(
+                runtime_state=SimpleNamespace(),
+                _pending_session_controller=off,
+            )
+        )
+        is None
+    )
+    assert (
+        crop_service_for_widget(
+            SimpleNamespace(
+                runtime_state=SimpleNamespace(),
+                _context_menu_provider=SimpleNamespace(_session_ctrl=off),
+            )
+        )
+        is None
+    )
+    widget = _letterbox_widget()
+    widget._pending_session_controller = off
+    assert resolve_slot_boxes(widget, source_key=("/a.png", "/b.png")) == (
+        None,
+        None,
+    )
+
+
+def test_crop_service_for_widget_stash_still_wins_over_controller():
+    # Precedence unchanged: explicit arg, then widget stash, then controller.
+    box = CropBox(1, 2, 30, 40)
+    stash_svc = _WarmedFakeService(box)
+    ctrl_svc = _WarmedFakeService(CropBox(5, 5, 50, 50))
+    widget = SimpleNamespace(
+        runtime_state=SimpleNamespace(),
+        _crop_service=stash_svc,
+        _pending_session_controller=SimpleNamespace(
+            _get_crop_service=lambda: ctrl_svc
+        ),
+    )
+    assert crop_service_for_widget(widget) is stash_svc
+    assert crop_service_for_widget(widget, explicit=ctrl_svc) is ctrl_svc
 
 
 # -- BoxCroppedStoreView -------------------------------------------------------
