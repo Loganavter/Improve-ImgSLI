@@ -23,6 +23,24 @@ def clear_image_slot_data(store, image_number: int) -> None:
     dispatcher.dispatch(ClearImageSlotDataAction(image_number), scope="viewport")
 
 
+def set_crop_override(store, list_num: int, index: int, value: bool | None) -> None:
+    """Persist a per-image autocrop tristate override via dispatch (W5).
+
+    Scope ``document`` like the rest of the document pattern — the
+    dispatcher emits, so no manual ``emit_state_change`` is needed on the
+    dispatch path. Unlike the rating path (in-place item mutation), this
+    never touches ``ImageItem`` directly; ``DocumentReducer`` replaces it.
+    """
+    dispatcher = store.get_dispatcher()
+    assert dispatcher is not None, "set_crop_override requires dispatcher"
+    from core.state_management.actions import SetCropOverrideAction
+
+    dispatcher.dispatch(
+        SetCropOverrideAction(slot=list_num, index=index, value=value),
+        scope="document",
+    )
+
+
 def set_current_image_data(store, image_number: int, image, path, display_name) -> None:
     # SlotSource: path is derived from list+index, no document pixel write.
     # PipelineView via single Transaction (1 dispatch, 1 emit).

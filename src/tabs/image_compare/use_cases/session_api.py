@@ -55,5 +55,6 @@ class SessionApiMixin:
     def increment_rating(self, image_number: int, index: int): list_ops.increment_rating(self, image_number, index)
     def decrement_rating(self, image_number: int, index: int): list_ops.decrement_rating(self, image_number, index)
     def set_rating(self, image_number: int, index_to_set: int, new_score: int): list_ops.set_rating(self, image_number, index_to_set, new_score)
+    def set_crop_override_at_index(self, image_number: int, index: int, value: bool | None): list_ops.set_crop_override_at_index(self, image_number, index, value)
     def on_combobox_changed(self, image_number: int, index: int, scroll_delta: int = 0): navigation.on_combobox_changed(self, image_number, index, scroll_delta)
     def on_interpolation_changed(self, index: int): navigation.on_interpolation_changed(self, index)
