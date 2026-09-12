@@ -23,6 +23,12 @@ class ImageItem:
     path: str = ""
     display_name: str = ""
     rating: int = 0
+    # Per-image autocrop override (W5): None == Auto (follow the global
+    # auto_crop_black_borders setting), True == force on, False == force
+    # off. Field declaration ONLY — all writes go through
+    # SetCropOverrideAction + DocumentReducer (dataclasses.replace).
+    # Plain bool|None stays JSON/YAML-serializable for persistence.
+    crop_override: bool | None = None
 
 
 def display_name_or_fallback(item) -> str:
