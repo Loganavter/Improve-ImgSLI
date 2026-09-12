@@ -10,6 +10,41 @@ from shared.rendering.image_identity import image_uid
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _as_crop_box(box):
+    """Normalize a CropBox / plain ``(left, top, right, bottom)`` tuple.
+
+    The magnifier resolves warmed boxes as plain tuples (``box_remap``);
+    the analysis chain (``crop_source_to_box``) consumes ``CropBox``
+    attribute access — a plain tuple would silently no-op there. ``None``
+    (or degenerate) → ``None`` so callers keep today's full-frame math.
+    """
+    if box is None:
+        return None
+    try:
+        left, top, right, bottom = (
+            int(box[0]),
+            int(box[1]),
+            int(box[2]),
+            int(box[3]),
+        )
+    except Exception:
+        return None
+    if right <= left or bottom <= top:
+        return None
+    try:
+        from shared.image_processing.autocrop.model import CropBox
+
+        return CropBox(left, top, right, bottom)
+    except Exception:
+        return None
+
+
+def _box_key_tuple(box):
+    """Hashable box identity for the request key (w3c ``box_key`` pattern)."""
+    normalized = _as_crop_box(box)
+    return normalized.to_tuple() if normalized is not None else None
+
+
 def build_cached_diff_image_task(
     source1,
     source2,
@@ -17,6 +52,9 @@ def build_cached_diff_image_task(
     lease1,
     lease2,
     progress_callback=None,
+    *,
+    box1=None,
+    box2=None,
 ):
     from tabs.image_compare.services.analysis.background_layers import (
         build_cached_diff_image,
@@ -31,10 +69,14 @@ def build_cached_diff_image_task(
         progress_callback=progress_callback,
         lease1=lease1,
         lease2=lease2,
+        box1=_as_crop_box(box1),
+        box2=_as_crop_box(box2),
     )
 
 
-def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
+def request_cached_diff_image_async(
+    presenter, source1, source2, diff_mode, box1=None, box2=None
+):
     from tabs.image_compare.presenters.image_canvas.background_parts.diff_toasts import (
         complete_diff_toast,
         dismiss_active_diff_toast,
@@ -47,6 +89,11 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
     if source1 is None or source2 is None:
         return
 
+    # W3d: diff over the crop windows. Both boxes None → legacy 5-tuple key,
+    # bit-identical to today (existing served/pending keys still match);
+    # either box present → box tuples ride the key so a box change
+    # recomputes instead of hitting a stale-box entry.
+    box_key = (_box_key_tuple(box1), _box_key_tuple(box2))
     request_key = (
         diff_mode,
         # image_uid, not id(): id() is a memory address CPython can reuse
@@ -60,6 +107,8 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
         getattr(source1, "size", None),
         getattr(source2, "size", None),
     )
+    if box_key != (None, None):
+        request_key = (*request_key, box_key)
     render_cache = presenter.store.viewport.session_data.render_cache
     # Already have a diff for this exact source pair -- render_flow.py calls
     # this unconditionally every frame diff_mode=="ssim" (not just when
@@ -125,6 +174,8 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
         diff_mode,
         StoreLease.capture(source1),
         StoreLease.capture(source2),
+        box1=_as_crop_box(box1),
+        box2=_as_crop_box(box2),
     )
     worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
     worker.signals.result.connect(_on_result)
@@ -146,6 +197,8 @@ def ensure_cached_diff_image(
     *,
     local_source1=None,
     local_source2=None,
+    box1=None,
+    box2=None,
 ):
     vp = presenter.store.viewport
     diff_mode = getattr(vp.view_state, "diff_mode", "off")
@@ -177,7 +230,9 @@ def ensure_cached_diff_image(
         except Exception:
             pass
         try:
-            request_cached_diff_image_async(presenter, s1, s2, diff_mode)
+            request_cached_diff_image_async(
+                presenter, s1, s2, diff_mode, box1=box1, box2=box2
+            )
         except Exception:
             pass
     return None

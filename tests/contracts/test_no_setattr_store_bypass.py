@@ -90,9 +90,9 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 205, "geometry_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 206, "geometry_state"),
         # -- magnifier worker cache writes --
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 93, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 98, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 102, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 142, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 147, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 151, "presenter.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 29, "presenter.store.viewport.interaction_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 33, "presenter.store.viewport.interaction_state"),
         # -- presentation geometry scratch --
