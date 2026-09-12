@@ -1,23 +1,15 @@
 """Box-clipped texture/geometry helpers for image_compare (W3a).
 
-Pixel stores decode FULL-FRAME (W1+W2: crop is never baked at alloc); the
-detected box is side metadata owned by
-``tabs.image_compare.pipeline.crop_box.effective_crop_box_for_path``. This
-module is the canvas layer's single consumer of that interface: every
-texture-upload and geometry path that must intersect with the effective box
-goes through here. No new box-resolution logic lives here — resolution is
-exactly one call to ``effective_crop_box_for_path`` per slot.
+Pixel stores decode FULL-FRAME (W1+W2); the detected box is side metadata
+owned by ``pipeline.crop_box.effective_crop_box_for_path`` — this module is
+the canvas layer's single consumer of that interface (one call per slot, no
+new box-resolution logic here).
 
-GUI-thread rule: ``CropService.get`` does IO on first touch. The load path
-warms the service (``schedule_crop_warmup`` in ``use_cases/slot.py``) before
-decode finishes, so by canvas-upload time the box is cached. When the
-service exposes a warmed check (``_has_cached``), an unwarmed path resolves
-to ``None`` for this frame (plus a background warmup kick) instead of
-blocking the GUI; a later upload/frame picks the box up. Test fakes that
-only implement ``get`` are always queried (no IO there by construction).
-
-``None`` box (crop disabled, no borders, cold cache, any failure) means
-"identical to today": every helper below is a pass-through for ``None``.
+GUI-thread rule: ``CropService.get`` does IO on first touch, but the load
+path warms the service before decode finishes. An unwarmed path resolves to
+``None`` for this frame (plus a background warmup kick) instead of blocking;
+test fakes implementing only ``get`` are always queried. ``None`` box means
+"identical to today": every helper below passes ``None`` through.
 """
 
 from __future__ import annotations
@@ -364,7 +356,12 @@ class BoxCroppedStoreView:
             return False
 
     def crop(self, box: tuple[int, int, int, int]):  # type: ignore[no-untyped-def]
-        """Crop a box-local rect, translated to full-frame parent coords."""
+        """Crop a box-local rect, translated to full-frame parent coords.
+
+        Returns a ``QImage`` through the existing memmap sub-rect util —
+        the same type ``crop_apron_tile``'s ``TiledPixelStore`` fast path
+        yields, which is what tile-upload consumers expect.
+        """
         left, top, right, bottom = self._box
         try:
             al, at, ar, ab = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
@@ -375,7 +372,11 @@ class BoxCroppedStoreView:
         at = max(0, min(at, h))
         ar = max(0, min(ar, w))
         ab = max(0, min(ab, h))
-        return self._parent.crop((al + left, at + top, ar + left, ab + top))
+        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+
+        return qimage_from_pixel_source(
+            self._parent, (al + left, at + top, ar + left, ab + top)
+        )
 
 
 # Original-file dims memo: path -> (mtime, (w, h)). Header-only probe (no
