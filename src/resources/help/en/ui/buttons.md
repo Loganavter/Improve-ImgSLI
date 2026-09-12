@@ -62,8 +62,7 @@ List button — short click vs long-press.
 
 ### Product examples {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — in denser modes, scroll divider width or magnifier size on one control; long-press clear / swap on list buttons. Details: [Lists and Panels](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — same thickness / visibility habits on grid lines (`D`).
+Session-specific habits live on their topics: [Comparison](help://comparison), [Magnifier](help://magnifier) and [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).
 
 ### Find a control by name {#find-action}
 

@@ -85,6 +85,8 @@ def paint_drag_drop_overlay(painter: QPainter, host, horizontal: bool, text1: st
 
     *host* is the CanvasWidget (used only for width/height via rect()).
     Caller must have setRenderHint(Antialiasing) already if desired.
+    Binary show (full opacity on first frame) — the Telegram-style fade
+    experiment was reverted: it never addressed the display stall.
     """
     margin = 10.0
     half_margin = margin / 2.0
