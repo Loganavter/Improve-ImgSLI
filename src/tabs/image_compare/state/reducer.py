@@ -13,11 +13,31 @@ from typing import Any
 from core.state_management.actions import (
     Action,
     ClearImageSlotDataAction,
+    SetCropOverrideAction,
     SetCurrentIndexAction,
 )
 
 
 class DocumentReducer:
+    @staticmethod
+    def _set_crop_override(document: Any, action) -> Any:
+        """Per-item tristate override via ``dataclasses.replace`` (no in-place edit)."""
+        value = getattr(action, "value", None)
+        value = None if value is None else bool(value)
+        if getattr(action, "slot", 0) == 1:
+            items = list(document.image_list1)
+            if not (0 <= getattr(action, "index", -1) < len(items)):
+                return document
+            items[action.index] = replace(items[action.index], crop_override=value)
+            return replace(document, image_list1=items)
+        if getattr(action, "slot", 0) == 2:
+            items = list(document.image_list2)
+            if not (0 <= getattr(action, "index", -1) < len(items)):
+                return document
+            items[action.index] = replace(items[action.index], crop_override=value)
+            return replace(document, image_list2=items)
+        return document
+
     @staticmethod
     def reduce(document: Any, action: Action) -> Any:
         if document is None:
@@ -30,6 +50,8 @@ class DocumentReducer:
             if action.slot == 1:
                 return replace(document, _last_display_name1="")
             return replace(document, _last_display_name2="")
+        if isinstance(action, SetCropOverrideAction):
+            return DocumentReducer._set_crop_override(document, action)
         # Phase 3 lightweight: list ops via Transaction (no direct lst.append)
         try:
             from core.state_management.document_actions import AppendImageItemsAction, SetImageListAction
