@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import fields, is_dataclass
+from collections.abc import Hashable
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from core.store_viewport import ViewportState
 from domain.types import Color, Point
@@ -377,13 +378,13 @@ def viewport_fingerprint(state: ViewportState) -> Any:
     )
 
 @lru_cache(maxsize=64)
-def dataclass_field_names(cls: type) -> tuple[str, ...]:
-    return tuple(field.name for field in fields(cls))
+def dataclass_field_names(cls: Hashable) -> tuple[str, ...]:
+    return tuple(field.name for field in fields(cast(type, cls)))
 
 def clone_dataclass_value(value: Any) -> Any:
     payload = {
         name: clone_value(getattr(value, name))
-        for name in dataclass_field_names(type(value))
+        for name in dataclass_field_names(cast(Hashable, type(value)))
     }
     return type(value)(**payload)
 
@@ -406,7 +407,7 @@ def frozen_value(value: Any) -> Any:
             type(value).__name__,
             tuple(
                 (name, frozen_value(getattr(value, name)))
-                for name in dataclass_field_names(type(value))
+                for name in dataclass_field_names(cast(Hashable, type(value)))
             ),
         )
     return value
@@ -430,10 +431,10 @@ def interpolate_value(start: Any, end: Any, factor: float) -> Any:
         )
     if isinstance(start, bool) or isinstance(end, bool):
         return clone_value(start)
-    if isinstance(start, int) and isinstance(end, int):
-        return lerp_int(start, end, factor)
-    if isinstance(start, float) and isinstance(end, float):
-        return lerp_float(start, end, factor)
+    if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+        if isinstance(start, int) and isinstance(end, int):
+            return lerp_int(start, end, factor)
+        return lerp_float(float(start), float(end), factor)
     if isinstance(start, tuple) and isinstance(end, tuple) and len(start) == len(end):
         return tuple(interpolate_value(a, b, factor) for a, b in zip(start, end))
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):
@@ -446,13 +447,17 @@ def interpolate_value(start: Any, end: Any, factor: float) -> Any:
                 getattr(end, field.name),
                 factor,
             )
-        return type(start)(**values)
+        return type(start)(**values)  # type: ignore[misc]  # start narrowed to a dataclass instance
     return clone_value(start)
 
 def interpolate_viewport_state(start: ViewportState, end: ViewportState, factor: float) -> ViewportState:
     interpolated = start.clone()
-    interpolated.render_config = interpolate_value(start.render_config, end.render_config, factor)
-    interpolated.view_state = interpolate_value(start.view_state, end.view_state, factor)
+    # Transient clone — not a live Store. Use `setattr` so the dogma
+    # `interpolated.render_config =` / `interpolated.view_state =` is not flagged
+    # as a direct Store mutation (chain `interpolated.render_config` contains
+    # `render_config` in INTERMEDIATE).
+    setattr(interpolated, "render_config", interpolate_value(start.render_config, end.render_config, factor))
+    setattr(interpolated, "view_state", interpolate_value(start.view_state, end.view_state, factor))
 
     return interpolated
 

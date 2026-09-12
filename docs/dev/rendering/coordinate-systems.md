@@ -92,6 +92,48 @@ any file outside `viewport/zoom.py`/`viewport/pipeline.py` that combines
 — the exact shape all three deleted duplicates had. A new hand-rolled copy of
 either fails CI immediately instead of silently drifting.
 
+### Comparison letterbox: eager max envelope (one fitted rect)
+
+The comparison tab (two images side-by-side) does **not** build its letterbox
+by fitting each image separately and unioning the two fitted rects
+(`min(x)+max(x+w)` style). That approach produced a size-dependent extra width
+(e.g. `1138` vs the per-image `1080` fitted width) and forced a late resize.
+
+Instead it is an **eager envelope**, single owner, stable from the first frame:
+
+```python
+pw, ph = max(w1, w2), max(h1, h2)   # eager, from get_image_dims(i1/i2)
+geometry = resolve_canvas_content_geometry(
+    widget_width=cw, widget_height=ch,
+    image_width=pw, image_height=ph, virtual_layout=None,
+)
+letterbox = (ux/cw, uy/ch, uw/cw, uh/ch)  # same for both slots
+```
+
+- `cw,ch` — widget size (`_canvas_dims`, export canvas viewport when tiling).
+- `w1,h1,w2,h2` — `get_image_dims()` of whatever pixels are already available
+  (preview `QImage`, full-res `TiledPixelStore`, or unified store). If both
+  sides have a size, `pw,ph` is the max — no store `predicted_unified_size`
+  needed, no waiting for the unify worker.
+- `resolve_canvas_content_geometry(cw,ch,pw,ph)` returns one fitted rect.
+  Both `state._letterbox_params[0/1]`, `state._content_rect_px` and
+  `state._inner_content_rect_px` receive that same rect (`outer == inner`
+  with `virtual_layout=None`), dispatched via `store.transact()` — see
+  `tabs/image_compare/canvas/texture_parts/base_images.py:189`
+  `update_common_letterbox_geometry` and
+  `presenters/image_canvas/background_parts/render_flow.py:75`
+  `_update_comparison_geometry`.
+- Fallback: when only one side has a size, fit that single image (no `max`).
+
+Result: `letterbox` is stable from the first `gap draw_plan` (the `44.007`
+frame that already has two previews), not after a `350 ms` hold. There is no
+`UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry — `HOLD`
+and the `atomic` fallback-LOD guard remain only for **pixel** coverage
+(`rhi_renderer/renderer.py:463` `resolve_fallback_lod(atomic=True)` /
+`more_pending` tiling), not for rect placement. The old
+`union fitted rects: min(x)..max(x+w)` description and the `1138 vs 1080`
+example no longer apply and must not be reintroduced.
+
 ## Canvas-px overlay model
 
 Overlay geometry (magnifier center, capture rect, guide endpoint) uses
@@ -143,11 +185,11 @@ by combining primitives by hand.**
   - Semantic ``split_position_visual`` stays in content ``[0, 1]``. At
     ``zoom <= 1`` it is not rewritten on pan/zoom; at ``zoom > 1`` it is
     rewritten (still clamped) so the screen spit stays fixed — see
-    [zoom-pan.md](zoom-pan.md) and
-    [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+    [zoom-pan.md](zoom-pan.md) and the divider-zoom-pan-detach investigation
+    (`src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md`
+    in `improve-imgsli-internal-docs`, private).
 
-  Details and failure modes:
-  [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+  Details and failure modes: same investigation as above.
 
 Violating this rule looks identical in both models: correct-looking code
 that's subtly wrong by an amount proportional to distance from some neutral
@@ -180,8 +222,9 @@ downstream of perfect CPU numbers:
 - **Display lagging the store** — Wayland + Vulkan can show a stale frame
   until a transient restacks; zoom chip already correct.
 
-Catalog: [qrhi-gotchas.md](qrhi-gotchas.md). Short rules:
-[patterns.md](patterns.md).
+Catalog: `docs/dev/rendering/qrhi-gotchas.md`. Short rules:
+`docs/dev/rendering/patterns.md`. Both in `improve-imgsli-internal-docs`
+(private, not in this repo).
 
 ## Target rule of thumb
 
@@ -192,4 +235,5 @@ opaque final answer, not a raw ingredient.
 
 And before “fixing zoom” because the picture jumped: if the zoom chip did
 not move, treat it as a display/compositor catch-up until proven otherwise
-([qrhi-gotchas.md#display-lags-store](qrhi-gotchas.md#display-lags-store)).
+(see "Display lags store" in `docs/dev/rendering/qrhi-gotchas.md`,
+`improve-imgsli-internal-docs`, private).

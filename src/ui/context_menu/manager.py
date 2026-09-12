@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Literal
 
 from sli_ui_toolkit.widgets import (
@@ -20,27 +19,15 @@ ContextMenuSurface = Literal["in_window", "popup"]
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
-    Prefer ``popup`` so RMB stacks above ``UnifiedFlyout``. On Windows with
-    ``sli-ui-toolkit < 3.1.4``, a translucent ``Qt.Popup`` that calls
-    ``winId`` / ``setTransientParent`` against frameless CSD permanently
-    breaks in-window alpha — fall back to in-window until that toolkit fix
-    is installed (see ``docs/dev/KNOWN_BUGS.md``).
+    Always ``"popup"``: RMB menus are real ``Qt.Popup`` top-levels so they
+    stack above ``UnifiedFlyout`` and behave like native menus. Historical
+    platform fallbacks (in-window on Wayland for the xdg_popup grab race, and
+    on Windows with ``sli-ui-toolkit < 3.1.4`` for the frameless-CSD alpha
+    bug) were deliberately removed so every context menu in the app is a
+    popup. The multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still
+    allows forcing ``in_window`` for A/B debugging.
     """
-    if not sys.platform.startswith("win"):
-        return "popup"
-    try:
-        from sli_ui_toolkit import __version__ as version
-    except Exception:
-        return "in_window"
-    parts: list[int] = []
-    for piece in str(version).split(".")[:3]:
-        digits = "".join(ch for ch in piece if ch.isdigit())
-        if not digits:
-            break
-        parts.append(int(digits))
-    if tuple(parts) >= (3, 1, 4):
-        return "popup"
-    return "in_window"
+    return "popup"
 
 
 class ContextMenuManager:
@@ -148,7 +135,7 @@ class ContextMenuManager:
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:

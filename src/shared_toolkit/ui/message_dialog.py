@@ -9,11 +9,13 @@ from __future__ import annotations
 from enum import Enum, auto
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter
+from PySide6.QtGui import QColor, QIcon, QPainter
 from PySide6.QtWidgets import QDialog, QGridLayout, QVBoxLayout, QWidget
 
 from shared_toolkit.ui.themed_dialog import ThemedDialog
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers.ui_font import paint_font
 from sli_ui_toolkit.widgets import Button, CheckBox, Label
 from ui.theming import resolve_theme_color
 from utils.resource_loader import resource_path
@@ -57,7 +59,7 @@ class _MessageKindBadge(QWidget):
         super().__init__(parent)
         self._kind = kind
         self._theme_manager = theme_manager
-        self.setFixedSize(_BADGE_DIAMETER, _BADGE_DIAMETER)
+        self.setFixedSize(scaled_px(_BADGE_DIAMETER), scaled_px(_BADGE_DIAMETER))
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
     def paintEvent(self, event) -> None:  # noqa: ARG002 — Qt API
@@ -74,10 +76,8 @@ class _MessageKindBadge(QWidget):
                 (self.height() - 2 * radius) / 2.0,
                 2 * radius,
                 2 * radius,
-            )
-            font = QFont(self.font())
-            font.setPixelSize(_BADGE_GLYPH_PIXEL_SIZE)
-            font.setBold(True)
+            )  # type: ignore[call-overload]  # QPainter stub lacks the 4-float overload
+            font = paint_font(self, pixel_size=_BADGE_GLYPH_PIXEL_SIZE, bold=True)
             painter.setFont(font)
             painter.setPen(fg)
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, _KIND_GLYPH[self._kind])
@@ -85,7 +85,7 @@ class _MessageKindBadge(QWidget):
             painter.end()
 
     def sizeHint(self) -> QSize:
-        return QSize(_BADGE_DIAMETER, _BADGE_DIAMETER)
+        return QSize(scaled_px(_BADGE_DIAMETER), scaled_px(_BADGE_DIAMETER))
 
 
 class AppMessageDialog(ThemedDialog):
@@ -142,13 +142,15 @@ class AppMessageDialog(ThemedDialog):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(
+            scaled_px(18), scaled_px(14), scaled_px(18), scaled_px(16)
+        )
+        root.setSpacing(scaled_px(14))
 
         body_row = QWidget(self)
         body_layout = QGridLayout(body_row)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setHorizontalSpacing(14)
+        body_layout.setHorizontalSpacing(scaled_px(14))
         body_layout.setColumnStretch(1, 1)
 
         self._kind_badge = _MessageKindBadge(self._kind, self.theme_manager, body_row)
@@ -180,7 +182,7 @@ class AppMessageDialog(ThemedDialog):
         action_layout.setColumnStretch(0, 1)
 
         self._ok_button = Button(text=self._ok_text, variant="surface", parent=actions)
-        self._ok_button.setMinimumSize(96, 34)
+        self._ok_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._ok_button.clicked.connect(self.accept)
 
         action_layout.addWidget(self._ok_button, 0, 1)
@@ -196,8 +198,10 @@ class AppMessageDialog(ThemedDialog):
     def _apply_geometry(self) -> None:
         self.adjustSize()
         hint = self.sizeHint()
-        width = max(340, min(540, hint.width() + 32))
-        height = max(150, hint.height() + 16)
+        width = max(
+            scaled_px(340), min(scaled_px(540), hint.width() + scaled_px(32))
+        )
+        height = max(scaled_px(150), hint.height() + scaled_px(16))
         self.setMinimumSize(width, height)
         self.resize(width, height)
 

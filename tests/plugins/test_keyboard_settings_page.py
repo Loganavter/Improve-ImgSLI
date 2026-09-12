@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from core.actions.types import ActionDescriptor
 from plugins.settings.pages.keyboard import SECTION, _collect_defaults
@@ -83,6 +83,13 @@ def test_binder_first_wins_and_invokes(qtbot):
     assert len(binder._shortcuts) == 1
     assert binder._claimed[normalize_sequence("Ctrl+Shift+P")] == "probe.first"
 
+    # The production guard skips shortcut runs while a text input holds
+    # focus. Qt's focus is process-global, so clear it explicitly — a
+    # predecessor test's leftover focus widget made this order-dependent
+    # (reversed-order runs fired with an empty `ran`).
+    leftover_focus = QApplication.focusWidget()
+    if leftover_focus is not None:
+        leftover_focus.clearFocus()
     binder._shortcuts[0].activated.emit()
     qtbot.wait(20)
     assert ran == ["first"]

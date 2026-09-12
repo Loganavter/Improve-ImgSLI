@@ -246,13 +246,13 @@ def _run_for_flyout_member(
     if callable(auto_exclusive) and bool(auto_exclusive()):
         set_checked = getattr(widget, "setChecked", None)
         if callable(set_checked):
-            return lambda w=widget: w.setChecked(True)
+            return lambda w=widget: w.setChecked(True)  # type: ignore[misc]  # widget type is dynamic
 
     is_checkable = getattr(widget, "isCheckable", None)
     if callable(is_checkable) and is_checkable():
         # Toolkit radios often report checkable + exclusive; prefer select.
         set_checked = getattr(widget, "setChecked", None)
         if callable(set_checked) and callable(auto_exclusive):
-            return lambda w=widget: w.setChecked(True)
+            return lambda w=widget: w.setChecked(True)  # type: ignore[misc]  # widget type is dynamic
 
     return _run_for_widget(widget, combo_index=None)

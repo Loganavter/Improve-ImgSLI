@@ -5,7 +5,7 @@ from ui.canvas_infra.viewport.geometry import QuickContentRect
 from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
-from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 
 
 def update_display_split_position(
@@ -34,12 +34,15 @@ def update_display_split_position(
             cx, cy, cw, ch = content_rect_px
             if cw > 0 and ch > 0:
                 content_rect = QuickContentRect(x=cx, y=cy, width=cw, height=ch)
+        from shared.image_processing.image_dims import get_image_dims
+
+        iw, ih = get_image_dims(img1)
         result = compute_display_split_position(
             DisplaySplitPositionRequest(
                 widget_width=w,
                 widget_height=h,
-                image_width=img1.width,
-                image_height=img1.height,
+                image_width=iw,
+                image_height=ih,
                 split_visual=scene.split_position_visual,
                 is_horizontal=scene.is_horizontal,
                 zoom_level=zoom_level if anchor_to_viewport else 1.0,
@@ -115,33 +118,8 @@ def get_view_transformed_content_rect_widget_px(
     )
 
 
-def get_local_visible_image_rect(
-    widget,
-    *,
-    img_x: int,
-    img_y: int,
-    img_w: int,
-    img_h: int,
-) -> QRect | None:
-    visible_left = max(0, img_x)
-    visible_top = max(0, img_y)
-    visible_right = min(widget.width(), img_x + img_w)
-    visible_bottom = min(widget.height(), img_y + img_h)
-    if visible_right <= visible_left or visible_bottom <= visible_top:
-        return None
-    return QRect(
-        int(visible_left - img_x),
-        int(visible_top - img_y),
-        int(visible_right - visible_left),
-        int(visible_bottom - visible_top),
-    )
-
 
 def begin_content_scissor(widget, force: bool = False):
     """No-op in the QRhi pipeline (QRhi passes set scissor per-draw)."""
     return False
 
-
-def end_content_scissor(widget, enabled):
-    """No-op counterpart to ``begin_content_scissor``."""
-    return

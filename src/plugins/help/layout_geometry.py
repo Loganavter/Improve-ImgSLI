@@ -9,6 +9,7 @@ from shared_toolkit.ui.layout_sizing import (
     apply_dialog_geometry,
     clamp,
     clamp_to_screen,
+    widget_size_hint as _size_hint,
 )
 
 HELP_MIN_WIDTH = 720
@@ -30,6 +31,7 @@ HELP_GEOMETRY_POLICY = GeometryApplyPolicy(
     minimum_floor=(HELP_MIN_WIDTH, HELP_MIN_HEIGHT),
     width_bounds=(HELP_MIN_WIDTH, HELP_MAX_WIDTH),
     center_on_parent=True,
+    remember_key="help",
 )
 
 
@@ -41,15 +43,6 @@ def _visible_help_page(dialog) -> QWidget | None:
     if document is not None and not document.isHidden():
         return document
     return getattr(dialog, "_content_host", None)
-
-
-def _size_hint(widget: QWidget | None) -> tuple[int, int]:
-    """Read intrinsic size without ``adjustSize`` (which collapses live layout)."""
-    if widget is None:
-        return (0, 0)
-    widget.ensurePolished()
-    hint = widget.sizeHint()
-    return (max(0, hint.width()), max(0, hint.height()))
 
 
 def compute_help_dialog_size(dialog) -> tuple[int, int]:

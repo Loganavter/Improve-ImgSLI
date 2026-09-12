@@ -31,9 +31,62 @@ def get_magnifier_drawing_coords(
 ]:
     empty_result = (None, None, None, 0, 0, QRect(), None)
 
-    document = store.get_session_state_slot("document")
-    full_res_img1 = document.full_res_image1 or document.original_image1
-    full_res_img2 = document.full_res_image2 or document.original_image2
+    def _peek(slot: int):
+        doc = store.get_session_state_slot("document")
+        path = doc.image1_path if slot == 1 else doc.image2_path
+        if not path:
+            return None
+        try:
+            vp = store.viewport.session_data.image_state
+            cand = vp.image1 if slot == 1 else vp.image2
+            if cand is not None and getattr(cand, "is_open", True):
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    return cand
+        except Exception:
+            pass
+        try:
+            ps = store.get_session_state_slot("pipeline")
+            if ps is not None:
+                import os
+
+                from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                    try:
+                        k = key_fn(path, None, None)
+                        v = cache_dict.get(k)
+                        if v is not None:
+                            if hasattr(v, "is_open") and not v.is_open:
+                                continue
+                            if hasattr(v, "isNull") and v.isNull():
+                                continue
+                            return v
+                    except Exception:
+                        pass
+                    try:
+                        norm = os.path.normpath(path)
+                        for kk, vv in cache_dict.items():
+                            if kk[0] == norm:
+                                if hasattr(vv, "is_open") and not vv.is_open:
+                                    continue
+                                if hasattr(vv, "isNull") and vv.isNull():
+                                    continue
+                                return vv
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return None
+
+    full_res_img1 = _peek(1)
+    full_res_img2 = _peek(2)
 
     if not full_res_img1 or not full_res_img2:
         return empty_result
@@ -59,7 +112,7 @@ def get_magnifier_drawing_coords(
     if magnifier is None:
         return empty_result
 
-    unified_ref_dim = math.sqrt(float(unified_width) * float(unified_height))
+    unified_ref_dim = float(min(unified_width, unified_height))
     capture_size_on_unified = float(magnifier.capture_size_relative) * unified_ref_dim
 
     drawing_ref_dim = max(1, min(drawing_width, drawing_height))
@@ -74,11 +127,16 @@ def get_magnifier_drawing_coords(
             max(1, int(round(capture_size_on_unified - thickness_on_unified))) or 1
         )
 
+    capture_radius_on_unified = min(
+        capture_size_on_unified / 2.0,
+        unified_width / 2.0,
+        unified_height / 2.0,
+    )
     radius_rel_x = (
-        (capture_size_on_unified / 2.0) / unified_width if unified_width > 0 else 0.0
+        capture_radius_on_unified / unified_width if unified_width > 0 else 0.0
     )
     radius_rel_y = (
-        (capture_size_on_unified / 2.0) / unified_height if unified_height > 0 else 0.0
+        capture_radius_on_unified / unified_height if unified_height > 0 else 0.0
     )
 
     interaction = getattr(store.viewport, "interaction_state", None)

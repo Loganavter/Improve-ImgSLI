@@ -1,11 +1,62 @@
 from __future__ import annotations
 
+import cProfile
+import logging
+import os
+import pstats
+import time
+
 from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
 from tabs.image_compare.canvas.features.magnifier.toolbar.shared import (
     show_magnifier_border_color_picker,
     show_magnifier_divider_color_picker,
     trigger_toolbar_binding,
 )
+
+_profile_logger = logging.getLogger("ImproveImgSLI.magnifier.toggle_profile")
+
+
+def _maybe_profile_toggle():
+    """IMGSLI_PROFILE_MAGNIFIER_TOGGLE=1: cProfile (deterministic, in-process
+    -- not an external sampler like py-spy, so it shouldn't mask timing-
+    sensitive bugs the way py-spy did) the next few seconds after a toggle,
+    dumping stats to help find a >1s stall that resisted targeted
+    time.perf_counter() checkpoints in rebuild_magnifier_overlay and
+    realize_tile_plan (both measured fast) and disappears under RenderDoc
+    and py-spy alike -- see docs/dev/KNOWN_BUGS.md if this gets written up.
+    Returns a stop() callable, or None if not enabled."""
+    if os.environ.get("IMGSLI_PROFILE_MAGNIFIER_TOGGLE", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return None
+    from PySide6.QtCore import QTimer
+
+    profiler = cProfile.Profile()
+    profiler.enable()
+    started_at = time.strftime("%Y%m%d-%H%M%S")
+
+    def _stop() -> None:
+        import io
+
+        profiler.disable()
+        out_dir = os.path.expanduser("~/.local/share/ImproveImgSLI/toggle_profile")
+        os.makedirs(out_dir, exist_ok=True)
+        base = os.path.join(out_dir, started_at)
+        profiler.dump_stats(base + ".pstats")
+        buf = io.StringIO()
+        stats = pstats.Stats(profiler, stream=buf).sort_stats("cumulative")
+        stats.print_stats(40)
+        with open(base + ".txt", "w") as f:
+            f.write(buf.getvalue())
+        _profile_logger.warning(
+            "[toggle-profile] dumped to %s.pstats / %s.txt", base, base
+        )
+
+    QTimer.singleShot(3000, _stop)
+    return _stop
 
 
 def toggle_magnifier_divider_visibility(actions, visible: bool) -> None:
@@ -22,6 +73,7 @@ def toggle_magnifier_divider_visibility(actions, visible: bool) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)
@@ -50,6 +102,7 @@ def set_magnifier_divider_thickness(actions, thickness: int) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)
@@ -69,6 +122,7 @@ def set_magnifier_divider_thickness(actions, thickness: int) -> None:
 def magnifier_toggle_handler(presenter, checked: bool) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
+    _maybe_profile_toggle()
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "toggle_enabled", checked)

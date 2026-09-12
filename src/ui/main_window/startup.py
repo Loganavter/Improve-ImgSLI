@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from plugins.onboarding import host as onboarding_host
+from shared_toolkit.ui.decorate_dialog import resolve_csd_band
+from tabs.registry import TabRegistry
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class MainWindowStartupRuntime:
@@ -16,7 +23,13 @@ class MainWindowStartupRuntime:
         window = self.window
 
         window._root_layout = QVBoxLayout(window)
-        window._root_layout.setContentsMargins(0, 0, 0, 0)
+        # The outer resize band insets the whole content by the band on every
+        # side (the surface carries the transparent band beyond the visible
+        # body — same contract the dialogs get from WindowChrome). The band
+        # collapses to 0 in maximized/fullscreen, re-synced by
+        # ``MainWindow._sync_csd_content_band`` on WindowStateChange.
+        band = resolve_csd_band(window)
+        window._root_layout.setContentsMargins(band, band, band, band)
         window._root_layout.setSpacing(0)
 
         window._custom_title_bar = self._build_custom_title_bar()
@@ -52,10 +65,13 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
-        rect = window.rect()
+        # Keep the cover inside the outer resize band (transparent margin);
+        # the band collapses to 0 in maximized/fullscreen.
+        band = resolve_csd_band(window)
+        rect = window.rect().adjusted(band, band, -band, -band)
         title_bar = getattr(window, "_custom_title_bar", None)
         if title_bar is not None and title_bar.isVisible():
-            top = title_bar.height()
+            top = band + title_bar.height()
             rect.setTop(top)
         window._startup_cover.setGeometry(rect)
         window._startup_cover.raise_()
@@ -74,26 +90,17 @@ class MainWindowStartupRuntime:
             return
         window._startup_cover.hide()
 
-    def should_show_onboarding(self) -> bool:
-        return onboarding_host.should_present(self.window)
-
     def bootstrap_content(self) -> None:
-        # Always build the real app first so «Приступить» is only a stack
-        # switch in the same window (not a second boot that looks like a new window).
-        will_onboard = self.should_show_onboarding()
-        self.bootstrap_main_app(hold_for_onboarding=will_onboard)
-        if will_onboard:
-            onboarding_host.maybe_present(
-                self.window, on_completed=self.on_onboarding_completed
-            )
+        # Always build the real app first so opening a tab is only a stack
+        # switch in the same window. Onboarding is no longer shown here — it
+        # now triggers when the first onboarding-capable compare tab is
+        # opened, via the onboarding plugin's
+        # WorkspaceSessionActivatedEvent subscription.
+        self.bootstrap_main_app()
 
-    def bootstrap_main_app(self, *, hold_for_onboarding: bool = False) -> None:
+    def bootstrap_main_app(self) -> None:
         window = self.window
         if window._main_app_bootstrapped:
-            if hold_for_onboarding:
-                self.show_cover()
-                self.sync_cover_geometry()
-                return
             window._startup_stack.setCurrentWidget(window._app_host)
             self.reveal_if_ready()
             return
@@ -107,27 +114,8 @@ class MainWindowStartupRuntime:
         host_mask = getattr(window._app_host, "_workspace_transition_mask", None)
         if host_mask is not None:
             window._workspace_transition_mask = host_mask
-        bootstrap_tab = window.ui._tab_registry.bootstrap_default_tab()
-        if bootstrap_tab is None:
-            raise RuntimeError(
-                "No bootstrap default tab registered — tab discovery likely "
-                "failed (frozen builds need import-based discovery when "
-                "tabs/*/tab.py are not on disk)."
-            )
-        image_compare_widget = window.ui.legacy_tab_widgets.get(
-            bootstrap_tab.session_type
-        )
-        window.image_compare_widget = image_compare_widget
-        image_label = image_compare_widget.image_label
-        window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
-        window._startup_canvas_first_frame_rendered = False
-        window._startup_canvas_first_visual_ready = False
         window.appearance.update_image_label_background()
         self.show_cover()
-        image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
-        image_label.firstVisualFrameReady.connect(
-            self.on_image_label_first_visual_frame_ready
-        )
 
         components = window.app_context.create_window_dependent_components(window)
         window.geometry_manager = components.geometry_manager
@@ -142,16 +130,19 @@ class MainWindowStartupRuntime:
             menu.refresh_platform_action_targets()
 
         window.installEventFilter(window.event_handler)
-        image_label.installEventFilter(window.event_handler)
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(window.event_handler)
 
+        # NavigationManager must be installed AFTER EventHandler on QApplication
+        # so its event filter runs first (Qt LIFO order).
+        from core.app_shell_navigation import register_app_shell_navigation
+
+        register_app_shell_navigation(window)
+
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
-        image_compare_widget.reapply_button_styles()
-        from tabs.registry import TabRegistry
 
         _tab_registry = TabRegistry()
         _tab_registry.discover(tier="bootstrap")
@@ -168,52 +159,12 @@ class MainWindowStartupRuntime:
                 from devtools.ui_inspector.installer import install_ui_inspector
 
                 install_ui_inspector(app, window, window.theme_manager)
-        if hold_for_onboarding:
-            # Keep cover up; do not switch the stack to app_host yet — that
-            # would flash session_picker before onboarding is inserted.
-            self.show_cover()
-            self.sync_cover_geometry()
-            return
         window._startup_stack.setCurrentWidget(window._app_host)
         self.sync_cover_geometry()
         self.reveal_if_ready()
 
-    def has_initial_canvas_content(self) -> bool:
-        from tabs.registry import TabRegistry
-
-        registry = TabRegistry()
-        registry.discover(tier="bootstrap")
-        result = registry.create_service(
-            "has_initial_canvas_content", self.window.store
-        )
-        return bool(result)
-
-    def on_image_label_first_frame_rendered(self) -> None:
-        self.window._startup_canvas_first_frame_rendered = True
-        self.reveal_if_ready()
-
-    def on_image_label_first_visual_frame_ready(self) -> None:
-        self.window._startup_canvas_first_visual_ready = True
-        self.reveal_if_ready()
-
-    def is_canvas_ready(self) -> bool:
-        window = self.window
-        if window.ui is None:
-            return False
-        if not self._active_tab_requires_first_frame_gate():
-            return True
-        if window._startup_expects_initial_canvas_content:
-            return (
-                window._startup_canvas_first_frame_rendered
-                and window._startup_canvas_first_visual_ready
-                and self.is_canvas_content_ready()
-            )
-        return window._startup_canvas_first_visual_ready
-
     def _active_tab(self):
-        # The tab whose page is currently shown in the workspace stack —
-        # the single resolution point shared by every startup hook below
-        # that needs to ask "what is on screen right now".
+        """The tab whose page is currently shown in the workspace stack."""
         window = self.window
         tab_registry = getattr(window.ui, "_tab_registry", None)
         stack = getattr(window.ui, "workspace_stack", None)
@@ -226,52 +177,20 @@ class MainWindowStartupRuntime:
             return tab_registry.get_tab(session_type)
         return None
 
-    def _active_tab_requires_first_frame_gate(self) -> bool:
-        # The startup cover is gated on the active tab's canvas rendering its
-        # first frame, but that signal only fires for tabs whose canvas
-        # opts in (via the "requires_first_frame_startup_gate" service). If
-        # a tab without that signal (e.g. session_picker) is shown at
-        # startup, the cover would stay up forever, so the gate does not
-        # apply then.
-        tab = self._active_tab()
-        if tab is None:
-            return True
-        try:
-            return bool(tab.create_service("requires_first_frame_startup_gate"))
-        except Exception:
-            return True
-
-    def is_canvas_content_ready(self) -> bool:
-        window = self.window
-        if window.ui is None:
-            return False
-        tab = self._active_tab()
-        if tab is None:
-            return False
-        return bool(tab.create_service("is_canvas_content_ready"))
-
     def reveal_if_ready(self) -> None:
         window = self.window
         if window.ui is None:
-            return
-        if not self.is_canvas_ready():
             return
         if onboarding_host.is_active(window):
             # App is warm under onboarding — load deferred work, but do NOT mark
             # revealed: QStackedLayout only sizes the *current* page, so app_host
             # must get its first geometry pass when we switch after Start.
-            widget = window.image_compare_widget
-            if widget is not None:
-                widget.image_startup_placeholder.hide()
             self.emit_visual_ready()
             return
         if not window._main_app_revealed:
             window._startup_stack.setCurrentWidget(window._app_host)
             window._main_app_revealed = True
             self._sync_app_host_geometry()
-        widget = window.image_compare_widget
-        if widget is not None:
-            widget.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
 
@@ -297,35 +216,27 @@ class MainWindowStartupRuntime:
             apply_mask()
         host.update()
         window.update()
-        self._refresh_session_picker_surface()
+        self._notify_active_tab_host_revealed()
 
-    def _refresh_session_picker_surface(self) -> None:
-        """Force Session Picker opaque fills after the host becomes visible."""
+    def _notify_active_tab_host_revealed(self) -> None:
+        """Notify the active tab that the host is visible — generic hook."""
         window = self.window
         ui = getattr(window, "ui", None)
         registry = getattr(ui, "_tab_registry", None) if ui is not None else None
-        if registry is None:
+        stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+        if registry is None or stack is None:
             return
-        picker = registry.get_page("session_picker")
-        if picker is None:
-            return
-        recover = getattr(picker, "_sync_opaque_page_fills", None)
-        if callable(recover):
-            recover()
-        # Ensure create-cards + recent are present before the cover lifts
-        # (idempotent if _build already populated them).
-        show_hook = getattr(picker, "refresh", None)
-        if callable(show_hook):
-            show_hook()
-        recent = getattr(picker, "_recent_panel", None)
-        if recent is not None:
-            on_shown = getattr(recent, "on_page_shown", None)
-            if callable(on_shown):
-                on_shown()
-            recover_recent = getattr(recent, "recover_opaque_surface", None)
-            if callable(recover_recent):
-                recover_recent()
-        picker.update()
+        current = stack.currentWidget()
+        for session_type in registry.registered_types:
+            if registry.get_page(session_type) is not current:
+                continue
+            tab = registry.get_tab(session_type)
+            if tab is not None:
+                try:
+                    tab.on_host_revealed()
+                except Exception:
+                    pass
+            break
 
     def emit_visual_ready(self) -> None:
         window = self.window
@@ -359,19 +270,16 @@ class MainWindowStartupRuntime:
         ui = window.ui
         if ui is not None and getattr(ui, "_tab_registry", None) is not None:
             ui._tab_registry.discover(tier="deferred")
-            stack = getattr(ui, "workspace_stack", None)
-            if stack is not None:
-                ui._tab_registry.install_missing_pages(stack)
+            # Deferred tab pages are created lazily on first show — no need
+            # to call install_missing_pages() here.
             # Cards were built from a tab-package scan; only refresh icons now
             # that deferred tabs can answer get_tab_icon.
-            picker = ui._tab_registry.get_page("session_picker")
-            sync_icons = getattr(picker, "sync_icons", None)
-            if callable(sync_icons):
-                sync_icons()
+            picker = ui._tab_registry.get_page(INITIAL_WORKSPACE_SESSION_TYPE)
+            if picker is not None:
+                picker.sync_icons()
             menu = getattr(window, "_menu_controller", None)
-            wire = getattr(menu, "_wire_session_picker_recent", None)
-            if callable(wire):
-                wire()
+            if menu is not None:
+                menu._wire_session_picker_recent()
 
         main_controller = window.main_controller
         presenter = window.presenter
@@ -390,7 +298,7 @@ class MainWindowStartupRuntime:
             )
             if tab_reg is not None:
                 settings_plugin.register_canvas_feature_bindings(
-                    tab_reg, tab_types=("multi_compare",)
+                    tab_reg
                 )
 
         if ctx.settings_manager is not None and ctx.store is not None:
@@ -412,9 +320,6 @@ class MainWindowStartupRuntime:
             window._main_app_revealed = True
             self._sync_app_host_geometry()
             self.hide_cover()
-            widget = window.image_compare_widget
-            if widget is not None:
-                widget.image_startup_placeholder.hide()
             self.emit_visual_ready()
 
         # Apply mode after app_host is current so layout_manager sizes visible chrome.

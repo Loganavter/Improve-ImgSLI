@@ -7,6 +7,7 @@ import pytest
 from plugins.help.dialog import HelpDialog
 from plugins.help.plugin import HelpPlugin
 from plugins.help.tree import clear_help_tree_cache
+from sli_ui_toolkit.widgets import SurfaceScrollArea
 
 
 @pytest.fixture(autouse=True)
@@ -19,12 +20,26 @@ def _help_tabs_discovered():
     clear_help_tree_cache()
 
 
+@pytest.fixture
+def dark_theme(qapp):
+    """Dark palette + registered palettes (Window #1e1e1e vs dialog.background #2b2b2b)."""
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("dark", qapp, await_ripples=False)
+    tm._flush_pending_theme()  # type: ignore[attr-defined]
+    return tm
+
+
 def test_help_dialog_opens_root_hub(qtbot):
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
     dialog.resize(880, 620)
     dialog.show()
     qtbot.waitExposed(dialog)
+    assert isinstance(dialog._scroll, SurfaceScrollArea)
     assert dialog._nav.current_id == "root"
     assert not dialog._hub_page.isHidden()
     assert dialog._document.isHidden()
@@ -34,6 +49,47 @@ def test_help_dialog_opens_root_hub(qtbot):
     assert dialog._scroll.height() > 200
     assert dialog._hub_page.width() > 200
     assert dialog._hub_page._cards.count() >= 1
+
+
+def test_help_dialog_content_surface_paints_dialog_background(qapp, qtbot, dark_theme):
+    """Content scroll surface must be dialog.background, not the Window role.
+
+    The hub page and document view are transparent custom widgets; before
+    SurfaceScrollArea their substrate came from the stock QScrollArea
+    viewport auto-fill (Window #1e1e1e dark). Sample the viewport below the
+    workspace hub's cards (its trailing stretch pad).
+    """
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qapp.processEvents()
+    dialog._open_node("workspace")
+    qapp.processEvents()
+
+    img = dialog._scroll.viewport().grab().toImage()
+    assert img.width() > 0 and img.height() > 0
+    pixel = img.pixelColor(img.width() // 2, img.height() - 20)
+    assert pixel.name() == "#2b2b2b"
+    assert pixel.name() != "#1e1e1e"
+
+
+def test_help_dialog_content_surface_survives_polish(qapp, qtbot, dark_theme):
+    """QStyle::polish at show() resets palettes — the token fill must persist."""
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qapp.processEvents()
+    dialog._open_node("workspace")
+    qapp.processEvents()
+    dialog._scroll.style().unpolish(dialog._scroll)
+    dialog._scroll.style().polish(dialog._scroll)
+    qapp.processEvents()
+
+    img = dialog._scroll.viewport().grab().toImage()
+    pixel = img.pixelColor(img.width() // 2, img.height() - 20)
+    assert pixel.name() == "#2b2b2b"
 
 
 def test_help_dialog_navigate_alias_magnifier(qtbot):
@@ -69,7 +125,13 @@ def test_help_dialog_sidebar_splitter(qtbot):
     assert dialog._splitter.sizes()[0] >= HELP_SIDEBAR_MIN_WIDTH
     dialog._go_back()
     assert not dialog.nav_widget.isVisible()
+    # Hubs collapse the whole sidebar column — nav list *and* the search
+    # header — so the root/main section owns the full width.
+    assert not dialog._search_field.isVisible()
     assert dialog._splitter.sizes()[0] == 0
+    dialog._open_node("workspace")
+    assert dialog._search_field.isVisible()
+    assert dialog._splitter.sizes()[0] >= HELP_SIDEBAR_DEFAULT_WIDTH - 40
 
 
 def test_help_dialog_drill_and_back(qtbot):

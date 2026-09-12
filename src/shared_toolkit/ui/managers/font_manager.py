@@ -1,9 +1,25 @@
+import logging
 import os
+import traceback
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
+
+_logger = logging.getLogger("ImproveImgSLI")
+
+
+def _caller_str(depth: int = 6) -> str:
+    """Short `file:line:func` chain -- who actually called `set_font()`.
+    Local copy of `ui.widgets.glass_hud.hud.caller_str` (not imported: this
+    module lives in `shared_toolkit`, app-agnostic, shouldn't depend on
+    app-specific `ui.widgets` code)."""
+    frames = traceback.extract_stack()[:-2]
+    frames = [f for f in frames if "font_manager.py" not in f.filename][-depth:]
+    return " <- ".join(f"{f.filename.split('/')[-1]}:{f.lineno}:{f.name}" for f in frames)
+
 
 class FontManager(QObject):
 
@@ -81,6 +97,15 @@ class FontManager(QObject):
         return None
 
     def set_font(self, mode: str, family: str = ""):
+        _logger.debug(
+            "[flyout-debug] FontManager.set_font(mode=%r, family=%r) "
+            "previous_mode=%r previous_family=%r caller=%s",
+            mode,
+            family,
+            self._current_mode,
+            self._current_family,
+            _caller_str(),
+        )
 
         if mode == "system":
             mode = "system_default"
@@ -91,7 +116,7 @@ class FontManager(QObject):
         self._current_family = family or ""
 
         app = QApplication.instance()
-        if not app:
+        if not isinstance(app, QApplication):
             return
 
         try:
@@ -121,6 +146,14 @@ class FontManager(QObject):
             if new_font.pointSize() <= 8:
                 new_font.setPointSize(11)
 
+            _logger.debug(
+                "[flyout-debug] FontManager.set_font: app.setFont() family=%r "
+                "pointSizeF=%.2f (was family=%r pointSizeF=%.2f)",
+                new_font.family(),
+                new_font.pointSizeF(),
+                app.font().family(),
+                app.font().pointSizeF(),
+            )
             app.setFont(new_font)
 
             try:

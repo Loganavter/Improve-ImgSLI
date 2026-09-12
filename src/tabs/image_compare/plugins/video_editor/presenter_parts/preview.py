@@ -1,9 +1,10 @@
+# Audit-Meta: pattern=state-machine reason="PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard"
 import logging
 
 from core.tracing import Tracer
 from PIL import Image
 import shiboken6 as sip
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QImage, QPixmap
 from tabs.image_compare.plugins.video_editor.services.keyframing.engine.values import (
     frozen_value,
@@ -27,6 +28,7 @@ class PreviewCoordinator:
         editor_service,
         timer_parent,
         emit_preview_ready,
+        emit_fit_content_available=None,
     ):
         self.view = view
         self.export_controller = export_controller
@@ -34,6 +36,7 @@ class PreviewCoordinator:
         self.model = model
         self.editor_service = editor_service
         self.emit_preview_ready = emit_preview_ready
+        self.emit_fit_content_available = emit_fit_content_available
 
         self._view_destroyed = False
         self._is_rendering_preview = False
@@ -43,11 +46,19 @@ class PreviewCoordinator:
         self.fit_content_mode = False
         self.preview_render_scale = 1.0
         self._cached_global_bounds = None
-        self._bounds_calculation_pending = False
+        self._bounds_request_id: int = 0
         self._stored_crop_resolution = None
 
         # ``prepare_key`` / ``plan`` / ``store`` / optional ``frame_pil``.
         self._preview_frame_cache = None
+
+        # A cache miss (new render size — the common case mid-resize-drag)
+        # needs prepare_snapshot_canvas_frame(), which decodes/resamples the
+        # source images — hundreds of ms for 4K sources. Runs here instead of
+        # inline on the GUI thread so a resize drag doesn't stall the UI; see
+        # thumbnails.py's identical rationale for its own pool.
+        self._prepare_pool = QThreadPool(timer_parent)
+        self._prepare_pool.setMaxThreadCount(1)
 
         self._preview_updater = QTimer(timer_parent)
         self._preview_updater.setSingleShot(True)
@@ -148,11 +159,10 @@ class PreviewCoordinator:
             return
 
         if self.fit_content_mode and self._cached_global_bounds is None:
-            if not self._bounds_calculation_pending:
-                self.recalculate_global_bounds()
+            self.recalculate_global_bounds()
             _vplog.debug(
-                "preview_wait_global_bounds pending=%s",
-                self._bounds_calculation_pending,
+                "preview_wait_global_bounds request_id=%s",
+                self._bounds_request_id,
             )
             return
 
@@ -181,19 +191,27 @@ class PreviewCoordinator:
             self.fit_content_mode,
         )
 
+        task_id = self._render_task_id
         snap = self.editor_service.get_snapshot_at(current_frame)
         if not snap:
             self._is_rendering_preview = False
             return
 
+        # render_preview_gpu returns True when it finished synchronously (or
+        # couldn't start) and _finish_preview_render should run now; False
+        # means it submitted a background worker that will call
+        # _finish_preview_render itself once the prepare completes — do NOT
+        # reset _is_rendering_preview here, that would let a new resize tick
+        # start rendering while this one is still in flight.
+        needs_finish = True
         try:
             if self.can_render_preview_on_gpu(snap):
-                self.render_preview_gpu(snap)
+                needs_finish = self.render_preview_gpu(snap)
         except Exception as exc:
             logger.error(f"GPU preview render failed: {exc}", exc_info=True)
-        finally:
-            _vplog.debug("preview_end task=%s", self._render_task_id)
-            self._is_rendering_preview = False
+            needs_finish = True
+        if needs_finish:
+            self._finish_preview_render(task_id)
 
     def can_render_preview_on_gpu(self, snap) -> bool:
         exporter = getattr(self.export_controller, "video_exporter", None)
@@ -288,23 +306,20 @@ class PreviewCoordinator:
             canvas._preview_source_key = request_key
             canvas.set_pixmap(pixmap)
 
-    def _apply_preview_scene(
+    def _prepare_preview_frame(
         self,
+        exporter,
         snap,
-        request_key,
-        global_bounds,
-        fill_color_tuple,
         render_w: int,
         render_h: int,
-    ) -> bool:
-        exporter = getattr(self.export_controller, "video_exporter", None)
-        canvas = getattr(self.view, "preview_label", None)
-        if exporter is None or canvas is None:
-            return False
-        if hasattr(canvas, "set_read_only"):
-            canvas.set_read_only(True)
-
-        prepared = exporter.prepare_snapshot_canvas_frame(
+        global_bounds,
+        fill_color_tuple,
+    ):
+        """Pure CPU/PIL work (image decode, resample, plan building) — no Qt
+        widget access, safe to run off the GUI thread. Mirrors
+        ``prepare_snapshot_canvas_frame(thumbnail=False)`` — same renderer as
+        export, per render/export parity."""
+        return exporter.prepare_snapshot_canvas_frame(
             snap,
             render_w,
             render_h,
@@ -314,6 +329,16 @@ class PreviewCoordinator:
             fill_color=fill_color_tuple or (0, 0, 0, 0),
             thumbnail=False,
         )
+
+    def _apply_prepared_preview_scene(
+        self, prepared, request_key, render_w: int, render_h: int
+    ) -> bool:
+        """Qt-widget-touching half of the old ``_apply_preview_scene`` —
+        GUI-thread only. ``prepared`` comes from ``_prepare_preview_frame``,
+        possibly via a background worker's result callback."""
+        canvas = getattr(self.view, "preview_label", None)
+        if canvas is None or prepared is None:
+            return False
 
         # Theme chrome outside the letterboxed canvas frame. Pad fill inside
         # the expanding canvas is painted by base.frag (canvasLetterbox +
@@ -367,19 +392,16 @@ class PreviewCoordinator:
         )
 
         canvas._preview_source_key = request_key
-        self._preview_frame_cache = {
-            "prepare_key": None,  # filled by caller
-            "plan": prepared.plan,
-            "store": prepared.store,
-            "request_key": request_key,
-            "frame_pil": None,
-        }
         return True
 
     def render_preview_gpu(self, snap) -> bool:
+        """Returns True if the caller should call ``_finish_preview_render``
+        right away (the render finished synchronously, or couldn't start at
+        all); False means a background worker was submitted and will call
+        ``_finish_preview_render`` itself once it completes."""
         exporter = getattr(self.export_controller, "video_exporter", None)
         if exporter is None:
-            return False
+            return True
         preview_w, preview_h = self.get_preview_size_safe()
         render_w, render_h = self._resolve_preview_render_size(preview_w, preview_h)
         fill_color_tuple = self._resolve_fill_color_tuple()
@@ -446,48 +468,124 @@ class PreviewCoordinator:
                     clip_overlays_to_image_bounds=self._clip_overlays_for_mode(),
                 )
                 canvas._preview_source_key = request_key
-        else:
-            _vplog.debug(
-                "preview_render task=%s render=%sx%s display=%sx%s",
-                request_id,
-                render_w,
-                render_h,
-                preview_w,
-                preview_h,
+            return True
+
+        # Cache miss: needs prepare_snapshot_canvas_frame(), which decodes
+        # and resamples the source images — hundreds of ms for 4K sources.
+        # Submitted to a background thread (like thumbnails.py) so a resize
+        # drag doesn't stall the GUI thread; _on_preview_prepared applies the
+        # result on the main thread once it's ready.
+        _vplog.debug(
+            "preview_render task=%s render=%sx%s display=%sx%s",
+            request_id,
+            render_w,
+            render_h,
+            preview_w,
+            preview_h,
+        )
+        canvas = getattr(self.view, "preview_label", None)
+        if canvas is not None and hasattr(canvas, "set_read_only"):
+            canvas.set_read_only(True)
+
+        worker = GenericWorker(
+            self._prepare_preview_frame,
+            exporter,
+            snap,
+            render_w,
+            render_h,
+            global_bounds,
+            fill_color_tuple,
+        )
+        worker.signals.result.connect(
+            lambda prepared, rid=request_id, rk=request_key, pk=prepare_key, rw=render_w, rh=render_h: (
+                self._on_preview_prepared(prepared, rid, rk, pk, rw, rh)
             )
-            applied = self._apply_preview_scene(
-                snap,
-                request_key,
-                global_bounds,
-                fill_color_tuple,
-                render_w,
-                render_h,
+        )
+        worker.signals.error.connect(
+            lambda err, rid=request_id, rk=request_key, snap=snap, rw=render_w, rh=render_h, gb=global_bounds, fc=fill_color_tuple: (
+                self._on_preview_prepare_error(rid, rk, snap, rw, rh, gb, fc)
             )
-            if not applied:
-                frame_pil = exporter.render_snapshot_to_pil(
-                    snap,
-                    render_w,
-                    render_h,
-                    auto_crop=False,
-                    fit_content=self.fit_content_mode,
-                    global_bounds=global_bounds,
-                    fill_color=fill_color_tuple or (0, 0, 0, 0),
-                )
-                if frame_pil is None:
-                    return False
-                self._apply_preview_frame(frame_pil, request_key)
-                self._preview_frame_cache = {
-                    "prepare_key": prepare_key,
-                    "plan": None,
-                    "store": None,
-                    "request_key": request_key,
-                    "frame_pil": frame_pil,
-                }
-            else:
+        )
+        self._prepare_pool.start(worker)
+        return False
+
+    def _on_preview_prepared(
+        self, prepared, request_id: int, request_key, prepare_key, render_w: int, render_h: int
+    ) -> None:
+        if request_id == self._render_task_id and self.has_live_view():
+            if self._apply_prepared_preview_scene(prepared, request_key, render_w, render_h):
                 cache = self._preview_frame_cache or {}
                 cache["prepare_key"] = prepare_key
+                cache["plan"] = prepared.plan
+                cache["store"] = prepared.store
+                cache["request_key"] = request_key
+                cache["frame_pil"] = None
                 self._preview_frame_cache = cache
+        self._finish_preview_render(request_id)
 
+    def _fallback_render_frame(self, exporter, snap, render_w, render_h, global_bounds, fill_color_tuple):
+        """CPU fallback render for prepare-error path — safe off GUI thread."""
+        if exporter is None:
+            return None
+        return exporter.render_snapshot_to_pil(
+            snap,
+            render_w,
+            render_h,
+            auto_crop=False,
+            fit_content=self.fit_content_mode,
+            global_bounds=global_bounds,
+            fill_color=fill_color_tuple or (0, 0, 0, 0),
+        )
+
+    def _on_fallback_frame_ready(self, frame_pil, request_id: int, request_key) -> None:
+        if request_id == self._render_task_id and self.has_live_view() and frame_pil is not None:
+            self._apply_preview_frame(frame_pil, request_key)
+            self._preview_frame_cache = {
+                "prepare_key": None,
+                "plan": None,
+                "store": None,
+                "request_key": request_key,
+                "frame_pil": frame_pil,
+            }
+        self._finish_preview_render(request_id)
+
+    def _on_fallback_frame_error(self, err, request_id: int) -> None:
+        logger.error("Video preview fallback render failed: %s", err)
+        self._finish_preview_render(request_id)
+
+    def _on_preview_prepare_error(
+        self, request_id: int, request_key, snap, render_w: int, render_h: int, global_bounds, fill_color_tuple
+    ) -> None:
+        logger.error("Video preview prepare failed on background thread")
+        if request_id != self._render_task_id or not self.has_live_view():
+            self._finish_preview_render(request_id)
+            return
+        exporter = getattr(self.export_controller, "video_exporter", None)
+        worker = GenericWorker(
+            self._fallback_render_frame,
+            exporter,
+            snap,
+            render_w,
+            render_h,
+            global_bounds,
+            fill_color_tuple,
+        )
+        worker.signals.result.connect(
+            lambda pil, rid=request_id, rk=request_key: self._on_fallback_frame_ready(pil, rid, rk)
+        )
+        worker.signals.error.connect(
+            lambda err, rid=request_id: self._on_fallback_frame_error(err, rid)
+        )
+        try:
+            self._prepare_pool.start(worker)
+        except Exception:
+            try:
+                self.export_controller.thread_pool.start(worker)
+            except Exception:
+                self._finish_preview_render(request_id)
+
+    def _finish_preview_render(self, request_id: int) -> bool:
+        _vplog.debug("preview_end task=%s", request_id)
         if request_id != self._render_task_id or not self.has_live_view():
             _vplog.debug(
                 "preview_drop_stale task=%s current=%s live=%s",
@@ -495,11 +593,13 @@ class PreviewCoordinator:
                 self._render_task_id,
                 self.has_live_view(),
             )
+            self._is_rendering_preview = False
             return False
 
         if not self._preview_ready_emitted:
             self._preview_ready_emitted = True
             self.emit_preview_ready()
+        self._is_rendering_preview = False
         return True
 
     def on_fit_content_fill_color_changed(self, _color):
@@ -561,8 +661,6 @@ class PreviewCoordinator:
         self.schedule_update()
 
     def recalculate_global_bounds(self):
-        if self._bounds_calculation_pending:
-            return
         exporter = getattr(self.export_controller, "video_exporter", None)
         if exporter is None:
             return
@@ -573,19 +671,31 @@ class PreviewCoordinator:
 
         from .common import VIDEO_EDITOR_AUTO_CROP
 
-        self._bounds_calculation_pending = True
+        self._bounds_request_id += 1
+        request_id = self._bounds_request_id
 
         def calculate():
             return exporter.calculate_global_canvas_bounds(snapshots, VIDEO_EDITOR_AUTO_CROP)
 
         worker = GenericWorker(calculate)
-        worker.signals.result.connect(self.on_global_bounds_calculated)
-        worker.signals.error.connect(self.on_bounds_calculation_error)
+        worker.signals.result.connect(
+            lambda bounds, rid=request_id: self.on_global_bounds_calculated(bounds, request_id=rid)
+        )
+        worker.signals.error.connect(
+            lambda err, rid=request_id: self.on_bounds_calculation_error(err, request_id=rid)
+        )
         self.export_controller.thread_pool.start(worker)
 
-    def on_global_bounds_calculated(self, bounds):
-        self._bounds_calculation_pending = False
+    def on_global_bounds_calculated(self, bounds, request_id: int | None = None):
+        if request_id is not None and request_id != self._bounds_request_id:
+            return
         self._cached_global_bounds = bounds
+
+        if self.emit_fit_content_available is not None:
+            # Nothing to uncrop when the virtual canvas never leaves 0..1
+            # (no snapshot ever padded/overflowed the frame) — toggling
+            # fit-content would be a visual no-op, so disable the button.
+            self.emit_fit_content_available(bounds is None or bounds.extends_beyond_unit())
 
         if bounds and self.fit_content_mode and self.has_live_view():
             g_pad_left = int(bounds.pad_left)
@@ -607,9 +717,14 @@ class PreviewCoordinator:
 
         self.schedule_update()
 
-    def on_bounds_calculation_error(self, err):
-        self._bounds_calculation_pending = False
+    def on_bounds_calculation_error(self, err, request_id: int | None = None):
+        if request_id is not None and request_id != self._bounds_request_id:
+            return
         logger.error(f"Error calculating global bounds: {err}")
+        if self.emit_fit_content_available is not None:
+            # Unknown, not confirmed unit — don't leave the button stuck
+            # disabled over a transient failure.
+            self.emit_fit_content_available(True)
 
     def on_window_resized(self):
         if not self.has_live_view():

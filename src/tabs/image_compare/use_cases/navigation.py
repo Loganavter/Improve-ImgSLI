@@ -1,17 +1,49 @@
 from core.events import CoreUpdateRequestedEvent
+from core.state_management.actions import SetCurrentIndexAction
 
 
 def activate_single_image_mode(controller, image_number: int):
     doc = controller.store.get_session_state_slot("document")
-    img = (
-        (doc.full_res_image1 or doc.preview_image1 or doc.original_image1)
-        if image_number == 1
-        else (doc.full_res_image2 or doc.preview_image2 or doc.original_image2)
-    )
-    controller.store.viewport.view_state.showing_single_image_mode = (
-        image_number if img else 0
-    )
-    controller.store.emit_state_change("viewport")
+    path = doc.image1_path if image_number == 1 else doc.image2_path
+    img = None
+    if path:
+        # PipelineView / PipelineCache is single source (Phase 3)
+        try:
+            vp = controller.store.viewport.session_data.image_state
+            cand = vp.image1 if image_number == 1 else vp.image2
+            if cand is not None:
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    img = cand
+        except Exception:
+            pass
+        if img is None:
+            pl = getattr(controller, "pipeline", None)
+            if pl is not None:
+                try:
+                    hit = pl.peek(path)
+                    if hit is not None:
+                        img = hit
+                    else:
+                        hit2 = pl.peek_preview(path)
+                        if hit2 is not None:
+                            img = hit2
+                except Exception:
+                    pass
+        if img is None:
+            img = True  # path exists => slot has content (SlotSource)
+    mode = image_number if img else 0
+    dispatcher = controller.store.get_dispatcher()
+    if dispatcher is not None:
+        from core.state_management.viewport_actions import SetShowingSingleImageModeAction
+
+        dispatcher.dispatch(SetShowingSingleImageModeAction(mode), scope="viewport")
     if controller.event_bus:
         controller.event_bus.emit(CoreUpdateRequestedEvent())
     else:
@@ -19,12 +51,24 @@ def activate_single_image_mode(controller, image_number: int):
 
 
 def deactivate_single_image_mode(controller):
-    vp = controller.store.viewport
-    vp.view_state.showing_single_image_mode = 0
-    vp.interaction_state.is_dragging_split_line = False
-    vp.interaction_state.is_dragging_overlay_handle = False
-    vp.interaction_state.is_dragging_overlay_split = False
-    controller.store.emit_state_change("viewport")
+    store = controller.store
+    dispatcher = store.get_dispatcher()
+    if dispatcher is not None:
+        from core.state_management.viewport_actions import SetShowingSingleImageModeAction
+        from core.state_management.interaction_actions import SetDraggingSplitLineAction
+        import importlib
+
+        _magnifier_actions = importlib.import_module(
+            "tabs.image_compare.canvas.features.magnifier.input.actions"
+        )
+        SetDraggingCapturePointAction = _magnifier_actions.SetDraggingCapturePointAction
+        SetDraggingSplitInMagnifierAction = _magnifier_actions.SetDraggingSplitInMagnifierAction
+
+        with store.batch_changes():
+            dispatcher.dispatch(SetShowingSingleImageModeAction(0), scope="viewport")
+            dispatcher.dispatch(SetDraggingSplitLineAction(False), scope="viewport")
+            dispatcher.dispatch(SetDraggingCapturePointAction(False), scope="viewport")
+            dispatcher.dispatch(SetDraggingSplitInMagnifierAction(False), scope="viewport")
     if controller.event_bus:
         controller.event_bus.emit(CoreUpdateRequestedEvent())
     else:
@@ -47,10 +91,17 @@ def on_combobox_changed(
         new_index = index
 
     if 0 <= new_index < len(target_list):
-        if image_number == 1:
-            doc.current_index1 = new_index
-        else:
-            doc.current_index2 = new_index
+        if new_index != current_idx:
+            # Index changes go through the Dispatcher so browsing is
+            # undoable (SET_CURRENT_INDEX; the reducer replaces the document
+            # so the reference snapshot stays sound). The pixel load for the
+            # new entry follows as separate, deliberately non-undoable
+            # actions (the replaced TiledPixelStore is closed).
+            dispatcher = controller.store.get_dispatcher()
+            if dispatcher is not None:
+                dispatcher.dispatch(
+                    SetCurrentIndexAction(slot=image_number, index=new_index)
+                )
         controller.set_current_image(image_number)
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())
@@ -72,16 +123,27 @@ def on_interpolation_changed(controller, index: int):
             == selected_method_key
         ):
             return
-        controller.store.viewport.render_config.interpolation_method = (
-            selected_method_key
-        )
-        if (
-            hasattr(controller.store.viewport, "render_config")
-            and controller.store.viewport.render_config is not None
-        ):
-            controller.store.viewport.render_config.interpolation_method = (
-                selected_method_key
-            )
+        _nav_dispatched = False
+        _nav_dispatcher = getattr(controller.store, "get_dispatcher", lambda: None)()
+        if _nav_dispatcher is not None:
+            try:
+                from core.state_management.appearance_actions import SetInterpolationMethodAction
+
+                _nav_dispatcher.dispatch(
+                    SetInterpolationMethodAction(method=selected_method_key), scope="viewport"
+                )
+                _nav_dispatched = True
+            except Exception:
+                pass
+        if not _nav_dispatched:
+            try:
+                setattr(
+                    controller.store.viewport.render_config,
+                    "interpolation_method",
+                    selected_method_key,
+                )
+            except Exception:
+                pass
         if hasattr(controller.store, "invalidate_render_cache"):
             controller.store.invalidate_render_cache()
         main_controller = getattr(controller, "main_controller", None)
@@ -93,7 +155,8 @@ def on_interpolation_changed(controller, index: int):
             main_controller.settings_manager._save_setting(
                 "interpolation_method", selected_method_key
             )
-        controller.store.emit_state_change("viewport")
+        if not _nav_dispatched:
+            controller.store.emit_state_change("viewport")
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())
         else:
@@ -110,9 +173,9 @@ def on_interpolation_changed(controller, index: int):
             if settings_presenter is not None:
                 settings_presenter.update_interpolation_combo_box_ui()
             ui_manager = getattr(controller.presenter, "ui_manager", None)
-            if getattr(ui_manager.dialogs, "settings_dialog", None):
-                ui_manager.dialogs.settings_dialog.update_main_interpolation(
-                    selected_method_key
-                )
+            dialogs = getattr(ui_manager, "dialogs", None)
+            settings_dialog = getattr(dialogs, "settings_dialog", None)
+            if settings_dialog:
+                settings_dialog.update_main_interpolation(selected_method_key)
     except Exception:
         pass

@@ -20,6 +20,13 @@ def build_export_render_scene(
         apply_channel_mode_in_shader=True,
         clip_overlays_to_image_bounds=False,
     )
+    if scene is None:
+        import logging
+
+        logging.getLogger("ImproveImgSLI").debug(
+            "build_export_render_scene skipped: no canvas scene for active tab"
+        )
+        return None
     old_overlay = scene.feature_overrides.get("filename_overlay")
     new_feature_overrides = {
         **scene.feature_overrides,

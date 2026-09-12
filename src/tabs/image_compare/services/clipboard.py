@@ -1,5 +1,4 @@
 import logging
-import os
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.workers import GenericWorker
@@ -8,6 +7,7 @@ from shared.clipboard_images import (
     collect_clipboard_image_items,
     download_images_from_urls,
 )
+from shared.clipboard_paste import split_clipboard_items
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -60,8 +60,7 @@ class ClipboardService:
             def on_direction_selected(direction: str):
                 slot_number = 1 if direction in ("up", "left") else 2
 
-                local_files = [i for i in items_to_process if os.path.exists(i)]
-                urls = [i for i in items_to_process if i.startswith("http")]
+                local_files, urls = split_clipboard_items(items_to_process)
 
                 if local_files and self.main_controller and self.main_controller.sessions:
                     self.main_controller.sessions.load_images_from_paths(

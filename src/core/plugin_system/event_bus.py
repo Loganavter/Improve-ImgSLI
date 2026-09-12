@@ -37,6 +37,7 @@ class EventBus:
             type[Event], list[Union[weakref.ref, weakref.WeakMethod, _StrongRefWrapper]]
         ] = defaultdict(list)
         self._emit_state = threading.local()
+        self._lock = threading.Lock()
 
     def subscribe(self, event_type: Type[T], callback: Callable[[T], None]) -> None:
         weak_cb = None
@@ -72,35 +73,40 @@ class EventBus:
                     )
                     weak_cb = _StrongRefWrapper(callback)
 
-        for existing_weak_cb in self._subscribers[event_type]:
-            existing_cb = existing_weak_cb()
-            if existing_cb is not None and existing_cb == callback:
+        with self._lock:
+            for existing_weak_cb in self._subscribers[event_type]:
+                existing_cb = existing_weak_cb()
+                if existing_cb is not None and existing_cb == callback:
 
-                return
+                    return
 
-        self._subscribers[event_type].append(weak_cb)
+            self._subscribers[event_type].append(weak_cb)
 
     def unsubscribe(self, event_type: Type[T], callback: Callable[[T], None]) -> None:
-        if event_type not in self._subscribers:
-            return
+        with self._lock:
+            if event_type not in self._subscribers:
+                return
 
-        to_remove = []
-        for weak_cb in self._subscribers[event_type]:
-            cb = weak_cb()
-            if cb is None:
+            to_remove = []
+            for weak_cb in self._subscribers[event_type]:
+                cb = weak_cb()
+                if cb is None:
 
-                to_remove.append(weak_cb)
-            elif cb == callback:
+                    to_remove.append(weak_cb)
+                elif cb == callback:
 
-                to_remove.append(weak_cb)
+                    to_remove.append(weak_cb)
 
-        for weak_cb in to_remove:
-            self._subscribers[event_type].remove(weak_cb)
+            for weak_cb in to_remove:
+                self._subscribers[event_type].remove(weak_cb)
 
     def emit(self, event: Event) -> None:
         event_type = type(event)
-        if event_type not in self._subscribers:
-            return
+        with self._lock:
+            if event_type not in self._subscribers:
+                return
+            # Snapshot under lock so a concurrent subscribe is not lost.
+            listeners_snapshot = list(self._subscribers[event_type])
 
         chain = getattr(self._emit_state, "chain", None)
         if chain is None:
@@ -115,10 +121,9 @@ class EventBus:
 
         chain.append(event_type.__name__)
         try:
-            listeners = self._subscribers[event_type]
             alive_listeners = []
 
-            for weak_cb in listeners:
+            for weak_cb in listeners_snapshot:
                 cb = weak_cb()
                 if cb is not None:
                     try:
@@ -134,6 +139,20 @@ class EventBus:
 
                         alive_listeners.append(weak_cb)
 
-            self._subscribers[event_type] = alive_listeners
+            # Reconcile dead listeners under lock: remove snapshot entries
+            # that are now dead/expired, keep newly added subscribers.
+            with self._lock:
+                current = list(self._subscribers.get(event_type, []))
+                alive_set = {id(w) for w in alive_listeners}
+                snapshot_ids = {id(w) for w in listeners_snapshot}
+                dead_snapshot_ids = snapshot_ids - alive_set
+                pruned = []
+                for w in current:
+                    if id(w) in dead_snapshot_ids:
+                        continue
+                    if w() is None:
+                        continue
+                    pruned.append(w)
+                self._subscribers[event_type] = pruned
         finally:
             chain.pop()

@@ -6,15 +6,15 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit
+from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit, Label
 from ui.actions.keymap import (
     KeymapDefaultsRegistry,
     effective_shortcut_for_id,
@@ -45,12 +45,18 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
     registry = KeymapDefaultsRegistry()
     from ui.actions.platform import contribute_platform_keymap_defaults
 
-    contribute_platform_keymap_defaults(registry)
     try:
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
         from tabs.registry import TabRegistry
 
         tabs = TabRegistry()
         tabs.discover()
+        new_session_types = [
+            tab.session_type
+            for tab in tabs.list_tabs()
+            if tab.session_type != INITIAL_WORKSPACE_SESSION_TYPE
+        ]
+        contribute_platform_keymap_defaults(registry, new_session_types)
         tabs.notify_all("contribute_keymap_defaults", registry)
     except Exception:
         import logging
@@ -58,6 +64,7 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
         logging.getLogger(__name__).exception(
             "Failed to collect tab keymap defaults for Settings → Keyboard"
         )
+        contribute_platform_keymap_defaults(registry)
     return registry
 
 
@@ -90,6 +97,20 @@ class _ShortcutCaptureButton(Button):
 
     def keyPressEvent(self, event) -> None:
         if not self._listening:
+            # Button's own keyPressEvent turns Space/Enter into a plain
+            # click, but this button's "start listening" behavior lives in
+            # mousePressEvent (see above) and is not wired to the clicked
+            # signal — without this branch, Tab/arrow focus + Enter did
+            # nothing and the capture row was mouse-only.
+            if event.key() in (
+                Qt.Key.Key_Space,
+                Qt.Key.Key_Return,
+                Qt.Key.Key_Enter,
+            ):
+                self._listening = True
+                self.setText("…")
+                event.accept()
+                return
             super().keyPressEvent(event)
             return
         key = event.key()
@@ -128,10 +149,12 @@ class _ShortcutCaptureButton(Button):
             self._on_changed(self._chord)
 
 
+
 def build(dialog, p):
     from ui.actions.keymap import exclusive_overrides
 
     dialog.page_keyboard, layout = dialog._create_scrollable_page()
+    builder = page_nav_builder(dialog, tag="settings-keyboard")
     defaults = _collect_defaults()
     defaults_map = {
         entry.action_id: (entry.default_shortcut, entry.owner_tab)
@@ -169,11 +192,17 @@ def build(dialog, p):
         None: KEYBOARD_PLATFORM.title_key,
     }
     try:
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
         from tabs.registry import TabRegistry
 
         for tab in TabRegistry().list_tabs():
             session_type = tab.session_type
-            if session_type == "session_picker":
+            if session_type == INITIAL_WORKSPACE_SESSION_TYPE:
+                continue
+            # Also skip tabs that are bootstrap-default but not the
+            # initial workspace type (defensive; is_bootstrap_default is
+            # reserved for session_picker — see TabContract).
+            if getattr(tab, "is_bootstrap_default", False):
                 continue
             group_key = f"settings.keyboard_group_{session_type}"
             owner_titles[session_type] = _tr(
@@ -231,7 +260,7 @@ def build(dialog, p):
             row_layout.setSpacing(8)
 
             label_text = _tr(dialog, entry.label_key, entry.label_key)
-            name = QLabel(label_text)
+            name = Label(label_text)
             name.setWordWrap(True)
             row_layout.addWidget(name, 1)
             dialog._keyboard_action_labels.append((name, entry.label_key))
@@ -285,6 +314,24 @@ def build(dialog, p):
         group.add_layout(group_layout)
         groups_layout.addWidget(group)
 
+    # Arrow-key row navigation goes through the app-wide NavigationManager
+    # (same mechanism the main window's tabs/toolbars use — see
+    # ToolbarRowsSection), not a page-local event filter: NavigationManager
+    # owns arrow-key consumption on QApplication exclusively (see its own
+    # docstring's Contract) — a widget-level filter would never even see the
+    # key, since NavigationManager's QApplication-level filter runs first
+    # and, if no registered section claims the focused widget, simply
+    # yields to native Qt delivery (a bare QScrollArea then just scrolls).
+    # Each row already holds two focusable buttons (capture + reset), so
+    # ToolbarRowsSection's Left/Right-within-row, Up/Down-between-rows model
+    # applies directly; row_widgets is the same list the search filter
+    # toggles visibility on, so hidden rows drop out of navigation too.
+    # Rows are already real QWidgets (built directly above, not from a bare
+    # control/layout) so they go through extend() rather than builder.row()
+    # (which would re-wrap and re-parent them out of group_layout).
+    builder.extend([row for row, _group, _entry in row_widgets])
+    register_page_navigation(dialog, dialog.page_keyboard, builder)
+
     reset_all = Button(
         text=_tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts"),
         variant="secondary",
@@ -316,14 +363,14 @@ def build(dialog, p):
         }
         for row, group, entry in row_widgets:
             current = effective_shortcut_for_id(
-                entry.action_id,
-                default=entry.default_shortcut,
+                entry.action_id,  # type: ignore[attr-defined]  # dynamic keymap row object
+                default=entry.default_shortcut,  # type: ignore[attr-defined]
                 overrides=dialog._keyboard_overrides,
             )
             extras = (
                 group_titles.get(group, ""),
                 current or "",
-                entry.owner_tab or "platform",
+                entry.owner_tab or "platform",  # type: ignore[attr-defined]  # dynamic keymap row object
             )
             show = keymap_entry_rank(
                 entry, needle, extra_search_terms=extras
@@ -334,7 +381,7 @@ def build(dialog, p):
             else:
                 visible_groups.setdefault(group, False)
         for group, any_visible in visible_groups.items():
-            group.setVisible(bool(any_visible))
+            group.setVisible(bool(any_visible))  # type: ignore[attr-defined]  # group objects are dynamic
 
     search.textChanged.connect(_filter)
     layout.addStretch(1)

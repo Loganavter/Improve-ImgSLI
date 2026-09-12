@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sli_ui_toolkit.i18n import (
+    get_current_language,
     tr,
     translatable_callback,
     translatable_placeholder,
@@ -8,12 +9,19 @@ from sli_ui_toolkit.i18n import (
     translatable_tooltip,
 )
 
+from tabs.image_compare.debug import ic_label_debug
+
 # Image Compare lives in a QStackedWidget page — skip language fan-out while
 # the session picker (or another tab) is current; flush on next Show.
 _DEFER = True
 
 
 def install_image_compare_translations(ui) -> None:
+    ic_label_debug(
+        "install_image_compare_translations current=%s visible=%s",
+        get_current_language(),
+        ui.isVisible(),
+    )
     _bind_labels(ui)
     _bind_placeholders(ui)
     _bind_button_texts(ui)
@@ -25,31 +33,31 @@ def install_image_compare_translations(ui) -> None:
 
 def _bind_labels(ui) -> None:
     translatable_text(
-        ui.label_edit_name1, "label.name_1", suffix=":", defer_when_hidden=_DEFER
+        ui.label_edit_name1, "image_compare.label.name_1", suffix=":", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.label_edit_name2, "label.name_2", suffix=":", defer_when_hidden=_DEFER
+        ui.label_edit_name2, "image_compare.label.name_2", suffix=":", defer_when_hidden=_DEFER
     )
 
 
 def _bind_placeholders(ui) -> None:
     translatable_placeholder(
-        ui.edit_name1, "ui.edit_current_image_1_name", defer_when_hidden=_DEFER
+        ui.edit_name1, "image_compare.ui.edit_current_image_1_name", defer_when_hidden=_DEFER
     )
     translatable_placeholder(
-        ui.edit_name2, "ui.edit_current_image_2_name", defer_when_hidden=_DEFER
+        ui.edit_name2, "image_compare.ui.edit_current_image_2_name", defer_when_hidden=_DEFER
     )
 
 
 def _bind_button_texts(ui) -> None:
     translatable_text(
-        ui.btn_image1, "button.add_images_1", defer_when_hidden=_DEFER
+        ui.btn_image1, "image_compare.button.add_images_1", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.btn_image2, "button.add_images_2", defer_when_hidden=_DEFER
+        ui.btn_image2, "image_compare.button.add_images_2", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.btn_save, "button.save_result", defer_when_hidden=_DEFER
+        ui.btn_save, "image_compare.button.save_result", defer_when_hidden=_DEFER
     )
 
 
@@ -123,30 +131,53 @@ def _bind_tooltips(ui) -> None:
 
 def _bind_group_titles(ui) -> None:
     groups = (
-        ("line_group_container", "label.line"),
-        ("magnifier_group_container", "label.magnifier"),
+        ("line_group_container", "image_compare.label.line"),
+        ("magnifier_group_container", "image_compare.label.magnifier"),
         ("view_group_container", "label.view"),
-        ("record_group_container", "button.record"),
+        ("record_group_container", "image_compare.button.record"),
     )
     for attr_name, key in groups:
         container = getattr(ui, attr_name)
+        # Group titles must not defer: toolbar is pinned visible; pending Show
+        # flush on CustomGroupWidget is unreliable when page is hidden in
+        # QStackedWidget (child Show not always delivered). Immediate update
+        # guarantees correct language on tab switch without extra flush logic.
+        # Keep other image_compare bindings deferred (_DEFER=True).
+        def _make_callback(c, k, attr):
+            def _cb(lang: str) -> None:
+                translated = tr(k, lang)
+                is_fallback = translated == k
+                ic_label_debug(
+                    "_bind_group_titles attr=%s key=%s lang=%s -> %r fallback=%s visible=%s current=%s",
+                    attr,
+                    k,
+                    lang,
+                    translated,
+                    is_fallback,
+                    c.isVisible(),
+                    get_current_language(),
+                )
+                c.set_label_text(translated)
+
+            return _cb
+
         translatable_callback(
             container,
-            lambda lang, c=container, k=key: c.set_label_text(tr(k, lang)),
-            defer_when_hidden=_DEFER,
+            _make_callback(container, key, attr_name),
+            defer_when_hidden=False,
         )
 
 
 def _bind_slider_labels(ui) -> None:
     translatable_text(
         ui.label_magnifier_size,
-        "label.magnifier_size",
+        "image_compare.label.magnifier_size",
         suffix=":",
         defer_when_hidden=_DEFER,
     )
     translatable_text(
         ui.label_capture_size,
-        "label.capture_size",
+        "image_compare.label.capture_size",
         suffix=":",
         defer_when_hidden=_DEFER,
     )
@@ -160,6 +191,21 @@ def _bind_slider_labels(ui) -> None:
         ui.label_interpolation,
         "magnifier.magnifier_interpolation",
         suffix=":",
+        defer_when_hidden=_DEFER,
+    )
+    translatable_tooltip(
+        ui.icon_magnifier_size,
+        "image_compare.label.magnifier_size",
+        defer_when_hidden=_DEFER,
+    )
+    translatable_tooltip(
+        ui.icon_capture_size,
+        "image_compare.label.capture_size",
+        defer_when_hidden=_DEFER,
+    )
+    translatable_tooltip(
+        ui.icon_movement_speed,
+        "magnifier.move_speed",
         defer_when_hidden=_DEFER,
     )
 

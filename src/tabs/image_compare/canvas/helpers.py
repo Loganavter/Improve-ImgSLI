@@ -40,7 +40,3 @@ def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:
         runtime_state._hidden_capture_circles = []
         runtime_state._occluded_capture_arcs = []
         runtime_state._hidden_overlay_circles = []
-
-
-def clear_canvas_diff_source(canvas: BaseCanvasProtocol) -> None:
-    canvas.upload_diff_source_pil_image(None)

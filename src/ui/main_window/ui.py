@@ -12,11 +12,6 @@ from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
 
 logger = logging.getLogger("ImproveImgSLI")
 
-_SESSION_TYPE_KEYS = {
-    "multi_compare": "workspace.session_types.multi_compare",
-    "session_picker": "workspace.session_types.session_picker",
-}
-
 
 class Ui_ImageComparisonApp:
     """Owns widget construction and exposes the update API used by the presenter.
@@ -45,11 +40,14 @@ class Ui_ImageComparisonApp:
         self.btn_new_session = self.workspace_tabs.add_button
         self.workspace_stack = QStackedWidget(main_window)
         self._tab_registry = None
-        self.legacy_tab_widgets = {}
+        self.legacy_tab_widgets: dict = {}
 
     def _current_language(self) -> str:
         try:
-            return self.main_window.store.settings.current_language
+            store = getattr(self.main_window, "store", None)
+            if store is None:
+                return "en"
+            return store.settings.current_language
         except AttributeError:
             return "en"
 
@@ -101,23 +99,30 @@ class Ui_ImageComparisonApp:
                 localized = tab.localized_display_name(language)
                 if localized and localized != session_type:
                     return localized
-        key = _SESSION_TYPE_KEYS.get(session_type)
-        if key is None:
-            return session_type
+        key = f"workspace.session_types.{session_type}"
         translated = tr(key, language)
         return session_type if translated == key else translated
 
     def sync_session_mode(self, session_type: str, session_title: str | None = None):
+        if self._tab_registry:
+            self._tab_registry.activate(session_type)
         tab_page = (
             self._tab_registry.get_page(session_type) if self._tab_registry else None
         )
         if tab_page is not None:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
-                self._tab_registry.activate(session_type)
                 # Theme may have flipped while this page was hidden.
                 main_window = self.workspace_stack.window()
                 self._tab_registry.flush_stale_appearance(main_window)
+                # Toasts are one shared host-owned manager; repoint it at
+                # the newly active tab's own canvas instead of leaving it
+                # anchored to whichever tab last claimed it.
+                toast_manager = getattr(main_window, "toast_manager", None)
+                if toast_manager is not None:
+                    anchor = self._tab_registry.create_service("toast_anchor_widget")
+                    if anchor is not None:
+                        toast_manager.set_anchor(anchor)
 
         handled = (
             self._tab_registry.apply_host_session_mode(
@@ -133,4 +138,3 @@ class Ui_ImageComparisonApp:
                 "sync_session_mode(%r): no tab claimed apply_host_session_mode",
                 session_type,
             )
-

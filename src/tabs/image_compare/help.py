@@ -13,7 +13,7 @@ _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 _NODES = {
     "workspace.image_compare": {
         "kind": "hub",
-        "title_key": "workspace.session_types.image_compare",
+        "title_key": "image_compare.workspace.session_types.image_compare",
         "description_key": "image_compare.help.hub.desc",
         "title": "Image Compare",
         "description": "Two-image compare, magnifier, export",
@@ -80,13 +80,31 @@ def resolve_help_icon(name: str) -> QIcon | None:
     return None
 
 
-def contribute_help(registry) -> None:
-    registry.contribute(
+def build_help_contribution():  # type: ignore[no-untyped-def]
+    """Return typed ``HelpContribution`` for ``image_compare`` (isolated)."""
+    from plugins.help.contribution import HelpContribution
+
+    return HelpContribution(
+        owner_tab="image_compare",
         attach_under="workspace",
         child_ids=("workspace.image_compare",),
-        nodes=_NODES,
-        aliases=_ALIASES,
+        nodes=dict(_NODES),
+        aliases=dict(_ALIASES),
         body_root=_HELP_ROOT,
         asset_root=_HELP_ROOT,
         resolve_icon=resolve_help_icon,
+    )
+
+
+def contribute_help(registry) -> None:  # deprecated shim
+    """Deprecated: mutates ``registry`` — prefer ``build_help_contribution``."""
+    contrib = build_help_contribution()
+    registry.contribute(
+        attach_under=contrib.attach_under,
+        child_ids=contrib.child_ids,
+        nodes=dict(contrib.nodes),
+        aliases=dict(contrib.aliases),
+        body_root=contrib.body_root,
+        asset_root=contrib.asset_root,
+        resolve_icon=contrib.resolve_icon,
     )

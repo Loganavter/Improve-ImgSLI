@@ -7,6 +7,29 @@ from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
+def _cancel_ripple(widget) -> None:
+    """Cancel any in-flight ripple on a source row.
+
+    Row widgets are toolkit ``Button`` subclasses: the press that started
+    the drag also started the ripple wave, which is usually still mid-
+    animation when the drag threshold is reached. Without cancelling it the
+    ``grab()`` below would bake a half-finished ripple blob into the ghost.
+    """
+    ripples = []
+    main_ripple = getattr(widget, "_ripple", None)
+    if main_ripple is not None:
+        ripples.append(main_ripple)
+    region_ripples = getattr(widget, "_region_ripple", None)
+    if isinstance(region_ripples, dict):
+        ripples.extend(v for v in region_ripples.values() if v is not None)
+    for ripple in ripples:
+        try:
+            if getattr(ripple, "is_active", lambda: False)():
+                ripple.cancel()
+        except Exception:
+            pass
+
 class DragAndDropService(QObject):
     _instance = None
 
@@ -122,6 +145,9 @@ class DragAndDropService(QObject):
             # Center hotspot on the badge slot.
             self._hotspot = QPointF(pixmap.width() / 2.0, pixmap.height() / 2.0)
         else:
+            # The press that initiated the drag left the row's ripple wave
+            # mid-animation; cancel it so the snapshot is clean.
+            _cancel_ripple(source_widget)
             pixmap = source_widget.grab()
 
         ghost_parent = None

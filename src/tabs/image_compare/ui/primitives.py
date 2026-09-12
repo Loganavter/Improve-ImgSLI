@@ -12,12 +12,13 @@ from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
     Button,
     CustomLineEdit,
+    DEFER_CLICK_AWAIT_RIPPLE,
     InstancesCounterButton,
     Label,
     ScrollableComboBox,
-    Slider,
 )
 from ui.widgets.scroll_value_button import ScrollValueButton
+from ui.widgets.slider_hint import ValueSlider
 
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -27,6 +28,13 @@ from tabs.host_helpers import ModePicker
 from ui.theming import resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
+
+# InfoHUD's own labels (resolution_label1/2, file_name_label1/2) get a
+# larger size than the "group-title" variant's shared default (13px) --
+# other "group-title" labels (magnifier/capture-size settings rows etc.)
+# are NOT touched, since that variant is a shared toolkit preset used well
+# beyond the HUD.
+_INFO_HUD_LABEL_PIXEL_SIZE = 16
 
 
 class ImageComparePrimitivesFactory:
@@ -62,8 +70,18 @@ class ImageComparePrimitivesFactory:
 
     def _create_static_widgets(self, parent: QWidget) -> None:
         target = self.target
-        target.resolution_label1 = Label("--x--", variant="group-title")
-        target.resolution_label2 = Label("--x--", variant="group-title")
+        target.resolution_label1 = Label(
+            "--x--",
+            variant="group-title",
+            pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        target.resolution_label2 = Label(
+            "--x--",
+            variant="group-title",
+            pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
         target.magnifier_settings_panel = QWidget(parent)
         target.image_label = CanvasWidget(parent)
         target.length_warning_label = Label(parent=parent)
@@ -73,15 +91,20 @@ class ImageComparePrimitivesFactory:
         language = self.host._current_language()
         target.btn_image1 = Button(
             Icon.PHOTO,
-            text=tr("button.add_images_1", language),
+            text=tr("image_compare.button.add_images_1", language),
             variant="surface",
             parent=parent,
+            # Opens the native QFileDialog (modal, blocks the event loop
+            # immediately) -- without this the click ripple never gets to
+            # finish animating.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         target.btn_image2 = Button(
             Icon.PHOTO,
-            text=tr("button.add_images_2", language),
+            text=tr("image_compare.button.add_images_2", language),
             variant="surface",
             parent=parent,
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         target.btn_swap = Button(
             Icon.SYNC,
@@ -134,6 +157,9 @@ class ImageComparePrimitivesFactory:
             variant="surface",
             background_color=accent_color,
             parent=parent,
+            # quick_save() can synchronously pop a modal
+            # confirm-untested-resolution dialog -- ripple must finish first.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         target.btn_magnifier_orientation = ScrollValueButton(
             icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
@@ -146,9 +172,12 @@ class ImageComparePrimitivesFactory:
         )
         target.btn_save = Button(
             Icon.SAVE,
-            text=tr("button.save_result", language),
+            text=tr("image_compare.button.save_result", language),
             variant="surface",
             parent=parent,
+            # save_result() opens the modal ExportDialog -- ripple must
+            # finish before .exec() blocks the event loop.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
 
         target.label_rating1 = Label("–", parent, variant="group-title", elide=False)
@@ -259,25 +288,45 @@ class ImageComparePrimitivesFactory:
             icon=(Icon.PAUSE, Icon.PLAY), toggle=True, parent=parent
         )
         target.btn_pause.setEnabled(False)
-        target.btn_video_editor = Button(Icon.EXPORT_VIDEO, parent=parent)
+        target.btn_video_editor = Button(
+            Icon.EXPORT_VIDEO,
+            # Opening the dialog is heavy (snapshot load, layout) — finish
+            # the ripple first so the press feedback doesn't stutter.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
+            parent=parent,
+        )
 
     def _create_slider_controls(self, parent: QWidget) -> None:
         target = self.target
-        target.slider_size = Slider(Qt.Orientation.Horizontal, parent)
-        target.slider_capture = Slider(Qt.Orientation.Horizontal, parent)
-        target.slider_speed = Slider(Qt.Orientation.Horizontal, parent)
+        # ValueSlider: toolkit slider + hover value flyout above the thumb
+        # (was wired externally via SliderHintController in widget.py).
+        target.slider_size = ValueSlider(Qt.Orientation.Horizontal, parent)
+        target.slider_capture = ValueSlider(Qt.Orientation.Horizontal, parent)
+        target.slider_speed = ValueSlider(Qt.Orientation.Horizontal, parent)
 
     def _create_text_and_status_widgets(self, parent: QWidget) -> None:
         target = self.target
         target.edit_name1 = CustomLineEdit(parent)
         target.edit_name2 = CustomLineEdit(parent)
+        # QLineEdit accepts file drags by default (mime has text/plain), which
+        # steals the drag target from the main-window routing chain: the
+        # window gets DragLeave, the 80ms deferred-leave timer hides the DnD
+        # zone and no routed DragEnter ever restores it (regression: the DnD
+        # tiles vanish whenever the caption edit row is visible). The caption
+        # fields are not drop targets.
+        target.edit_name1.setAcceptDrops(False)
+        target.edit_name2.setAcceptDrops(False)
         target.label_magnifier_size = Label(parent=parent, variant="group-title")
         target.label_capture_size = Label(parent=parent, variant="group-title")
         target.label_movement_speed = Label(parent=parent, variant="group-title")
         target.label_interpolation = Label(parent=parent, variant="group-title")
 
-        target.file_name_label1 = Label("--", parent, variant="group-title")
-        target.file_name_label2 = Label("--", parent, variant="group-title")
+        target.file_name_label1 = Label(
+            "--", parent, variant="group-title", pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE
+        )
+        target.file_name_label2 = Label(
+            "--", parent, variant="group-title", pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE
+        )
         target.label_edit_name1 = Label(parent=parent, variant="group-title")
         target.label_edit_name2 = Label(parent=parent, variant="group-title")
 

@@ -27,7 +27,9 @@ def _tab_packages() -> list:
     return sorted(
         d
         for d in TABS.iterdir()
-        if d.is_dir() and not d.name.startswith("_") and d.name != "__pycache__"
+        if d.is_dir()
+        and not d.name.startswith("_")
+        and d.name not in ("__pycache__", "use_cases")
     )
 
 TAB_PKGS = _tab_packages()
@@ -78,3 +80,62 @@ def _flat_keys(data: dict, prefix: str = "") -> list[str]:
         if isinstance(value, dict):
             out.extend(_flat_keys(value, f"{full}."))
     return out
+
+
+def test_help_and_settings_contributions_are_typed_and_isolated():
+    """``HelpContribution``/``SettingsContribution`` are frozen, typed and owner-isolated.
+
+    Per ``docs/dev/tabs/isolation.md:60`` owner_tab == i18n_namespace and host
+    must not import tabs.* for merge — contributions carry their own namespace.
+    """
+    from plugins.help.contribution import HelpContribution
+    from plugins.settings.registry import SettingsContribution
+
+    # Dataclasses are frozen
+    assert getattr(HelpContribution, "__dataclass_params__").frozen is True
+    assert getattr(SettingsContribution, "__dataclass_params__").frozen is True
+
+    # HelpContribution must have typed owner_tab + nodes/aliases/body_root/asset_root/resolve_icon
+    import inspect
+
+    sig = inspect.signature(HelpContribution)
+    for field in ("owner_tab", "nodes", "aliases", "body_root", "asset_root", "resolve_icon"):
+        assert field in sig.parameters, f"HelpContribution missing typed field {field}"
+
+    sig2 = inspect.signature(SettingsContribution)
+    assert "owner_tab" in sig2.parameters
+    assert "sections" in sig2.parameters
+
+    # Collector exists and logs per-tab without stopping others
+    from pathlib import Path
+
+    text = (ROOT / "src" / "tabs" / "use_cases" / "capability_routing.py").read_text(encoding="utf-8")
+    assert "def collect_help_contributions" in text
+    assert "def collect_settings_contributions" in text
+    assert "logger.exception" in text
+
+    # Every tab that contributes help/settings must return owner_tab == i18n_namespace (or session_type fallback)
+    # Instantiate tabs via registry discovery without needing Qt
+    from tabs.registry import TabRegistry
+
+    # Discover deferred too for full coverage
+    reg = TabRegistry()
+    reg.discover(tier="all")
+    for tab in reg.list_tabs():
+        expected = tab.i18n_namespace or tab.session_type
+        # Check that if tab implements contribute_help/settings, it returns correct owner_tab
+        # Use create_service typed path (no registry arg)
+        for svc in ("contribute_help", "contribute_settings"):
+            try:
+                result = tab.create_service(svc)
+            except Exception:
+                continue
+            if result is None or isinstance(result, bool):
+                continue
+            items = list(result) if isinstance(result, (list, tuple)) else [result]
+            for item in items:
+                owner = getattr(item, "owner_tab", None)
+                assert owner == expected, (
+                    f"tab {tab.session_type!r} {svc} owner_tab {owner!r} != expected {expected!r}"
+                    " (must equal i18n_namespace per isolation.md:60)"
+                )

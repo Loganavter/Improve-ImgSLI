@@ -29,6 +29,9 @@
         "export": "Exportar",
         "divider": "Grade"
       }
+    },
+    "tooltip": {
+      "save_grid": "Salvar grade"
     }
   }
 }

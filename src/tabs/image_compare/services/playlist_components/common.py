@@ -16,11 +16,11 @@ def get_current_index(store, image_number: int) -> int:
     return document.current_index1 if image_number == 1 else document.current_index2
 
 def set_current_index(store, image_number: int, index: int) -> None:
-    document = store.get_session_state_slot("document")
-    if image_number == 1:
-        document.current_index1 = index
-    else:
-        document.current_index2 = index
+    dispatcher = store.get_dispatcher()
+    assert dispatcher is not None, "set_current_index requires dispatcher"
+    from core.state_management.actions import SetCurrentIndexAction
+
+    dispatcher.dispatch(SetCurrentIndexAction(slot=image_number, index=index), scope="document")
 
 def get_current_item_path(store, image_number: int):
     target_list = get_target_list(store, image_number)

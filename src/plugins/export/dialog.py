@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=qdialog-wiring reason="one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
 import io
 import logging
 
@@ -7,7 +8,6 @@ from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
-    QColorDialog,
     QFileDialog,
     QLineEdit,
 )
@@ -19,7 +19,7 @@ from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
 from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
-from sli_ui_toolkit.managers import SettleGate
+from sli_ui_toolkit.managers import SettleGate, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from ui.theming import polish_themed_dialog
 from utils.resource_loader import resource_path
@@ -213,7 +213,7 @@ class ExportDialog(ThemedDialog):
             hint = button.sizeHint()
             button.setMinimumSize(
                 max(button.minimumWidth(), hint.width()),
-                max(32, hint.height()),
+                max(scaled_px(32), hint.height()),
             )
             button.setSizePolicy(
                 QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
@@ -394,19 +394,29 @@ class ExportDialog(ThemedDialog):
     def _pick_bg_color(self):
         if hasattr(self, "btn_bg_color") and not self.btn_bg_color.isEnabled():
             return
-        color = QColorDialog.getColor(
+
+        from ui.widgets.color import ColorPickerDialog
+
+        dialog = ColorPickerDialog(
             (
                 self.current_bg_color
                 if isinstance(self.current_bg_color, QColor)
                 else QColor(255, 255, 255, 255)
             ),
             self,
-            self._tr("export.select_background_color", "Select Background Color"),
+            title=self._tr("export.select_background_color", "Select Background Color"),
+            show_alpha=True,
         )
-        if color.isValid():
-            self.current_bg_color = color
-            self._sync_background_controls()
-            self._apply_preview_pixmap()
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.current_bg_color = color
+                self._sync_background_controls()
+                self._apply_preview_pixmap()
+
+        dialog.colorSelected.connect(on_color_selected)
+        dialog.show()
 
     def _update_controls_visity_by_format(self):
         fmt = self.combo_format.currentText().upper()
@@ -471,7 +481,10 @@ class ExportDialog(ThemedDialog):
         # Deferred geometry may land after first show; rebuild CSD mask once
         # more on the next tick so corner arcs cannot punch through the body.
         QTimer.singleShot(0, self._sync_csd_chrome_safe)
-        self._apply_preview_pixmap()
+        # Finalize synchronously: showEvent runs before the first frame is
+        # drawn, so the __init__ 0-timer would otherwise leave that frame at
+        # the CSD-adjustSize size and reflow on the next tick.
+        self._finalize_layout_and_size()
         self._contribute_find_actions()
 
     def _contribute_find_actions(self) -> None:
@@ -596,7 +609,7 @@ class ExportDialog(ThemedDialog):
             pil_img.save(buf, format="PNG")
             data = buf.getvalue()
             pix = QPixmap()
-            pix.loadFromData(data, "PNG")
+            pix.loadFromData(data, "PNG")  # type: ignore[call-overload]  # stub types format as bytes, runtime accepts str
             return pix
         except Exception as e:
             logger.error(f"Error converting PIL Image to QPixmap: {e}", exc_info=True)

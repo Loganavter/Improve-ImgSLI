@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from PySide6.QtWidgets import QDialog, QWidget
 
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.managers.transient_ui_parts.closing import (
     PopupClosingController,
     _modal_dialog_blocks_transient_hide,
@@ -22,7 +23,12 @@ def test_modal_dialog_blocks_transient_hide_via_active_modal(qapp):
     dialog = QDialog()
     dialog.setModal(True)
     dialog.show()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (dialog.isVisible(), dialog.isModal()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
     try:
         # exec() isn't required — Qt reports an open modal via activeModalWidget
         # only after exec in some platforms; window()+isModal still counts.
@@ -37,7 +43,7 @@ def test_focus_to_modal_does_not_schedule_flyout_hide(qapp, monkeypatch):
 
     parent = QWidget()
     parent.show()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: parent.isVisible(), timeout_ms=1000, stable_frames=2)
 
     host = SimpleNamespace(
         parent_widget=parent,
@@ -67,7 +73,7 @@ def test_focus_to_modal_does_not_schedule_flyout_hide(qapp, monkeypatch):
     dialog.setModal(True)
     try:
         dialog.show()
-        qapp.processEvents()
+        drain_until_stable(qapp, lambda: dialog.isVisible(), timeout_ms=1000, stable_frames=2)
 
         scheduled = []
         monkeypatch.setattr(
@@ -96,7 +102,7 @@ def test_deactivate_hide_respects_modal_flag(qapp, monkeypatch):
     parent = QWidget()
     try:
         parent.show()
-        qapp.processEvents()
+        drain_until_stable(qapp, lambda: parent.isVisible(), timeout_ms=1000, stable_frames=2)
 
         # Minimal stub — only exercise _schedule_hide_transient_if_still_inactive.
         manager = UIManager.__new__(UIManager)

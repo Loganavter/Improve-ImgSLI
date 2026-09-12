@@ -1,6 +1,14 @@
 """Tab → host help contribution registry.
 
-Tabs publish topic subtrees via ``notify_all("contribute_help", registry)``.
+Tabs publish topic subtrees via typed ``HelpContribution`` objects collected
+by ``tabs.use_cases.capability_routing.collect_help_contributions``.
+
+Legacy ``notify_all("contribute_help", registry)`` → ``HelpContributionRegistry``
+fire-and-forget is deprecated (shim remains for one release). New path:
+``tab.create_service("contribute_help") -> HelpContribution`` collected by
+``collect_help_contributions`` and merged by
+``plugins.help.tree.install_help_contributions(list[HelpContribution])``.
+
 The host owns the shell tree (root / workspace / ui / platform); tabs own
 their workspace hubs, pages, aliases, body roots, and icon resolvers.
 """
@@ -17,9 +25,33 @@ from PySide6.QtGui import QIcon
 IconResolver = Callable[[str], QIcon | None]
 
 
+@dataclass(frozen=True, slots=True)
+class HelpContribution:
+    """Typed, immutable help fragment owned by one tab.
+
+    ``owner_tab`` must equal the tab's ``i18n_namespace`` per
+    ``docs/dev/tabs/isolation.md:60`` (fallback ``session_type`` if the tab
+    has no explicit i18n namespace).
+    """
+
+    owner_tab: str
+    attach_under: str
+    child_ids: tuple[str, ...]
+    nodes: dict[str, dict[str, Any]]
+    aliases: dict[str, str] = field(default_factory=dict)
+    body_root: Path | None = None
+    asset_root: Path | None = None
+    resolve_icon: IconResolver | None = None
+
+
 @dataclass(slots=True)
 class HelpSubtreeContribution:
-    """One tab's help fragment to merge into the host tree."""
+    """One tab's help fragment to merge into the host tree.
+
+    Deprecated: use ``HelpContribution`` (frozen, with ``owner_tab``) instead.
+    Kept as shim for one release — ``HelpContributionRegistry`` delegates to
+    it internally.
+    """
 
     attach_under: str
     child_ids: tuple[str, ...]

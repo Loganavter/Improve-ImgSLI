@@ -7,8 +7,10 @@ from PySide6.QtGui import (
     QColor,
     QRhiBuffer,
     QRhiCommandBuffer,
+    QRhi,
     QRhiGraphicsPipeline,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -27,6 +29,7 @@ from tabs.image_compare.canvas.render_config import (
     get_view_transformed_content_rect_widget_px,
 )
 from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
+from shared.rendering.uniform_layout import assert_uniform_size
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _VERTICES = struct.pack(
@@ -50,7 +53,9 @@ _VERTICES = struct.pack(
 )
 # std140: mat4(64) + vec2(8) + 2 floats(8) + vec4 color(16) + vec4 clip(16)
 # + int(4) + pad(12) = 128
+_UNIFORM_FMT = "<24f4fi3f"
 _UNIFORM_SIZE = 128
+assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="DividerPass uniform")
 
 
 def _load_shader(name: str) -> QShader:
@@ -63,8 +68,9 @@ def _load_shader(name: str) -> QShader:
 def _content_split_visual(ctx) -> float:
     scene = getattr(ctx, "scene_frame", None)
     raw = getattr(scene, "split_position_visual", 0.5)
-    if getattr(scene, "split_override", None) is not None:
-        raw = scene.split_override
+    split_override = getattr(scene, "split_override", None)
+    if split_override is not None:
+        raw = split_override
     return max(0.0, min(1.0, float(raw if raw is not None else 0.5)))
 
 
@@ -73,11 +79,11 @@ class DividerPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.vertex_buffer = None
-        self.uniform_buffer = None
-        self.srb = None
-        self.pipeline = None
+        self.rhi: QRhi | None = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.uniform_buffer: QRhiBuffer | None = None
+        self.srb: QRhiShaderResourceBindings | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
 
     @staticmethod
     def _resolve_divider_state(widget, ctx):
@@ -93,7 +99,7 @@ class DividerPass(CanvasRenderPass):
         spit = _content_split_visual(ctx)
 
         # Position + clip from the letterbox *after* the same zoom/pan as
-        # base.frag. See docs/dev/rendering/investigations/divider-zoom-pan-detach.md.
+        # base.frag. See src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md.
         clip = get_view_transformed_content_rect_widget_px(widget)
         if clip is None:
             clip = (0.0, 0.0, float(ctx.canvas_width), float(ctx.canvas_height))
@@ -186,10 +192,11 @@ class DividerPass(CanvasRenderPass):
         _show, position, thickness, horizontal, color, clip = self._resolve_divider_state(
             widget, ctx
         )
+        assert self.rhi is not None
         matrix = tuple(float(value) for value in self.rhi.clipSpaceCorrMatrix().data())
         cx, cy, cw, ch = clip
         block = struct.pack(
-            "<24f4fi3f",
+            _UNIFORM_FMT,
             *matrix,
             float(ctx.width),
             float(ctx.height),
@@ -212,7 +219,9 @@ class DividerPass(CanvasRenderPass):
         resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, block)
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
+        assert self.rhi is not None
         target_size = widget.renderTarget().pixelSize()
+        assert self.pipeline is not None
         command_buffer.setGraphicsPipeline(self.pipeline)
         command_buffer.setViewport(
             QRhiViewport(
@@ -220,13 +229,15 @@ class DividerPass(CanvasRenderPass):
             )
         )
         # Full-target scissor only — content clip lives in the fragment shader
-        # (docs/dev/rendering/investigations/divider-zoom-pan-detach.md).
+        # (src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md).
         command_buffer.setScissor(
             scissor_from_widget_rect(
                 widget, self.rhi, ctx, 0.0, 0.0, float(ctx.width), float(ctx.height)
             )
         )
+        assert self.srb is not None
         command_buffer.setShaderResources(self.srb)
+        assert self.vertex_buffer is not None
         command_buffer.setVertexInput(0, [(self.vertex_buffer, 0)])
         command_buffer.draw(4)
 

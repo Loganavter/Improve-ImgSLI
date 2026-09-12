@@ -1,0 +1,901 @@
+{
+  "_generated_by": "src/devtools/file_meta.py --write-registry",
+  "_policy": "docs/dev/FILE_SIZE_POLICY.md",
+  "entries": [
+    {
+      "path": "src/devtools/context_cloc.py",
+      "lines": 786,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single devtools report generator — cloc + shader + tests aggregation\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single devtools report generator — cloc + shader + tests aggregation"
+      }
+    },
+    {
+      "path": "src/plugins/export/dialog.py",
+      "lines": 733,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
+      }
+    },
+    {
+      "path": "src/plugins/help/dialog.py",
+      "lines": 881,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one Help QDialog — HelpDocumentView + search wiring"
+      }
+    },
+    {
+      "path": "src/plugins/settings/dialog.py",
+      "lines": 649,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one Settings QDialog — 6 pages + load/save"
+      }
+    },
+    {
+      "path": "src/plugins/settings/manager.py",
+      "lines": 508,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single settings manager — load/save + change propagation\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single settings manager — load/save + change propagation"
+      }
+    },
+    {
+      "path": "src/services/io/project_package.py",
+      "lines": 620,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single ZIP package lifecycle — media/cache extraction + purge + atomic write\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single ZIP package lifecycle — media/cache extraction + purge + atomic write"
+      }
+    },
+    {
+      "path": "src/shared/analysis/differ.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tiled-pipeline reason=\"stateless tiled diff kernels highlight/grayscale/ssim sharing workers\"",
+      "parsed": {
+        "pattern": "tiled-pipeline",
+        "reason": "stateless tiled diff kernels highlight/grayscale/ssim sharing workers"
+      }
+    },
+    {
+      "path": "src/shared/image_processing/autocrop_service.py",
+      "lines": 77,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=collaborator reason=\"deprecated shim over autocrop.CropService — no state, delegates to DI service\"",
+      "parsed": {
+        "pattern": "collaborator",
+        "reason": "deprecated shim over autocrop.CropService — no state, delegates to DI service"
+      }
+    },
+    {
+      "path": "src/shared/image_processing/tiled_pixel_store.py",
+      "lines": 956,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
+      }
+    },
+    {
+      "path": "src/shared/rendering/glass_panel.py",
+      "lines": 917,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
+      }
+    },
+    {
+      "path": "src/shared/rendering/mip_cascade.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
+      }
+    },
+    {
+      "path": "src/shared_toolkit/ui/layout_sizing.py",
+      "lines": 574,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single layout sizing helper — shared toolkit\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single layout sizing helper — shared toolkit"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/_session_controller.py",
+      "lines": 220,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/actions/_contribute.py",
+      "lines": 564,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"action contributions — one registry builder\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "action contributions — one registry builder"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py",
+      "lines": 419,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat per-field viewport setters sharing one guard/emit",
+      "parsed": {
+        "reason": "flat per-field viewport setters sharing one guard/emit"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/geometry/layout_plan.py",
+      "lines": 470,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "build_magnifier_layout is one non-decomposable per-frame",
+      "parsed": {
+        "reason": "build_magnifier_layout is one non-decomposable per-frame"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/input/keyboard_movement.py",
+      "lines": 491,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "InteractiveMovementController is one stateful QTimer-driven",
+      "parsed": {
+        "reason": "InteractiveMovementController is one stateful QTimer-driven"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
+      "lines": 738,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "single QRhi pass, one resource lifecycle (border-disk",
+      "parsed": {
+        "reason": "single QRhi pass, one resource lifecycle (border-disk"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/tile_capture.py",
+      "lines": 466,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "one cohesive pure-geometry pipeline (tc-range math ->",
+      "parsed": {
+        "reason": "one cohesive pure-geometry pipeline (tc-range math ->"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/widget.py",
+      "lines": 405,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "flat command/query/alias tables — one entry per command",
+      "parsed": {
+        "reason": "flat command/query/alias tables — one entry per command"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/interaction.py",
+      "lines": 570,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single canvas interaction router — gesture/drag/zoom routing\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single canvas interaction router — gesture/drag/zoom routing"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/presentation/derived_gpu_state.py",
+      "lines": 91,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=derived-state reason=\"single Store snapshot → GPU commit barrier, fixes shadow cache divergence (store-redux-dogma)\"",
+      "parsed": {
+        "pattern": "derived-state",
+        "reason": "single Store snapshot → GPU commit barrier, fixes shadow cache divergence (store-redux-dogma)"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
+      "lines": 534,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=canvas-presentation reason=\"plan applicator — 5 helpers + geometry sync + store binding, 519 lines\"",
+      "parsed": {
+        "pattern": "canvas-presentation",
+        "reason": "plan applicator — 5 helpers + geometry sync + store binding, 519 lines"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/render_context.py",
+      "lines": 594,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single render runtime context builder for RHI\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single render runtime context builder for RHI"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
+      "lines": 626,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single draw plan builder for RHI renderer"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
+      "lines": 467,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
+      "lines": 607,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
+      "parsed": {
+        "pattern": "tile-residency",
+        "size": "exempt",
+        "reason": "viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
+      "lines": 448,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
+      "lines": 252,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
+      "lines": 364,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
+      "lines": 272,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py",
+      "lines": 157,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/tile_residency.py",
+      "lines": 184,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
+      "lines": 478,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
+      "parsed": {
+        "pattern": "canvas-presentation",
+        "size": "exempt",
+        "reason": "texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/widget.py",
+      "lines": 953,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Canvas widget thin owner — delegates to interaction/render_context/features"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/pipeline/cache.py",
+      "lines": 737,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
+      "lines": 696,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "video export dialog sections — one dialog assembly"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
+      "lines": 623,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "video editor dialog shell — one QDialog chrome"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
+      "lines": 743,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/export_config.py",
+      "lines": 624,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single export config assembly — encoding/bounds/images\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single export config assembly — encoding/bounds/images"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
+      "lines": 541,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
+      "lines": 504,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py",
+      "lines": 129,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"IC render gate thin owner delegates to use_cases/geometry,preview,background,schedule,render_gate per CODE_PATTERNS — sequencing only\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "IC render gate thin owner delegates to use_cases/geometry,preview,background,schedule,render_gate per CODE_PATTERNS — sequencing only"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/render_gate.py",
+      "lines": 188,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"render_gate thin orchestrator per CODE_PATTERNS — delegates to have_gate, bg_dirty, geometry, preview\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "render_gate thin orchestrator per CODE_PATTERNS — delegates to have_gate, bg_dirty, geometry, preview"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
+      "lines": 665,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single toolbar connections wiring — action->presenter bindings"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
+      "lines": 707,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
+      "lines": 682,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "use_cases target for MainWindowPresenter — display-sync chrome for document/viewport"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/image_decode.py",
+      "lines": 663,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/slot.py",
+      "lines": 802,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/unify.py",
+      "lines": 450,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/widget.py",
+      "lines": 635,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"root widget thin owner — delegates to layout/magnifier/chrome_sync\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "root widget thin owner — delegates to layout/magnifier/chrome_sync"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/controller.py",
+      "lines": 892,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/artifacts.py",
+      "lines": 668,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
+      "parsed": {
+        "pattern": "tiled-pipeline",
+        "size": "670",
+        "reason": "7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/tab.py",
+      "lines": 531,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "tab contract — lifecycle wiring delegates to controller/widget"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/clean_review.py",
+      "lines": 743,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view.py",
+      "lines": 806,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look.py",
+      "lines": 429,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
+      "lines": 592,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/triage.py",
+      "lines": 549,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/widget.py",
+      "lines": 889,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/canvas/interaction.py",
+      "lines": 543,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/controller.py",
+      "lines": 507,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/passes/base_images.py",
+      "lines": 964,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/store.py",
+      "lines": 786,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "MultiCompareStore facade over Dispatcher + slot lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/ui/canvas_widget.py",
+      "lines": 765,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Canvas widget thin owner — delegates to interaction/render_context/features"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/ui/drag_drop.py",
+      "lines": 943,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/use_cases/loading.py",
+      "lines": 575,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/use_cases/preview_decode.py",
+      "lines": 829,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/recent/cards.py",
+      "lines": 538,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-widget size=exempt reason=\"grid+list card factory with hover/selection/cover handling — single widget family\"",
+      "parsed": {
+        "pattern": "compound-widget",
+        "size": "exempt",
+        "reason": "grid+list card factory with hover/selection/cover handling — single widget family"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/recent/items_view.py",
+      "lines": 686,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single virtualized grid view — grid_columns/visible_window/acquire/place pipeline\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single virtualized grid view — grid_columns/visible_window/acquire/place pipeline"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/recent/panel.py",
+      "lines": 602,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "RecentProjectsPanel thin owner — delegates to recent/use_cases/*"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/widget.py",
+      "lines": 565,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel"
+      }
+    },
+    {
+      "path": "src/ui/actions/palette/dialog.py",
+      "lines": 559,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring size=exempt reason=\"one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "size": "exempt",
+        "reason": "one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px"
+      }
+    },
+    {
+      "path": "src/ui/canvas_infra/rhi/rhi_backend.py",
+      "lines": 698,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single RHI backend lifecycle — backend selection + QRhiWidget init\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single RHI backend lifecycle — backend selection + QRhiWidget init"
+      }
+    },
+    {
+      "path": "src/ui/main_window/csd_menu_strip.py",
+      "lines": 505,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single CSD menu strip — custom chrome + layout\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single CSD menu strip — custom chrome + layout"
+      }
+    },
+    {
+      "path": "src/ui/main_window/menu_controller.py",
+      "lines": 504,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single menu controller — platform menu assembly\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single menu controller — platform menu assembly"
+      }
+    },
+    {
+      "path": "src/ui/widgets/color/picker_dialog.py",
+      "lines": 684,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one ColorPicker QDialog — picker + fields + preview wiring\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one ColorPicker QDialog — picker + fields + preview wiring"
+      }
+    },
+    {
+      "path": "src/ui/widgets/rating_item.py",
+      "lines": 575,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single rating item painter — custom control\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single rating item painter — custom control"
+      }
+    },
+    {
+      "path": "src/ui/widgets/scroll_value_button.py",
+      "lines": 798,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single custom-painted control — painter pipeline owns visuals"
+      }
+    },
+    {
+      "path": "src/ui/widgets/slider_hint.py",
+      "lines": 575,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single slider hint painter — custom paint + animations\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single slider hint painter — custom paint + animations"
+      }
+    }
+  ]
+}

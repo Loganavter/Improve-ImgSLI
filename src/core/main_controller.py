@@ -39,9 +39,6 @@ class MainController(QObject):
         self._session_controller = None
         self._settings_controller = None
         self._export_controller = None
-        self._analysis_controller = None
-        self._metrics_service = None
-        self._viewport_controller = None
         self._layout_plugin = None
         self._recorder = None
         self._video_exporter = None
@@ -111,25 +108,6 @@ class MainController(QObject):
             getattr(export_plugin, "clipboard_service", None) if export_plugin else None
         )
 
-        analysis_plugin = self._get_plugin("analysis")
-        self._analysis_controller = (
-            analysis_plugin.get_controller()
-            if analysis_plugin is not None and hasattr(analysis_plugin, "get_controller")
-            else None
-        )
-        self._metrics_service = (
-            getattr(analysis_plugin, "metrics_service", None)
-            if analysis_plugin is not None
-            else None
-        )
-
-        viewport_plugin = self._get_plugin("viewport")
-        self._viewport_controller = (
-            viewport_plugin.get_controller()
-            if viewport_plugin is not None and hasattr(viewport_plugin, "get_controller")
-            else None
-        )
-
         self._layout_plugin = self._get_plugin("layout")
 
     @property
@@ -155,18 +133,6 @@ class MainController(QObject):
     @property
     def clipboard_service(self):
         return self._clipboard_service
-
-    @property
-    def analysis(self):
-        return self._analysis_controller
-
-    @property
-    def metrics_service(self):
-        return self._metrics_service
-
-    @property
-    def viewport_plugin(self):
-        return self._viewport_controller
 
     @property
     def layout(self):

@@ -1,10 +1,10 @@
+# Audit-Meta: pattern=qdialog-wiring reason="video export dialog sections — one dialog assembly"
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QProgressBar,
     QFrame,
     QScrollArea,
     QSizePolicy,
@@ -13,8 +13,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import (
+    ThemedExportProgressBar,
+    VideoEditorToolbar,
+)
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 from tabs.image_compare.plugins.video_editor.widgets.timeline import VideoTimelineWidget
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.widgets import (
     Button,
     CustomLineEdit,
@@ -22,7 +28,7 @@ from sli_ui_toolkit.widgets import (
     Label,
     LogConsoleWidget,
     SpinBox,
-    OverlayScrollArea,
+    SurfaceScrollArea,
     TopTabHost,
 )
 from tabs.image_compare.icons import Icon, get_icon
@@ -76,8 +82,8 @@ def build_settings_panel(dialog):
 
     static_container = QWidget(settings_panel)
     static_layout = QVBoxLayout(static_container)
-    static_layout.setContentsMargins(12, 12, 12, 10)
-    static_layout.setSpacing(14)
+    static_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(10))
+    static_layout.setSpacing(scaled_px(14))
     static_layout.addLayout(create_resolution_settings(dialog))
     static_layout.addLayout(create_fps_settings(dialog))
     static_layout.addLayout(create_preview_quality_settings(dialog))
@@ -86,7 +92,7 @@ def build_settings_panel(dialog):
 
     content_container = QWidget()
     content_layout = QVBoxLayout(content_container)
-    content_layout.setContentsMargins(12, 8, 12, 0)
+    content_layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), 0)
     content_layout.setSpacing(0)
 
     dialog.tabs = create_export_tabs(dialog)
@@ -94,23 +100,23 @@ def build_settings_panel(dialog):
     sp_layout.addWidget(content_container, stretch=1)
 
     footer_gap_top = QWidget(settings_panel)
-    footer_gap_top.setFixedHeight(10)
+    footer_gap_top.setFixedHeight(scaled_px(10))
     sp_layout.addWidget(footer_gap_top)
 
     footer_gap_bottom = QWidget(settings_panel)
-    footer_gap_bottom.setFixedHeight(12)
+    footer_gap_bottom.setFixedHeight(scaled_px(12))
     sp_layout.addWidget(footer_gap_bottom)
 
-    dialog.export_progress = QProgressBar()
+    dialog.export_progress = ThemedExportProgressBar()
     dialog.export_progress.setObjectName("VideoEditorExportProgress")
     dialog.export_progress.setProperty("state", "active")
     dialog.export_progress.setVisible(False)
     dialog.export_progress.setTextVisible(False)
-    dialog.export_progress.setFixedHeight(4)
+    dialog.export_progress.setFixedHeight(scaled_px(4))
     sp_layout.addWidget(dialog.export_progress)
 
     dialog.btn_export = Button(
-        get_icon(Icon.EXPORT_VIDEO), text=dialog._tr("action.export_video"),
+        get_icon(Icon.EXPORT_VIDEO), text=dialog._tr("image_compare.action.export_video"),
         variant="surface", size=(0, 48), corner_radius=8,
     )
     dialog.btn_export.set_footer_mode(True)
@@ -125,20 +131,20 @@ def build_settings_panel(dialog):
         parent=dialog.btn_export,
     )
     dialog.btn_stop_export.setObjectName("btnStopVideoExport")
-    dialog.btn_stop_export.setToolTip(dialog._tr("button.stop"))
+    dialog.btn_stop_export.setToolTip(dialog._tr("image_compare.button.stop"))
     dialog.btn_stop_export.setCursor(Qt.CursorShape.PointingHandCursor)
     dialog.btn_stop_export.clicked.connect(dialog._on_stop_export_clicked)
     dialog.btn_stop_export.hide()
     sp_layout.addWidget(dialog.btn_export)
 
-    EXPORT_FOOTER.tag_member(dialog.btn_export, "action.export_video")
-    EXPORT_FOOTER.tag_member(dialog.btn_stop_export, "button.stop")
+    EXPORT_FOOTER.tag_member(dialog.btn_export, "image_compare.action.export_video")
+    EXPORT_FOOTER.tag_member(dialog.btn_stop_export, "image_compare.button.stop")
 
     return settings_panel
 
 def create_resolution_settings(dialog):
     res_layout = QHBoxLayout()
-    res_layout.setSpacing(8)
+    res_layout.setSpacing(scaled_px(8))
 
     dialog.lbl_resolution = Label(dialog._tr("label.resolution") + ":", variant="group-title")
     res_layout.addWidget(dialog.lbl_resolution)
@@ -146,7 +152,7 @@ def create_resolution_settings(dialog):
     dialog.edit_width = CustomLineEdit()
     dialog.edit_width.setValidator(QIntValidator(16, 8192))
     dialog.edit_width.setText("1920")
-    dialog.edit_width.setFixedWidth(60)
+    dialog.edit_width.setFixedWidth(scaled_px(60))
     dialog.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.edit_width.installEventFilter(dialog._settings_no_wheel_filter)
     res_layout.addWidget(dialog.edit_width)
@@ -162,7 +168,7 @@ def create_resolution_settings(dialog):
     dialog.edit_height = CustomLineEdit()
     dialog.edit_height.setValidator(QIntValidator(16, 8192))
     dialog.edit_height.setText("1080")
-    dialog.edit_height.setFixedWidth(60)
+    dialog.edit_height.setFixedWidth(scaled_px(60))
     dialog.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.edit_height.installEventFilter(dialog._settings_no_wheel_filter)
     res_layout.addWidget(dialog.edit_height)
@@ -170,9 +176,9 @@ def create_resolution_settings(dialog):
     dialog.btn_fit_content = Button(icon=(Icon.CROP_IN, Icon.CROP_OUT), toggle=True, size=(32, 32))
     dialog.btn_fit_content.setObjectName("btnFitContent")
     dialog.btn_fit_content.setChecked(False)
-    dialog.btn_fit_content.setToolTip(dialog._tr("magnifier.fit_mode_toggle"))
+    dialog.btn_fit_content.setToolTip(dialog._tr("image_compare.magnifier.fit_mode_toggle"))
     dialog.btn_fit_content.toggled.connect(dialog._on_fit_content_toggled)
-    RESOLUTION.tag_member(dialog.btn_fit_content, "magnifier.fit_mode_toggle")
+    RESOLUTION.tag_member(dialog.btn_fit_content, "image_compare.magnifier.fit_mode_toggle")
     res_layout.addWidget(dialog.btn_fit_content)
 
     dialog.btn_fit_fill_color = Button(Icon.DIVIDER_COLOR, show_underline=True, size=(32, 32))
@@ -194,7 +200,7 @@ def create_resolution_settings(dialog):
 
 def create_fps_settings(dialog):
     fps_layout = QHBoxLayout()
-    dialog.lbl_fps = Label(dialog._tr("label.fps") + ":", variant="group-title")
+    dialog.lbl_fps = Label(dialog._tr("image_compare.label.fps") + ":", variant="group-title")
     fps_layout.addWidget(dialog.lbl_fps)
 
     max_fps = 240
@@ -228,7 +234,7 @@ def create_fps_settings(dialog):
     dialog.edit_fps = SpinBox(default_value=initial_fps)
     dialog.edit_fps.setRange(1, max_fps)
     dialog.edit_fps.setValue(initial_fps)
-    dialog.edit_fps.setFixedWidth(100)
+    dialog.edit_fps.setFixedWidth(scaled_px(100))
     dialog.edit_fps.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.edit_fps.installEventFilter(dialog._settings_no_wheel_filter)
     fps_layout.addWidget(dialog.edit_fps)
@@ -241,7 +247,7 @@ def create_fps_settings(dialog):
 
 def create_preview_quality_settings(dialog):
     preview_layout = QHBoxLayout()
-    preview_layout.setSpacing(8)
+    preview_layout.setSpacing(scaled_px(8))
     dialog.lbl_preview_quality = Label(dialog._tr("video.preview_quality") + ":", variant="group-title")
     preview_layout.addWidget(dialog.lbl_preview_quality)
 
@@ -277,8 +283,8 @@ def create_export_tabs(dialog):
     EXPORT_TABS.tag_tab_page(tabs, dialog.tab_manual, "video.manual_cli")
 
     dialog.tab_output = create_output_tab(dialog)
-    tabs.addTab(dialog.tab_output, dialog._tr("label.output"))
-    EXPORT_TABS.tag_tab_page(tabs, dialog.tab_output, "label.output")
+    tabs.addTab(dialog.tab_output, dialog._tr("image_compare.label.output"))
+    EXPORT_TABS.tag_tab_page(tabs, dialog.tab_output, "image_compare.label.output")
 
     dialog.tab_log = create_log_tab(dialog)
     tabs.addTab(dialog.tab_log, dialog._tr("video.export_log"))
@@ -293,15 +299,15 @@ def create_log_tab(dialog) -> QWidget:
     tab = QWidget()
     tab.setObjectName("VideoEditorTabContent")
     layout = QVBoxLayout(tab)
-    layout.setContentsMargins(8, 8, 8, 8)
+    layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
     layout.setSpacing(0)
 
     log_edit = LogConsoleWidget()
     log_edit.setObjectName("VideoExportLog")
-    mono_font = QFont("Monospace")
+    mono_font = ui_font(point_size=9)
+    mono_font.setFamily("Monospace")
     mono_font.setStyleHint(QFont.StyleHint.Monospace)
-    mono_font.setPointSize(9)
-    log_edit.output.setFont(mono_font)
+    log_edit.set_output_font(mono_font)
 
     dialog.export_log_edit = log_edit
     layout.addWidget(log_edit)
@@ -330,7 +336,7 @@ def _wrap_tab_scroll(content: QWidget) -> QWidget:
             QSizePolicy.Policy.Minimum,
         )
     content.setMinimumWidth(0)
-    scroll_area = OverlayScrollArea(tab)
+    scroll_area = SurfaceScrollArea(tab, surface_token=None)
     # Host pane already paints rounded chrome; a viewport mask here clips
     # content and can bleed neighbouring framebuffer pixels.
     scroll_area.set_corner_radius(0)
@@ -376,7 +382,7 @@ def _add_labeled_field_column(
     _lock_form_block_height(block)
     col = QVBoxLayout(block)
     col.setContentsMargins(0, 0, 0, 0)
-    col.setSpacing(field_spacing)
+    col.setSpacing(scaled_px(field_spacing))
     col.addWidget(label)
     col.addWidget(field)
     parent_layout.addWidget(block)
@@ -397,11 +403,11 @@ def create_standard_export_tab(dialog):
         QSizePolicy.Policy.Expanding,
     )
     layout = QVBoxLayout(content)
-    layout.setContentsMargins(12, 16, 12, 16)
+    layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(16))
     # Base gap between stacked rows; extra height goes to addStretch slots.
-    layout.setSpacing(8)
+    layout.setSpacing(scaled_px(8))
 
-    dialog.lbl_container = Label(dialog._tr("label.container") + ":", variant="group-title")
+    dialog.lbl_container = Label(dialog._tr("image_compare.label.container") + ":", variant="group-title")
     dialog.combo_container = ComboBox()
     for container in ExportConfigBuilder.get_available_containers():
         dialog.combo_container.addItem(dialog._tr(container), container)
@@ -411,7 +417,7 @@ def create_standard_export_tab(dialog):
 
     layout.addStretch(1)
 
-    dialog.lbl_video_codec = Label(dialog._tr("label.video_codec") + ":", variant="group-title")
+    dialog.lbl_video_codec = Label(dialog._tr("image_compare.label.video_codec") + ":", variant="group-title")
     dialog.combo_codec = ComboBox()
     for codec in ExportConfigBuilder.get_codecs_for_container("mp4"):
         dialog.combo_codec.addItem(
@@ -426,7 +432,7 @@ def create_standard_export_tab(dialog):
     _lock_form_block_height(dialog.pix_fmt_container)
     pf_layout = QVBoxLayout(dialog.pix_fmt_container)
     pf_layout.setContentsMargins(0, 0, 0, 0)
-    pf_layout.setSpacing(6)
+    pf_layout.setSpacing(scaled_px(6))
     dialog.lbl_pix_fmt = Label(dialog._tr("video.pixel_format") + ":", variant="group-title")
     pf_layout.addWidget(dialog.lbl_pix_fmt)
     dialog.combo_pix_fmt = ComboBox()
@@ -445,7 +451,7 @@ def create_standard_export_tab(dialog):
     _lock_form_block_height(dialog.quality_controls_container)
     qc_layout = QVBoxLayout(dialog.quality_controls_container)
     qc_layout.setContentsMargins(0, 0, 0, 0)
-    qc_layout.setSpacing(6)
+    qc_layout.setSpacing(scaled_px(6))
 
     dialog.lbl_quality_control = Label(
         dialog._tr("video.quality_control") + ":",
@@ -470,7 +476,7 @@ def create_standard_export_tab(dialog):
     _lock_form_block_height(dialog.preset_container)
     p_layout = QVBoxLayout(dialog.preset_container)
     p_layout.setContentsMargins(0, 0, 0, 0)
-    p_layout.setSpacing(6)
+    p_layout.setSpacing(scaled_px(6))
 
     dialog.lbl_preset = Label(
         dialog._tr("video.encoding_speed_preset") + ":",
@@ -502,8 +508,8 @@ def create_manual_export_tab(dialog):
         QSizePolicy.Policy.Expanding,
     )
     layout = QVBoxLayout(content)
-    layout.setContentsMargins(12, 16, 12, 16)
-    layout.setSpacing(8)
+    layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(16))
+    layout.setSpacing(scaled_px(8))
 
     dialog.lbl_manual_args_hint = Label(
         dialog._tr("video.ffmpeg_output_args_hint"),
@@ -521,6 +527,31 @@ def create_manual_export_tab(dialog):
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
     return _wrap_tab_scroll(content)
 
+def _harden_text_buttons(*buttons) -> None:
+    """Keep text buttons sized to their content (same recipe as export dialog).
+
+    Do not use ``setFixedHeight`` here — toolkit text buttons hint at
+    ``fontMetrics.height() + 16`` (often > 32), and a tighter fixed height
+    clips the bottom edge / corner radius and never re-applies on
+    ``UiScale.scale_changed`` (external min/fixed sizes are not part of
+    ``Button``'s design-px bookkeeping).
+    """
+    for button in buttons:
+        if button is None:
+            continue
+        # Drop any leftover fixed-height clamp from construction.
+        button.setMinimumHeight(0)
+        button.setMaximumHeight(16777215)
+        hint = button.sizeHint()
+        button.setMinimumSize(
+            max(button.minimumWidth(), hint.width()),
+            max(scaled_px(32), hint.height()),
+        )
+        button.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        )
+
+
 def create_output_tab(dialog):
     content = QWidget()
     content.setSizePolicy(
@@ -528,10 +559,10 @@ def create_output_tab(dialog):
         QSizePolicy.Policy.Expanding,
     )
     layout = QVBoxLayout(content)
-    layout.setContentsMargins(16, 16, 16, 16)
-    layout.setSpacing(8)
+    layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
+    layout.setSpacing(scaled_px(8))
 
-    dialog.output_section = OutputPathSection(
+    section = OutputPathSection(
         directory_label_text=dialog._tr("export.select_output_directory") + ":",
         browse_text=dialog._tr("button.browse"),
         set_favorite_text=dialog._tr("misc.set_as_favorite"),
@@ -542,19 +573,20 @@ def create_output_tab(dialog):
         on_use_favorite=dialog._on_use_favorite_clicked,
         use_custom_line_edit=True,
         filename_editor_factory=CustomLineEdit,
-        button_min_size=(40, 30),
-        button_fixed_height=30,
     )
-    dialog.dir_picker_row = dialog.output_section.dir_picker_row
-    dialog.edit_output_dir = dialog.output_section.edit_dir
-    dialog.btn_browse_output = dialog.output_section.btn_browse_dir
-    dialog.favorite_actions = dialog.output_section.favorite_actions
-    dialog.btn_set_favorite = dialog.output_section.btn_set_favorite
-    dialog.btn_use_favorite = dialog.output_section.btn_use_favorite
+    _harden_text_buttons(
+        section.btn_browse_dir,
+        section.btn_set_favorite,
+        section.btn_use_favorite,
+    )
+    section.apply_to(dialog)
+    # Video-editor-specific aliases (different names from the standardized ones).
+    dialog.edit_output_dir = dialog.edit_dir
+    dialog.btn_browse_output = dialog.btn_browse_dir
+    dialog.edit_filename = dialog.edit_name
     EXPORT_FOOTER.tag_member(dialog.btn_browse_output, "button.browse")
     EXPORT_FOOTER.tag_member(dialog.btn_set_favorite, "misc.set_as_favorite")
     EXPORT_FOOTER.tag_member(dialog.btn_use_favorite, "tooltip.use_favorite")
-    dialog.edit_filename = dialog.output_section.filename_edit
     layout.addWidget(dialog.output_section)
 
     layout.addStretch(1)
@@ -569,7 +601,7 @@ def create_quality_stack(dialog):
     _lock_form_block_height(p_crf)
     l_crf = QVBoxLayout(p_crf)
     l_crf.setContentsMargins(0, 0, 0, 0)
-    l_crf.setSpacing(6)
+    l_crf.setSpacing(scaled_px(6))
     dialog.lbl_quality_value = Label(
         dialog._tr("video.crf_value_hint") + ":",
         variant="group-title",
@@ -578,7 +610,7 @@ def create_quality_stack(dialog):
     dialog.edit_crf.setValidator(QIntValidator(0, 63))
     dialog.edit_crf.setText("23")
     dialog.edit_crf.setPlaceholderText("23")
-    dialog.edit_crf.setFixedWidth(80)
+    dialog.edit_crf.setFixedWidth(scaled_px(80))
     dialog.edit_crf.setAlignment(Qt.AlignmentFlag.AlignCenter)
     l_crf.addWidget(dialog.lbl_quality_value)
     l_crf.addWidget(dialog.edit_crf)
@@ -589,7 +621,7 @@ def create_quality_stack(dialog):
     _lock_form_block_height(p_bit)
     l_bit = QVBoxLayout(p_bit)
     l_bit.setContentsMargins(0, 0, 0, 0)
-    l_bit.setSpacing(6)
+    l_bit.setSpacing(scaled_px(6))
     dialog.lbl_bitrate = Label(dialog._tr("video.bitrate_hint") + ":", variant="group-title")
     dialog.edit_bitrate = CustomLineEdit()
     dialog.edit_bitrate.setText("8000k")
@@ -602,35 +634,35 @@ def create_quality_stack(dialog):
     return stack
 
 def create_toolbar(dialog):
-    toolbar_frame = QFrame()
+    toolbar_frame = VideoEditorToolbar()
     toolbar_frame.setObjectName("VideoEditorToolbar")
-    toolbar_frame.setFixedHeight(50)
+    toolbar_frame.setFixedHeight(scaled_px(50))
 
     toolbar_layout = QHBoxLayout(toolbar_frame)
-    toolbar_layout.setContentsMargins(10, 5, 10, 5)
-    toolbar_layout.setSpacing(8)
+    toolbar_layout.setContentsMargins(scaled_px(10), scaled_px(5), scaled_px(10), scaled_px(5))
+    toolbar_layout.setSpacing(scaled_px(8))
 
     dialog.btn_play = Button(icon=(Icon.PLAY, Icon.PAUSE), toggle=True)
     dialog.btn_play.setToolTip(
-        dialog._tr("button.play") + " / " + dialog._tr("button.pause")
+        dialog._tr("image_compare.button.play") + " / " + dialog._tr("image_compare.button.pause")
     )
     dialog.btn_play.toggled.connect(dialog._on_play_toggled)
-    TOOLBAR.tag_member(dialog.btn_play, "button.play")
+    TOOLBAR.tag_member(dialog.btn_play, "image_compare.button.play")
 
     dialog.btn_undo = Button(Icon.UNDO)
-    dialog.btn_undo.setToolTip(dialog._tr("button.undo_ctrlz"))
+    dialog.btn_undo.setToolTip(dialog._tr("image_compare.button.undo_ctrlz"))
     dialog.btn_undo.clicked.connect(dialog._on_undo_clicked)
-    TOOLBAR.tag_member(dialog.btn_undo, "button.undo_ctrlz")
+    TOOLBAR.tag_member(dialog.btn_undo, "image_compare.button.undo_ctrlz")
 
     dialog.btn_redo = Button(Icon.REDO)
-    dialog.btn_redo.setToolTip(dialog._tr("button.redo"))
+    dialog.btn_redo.setToolTip(dialog._tr("image_compare.button.redo"))
     dialog.btn_redo.clicked.connect(dialog._on_redo_clicked)
-    TOOLBAR.tag_member(dialog.btn_redo, "button.redo")
+    TOOLBAR.tag_member(dialog.btn_redo, "image_compare.button.redo")
 
     dialog.btn_trim = Button(Icon.SCISSORS)
-    dialog.btn_trim.setToolTip(dialog._tr("button.trim_to_selection"))
+    dialog.btn_trim.setToolTip(dialog._tr("image_compare.button.trim_to_selection"))
     dialog.btn_trim.clicked.connect(dialog._on_trim_clicked)
-    TOOLBAR.tag_member(dialog.btn_trim, "button.trim_to_selection")
+    TOOLBAR.tag_member(dialog.btn_trim, "image_compare.button.trim_to_selection")
 
     toolbar_layout.addWidget(dialog.btn_play)
     toolbar_layout.addWidget(dialog.btn_undo)
@@ -641,13 +673,9 @@ def create_toolbar(dialog):
     return toolbar_frame
 
 def create_timeline_scroll_area(dialog):
-    scroll_area = QScrollArea()
+    scroll_area = SurfaceScrollArea()
     scroll_area.setObjectName("VideoEditorTimelineScrollArea")
-    scroll_area.setWidgetResizable(True)
-    scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll_area.setMinimumHeight(210)
-    scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll_area.setMinimumHeight(scaled_px(210))
 
     store = None
     if hasattr(dialog, "export_controller") and dialog.export_controller:

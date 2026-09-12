@@ -134,6 +134,6 @@ Aliases are for **shared (non-feature) code** to call **into a feature**. Inside
 
 ## See also
 
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the broader canvas-feature system; aliases are one of several contribution surfaces
+- [rendering/index.md](rendering/index.md) — the broader canvas-feature system; aliases are one of several contribution surfaces
 - [CONTRACTS.md](CONTRACTS.md) — why "zero direct feature imports in shared code" exists
 - `src/tabs/image_compare/canvas/features/_template/` — copyable starter feature

@@ -42,3 +42,19 @@ class SetImagePathAction(Action):
     def __init__(self, slot: int, path: str):
         super().__init__(type=ActionType.SET_IMAGE_PATH); self.slot = slot; self.path = path
     def get_payload(self): return {"slot": self.slot, "path": self.path}
+
+@dataclass
+class SetImageListAction(Action):
+    slot: int
+    items: list
+    def __init__(self, slot: int, items: list):
+        super().__init__(type=ActionType.SET_IMAGE_LIST); self.slot = slot; self.items = list(items)
+    def get_payload(self): return {"slot": self.slot, "items": len(self.items)}
+
+@dataclass
+class AppendImageItemsAction(Action):
+    slot: int
+    items: list
+    def __init__(self, slot: int, items: list):
+        super().__init__(type=ActionType.APPEND_IMAGE_ITEMS); self.slot = slot; self.items = list(items)
+    def get_payload(self): return {"slot": self.slot, "items": len(self.items)}

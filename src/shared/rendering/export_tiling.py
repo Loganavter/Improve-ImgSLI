@@ -13,8 +13,7 @@ from shared.image_processing.regions import build_uniform_tile_grid
 from shared.rendering.offscreen_canvas import (
     configure_offscreen_widget,
     render_widget_frame,
-    resize_offscreen_widget,
-    show_offscreen_widget,
+    resize_and_show_offscreen_widget,
 )
 
 DEFAULT_EXPORT_TILE_MAX_EXTENT = 4096
@@ -90,13 +89,11 @@ class TiledFramebufferExporter:
         self._set_export_viewport(None)
         target = (canvas_w, canvas_h)
         if self._last_size != target:
-            resize_offscreen_widget(self._widget, target)
-            show_offscreen_widget(self._widget)
+            resize_and_show_offscreen_widget(self._widget, target)
             self._last_size = target
         self._prepare_frame()
         render_widget_frame(self._widget)
-        render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()
+        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         image = qimage_to_pil_rgba(qimg)
         if image.size != target:
             image = image.resize(target, Image.Resampling.BILINEAR)
@@ -113,22 +110,14 @@ class TiledFramebufferExporter:
     ) -> Image.Image:
         target = (tile_w, tile_h)
         if self._last_size != target:
-            resize_offscreen_widget(self._widget, target)
-            show_offscreen_widget(self._widget)
+            resize_and_show_offscreen_widget(self._widget, target)
             self._last_size = target
         self._set_export_viewport((canvas_w, canvas_h, tile_left, tile_top))
         self._prepare_frame()
         render_widget_frame(self._widget)
-        render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()
+        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         tile_image = qimage_to_pil_rgba(qimg)
         if tile_image.size != target:
             tile_image = tile_image.resize(target, Image.Resampling.BILINEAR)
         return tile_image
 
-
-def create_offscreen_export_widget(factory: Callable[[], QWidget]) -> QWidget:
-    widget = factory()
-    configure_offscreen_widget(widget)
-    show_offscreen_widget(widget)
-    return widget

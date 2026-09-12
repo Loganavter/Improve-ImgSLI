@@ -55,7 +55,6 @@ class CanvasRuntimeState:
     _letterbox_fill_rgba: tuple[float, float, float, float] | None = None
     _store: object | None = None
     _render_scene: object | None = None
-    _render_scene_dirty: bool = False
     _split_position_sync: object | None = None
     _apply_channel_mode_in_shader: bool = True
     _read_only: bool = False
@@ -79,11 +78,18 @@ class CanvasRuntimeState:
     _qimage_by_uid_cache: OrderedDict = field(default_factory=OrderedDict)
     _resize_overlay_sync_active: bool = False
     _zoom_viewport_state: object | None = None
+    # See render_context.py's _schedule_glass_settle_frame: one extra
+    # repaint after the last real content update, so
+    # shared.rendering.glass_panel's render_backdrops() can catch up to the
+    # colorTexture() that update just produced (it always reads the
+    # *previous* frame's colorTexture() by design -- see that module's
+    # docstring). Guards against stacking up multiple settle frames during
+    # a burst of updates.
+    _glass_settle_pending: bool = False
     _dynamic_feature_overrides: dict = field(default_factory=dict)
     _feature_overlay_gpu: _FeatureOverlayGpuState = field(
         default_factory=_FeatureOverlayGpuState
     )
-    _feature_overlay_quad_ndc: tuple[float, float, float, float] | None = None
     _capture_center: object | None = None
     _capture_radius: float = 0.0
     _capture_circles: list = field(default_factory=list)
@@ -96,6 +102,11 @@ class CanvasRuntimeState:
     _guides_thickness: int = 0
     _capture_color: object = field(default_factory=QColor)
     _export_canvas_viewport: tuple | None = None
+    # Union letterbox hold after put_unified: keep prev union letterbox for
+    # UNION_LETTERBOX_HOLD_MS (350ms) or until tile more_pending False.
+    # See base_images.update_common_letterbox_geometry.
+    _union_letterbox_hold_until: float = 0.0
+    _tile_more_pending: bool = False
 
 
 def init_widget_state(widget):

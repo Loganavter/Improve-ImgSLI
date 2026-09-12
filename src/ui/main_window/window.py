@@ -7,6 +7,9 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
+    QCloseEvent,
+    QMoveEvent,
+    QShowEvent,
     QColor,
     QIcon,
     QPalette,
@@ -16,6 +19,10 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
 from core.runtime_flags import RuntimeFlags
+from shared_toolkit.ui.decorate_dialog import (
+    CUSTOM_DECORATION_RESIZE_MARGIN,
+    resolve_csd_band,
+)
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from ui.main_window.actions import MainWindowActions
 from ui.main_window.appearance import MainWindowAppearance
@@ -53,7 +60,14 @@ class MainWindow(QWidget):
         self.setAutoFillBackground(False)
         from sli_ui_toolkit import apply_frameless
 
-        apply_frameless(self)
+        # Outer resize band: the surface carries transparent margin beyond
+        # the visible body so the frameless edge can be grabbed from outside
+        # (the same band the dialogs get via WindowChrome).
+        apply_frameless(self, outer_band=CUSTOM_DECORATION_RESIZE_MARGIN)
+
+        from ui.canvas_infra.rhi.rhi_backend import ensure_window_rhi
+
+        ensure_window_rhi(self)
 
         self._is_ui_stable = False
         self._application_initialized = False
@@ -70,7 +84,7 @@ class MainWindow(QWidget):
         self.appearance = MainWindowAppearance(self)
         self.runtime = MainWindowRuntime(self)
         self.startup_runtime = MainWindowStartupRuntime(self)
-        self.actions = MainWindowActions(self)
+        self.action_registry = MainWindowActions(self)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
         self.app_context = ApplicationContext(runtime_flags=self.runtime_flags)
@@ -102,6 +116,7 @@ class MainWindow(QWidget):
             self.settings_manager.settings,
             self.store,
         )
+        self._menu_controller = None  # set in startup.build_shell()
         # Title-bar File/Help widths are measured at strip construction. Apply
         # the UI face first so Cyrillic labels are not sized with a fallback
         # font (Help then sits where File should be until FontChange remasure).
@@ -112,6 +127,7 @@ class MainWindow(QWidget):
         except Exception:
             pass
         self.startup_runtime.build_shell()
+        self._wire_csd_scale_resync()
 
         try:
             theme_bg = QColor(
@@ -146,15 +162,39 @@ class MainWindow(QWidget):
         painter = QPainter(self)
         try:
             squared = self.isMaximized() or self.isFullScreen()
+            band = resolve_csd_band(self)
             paint_rounded_window_background(
                 painter,
-                QRectF(self.rect()),
+                QRectF(self.rect()).adjusted(band, band, -band, -band),
                 color=self._window_bg_color,
                 radius=float(self.CORNER_RADIUS),
                 squared=squared,
             )
         finally:
             painter.end()
+
+    def _sync_csd_content_band(self) -> None:
+        """Zero the root-layout band inset in maximized/fullscreen.
+
+        The root layout insets all content by the outer resize band (so the
+        visible body sits inside the transparent grab margin). In
+        maximized/fullscreen the band is gone (see ``resolve_csd_band``) —
+        keeping the inset would leave a strip of window background around
+        the content. Re-insets when the window returns to windowed mode.
+        """
+        layout = getattr(self, "_root_layout", None)
+        if layout is None:
+            return
+        band = resolve_csd_band(self)
+        layout.setContentsMargins(band, band, band, band)
+        layout.invalidate()
+        layout.activate()
+        startup_runtime = getattr(self, "startup_runtime", None)
+        if startup_runtime is not None:
+            try:
+                startup_runtime.sync_cover_geometry()
+            except Exception:
+                pass
 
     def _apply_rounded_mask(self) -> None:
         from sli_ui_toolkit.ui.windows.rounded_body import (
@@ -195,6 +235,15 @@ class MainWindow(QWidget):
         self._offscreen_prewarm_active = False
 
     @property
+    def menu_controller(self):
+        """Public accessor for the CSD/title-bar controller.
+
+        Prefer over ``getattr(window, "_menu_controller")`` (private
+        attribute hunt flagged by cross-module review C7).
+        """
+        return getattr(self, "_menu_controller", None)
+
+    @property
     def toast_manager(self):
         if self._toast_manager is not None:
             return self._toast_manager
@@ -233,6 +282,7 @@ class MainWindow(QWidget):
             defer_dialog_geometry(self, lambda: apply_main_window_minimum(self))
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
+            self._sync_csd_content_band()
             self._apply_rounded_mask()
             self.update()
             QTimer.singleShot(0, self.schedule_update)
@@ -243,8 +293,74 @@ class MainWindow(QWidget):
         self.runtime.notify_resize()
         super().resizeEvent(event)
         self._apply_rounded_mask()
+        # CSD: the title bar's layout can stay at its construction-time
+        # activation (zones squeezed to tiny widths — clipped File/Help
+        # buttons, elided title) until the first real geometry lands; on
+        # Wayland that arrives as an asynchronous configure AFTER the window
+        # is shown. Force a fresh bar layout + balance on the first real
+        # resize so the first visible frame is correct.
+        bar = getattr(self, "_custom_title_bar", None)
+        if bar is not None:
+            sync = getattr(bar, "_sync_balance_spacer", None)
+            if callable(sync):
+                try:
+                    sync()
+                except Exception:
+                    pass
 
-    def closeEvent(self, event: QEvent):
+    def _wire_csd_scale_resync(self) -> None:
+        """Force title-bar repaints shortly after a live UiScale change.
+
+        The deferred bar relayout heals the geometry on the next tick; on
+        some Wayland compositors the healed frame is never repainted
+        (translucent-window quirk) and the stale CSD stays on screen until
+        a window resize. Force synchronous repaints after the heal so the
+        correct state is guaranteed visible.
+        """
+        try:
+            from PySide6.QtCore import QTimer
+
+            from sli_ui_toolkit.managers import UiScale
+
+            self._csd_scale_resync_connection = (
+                UiScale.get_instance().scale_changed.connect(
+                    lambda _factor: (
+                        QTimer.singleShot(50, self._force_csd_repaint),
+                        QTimer.singleShot(250, self._force_csd_repaint),
+                    )
+                )
+            )
+            self.destroyed.connect(self._drop_csd_scale_resync)
+        except Exception:
+            pass
+
+    def _force_csd_repaint(self) -> None:
+        try:
+            bar = getattr(self, "_custom_title_bar", None)
+            if bar is not None:
+                bar.repaint()
+            self.repaint()
+            from PySide6.QtWidgets import QApplication
+
+            for top in QApplication.topLevelWidgets():  # ALLOWED: system-wide CSD repaint — generic top-level bar repaint, not tab-specific
+                dialog_bar = getattr(top, "_csd_title_bar", None)
+                if dialog_bar is not None and dialog_bar is not getattr(
+                    self, "_custom_title_bar", None
+                ):
+                    dialog_bar.repaint()
+        except Exception:
+            pass
+    def _drop_csd_scale_resync(self, *_args) -> None:
+        try:
+            from sli_ui_toolkit.managers import UiScale
+
+            UiScale.get_instance().scale_changed.disconnect(
+                self._csd_scale_resync_connection
+            )
+        except Exception:
+            pass
+
+    def closeEvent(self, event: QCloseEvent):
         logger.debug("Начало закрытия главного окна...")
         self._shutdown_pipeline.run(self)
 
@@ -263,11 +379,11 @@ class MainWindow(QWidget):
         if app is not None:
             QTimer.singleShot(0, lambda: app.exit(0))
 
-    def moveEvent(self, event: QEvent):
+    def moveEvent(self, event: QMoveEvent):
         super().moveEvent(event)
         self.runtime.handle_move()
 
-    def showEvent(self, event: QEvent):
+    def showEvent(self, event: QShowEvent):
         super().showEvent(event)
         self._apply_rounded_mask()
         self.runtime.handle_show()
@@ -282,5 +398,4 @@ class MainWindow(QWidget):
     def schedule_update(self):
         if self.presenter is not None:
             self.presenter.schedule_canvas_update()
-
 

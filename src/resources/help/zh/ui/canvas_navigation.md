@@ -24,4 +24,4 @@
 
 - **文件名标签** — 仅在 `100%` 缩放时显示，缩放恢复为适配大小后会自动重新出现。
 - **分割线** — 缩放变化时在屏幕上保持稳定位置。
-- **质量** — 预览缓存与插值在 [设置 → {{tr:settings.optimization}}](help://settings#performance)。
+- **质量** — 预览缓存与插值在 [设置 → 优化](help://settings#performance)。

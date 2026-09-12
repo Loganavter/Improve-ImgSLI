@@ -4,7 +4,7 @@ A **plugin** is any module with `@plugin(...)` on a `Plugin` subclass. Discovery
 
 **Tab-owned sub-plugins convention:** a plugin with no consumer outside a single tab lives under `src/tabs/<tab_name>/plugins/<plugin_name>/`, mirroring `src/plugins/<name>/` at the tab's own scope, instead of sitting as a bare sibling of the tab's other subpackages (`canvas/`, `ui/`, `services/`, ...). Every `src/tabs/<tab_name>/` gets a `plugins/` package once it has at least one such plugin — do not leave an empty placeholder `plugins/` package for a tab that has none.
 
-This document covers wiring and the live inventory. For canvas-tool plugins (sliders, magnifier, overlays) see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — a parallel system layered on top. Tab session/UI contracts are in [tabs/index.md](tabs/index.md).
+This document covers wiring and the live inventory. For canvas-tool plugins (sliders, magnifier, overlays) see [rendering/index.md](rendering/index.md) — a parallel system layered on top. Tab session/UI contracts are in [tabs/index.md](tabs/index.md).
 
 ## Files
 
@@ -81,7 +81,6 @@ class Plugin(ABC):
     def get_toolbar_actions(self) -> list
     def get_menu_items(self) -> list
     def get_render_entities(self) -> list
-    def get_qss_paths(self) -> tuple[str, ...]
     def get_definition(self) -> Any | None
     def plugin_resource_path(*parts) -> str            # path under the plugin's own directory
 ```
@@ -100,25 +99,27 @@ class Plugin(ABC):
 
 Live `@plugin` entry points (2026-07-18). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
 
+Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned plugins → `src/tabs/<tab>/docs/plugins/`.
+
 ### App-wide (`src/plugins/`)
 
-| Name | Path | Tier | Order | Interfaces | Role |
-|---|---|---|:-:|---|---|
-| `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings |
-| `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) |
-| `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` |
-| `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS |
-| `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) |
-| `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` |
+| Name | Path | Tier | Order | Interfaces | Role | Doc |
+|---|---|:-:|---|---|---|
+| `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings | [plugins/settings.md](plugins/settings.md) |
+| `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) | [plugins/layout.md](plugins/layout.md) |
+| `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` | [plugins/onboarding.md](plugins/onboarding.md) |
+| `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS | [plugins/export.md](plugins/export.md) |
+| `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) | [plugins/help.md](plugins/help.md) |
+| `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` | [plugins/image_properties.md](plugins/image_properties.md) |
 
 ### Tab / session plugins (`src/tabs/`)
 
-| Name | Path | Tier | Order | Interfaces | Role |
-|---|---|---|:-:|---|---|
-| `comparison` | `tabs/image_compare/` | bootstrap | — | `ISessionPlugin` | Primary two-image compare tab; owns analysis services (`services/analysis/`), session controller, canvas |
-| `session_picker` | `tabs/session_picker/` | bootstrap | — | `ISessionPlugin` | Transient "New Tab" session browser / switcher |
-| `multi_compare` | `tabs/multi_compare/` | deferred | — | `ISessionPlugin` | Grid multi-image compare tab + `multi_compare.state` slot |
-| `video_editor` | `tabs/image_compare/plugins/video_editor/` | deferred | 0 | `ISessionPlugin` | Tab-owned video editor (dialogs, timeline, recorder/export flows); loads before `export` |
+| Name | Path | Tier | Order | Interfaces | Role | Doc |
+|---|---|:-:|---|---|---|
+| `comparison` | `tabs/image_compare/` | bootstrap | — | `ISessionPlugin` | Primary two-image compare tab; owns analysis services (`services/analysis/`), session controller, canvas | `tabs/image_compare/docs/plugins/comparison.md` |
+| `session_picker` | `tabs/session_picker/` | bootstrap | — | `ISessionPlugin` | Transient "New Tab" session browser / switcher | `tabs/session_picker/docs/plugins/session_picker.md` |
+| `multi_compare` | `tabs/multi_compare/` | deferred | — | `ISessionPlugin` | Grid multi-image compare tab + `multi_compare.state` slot | `tabs/multi_compare/docs/plugins/multi_compare.md` |
+| `video_editor` | `tabs/image_compare/plugins/video_editor/` | deferred | 0 | `ISessionPlugin` | Tab-owned video editor (dialogs, timeline, recorder/export flows); loads before `export` | `tabs/image_compare/docs/plugins/video_editor.md` |
 
 There is no `@plugin(name="analysis")`. Diff/metrics/SSIM live under
 `tabs/image_compare/services/analysis/` and `shared/analysis/`, constructed by
@@ -210,13 +211,12 @@ Patterns:
            # subscribe to events, construct services
    ```
 3. (Optional) Add `controller.py`, `presenter.py`, `services/`, `events.py`, `state.py` as needed — follow `comparison/` or `export/` as templates depending on whether you need UI commands or dialogs.
-4. (Optional) If you contribute QSS, override `get_qss_paths()` and return paths via `self.plugin_resource_path("resources/styles/x.qss")`.
-5. (Optional) If your plugin defines a workspace session type, implement `ISessionPlugin.get_session_blueprints()`.
-6. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`.
+4. (Optional) If your plugin defines a workspace session type, implement `ISessionPlugin.get_session_blueprints()`.
+5. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`.
 
 ## See also
 
 - [STORE.md](STORE.md) — how plugins read/write app state
 - [EVENT_BUS.md](EVENT_BUS.md) — cross-plugin async comms
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the orthogonal plugin system for canvas-tools
+- [rendering/index.md](rendering/index.md) — the orthogonal plugin system for canvas-tools
 - [tabs/index.md](tabs/index.md) — workspace tab/session interface

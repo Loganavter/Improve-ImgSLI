@@ -71,7 +71,7 @@ def contribute_dialog_search_actions(
                     help_page=help_page,
                     sort_key=(group_order, 0),
                     run=_noop if group_widget is None else (
-                        lambda w=group_widget: _activate_widget(w)
+                        lambda w=group_widget: _activate_widget(w)  # type: ignore[misc]  # widget type is dynamic
                     ),
                     target=(
                         ActionTarget(widget=group_widget)
@@ -165,21 +165,21 @@ def _run_for_widget(
     combo_index: int | None,
 ) -> Callable[[], None]:
     if combo_index is not None:
-        return lambda w=widget, i=combo_index: _select_combo_index(w, i)
+        return lambda w=widget, i=combo_index: _select_combo_index(w, i)  # type: ignore[misc]  # widget type is dynamic
 
     host = getattr(widget, "_action_search_tab_host", None)
     if host is not None:
-        return lambda h=host, p=widget: _activate_tab(h, p)
+        return lambda h=host, p=widget: _activate_tab(h, p)  # type: ignore[misc]  # host type is dynamic
 
     is_checkable = getattr(widget, "isCheckable", None)
     if callable(is_checkable):
         if is_checkable():
-            return lambda w=widget: _toggle_button(w)
-        return lambda w=widget: _click_button(w)
+            return lambda w=widget: _toggle_button(w)  # type: ignore[misc]  # widget type is dynamic
+        return lambda w=widget: _click_button(w)  # type: ignore[misc]
     if hasattr(widget, "isChecked") and hasattr(widget, "setChecked"):
         # CheckBox-like widgets without isCheckable().
-        return lambda w=widget: _toggle_button(w)
-    return lambda w=widget: _click_button(w)
+        return lambda w=widget: _toggle_button(w)  # type: ignore[misc]
+    return lambda w=widget: _click_button(w)  # type: ignore[misc]
 
 
 def _activate_tab(host, page) -> None:

@@ -1,26 +1,9 @@
-from PySide6.QtCore import QPoint, QPointF, QRect
 from PySide6.QtGui import QColor
 
-from domain.types import Color, Point, Rect
+from domain.types import Color
 
 # Toolbar / chrome underline defaults — never use fully transparent.
 DEFAULT_VISIBLE_COLOR = Color(255, 255, 255, 255)
-
-
-def point_to_qpointf(p: Point) -> QPointF:
-    return QPointF(p.x, p.y)
-
-
-def qpointf_to_point(q: QPointF) -> Point:
-    return Point(q.x(), q.y())
-
-
-def point_to_qpoint(p: Point) -> QPoint:
-    return QPoint(int(p.x), int(p.y))
-
-
-def qpoint_to_point(q: QPoint) -> Point:
-    return Point(float(q.x()), float(q.y()))
 
 
 def color_to_qcolor(c: Color | QColor) -> QColor:
@@ -44,6 +27,8 @@ def ensure_visible_color(
     value cannot make a control look "unset" or hide a canvas line.
     """
     if hasattr(value, "r") and hasattr(value, "g") and hasattr(value, "b"):
+        if value is None:
+            return fallback
         a = getattr(value, "a", 255)
         if int(a) <= 0:
             return fallback
@@ -70,14 +55,6 @@ def ensure_visible_qcolor(
     fallback: Color = DEFAULT_VISIBLE_COLOR,
 ) -> QColor:
     return color_to_qcolor(ensure_visible_color(value, fallback=fallback))
-
-
-def rect_to_qrect(r: Rect) -> QRect:
-    return QRect(r.x, r.y, r.w, r.h)
-
-
-def qrect_to_rect(q: QRect) -> Rect:
-    return Rect(q.x(), q.y(), q.width(), q.height())
 
 
 def hex_to_color(hex_str: str) -> Color:

@@ -32,6 +32,7 @@ PRIMITIVES_FILE = SRC / "tabs" / "image_compare" / "ui" / "primitives.py"
 
 OWNER_FILES = {
     Path("tabs/image_compare/ui/primitives.py"),
+    Path("tabs/image_compare/presenters/connections.py"),
 }
 
 

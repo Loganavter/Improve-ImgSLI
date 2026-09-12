@@ -153,7 +153,9 @@ flowchart LR
 | `tabs/image_compare/canvas/presentation/` | tab-specific render plan assembly |
 | `tabs/image_compare/canvas/features/` | auto-discovered canvas features (masks, analysis, rulers, guides, etc.) |
 
-Rendering uses **QRhi**, not raw OpenGL — see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) for the feature contract and auto-discovery mechanism.
+Rendering uses **QRhi**, not raw OpenGL — see [rendering/index.md](rendering/index.md) for the feature contract and auto-discovery mechanism.
+
+Comparison letterbox (`image_compare`): `update_common_letterbox_geometry` (`canvas/texture_parts/base_images.py:189`) / `_update_comparison_geometry` (`presenters/image_canvas/background_parts/render_flow.py:75`) compute eager envelope `pw,ph = max(w1,w2), max(h1,h2)` from `get_image_dims` and derive a single `resolve_canvas_content_geometry(cw,ch,pw,ph)` fitted rect for both sides — `letterbox` stable from first `gap draw_plan` (no `UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry; `HOLD` + `atomic` remain only for pixel fallback LOD in `rhi_renderer/renderer.py:463`).
 
 ### Important constraint
 
@@ -225,6 +227,10 @@ The store is intentionally small at the top level (`core/store.py`).
 | `workspace` | sessions/tabs, active session, per-session state slots |
 | `runtime_cache` | ephemeral, non-persistent GPU/rendering cache (`ViewportRuntimeCache`) |
 
+### Image-compare SlotSource vs PipelineView (Phase 5–6)
+
+`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(Transaction)` from `PipelineCache` (LRU 8, memo by `(uid1,uid2,method)`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. `SessionController` (`_session_controller.py:287` Phase 6) is a ≤300 LOC thin owner (MethodObject split per CODE_PATTERNS.md:161) forwarding to `use_cases/canvas_invalidate, image_decode, document_slot, metrics_trigger, session_api, session_init` + `ui_batcher` + `ImageSession`. Chrome stale is single `StaleGate` (`use_cases/stale_gate.py`) merging `widget._render_stale/_metrics_stale` and `chrome_sync._render_stale`. See `plan_image_pipeline.md` Phase 5 and `plan_loading_simplification.md` Phase 4.
+
 ### Rules
 
 - Actions are immutable payloads (`core/state_management/*_actions.py`).
@@ -270,5 +276,5 @@ For onboarding into the codebase, read files in this order:
 2. `src/ui/main_window/composer.py`
 3. `src/core/state_management/` and [STORE.md](STORE.md)
 4. `src/ui/canvas_infra/` and `src/ui/canvas_presentation/`
-5. `src/tabs/image_compare/tab.py`, then `src/tabs/image_compare/canvas/` and [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md)
+5. `src/tabs/image_compare/tab.py`, then `src/tabs/image_compare/canvas/` and [rendering/index.md](rendering/index.md)
 6. the specific plugin or tab you want to modify

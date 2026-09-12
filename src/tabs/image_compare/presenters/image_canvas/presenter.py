@@ -43,8 +43,8 @@ class ImageCanvasPresenter(QObject):
     def schedule_update(self):
         return self.background.schedule_update()
 
-    def invalidate_render_state(self, clear_magnifier: bool = False):
-        return self.lifecycle.invalidate_render_state(clear_magnifier)
+    def invalidate_render_state(self, clear_overlay_state: bool = False):
+        return self.lifecycle.invalidate_render_state(clear_overlay_state)
 
     def update_comparison_if_needed(self) -> bool:
         return self.background.update_comparison_if_needed()
@@ -57,3 +57,11 @@ class ImageCanvasPresenter(QObject):
 
     def update_capture_area_display(self):
         return self.overlay.update_capture_area_display()
+
+    def get_canvas(self):
+        """Return the canvas widget for minimum-size measurement.
+
+        Called by the host (``layout_geometry``) instead of reaching into
+        ``tabs.image_compare.canvas.helpers.get_canvas``.
+        """
+        return getattr(self.widget, "image_label", None)

@@ -65,7 +65,9 @@ class MagnifierStoreService:
             position=position,
         )
 
-    def ensure_active_magnifier(self, *, create_if_missing: bool = True):
+    def ensure_active_magnifier(
+        self, *, create_if_missing: bool = True, require_enabled: bool = True
+    ):
         active_id = active_magnifier_id(self._view)
         models = _state(self._view).models
         if active_id and active_id in models:
@@ -78,7 +80,7 @@ class MagnifierStoreService:
             return None
 
         if create_if_missing:
-            if not magnifier_enabled(self._view):
+            if require_enabled and not magnifier_enabled(self._view):
                 return None
             return self.add_magnifier(DEFAULT_MAGNIFIER_ID, Point(0.5, 0.5))
         return None
@@ -207,7 +209,10 @@ class MagnifierStoreService:
         return active.id
 
     def set_active_magnifier_size(self, size: float):
-        model = self.ensure_active_magnifier()
+        # require_enabled=False: the size slider must stay editable while
+        # the magnifier itself is off (its value should still take effect
+        # once the user turns it on), not just while actively rendering.
+        model = self.ensure_active_magnifier(require_enabled=False)
         if model is None:
             return None
         set_default_magnifier_size(self._view, size)
@@ -219,7 +224,7 @@ class MagnifierStoreService:
         )
 
     def set_active_capture_size(self, size: float):
-        model = self.ensure_active_magnifier()
+        model = self.ensure_active_magnifier(require_enabled=False)
         if model is None:
             return None
         set_default_capture_size(self._view, size)

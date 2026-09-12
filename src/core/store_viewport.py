@@ -16,7 +16,6 @@ class RenderConfig:
     zoom_interpolation_method: str = "BILINEAR"
     movement_interpolation_method: str = "BILINEAR"
     interactive_movement_interpolation_method: str = "BILINEAR"
-    display_resolution_limit: int = 0
     jpeg_quality: int = 95
 
     include_file_names_in_saved: bool = False
@@ -38,7 +37,6 @@ class RenderConfig:
             "zoom_interpolation_method": self.zoom_interpolation_method,
             "movement_interpolation_method": self.movement_interpolation_method,
             "interactive_movement_interpolation_method": self.interactive_movement_interpolation_method,
-            "display_resolution_limit": self.display_resolution_limit,
             "jpeg_quality": self.jpeg_quality,
             "include_file_names_in_saved": self.include_file_names_in_saved,
             "font_size_percent": self.font_size_percent,
@@ -102,7 +100,6 @@ class RenderConfig:
             if key in data and data[key] is not None:
                 setattr(cfg, key, str(data[key]))
         for key in (
-            "display_resolution_limit",
             "jpeg_quality",
             "font_size_percent",
             "font_weight",
@@ -255,8 +252,12 @@ class ViewState:
     text_bg_visual_width: float = 0.0
 
     def clone(self):
+        # Long-term Store lock fix: avoid heavy deepcopy inside the critical
+        # section. ``canvas_widget_state`` values are immutable feature states,
+        # so a shallow dict copy is sufficient and keeps the prepare step
+        # cheap. Deepcopy (if ever needed) is done outside Dispatcher._lock.
         new_obj = copy.copy(self)
-        new_obj.canvas_widget_state = copy.deepcopy(self.canvas_widget_state)
+        new_obj.canvas_widget_state = dict(self.canvas_widget_state)
         return new_obj
 
 class ViewportState:

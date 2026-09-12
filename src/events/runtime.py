@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,8 @@ from events.app_event import GlobalKeyboardHandler
 from events.app_event.null_movement import NullKeyboardMovementController
 from events.keyboard_state_service import KeyboardStateService
 from ui.canvas_infra.scene.registry import get_canvas_registry
+
+logger = logging.getLogger("ImproveImgSLI")
 
 @dataclass(slots=True)
 class EventHandlerRuntime:
@@ -50,6 +53,12 @@ class _LazyKeyboardMovementController:
                     parent=self._parent,
                 )
             except Exception:
+                logger.error(
+                    "keyboard_movement controller build failed for session %r; "
+                    "falling back to no-op controller",
+                    session_type,
+                    exc_info=True,
+                )
                 controller = NullKeyboardMovementController()
         self._built_by_session_type[session_type] = controller
         return controller

@@ -9,6 +9,7 @@ from shared_toolkit.ui.layout_sizing import (
     apply_dialog_geometry,
     clamp,
     clamp_to_screen,
+    widget_size_hint as _size_hint,
 )
 
 IMAGE_PROPERTIES_MIN_WIDTH = 480
@@ -24,21 +25,11 @@ IMAGE_PROPERTIES_GEOMETRY_POLICY = GeometryApplyPolicy(
     minimum_floor=(IMAGE_PROPERTIES_MIN_WIDTH, IMAGE_PROPERTIES_MIN_HEIGHT),
     width_bounds=(IMAGE_PROPERTIES_MIN_WIDTH, IMAGE_PROPERTIES_MAX_WIDTH),
     center_on_parent=True,
+    remember_key="image_properties",
 )
 
 
-def _size_hint(widget: QWidget | None) -> tuple[int, int]:
-    """Read intrinsic size without ``adjustSize``.
-
-    Calling ``adjustSize`` on live section frames / scroll content freezes each
-    child to its sizeHint geometry and breaks the parent VBox stretch until the
-    next user resize — first open then looks like overlapping group headers.
-    """
-    if widget is None:
-        return (0, 0)
-    widget.ensurePolished()
-    hint = widget.sizeHint()
-    return (max(0, hint.width()), max(0, hint.height()))
+IMAGE_PROPERTIES_MAX_CONTENT_HEIGHT_PX = 520
 
 
 def _activate_content_layout(dialog) -> None:
@@ -55,23 +46,17 @@ def _activate_content_layout(dialog) -> None:
 
 def compute_image_properties_dialog_size(dialog) -> tuple[int, int]:
     dialog.ensurePolished()
-    section_frames = getattr(dialog, "properties_section_frames", ()) or ()
+    document = getattr(dialog, "properties_document", None)
     scroll_content = getattr(dialog, "properties_scroll_content", None)
     actions = getattr(dialog, "properties_actions", None)
 
     content_w, content_h = _size_hint(scroll_content)
     footer_w, footer_h = _size_hint(actions)
 
-    if section_frames:
-        section_widths = []
-        sections_height = 0
-        for frame in section_frames:
-            fw, fh = _size_hint(frame)
-            section_widths.append(fw)
-            sections_height += fh
-        gaps = max(0, len(section_frames) - 1) * IMAGE_PROPERTIES_SCROLL_FOOTER_SPACING_PX
-        content_w = max(content_w, max(section_widths))
-        content_h = max(content_h, sections_height + gaps)
+    if document is not None:
+        doc_w, doc_h = _size_hint(document)
+        content_w = max(content_w, doc_w)
+        content_h = max(content_h, min(doc_h, IMAGE_PROPERTIES_MAX_CONTENT_HEIGHT_PX))
 
     total_width = max(content_w, footer_w) + IMAGE_PROPERTIES_OUTER_MARGIN_PX
     total_height = (

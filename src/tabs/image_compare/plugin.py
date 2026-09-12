@@ -12,6 +12,7 @@ from core.session_blueprints import (
 )
 from tabs.image_compare.models import ImageCompareState
 from tabs.image_compare.state.document import DocumentModel
+from tabs.image_compare.state.models import PipelineCacheState
 
 
 class _ComparisonControllerProxy:
@@ -54,12 +55,8 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         from plugins.settings.events import SettingsAnalysisMetricsRequestedEvent
         from tabs.image_compare._session_controller import SessionController
         from tabs.image_compare.events import (
-            AnalysisRequestMetricsEvent,
             AnalysisSetChannelViewModeEvent,
             AnalysisSetDiffModeEvent,
-            AnalysisToggleDiffModeEvent,
-            ComparisonErrorEvent,
-            ComparisonUpdateRequestedEvent,
         )
         from tabs.image_compare.services.analysis.runtime import (
             AnalysisRuntime,
@@ -94,10 +91,6 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         )
         if self.event_bus and self.session_ctrl:
             self.event_bus.subscribe(
-                AnalysisRequestMetricsEvent,
-                self.session_ctrl.on_metrics_requested_event,
-            )
-            self.event_bus.subscribe(
                 SettingsAnalysisMetricsRequestedEvent,
                 self.session_ctrl.on_metrics_requested_event,
             )
@@ -106,25 +99,9 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
                 self.session_ctrl.on_set_channel_view_mode,
             )
             self.event_bus.subscribe(
-                AnalysisToggleDiffModeEvent,
-                self.session_ctrl.on_toggle_diff_mode,
-            )
-            self.event_bus.subscribe(
                 AnalysisSetDiffModeEvent,
                 self.session_ctrl.on_set_diff_mode,
             )
-
-    def _emit_error(self, message: str) -> None:
-        from tabs.image_compare.events import ComparisonErrorEvent
-
-        if self.event_bus:
-            self.event_bus.emit(ComparisonErrorEvent(message))
-
-    def _emit_update(self) -> None:
-        from tabs.image_compare.events import ComparisonUpdateRequestedEvent
-
-        if self.event_bus:
-            self.event_bus.emit(ComparisonUpdateRequestedEvent())
 
     def bind_window_shell(self, window_shell: Any) -> None:
         self.presenter = window_shell
@@ -136,10 +113,6 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
             self.main_controller_proxy.window_shell = window_shell
         if self.session_ctrl:
             self.session_ctrl.presenter = window_shell
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}
-
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return (
             SessionBlueprint(
@@ -154,6 +127,10 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
                     SessionSlotBlueprint(
                         name="document",
                         factory=DocumentModel,
+                    ),
+                    SessionSlotBlueprint(
+                        name="pipeline",
+                        factory=PipelineCacheState,
                     ),
                 ),
                 resource_namespaces=(

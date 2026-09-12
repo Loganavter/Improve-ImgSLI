@@ -27,7 +27,7 @@ try:
             import importlib
 
             ui_gesture_resolver = importlib.import_module("ui.gesture_resolver")
-            RatingGestureTransaction = getattr(
+            RatingGestureTransaction = getattr(  # type: ignore[misc]  # runtime import fallback
                 ui_gesture_resolver,
                 "RatingGestureTransaction",
                 RatingGestureTransaction,
@@ -43,7 +43,7 @@ try:
                 if spec and spec.loader:
                     gesture_resolver_module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(gesture_resolver_module)
-                    RatingGestureTransaction = getattr(
+                    RatingGestureTransaction = getattr(  # type: ignore[misc]  # runtime import fallback
                         gesture_resolver_module,
                         "RatingGestureTransaction",
                         RatingGestureTransaction,

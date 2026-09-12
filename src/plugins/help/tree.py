@@ -9,13 +9,18 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from plugins.help.contribution import HelpContributionRegistry, HelpSubtreeContribution
+from plugins.help.contribution import (
+    HelpContribution,
+    HelpContributionRegistry,
+    HelpSubtreeContribution,
+)
 from utils.resource_loader import resource_path
 
 HelpNodeKind = Literal["hub", "page"]
 IconResolver = Callable[[str], Any]
 
 _installed_contributions: HelpContributionRegistry | None = None
+_installed_help_contributions: list[HelpContribution] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,25 +155,80 @@ def load_help_tree(tree_path: Path | None = None) -> HelpTree:
 
 def merge_help_contributions(
     base: HelpTree,
-    registry: HelpContributionRegistry,
+    registry: HelpContributionRegistry | list[HelpContribution],
 ) -> HelpTree:
-    """Attach tab subtrees under host parents; merge aliases and asset roots."""
+    """Attach tab subtrees under host parents; merge aliases and asset roots.
+
+    Accepts either legacy ``HelpContributionRegistry`` or typed
+    ``list[HelpContribution]`` — immutable merge (copies ``nodes``/``aliases``,
+    uniq ``node_id`` check, alias conflict raises).
+    """
     nodes = dict(base.nodes)
     aliases = dict(base.aliases)
     asset_roots: list[Path] = list(base.asset_roots)
+    resolvers: list[IconResolver] = []
 
-    for fragment in registry.subtrees:
-        _apply_subtree(nodes, aliases, asset_roots, fragment)
+    if isinstance(registry, list):
+        for fragment in registry:
+            _apply_help_contribution(nodes, aliases, asset_roots, fragment)
+            if fragment.resolve_icon is not None:
+                resolvers.append(fragment.resolve_icon)
+    else:
+        for fragment in registry.subtrees:
+            _apply_subtree(nodes, aliases, asset_roots, fragment)
+        resolvers = list(registry.icon_resolvers())
 
     tree = HelpTree(
         root_id=base.root_id,
         nodes=nodes,
         aliases=aliases,
         asset_roots=tuple(asset_roots),
-        icon_resolvers=registry.icon_resolvers(),
+        icon_resolvers=tuple(resolvers),
     )
     _validate_tree(tree)
     return tree
+
+
+def _apply_help_contribution(
+    nodes: dict[str, HelpNode],
+    aliases: dict[str, str],
+    asset_roots: list[Path],
+    fragment: HelpContribution,
+) -> None:
+    """Immutable merge for typed ``HelpContribution`` (mirrors ``_apply_subtree``)."""
+    parent = nodes.get(fragment.attach_under)
+    if parent is None:
+        raise KeyError(
+            f"help contribution attach_under {fragment.attach_under!r} missing"
+        )
+    # Defensive copies: frozen dataclass may hold mutable dicts; don't mutate originals
+    frag_nodes = dict(fragment.nodes)
+    frag_aliases = dict(fragment.aliases)
+    frag_child_ids = tuple(fragment.child_ids)
+    for node_id, data in frag_nodes.items():
+        if node_id in nodes:
+            raise KeyError(f"help contribution redefines existing node {node_id}")
+        nodes[node_id] = _node_from_raw(
+            node_id, data, body_root=fragment.body_root
+        )
+    for alias, target in frag_aliases.items():
+        if alias in aliases and aliases[alias] != target:
+            raise KeyError(
+                f"help alias conflict {alias!r}: "
+                f"{aliases[alias]!r} vs {target!r}"
+            )
+        aliases[alias] = target
+    existing_children = list(parent.children)
+    for child_id in frag_child_ids:
+        if child_id not in nodes:
+            raise KeyError(
+                f"help contribution child {child_id} missing from contributed nodes"
+            )
+        if child_id not in existing_children:
+            existing_children.append(child_id)
+    nodes[fragment.attach_under] = replace(parent, children=tuple(existing_children))
+    if fragment.asset_root is not None and fragment.asset_root not in asset_roots:
+        asset_roots.append(fragment.asset_root)
 
 def _apply_subtree(
     nodes: dict[str, HelpNode],
@@ -211,10 +271,22 @@ def _apply_subtree(
         asset_roots.append(fragment.asset_root)
 
 
-def install_help_contributions(registry: HelpContributionRegistry) -> HelpTree:
-    """Store tab contributions and rebuild the cached merged tree."""
-    global _installed_contributions
-    _installed_contributions = registry
+def install_help_contributions(
+    contributions: list[HelpContribution] | HelpContributionRegistry,
+) -> HelpTree:
+    """Store tab contributions and rebuild the cached merged tree.
+
+    Immutable merge: copies ``nodes``/``aliases`` and checks uniq ``node_id`` /
+    alias conflict exactly as before. Accepts typed ``list[HelpContribution]``
+    (new) or legacy ``HelpContributionRegistry`` (deprecated shim).
+    """
+    global _installed_contributions, _installed_help_contributions
+    if isinstance(contributions, list):
+        _installed_help_contributions = list(contributions)
+        _installed_contributions = None
+    else:
+        _installed_contributions = contributions
+        _installed_help_contributions = None
     clear_help_tree_cache()
     return get_help_tree()
 
@@ -222,13 +294,17 @@ def install_help_contributions(registry: HelpContributionRegistry) -> HelpTree:
 def build_help_tree(
     tree_path: Path | None = None,
     *,
-    contributions: HelpContributionRegistry | None = None,
+    contributions: HelpContributionRegistry | list[HelpContribution] | None = None,
 ) -> HelpTree:
     base = load_help_tree(tree_path)
-    registry = contributions if contributions is not None else _installed_contributions
-    if registry is None:
-        return base
-    return merge_help_contributions(base, registry)
+    if contributions is not None:
+        return merge_help_contributions(base, contributions)
+    # Prefer typed contributions if present
+    if _installed_help_contributions is not None:
+        return merge_help_contributions(base, _installed_help_contributions)
+    if _installed_contributions is not None:
+        return merge_help_contributions(base, _installed_contributions)
+    return base
 
 
 def _validate_tree(tree: HelpTree) -> None:
@@ -254,8 +330,9 @@ def clear_help_tree_cache() -> None:
 
 def clear_help_contributions() -> None:
     """Drop installed tab contributions (tests / full rebuild)."""
-    global _installed_contributions
+    global _installed_contributions, _installed_help_contributions
     _installed_contributions = None
+    _installed_help_contributions = None
     clear_help_tree_cache()
 
 

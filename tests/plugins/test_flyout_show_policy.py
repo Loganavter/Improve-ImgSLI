@@ -6,6 +6,7 @@ from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy
 
 from ui.flyout_policy import install_flyout_show_policy
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
+from ui.widgets.glass_hud import InfoHUD
 
 
 def test_install_flyout_show_policy_configures_context_menu_coexistence():
@@ -31,6 +32,78 @@ def test_install_flyout_show_policy_configures_context_menu_coexistence():
         assert policy.should_dismiss(listing, font) is True
     finally:
         manager.set_show_policy(previous)
+
+
+def test_info_hud_is_tagged_and_never_a_dismiss_target():
+    """Resolution/filename corner chips must survive every other flyout opening."""
+    manager = FlyoutManager.get_instance()
+    previous_policy = manager.show_policy()
+    previous_stack = manager.layer_stack()
+    try:
+        assert InfoHUD.flyout_group == "info_hud"
+
+        policy = install_flyout_show_policy()
+        hud = type("H", (), {"flyout_group": "info_hud"})()
+        listing = type("L", (), {"flyout_group": "unified_list"})()
+        options = type("O", (), {"flyout_group": "options"})()
+        font = type("F", (), {"flyout_group": "font_settings"})()
+        toggle = type("T", (), {"flyout_group": "toggle"})()
+        actions = type("A", (), {"flyout_group": "actions"})()
+        menu = type("M", (), {"flyout_group": "context_menu"})()
+
+        # None of the ordinary exclusive groups (nor the context menu) may
+        # ever dismiss the info HUD.
+        for other_showing in (listing, options, font, toggle, actions, menu):
+            assert policy.should_dismiss(other_showing, hud) is False
+
+        # The HUD itself never dismisses anything and never steals "active"
+        # (defensive -- it's also pinned=True, which already covers this in
+        # practice, see _configure_info_hud_rules docstring).
+        assert policy.should_dismiss(hud, listing) is False
+        assert policy.should_claim_active(hud, None) is False
+    finally:
+        manager.set_show_policy(previous_policy)
+        manager.set_layer_stack(previous_stack)
+
+
+def test_native_title_bar_resize_keeps_pinned_flyouts(qapp):
+    """CustomTitleBar's Resize/Move sweep must not close pinned flyouts.
+
+    Regression for the info HUD closing whenever the loupe/text-settings
+    panels (or a context menu attach/detach) triggered a host Resize/Move:
+    ``_hide_active_flyouts`` special-cased ``context_menu`` but hid every
+    other visible flyout unconditionally, ignoring ``pinned`` entirely.
+    """
+    from sli_ui_toolkit.ui.windows.custom_title_bar import CustomTitleBar
+
+    class _FakeFlyout:
+        def __init__(self, *, group: str | None = None, pinned: bool = False) -> None:
+            self.flyout_group = group
+            self.pinned = pinned
+            self._visible = True
+
+        def isVisible(self) -> bool:
+            return self._visible
+
+        def hide(self) -> None:
+            self._visible = False
+
+    manager = FlyoutManager.get_instance()
+    previous_registered = set(getattr(manager, "_registered_flyouts", ()))
+    previous_active = getattr(manager, "_active_flyout", None)
+    try:
+        pinned_hud = _FakeFlyout(group="info_hud", pinned=True)
+        ordinary = _FakeFlyout(group="options")
+        manager._registered_flyouts = {pinned_hud, ordinary}
+        manager._active_flyout = None
+
+        CustomTitleBar()._hide_active_flyouts()
+
+        assert pinned_hud.isVisible()
+        assert not ordinary.isVisible()
+    finally:
+        manager._registered_flyouts = previous_registered
+        manager._active_flyout = previous_active
 
 
 def test_title_bar_resize_keeps_context_menu_flyouts(qapp):

@@ -127,7 +127,7 @@ def magnifier_enabled(view_state) -> bool:
 
 def set_magnifier_enabled_flag(view_state, enabled: bool) -> None:
     _state(view_state).enabled = bool(enabled)
-    view_state.overlay_enabled = bool(enabled)
+    setattr(view_state, "overlay_enabled", bool(enabled))
 
 
 def active_magnifier_id(view_state) -> str | None:

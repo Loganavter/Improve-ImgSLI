@@ -92,7 +92,7 @@ class VideoRenderLoop:
 
         try:
             for frame_idx in range(job.total_frames):
-                if self.exporter._cancel_requested:
+                if self.exporter.is_cancel_requested():
                     logger.info("Video export canceled by user")
                     return True
 
@@ -151,7 +151,7 @@ class VideoRenderLoop:
                     frame_idx, job.total_frames, timings, enqueue_ms, total_ms
                 )
 
-            if progress_callback and not self.exporter._cancel_requested:
+            if progress_callback and not self.exporter.is_cancel_requested():
                 progress_callback.emit(100)
         finally:
             frame_queue.put(END_OF_STREAM)

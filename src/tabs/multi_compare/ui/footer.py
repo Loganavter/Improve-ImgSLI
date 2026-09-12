@@ -6,9 +6,11 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
-from sli_ui_toolkit.widgets import Button, ThemedWidget
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, ThemedWidget
 
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.managers import scaled_px
+from ui.layout_spacing import control_edge_padding
 from tabs.multi_compare.icons import Icon
 from ui.theming import resolve_theme_color
 
@@ -19,10 +21,10 @@ def _save_result_tr(_key: str, lang: str) -> str:
 
 
 def _save_tooltip_tr(_key: str, lang: str) -> str:
-    result = tr("tooltip.multi_compare_save_grid", lang)
+    result = tr("multi_compare.tooltip.save_grid", lang)
     return (
         result
-        if result != "tooltip.multi_compare_save_grid"
+        if result != "multi_compare.tooltip.save_grid"
         else "Export the composed comparison grid"
     )
 
@@ -34,24 +36,31 @@ class MultiCompareFooter(ThemedWidget, QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setFixedHeight(44)
+        self.setFixedHeight(scaled_px(44))
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(control_edge_padding(), scaled_px(4), control_edge_padding(), scaled_px(4))
+        layout.setSpacing(scaled_px(8))
 
         text = _save_result_tr("save_result", "en")
-        self.btn_save = Button(Icon.SAVE, text=text, variant="surface", parent=self)
+        self.btn_save = Button(
+            Icon.SAVE,
+            text=text,
+            variant="surface",
+            parent=self,
+            # save_clicked -> ExportDialog.exec() (modal).
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
+        )
         translatable_text(
             self.btn_save, "save_result", tr_func=_save_result_tr, defer_when_hidden=True
         )
         translatable_tooltip(
             self.btn_save,
-            "tooltip.multi_compare_save_grid",
+            "multi_compare.tooltip.save_grid",
             tr_func=_save_tooltip_tr,
             defer_when_hidden=True,
         )
-        self.btn_save.setMinimumHeight(32)
+        self.btn_save.setMinimumHeight(scaled_px(32))
         self.btn_save.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )

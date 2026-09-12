@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -7,6 +8,8 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 from tabs.image_compare.canvas.registry import registry
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def _query_overlay(store, capability_id: str, default=None):
@@ -24,20 +27,29 @@ class MagnifierVisibilityController:
         self._hover_timer = DelayedActionTimer(
             lambda: self.show(reason="hover"), parent=manager.host
         )
+        self._last_flyout_hide_ts = 0.0
         self._wire_button()
 
     def _wire_button(self) -> None:
         host = self.manager.host
         btn = getattr(self.widget, "btn_magnifier", None)
-        if btn is None or host.magnifier_visibility_flyout is None:
+        if btn is None or self.widget.magnifier_visibility_flyout is None:
             return
         btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         btn.installEventFilter(host)
-        host.magnifier_visibility_flyout.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_left.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_center.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_right.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_left.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_center.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_right.installEventFilter(host)
         btn.toggled.connect(self.on_toggle_with_hover)
+        # Один вызов вместо трёх проволочек — side декларирован на классе,
+        # но оставляем императивный для надёжности (фасад оркестрирует nav+hover).
+        try:
+            from sli_ui_toolkit.managers import bind_flyout
+
+            bind_flyout(btn, self.widget.magnifier_visibility_flyout, side="above")
+        except Exception:
+            pass
 
     def update_states(self):
         host = self.manager.host
@@ -47,7 +59,7 @@ class MagnifierVisibilityController:
             left_on = bool(model.get("visible_left", True)) if model is not None else True
             center_on = bool(model.get("visible_center", True)) if model is not None else True
             right_on = bool(model.get("visible_right", True)) if model is not None else True
-            host.magnifier_visibility_flyout.set_mode_and_states(
+            self.widget.magnifier_visibility_flyout.set_mode_and_states(
                 show_center, left_on, center_on, right_on
             )
         except Exception:
@@ -64,33 +76,63 @@ class MagnifierVisibilityController:
                 pass
             self.hide(reason="main_toggle_disabled")
             return
-        if btn.underMouse():
-            QTimer.singleShot(0, lambda: self.show(reason="hover"))
+        # Toggling the button with Enter/Space while it holds keyboard focus
+        # (no mouse involved) never sets underMouse() -- mirror the hover
+        # path for that case too, the same way on_count_changed does for the
+        # instances counter, or a keyboard-driven "turn magnifier on" never
+        # shows the flyout that mouse users get automatically.
+        keyboard_driven = (
+            bool(getattr(btn, "_keyboard_focus", False)) and btn.hasFocus()
+        )
+        if btn.underMouse() or keyboard_driven:
+            QTimer.singleShot(0, lambda kd=keyboard_driven: self.show(reason="keyboard" if kd else "hover"))
 
     def show(self, reason: str = "hover"):
         host = self.manager.host
         use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+        logger.debug("[magnifier-visibility] show() reason=%s use_magnifier=%s", reason, use_magnifier)
         if not use_magnifier:
             return
+        # Hover now opens preview for both mouse and keyboard (user request:
+        # "сделай чтобы открывались" on hover). No early return.
+        if reason == "hover":
+            pass
         try:
-            self.manager.magnifier_instances.hide()
+            self.manager.panel_instances.hide()
         except Exception:
             pass
         self.update_states()
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
-        host.magnifier_visibility_flyout.show_for_button(
-            btn, host.parent_widget, hover_delay_ms=0
+        # Preview — keep focus on anchor (btn_magnifier) with ring, don't
+        # steal into flyout. Down/Enter from anchor (extension_below) will
+        # explicitly enter via focus_first_child with ring.
+        # register=True for keyboard preview so Down can enter, False for mouse
+        # hover (user request: both top flyouts now open on hover).
+        # Like bottom MagnifierSettingsFlyout: preview keeps focus on anchor
+        # (grab_focus=False) but we still register for arrow routing so Down/Up
+        # can hand off via extension_below. Keep _keyboard_navigation_active
+        # tied to input modality (showEvent sets it from last_input_was_keyboard)
+        # instead of forcing False — keyboard-driven open should allow
+        # Left/Right inside the toggle immediately, hover open should stay
+        # preview-only (mirrors bottom panel's zone logic).
+        self.widget.magnifier_visibility_flyout.show_for_button(
+            btn,
+            host.parent_widget,
+            hover_delay_ms=0,
+            grab_focus=False,
+            register_nav_section=False,
+            animation="none",
         )
         host._magn_popup_open = True
         host._magn_popup_last_open_ts = time.monotonic()
         if reason == "wheel":
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_WHEEL_AUTO_HIDE_DELAY_MS
             )
         else:
-            host.magnifier_visibility_flyout.cancel_auto_hide()
+            self.widget.magnifier_visibility_flyout.cancel_auto_hide()
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
@@ -98,7 +140,7 @@ class MagnifierVisibilityController:
             self._hover_timer.stop()
         except Exception:
             pass
-        host.magnifier_visibility_flyout.hide()
+        self.widget.magnifier_visibility_flyout.hide()
         host._magn_popup_open = False
 
     def event_filter(self, watched, event):
@@ -107,10 +149,16 @@ class MagnifierVisibilityController:
         if btn is None:
             return False
         if watched is btn:
+            if event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+                logger.debug(
+                    "[magnifier-visibility] btn_magnifier event=%s reason=%s",
+                    event.type(),
+                    getattr(event, "reason", lambda: None)(),
+                )
             return self._handle_button_event(event)
-        if watched is host.magnifier_visibility_flyout:
+        if watched is self.widget.magnifier_visibility_flyout:
             return self._handle_flyout_event(event)
-        flyout = host.magnifier_visibility_flyout
+        flyout = self.widget.magnifier_visibility_flyout
         if watched in (
             getattr(flyout, "btn_left", None),
             getattr(flyout, "btn_center", None),
@@ -121,20 +169,75 @@ class MagnifierVisibilityController:
 
     def _handle_button_event(self, event):
         host = self.manager.host
+        btn = getattr(self.widget, "btn_magnifier", None)
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            self._hover_timer.stop()
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
             if use_magnifier:
-                self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
-            else:
-                host.magnifier_visibility_flyout.hide()
+                self.show(reason="hover")
             return False
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            self._hover_timer.stop()
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            # Schedule hide on leave, but keep open if cursor moves to flyout itself
+            # (handled by _handle_flyout_event). Use auto-hide delay.
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
+            return False
+        if et == QEvent.Type.FocusIn:
+            reason = getattr(event, "reason", lambda: None)()
+            is_keyboard = reason not in (
+                Qt.FocusReason.MouseFocusReason,
+                Qt.FocusReason.MenuBarFocusReason,
+            )
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+            if is_keyboard and use_magnifier:
+                # Keyboard focus alone shows the panel flyout as a preview
+                # (no focus steal) — actual keyboard navigation inside the
+                # flyout still requires explicit Enter (see
+                # PanelVisibilityFlyout._keyboard_navigation_active).
+                self._hover_timer.stop()
+                # Use hover delay to avoid flicker on rapid Tab
+                self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+            return False
+        if et == QEvent.Type.FocusOut:
+            # Mirror bottom MagnifierSettingsHoverController: stay open while
+            # focus is inside btn+flyout, hide when it leaves (keyboard-driven).
+            # Without this, Up→enter keeps flyout alive but Up→previous-row
+            # would never close it; the hover-leave timer alone is too slow for
+            # keyboard.
+            from PySide6.QtWidgets import QApplication as _QApp
+
+            _new = _QApp.focusWidget()
+            _flyout = self.widget.magnifier_visibility_flyout
+            _still = _new is not None and (
+                _new is btn or (_flyout is not None and _flyout.isAncestorOf(_new))
+            )
+            if not _still:
+                # Keep open only if focus ring still alive on btn/flyout and
+                # last input was keyboard — same guard as bottom panel.
+                try:
+                    from sli_ui_toolkit.ui.managers.navigation_manager import (
+                        NavigationManager as _NM,
+                    )
+
+                    _has_ring = bool(getattr(btn, "_keyboard_focus", False) and btn.hasFocus())
+                    if not _has_ring:
+                        # Check flyout children rings as well
+                        for _b in (
+                            getattr(_flyout, "btn_left", None),
+                            getattr(_flyout, "btn_center", None),
+                            getattr(_flyout, "btn_right", None),
+                        ):
+                            if _b is not None and getattr(_b, "_keyboard_focus", False) and _b.hasFocus():
+                                _has_ring = True
+                                break
+                    if not _has_ring or not _NM.get_instance().last_input_was_keyboard():
+                        self.hide(reason="focus_out")
+                        return False
+                except Exception:
+                    pass
+                # Still hide when focus truly left the unit
+                self.widget.magnifier_visibility_flyout.schedule_auto_hide(0)
             return False
         if et == QEvent.Type.Wheel:
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
@@ -148,15 +251,17 @@ class MagnifierVisibilityController:
         host = self.manager.host
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            host.magnifier_visibility_flyout.cancel_auto_hide()
+            self.widget.magnifier_visibility_flyout.cancel_auto_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
+        elif et == QEvent.Type.Hide:
+            self._last_flyout_hide_ts = time.monotonic()
         return False
 
     def _handle_child_event(self, event):
-        flyout = self.manager.host.magnifier_visibility_flyout
+        flyout = self.widget.magnifier_visibility_flyout
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
             flyout.cancel_auto_hide()
