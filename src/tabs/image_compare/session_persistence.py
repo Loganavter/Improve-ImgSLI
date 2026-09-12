@@ -239,8 +239,8 @@ def refresh_filename_overlay_toolbar(
     Reads ``store.viewport.render_config.include_file_names_in_saved`` and
     pushes it into the toolbar button via the EXISTING sync mechanism
     (``presenters.toolbar.state.update_toolbar_states``, which itself fans
-    out to the canvas feature binding
-    ``_sync_filename_overlay_toolbar_state``) — never a new sync path.
+    out to the canvas feature binding sync) — never a new sync path and
+    never a direct feature import (canvas-features import dogma).
     ``presenter`` is optional and derived from ``store`` where possible.
     Best-effort and never raising: any missing piece is a silent no-op.
     """
@@ -254,21 +254,9 @@ def refresh_filename_overlay_toolbar(
                 update_toolbar_states as _update_toolbar_states,
             )
         except Exception:
-            _update_toolbar_states = None  # type: ignore[assignment]
-        if _update_toolbar_states is not None:
-            try:
-                _update_toolbar_states(presenter)
-                return
-            except Exception:
-                pass
-        try:
-            from tabs.image_compare.canvas.features.filename_overlay.widget import (
-                _sync_filename_overlay_toolbar_state,
-            )
-        except Exception:
             return
         try:
-            _sync_filename_overlay_toolbar_state(presenter)
+            _update_toolbar_states(presenter)
         except Exception:
             pass
     except Exception:
@@ -310,37 +298,45 @@ def _restore_render_config(
                 SetTextPlacementModeAction,
             )
             from core.state_management.session_actions import SetZoomInterpolationMethodAction
-            from tabs.image_compare.canvas.features.magnifier.input.actions import (
-                SetMagnifierMovementInterpolationMethodAction,
-            )
 
             actions: list[Any] = []
             # Only dispatch where values differ to avoid noisy history
             cur = viewport.render_config
             if restored.interpolation_method != cur.interpolation_method:
                 actions.append(SetInterpolationMethodAction(method=restored.interpolation_method))
-            interactive_changed = (
+            if (
                 restored.interactive_movement_interpolation_method
                 != cur.interactive_movement_interpolation_method
-            )
-            if interactive_changed:
-                # Dedicated dispatch path for the interactive method (replaces
-                # the old setattr fallback).
-                actions.append(
-                    SetMagnifierMovementInterpolationMethodAction(
-                        restored.interactive_movement_interpolation_method
-                    )
-                )
-            movement_changed = (
-                restored.movement_interpolation_method != cur.movement_interpolation_method
-            )
-            if interactive_changed and (
-                restored.movement_interpolation_method
-                != restored.interactive_movement_interpolation_method
             ):
-                # The magnifier action above also projects movement onto the
-                # interactive value, so re-assert movement afterwards.
-                movement_changed = True
+                # Interactive method has no core Action; project it through
+                # the magnifier feature's own settings command via the
+                # capability alias (canvas-features import dogma forbids
+                # importing the feature's Action class here). The command
+                # dispatches only when the value differs and also projects
+                # movement onto the interactive value.
+                try:
+                    _move_cmd = get_canvas_registry(
+                        "image_compare"
+                    ).get_feature_command_by_alias(
+                        "overlay.settings.set_movement_interpolation"
+                    )
+                except Exception:
+                    _move_cmd = None
+                if _move_cmd is not None:
+                    try:
+                        _move_cmd(
+                            store,
+                            restored.interactive_movement_interpolation_method,
+                        )
+                    except Exception:
+                        pass
+            try:
+                live_movement = store.viewport.render_config.movement_interpolation_method  # type: ignore[union-attr]
+            except Exception:
+                live_movement = cur.movement_interpolation_method
+            movement_changed = (
+                restored.movement_interpolation_method != live_movement
+            )
             if movement_changed:
                 actions.append(
                     SetMovementInterpolationMethodAction(method=restored.movement_interpolation_method)

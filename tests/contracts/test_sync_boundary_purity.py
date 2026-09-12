@@ -79,21 +79,15 @@ CAMERA_HELPER_PREFIXES: tuple[str, ...] = (
     "get_pan_offset",
 )
 
-# Widget-state IO on the sync boundary being fixed in parallel — exact
-# (file, lineno, attr). Delete the entry (not the scan) once migrated.
+# Widget-state IO on the sync boundary — exact (file, lineno, attr).
+# The persistence.py snapshot/restore and tab.py apply_host_session_mode
+# sites were migrated Store-first; only a benign UI-internal read remains.
+# Delete the entry (not the scan) once it migrates too.
 PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
-        # snapshot_into reads widget state into the side slot (getattr indirection).
-        ("src/tabs/image_compare/use_cases/persistence.py", 85, "isChecked"),
-        ("src/tabs/image_compare/use_cases/persistence.py", 86, "text"),
-        ("src/tabs/image_compare/use_cases/persistence.py", 87, "text"),
-        # restore_from writes the side slot back onto widgets.
-        ("src/tabs/image_compare/use_cases/persistence.py", 119, "setChecked"),
-        ("src/tabs/image_compare/use_cases/persistence.py", 123, "setText"),
-        # tab.py UI-internal reads (widget→widget, no slot involved) —
-        # tolerated pending the boundary audit.
-        ("src/tabs/image_compare/tab.py", 196, "isChecked"),
-        ("src/tabs/image_compare/tab.py", 423, "isVisible"),
+        # tab.py UI-internal read (widget→widget visibility, no slot
+        # involved) — tolerated pending the boundary audit.
+        ("src/tabs/image_compare/tab.py", 435, "isVisible"),
     }
 )
 
@@ -106,11 +100,14 @@ KNOWN_DUPLICATES: dict[str, str] = {
 }
 
 # Duplicate sources tolerated until the side slot is removed.
-PENDING_DUPLICATES: frozenset[str] = frozenset({"show_file_names"})
+# (show_file_names was removed from ImageCompareState with the Store-first
+# persistence migration; the set stays as the ratchet for regressions.)
+PENDING_DUPLICATES: frozenset[str] = frozenset()
 
 # Other model fields overlapping render_config semantics, explicitly
-# reviewed. Empty today: zoom/pan_x/pan_y are camera (host-owned, not
-# render_config), edit_name_1/2 ownership is undecided (not encoded).
+# reviewed. zoom/pan_x/pan_y are camera (host-owned, not render_config);
+# the edit_name_1/2 caption fields were removed (captions come from
+# DocumentModel display names).
 ALLOWED_OVERLAPS: dict[str, str] = {}
 
 
