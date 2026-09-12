@@ -82,3 +82,17 @@ def decrement_rating(controller, image_number: int, index: int):
 
 def set_rating(controller, image_number: int, index_to_set: int, new_score: int):
     controller.playlist_manager.set_rating(image_number, index_to_set, new_score)
+
+
+def set_crop_override_at_index(
+    controller, image_number: int, index: int, value: bool | None
+):
+    """Per-image autocrop override via dispatch — never in-place.
+
+    Deliberately NOT routed through ``playlist_manager``/metadata (those
+    mutate ``ImageItem`` fields directly, like the rating path); the
+    ``DocumentReducer`` replaces the item instead (STORE.md invariant 1).
+    """
+    from tabs.image_compare.services import document_store_ops
+
+    document_store_ops.set_crop_override(controller.store, image_number, index, value)

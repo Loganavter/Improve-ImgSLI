@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner size=exempt reason="single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located"
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,6 +71,9 @@ class ImageCompareContextMenuProvider:
         if action_id == "image_compare.carry_image":
             self._begin_carry_slot(slot)
             return True
+        if action_id == "image_compare.crop_override_slot":
+            self._cycle_crop_override_slot(slot)
+            return True
         if action_id == "image_compare.remove_image":
             self._remove_image(slot)
             return True
@@ -99,6 +103,12 @@ class ImageCompareContextMenuProvider:
                 "image_compare.carry_image",
                 self._tr("image_compare.action.context_carry_image", "Move"),
                 icon=Icon.MOVE,
+                data=slot,
+            ),
+            ContextMenuAction(
+                "image_compare.crop_override_slot",
+                self._crop_override_label_for_slot(slot),
+                icon=self._crop_override_icon_for_slot(slot),
                 data=slot,
             ),
             ContextMenuSeparator(),
@@ -148,6 +158,12 @@ class ImageCompareContextMenuProvider:
                 icon=Icon.MOVE,
                 data=ref,
             ),
+            ContextMenuAction(
+                "image_compare.crop_override_list_item",
+                self._crop_override_label(list_num, index),
+                icon=self._crop_override_icon(list_num, index),
+                data=ref,
+            ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_list_item",
@@ -177,6 +193,9 @@ class ImageCompareContextMenuProvider:
             return True
         if action_id == "image_compare.carry_list_item":
             self._begin_carry_list_item(list_num, index)
+            return True
+        if action_id == "image_compare.crop_override_list_item":
+            self._cycle_crop_override_list_item(list_num, index)
             return True
         if action_id == "image_compare.remove_list_item":
             self._remove_list_item(list_num, index)
@@ -240,6 +259,93 @@ class ImageCompareContextMenuProvider:
         finally:
             if ui_manager is not None and hasattr(ui_manager, "set_modal_dialog_active"):
                 ui_manager.set_modal_dialog_active(False)
+
+    @staticmethod
+    def _next_crop_override(current: bool | None) -> bool | None:
+        """Cycle the tristate: Auto (None) → On (True) → Off (False) → Auto."""
+        if current is None:
+            return True
+        if bool(current):
+            return False
+        return None
+
+    def _crop_override_for_list_item(self, list_num: int, index: int) -> bool | None:
+        try:
+            item = self._list_item(list_num, index)
+        except Exception:
+            return None
+        if item is None:
+            return None
+        value = getattr(item, "crop_override", None)
+        return None if value is None else bool(value)
+
+    def _crop_override_label(self, list_num: int, index: int) -> str:
+        base = self._tr("image_compare.action.context_crop_override", "Crop")
+        state = self._crop_override_for_list_item(list_num, index)
+        if state is True:
+            suffix = self._tr("image_compare.action.context_crop_on", "On")
+        elif state is False:
+            suffix = self._tr("image_compare.action.context_crop_off", "Off")
+        else:
+            suffix = self._tr("image_compare.action.context_crop_auto", "Auto")
+        return f"{base}: {suffix}"
+
+    def _crop_override_icon(self, list_num: int, index: int):
+        state = self._crop_override_for_list_item(list_num, index)
+        if state is True:
+            return Icon.CROP_IN
+        if state is False:
+            return Icon.CROP_OUT
+        return Icon.SCISSORS
+
+    def _crop_override_label_for_slot(self, slot: int) -> str:
+        try:
+            document = self.store.get_session_state_slot("document")
+            index = document.current_index1 if slot == 1 else document.current_index2
+        except Exception:
+            index = -1
+        return self._crop_override_label(slot, index)
+
+    def _crop_override_icon_for_slot(self, slot: int):
+        try:
+            document = self.store.get_session_state_slot("document")
+            index = document.current_index1 if slot == 1 else document.current_index2
+        except Exception:
+            index = -1
+        return self._crop_override_icon(slot, index)
+
+    def _cycle_crop_override_list_item(self, list_num: int, index: int) -> None:
+        # Rename structural pattern: controller call with (list_num, index);
+        # post-action refresh via the controller's dispatch, else explicit
+        # document emit + canvas update. Deliberately NOT the rating path
+        # (in-place item mutation) — the override persists via
+        # SetCropOverrideAction + DocumentReducer.
+        try:
+            item = self._list_item(list_num, index)
+        except Exception:
+            return
+        if item is None:
+            return
+        nxt = self._next_crop_override(getattr(item, "crop_override", None))
+        ctrl = self._session_ctrl
+        if ctrl is not None and hasattr(ctrl, "set_crop_override_at_index"):
+            ctrl.set_crop_override_at_index(list_num, index, nxt)
+        else:
+            document_store_ops.set_crop_override(self.store, list_num, index, nxt)
+            self.store.emit_state_change("document")
+        if self.canvas is not None:
+            try:
+                self.canvas.update()
+            except Exception:
+                pass
+
+    def _cycle_crop_override_slot(self, slot: int) -> None:
+        try:
+            document = self.store.get_session_state_slot("document")
+            index = document.current_index1 if slot == 1 else document.current_index2
+        except Exception:
+            return
+        self._cycle_crop_override_list_item(slot, index)
 
     def _remove_image(self, slot: int) -> None:
         ctrl = self._session_ctrl

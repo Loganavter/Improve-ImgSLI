@@ -9,6 +9,7 @@ from plugins.settings.events import (
     SettingsUIModeChangedEvent,
 )
 from core.state_management.actions import (
+    ClearAllCachesAction,
     SetAutoCropBlackBordersAction,
     SetDebugModeEnabledAction,
     SetKeyboardOverridesAction,
@@ -303,6 +304,24 @@ class SettingsApplicationService(QObject):
                 _legacy_inv()
             except Exception:
                 pass
+            # Apply-to-loaded (W5): the toggle must also re-decode images
+            # that are already in the pipeline tiers — cache keys are
+            # box-less, so without eviction stale crop verdicts persist.
+            # Evict via the existing core pipeline action (Store-native
+            # dispatch; the tab's PipelineCacheReducer owns the pixel/
+            # preview tiers), then mirror the zoom-interpolation branch:
+            # viewport emit + update request retriggers the natural reload
+            # path (no hand re-decode).
+            # NOTE: per-path EvictPipelineAction is tab-internal and the
+            # host may not import tabs.* (test_ui_does_not_import_tab_internals),
+            # so the global toggle evicts all pipeline tiers — every loaded
+            # path is affected by a global toggle anyway.
+            try:
+                dispatcher.dispatch(ClearAllCachesAction(), scope="pipeline")
+            except Exception:
+                pass
+            self.store.emit_state_change("viewport")
+            self._emit_update_requested()
 
         if getattr(self.store.settings, "ui_mode", "beginner") != data.ui_mode:
             dispatcher.dispatch(SetUIModeAction(data.ui_mode))

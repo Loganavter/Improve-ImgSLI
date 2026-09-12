@@ -138,9 +138,11 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
 # Delete the entry (not the scan) once the site migrates to dispatch.
 # (session_persistence.py sites were migrated by the dispatch-or-defer
 # restore; use_cases/persistence.py widget IO was removed with it.)
+# NOTE: line shifted 254 → 265 by the W5 crop_override persist fields
+# (same _write_document fallback site, not a migration).
 PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
-        ("src/tabs/image_compare/use_cases/persistence.py", 254, "session.document"),
+        ("src/tabs/image_compare/use_cases/persistence.py", 265, "session.document"),
     }
 )
 
