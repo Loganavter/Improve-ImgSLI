@@ -380,7 +380,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/crop_clip.py",
-      "lines": 532,
+      "lines": 577,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/crop_clip single box seam (W3a/W3f) — box-clipped texture/geometry helpers share one resolution path\"",
