@@ -30,17 +30,71 @@ class ExportContextBuilder:
             return None
         return (bg.r, bg.g, bg.b, bg.a)
 
-    def has_images(self) -> bool:
+    def _peek_slot(self, slot: int):
         doc = self.store.get_session_state_slot("document")
-        return bool(
-            (doc.full_res_image1 or doc.original_image1 or doc.preview_image1)
-            and (doc.full_res_image2 or doc.original_image2 or doc.preview_image2)
-        )
+        path = doc.image1_path if slot == 1 else doc.image2_path
+        if not path:
+            return None
+        # 1) viewport PipelineView
+        try:
+            vp = self.store.viewport.session_data.image_state
+            cand = vp.image1 if slot == 1 else vp.image2
+            if cand is not None:
+                try:
+                    if hasattr(cand, "isNull") and cand.isNull():
+                        cand = None
+                    elif hasattr(cand, "is_open") and not cand.is_open:
+                        cand = None
+                except Exception:
+                    pass
+                if cand is not None:
+                    return cand
+        except Exception:
+            pass
+        # 2) pipeline state peek
+        try:
+            ps = self.store.get_session_state_slot("pipeline")
+            if ps is not None:
+                import os
+
+                from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                for cache_dict, key_fn in (
+                    (ps.pixel, _pixel_key),
+                    (ps.preview, _preview_key),
+                ):
+                    try:
+                        k = key_fn(path, None, None)
+                        v = cache_dict.get(k)
+                        if v is not None:
+                            if hasattr(v, "is_open") and not v.is_open:
+                                continue
+                            if hasattr(v, "isNull") and v.isNull():
+                                continue
+                            return v
+                    except Exception:
+                        pass
+                    try:
+                        norm = os.path.normpath(path)
+                        for kk, vv in cache_dict.items():
+                            if kk[0] == norm:
+                                if hasattr(vv, "is_open") and not vv.is_open:
+                                    continue
+                                if hasattr(vv, "isNull") and vv.isNull():
+                                    continue
+                                return vv
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return None
+
+    def has_images(self) -> bool:
+        return bool(self._peek_slot(1) and self._peek_slot(2))
 
     def build_save_context(self, include_preview: bool = True) -> ExportSaveContext:
-        doc = self.store.get_session_state_slot("document")
-        original1_full = doc.full_res_image1 or doc.original_image1 or doc.preview_image1
-        original2_full = doc.full_res_image2 or doc.original_image2 or doc.preview_image2
+        original1_full = self._peek_slot(1)
+        original2_full = self._peek_slot(2)
         if not original1_full or not original2_full:
             raise ValueError("Full resolution images are not available for saving.")
 

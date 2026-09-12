@@ -63,26 +63,25 @@ def set_feature_overlay_content(
     ):
         for i in range(len(overlay._quads)):
             overlay._quads[i] = None
-        state._feature_overlay_quad_ndc = None
         widget._request_update()
         return
 
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:
         pw, ph = pixmap.width(), pixmap.height()
-        x0 = (top_left.x() / w) * 2.0 - 1.0
-        x1 = ((top_left.x() + pw) / w) * 2.0 - 1.0
-        y1 = 1.0 - (top_left.y() / h) * 2.0
-        y0 = 1.0 - ((top_left.y() + ph) / h) * 2.0
         cx = top_left.x() + pw / 2.0
         cy = top_left.y() + ph / 2.0
         r = max(pw, ph) / 2.0
-        overlay._quads[0] = (x0, y0, x1, y1, cx, cy, r)
+        # First 4 slots are a dead x0/y0/x1/y1 NDC rect no renderer reads --
+        # every live consumer of ``_quads[i]`` (MagnifierPass.prepare) only
+        # unpacks cx/cy/r and reprojects position itself through
+        # widget_px_to_screen_px (docs/dev/rendering/patterns.md "Screen
+        # position from widget-px"). Kept as zeros only to hold the tuple's
+        # arity stable for that unpack.
+        overlay._quads[0] = (0.0, 0.0, 0.0, 0.0, cx, cy, r)
         overlay._use_circle_mask[0] = False
-        state._feature_overlay_quad_ndc = (x0, y0, x1, y1)
     else:
         overlay._quads[0] = None
-        state._feature_overlay_quad_ndc = None
 
     for i in range(1, len(overlay._quads)):
         overlay._quads[i] = None
@@ -144,11 +143,9 @@ def set_feature_overlay_gpu_params(
         if slot and w > 0 and h > 0:
             cx, cy = slot["center"].x(), slot["center"].y()
             r = slot["radius"]
-            x0 = ((cx - r) / w) * 2.0 - 1.0
-            x1 = ((cx + r) / w) * 2.0 - 1.0
-            y1 = 1.0 - ((cy - r) / h) * 2.0
-            y0 = 1.0 - ((cy + r) / h) * 2.0
-            overlay._quads[i] = (x0, y0, x1, y1, cx, cy, r)
+            # See set_feature_overlay_content's comment: the first 4 slots
+            # are a dead NDC rect, unread by every live consumer.
+            overlay._quads[i] = (0.0, 0.0, 0.0, 0.0, cx, cy, r)
         else:
             overlay._quads[i] = None
             overlay._use_circle_mask[i] = False
@@ -168,7 +165,6 @@ def clear_feature_overlay_gpu(widget):
         overlay._gpu_slots[i] = None
         overlay._quads[i] = None
         overlay._use_circle_mask[i] = False
-    state._feature_overlay_quad_ndc = None
     overlay._pixmap = None
     overlay._top_left = None
     state._capture_center = None
@@ -191,7 +187,7 @@ def upload_feature_overlay_crop(
     border_color: QColor | None = None,
     border_width: float = 2.0,
     index: int = 0,
-    canvas_filter: int = None,
+    canvas_filter: int | None = None,
 ):
     state = widget.runtime_state
     overlay = state._feature_overlay_gpu
@@ -205,8 +201,6 @@ def upload_feature_overlay_crop(
     )
     if pil_image is None or not tid:
         overlay._quads[index] = None
-        if index == 0:
-            state._feature_overlay_quad_ndc = None
         widget.update()
         return
 
@@ -218,17 +212,9 @@ def upload_feature_overlay_crop(
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:
         cx, cy = center.x(), center.y()
-        x0 = ((cx - radius) / w) * 2.0 - 1.0
-        x1 = ((cx + radius) / w) * 2.0 - 1.0
-        y1 = 1.0 - ((cy - radius) / h) * 2.0
-        y0 = 1.0 - ((cy + radius) / h) * 2.0
-        overlay._quads[index] = (x0, y0, x1, y1, cx, cy, radius)
-        if index == 0:
-            state._feature_overlay_quad_ndc = (x0, y0, x1, y1)
+        overlay._quads[index] = (0.0, 0.0, 0.0, 0.0, cx, cy, radius)
     else:
         overlay._quads[index] = None
-        if index == 0:
-            state._feature_overlay_quad_ndc = None
 
     overlay._use_circle_mask[index] = True
     overlay._radius = radius

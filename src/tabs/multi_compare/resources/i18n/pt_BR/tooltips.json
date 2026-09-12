@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "divider_color": "Cor da divisória",
+    "quick_save_image": "Salvar imagem rapidamente",
+    "reset_zoom": "Redefinir zoom",
+    "save_result": "Salvar resultado",
+    "toggle_divider_visibility": "Alternar visibilidade da divisória"
+  }
+}

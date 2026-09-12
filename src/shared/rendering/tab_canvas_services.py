@@ -2,41 +2,56 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger("ImproveImgSLI")
+
 
 def get_canvas_widget_class():
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    registry = get_shared_tab_registry()
     widget_cls = registry.create_service("canvas_widget_class")
     if widget_cls is None:
-        raise RuntimeError("No tab provides a canvas widget class")
+        # Expected for non-canvas tabs — don't log per call.  # ALLOWED
+        return None
     return widget_cls
 
 
 def create_canvas_widget(*args, **kwargs):
     widget_cls = get_canvas_widget_class()
+    if widget_cls is None:
+        logger.debug("create_canvas_widget skipped: no canvas provider for active tab")
+        return None
     return widget_cls(*args, **kwargs)
 
 
 def call_canvas_service(service_id: str, *args, **kwargs):
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    registry = get_shared_tab_registry()
     result = registry.create_service(service_id, *args, **kwargs)
     if result is None:
-        raise RuntimeError(f"No tab provides canvas service: {service_id}")
+        # Expected for tabs without that canvas capability — silent degrade.
+        return None
     return result
 
 
 def build_render_scene(*args, **kwargs):
-    return call_canvas_service(
+    result = call_canvas_service(
         "canvas_render_scene",
         *args,
         **kwargs,
     )
+    if result is None:
+        logger.debug("build_render_scene skipped: no provider for active tab")
+        return None
+    return result
 
 
 def reset_canvas_overlays(canvas) -> None:
-    call_canvas_service("canvas_reset_overlays", canvas)
+    result = call_canvas_service("canvas_reset_overlays", canvas)
+    if result is None:
+        logger.debug("reset_canvas_overlays skipped: no provider for active tab")
+        return None
+    return result

@@ -4,6 +4,8 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 
+from shared.analysis.output import rgba_from_array
+
 logger = logging.getLogger("ImproveImgSLI")
 
 def extract_channel(image: Image.Image, mode: str) -> Optional[Image.Image]:
@@ -42,7 +44,7 @@ def extract_channel(image: Image.Image, mode: str) -> Optional[Image.Image]:
 
             return src.convert("RGBA")
 
-        return Image.fromarray(result, "RGBA")
+        return rgba_from_array(result)
 
     except Exception as e:
         logger.error(f"Error extracting channel {mode}: {e}", exc_info=True)

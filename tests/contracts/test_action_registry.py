@@ -296,7 +296,8 @@ def test_unregister_prefix_clears_matching_ids_only():
 
 
 def test_image_compare_registers_expanded_catalog():
-    from tabs.image_compare.actions import _SPECS, register_image_compare_actions
+    from tabs.image_compare.actions._common import _SPECS
+    from tabs.image_compare.actions import register_image_compare_actions
 
     registry = ActionRegistry()
     attrs = {spec.attr: object() for spec in _SPECS}
@@ -335,6 +336,7 @@ def test_multi_compare_registers_toolbar_actions():
 
 
 def test_platform_registers_settings_and_workspace_actions():
+    from core.session_blueprints import SessionBlueprint
     from ui.actions.platform import register_platform_actions, register_settings_page_actions
 
     registry = ActionRegistry()
@@ -349,8 +351,11 @@ def test_platform_registers_settings_and_workspace_actions():
         show_settings_section=lambda sid: sections.append(sid),
         resolve_settings_sidebar=lambda sid: sidebar_hits.append(sid) or f"row:{sid}",
         open_session_picker=_noop,
-        new_image_compare=_noop,
-        new_multi_compare=_noop,
+        new_session_runner=_noop,
+        session_blueprints=(
+            SessionBlueprint(session_type="image_compare", plugin_name="image_compare"),
+            SessionBlueprint(session_type="multi_compare", plugin_name="multi_compare"),
+        ),
         registry=registry,
     )
     ids = {a.action_id for a in registry.all_actions()}
@@ -359,11 +364,13 @@ def test_platform_registers_settings_and_workspace_actions():
     assert "settings.page.builtin.performance" in ids
     assert "workspace.open_session_picker" in ids
     assert "workspace.new_multi_compare" in ids
-    # Mirror includes tab-owned analysis once contributions are loaded
+    # Mirror includes tab-owned analysis once contributions are loaded.
+    # Settings chrome is ambient: per-tab pages carry no owner_tab so they
+    # stay discoverable from any session.
     assert "settings.page.image_compare.analysis" in ids
     analysis = registry.get("settings.page.image_compare.analysis")
     assert analysis is not None
-    assert analysis.owner_tab == "image_compare"
+    assert analysis.owner_tab is None
     assert analysis.help_page == "settings"
     assert registry.get("platform.help") is not None
     assert registry.get("platform.help").help_page == "introduction"
@@ -509,14 +516,23 @@ def test_settings_search_index_is_single_source_for_page_and_extras():
     perf = next(
         s for s in settings_reg.all_sections() if s.section_id == "builtin.performance"
     )
-    merged_ic = settings_reg.search_for(perf, active_tab="image_compare")
-    assert "settings.render_backend_vulkan" in merged_ic.keys
+    ic = next(
+        s
+        for s in settings_reg.all_sections()
+        if s.section_id == "image_compare.analysis"
+    )
+    # Perf extras moved onto the tab's own section; the shared performance
+    # page keeps platform groups only.
+    merged_perf = settings_reg.search_for(perf, active_tab="image_compare")
+    assert "settings.render_backend_vulkan" in merged_perf.keys
+    assert "settings.optimize_magnifier_movement" not in merged_perf.keys
+
+    # Extras are ambient — included regardless of the active session.
+    merged_ic = settings_reg.search_for(ic, active_tab="image_compare")
     assert "settings.optimize_magnifier_movement" in merged_ic.keys
     assert PERF_EXTRA.keys
-
-    merged_picker = settings_reg.search_for(perf, active_tab="session_picker")
-    assert "settings.render_backend_vulkan" in merged_picker.keys
-    assert "settings.optimize_magnifier_movement" not in merged_picker.keys
+    merged_picker = settings_reg.search_for(ic, active_tab="session_picker")
+    assert "settings.optimize_magnifier_movement" in merged_picker.keys
 
     solo = SearchIndex.of(group("settings.ui_font", "settings.custom"))
     assert solo.keys == ("settings.ui_font", "settings.custom")
@@ -711,7 +727,8 @@ def test_search_treats_e_and_yo_as_equivalent():
         translations.emit_language_changed(previous or "en")
 
 
-def test_settings_extra_search_hidden_when_tab_inactive():
+def test_settings_extra_search_ambient_across_sessions():
+    """Per-tab settings rows are discoverable from any session (ambient)."""
     import resources.translations as translations
     from ui.actions.platform import register_platform_actions
     from ui.actions.registry import (
@@ -735,41 +752,42 @@ def test_settings_extra_search_hidden_when_tab_inactive():
     try:
         translations.emit_language_changed("ru")
         interactive_id = (
-            "settings.group.builtin.performance.settings.interactive_optimization"
+            "settings.group.image_compare.analysis.settings.interactive_optimization"
         )
         # "лупы" ("magnifier's") lives on the concrete magnifier-movement slot,
         # not the generic group row.
         magnifier_id = f"{interactive_id}.settings.optimize_magnifier_movement"
         assert registry.get(interactive_id) is not None
         assert registry.get(magnifier_id) is not None
-        assert interactive_id not in {
-            a.action_id
-            for a in registry.list_for(active_tab="session_picker", query="")
+        # Ambient: visible from the session picker and from the owning tab alike.
+        for active_tab in ("session_picker", "image_compare", "multi_compare"):
+            assert interactive_id in {
+                a.action_id
+                for a in registry.list_for(active_tab=active_tab, query="")
+            }
+        # "луп" hits the concrete slot, not the generic group row — ambient
+        # across sessions.
+        hits = {
+            a.action_id for a in registry.list_for(active_tab="session_picker", query="луп")
         }
-        assert interactive_id in {
-            a.action_id
-            for a in registry.list_for(active_tab="image_compare", query="")
-        }
-        assert not any(
-            a.action_id == magnifier_id
-            for a in registry.list_for(active_tab="session_picker", query="луп")
-        )
-        assert any(
-            a.action_id == magnifier_id
-            for a in registry.list_for(active_tab="image_compare", query="луп")
-        )
+        assert magnifier_id in hits
+        assert interactive_id not in hits
         slot = registry.get(magnifier_id)
         assert slot is not None
         # The row shows the concrete control's own name; the group stays in
-        # the breadcrumb so the user still knows where it lives.
-        assert action_breadcrumb_text(slot) == "Настройки ▸ Оптимизация ▸ Интерактивная оптимизация"
+        # the breadcrumb so the user still knows where it lives (tab-titled
+        # section: RU resolves to «Сравнение изображений»).
+        assert (
+            action_breadcrumb_text(slot)
+            == "Настройки ▸ Сравнение изображений ▸ Интерактивная оптимизация"
+        )
     finally:
         translations._manager._current_lang = previous
         translations.emit_language_changed(previous or "en")
 
 
 def test_image_compare_create_service_contribute_actions():
-    from tabs.image_compare.actions import _SPECS
+    from tabs.image_compare.actions._common import _SPECS
     from tabs.image_compare.tab import ImageCompareTab
 
     registry = ActionRegistry()

@@ -32,7 +32,7 @@ def create_shadow_surface(
             shadow_radius,
         )
 
-    main_layout = layout_cls(host)
+    main_layout = layout_cls(host)  # type: ignore[arg-type]  # layout factory takes a widget as direction
     main_layout.setContentsMargins(*outer_margins)
 
     container = QWidget(host)
@@ -40,7 +40,7 @@ def create_shadow_surface(
     container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     main_layout.addWidget(container)
 
-    content_layout = layout_cls(container)
+    content_layout = layout_cls(container)  # type: ignore[arg-type]  # layout factory takes a widget as direction
     content_layout.setContentsMargins(*content_margins)
     content_layout.setSpacing(content_spacing)
 

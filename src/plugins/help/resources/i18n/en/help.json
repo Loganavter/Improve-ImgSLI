@@ -2,6 +2,8 @@
   "help": {
     "help": "Help",
     "open_topic": "Open topic",
+    "search_placeholder": "Search help…",
+    "search_no_results": "No matching topics",
     "context": {
       "copy": "Copy",
       "select_all": "Select all",

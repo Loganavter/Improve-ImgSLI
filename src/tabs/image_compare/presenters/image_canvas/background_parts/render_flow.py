@@ -1,20 +1,37 @@
+# Audit-Meta: pattern=thin-owner reason="IC render gate thin owner delegates to use_cases/geometry,preview,background,schedule,render_gate per CODE_PATTERNS — sequencing only"
 import logging
 
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 from domain.types import Rect
-from shared.rendering.display_image_picker import pick_first_real
-
-# Display-tier images are chosen via pick_first_real (display cache / scaled /
-# image_state before full-res TiledPixelStore). See display-image-pipeline.md.
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from shared.rendering.display_image_picker import pick_display_image
+from shared.rendering.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
 from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
 from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_overlays
 from tabs.image_compare.canvas.scene import build_render_scene
+from tabs.image_compare.debug import (
+    ic_gap_debug as _gap_log,
+    ic_gap_debug_enabled as _gap_enabled,
+    ic_preview_debug as _preview_log,
+    ic_preview_source_tier as _source_tier,
+)
 
 from .diff import sync_diff_texture
+from .use_cases.preview import (  # noqa: F401 — thin delegators per CODE_PATTERNS
+    _display_cache_key,
+    _update_preview_tracking,
+    pick_display_with_preview_backing,
+)
+
+
+from .use_cases.geometry import update_comparison_geometry
+from .use_cases.geometry import _size_or_none  # noqa: F401 — helper for gap logs
+
+_update_comparison_geometry = update_comparison_geometry  # noqa: F401 — keep private name for gate call-site
 
 
 def _query_overlay(store, capability_id: str, default=None):
@@ -25,293 +42,67 @@ def _query_overlay(store, capability_id: str, default=None):
     return default if result is None else result
 
 
-def schedule_update(presenter):
-    if (
-        hasattr(presenter.main_window_app, "_closing")
-        and presenter.main_window_app._closing
-    ):
-        return
+# Background-tab gate — thin delegators (CODE_PATTERNS).
+# Bodies live in ``use_cases/background.py`` + ``use_cases/schedule.py``;
+# this module keeps the imports so callers via ``render_flow`` keep working.
+from .use_cases.background import (  # noqa: F401 — thin delegator forwarding
+    flush_stale_render as _flush_stale_render_impl,
+    is_background_tab as _is_background_tab_impl,
+    is_render_stale as _is_render_stale_impl,
+    mark_render_stale as _mark_render_stale_impl,
+)
+from .use_cases.schedule import schedule_update as _schedule_update_impl
 
-    is_interactive = presenter.store.viewport.interaction_state.is_interactive_mode
 
-    if is_interactive:
-        presenter._pending_interactive_mode = True
+def _is_background_tab(presenter) -> bool:
+    """Thin delegator to ``use_cases.background.is_background_tab``.
 
-    if is_interactive:
-        presenter._update_scheduler_timer.stop()
-        result = presenter.update_comparison_if_needed()
-        if result:
-            presenter._pending_interactive_mode = None
-    else:
-        if not presenter._update_scheduler_timer.isActive():
-            presenter._update_scheduler_timer.start()
+    Preserve ``stack.currentWidget`` vs ``isVisible`` fallback per
+    ``docs/dev/tabs/isolation.md`` (body lives in background.py).
+    """
+    return _is_background_tab_impl(presenter)
 
+
+def _mark_render_stale(presenter) -> None:
+    return _mark_render_stale_impl(presenter)
+
+
+def is_render_stale(presenter) -> bool:
+    return _is_render_stale_impl(presenter)
+
+
+def flush_stale_render(presenter) -> bool:
+    return _flush_stale_render_impl(presenter)
+
+
+# 500ms throttle lives in ``use_cases/schedule.py`` — keep alias so
+# ``schedule_update._last_armed_log`` is shared (no wrapper-split state).
+schedule_update = _schedule_update_impl
+
+# Public aliases for new-name imports (``is_background_tab`` etc).
+is_background_tab = _is_background_tab_impl  # noqa: F401
+mark_render_stale = _mark_render_stale_impl  # noqa: F401
+
+
+_last_document_log_sig = None  # type: ignore
+_last_one_side_log_sig = None  # type: ignore
+_last_gap_geometry_sig = None  # type: ignore
+_last_gap_geometry_input_sig = None  # type: ignore
+_last_gap_pick_sig = None  # type: ignore
+_last_gap_apply_sig = None  # type: ignore
+_last_schedule_log_sig = None  # type: ignore
 
 def update_comparison_if_needed(presenter):
-    if (
-        not getattr(presenter.main_window_app, "_is_ui_stable", False)
-        or presenter.store.viewport.interaction_state.resize_in_progress
-    ):
-        return False
+    """Thin delegator — sequencing lives in ``use_cases/render_gate.py``.
 
-    if (
-        not presenter.main_window_app.isVisible()
-        or presenter.main_window_app.isMinimized()
-    ):
-        return False
-
-    label_width, label_height = presenter.get_current_label_dimensions()
-    if label_width <= 2 or label_height <= 2:
-        return False
-
-    if getattr(
-        presenter.store.viewport.session_data.render_cache,
-        "unification_in_progress",
-        False,
-    ):
-        if presenter.store.viewport.session_data.image_state.image1 is None:
-            return False
-
-    _document = presenter.store.get_session_state_slot("document")
-    if _document is None:
-        return False
-    source1 = (
-        _document.full_res_image1
-        or _document.preview_image1
-        or _document.original_image1
-    )
-    source2 = (
-        _document.full_res_image2
-        or _document.preview_image2
-        or _document.original_image2
-    )
-
-    if presenter.store.viewport.view_state.showing_single_image_mode != 0:
-        image_to_show = (
-            pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image1,
-                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
-                presenter.store.viewport.session_data.image_state.image1,
-                source1,
-            )
-            if presenter.store.viewport.view_state.showing_single_image_mode == 1
-            else pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image2,
-                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
-                presenter.store.viewport.session_data.image_state.image2,
-                source2,
-            )
-        )
-        presenter.view.display_single_image_on_label(image_to_show)
-        return False
-
-    have1 = bool(
-        presenter.store.viewport.session_data.image_state.image1 or source1
-    )
-    have2 = bool(
-        presenter.store.viewport.session_data.image_state.image2 or source2
-    )
-    if not have1 and not have2:
-        presenter.widget.image_label.clear()
-        presenter.current_displayed_pixmap = None
-        return False
-    if not have1 or not have2:
-        # One side is mid-reload / empty. Keep showing the live half instead of
-        # blanking the whole canvas (ClearImageSlotData + path-only load).
-        image_to_show = (
-            pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image1,
-                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
-                presenter.store.viewport.session_data.image_state.image1,
-                source1,
-            )
-            if have1
-            else pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image2,
-                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
-                presenter.store.viewport.session_data.image_state.image2,
-                source2,
-            )
-        )
-        presenter.view.display_single_image_on_label(image_to_show)
-        return False
-
-    if presenter.background.ensure_images_unified(source1, source2):
-        if not presenter.background.create_preview_cache_async(
-            presenter.store.viewport.session_data.image_state.image1,
-            presenter.store.viewport.session_data.image_state.image2,
-        ):
-            return False
-
-    src_resize1 = (
-        presenter.store.viewport.session_data.render_cache.display_cache_image1
-        or presenter.store.viewport.session_data.image_state.image1
-    )
-    src_resize2 = (
-        presenter.store.viewport.session_data.render_cache.display_cache_image2
-        or presenter.store.viewport.session_data.image_state.image2
-    )
-    if src_resize1 and src_resize2:
-        img1_w, img1_h = src_resize1.size
-        img2_w, img2_h = src_resize2.size
-        scale1 = min(label_width / img1_w, label_height / img1_h)
-        scale2 = min(label_width / img2_w, label_height / img2_h)
-        scale = min(scale1, scale2)
-        scaled_w = max(1, int(img1_w * scale))
-        scaled_h = max(1, int(img1_h * scale))
-    else:
-        scaled_w, scaled_h = label_width, label_height
-
-    if (
-        not presenter.view.is_canvas_widget()
-        and not presenter.background.ensure_images_scaled(scaled_w, scaled_h)
-    ):
-        return False
-
-    presenter.store.viewport.geometry_state.pixmap_width = scaled_w
-    presenter.store.viewport.geometry_state.pixmap_height = scaled_h
-    img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
-    presenter.store.viewport.geometry_state.image_display_rect_on_label = Rect(
-        img_x, img_y, scaled_w, scaled_h
-    )
-
-    current_bg_sig = presenter.background.get_background_signature(source1, source2)
-    last_bg_sig = getattr(presenter, "_last_bg_signature", None)
-    current_label_dims = (label_width, label_height)
-    label_dims_changed = presenter._last_label_dims != current_label_dims
-
-    bg_is_dirty = (
-        (current_bg_sig != last_bg_sig)
-        or label_dims_changed
-        or (presenter._cached_base_pixmap is None)
-    )
-
-    diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")
-    if (
-        presenter.view.is_canvas_widget()
-        and diff_mode == "ssim"
-        and getattr(
-            presenter.store.viewport.session_data.render_cache,
-            "cached_diff_image",
-            None,
-        )
-        is None
-    ):
-        request_cached_diff = registry().get_feature_command_by_alias(
-            "overlay.request_cached_diff",
-        )
-        if request_cached_diff is not None:
-            request_cached_diff(
-                presenter,
-                source1,
-                source2,
-                diff_mode,
-            )
-
-    if presenter.view.is_canvas_widget():
-        sync_diff_texture(presenter, diff_mode)
-
-    if bg_is_dirty:
-        if presenter.view.is_canvas_widget():
-            image_label = get_canvas_widget(presenter.widget)
-            render_cache = presenter.store.viewport.session_data.render_cache
-            img1 = pick_first_real(
-                render_cache.display_cache_image1,
-                render_cache.scaled_image1_for_display,
-                presenter.store.viewport.session_data.image_state.image1,
-                _document.preview_image1,
-                _document.original_image1,
-            )
-            img2 = pick_first_real(
-                render_cache.display_cache_image2,
-                render_cache.scaled_image2_for_display,
-                presenter.store.viewport.session_data.image_state.image2,
-                _document.preview_image2,
-                _document.original_image2,
-            )
-            render_img1, render_img2 = img1, img2
-
-            gui_source1 = presenter.store.viewport.session_data.image_state.image1
-            gui_source2 = presenter.store.viewport.session_data.image_state.image2
-            document = presenter.store.get_session_state_slot("document")
-            source_key = (
-                document.image1_path,
-                document.image2_path,
-                id(gui_source1) if gui_source1 is not None else 0,
-                id(gui_source2) if gui_source2 is not None else 0,
-                gui_source1.size if gui_source1 is not None else None,
-                gui_source2.size if gui_source2 is not None else None,
-            )
-            img_sig = (
-                id(render_img1),
-                id(render_img2),
-                current_label_dims,
-                presenter.store.viewport.view_state.diff_mode,
-                presenter.store.viewport.view_state.channel_view_mode,
-                source_key,
-            )
-            if img_sig != getattr(presenter, "_last_img_sig", None):
-                presenter._last_img_sig = img_sig
-                if render_img1 and render_img2:
-                    apply_store_to_canvas(
-                        image_label,
-                        presenter.store,
-                        render_img1,
-                        render_img2,
-                        fit_content=False,
-                        source_image1=gui_source1,
-                        source_image2=gui_source2,
-                        source_key=source_key,
-                        clip_overlays_to_image_bounds=False,
-                    )
-            else:
-                runtime_state = getattr(image_label, "runtime_state", None)
-                if runtime_state is not None:
-                    runtime_state._store = presenter.store
-                    image_label.set_render_scene(
-                        build_render_scene(
-                            presenter.store,
-                            apply_channel_mode_in_shader=bool(
-                                getattr(
-                                    runtime_state, "_apply_channel_mode_in_shader", True
-                                )
-                            ),
-                            clip_overlays_to_image_bounds=False,
-                        )
-                    )
-            presenter._last_mag_signature = None
-            presenter._last_bg_signature = current_bg_sig
-            presenter._last_label_dims = current_label_dims
-            if presenter._cached_base_pixmap is None:
-                presenter._cached_base_pixmap = QPixmap(1, 1)
-        else:
-            return False
-    visible_models = [
-        model
-        for model in (_query_overlay(presenter.store, "overlay.all_states", ()) or ())
-        if bool(model.get("visible", False))
-    ]
-    _should_render = bool(_query_overlay(presenter.store, "overlay.enabled", False))
-    if _should_render and visible_models:
-        current_mag_sig = presenter.overlay.get_signature()
-        last_mag_sig = getattr(presenter, "_last_mag_signature", None)
-        image_label = presenter.widget.image_label
-        current_mag_state = (
-            current_mag_sig,
-            getattr(image_label, "_source_images_ready", False),
-            tuple(getattr(image_label, "_source_image_ids", []) or []),
-        )
-        mag_is_dirty = current_mag_state != last_mag_sig
-
-        if mag_is_dirty:
-            presenter.overlay.rebuild_overlay()
-            presenter._last_mag_signature = current_mag_state
-            return True
-    else:
-        reset_canvas_overlays(presenter.widget.image_label)
-        presenter._last_mag_signature = None
-    return False
-
+    Keeps ``CODE_PATTERNS: thin owner + use_cases`` (owner holds wiring /
+    Qt-required names, bodies are ``func(presenter, ...)`` in ``use_cases/``).
+    See ``docs/dev/plan_rhi_renderer_decomposition.md`` for the thin-owner
+    template and ``use_cases/render_gate.py`` for the ``_update_comparison_geometry
+    → have1/have2 wait → bg_is_dirty → pick → apply_store_to_canvas`` sequencing.
+    """
+    from .use_cases.render_gate import update_comparison_if_needed as _gate
+    return _gate(presenter)
 
 def should_use_dirty_rects_optimization(presenter, render_params_dict, label_dims=None):
     if not presenter.store.viewport.interaction_state.is_interactive_mode:

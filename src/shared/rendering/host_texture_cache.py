@@ -16,9 +16,17 @@ DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024
 
 def qimage_from_pil(pil_image) -> QImage:
     """Convert PIL or TiledPixelStore to RGBA QImage."""
+    if isinstance(pil_image, QImage):
+        if pil_image.format() != QImage.Format.Format_RGBA8888:
+            return pil_image.convertToFormat(QImage.Format.Format_RGBA8888)
+        return pil_image.copy()
     if isinstance(pil_image, TiledPixelStore):
         return qimage_from_pixel_source(pil_image)
-    image = pil_image.convert("RGBA")
+    # PIL's convert() always copies even when mode already matches -- on a
+    # cropped hi-res tile (already RGBA out of TiledPixelStore.crop) that's a
+    # full extra tile-sized memcpy for nothing, and this path runs per-tile,
+    # synchronously, inside render()'s realize_tile_plan.
+    image = pil_image if pil_image.mode == "RGBA" else pil_image.convert("RGBA")
     return QImage(
         image.tobytes("raw", "RGBA"),
         image.width,
@@ -48,7 +56,9 @@ class HostTextureUploadCache:
 
     def evict_over_budget(self, protected: set[str], budget_bytes: int | None = None) -> None:
         budget = self._budget_bytes if budget_bytes is None else budget_bytes
-        total_bytes = sum(image.sizeInBytes() for image in self._cache.values())
+        total_bytes = sum(image.sizeInBytes() for image in self._cache.values()) + sum(
+            image.sizeInBytes() for image in self._uid_cache.values()
+        )
         if total_bytes <= budget:
             return
         for texture_key in list(self._cache.keys()):
@@ -59,6 +69,14 @@ class HostTextureUploadCache:
             evicted = self._cache.pop(texture_key, None)
             if evicted is not None:
                 total_bytes -= evicted.sizeInBytes()
+        # If still over budget after draining _cache, evict oldest UID entries.
+        if total_bytes > budget:
+            for uid in list(self._uid_cache.keys()):
+                if total_bytes <= budget:
+                    break
+                evicted = self._uid_cache.pop(uid, None)
+                if evicted is not None:
+                    total_bytes -= evicted.sizeInBytes()
 
     def qimage_from_source(self, pil_image, texture_key: str) -> QImage:
         uid = image_uid(pil_image)

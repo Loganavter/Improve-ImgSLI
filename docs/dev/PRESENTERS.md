@@ -7,7 +7,7 @@ Presenters are now split across two locations:
 - `src/ui/presenters/` — the window-shell presenter (`main_window/`), which is tab-agnostic, plus the shared `UIUpdateBatcher`.
 - `src/tabs/image_compare/presenters/` — presenters owned by the `image_compare` tab (canvas, toolbar, export). These are built as tab-owned services (via `TabRegistry`) and plugged into the shell through `MainWindowFeatureSet`.
 
-For the canvas-feature subsystem layered on top of the canvas presenter, see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md).
+For the canvas-feature subsystem layered on top of the canvas presenter, see [rendering/index.md](rendering/index.md).
 
 ## Files
 
@@ -196,5 +196,5 @@ You want: "when `viewport.session_data` changes, update some new label."
 
 - [STORE.md](STORE.md) — what `state_changed` scopes mean and how to dispatch
 - [CONTRACTS.md](CONTRACTS.md) — broader architectural rules
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the canvas-feature subsystem (parallel to but separate from these presenters)
+- [rendering/index.md](rendering/index.md) — the canvas-feature subsystem (parallel to but separate from these presenters)
 - [tabs/index.md](tabs/index.md) — workspace-tab interface used by `workspace.py`

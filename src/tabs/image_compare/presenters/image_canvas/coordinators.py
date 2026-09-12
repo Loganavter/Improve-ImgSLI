@@ -1,14 +1,6 @@
 import PIL.Image
 
 from tabs.image_compare.canvas.registry import registry
-from tabs.image_compare.presenters.image_canvas.background_parts.image_cache import (
-    create_preview_cache_async,
-    ensure_images_scaled,
-    ensure_images_unified,
-    on_display_scaling_ready,
-    on_preview_cache_ready,
-    start_scaling_worker,
-)
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
     schedule_update as schedule_update_impl,
 )
@@ -93,6 +85,49 @@ class CanvasLifecycleCoordinator:
         event_handler.close_event_signal.connect(
             self.presenter.window_handler.handle_close
         )
+        self._connect_canvas_input_routing(event_handler)
+
+    def _connect_canvas_input_routing(self, event_handler):
+        image_label = getattr(self.presenter.widget, "image_label", None)
+        if image_label is None:
+            return
+        image_label.set_store(self.presenter.store)
+        if hasattr(image_label, "set_session_controller"):
+            sessions = getattr(self.presenter.main_controller, "sessions", None)
+            if sessions is not None:
+                image_label.set_session_controller(sessions)
+        image_label.mousePressed.connect(
+            event_handler.mouse_press_event_on_image_label_signal.emit
+        )
+        image_label.mouseMoved.connect(
+            event_handler.mouse_move_event_on_image_label_signal.emit
+        )
+        image_label.mouseReleased.connect(
+            event_handler.mouse_release_event_on_image_label_signal.emit
+        )
+        image_label.wheelScrolled.connect(
+            event_handler.mouse_wheel_event_on_image_label_signal.emit
+        )
+        image_label.zoomChanged.connect(self.presenter.widget.update_zoom_indicator)
+        image_label.zoomChanged.connect(self._on_canvas_zoom_changed)
+        btn_zoom_reset = getattr(self.presenter.widget, "btn_zoom_reset", None)
+        if btn_zoom_reset is not None:
+            btn_zoom_reset.clicked.connect(lambda: image_label.reset_view())
+
+    def _on_canvas_zoom_changed(self, _zoom):
+        toolbar = self._resolve_toolbar_presenter(self.presenter)
+        if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
+            toolbar.update_toolbar_states()
+
+    @staticmethod
+    def _resolve_toolbar_presenter(presenter):
+        controller = getattr(presenter, "main_controller", None)
+        shell = getattr(controller, "window_shell", None) if controller is not None else None
+        if shell is None:
+            shell = getattr(getattr(presenter, "main_window_app", None), "presenter", None)
+        if shell is not None and hasattr(shell, "get_feature"):
+            return shell.get_feature("toolbar")
+        return None
 
     def get_current_label_dimensions(self) -> tuple[int, int]:
         return get_current_label_dimensions(self.presenter)
@@ -100,7 +135,7 @@ class CanvasLifecycleCoordinator:
     def update_minimum_window_size(self):
         return update_minimum_window_size(self.presenter)
 
-    def invalidate_render_state(self, clear_magnifier: bool = False):
+    def invalidate_render_state(self, clear_overlay_state: bool = False):
         return invalidate_render_state(self.presenter)
 
     def start_interactive_movement(self):
@@ -144,30 +179,12 @@ class CanvasBackgroundCoordinator:
     def get_background_signature(self, s1, s2):
         return get_background_signature(self.presenter, s1, s2)
 
-    def ensure_images_unified(self, source1, source2):
-        return ensure_images_unified(self.presenter, source1, source2)
-
-    def ensure_images_scaled(self, w, h):
-        return ensure_images_scaled(self.presenter, w, h)
-
-    def start_scaling_worker(self, src1, src2, w, h):
-        return start_scaling_worker(self.presenter, src1, src2, w, h)
-
-    def on_display_scaling_ready(self, result):
-        return on_display_scaling_ready(self.presenter, result)
-
     def should_use_dirty_rects_optimization(
-        self, render_params_dict: dict, label_dims: tuple = None
+        self, render_params_dict: dict, label_dims: tuple | None = None
     ) -> bool:
         return should_use_dirty_rects_optimization(
             self.presenter, render_params_dict, label_dims
         )
-
-    def create_preview_cache_async(self, img1, img2):
-        return create_preview_cache_async(self.presenter, img1, img2)
-
-    def on_preview_cache_ready(self, result):
-        return on_preview_cache_ready(self.presenter, result)
 
 
 class CanvasOverlayCoordinator:

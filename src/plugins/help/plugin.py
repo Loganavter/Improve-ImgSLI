@@ -4,13 +4,11 @@ from typing import Any
 
 from plugins.settings.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IControllablePlugin, IUIPlugin
+from core.plugin_system.interfaces import IControllablePlugin
 from plugins.help.dialog import HelpDialog
 
 @plugin(name="help", version="1.0", startup_tier="deferred")
-class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
-    capabilities = ("help_dialog",)
-
+class HelpPlugin(Plugin, IControllablePlugin):
     def __init__(self):
         super().__init__()
         self._dialog: HelpDialog | None = None
@@ -25,9 +23,6 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
                 SettingsChangeLanguageEvent, self._on_language_changed
             )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "help.qss"),)
-
     def get_controller(self) -> "HelpPlugin":
         return self
 
@@ -36,10 +31,6 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Help plugin has no command '{command}'")
-
-    def provides_capability(self, capability: str) -> bool:
-        return capability == "help_dialog"
-
     def show_dialog(
         self,
         *,
@@ -47,6 +38,8 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
         language: str = "en",
         page: str | None = None,
         anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
     ) -> None:
         # Never Qt-parent Help to the main window. A transient-for link makes
         # the WM raise the whole main-window group when Help activates, which
@@ -64,11 +57,17 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
         if self._dialog.current_language != language:
             self._dialog.update_language(language)
 
+        # Wayland activation for this independent modeless top-level is
+        # handled by ThemedDialog (suppress the stale show-time request +
+        # retry until the compositor grants focus) — see the module docstring
+        # in shared_toolkit/ui/themed_dialog.py.
         self._dialog.show()
         self._dialog.raise_()
         self._dialog.activateWindow()
         if page:
-            self._dialog.navigate_to(page, anchor)
+            self._dialog.navigate_to(
+                page, anchor, video_url=video_url, learn_more_url=learn_more_url
+            )
 
     def _on_dialog_destroyed(self) -> None:
         self._dialog = None

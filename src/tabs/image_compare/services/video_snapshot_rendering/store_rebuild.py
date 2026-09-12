@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+import threading
+
 from tabs.image_compare.services.video_snapshot_rendering.models import ImagePrepCacheEntry
+
+_thread_local = threading.local()
+
+
+def _get_reusable_store():
+    from core.store import Store
+    from tabs.image_compare.state.document import DocumentModel
+
+    store = getattr(_thread_local, "reusable_store", None)
+    if store is not None:
+        return store
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", DocumentModel())
+    _thread_local.reusable_store = store
+    return store
 
 
 def rebuild_snapshot_store(
@@ -12,19 +30,35 @@ def rebuild_snapshot_store(
     scaled_global_bounds,
     normalize_snapshot_store_enabled,
 ):
-    from core.store import Store
+    import time
+
+    t0 = time.perf_counter()
     from tabs.image_compare.state.document import DocumentModel, ImageItem
     from tabs.image_compare.canvas.registry import registry
 
-    store = Store()
-    # `resolve_feature_virtual_layout` (invoked via SnapshotRenderPlanBuilder
-    # below) looks up the canvas feature registry keyed by the active
-    # session's `session_type`; the default session `Store()` creates is
-    # "session_picker", which has no registered features, so it must be
-    # switched to an "image_compare" session before any layout-dependent
-    # feature (e.g. magnifier) can be resolved.
-    store.create_workspace_session(session_type="image_compare", activate=True)
-    store.set_session_state_slot("document", DocumentModel())
+    store = _get_reusable_store()
+    # Reuse cached Store — reset document slot that will be overwritten below
+    doc = store.get_session_state_slot("document")
+    if doc is None:
+        from tabs.image_compare.state.document import DocumentModel as _DM
+
+        store.set_session_state_slot("document", _DM())
+    else:
+        try:
+            doc.image_list1 = []
+            doc.image_list2 = []
+        except Exception:
+            pass
+    try:
+        from tabs.image_compare.debug import ic_perf_debug
+
+        cnt = getattr(rebuild_snapshot_store, "_cnt", 0) + 1
+        rebuild_snapshot_store._cnt = cnt
+        dt = (time.perf_counter() - t0) * 1000.0
+        if cnt % 30 == 0 or dt > 2.0:
+            ic_perf_debug("rebuild_snapshot_store reused Store took %.2fms cnt=%s", dt, cnt)
+    except Exception:
+        pass
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.runtime_cache.overlay_clip_rect = None
@@ -40,28 +74,21 @@ def rebuild_snapshot_store(
     store.viewport.session_data.image_state.image1 = entry.display_img1
     store.viewport.session_data.image_state.image2 = entry.display_img2
     document = store.get_session_state_slot("document")
-    document.image1_path = getattr(snap, "image1_path", None)
-    document.image2_path = getattr(snap, "image2_path", None)
     document.image_list1 = [
         ImageItem(
-            image=entry.source_img1,
             path=getattr(snap, "image1_path", None) or "",
             display_name=getattr(snap, "name1", None) or "",
         )
     ]
     document.image_list2 = [
         ImageItem(
-            image=entry.source_img2,
             path=getattr(snap, "image2_path", None) or "",
             display_name=getattr(snap, "name2", None) or "",
         )
     ]
     document.current_index1 = 0 if document.image_list1 else -1
     document.current_index2 = 0 if document.image_list2 else -1
-    document.original_image1 = entry.source_img1
-    document.original_image2 = entry.source_img2
-    document.full_res_image1 = entry.source_img1
-    document.full_res_image2 = entry.source_img2
+    # PipelineView is source — document no longer stores pixels
     store.viewport.interaction_state.is_interactive_mode = False
     store.viewport.geometry_state.pixmap_width = entry.render_w
     store.viewport.geometry_state.pixmap_height = entry.render_h
@@ -78,4 +105,13 @@ def rebuild_snapshot_store(
                 virtual_layout=scaled_global_bounds.to_virtual_layout(),
             )
 
+    try:
+        dt_full = (time.perf_counter() - t0) * 1000.0
+        cnt = getattr(rebuild_snapshot_store, "_cnt", 0)
+        if cnt % 30 == 0 or dt_full > 5.0:
+            from tabs.image_compare.debug import ic_perf_debug
+
+            ic_perf_debug("rebuild_snapshot_store FULL took %.2fms cnt=%s", dt_full, cnt)
+    except Exception:
+        pass
     return store

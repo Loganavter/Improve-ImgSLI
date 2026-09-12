@@ -28,9 +28,9 @@ def get_guides_widget_state(view_state) -> GuidesWidgetState:
     if isinstance(state, GuidesWidgetState):
         return state
     state = GuidesWidgetState()
-    if getattr(view_state, "canvas_widget_state", None) is None:
-        view_state.canvas_widget_state = {}
-    view_state.canvas_widget_state["guides"] = state
+    _cws = dict(getattr(view_state, "canvas_widget_state", None) or {})
+    _cws["guides"] = state
+    setattr(view_state, "canvas_widget_state", _cws)
     return state
 
 

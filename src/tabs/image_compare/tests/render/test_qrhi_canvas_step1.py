@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QRhiWidget
 
-from ui.widgets.canvas.rhi_render import render_clear_frame, resolve_clear_color
+from ui.canvas_infra.rhi.rhi_render import render_clear_frame, resolve_clear_color
 from tabs.image_compare.canvas.rhi_renderer import pack_base_uniforms
 from tabs.image_compare.canvas.texture_parts.upload_queue import queue_texture_upload
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -35,17 +35,6 @@ def test_resolve_clear_color_prefers_export_plan_fill():
     )
 
     assert resolve_clear_color(widget).getRgb() == (12, 34, 56, 78)
-
-
-def test_resolve_clear_color_export_without_fill_is_transparent():
-    widget = SimpleNamespace(
-        _active_render_plan=SimpleNamespace(fill_rgba=None),
-        _use_plan_fill_clear=True,
-        _theme_background_color=QColor(1, 2, 3),
-        palette=lambda: _Palette(QColor("black")),
-    )
-
-    assert resolve_clear_color(widget).getRgb() == (0, 0, 0, 0)
 
 
 def test_render_clear_frame_delegates_to_qrhi_renderer():

@@ -6,10 +6,15 @@ from typing import Any, Callable, Iterator
 
 from core.session_blueprints import SessionBlueprint
 from core.store_viewport import ViewportState, create_session_data
+from domain.workspace import WorkspaceState
 from domain.workspace import WorkspaceSession
 
 
 class WorkspaceStoreMixin:
+    workspace: WorkspaceState
+
+    def emit_state_change(self, scope: str = "viewport") -> None: ...
+
     def get_workspace_session(self, session_id: str) -> WorkspaceSession | None:
         for session in self.workspace.sessions:
             if session.id == session_id:
@@ -35,6 +40,13 @@ class WorkspaceStoreMixin:
         if not session_type:
             raise ValueError("session_type is required")
         new_viewport = ViewportState(session_data=create_session_data(session_type))
+
+        # Settings load into the viewport of whichever session is active at
+        # startup; carry them over so a fresh RenderConfig never shadows
+        # user settings.
+        current_render = getattr(getattr(self, "viewport", None), "render_config", None)
+        if current_render is not None:
+            new_viewport.render_config = copy.deepcopy(current_render)
 
         current_view = getattr(getattr(self, "viewport", None), "view_state", None)
         if current_view is not None and getattr(
@@ -240,6 +252,7 @@ class WorkspaceStoreMixin:
         resources = self.get_session_resource_namespace(
             namespace, session_id=session_id, create=True
         )
+        assert resources is not None
         resources[key] = value
         if emit_scope:
             self.emit_state_change(emit_scope)

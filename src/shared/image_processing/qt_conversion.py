@@ -52,26 +52,32 @@ def pil_to_qimage_zero_copy(pil_image: Image.Image) -> Optional[QImage]:
 
             if qimage.isNull():
                 raise ValueError("QImage creation returned null")
+            qimage._pil_array_ref = img_array  # type: ignore[attr-defined]  # keep buffer alive
+            qimage._array_memoryview_ref = array_memoryview  # type: ignore[attr-defined]
+            return qimage
 
         except (TypeError, ValueError):
-
             data_bytes = img_array.tobytes()
             qimage = QImage(
                 data_bytes, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
             )
-
-        qimage._pil_array_ref = img_array
-
-        return qimage
+            if qimage.isNull():
+                raise ValueError("QImage fallback returned null")
+            qimage._pil_array_ref = img_array  # type: ignore[attr-defined]
+            qimage._data_bytes_ref = data_bytes  # type: ignore[attr-defined]  # back-ref for fallback buffer
+            return qimage
 
     except Exception as e:
         logger.error(f"Error in zero-copy PIL to QImage conversion: {e}", exc_info=True)
 
         try:
             data = pil_image.tobytes("raw", "RGBA")
-            return QImage(
+            qimage = QImage(
                 data, pil_image.width, pil_image.height, QImage.Format.Format_RGBA8888
             )
+            # Keep raw bytes alive — QImage may reference without copying
+            qimage._fallback_data_ref = data  # type: ignore[attr-defined]
+            return qimage
         except Exception as e2:
             logger.error(f"Fallback conversion also failed: {e2}", exc_info=True)
             return None

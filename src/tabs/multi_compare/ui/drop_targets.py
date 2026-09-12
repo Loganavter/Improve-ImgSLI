@@ -50,6 +50,7 @@ def compute_drop_target(
                 target_path = path
         if target_leaf is None:
             return None, None, False, None
+    assert target_rect is not None
 
     u = (pos.x() - target_rect.x()) / max(target_rect.width(), 1)
     v = (pos.y() - target_rect.y()) / max(target_rect.height(), 1)

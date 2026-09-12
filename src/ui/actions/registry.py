@@ -101,7 +101,10 @@ class ActionRegistry:
         best_depth = 10**9
         for action in self.list_for(active_tab=active_tab):
             target = getattr(action, "target", None)
-            target_widget = getattr(target, "widget", None) if target is not None else None
+            if target is None:
+                continue
+            # Resolve widget via all strategies (direct, lazy, family)
+            target_widget = target.resolve_widget_instance()
             if target_widget is None:
                 continue
             try:

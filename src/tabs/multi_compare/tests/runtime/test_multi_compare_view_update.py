@@ -20,6 +20,13 @@ def test_set_state_schedules_deferred_view_update(qapp, monkeypatch):
     deferred: list = []
 
     def capture_single_shot(ms, callback):
+        # Ignore the QRhi first-present settle flush (canvas_widget.py's
+        # _settle_first_presents) -- a real QRhiWidget can paint/present
+        # during setVisible(True) even under the offscreen test platform,
+        # which is orthogonal to what this test exercises (set_state's
+        # coalesced flush -> deferred view-update repaint).
+        if "_settle_first_presents" in getattr(callback, "__qualname__", ""):
+            return None
         deferred.append(callback)
         return None
 
@@ -27,12 +34,19 @@ def test_set_state_schedules_deferred_view_update(qapp, monkeypatch):
 
     canvas.set_state(MultiCompareState())
     assert updates[0] == "update"
-    assert canvas._view_update_pending is True
+    # set_state defers the expensive sync/rebuild to one coalesced flush per
+    # tick; request_view_update() (and its own deferred repaint) only fires
+    # once that flush actually runs.
+    assert canvas._composition_flush.pending is True
     assert len(deferred) == 1
 
-    before = len(updates)
     canvas.setVisible(True)
     deferred[0]()
+    assert canvas._view_update_pending is True
+    assert len(deferred) == 2
+
+    before = len(updates)
+    deferred[1]()
     assert canvas._view_update_pending is False
     assert len(updates) > before
     canvas.deleteLater()

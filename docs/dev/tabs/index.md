@@ -17,3 +17,9 @@ and state — the host provides a slot, session lifecycle, and platform services
 **Core idea**: tabs never import host i18n, theme tokens, or `AppIcon`; new
 host↔tab needs go through the fixed capability mechanisms — not new methods on
 `TabContract`. See [capability-mechanisms.md](capability-mechanisms.md).
+
+**Tab-owned docs** (architecture notes, investigations) live under
+`src/tabs/<tab>/docs/`, not here — see
+[image_compare/docs/](../../../src/tabs/image_compare/docs/) and
+[multi_compare/docs/](../../../src/tabs/multi_compare/docs/). This page and
+the rest of `docs/dev/` cover only the host↔tab contract shared by every tab.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPalette
-from PySide6.QtGui import QResizeEvent, QWheelEvent
+from PySide6.QtGui import QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from resources.translations import tr
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button
 from plugins.onboarding.indicator import DotIndicator
 from plugins.onboarding.pages import build_modes, create_slide_for_mode, scale_all_slides
@@ -106,7 +107,7 @@ class OnboardingOverlay(QWidget):
             return
         self.resize(target)
 
-    def showEvent(self, event: QEvent):
+    def showEvent(self, event: QShowEvent):
         super().showEvent(event)
         self.raise_()
         self.activateWindow()
@@ -191,7 +192,7 @@ class OnboardingOverlay(QWidget):
             btn = Button(text=mode["name"], variant="surface", corner_radius=8)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             # Avoid QWidget's default 640x480 sizeHint before the first _scale_all.
-            btn.setFixedSize(150, 42)
+            btn.setFixedSize(scaled_px(150), scaled_px(42))
             btn.clicked.connect(
                 lambda checked=False, idx=i: self._on_mode_btn_clicked(idx)
             )
@@ -222,7 +223,7 @@ class OnboardingOverlay(QWidget):
         start_text = tr("onboarding.start_button", current_lang)
         self.btn_start = Button(text=start_text, variant="surface")
         self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_start.setFixedSize(200, 48)
+        self.btn_start.setFixedSize(scaled_px(200), scaled_px(48))
         self.btn_start.clicked.connect(self._finish)
 
         btn_layout = QHBoxLayout()
@@ -286,7 +287,16 @@ class OnboardingOverlay(QWidget):
             scale = 0.7 + (scale - 0.5) * 0.2
         elif scale > 1.0:
             scale = 1.0 + (scale - 1.0) * 0.5
-        return max(0.7, min(1.5, scale))
+        scale = max(0.7, min(1.5, scale))
+        # Compose with the global interface scale so onboarding chrome follows
+        # the user's UiScale setting on top of the window-relative fit.
+        try:
+            from sli_ui_toolkit.managers import UiScale
+
+            scale *= UiScale.get_instance().factor()
+        except Exception:
+            pass
+        return max(0.5, min(2.5, scale))
 
     @staticmethod
     def _ui_base_font() -> QFont:
@@ -298,7 +308,7 @@ class OnboardingOverlay(QWidget):
             return QFont(UiFont.get_instance().base_font())
         except Exception:
             app = QApplication.instance()
-            return QFont(app.font()) if app is not None else QFont()
+            return QFont(app.font()) if isinstance(app, QApplication) else QFont()
 
     def _scale_all(self):
         if self._scaling:

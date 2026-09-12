@@ -159,7 +159,8 @@ the viewport edge while the image keeps moving.
 The base-image shader compares spit in **letterboxed image UV** (magnifier
 ``internalSplit`` parity). The white divider uses the view-transformed
 letterbox + fragment clip. Full write-up:
-[investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+`src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md` in
+`improve-imgsli-internal-docs` (private, not in this repo).
 
 ## Semantic geometry vs paint extents
 
@@ -196,15 +197,68 @@ build scene objects, hit-test, or calculate guide endpoints are a red flag.
 There are two separate-but-related concepts:
 
 - **Widget zoom/pan** (`zoom_level`, `pan_offset_x`, `pan_offset_y`) —
-  viewport state owned by `CanvasWidget`. The shader reads these to apply
-  zoom-around-cursor.
-- **Store-level split / overlay positions** — semantic positions of overlays
-  in canvas-px (`split_position`, magnifier centers, etc.). Stored in the
-  Store, persisted across sessions.
+  viewport state owned by `CanvasWidget` (`ui/canvas_infra/viewport/state.py`
+  `ZoomViewportState`, mirrored as `widget.zoom_level/pan_offset_*`).
+  They live in **pre-letterbox UV** (widget-fraction space *before* the
+  letterbox is applied: `uv = (widget_px / widget_size)`), not in image UV
+  and not in widget-px. The sampled image point is `pan` *through* the
+  letterbox: `capture_letterbox_focus` computes
+  `raw = 0.5 - pan`, `focus = (raw - ox)/sx` where `(ox,oy,sx,sy)` is
+  `state._letterbox_params[0]` (see `ui/canvas_infra/viewport/focus.py:19`);
+  the base shader then does `screen = (uv - 0.5 + pan) * zoom + 0.5` and
+  the same `pan` drives `compute_zoom_display_split_position` and
+  `map_content_rect_through_view`. `Store`-level split / overlay positions
+  are the other layer — semantic positions of overlays in canvas-px
+  (`split_position`, magnifier centers, etc.), stored in the Store and
+  persisted across sessions.
 
 These two layers are coordinated by **viewport features** in
 `src/ui/canvas_infra/viewport/`. Don't bypass them by reaching into widget
 state from your feature.
+
+### Preserving the image sample point when the letterbox changes
+
+`pan_offset_x/y` alone is not stable across a letterbox change. When a render
+plan is re-applied, the canvas is resized, or the comparison rect is
+re-derived, a one-pixel shift in `(ox,sx)` moves the camera in image space by
+`1/(sx*zoom)` — devastating at high zoom. The fix is viewport focus
+(`docs/dev/ARCHITECTURE.md` § Viewport focus):
+
+```python
+focus = capture_letterbox_focus(canvas)   # image sample under viewport center
+# ... letterbox / plan / resize updates _letterbox_params ...
+restore_letterbox_focus(canvas, focus)    # recompute pan for the new (ox,sx)
+```
+
+`_apply_plan_full` / `_apply_plan_scene_only`
+(`tabs/image_compare/canvas/presentation/plan_applicator.py:458,476,515`)
+and `render_context.py:365` bracket every `update_common_letterbox_geometry`
+and `_apply_plan_letterbox_from_clip` with this capture/restore dance when
+`plan.preserve_zoom` is set; `preserve_zoom=False` intentionally discards it
+via `reset_view()`. Always use the focus helpers — never preserve raw
+`pan_offset_*` across a letterbox update.
+
+### How the eager envelope affects zoom/pan at unify
+
+Before the eager max, the comparison rect was a union of two separately-fitted
+rects and was frozen by `UNION_LETTERBOX_HOLD_MS` (350 ms) / `more_pending`
+while the second tier arrived — the canvas jumped `0.596→0.545` (`1138→1080`,
+`-8.5%`) when the hold expired and the unified size landed. Zoom/pan built on
+top of that rect jumped with it.
+
+Now `update_common_letterbox_geometry` / `_update_comparison_geometry`
+compute `pw,ph = max(w1,w2), max(h1,h2)` from whatever sizes are already
+present (preview or full-res) and derive one
+`resolve_canvas_content_geometry(cw,ch,pw,ph)` rect for both sides. The
+letterbox converges to the final `max` rect on the first `gap draw_plan`
+that has two previews, before the unify worker even starts — `store.transact`
+publishes it once, and the unified `2797×2797` pixels that arrive later reuse
+the same rect. No `HOLD` for geometry, no `more_pending` stall. The
+capture/restore above then keeps the **image sample under the viewport center**
+fixed if the rect does still move (resize, single-side fallback → two-side
+`max`), so the picture does not appear to jump even if `pan_offset_*`
+numerically changes. `HOLD` + `atomic` stay only for pixel fallback-LOD
+coverage (`rhi_renderer/renderer.py:463`), never for `letterbox` placement.
 
 ## Debugging zoom/pan issues
 

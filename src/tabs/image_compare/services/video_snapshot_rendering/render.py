@@ -13,14 +13,7 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
 from tabs.image_compare.services.video_snapshot_rendering.models import PreparedCanvasFrame
 
 
-def render_prepared(
-    gpu_export_service,
-    prepared: PreparedCanvasFrame,
-    request: VideoRenderRequest,
-) -> RenderedFrame:
-    debug = dict(prepared.debug)
-    gpu_render_started = time.perf_counter()
-    diff_image = None
+def _extract_diff_image(prepared: PreparedCanvasFrame):
     try:
         render_cache = getattr(
             getattr(prepared.store, "viewport", None),
@@ -28,14 +21,19 @@ def render_prepared(
             None,
         )
         render_cache = getattr(render_cache, "render_cache", None)
-        diff_image = getattr(render_cache, "cached_diff_image", None)
+        return getattr(render_cache, "cached_diff_image", None)
     except Exception:
-        diff_image = None
-    frame_pil, gpu_debug = gpu_export_service.render_plan(
-        prepared.plan,
-        diff_image=diff_image,
-    )
-    debug["gpu_render_ms"] = (time.perf_counter() - gpu_render_started) * 1000.0
+        return None
+
+
+def _finish_rendered_frame(
+    frame_pil,
+    gpu_debug: dict,
+    debug: dict,
+    prepared: PreparedCanvasFrame,
+    request: VideoRenderRequest,
+) -> RenderedFrame:
+    debug = dict(debug)
     debug.update(gpu_debug)
     if frame_pil is None:
         return RenderedFrame(
@@ -78,3 +76,52 @@ def render_prepared(
     )
     debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
     return RenderedFrame(image=final_frame, backend="gpu", debug=debug)
+
+
+def render_prepared(
+    gpu_export_service,
+    prepared: PreparedCanvasFrame,
+    request: VideoRenderRequest,
+) -> RenderedFrame:
+    debug = dict(prepared.debug)
+    gpu_render_started = time.perf_counter()
+    diff_image = _extract_diff_image(prepared)
+    frame_pil, gpu_debug = gpu_export_service.render_plan(
+        prepared.plan,
+        diff_image=diff_image,
+    )
+    debug["gpu_render_ms"] = (time.perf_counter() - gpu_render_started) * 1000.0
+    return _finish_rendered_frame(frame_pil, gpu_debug, debug, prepared, request)
+
+
+def render_prepared_async(
+    gpu_export_service,
+    prepared: PreparedCanvasFrame,
+    request: VideoRenderRequest,
+    callback,
+) -> None:
+    """Non-blocking counterpart to :func:`render_prepared`.
+
+    Submits the GPU render and returns immediately; ``callback(RenderedFrame)``
+    fires later, on the main thread. ``prepared`` (the CPU-side image
+    loading/caching work) must already be done by the caller — only the GPU
+    step is deferred.
+    """
+    debug = dict(prepared.debug)
+    gpu_render_started = time.perf_counter()
+    diff_image = _extract_diff_image(prepared)
+
+    def _on_gpu_done(frame_pil, gpu_debug, error):
+        if error is not None:
+            callback(_finish_rendered_frame(None, {}, debug, prepared, request))
+            return
+        debug["gpu_render_ms"] = (time.perf_counter() - gpu_render_started) * 1000.0
+        callback(
+            _finish_rendered_frame(frame_pil, gpu_debug or {}, debug, prepared, request)
+        )
+
+    gpu_export_service.render_plan_async(
+        prepared.plan,
+        diff_image=diff_image,
+        callback=_on_gpu_done,
+    )

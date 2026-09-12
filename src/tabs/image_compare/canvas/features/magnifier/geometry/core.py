@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 from domain.types import Rect
 
 
@@ -14,10 +12,12 @@ def clamp_capture_position(
 ):
     if pix_w <= 0 or pix_h <= 0:
         return rel_x, rel_y
-    ref_dim = math.sqrt(float(pix_w) * float(pix_h))
-    capture_size_px = capture_size_relative * ref_dim
-    radius_rel_x = (capture_size_px / 2.0) / pix_w if pix_w > 0 else 0.0
-    radius_rel_y = (capture_size_px / 2.0) / pix_h if pix_h > 0 else 0.0
+    ref_dim = float(min(pix_w, pix_h))
+    radius_px = min(
+        capture_size_relative * ref_dim / 2.0, float(pix_w) / 2.0, float(pix_h) / 2.0
+    )
+    radius_rel_x = radius_px / pix_w if pix_w > 0 else 0.0
+    radius_rel_y = radius_px / pix_h if pix_h > 0 else 0.0
     return (
         max(radius_rel_x, min(rel_x, 1.0 - radius_rel_x)),
         max(radius_rel_y, min(rel_y, 1.0 - radius_rel_y)),

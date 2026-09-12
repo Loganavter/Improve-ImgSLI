@@ -3,12 +3,15 @@ import os
 import threading
 from typing import Any, Optional
 
+import imagecodecs
+import numpy as np
 from PIL import Image
 
 from core.store import Store
 from domain.types import Color
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.pil_save import write_pil_image_cancelable
+from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
@@ -18,16 +21,6 @@ from tabs.image_compare.services.snapshot_render_plan_builder import (
 from tabs.image_compare.services.video_snapshot_rendering import SnapshotFrameRenderer
 
 logger = logging.getLogger("ImproveImgSLI")
-
-try:
-    import imagecodecs
-    import numpy as np
-
-    JXL_SUPPORTED = True
-    logger.info("JXL export support: imagecodecs imported successfully")
-except ImportError as e:
-    JXL_SUPPORTED = False
-    logger.warning(f"JXL export support: imagecodecs import failed - {e}")
 
 
 class ExportService:
@@ -301,10 +294,18 @@ class ExportService:
                     quality = int(export_options.get("quality", 95))
                     logger.debug(f"JXL quality setting: {quality}")
 
+                    # Atomic: write to tmp then replace, so os._exit mid-encode
+                    # doesn't leave a truncated file at the final path.
+                    tmp_path = full_path + ".tmp"
+                    try:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                    except Exception:
+                        pass
                     if quality >= 100:
                         logger.debug("Saving JXL in lossless mode")
                         imagecodecs.imwrite(
-                            full_path,
+                            tmp_path,
                             img_array,
                             codec="jxl",
                             lossless=True,
@@ -315,15 +316,23 @@ class ExportService:
                             f"Saving JXL in lossy mode with distance: {distance}"
                         )
                         imagecodecs.imwrite(
-                            full_path,
+                            tmp_path,
                             img_array,
                             codec="jxl",
                             distance=distance,
                         )
+                    os.replace(tmp_path, full_path)
 
                     logger.info(f"JXL image saved successfully: {full_path}")
                 except Exception as e:
                     logger.error(f"Failed to save JXL image: {e}", exc_info=True)
+                    # Clean up stale tmp on failure; outer except will also try full_path
+                    try:
+                        tmp_candidate = full_path + ".tmp"
+                        if os.path.exists(tmp_candidate):
+                            os.remove(tmp_candidate)
+                    except Exception:
+                        pass
                     raise
             else:
                 write_pil_image_cancelable(
@@ -340,6 +349,13 @@ class ExportService:
             try:
                 if os.path.exists(full_path):
                     os.remove(full_path)
+            except Exception:
+                pass
+            # Also clean tmp if we used it (JXL or pil_save failure leaves .tmp)
+            try:
+                tmp_path = full_path + ".tmp"
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             except Exception:
                 pass
             raise
@@ -456,17 +472,10 @@ class ExportService:
         base_name: str,
         extension: str,
     ) -> str:
-        """
-        Генерирует уникальный путь к файлу, добавляя номер, если файл уже существует.
-        """
-        full_path = os.path.join(directory, f"{base_name}{extension}")
-        if not os.path.exists(full_path):
-            return full_path
+        """Delegate to shared ``next_available_path`` (B7)."""
+        from pathlib import Path
 
-        counter = 1
-        while True:
-            new_name = f"{base_name} ({counter})"
-            new_path = os.path.join(directory, f"{new_name}{extension}")
-            if not os.path.exists(new_path):
-                return new_path
-            counter += 1
+        from shared.image_processing.pil_save import next_available_path
+
+        candidate = Path(directory) / f"{base_name}{extension}"
+        return str(next_available_path(candidate, style="paren"))

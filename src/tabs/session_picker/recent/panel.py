@@ -1,22 +1,85 @@
 """Resolve/Shotcut-style recent projects shelf for the Session Picker."""
+# Audit-Meta: pattern=thin-owner reason="RecentProjectsPanel thin owner — delegates to recent/use_cases/*"
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Callable
+import logging
+import os
+from typing import Callable, cast
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QPoint, QTimer, Qt
 from PySide6.QtGui import (
+    QColor,
     QDragEnterEvent,
     QDragLeaveEvent,
     QDragMoveEvent,
     QDropEvent,
     QPainter,
+    QPainterPath,
+    QPen,
 )
-from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
-from sli_ui_toolkit.widgets import ThemedWidget
+from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.widgets import (
+    Button,
+    ContextMenuAction,
+    popup_context_menu_for_anchor,
+)
 
+from ui.theming import try_resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
+
+
+def _themed_or_fallback(theme_manager, token: str, fallback: QColor | str) -> QColor:
+    try:
+        resolved = try_resolve_theme_color(theme_manager, token)
+        if resolved is not None and resolved.isValid():
+            return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
+from ui.widgets.shelf import (
+    PANEL_RADIUS,
+    SHELF_MARGIN_BOTTOM,
+    SHELF_MARGIN_LEFT,
+    SHELF_MARGIN_RIGHT,
+    SHELF_MARGIN_TOP,
+    SHELF_SPACING,
+    ShelfWidget,
+    apply_opaque_widget_fill,
+)
+
+
+def _shelf_resize_debug(message: str, *args) -> None:
+    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
+    if flag in ("", "0", "false", "no", "off"):
+        return
+    try:
+        logging.getLogger("ImproveImgSLI").info(
+            "[shelf-resize] " + (message % args if args else message)
+        )
+    except Exception:
+        pass
+
+
+# Root layout margins/spacing (design px) for the shelf content — re-applied
+# on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
+# share these so they can never drift apart.
+_PANEL_MARGIN_LEFT = 16
+_PANEL_MARGIN_TOP = 14
+_PANEL_MARGIN_RIGHT = 16
+_PANEL_MARGIN_BOTTOM = 14
+_PANEL_SPACING = 10
+
+
+# get_recent_sort_mode/get_recent_view_mode/list_recent_projects/
+# record_recent_project/remove_recent_project/sort_recent_projects are not
+# called directly in this file -- use_cases/refresh.py and
+# use_cases/selection_ops.py re-import them from *this* module (not from
+# services.io.recent_projects) so that tests monkeypatching
+# "tabs.session_picker.recent.panel.<name>" keep working after the split.
 from services.io.recent_projects import (
     get_recent_sort_mode,
     get_recent_sort_order,
@@ -27,27 +90,58 @@ from services.io.recent_projects import (
     remove_recent_project,
     RecentProjectRecord,
     sort_recent_projects,
-    VIEW_GRID,
+    VIEW_LIST,
 )
-from tabs.session_picker.geometry import SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR
-from tabs.session_picker.recent.context_menu import open_recent_project_menu
+from tabs.host_helpers import estimate_prelayout_width
+from tabs.session_picker.geometry import (
+    SESSION_PICKER_PAGE_HORIZONTAL_MARGINS,
+    SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR,
+)
 from tabs.session_picker.recent.drop_controller import RecentDropController
-from tabs.session_picker.recent.empty_drop_zone import EmptyDropZone
+from ui.widgets.shelf.empty_drop_zone import EmptyDropZone
 from tabs.session_picker.recent.header_bar import RecentHeaderBar
 from tabs.session_picker.recent.items_view import (
     RecentItemsView,
     request_window_chrome_refresh,
 )
-from tabs.session_picker.recent.shelf_chrome import ShelfChrome
+from tabs.session_picker.recent.use_cases import refresh as refresh_use_cases
+from tabs.session_picker.recent.use_cases import selection_ops
+from tabs.session_picker.recent.use_cases import sizing
 
 
-class RecentProjectsPanel(ThemedWidget, QWidget):
-    """Shelf host: composes header, items view, empty zone, chrome, and drops."""
+def _shelf_resize_debug(message: str, *args) -> None:
+    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
+    if flag in ("", "0", "false", "no", "off"):
+        return
+    try:
+        logging.getLogger("ImproveImgSLI").info(
+            "[shelf-resize] " + (message % args if args else message)
+        )
+    except Exception:
+        pass
+
+
+# Root layout margins/spacing (design px) for the shelf content — re-applied
+# on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
+# share these so they can never drift apart.
+_PANEL_MARGIN_LEFT = 16
+_PANEL_MARGIN_TOP = 14
+_PANEL_MARGIN_RIGHT = 16
+_PANEL_MARGIN_BOTTOM = 14
+_PANEL_SPACING = 10
+
+
+class RecentProjectsPanel(ShelfWidget):
+    """Shelf host: chrome + title from ``ShelfWidget``; composes header
+    controls, items view, empty zone, and drops.
+
+    The shared shelf (``ui.widgets.shelf.ShelfWidget``) owns the two-layer
+    chrome (host surface + rounded panel) and the header/content structure;
+    this panel only decides *what* goes in: sort/view chips on top and the
+    items view + empty drop zone as content.
+    """
 
     def __init__(self, parent=None, *, tr: Callable[..., str], context=None):
-        # Chrome before QWidget init — ThemedWidget may call on_theme_changed
-        # during super().__init__.
-        self._chrome = ShelfChrome()
         super().__init__(parent)
         self._tr = tr
         self._context = context
@@ -59,6 +153,21 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         # False until the first synchronous refresh builds cards (or empty zone).
         self._layout_ready = False
         self._selected_paths: set[str] = set()
+        # Set by ``_on_shelf_height_changed`` when a relayout changed the scroll
+        # viewport height; consumed by ``_deferred_relayout`` to re-settle the
+        # panel height after the parent page layout re-runs.
+        self._shelf_height_settle_pending = False
+        # Coalesces resize-driven relayouts to the next event-loop turn.
+        self._relayout_timer: QTimer | None = None
+        # Runs the height settle on a separate turn after the relayout.
+        self._settle_timer: QTimer | None = None
+        # False until the first paint. Resize-driven relayouts are deferred to
+        # 0-timers normally, but before the first paint those timers can only
+        # fire after the first frame was already presented (see
+        # ``_schedule_deferred_relayout``) — settle synchronously instead.
+        self._painted_once = False
+        # Guards re-entrancy of the synchronous first settle.
+        self._sync_settle_in_progress = False
         self.setObjectName("RecentProjectsPanel")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setAcceptDrops(True)
@@ -69,96 +178,125 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self.setAutoFillBackground(False)
         self._build()
         self._sync_opaque_fills()
+        self._sync_shelf_panel_height()
+        window = self.window()
+        if window is not None and window is not self:
+            window.installEventFilter(self)
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
-
-    # --- test / legacy aliases (owned by composed children) -----------------
-
-    @property
-    def _panel_bg(self):
-        return self._chrome.panel_bg
-
-    @_panel_bg.setter
-    def _panel_bg(self, value) -> None:
-        self._chrome.panel_bg = value
-
-    @property
-    def _drag_active(self) -> bool:
-        return self._drop.drag_active
-
-    @_drag_active.setter
-    def _drag_active(self, value: bool) -> None:
-        self._drop.drag_active = bool(value)
-
-    @property
-    def _grid_columns(self) -> int:
-        return self._items.grid_columns
-
-    @_grid_columns.setter
-    def _grid_columns(self, value: int) -> None:
-        self._items._grid_columns = max(1, int(value))
-
-    @property
-    def _scroll(self):
-        return self._items.scroll
-
-    @property
-    def _items_host(self):
-        return self._items.items_host
-
-    @property
-    def _items_layout(self):
-        return self._items.items_layout
-
-    @property
-    def _sort_button(self):
-        return self._header.sort_button
-
-    @property
-    def _sort_order_button(self):
-        return self._header.sort_order_button
-
-    @property
-    def _view_button(self):
-        return self._header.view_button
-
-    @property
-    def _title_label(self):
-        return self._header.title_label
+        UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         self._on_open = handler
 
     def resizeEvent(self, event) -> None:  # noqa: N802
+        _shelf_resize_debug(
+            "panel.resizeEvent size=%s -> %s scroll=%d",
+            event.oldSize(),
+            event.size(),
+            getattr(self._items.scroll_area, "height", lambda: -1)(),
+        )
         super().resizeEvent(event)
-        if not self._layout_ready:
+        self._sync_shelf_panel_height()
+        self._items.resync_corner_cover()
+        if not self._layout_ready or not self._records:
             return
-        if self._view_mode != VIEW_GRID or not self._records:
-            return
-        if not self._items.relayout_grid_if_needed(updates_owner=self):
-            # Layout/record drift — fall back to a full rebuild.
-            if self._items.resolve_grid_columns() != self._items.grid_columns:
-                self._rebuild_items()
+        # Defer the relayout to the next event-loop turn and coalesce: a resize
+        # may arrive while the parent page layout is still mid-activation, so
+        # re-running that layout inside resizeEvent is a no-op and the panel
+        # height would lag the new scroll height by one pass (the "jumps one
+        # part first" artifact). Running later lets ``_settle_shelf_height``
+        # re-activate the layout synchronously. Crucially we must NOT hold
+        # updates disabled here — under the translucent CSD window that punches
+        # see-through holes in the freshly exposed panel area during the drag.
+        self._schedule_deferred_relayout()
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        # The panel's own resizeEvent does not fire when the window grows but
+        # the shelf is capped at its available space (the page layout hands
+        # the extra to the stretch instead). Watch the top-level window so the
+        # shelf expands to fit the new available height (see
+        # _recent_viewport_max_height) instead of staying at its old size.
+        if (
+            event.type() == QEvent.Type.Resize
+            and watched is self.window()
+            and self.isVisible()
+        ):
+            _shelf_resize_debug(
+                "window resizeEvent size=%s (panel=%d scroll=%d)",
+                event.size(),
+                self.height(),
+                getattr(self._items.scroll_area, "height", lambda: -1)(),
+            )
+            self._sync_shelf_panel_height()
+            self._schedule_deferred_relayout()
+        return super().eventFilter(watched, event)
+
+    def _sync_shelf_panel_height(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.sync_shelf_panel_height(self)
+
+    def _schedule_deferred_relayout(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.schedule_deferred_relayout(self)
+
+    def _deferred_relayout(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.deferred_relayout(self)
+
+    def _schedule_height_settle(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.schedule_height_settle(self)
+
+    def _on_shelf_height_changed(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.on_shelf_height_changed(self)
+
+    def _settle_shelf_height(self) -> None:
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.settle_shelf_height(self)
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        self._chrome.paint_shelf(
-            painter,
-            widget=self,
-            event_rect=event.rect(),
-            theme_manager=self._theme_manager,
-            drag_active=self._drop.drag_active,
+        self._painted_once = True
+        if not hasattr(self, "_paint_count"):
+            self._paint_count = 0
+        self._paint_count += 1
+        _shelf_resize_debug(
+            "paint #%d panel=%dx%d scroll_h=%d cols=%d visible=%s",
+            self._paint_count,
+            self.width(),
+            self.height(),
+            getattr(self._items.scroll_area, "height", lambda: -1)(),
+            getattr(self._items, "grid_columns", -1),
+            self.isVisible(),
         )
-        painter.end()
+        super().paintEvent(event)
+        if self._drop.drag_active:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            accent = _themed_or_fallback(self._theme_manager, "accent", "#0078D4")
+            fill = QColor(accent)
+            fill.setAlpha(36)
+            path = QPainterPath()
+            rect = self.rect().adjusted(0, 0, -1, -1)
+            path.addRoundedRect(rect, PANEL_RADIUS, PANEL_RADIUS)
+            painter.fillPath(path, fill)
+            pen = QPen(accent, 2.0)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(path)
+            painter.end()
 
-    def on_theme_changed(self) -> None:
-        chrome = getattr(self, "_chrome", None)
-        if chrome is None:
-            super().on_theme_changed()
-            return
-        chrome.update_from_theme(self._theme_manager)
-        # ThemedWidget calls this from __init__ before children exist.
+    def _on_shelf_theme_changed(self) -> None:
+        # ShelfWidget calls this; children may not exist yet during __init__.
         if getattr(self, "_header", None) is not None:
             self._sync_header_controls()
         self._sync_opaque_fills()
@@ -166,19 +304,21 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         items = getattr(self, "_items", None)
         if items is not None:
             items.refresh_selection_accent()
-        self.update()
-        super().on_theme_changed()
+        super()._on_shelf_theme_changed()
 
     def _header_button_bg(self):
-        return self._chrome.header_button_bg()
+        return self.header_button_bg()
 
     def _apply_opaque_widget_fill(self, widget: QWidget | None, color) -> None:
-        ShelfChrome.apply_opaque_widget_fill(widget, color)
+        apply_opaque_widget_fill(widget, color)
 
     def _sync_opaque_fills(self) -> None:
         if getattr(self, "_items", None) is None:
             return
-        self._chrome.apply_opaque_fills(items_view=self._items)
+        self._items.apply_surface_colors(
+            content_bg=self.content_bg(),
+            shelf_bg=self.panel_bg(),
+        )
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
         self._drop.handle_drag_enter(event)
@@ -214,66 +354,18 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self.recover_opaque_surface()
 
     def refresh(self) -> None:
-        self._view_mode = get_recent_view_mode()
-        self._sort_mode = get_recent_sort_mode()
-        self._sort_order = get_recent_sort_order()
-        records = list_recent_projects(drop_missing=False)
-        self._records = sort_recent_projects(
-            records,
-            sort_by=self._sort_mode,
-            sort_order=self._sort_order,
-        )
-        alive = {r.path for r in self._records}
-        self._selected_paths &= alive
-        self._rebuild_items()
-        self._sync_header_controls()
-        self._sync_opaque_fills()
-        self._layout_ready = True
-        self._items.apply_selection()
+        refresh_use_cases.refresh(self)
 
     def _soft_refresh(self) -> None:
-        """Update shelf contents only when records or view prefs changed."""
-        view_mode = get_recent_view_mode()
-        sort_mode = get_recent_sort_mode()
-        sort_order = get_recent_sort_order()
-        records = sort_recent_projects(
-            list_recent_projects(drop_missing=False),
-            sort_by=sort_mode,
-            sort_order=sort_order,
-        )
-        same_prefs = (
-            view_mode == self._view_mode
-            and sort_mode == self._sort_mode
-            and sort_order == self._sort_order
-        )
-        same_records = [
-            (r.path, r.opened_at, r.display_name, r.session_types)
-            for r in self._records
-        ] == [
-            (r.path, r.opened_at, r.display_name, r.session_types)
-            for r in records
-        ]
-        if same_prefs and same_records:
-            self._sync_header_controls()
-            return
-        self._view_mode = view_mode
-        self._sort_mode = sort_mode
-        self._sort_order = sort_order
-        self._records = records
-        self._selected_paths &= {r.path for r in records}
-        self._rebuild_items()
-        self._sync_header_controls()
-        self._sync_opaque_fills()
-        self._items.apply_selection()
+        refresh_use_cases.soft_refresh(self)
 
     def _build(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 14)
-        root.setSpacing(10)
+        self.set_title(self._tr("recent.title", "Recent"))
 
         self._header = RecentHeaderBar(self, tr=self._tr)
         self._header.prefs_changed.connect(self._on_header_prefs_changed)
-        root.addWidget(self._header)
+        self.add_header_widget(self._header)
+        self._header.installEventFilter(self)
 
         self._items = RecentItemsView(self)
         self._items.configure(
@@ -282,17 +374,18 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             on_activate=self._on_card_activate,
             on_context_menu=self._show_context_menu,
             content_width_provider=self._grid_content_width,
-            on_viewport_height_changed=lambda: request_window_chrome_refresh(self),
+            max_viewport_height_provider=self._recent_viewport_max_height,
+            on_viewport_height_changed=self._on_shelf_height_changed,
             selection_paths=lambda: set(self._selected_paths),
             on_marquee_commit=self._on_marquee_commit,
             on_marquee_preview=self._on_marquee_preview,
         )
-        root.addWidget(self._items)
+        self.add_content_widget(self._items)
 
         self._empty_zone = EmptyDropZone(self)
         self._sync_empty_zone_texts()
         self._sync_empty_zone_colors()
-        root.addWidget(self._empty_zone)
+        self.add_content_widget(self._empty_zone)
 
         self._drop = RecentDropController(
             self,
@@ -302,12 +395,16 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self._drop.install(
             (
                 self,
-                self._items.scroll,
+                self._items.scroll_area,
                 self._items.items_host,
                 self._empty_zone,
             )
         )
         self._sync_header_controls()
+
+    def _on_ui_scale_changed(self, _factor: float) -> None:
+        """Re-apply scale-dependent shelf geometry after a live UiScale change."""
+        sizing.on_ui_scale_changed(self, _factor)
 
     def _on_header_prefs_changed(self) -> None:
         # Header already persisted prefs; re-read and refresh cards.
@@ -319,20 +416,10 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self.update()
 
     def _pin_dropped_paths(self, paths: list[str]) -> None:
-        toast = getattr(self.window(), "toast_manager", None)
-        for path in paths:
-            try:
-                result = record_recent_project(path)
-                notify_recent_cap_eviction(
-                    result.evicted,
-                    toast_manager=toast,
-                    tr=self._tr,
-                )
-            except Exception:
-                continue
-        self.refresh()
+        refresh_use_cases.pin_dropped_paths(self, paths)
 
     def _retranslate(self) -> None:
+        self.set_title(self._tr("recent.title", "Recent"))
         self._sync_header_controls()
         self._sync_empty_zone_texts()
         # Same as create-cards: patch copy in place. Destroy/rebuild under a
@@ -362,7 +449,7 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         zone = getattr(self, "_empty_zone", None)
         if zone is None:
             return
-        colors = self._chrome.empty_zone_colors(self._theme_manager)
+        colors = self.empty_zone_colors()
         zone.set_palette_colors(**colors)
 
     def _sync_header_controls(self) -> None:
@@ -376,23 +463,17 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             chip_bg=self._header_button_bg(),
         )
 
+    def _recent_viewport_max_height(self) -> int:
+        return sizing.recent_viewport_max_height(self)
+
+    def _estimate_prelayout_viewport_height(self) -> int:
+        return sizing.estimate_prelayout_viewport_height(self)
+
     def _grid_content_width(self) -> int:
-        # Scroll fills the panel horizontally; width can be 0 before the first
-        # layout pass. Floor so a sync first refresh does not paint a 1-column
-        # grid that jumps on the next resize.
-        return max(int(self.width()), SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
+        return sizing.grid_content_width(self)
 
     def _rebuild_items(self) -> None:
-        has_items = bool(self._records)
-        if self._empty_zone is not None:
-            self._empty_zone.setVisible(not has_items)
-        self._header.set_controls_visible(has_items)
-        self._items.rebuild(
-            records=self._records,
-            view_mode=self._view_mode,
-            updates_owner=self,
-        )
-        self._sync_opaque_fills()
+        refresh_use_cases.rebuild_items(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
@@ -400,36 +481,26 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             if self._selected_paths:
                 self._remove_selected_paths()
                 event.accept()
+                logger.debug("[shelf-nav] keyPressEvent Del/Bs -> remove %d selected", len(self._selected_paths))
                 return
         if key == Qt.Key.Key_Escape:
             if self._selected_paths:
                 self._clear_selection()
                 event.accept()
+                logger.debug("[shelf-nav] keyPressEvent Escape -> clear selection")
                 return
+        # Arrow keys are handled by SessionPickerWidget's focusNextPrevChild()
+        # via Qt's standard focus traversal mechanism.
         super().keyPressEvent(event)
 
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
-        from tabs.session_picker.recent.selection import preview_selection
-
-        # Non-additive: band-only preview (clears prior highlight while dragging).
-        base = self._selected_paths if additive else set()
-        self._items.apply_selection(
-            preview_selection(base, paths, additive=additive)
-        )
+        selection_ops.on_marquee_preview(self, paths, additive)
 
     def _on_marquee_commit(self, paths: set[str], additive: bool) -> None:
-        if additive:
-            self._selected_paths |= paths
-        else:
-            self._selected_paths = set(paths)
-        self._items.apply_selection()
-        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        selection_ops.on_marquee_commit(self, paths, additive)
 
     def _clear_selection(self) -> None:
-        if not self._selected_paths:
-            return
-        self._selected_paths.clear()
-        self._items.apply_selection()
+        selection_ops.clear_selection(self)
 
     def _on_card_activate(
         self,
@@ -437,57 +508,95 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         missing: bool,
         modifiers=Qt.KeyboardModifier.NoModifier,
     ) -> None:
-        from tabs.session_picker.recent.selection import ctrl_held
+        selection_ops.on_card_activate(self, record, missing, modifiers)
 
-        if ctrl_held(modifiers):
-            path = record.path
-            if path in self._selected_paths:
-                self._selected_paths.discard(path)
-            else:
-                self._selected_paths.add(path)
-            self._items.apply_selection()
-            self.setFocus(Qt.FocusReason.MouseFocusReason)
-            return
-        self._clear_selection()
-        self._activate(record, missing)
+    def focus_recent_item(self, first: bool) -> bool:
+        """Focus the first (``first=True``) or last recent item card.
+
+        Returns False when the shelf is empty or has no live cards — the
+        caller (SessionPickerWidget) then falls back to wrapping within the
+        create-cards.
+        """
+        items = getattr(self, "_items", None)
+        if items is None or not getattr(items, "_records", None):
+            logger.debug(
+                "[shelf-nav] focus_recent_item first=%s -> False (empty shelf)", first
+            )
+            return False
+        result = items.navigate_focus(1 if first else -1)
+        logger.debug(
+            "[shelf-nav] focus_recent_item first=%s -> %s", first, result
+        )
+        return result
+
+    def focus_header_control(self, first: bool) -> bool:
+        """Focus the first or last visible header-bar control button.
+
+        Returns False when the header has no visible controls.
+        """
+        header = getattr(self, "_header", None)
+        if header is None:
+            logger.debug(
+                "[shelf-nav] focus_header_control first=%s -> False (no header)", first
+            )
+            return False
+        buttons = [
+            b
+            for b in (header.sort_button, header.sort_order_button, header.view_button)
+            if b.isVisible()
+        ]
+        if not buttons:
+            logger.debug(
+                "[shelf-nav] focus_header_control first=%s -> False (no visible buttons)", first
+            )
+            return False
+        buttons[0 if first else -1].setFocus(Qt.FocusReason.OtherFocusReason)
+        logger.debug(
+            "[shelf-nav] focus_header_control first=%s -> True (button=%s)",
+            first,
+            type(buttons[0 if first else -1]).__name__,
+        )
+        return True
+
+    def focus_header_control_near(self, column: int) -> bool:
+        """Focus the header-bar control nearest to *column* index.
+
+        Maps shelf grid columns to header buttons: leftmost column →
+        first button, rightmost → last button.
+        """
+        header = getattr(self, "_header", None)
+        if header is None:
+            return False
+        buttons = [
+            b
+            for b in (header.sort_button, header.sort_order_button, header.view_button)
+            if b.isVisible()
+        ]
+        if not buttons:
+            return False
+        idx = min(column, len(buttons) - 1)
+        buttons[idx].setFocus(Qt.FocusReason.OtherFocusReason)
+        logger.debug(
+            "[shelf-nav] focus_header_control_near col=%d -> button %d/%d",
+            column, idx, len(buttons),
+        )
+        return True
+
+    def set_keyboard_handoff(self, callback) -> None:
+        """Set a callback invoked when keyboard navigation would leave the
+        shelf going upward/leftward past the first item (hands focus back to
+        the create-cards)."""
+        if getattr(self, "_items", None) is not None:
+            self._items._keyboard_handoff = callback
 
     def _activate(self, record: RecentProjectRecord, missing: bool) -> None:
-        # Re-check on disk: cards can stay "alive" after the file was deleted.
-        exists = Path(record.path).is_file()
-        if missing or not exists:
-            # Keep the pinned entry. Removal is only via the context menu.
-            # If the card still looked "alive", rebuild into the missing state.
-            if not missing:
-                self.refresh()
-            return
-        if self._on_open is not None:
-            self._on_open(record.path)
+        selection_ops.activate(self, record, missing)
 
     def _show_context_menu(self, record: RecentProjectRecord) -> None:
-        selected = set(self._selected_paths)
-        if record.path not in selected:
-            # Right-click outside the current selection → single-item menu.
-            selected = set()
-        open_recent_project_menu(
-            source_widget=self.window() or self,
-            record=record,
-            tr=self._tr,
-            on_open=lambda r: self._activate(r, missing=False),
-            on_remove=self._remove_record,
-            selected_paths=selected,
-            on_remove_selected=self._remove_selected_paths,
-        )
+        selection_ops.show_context_menu(self, record)
 
     def _remove_record(self, record: RecentProjectRecord) -> None:
-        remove_recent_project(record.path)
-        self._selected_paths.discard(record.path)
-        self.refresh()
+        selection_ops.remove_record(self, record)
 
     def _remove_selected_paths(self) -> None:
-        paths = list(self._selected_paths)
-        if not paths:
-            return
-        for path in paths:
-            remove_recent_project(path)
-        self._selected_paths.clear()
-        self.refresh()
+        selection_ops.remove_selected_paths(self)

@@ -16,7 +16,7 @@ def _canvas_stub():
     leaf = LeafNode(1)
     rect = QRect(0, 0, 100, 100)
     state = MultiCompareState(
-        slots=[CompareSlot(id=1, path=None, label="A", image=None)],
+        slots=[CompareSlot(id=1, path=None, label="A")],
         root=leaf,
     )
     return SimpleNamespace(

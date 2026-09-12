@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single render runtime context builder for RHI"
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ from ui.canvas_infra.viewport.state import (
     get_zoom_level,
 )
 from ui.canvas_presentation.render_arch import (
+    RenderIntent,
     build_render_intent,
 )
 from tabs.image_compare.canvas.render_arch import (
@@ -26,7 +28,8 @@ from tabs.image_compare.canvas.render_arch import (
 )
 
 from .render_config import update_display_split_position
-from ui.widgets.canvas.render_metrics import RenderMetrics
+from ui.canvas_infra.rhi.render_metrics import RenderMetrics
+from shared.rendering.render_debug import rhi_render_debug
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
     upload_pil_images,
@@ -236,6 +239,17 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         if fill is not None and len(fill) >= 4 and float(fill[3]) > 0
         else (0.0, 0.0, 0.0, 0.0)
     )
+    rhi_render_debug(
+        "letterbox_uniforms widget=%dx%d shader_mode=%s letterbox1=%r letterbox2=%r "
+        "canvas_letterbox=%r content_rect_px=%r",
+        widget.width(),
+        widget.height(),
+        bool(state._shader_letterbox_mode),
+        letterbox1,
+        letterbox2,
+        canvas_letterbox,
+        getattr(state, "_content_rect_px", None),
+    )
     # Base shader compares spit in letterboxed image UV (magnifier parity).
     # DividerPass still reads display_split_position for the white line.
     content_split = float(scene_frame.split_position_visual)
@@ -436,6 +450,63 @@ def request_update(widget):
         state._update_pending = True
         return
     widget.update()
+    _schedule_glass_settle_frame(widget)
+
+
+def _schedule_glass_settle_frame(widget):
+    """One extra repaint, one event-loop turn after this real content
+    update -- lets the CPU-readback display path
+    (ui/widgets/glass_hud/panel_display.py's GlassPanelDisplayWidget, see
+    docs/dev/KNOWN_BUGS.md's "QRhiWidget/QOpenGLWidget can't alpha-blend
+    against sibling widgets" entry) catch up to the composite this frame's
+    own render_backdrops() call just produced.
+
+    shared.rendering.glass_panel's render_backdrops() now runs *after*
+    this frame's own main pass (moved there -- see that module's own
+    "Timing" docstring section for why the earlier "before the main pass,
+    reads the *previous* frame's colorTexture()" version wasn't actually
+    load-bearing), so its composite already reflects this exact frame's
+    content. render_backdrops() also now collects every panel's
+    composite_tex readback *synchronously* (a single `rhi.finish()` right
+    after issuing them, then reading `.data` immediately -- see that
+    module's render_backdrops() docstring) instead of polling it on the
+    next call, so `ready_images` is fully up to date by the time
+    render_backdrops() itself returns -- no more colorTexture-staleness or
+    readback-collection gap to catch up to.
+
+    What this settle frame still covers: GlassPanelDisplayWidget is a
+    *sibling* widget, not the RHI canvas itself, so it only repaints when
+    something schedules its own `update()` -- render_backdrops() finishing
+    with fresh data doesn't by itself trigger that. This one extra
+    QTimer.singleShot(0, ...) repaint is what makes that catch-up paint
+    happen shortly after a real content update, without stacking one per
+    update() during a fast burst (see the single pending-flag note below).
+
+    Without any settle frame at all, the backdrop is stuck stale as soon
+    as the canvas goes idle: render_backdrops() only runs as part of the
+    canvas's own repaint, and with no continuous render loop (this canvas
+    is purely on-demand -- see
+    docs/dev/rendering/investigations/glass-panel-backdrop-self-reference.md),
+    nothing repaints again after the last real content change on its own.
+
+    A single pending flag (not re-armed on every request_update()) so a
+    burst of updates during active interaction doesn't stack up N settle
+    frames -- just one, shortly after the burst ends. No-op if no glass
+    panel is currently registered (nothing to catch up for).
+    """
+    glass_panels = getattr(widget, "glass_panels", None)
+    if not glass_panels or not glass_panels.items():
+        return
+    state = widget.runtime_state
+    if getattr(state, "_glass_settle_pending", False):
+        return
+    state._glass_settle_pending = True
+
+    def _settle():
+        state._glass_settle_pending = False
+        widget.update()
+
+    QTimer.singleShot(0, _settle)
 
 
 def emit_viewport_state_change(widget):

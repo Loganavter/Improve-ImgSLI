@@ -98,7 +98,7 @@ def _set_snapshot_capture_state(snap, state: CaptureWidgetState) -> None:
     view_state = snap.viewport_state.view_state
     canvas_widget_state = dict(getattr(view_state, "canvas_widget_state", None) or {})
     canvas_widget_state["capture"] = state
-    view_state.canvas_widget_state = canvas_widget_state
+    setattr(view_state, "canvas_widget_state", canvas_widget_state)
 
 
 def build_capture_properties() -> tuple[CanvasFeatureProperty, ...]:

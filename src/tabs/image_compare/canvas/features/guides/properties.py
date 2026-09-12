@@ -16,7 +16,7 @@ def set_snapshot_guides_state(snap, state: GuidesWidgetState) -> None:
     view_state = snap.viewport_state.view_state
     canvas_widget_state = dict(getattr(view_state, "canvas_widget_state", None) or {})
     canvas_widget_state["guides"] = state
-    view_state.canvas_widget_state = canvas_widget_state
+    setattr(view_state, "canvas_widget_state", canvas_widget_state)
 
 
 def track_descriptor(track_id: str, label: str, kind: str) -> TrackDescriptor:

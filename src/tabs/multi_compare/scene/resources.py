@@ -12,6 +12,8 @@ from PySide6.QtGui import (
     QShader,
 )
 
+from shared.rendering.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
+
 SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders" / "qrhi"
 VERTEX_STRIDE = 16
 FULLSCREEN_VERTICES = struct.pack(
@@ -41,13 +43,16 @@ FULLSCREEN_VERTICES = struct.pack(
 # (0,0,1,1) + slotRect covering content reproduces a single full-bleed cell.
 SLOT_UNIFORM_SIZE = 144
 OVERLAY_UNIFORM_SIZE = 64
-# Mirrors image_compare's rhi_renderer/resources.py _LIVE_TILE_EXTENT /
-# _TILE_CACHE_BUDGET_BYTES (docs/dev/TILED_RENDERING_DESIGN.md Phase 2):
-# fixed tile size so residency/eviction behavior is deterministic across
-# machines, clamped by the backend's real max texture size defensively at
-# renderer initialize() time. Budget is shared across every slot's resident
-# tiles combined, since GPU memory is one pool, not N independent ones.
-SLOT_LIVE_TILE_EXTENT = 8192
+# Aliases shared.rendering.tile_constants.LIVE_TILE_EXTENT (was a forked
+# literal until 2026-07-25 -- see docs/dev/rendering/tile-rendering-system.md
+# "Host vs GPU tile granularity"; pinned equal by
+# tests/contracts/test_tile_constants.py). Fixed tile size so
+# residency/eviction behavior is deterministic across machines, clamped by
+# the backend's real max texture size defensively at renderer initialize()
+# time. Budget (_TILE_CACHE_BUDGET_BYTES) is shared across every slot's
+# resident tiles combined, since GPU memory is one pool, not N independent
+# ones.
+SLOT_LIVE_TILE_EXTENT = _LIVE_TILE_EXTENT
 SLOT_TILE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
 SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
 

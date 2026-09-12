@@ -30,13 +30,13 @@ class ImageComparePopupClosing:
         except Exception:
             pass
         try:
-            if host._magn_popup_open and host.magnifier_visibility_flyout is not None:
-                self.manager.magnifier.hide(reason="hide_transient_same_window_ui")
+            if host._magn_popup_open and self.widget.magnifier_visibility_flyout is not None:
+                self.manager.panel_visibility.hide(reason="hide_transient_same_window_ui")
         except Exception:
             pass
         try:
             if host._magn_instances_popup_open:
-                self.manager.magnifier_instances.hide()
+                self.manager.panel_instances.hide()
         except Exception:
             pass
 
@@ -45,7 +45,7 @@ class ImageComparePopupClosing:
         # Rename / properties open a modal dialog; focus leaves the flyout but
         # the list must stay up for the duration of that prompt.
         app = QApplication.instance()
-        if app is not None and app.activeModalWidget() is not None:
+        if isinstance(app, QApplication) and app.activeModalWidget() is not None:
             return True
         if new_widget is not None and sip.isValid(new_widget):
             try:
@@ -64,7 +64,7 @@ class ImageComparePopupClosing:
                     if parent is unified:
                         return True
                     parent = parent.parent()
-        magnifier_flyout = host.magnifier_visibility_flyout
+        magnifier_flyout = self.widget.magnifier_visibility_flyout
         if self._visible(magnifier_flyout) and new_widget is not None:
             parent = new_widget
             while parent is not None:

@@ -19,15 +19,9 @@ def has_initial_canvas_content(store: Any) -> bool:
         or 0
     )
     if single_mode == 1:
-        return bool(
-            getattr(document, "image1_path", None)
-            or getattr(document, "original_image1", None)
-        )
+        return bool(getattr(document, "image1_path", None))
     if single_mode == 2:
-        return bool(
-            getattr(document, "image2_path", None)
-            or getattr(document, "original_image2", None)
-        )
+        return bool(getattr(document, "image2_path", None))
     return False
 
 

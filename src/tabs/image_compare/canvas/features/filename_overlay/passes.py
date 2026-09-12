@@ -3,7 +3,13 @@ from __future__ import annotations
 import struct
 
 from PySide6.QtCore import QRectF
-from PySide6.QtGui import QColor, QFontMetrics, QRhiCommandBuffer, QRhiViewport
+from PySide6.QtGui import (
+    QColor,
+    QFontMetrics,
+    QRhiCommandBuffer,
+    QRhiDepthStencilClearValue,
+    QRhiViewport,
+)
 
 from ui.canvas_presentation.filename_labels import (
     font_for_style,
@@ -14,8 +20,15 @@ from ui.canvas_presentation.filename_labels import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from shared.rendering.uniform_layout import assert_uniform_size
 from tabs.image_compare.canvas.features.filename_overlay.render.gpu_resources import (
+    _UNIFORM_SIZE,
     FilenameOverlayGpuResources,
+)
+
+_MATRIX_UNIFORM_FMT = "<16f"
+assert_uniform_size(
+    _MATRIX_UNIFORM_FMT, _UNIFORM_SIZE, label="FilenameOverlayGpuResources uniform"
 )
 from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
     build_quad_vertices,
@@ -115,8 +128,18 @@ class FilenameOverlayPass(CanvasRenderPass):
                 left = r.left() - ctx.canvas_offset_x
                 top = r.top() - ctx.canvas_offset_y
                 return QRectF(left, top, r.width(), r.height())
-            left = wcx + (r.left() - wcx) * zoom + pan_x * canvas_w - ctx.canvas_offset_x
-            top = wcy + (r.top() - wcy) * zoom + pan_y * canvas_h - ctx.canvas_offset_y
+            left = (
+                wcx
+                + (r.left() - wcx) * zoom
+                + pan_x * canvas_w * zoom
+                - ctx.canvas_offset_x
+            )
+            top = (
+                wcy
+                + (r.top() - wcy) * zoom
+                + pan_y * canvas_h * zoom
+                - ctx.canvas_offset_y
+            )
             return QRectF(left, top, r.width() * zoom, r.height() * zoom)
 
         name1 = str(getattr(cfg, "name1", "") or "")
@@ -178,7 +201,8 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
 
         matrix = struct.pack(
-            "<16f", *tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data())
+            _MATRIX_UNIFORM_FMT,
+            *tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data()),
         )
         resource_updates.updateDynamicBuffer(self._gpu.uniform_buffer, 0, matrix)
 
@@ -193,7 +217,7 @@ class FilenameOverlayPass(CanvasRenderPass):
             cache_key = (name, rw, rh, font_key, round(dpr, 3))
 
             if slot.content_key != cache_key:
-                image = rasterize_label(
+                image, final_size = rasterize_label(
                     name,
                     rw,
                     rh,
@@ -206,9 +230,14 @@ class FilenameOverlayPass(CanvasRenderPass):
                     font_weight,
                     dpr,
                 )
-                phys_size = image.size()
-                self._gpu.ensure_slot_texture(slot, phys_size)
-                resource_updates.uploadTexture(slot.texture, image)
+                self._gpu.ensure_slot_textures(slot, image.size(), final_size)
+                # NOT resource_updates.uploadTexture() here -- that shared
+                # batch only actually submits alongside the *main* pass's
+                # beginPass, which runs after record_pre_pass()'s own
+                # downsample read of this texture. See LabelSlot.
+                # pending_upload_image's docstring.
+                slot.pending_upload_image = image
+                slot.needs_downsample = True
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
@@ -217,6 +246,49 @@ class FilenameOverlayPass(CanvasRenderPass):
             slot.vertices = vertices
             slot.smooth = bool(apply_transform)
             slot.active = True
+
+    def record_pre_pass(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
+        if self._gpu.pipeline is None:
+            return
+        # Lanczos-2 downsample: raw_texture (supersampled, uploaded right
+        # below) -> texture (device res, what record()'s main draw samples)
+        # -- see render/gpu_resources.py's LabelSlot docstring. Only for
+        # slots whose content actually changed this call (prepare() sets
+        # needs_downsample/pending_upload_image). Must run here, before the
+        # main scene pass opens -- QRhi passes can't nest (see
+        # CanvasRenderPass.record_pre_pass's own docstring), and record()
+        # itself is only ever called *inside* that already-open main pass.
+        for slot in self._gpu.slots:
+            if not slot.needs_downsample:
+                continue
+            slot.needs_downsample = False
+            # Own resourceUpdate(), submitted right here rather than queued
+            # into prepare()'s shared batch -- that batch only actually
+            # submits alongside the *main* pass's beginPass, which runs
+            # *after* this method, so the upload wouldn't be visible yet to
+            # the downsample read below if left there. See
+            # pending_upload_image's docstring.
+            raw_updates = self._gpu.rhi.nextResourceUpdateBatch()
+            raw_updates.uploadTexture(slot.raw_texture, slot.pending_upload_image)
+            command_buffer.resourceUpdate(raw_updates)
+            slot.pending_upload_image = None
+            command_buffer.beginPass(
+                slot.downsample_target,
+                QColor(0, 0, 0, 0),
+                QRhiDepthStencilClearValue(1.0, 0),
+            )
+            command_buffer.setGraphicsPipeline(slot.downsample_pipeline)
+            command_buffer.setViewport(
+                QRhiViewport(
+                    0.0,
+                    0.0,
+                    float(slot.texture_size.width()),
+                    float(slot.texture_size.height()),
+                )
+            )
+            command_buffer.setShaderResources(slot.srb_downsample)
+            command_buffer.draw(3)
+            command_buffer.endPass()
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
         if self._gpu.pipeline is None:

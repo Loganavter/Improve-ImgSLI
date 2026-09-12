@@ -12,7 +12,7 @@ from PIL import Image
 
 from shared.image_processing.store_lease import StoreLease
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.regions import build_uniform_tile_grid
+from shared.image_processing.regions import build_uniform_tile_grid
 from shared.analysis.differ import (
     SSIM_TILE_MAX_EXTENT,
     _prepare_ssim_tile_for_output,
@@ -136,6 +136,6 @@ def create_ssim_map_from_sources(
         (time.perf_counter() - total_started_at) * 1000.0,
     )
     _ = font_path
-    from shared.analysis.diff_source import finalize_diff_output
+    from shared.analysis.output import finalize_diff_output
 
     return finalize_diff_output(result, channels=1)

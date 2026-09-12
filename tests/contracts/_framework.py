@@ -102,3 +102,221 @@ def feature_name(feature_dir: Path) -> str | None:
         if m:
             return m.group(1)
     return None
+
+# ---------------------------------------------------------------------------
+# Settings persistence contract — shared scanners (see CONTRACTS.md
+# "Settings persistence contract"). Contract tests AND the runtime full-pass
+# sweep must read the settings surface through these helpers so they cannot
+# drift apart.
+# ---------------------------------------------------------------------------
+
+SETTINGS_TYPE_NAMES = {"str", "int", "float", "bool"}
+
+MANAGER_PATH = SRC / "plugins" / "settings" / "manager.py"
+SERVICE_PATH = SRC / "plugins" / "settings" / "application_service.py"
+MUTATIONS_PATH = SRC / "plugins" / "settings" / "mutations.py"
+STORE_SETTINGS_PATH = SRC / "core" / "store_settings.py"
+
+#: SettingsState fields that legitimately never reach SettingsManager:
+#: runtime-transient values only. Adding a field here requires a comment.
+TRANSIENT_STORE_SETTINGS = {
+    "export_resolution_scale",  # per-export scale, recomputed each export
+}
+
+#: SettingsState fields persisted out-of-band (JSON blobs, not scalar keys).
+JSON_PERSISTED_STORE_SETTINGS = {
+    "keyboard_overrides",  # saved via _save_keyboard_overrides (JSON)
+}
+
+
+SETTINGS_TYPE_NAMES = {"str", "int", "float", "bool"}
+
+MANAGER_PATH = SRC / "plugins" / "settings" / "manager.py"
+SERVICE_PATH = SRC / "plugins" / "settings" / "application_service.py"
+MUTATIONS_PATH = SRC / "plugins" / "settings" / "mutations.py"
+STORE_SETTINGS_PATH = SRC / "core" / "store_settings.py"
+
+#: SettingsState fields that legitimately never reach SettingsManager —
+#: runtime-transient values only. Mirrors the manifest documented in
+#: docs/dev/CONTRACTS.md §Settings persistence contract. Adding a field here
+#: requires a reason; the contract fails for any OTHER uncovered field.
+TRANSIENT_STORE_SETTINGS: dict[str, str] = {
+    "export_resolution_scale": (
+        "per-export resolution scale, recomputed from the export dialog for "
+        "each export — a session value, not a user preference"
+    ),
+}
+
+#: SettingsState fields persisted OUT of the scalar key/value pass — stored
+#: as structured blobs by dedicated SettingsManager helpers
+#: (``_load_<name>`` / ``_save_<name>``), not via ``_get_setting``/
+#: ``_save_setting``. Mirrors docs/dev/CONTRACTS.md §Settings persistence
+#: contract.
+JSON_PERSISTED_STORE_SETTINGS: dict[str, str] = {
+    "keyboard_overrides": (
+        "action_id -> shortcut-chord map, saved as JSON via "
+        "_load_keyboard_overrides / _save_keyboard_overrides"
+    ),
+}
+
+
+def _method_node(tree: ast.Module, class_name: str, method_name: str):
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ClassDef)
+            and node.name == class_name
+            and any(
+                isinstance(n, ast.FunctionDef) and n.name == method_name
+                for n in node.body
+            )
+        ):
+            return next(
+                n for n in node.body if isinstance(n, ast.FunctionDef) and n.name == method_name
+            )
+    return None
+
+
+def settings_load_pairs(tree: ast.Module) -> list[dict]:
+    """(field, scope, key, type_name) for every typed load in load_all_settings.
+
+    Resolves both direct assignments (``s.x = self._get_setting(...)``),
+    wrapped loads (``s.x = hex_to_color(self._get_setting(...))``) and
+    name-indirection (``name = self._get_setting(...); render.x = name``).
+    """
+    fn = _method_node(tree, "SettingsManager", "load_all_settings")
+    if fn is None:
+        return []
+    # name -> (key, type_name) for simple alias assignments.
+    aliases: dict[str, tuple[str | None, str | None]] = {}
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Call)
+            and _is_get_setting_call(node.value)
+        ):
+            key = _literal_str(node.value.args[0])
+            third = node.value.args[2]
+            type_name = third.id if isinstance(third, ast.Name) else None
+            aliases[node.targets[0].id] = (key, type_name)
+
+    pairs: list[dict] = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Attribute):
+            continue
+        scope = target.value.id if isinstance(target.value, ast.Name) else None
+        if scope not in ("s", "render", "view"):
+            continue
+        key = _load_key_from_subtree(node.value, aliases)
+        if key is None:
+            continue
+        type_name = _load_type_from_subtree(node.value, aliases)
+        pairs.append(
+            {"field": target.attr, "scope": scope, "key": key, "type": type_name}
+        )
+    return pairs
+
+
+def _is_get_setting_call(call: ast.Call) -> bool:
+    return (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "_get_setting"
+        and len(call.args) == 3
+    )
+
+
+def _literal_str(node: ast.expr | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _load_key_from_subtree(node: ast.expr, aliases: dict) -> str | None:
+    if isinstance(node, ast.Name):
+        key, _type = aliases.get(node.id, (None, None))
+        return key
+    if isinstance(node, ast.Call):
+        if _is_get_setting_call(node):
+            return _literal_str(node.args[0])
+        for arg in node.args:
+            key = _load_key_from_subtree(arg, aliases)
+            if key is not None:
+                return key
+        for kw in node.keywords:
+            key = _load_key_from_subtree(kw.value, aliases)
+            if key is not None:
+                return key
+    return None
+
+
+def _load_type_from_subtree(node: ast.expr, aliases: dict) -> str | None:
+    if isinstance(node, ast.Name):
+        _key, type_name = aliases.get(node.id, (None, None))
+        return type_name
+    if isinstance(node, ast.Call):
+        if _is_get_setting_call(node):
+            third = node.args[2]
+            return third.id if isinstance(third, ast.Name) else None
+        for arg in node.args:
+            t = _load_type_from_subtree(arg, aliases)
+            if t is not None:
+                return t
+    return None
+
+
+def settings_save_keys(tree: ast.Module) -> set[str]:
+    """Literal keys written by save_all_settings."""
+    fn = _method_node(tree, "SettingsManager", "save_all_settings")
+    if fn is None:
+        return set()
+    keys: set[str] = set()
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "_save_setting"
+        ):
+            key = _literal_str(node.value.args[0])
+            if key is not None:
+                keys.add(key)
+    return keys
+
+
+def settings_incremental_save_keys(tree: ast.Module) -> set[str]:
+    """Literal keys saved outside the master pass (incremental apply paths)."""
+    keys: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "_save_setting"
+        ):
+            key = _literal_str(node.value.args[0])
+            if key is not None:
+                keys.add(key)
+    return keys
+
+
+def store_settings_field_names(tree: ast.Module) -> list[str]:
+    """Field names of the SettingsState dataclass, in declaration order."""
+    cls = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "SettingsState"
+        ),
+        None,
+    )
+    if cls is None:
+        return []
+    fields = []
+    for node in cls.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            fields.append(node.target.id)
+    return fields

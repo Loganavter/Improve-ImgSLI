@@ -37,7 +37,6 @@ from events.app_event.common import (
     clear_presenter_render_snapshots,
     emit_update_request,
     get_event_bus,
-    get_main_controller,
 )
 from tabs.image_compare.events.canvas_helpers import (
     get_image_canvas_presenter,
@@ -51,6 +50,7 @@ from events.app_event.interactive_movement_input import (
     resolve_movement_directions,
 )
 from events.app_event.interactive_movement_math import damp, damp_vector, is_close
+from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 from tabs.image_compare.canvas.registry import registry
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -96,7 +96,13 @@ class InteractiveMovementController:
         dispatcher = getattr(self.store, "_dispatcher", None)
         if dispatcher is None:
             return False
-        dispatcher.dispatch(action, scope="viewport")
+        # See magnifier/commands/common.py:dispatch_viewport_action — same
+        # fix, same reasoning: every call site here is a per-tick visual
+        # state update (offset/spacing/split, driven by an 8ms movement
+        # timer) always followed by emit_viewport_change("interaction"),
+        # so the dispatch itself should carry that scope too instead of
+        # the unfiltered bare "viewport" one.
+        dispatcher.dispatch(action, scope="viewport.interaction")
         return True
 
     def _set_interactive_mode(self, enabled: bool) -> None:
@@ -122,14 +128,6 @@ class InteractiveMovementController:
             self._dispatch_viewport_action(SetSplitPositionVisualAction(split_visual))
 
     def start(self) -> None:
-        viewport_ctrl = getattr(
-            get_main_controller(self.presenter), "viewport_plugin", None
-        )
-        if viewport_ctrl is not None and hasattr(
-            viewport_ctrl, "begin_user_interaction"
-        ):
-            viewport_ctrl.begin_user_interaction()
-
         handler = _get_movement_handler(self.store)
         if handler is not None:
             offset = handler.get_offset()
@@ -159,12 +157,6 @@ class InteractiveMovementController:
             self._last_input_dirs = (0, 0, 0)
 
     def stop(self) -> None:
-        viewport_ctrl = getattr(
-            get_main_controller(self.presenter), "viewport_plugin", None
-        )
-        if viewport_ctrl is not None and hasattr(viewport_ctrl, "end_user_interaction"):
-            viewport_ctrl.end_user_interaction()
-
         if self.store.viewport.interaction_state.is_interactive_mode:
             self._set_interactive_mode(False)
             self.store.emit_viewport_change("interaction")
@@ -235,11 +227,13 @@ class InteractiveMovementController:
         )
         dx_dir, dy_dir, ds_dir = directions.as_tuple()
         if directions.is_zero():
-            self._log_input_resolution(keys, dx_dir, dy_dir, ds_dir, note="zero_dirs")
+            self._log_input_resolution(
+                keys, dx_dir, dy_dir, ds_dir, note="zero_dirs", offset=handler.get_offset()
+            )
             self._last_input_dirs = (0, 0, 0)
             return False
 
-        self._log_input_resolution(keys, dx_dir, dy_dir, ds_dir)
+        self._log_input_resolution(keys, dx_dir, dy_dir, ds_dir, offset=handler.get_offset())
 
         speed_factor = compute_speed_factor(self.store.viewport.view_state)
 
@@ -305,7 +299,7 @@ class InteractiveMovementController:
 
     def _should_finish_cycle(self, delta_time_sec: float, handler) -> bool:
         interaction_state = getattr(self.store.viewport, "interaction_state", None)
-        pressed_keys_set = (
+        pressed_keys_set: set = (
             getattr(interaction_state, "pressed_keys", set())
             if interaction_state is not None
             else set()
@@ -450,6 +444,7 @@ class InteractiveMovementController:
         ds_dir: int,
         *,
         note: str | None = None,
+        offset=None,
     ) -> None:
         interaction = self.store.viewport.interaction_state
         signature = (
@@ -477,6 +472,17 @@ class InteractiveMovementController:
         if signature == self._last_debug_signature:
             return
         self._last_debug_signature = signature
+        if tile_dump_enabled():
+            log_tile_event(
+                "magnifier.movement_input",
+                keys=sorted(int(key) for key in keys),
+                dx_dir=int(dx_dir),
+                dy_dir=int(dy_dir),
+                ds_dir=int(ds_dir),
+                note=note or "",
+                offset_x=None if offset is None else offset.x,
+                offset_y=None if offset is None else offset.y,
+            )
 
 
 def build_controller(store, *, presenter_provider, parent=None):

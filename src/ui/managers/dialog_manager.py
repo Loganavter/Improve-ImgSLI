@@ -52,6 +52,8 @@ class DialogManager:
         *,
         page: str | None = None,
         anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
     ):
         if self.host.main_controller is None:
             logger.warning("UIManager.show_help_dialog: plugin coordinator is unavailable")
@@ -65,6 +67,8 @@ class DialogManager:
                 language=self.host.store.settings.current_language,
                 page=page,
                 anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
             )
         except Exception as e:
             logger.error("UIManager.show_help_dialog failed: %s", e)
@@ -85,7 +89,7 @@ class DialogManager:
             if _get_guides_state is not None
             else type("_Fallback", (), {"smoothing_enabled": False})()
         )
-        magnifier_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
+        behavior_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
         auto_calculate_psnr, auto_calculate_ssim = self._query_metrics_settings()
 
         if self.host._settings_application_service is None:
@@ -105,7 +109,6 @@ class DialogManager:
             system_notifications_enabled=getattr(
                 self.host.store.settings, "system_notifications_enabled", True
             ),
-            current_resolution_limit=self.host.store.viewport.render_config.display_resolution_limit,
             parent=self.host.parent_widget,
             tr_func=tr,
             current_ui_font_mode=getattr(
@@ -114,6 +117,9 @@ class DialogManager:
             current_ui_font_family=getattr(
                 self.host.store.settings, "ui_font_family", ""
             ),
+            current_ui_scale_factor=getattr(
+                self.host.store.settings, "ui_scale_factor", 1.0
+            ),
             current_ui_mode=getattr(self.host.store.settings, "ui_mode", "beginner"),
             optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_interactive_movement,
             movement_interpolation_method=self.host.store.viewport.render_config.interactive_movement_interpolation_method,
@@ -121,10 +127,10 @@ class DialogManager:
             interpolation_method=self.host.store.viewport.render_config.interpolation_method,
             zoom_interpolation_method=self.host.store.viewport.render_config.zoom_interpolation_method,
             magnifier_intersection_highlight_enabled=bool(
-                magnifier_settings.get("intersection_highlight_enabled", False)
+                behavior_settings.get("intersection_highlight_enabled", False)
             ),
             magnifier_auto_color_new_instances=bool(
-                magnifier_settings.get("auto_color_new_instances", False)
+                behavior_settings.get("auto_color_new_instances", False)
             ),
             auto_calculate_psnr=auto_calculate_psnr,
             auto_calculate_ssim=auto_calculate_ssim,
@@ -152,20 +158,27 @@ class DialogManager:
         return self.host._settings_dialog
 
     def show_settings_dialog(self, *, section_id: str | None = None):
+        import traceback
+
+        _caller = "".join(traceback.format_stack()[-4:-2])
         dialog = self._ensure_settings_dialog()
+        logger.debug(
+            "UIManager.show_settings_dialog showing dialog object=%s visible=%s caller=%s",
+            hex(id(dialog)) if dialog else "None",
+            dialog.isVisible() if dialog else False,
+            _caller.strip(),
+        )
         if dialog is None:
             return
-        logger.debug(
-            "UIManager.show_settings_dialog showing dialog object=%s visible=%s",
-            hex(id(dialog)),
-            dialog.isVisible(),
-        )
         sync = getattr(dialog, "sync_from_store", None)
         if callable(sync):
             sync()
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+        # The dialog itself requests Wayland activation + search-field focus
+        # in showEvent (deferred until the native window is mapped) — see
+        # SettingsDialog.showEvent / focus_initial_widget.
         if section_id:
             dialog.select_section(section_id)
 
@@ -186,6 +199,15 @@ class DialogManager:
         was_visible = dialog.isVisible()
         if section_id:
             dialog.select_section(section_id)
+        # Re-seed the dialog from the store before mutating the target
+        # member: this path applies ``get_settings()`` of the *whole*,
+        # possibly hidden, long-lived dialog, and stale widgets would
+        # silently overwrite good store values with their widget defaults
+        # (observed reset family: ui_mode -> beginner, ui_scale -> widget
+        # default, rhi_backend -> default; see SettingsDialog.sync_from_store).
+        sync = getattr(dialog, "sync_from_store", None)
+        if callable(sync):
+            sync()
         activated = activate_member_in_dialog(dialog, group_key, member_key)
         service = self.host._settings_application_service
         if activated and service is not None:

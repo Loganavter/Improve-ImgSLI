@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
@@ -53,7 +52,6 @@ class LayoutComposer:
     def _workspace_bar_widget(self, main_window: QWidget) -> QWidget:
         ui = self.ui
         ui.workspace_tabs.setParent(main_window)
-        ui.workspace_tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         ui.workspace_tabs_bar = ui.workspace_tabs
         return ui.workspace_tabs
 
@@ -91,6 +89,17 @@ class LayoutComposer:
                 activate=activate,
             )
 
+        def replace_workspace_session(
+            session_type: str, *, closing_session_id: str | None = None
+        ):
+            return (
+                _presenter()
+                .main_controller.workspace.replace_workspace_session(
+                    session_type,
+                    closing_session_id=closing_session_id,
+                )
+            )
+
         def close_workspace_session(session_id: str):
             return _presenter().main_controller.workspace.close_workspace_session(
                 session_id
@@ -104,10 +113,14 @@ class LayoutComposer:
                 else None
             )
 
-        def show_help_dialog(*, page: str | None = None, anchor: str | None = None):
+        def show_help_dialog(
+            *, page: str | None = None, anchor: str | None = None, video_url: str | None = None, learn_more_url: str | None = None
+        ):
             mgr = _ui_manager()
             if mgr is not None:
-                mgr.dialogs.show_help_dialog(page=page, anchor=anchor)
+                mgr.dialogs.show_help_dialog(
+                    page=page, anchor=anchor, video_url=video_url, learn_more_url=learn_more_url
+                )
 
         def show_settings_dialog(*, section_id: str | None = None):
             mgr = _ui_manager()
@@ -190,6 +203,7 @@ class LayoutComposer:
             services={
                 "list_session_blueprints": list_session_blueprints,
                 "create_workspace_session": create_workspace_session,
+                "replace_workspace_session": replace_workspace_session,
                 "close_workspace_session": close_workspace_session,
                 "show_help_dialog": show_help_dialog,
                 "show_settings_dialog": show_settings_dialog,
@@ -200,16 +214,17 @@ class LayoutComposer:
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
-        # The main-window shell (composer.py's "image_canvas" feature, etc.)
-        # is built before any workspace session exists to activate via
-        # `sync_session_mode()`. Seed whichever registered tab declares
-        # itself the bootstrap default (see `TabContract.is_bootstrap_default`)
-        # so `create_service`/`create_main_window_feature` — which resolve
-        # *only* against the active tab, see docs/dev/tabs/capability-mechanisms.md —
-        # have someone to route to during this bootstrap window. The first
-        # real `sync_session_mode()` call reconciles this with the actual
-        # initial session's type. Deliberately tab-name-agnostic: this file
-        # must not know which tab that is.
+        # Seed the bootstrap-default tab so that `create_service`
+        # (active-tab-only) has an active tab to route to during the narrow
+        # window before the first workspace session exists. Legacy shell
+        # construction (`create_startup_service` /
+        # `create_main_window_feature`) routes by capability, not by active
+        # tab (see docs/dev/tabs/capability-mechanisms.md), so it does not
+        # depend on this seeding — it succeeds purely because the tab that
+        # implements those shell capabilities answers. The first real
+        # `sync_session_mode()` call reconciles active with the actual initial
+        # session type. Deliberately tab-name-agnostic: this file must not
+        # know which tab that is (see `TabContract.is_bootstrap_default`).  # ALLOWED
         ui._tab_registry.activate_default()
 
         if event_bus is not None:
@@ -245,6 +260,8 @@ class LayoutComposer:
                     WorkspaceSessionActivatedEvent,
                     lambda e: dispatcher.bind_history_for_session(e.session_id),
                 )
+                if store is None:
+                    return
                 active = store.get_active_workspace_session()
                 if active is not None:
                     dispatcher.bind_history_for_session(active.id)

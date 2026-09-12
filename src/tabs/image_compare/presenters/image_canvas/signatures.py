@@ -2,6 +2,11 @@ from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
     read_canvas_feature_property,
 )
+from ui.canvas_infra.viewport.state import (
+    get_pan_offset_x,
+    get_pan_offset_y,
+    get_zoom_level,
+)
 from tabs.image_compare.canvas.registry import registry
 
 
@@ -258,6 +263,23 @@ def get_magnifier_signature(presenter):
     divider_thickness = int(
         _query_overlay(presenter.store, "overlay.active_divider_thickness", 0) or 0
     )
+    # Canvas zoom/pan live on the widget's ``_zoom_viewport_state``
+    # (ui/canvas_infra/viewport/state.py), not in ``presenter.store`` --
+    # ``rebuild_overlay()`` recomputes each magnifier's captured uv_rect
+    # from the current zoom/pan, so leaving these out of the signature let
+    # a canvas zoom/pan while a magnifier was active go unnoticed: the
+    # magnifier kept its pre-zoom capture geometry and only the shader's
+    # positional zoom uniform moved, producing visibly wrong/stale content.
+    image_label = getattr(getattr(presenter, "widget", None), "image_label", None)
+    zoom_for_sig = float(get_zoom_level(image_label) or 1.0) if image_label is not None else 1.0
+    pan_for_sig = (
+        (
+            float(get_pan_offset_x(image_label) or 0.0),
+            float(get_pan_offset_y(image_label) or 0.0),
+        )
+        if image_label is not None
+        else (0.0, 0.0)
+    )
     if magnifier is None:
         return (magnifier_enabled, magnifier_models_sig, None, None)
     interaction = vp.interaction_state
@@ -283,6 +305,8 @@ def get_magnifier_signature(presenter):
         magnifier["position"],
         magnifier["size_relative"],
         magnifier["capture_size_relative"],
+        zoom_for_sig,
+        pan_for_sig,
         offset_for_sig,
         spacing_for_sig,
         internal_split_for_sig,

@@ -45,10 +45,6 @@ def discover_help_figure_map_paths() -> tuple[Path, ...]:
     return tuple(paths)
 
 
-def help_figures_path() -> Path:
-    """Backward-compatible alias for the host map path."""
-    return host_help_figures_path()
-
 
 def _load_figures_file(path: Path) -> dict[str, str]:
     raw = json.loads(path.read_text(encoding="utf-8"))

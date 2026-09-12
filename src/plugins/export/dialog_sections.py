@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -22,14 +21,17 @@ from PySide6.QtWidgets import (
 from core.constants import AppConstants
 from plugins.export import layout_geometry as export_geo
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import (
     Button,
     CheckBox,
     ComboBox,
-    Slider,
+    CustomLineEdit,
+    Label,
 )
 from ui.icon_manager import AppIcon
 from ui.widgets.form_controls import DialogActionBar, OutputPathSection
+from ui.widgets.slider_hint import ValueSlider
 
 
 class _ExportPreviewLabel(QLabel):
@@ -55,10 +57,10 @@ def build_preview_pane(dialog) -> QFrame:
     left_frame.setObjectName("ExportPreviewFrame")
     dialog.export_preview_frame = left_frame
     left_layout = QVBoxLayout(left_frame)
-    left_layout.setContentsMargins(8, 8, 8, 8)
-    left_layout.setSpacing(8)
+    left_layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+    left_layout.setSpacing(scaled_px(8))
 
-    dialog.export_preview_title = QLabel(dialog._tr("export.preview", "Preview"))
+    dialog.export_preview_title = Label(dialog._tr("export.preview", "Preview"))
     dialog.export_preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.preview_label = _ExportPreviewLabel()
     dialog.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -79,7 +81,7 @@ def build_preview_pane(dialog) -> QFrame:
 
 
 def build_output_path_section(dialog) -> None:
-    dialog.output_section = OutputPathSection(
+    section = OutputPathSection(
         directory_label_text=dialog._tr("label.output_directory", "Output directory")
         + ":",
         browse_text=dialog._tr("button.browse", "Browse..."),
@@ -89,17 +91,10 @@ def build_output_path_section(dialog) -> None:
         on_browse=dialog._choose_directory,
         on_set_favorite=dialog._set_favorite_from_current,
         on_use_favorite=dialog._use_favorite_dir,
-        use_custom_line_edit=False,
-        filename_editor_factory=QLineEdit,
+        use_custom_line_edit=True,
+        filename_editor_factory=CustomLineEdit,
     )
-    dialog.dir_picker_row = dialog.output_section.dir_picker_row
-    dialog.edit_dir = dialog.output_section.edit_dir
-    dialog.btn_browse_dir = dialog.output_section.btn_browse_dir
-    dialog.favorite_actions = dialog.output_section.favorite_actions
-    dialog.btn_set_favorite = dialog.output_section.btn_set_favorite
-    dialog.btn_use_favorite = dialog.output_section.btn_use_favorite
-    dialog.name_label = dialog.output_section.filename_label
-    dialog.edit_name = dialog.output_section.filename_edit
+    section.apply_to(dialog)
     OUTPUT.tag_member(dialog.btn_browse_dir, "button.browse")
     OUTPUT.tag_member(dialog.btn_set_favorite, "misc.set_as_favorite")
     OUTPUT.tag_member(dialog.btn_use_favorite, "tooltip.use_favorite")
@@ -108,11 +103,10 @@ def build_output_path_section(dialog) -> None:
         dialog.btn_set_favorite,
         dialog.btn_use_favorite,
     )
-    dialog.output_section.lock_content_minimum_height()
 
 
 def build_format_row(dialog) -> None:
-    dialog.fmt_label = QLabel(dialog._tr("label.format", "Format") + ":")
+    dialog.fmt_label = Label(dialog._tr("label.format", "Format") + ":")
     dialog.combo_format = ComboBox()
     for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
         dialog.combo_format.addItem(fmt)
@@ -125,19 +119,19 @@ def build_resolution_row(dialog) -> None:
     dialog.resolution_row = QWidget()
     res_layout = QHBoxLayout(dialog.resolution_row)
     res_layout.setContentsMargins(0, 0, 0, 0)
-    res_layout.setSpacing(8)
-    dialog.resolution_label = QLabel(
+    res_layout.setSpacing(scaled_px(8))
+    dialog.resolution_label = Label(
         dialog._tr("label.resolution", "Resolution") + ":"
     )
     res_layout.addWidget(dialog.resolution_label)
-    dialog.edit_width = QLineEdit()
+    dialog.edit_width = CustomLineEdit()
     _max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
     dialog.edit_width.setValidator(QIntValidator(1, _max_dim))
-    dialog.edit_width.setFixedWidth(72)
+    dialog.edit_width.setFixedWidth(scaled_px(72))
     dialog.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    dialog.edit_height = QLineEdit()
+    dialog.edit_height = CustomLineEdit()
     dialog.edit_height.setValidator(QIntValidator(1, _max_dim))
-    dialog.edit_height.setFixedWidth(72)
+    dialog.edit_height.setFixedWidth(scaled_px(72))
     dialog.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.btn_lock_ratio = Button(
         icon=(AppIcon.UNLINK, AppIcon.LINK), toggle=True, size=(32, 32)
@@ -167,12 +161,17 @@ def build_quality_controls(dialog) -> None:
     dialog.quality_row = QWidget()
     quality_layout = QHBoxLayout(dialog.quality_row)
     quality_layout.setContentsMargins(0, 0, 0, 0)
-    quality_layout.setSpacing(8)
-    dialog.quality_label = QLabel(dialog._tr("label.quality", "Quality") + ":")
-    dialog.slider_quality = Slider(Qt.Orientation.Horizontal)
+    quality_layout.setSpacing(scaled_px(8))
+    dialog.quality_label = Label(dialog._tr("label.quality", "Quality") + ":")
+    dialog.slider_quality = ValueSlider(
+        Qt.Orientation.Horizontal,
+        # Raw value (matches the label next to it) instead of the default
+        # percent-of-span text.
+        hint_formatter=lambda s: str(s.value()),
+    )
     dialog.slider_quality.setRange(1, 100)
     dialog.slider_quality.setValue(95)
-    dialog.label_quality_value = QLabel("95")
+    dialog.label_quality_value = Label("95")
     dialog.slider_quality.valueChanged.connect(
         lambda v: dialog.label_quality_value.setText(str(v))
     )
@@ -185,14 +184,17 @@ def build_png_options(dialog) -> None:
     dialog.png_row = QWidget()
     png_layout = QHBoxLayout(dialog.png_row)
     png_layout.setContentsMargins(0, 0, 0, 0)
-    png_layout.setSpacing(8)
-    dialog.label_png_compress = QLabel(
+    png_layout.setSpacing(scaled_px(8))
+    dialog.label_png_compress = Label(
         dialog._tr("export.png_compression_level", "PNG Compression Level") + ":"
     )
-    dialog.slider_png_compress = Slider(Qt.Orientation.Horizontal)
+    dialog.slider_png_compress = ValueSlider(
+        Qt.Orientation.Horizontal,
+        hint_formatter=lambda s: str(s.value()),
+    )
     dialog.slider_png_compress.setRange(0, 9)
     dialog.slider_png_compress.setValue(9)
-    dialog.label_png_compress_value = QLabel("9")
+    dialog.label_png_compress_value = Label("9")
     dialog.slider_png_compress.valueChanged.connect(
         lambda v: dialog.label_png_compress_value.setText(str(v))
     )
@@ -214,7 +216,7 @@ def build_background_row(dialog) -> None:
         text=dialog._tr("export.background_color", "Background Color"),
         variant="surface",
     )
-    dialog.btn_bg_color.setMinimumHeight(32)
+    dialog.btn_bg_color.setMinimumHeight(scaled_px(32))
     dialog.btn_bg_color.clicked.connect(dialog._pick_bg_color)
 
     dialog.checkbox_fill_bg.toggled.connect(dialog._on_fill_background_toggled)
@@ -223,7 +225,7 @@ def build_background_row(dialog) -> None:
     dialog.bg_color_row = QWidget()
     bg_row = QVBoxLayout(dialog.bg_color_row)
     bg_row.setContentsMargins(0, 0, 0, 0)
-    bg_row.setSpacing(6)
+    bg_row.setSpacing(scaled_px(6))
     bg_row.addWidget(dialog.checkbox_fill_bg)
     bg_row.addWidget(dialog.btn_bg_color)
     dialog.current_bg_color = QColor(255, 255, 255, 255)
@@ -238,8 +240,8 @@ def build_metadata_block(dialog) -> None:
     )
     ACTIONS.tag_member(dialog.checkbox_include_metadata, "export.include_metadata")
 
-    dialog.comment_label = QLabel(dialog._tr("export.comment", "Comment") + ":")
-    dialog.edit_comment = QLineEdit()
+    dialog.comment_label = Label(dialog._tr("export.comment", "Comment") + ":")
+    dialog.edit_comment = CustomLineEdit()
     dialog.checkbox_comment_default = CheckBox(
         dialog._tr("export.remember_by_default", "Remember by default")
     )
@@ -268,9 +270,9 @@ def assemble_export_form(dialog) -> tuple[QFrame, QFrame]:
     right_frame.setFrameShape(QFrame.Shape.NoFrame)
     dialog.export_form_frame = right_frame
     right_layout = QVBoxLayout(right_frame)
-    right_layout.setContentsMargins(8, 8, 8, 8)
+    right_layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
     # Base gap between stacked rows; extra height goes to addStretch slots.
-    right_layout.setSpacing(8)
+    right_layout.setSpacing(scaled_px(8))
 
     build_output_path_section(dialog)
     build_format_row(dialog)
@@ -311,8 +313,8 @@ def assemble_export_form(dialog) -> tuple[QFrame, QFrame]:
 
 def assemble_export_ui(dialog) -> None:
     main_layout = QHBoxLayout(dialog)
-    main_layout.setContentsMargins(12, 12, 12, 12)
-    main_layout.setSpacing(12)
+    main_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
+    main_layout.setSpacing(scaled_px(12))
 
     left_frame, right_frame = assemble_export_form(dialog)
     main_layout.addWidget(left_frame, 1)

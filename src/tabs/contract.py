@@ -74,16 +74,19 @@ class TabContract(ABC):
 
     @property
     def is_bootstrap_default(self) -> bool:
-        """True if this tab should be the registry's active tab before any
-        workspace session exists to activate one via `sync_session_mode()`.
+        """True only for the tab that owns the pre-session workspace window.
 
-        `TabRegistry.create_service`/`create_main_window_feature` resolve
-        strictly against the active tab (see docs/dev/tabs/capability-mechanisms.md)
-        — during the narrow bootstrap window before the first session is
-        created, something still needs to answer main-window-shell feature
-        requests. Exactly one registered tab should return True here; the
-        host (`TabRegistry.activate_default`) picks whichever one does
-        without needing to name it.
+        This role is **reserved exclusively for ``session_picker``** — the
+        tab whose session ``core.store.INITIAL_WORKSPACE_SESSION_TYPE`` names
+        as the app's initial workspace session. ``TabRegistry.activate_default``
+        seeds ``_active_session_type`` from it for the narrow window before
+        the first real ``sync_session_mode()`` reconciles it, and
+        ``bootstrap_default_tab()`` resolves to it.
+
+        No other tab may claim it: ``TabRegistry._bootstrap_default_tab()``
+        raises if a non-``session_picker`` tab returns True here. Legacy
+        main-window shell construction is *not* routed through this flag —
+        it goes to the shell-host session type hardcoded in ``TabRegistry``.
         """
         return False
 
@@ -145,6 +148,15 @@ class TabContract(ABC):
 
     def on_window_shutdown(self, host_window) -> None:
         """Tear down tab-owned timers / threads when the host window closes."""
+
+    def on_resize_settled(self, viewport_state) -> None:
+        """Called after the window resize settles.  Tabs can update
+        overlays, placeholders, etc. here instead of the host reaching
+        into tab-specific widgets."""
+
+    def on_host_revealed(self) -> None:
+        """Called when the host window becomes visible after startup.
+        Tabs can refresh opaque fills, sync recent panels, etc."""
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         """Called when a new session of this tab's type is created."""
@@ -210,6 +222,25 @@ class TabContract(ABC):
         provider = self.get_canvas_geometry_provider()
         return provider is not None and provider.owns_widget(candidate)
 
+    def consumes_canvas_key_events(self) -> bool:
+        """True if this tab handles canvas key events via
+        `EventHandler.canvas_keyboard_press_event_signal` /
+        `canvas_keyboard_release_event_signal` (see `events/router.py`'s
+        `route_global_keyboard_event`).
+
+        When True, key presses/releases targeting a widget this tab
+        `owns_widget()` are swallowed by the app-wide event filter and
+        re-emitted as those signals instead of being delivered to the
+        widget's own `keyPressEvent`/`keyReleaseEvent` — so the tab must
+        connect to them (see `image_compare`'s
+        `CanvasLifecycleCoordinator.connect_event_handler_signals`).
+
+        Default False: key events reach the owned widget's own
+        `keyPressEvent`/`keyReleaseEvent` through normal Qt delivery, which
+        is what tabs that never wired the signal-based path expect.
+        """
+        return False
+
     def get_canvas_size(self) -> tuple[int, int] | None:
         provider = self.get_canvas_geometry_provider()
         return provider.get_size() if provider is not None else None
@@ -268,6 +299,14 @@ class TabContract(ABC):
         those must be regenerated from the persisted paths/settings on load.
         """
         return None
+
+    def collect_pixel_cache_sources(
+        self, session_id: str, context: TabContext
+    ) -> dict[str, Any]:
+        """Map absolute source path -> live, open ``TiledPixelStore`` for this
+        session, for tabs that support embedding a decode-skip cache in
+        project saves. Default: no sources (opt-in per tab)."""
+        return {}
 
     def deserialize_session(
         self, session_id: str, data: dict[str, Any], context: TabContext

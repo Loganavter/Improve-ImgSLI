@@ -7,16 +7,13 @@ from __future__ import annotations
 
 from PIL import Image
 
+import logging
+
 from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from shared.image_processing.resample_map import get_resample
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-_RESAMPLE = {
-    "NEAREST": Image.Resampling.NEAREST,
-    "BILINEAR": Image.Resampling.BILINEAR,
-    "BICUBIC": Image.Resampling.BICUBIC,
-    "LANCZOS": Image.Resampling.LANCZOS,
-    "EWA_LANCZOS": Image.Resampling.LANCZOS,
-}
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def _as_store(source) -> TiledPixelStore:
@@ -34,6 +31,8 @@ def prescale_pair(
     output_width: int,
     output_height: int,
     method_name: str = "LANCZOS",
+    *,
+    should_abort=None,
 ) -> tuple:
     """Scale *img1* and *img2* to one shared size within the output bounds.
 
@@ -62,15 +61,34 @@ def prescale_pair(
             max(1, int(src_h * ratio)),
         )
 
-    resample = _RESAMPLE.get(str(method_name).upper(), Image.Resampling.LANCZOS)
+    resample = get_resample(method_name)
     tw, th = target_size
 
     def _resize(source) -> TiledPixelStore:
         store_in = _as_store(source)
         if store_in.size == (tw, th):
             return store_in
-        out = TiledPixelStore.allocate(tw, th)
-        write_resampled_to_store(out, store_in, tw, th, resample)
+        try:
+            out = TiledPixelStore.allocate(tw, th)
+        except OSError as exc:
+            logger.warning("prescale memmap failed for %sx%s, returning original source: %s", tw, th, exc)
+            return store_in
+        try:
+            ok = write_resampled_to_store(out, store_in, tw, th, resample, should_abort=should_abort)
+        except OSError as exc:
+            logger.warning("prescale write failed, falling back to original source: %s", exc)
+            try:
+                out.close()
+            except Exception:
+                pass
+            return store_in
+        if not ok:
+            # Aborted (cancelled export) — don't burn CPU to completion.
+            try:
+                out.close()
+            except Exception:
+                pass
+            return store_in
         return out
 
     return _resize(img1), _resize(img2)

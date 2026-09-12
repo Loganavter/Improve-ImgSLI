@@ -176,7 +176,10 @@ def _format_caller(skip: int) -> str:
             module = frame.f_globals.get("__name__", "")
             if not any(module.startswith(p) for p in _SKIP_MODULE_PREFIXES):
                 return f"{module}:{frame.f_code.co_name}:{frame.f_lineno}"
-            frame = frame.f_back
+            back = frame.f_back
+            if back is None:
+                break
+            frame = back
     finally:
         del frame
     return "<unknown>"

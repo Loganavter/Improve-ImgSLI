@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea, QSizePolicy
 
 from plugins.settings.layout_geometry import apply_settings_dialog_geometry
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
 from sli_ui_toolkit.widgets import (
     DEFER_CLICK_AWAIT_RIPPLE,
+    CustomLineEdit,
     ScrollableDialogPage,
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon
+from ui.layout_spacing import control_edge_padding, sidebar_header_host
 from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar
 
@@ -17,7 +20,23 @@ def setup_dialog_shell(dialog):
     dialog.main_layout.setContentsMargins(0, 0, 0, 0)
     dialog.main_layout.setSpacing(0)
 
-    dialog.shell = SidebarDialogShell()
+    dialog.search_field = CustomLineEdit()
+    dialog.search_field.setPlaceholderText(
+        dialog.tr("settings.search_placeholder", dialog.current_language)
+    )
+    dialog.search_field.setClearButtonEnabled(True)
+    dialog.search_field.setObjectName("SettingsSearchField")
+
+    dialog.shell = SidebarDialogShell(
+        sidebar_header=sidebar_header_host(dialog.search_field),
+        resizable_sidebar=True,
+        content_margins=(
+            control_edge_padding(),
+            control_edge_padding(),
+            control_edge_padding(),
+            control_edge_padding(),
+        ),
+    )
     dialog.main_layout.addWidget(dialog.shell)
 
     dialog.sidebar = dialog.shell.sidebar
@@ -66,6 +85,18 @@ def create_scrollable_page():
     page.content_widget.setSizePolicy(
         QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding
     )
+    # QScrollArea defaults to StrongFocus, so clicking empty space between
+    # controls parks real Qt focus on the bare scroll container itself
+    # instead of any actual row/control. A NavigationSection registered on
+    # the page (see pages/keyboard.py) only recognizes its own row widgets
+    # via owns() — it never claims the scroll area, so arrow keys pressed
+    # right after such a click go nowhere (NavigationManager finds no owner
+    # and yields to native QAbstractScrollArea scrolling instead of routing
+    # into the section). NavigationManager's own click-realign path already
+    # exists to land focus on the nearest real control after a click on
+    # non-focusable padding — but only fires when the scroll container
+    # itself can't out-compete it for focus first.
+    page.scroll_area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return page, page.content_layout
 
 def page_scroll_area(page):

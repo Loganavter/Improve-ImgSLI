@@ -120,9 +120,11 @@ def test_mode_picker_opens_left_aligned_under_button(qtbot, monkeypatch):
     assert calls[0]["anchor"] is button
     assert calls[0]["anchor_point"] == "bottom-left"
     assert calls[0]["flyout_point"] == "top-left"
-    assert calls[0]["offset"] == 2
-    assert calls[0]["animation"] == "slide"
-    assert calls[0]["animation_axis"] == "vertical"
+    assert calls[0]["offset"] == 16
+    # No explicit animation override: mode picker defers to the process-wide
+    # default_flyout_animation (the app's "fade"), like every other flyout.
+    assert calls[0]["animation"] is None
+    assert calls[0]["animation_axis"] is None
 
 
 def test_mode_picker_choose_data_emits_and_hides(qtbot):

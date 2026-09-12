@@ -19,8 +19,8 @@ def test_repo_has_base_canvas_qsb() -> None:
     repo = Path(__file__).resolve().parents[2]
     mod = _load_validator()
     rels = {str(p).replace("\\", "/") for p in mod.expected_qsb_relpaths(repo)}
-    assert "tabs/image_compare/canvas/shaders/base.vert.qsb" in rels
-    assert "tabs/image_compare/canvas/shaders/base.frag.qsb" in rels
+    assert "tabs/image_compare/canvas/shaders/base_array.vert.qsb" in rels
+    assert "tabs/image_compare/canvas/shaders/base_array.frag.qsb" in rels
 
 
 def test_missing_shaders_detects_absent_bundle(tmp_path: Path) -> None:
@@ -29,4 +29,4 @@ def test_missing_shaders_detects_absent_bundle(tmp_path: Path) -> None:
     empty_bundle.mkdir()
     mod = _load_validator()
     missing = mod.missing_shaders(repo_root=repo, bundle_root=empty_bundle)
-    assert "tabs/image_compare/canvas/shaders/base.vert.qsb" in missing
+    assert "tabs/image_compare/canvas/shaders/base_array.vert.qsb" in missing

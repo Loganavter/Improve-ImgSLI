@@ -1,6 +1,6 @@
 """All QRhi widgets use the same process-level backend selection."""
 
-from ui.widgets.canvas.rhi_backend import (
+from ui.canvas_infra.rhi.rhi_backend import (
     RHI_BACKEND_ENV,
     configure_rhi_process_environment,
     configure_rhi_widget,
@@ -59,7 +59,7 @@ def test_configure_rhi_process_environment_sets_backend_env(monkeypatch):
 
 
 def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: False)
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
@@ -75,7 +75,7 @@ def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
 
 
 def test_resolve_keeps_vulkan_when_probe_ok(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: True)
     monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
@@ -88,7 +88,7 @@ def test_resolve_keeps_vulkan_when_probe_ok(monkeypatch):
 
 def test_resolve_falls_back_when_probe_unavailable_on_windows(monkeypatch):
     """Windows + missing probe API must not leave setApi(Vulkan) active."""
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: None)
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
@@ -103,7 +103,7 @@ def test_resolve_falls_back_when_probe_unavailable_on_windows(monkeypatch):
 
 
 def test_resolve_keeps_vulkan_when_probe_unavailable_on_linux(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: None)
     monkeypatch.setattr(mod.sys, "platform", "linux")
@@ -118,7 +118,7 @@ def test_resolve_keeps_vulkan_when_probe_unavailable_on_linux(monkeypatch):
 
 def test_resolve_leaves_linux_auto_alone_even_if_probe_false(monkeypatch):
     """Auto must not be rewritten to OpenGL by a speculative Vulkan probe."""
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: False)
     monkeypatch.setattr(mod.sys, "platform", "linux")
@@ -133,7 +133,7 @@ def test_resolve_leaves_linux_auto_alone_even_if_probe_false(monkeypatch):
 
 def test_resolve_windows_auto_uses_explicit_d3d11(monkeypatch):
     """Windows Auto must not land on legacy OpenGL (GLSL 120/130)."""
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
@@ -145,7 +145,7 @@ def test_resolve_windows_auto_uses_explicit_d3d11(monkeypatch):
 
 
 def test_resolve_windows_auto_falls_back_when_d3d11_missing(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: False)
@@ -160,8 +160,8 @@ def test_resolve_windows_auto_falls_back_when_d3d11_missing(monkeypatch):
 
 def test_resolve_exhausted_backends_use_null(monkeypatch):
     """Only D3D9 / ancient GL: every candidate fails → Null + unsupported notice."""
-    import ui.widgets.canvas.rhi_backend as mod
-    from ui.widgets.canvas.rhi_backend import (
+    import ui.canvas_infra.rhi.rhi_backend as mod
+    from ui.canvas_infra.rhi.rhi_backend import (
         RHI_NOTICE_UNSUPPORTED,
         record_rhi_fallback_notice,
         take_rhi_fallback_notice,
@@ -184,7 +184,7 @@ def test_resolve_exhausted_backends_use_null(monkeypatch):
 
 
 def test_resolve_falls_back_when_d3d12_missing(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "probe_d3d12_available", lambda: False)
@@ -197,7 +197,7 @@ def test_resolve_falls_back_when_d3d12_missing(monkeypatch):
 
 
 def test_resolve_falls_back_when_metal_missing(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "linux")
     monkeypatch.setattr(mod, "probe_metal_available", lambda: False)
@@ -210,7 +210,7 @@ def test_resolve_falls_back_when_metal_missing(monkeypatch):
 
 
 def test_resolve_keeps_d3d11_when_probe_ok(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
@@ -222,7 +222,7 @@ def test_resolve_keeps_d3d11_when_probe_ok(monkeypatch):
 
 
 def test_resolve_falls_back_when_opengl_too_old(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: False)
     monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
@@ -236,7 +236,7 @@ def test_resolve_falls_back_when_opengl_too_old(monkeypatch):
 
 
 def test_resolve_keeps_opengl_when_probe_ok(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: True)
 
@@ -249,7 +249,7 @@ def test_resolve_keeps_opengl_when_probe_ok(monkeypatch):
 def test_configure_rhi_widget_refuses_rejected_vulkan(monkeypatch):
     from PySide6.QtWidgets import QRhiWidget
 
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setenv(RHI_BACKEND_ENV, "vulkan")
     monkeypatch.setattr(mod, "_vulkan_rejected_for_process", True)
@@ -263,7 +263,7 @@ def test_configure_rhi_widget_refuses_rejected_vulkan(monkeypatch):
 
 
 def test_platform_fallback_windows(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     assert platform_fallback_rhi_backend() == "d3d11"
@@ -277,11 +277,11 @@ def test_render_failed_persists_fallback(monkeypatch):
     persisted: list[str] = []
     monkeypatch.setenv(RHI_BACKEND_ENV, "vulkan")
     monkeypatch.setattr(
-        "ui.widgets.canvas.rhi_backend.platform_fallback_rhi_backend",
+        "ui.canvas_infra.rhi.rhi_backend.platform_fallback_rhi_backend",
         lambda: "d3d11",
     )
     monkeypatch.setattr(
-        "ui.widgets.canvas.rhi_backend.persist_rhi_backend_setting",
+        "ui.canvas_infra.rhi.rhi_backend.persist_rhi_backend_setting",
         persisted.append,
     )
     widget = _Widget()
@@ -296,7 +296,7 @@ def test_unsupported_message_includes_legacy_cpu_release():
     import json
     from pathlib import Path
 
-    from ui.widgets.canvas.rhi_backend import (
+    from ui.canvas_infra.rhi.rhi_backend import (
         RHI_LEGACY_CPU_RELEASE,
         RHI_LEGACY_CPU_RELEASE_URL,
         RHI_SUPPORT_ISSUES_URL,
@@ -327,7 +327,7 @@ def test_unsupported_message_includes_legacy_cpu_release():
 
 
 def test_platform_rhi_requirement_keys_are_os_filtered(monkeypatch):
-    import ui.widgets.canvas.rhi_backend as mod
+    import ui.canvas_infra.rhi.rhi_backend as mod
 
     monkeypatch.setattr(mod.sys, "platform", "win32")
     assert mod.platform_rhi_requirement_keys() == ("d3d11", "opengl", "vulkan")
@@ -338,8 +338,8 @@ def test_platform_rhi_requirement_keys_are_os_filtered(monkeypatch):
 
 
 def test_format_platform_rhi_requirements_omits_foreign_apis(monkeypatch):
-    from ui.widgets.canvas import rhi_backend as mod
-    from ui.widgets.canvas.rhi_fallback_notice import format_platform_rhi_requirements
+    from ui.canvas_infra.rhi import rhi_backend as mod
+    from ui.canvas_infra.rhi.rhi_fallback_notice import format_platform_rhi_requirements
 
     monkeypatch.setattr(mod.sys, "platform", "linux")
     text = format_platform_rhi_requirements("en")
@@ -355,7 +355,7 @@ def test_format_platform_rhi_requirements_omits_foreign_apis(monkeypatch):
 
 
 def test_record_and_take_fallback_notice():
-    from ui.widgets.canvas.rhi_backend import (
+    from ui.canvas_infra.rhi.rhi_backend import (
         RHI_NOTICE_FALLBACK,
         RHI_NOTICE_UNSUPPORTED,
         record_rhi_fallback_notice,

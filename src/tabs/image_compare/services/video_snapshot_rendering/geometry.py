@@ -5,6 +5,7 @@ from __future__ import annotations
 from PIL import Image
 
 from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from shared.image_processing.resample_map import get_resample
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
 from tabs.image_compare.plugins.video_editor.services.video_export_models import (
@@ -12,17 +13,9 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
     VideoRenderRequest,
 )
 
-_RESAMPLE = {
-    "NEAREST": Image.Resampling.NEAREST,
-    "BILINEAR": Image.Resampling.BILINEAR,
-    "BICUBIC": Image.Resampling.BICUBIC,
-    "LANCZOS": Image.Resampling.LANCZOS,
-    "EWA_LANCZOS": Image.Resampling.LANCZOS,
-}
-
 
 def _resample_for_method(method_name: str) -> Image.Resampling:
-    return _RESAMPLE.get(str(method_name).upper(), Image.Resampling.LANCZOS)
+    return get_resample(method_name)
 
 
 def resolve_prescale_target(request: VideoRenderRequest) -> tuple[int, int]:

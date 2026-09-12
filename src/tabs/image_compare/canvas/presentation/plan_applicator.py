@@ -1,3 +1,5 @@
+# Audit-Meta: pattern=canvas-presentation reason="plan applicator — 5 helpers + geometry sync + store binding, 519 lines"
+
 from __future__ import annotations
 
 from domain.types import Rect
@@ -47,8 +49,9 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
         if store is None:
             return
         base_image = plan.image1
-        fit_width = getattr(base_image, "width", 0)
-        fit_height = getattr(base_image, "height", 0)
+        from shared.image_processing.image_dims import get_image_dims
+
+        fit_width, fit_height = get_image_dims(base_image)
     else:
         fit_width, fit_height = plan.canvas_w, plan.canvas_h
     if fit_width <= 0 or fit_height <= 0:
@@ -65,6 +68,17 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
     )
     if geometry.outer_rect_px is not None:
         state._content_rect_px = geometry.outer_rect_px
+    from shared.rendering.render_debug import rhi_render_debug
+
+    rhi_render_debug(
+        "content_rect widget=%dx%d fit=%dx%d owns_padded=%s -> outer=%r",
+        widget_width,
+        widget_height,
+        fit_width,
+        fit_height,
+        owns_padded,
+        geometry.outer_rect_px,
+    )
 
 
 def _compute_sr(canvas, plan) -> float:
@@ -246,9 +260,61 @@ def sync_geometry_state(canvas, store) -> None:
     cx, cy, cw, ch = rect
     vp = getattr(store, "viewport", None)
     if vp is not None and cw > 0 and ch > 0:
-        vp.geometry_state.pixmap_width = cw
-        vp.geometry_state.pixmap_height = ch
-        vp.geometry_state.image_display_rect_on_label = Rect(cx, cy, cw, ch)
+        # Guard: only dispatch when geometry actually changed — otherwise
+        # every update_comparison_if_needed() would emit a viewport change,
+        # re-arm the fps timer and spam [ic-preview] document state logs.
+        try:
+            gs = getattr(vp, "geometry_state", None)
+            if gs is not None:
+                cur_w = getattr(gs, "pixmap_width", None)
+                cur_h = getattr(gs, "pixmap_height", None)
+                cur_rect = getattr(gs, "image_display_rect_on_label", None)
+                if cur_w == cw and cur_h == ch and cur_rect == Rect(cx, cy, cw, ch):
+                    return
+        except Exception:
+            pass
+        dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            try:
+                from core.state_management.geometry_actions import (
+                    SetImageDisplayRectAction,
+                    SetPixmapDimensionsAction,
+                )
+
+                batch = getattr(store, "batch_changes", None)
+                rect_val = Rect(cx, cy, cw, ch)
+                if callable(batch):
+                    with store.batch_changes():
+                        dispatcher.dispatch(
+                            SetPixmapDimensionsAction(width=cw, height=ch),
+                            scope="viewport",
+                        )
+                        dispatcher.dispatch(
+                            SetImageDisplayRectAction(rect=rect_val),
+                            scope="viewport",
+                        )
+                else:
+                    dispatcher.dispatch(
+                        SetPixmapDimensionsAction(width=cw, height=ch),
+                        scope="viewport",
+                    )
+                    dispatcher.dispatch(
+                        SetImageDisplayRectAction(rect=Rect(cx, cy, cw, ch)),
+                        scope="viewport",
+                    )
+                return
+            except Exception:
+                pass
+        try:
+            geometry_state = getattr(vp, "geometry_state", None)
+            if geometry_state is None:
+                geometry_state = getattr(getattr(store, "viewport", None), "geometry_state", None)
+            if geometry_state is not None:
+                setattr(geometry_state, "pixmap_width", cw)
+                setattr(geometry_state, "pixmap_height", ch)
+                setattr(geometry_state, "image_display_rect_on_label", Rect(cx, cy, cw, ch))
+        except Exception:
+            pass
 
 
 def _sync_split_position(store, canvas, split_position: float) -> None:
@@ -285,6 +351,17 @@ def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
     canvas._active_render_plan = plan
     canvas._clip_overlays_to_content_rect = clip_flag
     canvas.set_render_scene(plan.render_scene)
+    try:
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+
+        ic_first_frame_debug(
+            canvas,
+            "active_render_plan SET scene=%s store=%s",
+            type(plan.render_scene).__name__ if plan.render_scene is not None else None,
+            store is not None,
+        )
+    except Exception:
+        pass
 
     if store is not None:
         canvas.set_split_position_sync(
@@ -329,7 +406,7 @@ def _textures_are_current(canvas, plan: CanvasRenderPlan) -> bool:
     return bool(stored and stored[0] is not None)
 
 
-def apply_legacy_canvas_render_plan(
+def apply_canvas_render_plan(
     canvas,
     plan: CanvasRenderPlan,
     *,
@@ -362,9 +439,6 @@ def _apply_plan_full(
 ) -> None:
     """Full path: uploads textures, resets view, configures everything."""
     from ui.canvas_infra.viewport.state import (
-        get_pan_offset_x,
-        get_pan_offset_y,
-        get_zoom_level,
         set_pan_offsets,
         set_zoom_level,
     )
@@ -375,19 +449,15 @@ def _apply_plan_full(
         clip_flag = _resolve_clip_flag(store, clip_overlays_to_image_bounds, plan)
         _setup_store_bindings(canvas, plan, store=store, clip_flag=clip_flag)
 
+        # preserve_zoom: leave the viewport completely untouched. The old
+        # reset_view() + restore + zoomChanged re-emit dance produced
+        # transient zoom=1/pan=0 states that listeners observed mid-apply,
+        # visibly throwing the camera on texture swaps (preview→store flip,
+        # docs/dev/rendering/display-image-pipeline.md).
         if plan.preserve_zoom:
-            zoom_level = get_zoom_level(canvas)
-            pan_x = get_pan_offset_x(canvas)
-            pan_y = get_pan_offset_y(canvas)
             letterbox_focus = capture_letterbox_focus(canvas)
-        canvas.reset_view()
-        if plan.preserve_zoom:
-            set_zoom_level(canvas, zoom_level)
-            set_pan_offsets(canvas, pan_x, pan_y)
-            zoom_signal = getattr(canvas, "zoomChanged", None)
-            if zoom_signal is not None and abs(zoom_level - 1.0) > 1e-6:
-                zoom_signal.emit(zoom_level)
         else:
+            canvas.reset_view()
             set_zoom_level(canvas, 1.0)
             set_pan_offsets(canvas, 0.0, 0.0)
 

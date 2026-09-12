@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from core.actions.types import ActionDescriptor, ActionTarget
+from core.session_blueprints import SessionBlueprint
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from ui.actions.registry import ActionRegistry, get_action_registry
 
 _BC_WORKSPACE = "action.breadcrumb.workspace"
@@ -46,17 +48,20 @@ def register_platform_actions(
     resolve_settings_member: Callable[[str, str, str], object | None] | None = None,
     run_settings_member: Callable[[str, str, str], None] | None = None,
     open_session_picker: Callable[[], None] | None = None,
-    new_image_compare: Callable[[], None] | None = None,
-    new_multi_compare: Callable[[], None] | None = None,
+    new_session_runner: Callable[[str], None] | None = None,
+    new_session_target_resolver: Callable[[str], ActionTarget | None] | None = None,
+    session_blueprints: Sequence[SessionBlueprint] = (),
+    next_session: Callable[[], None] | None = None,
+    prev_session: Callable[[], None] | None = None,
     paste_clipboard_image: Callable[[], None] | None = None,
     open_project: Callable[[], None] | None = None,
     save_project: Callable[[], None] | None = None,
     save_project_as: Callable[[], None] | None = None,
+    undo: Callable[[], None] | None = None,
+    redo: Callable[[], None] | None = None,
     file_menu_button: object | None = None,
     help_menu_button: object | None = None,
     open_session_picker_target: ActionTarget | None = None,
-    new_image_compare_target: ActionTarget | None = None,
-    new_multi_compare_target: ActionTarget | None = None,
     registry: ActionRegistry | None = None,
 ) -> None:
     reg = registry if registry is not None else get_action_registry()
@@ -70,19 +75,10 @@ def register_platform_actions(
 
     def _default_paste() -> None:
         from plugins.export.events import ExportPasteImageFromClipboardEvent
-        from PySide6.QtWidgets import QApplication
 
-        app = QApplication.instance()
-        event_bus = None
-        if app is not None:
-            for widget in app.topLevelWidgets():
-                presenter = getattr(widget, "presenter", None)
-                event_bus = getattr(presenter, "event_bus", None) if presenter else None
-                if event_bus is None and presenter is not None:
-                    controller = getattr(presenter, "main_controller", None)
-                    event_bus = getattr(controller, "event_bus", None)
-                if event_bus is not None:
-                    break
+        from ui.helpers.window_resolver import find_event_bus
+
+        event_bus = find_event_bus()
         if event_bus is not None:
             event_bus.emit(ExportPasteImageFromClipboardEvent())
 
@@ -178,6 +174,7 @@ def register_platform_actions(
             owner_tab=None,
             topic="app",
             shortcut="Ctrl+Q",
+            help_page="hotkeys",
             run=quit_app,
             target=file_quit,
         ),
@@ -249,33 +246,88 @@ def register_platform_actions(
                 target=open_session_picker_target,
             )
         )
-    if new_image_compare is not None:
+    if new_session_runner is not None:
+        for blueprint in session_blueprints:
+            session_type = blueprint.session_type
+            if session_type == INITIAL_WORKSPACE_SESSION_TYPE:
+                continue
+            target = (
+                new_session_target_resolver(session_type)
+                if new_session_target_resolver is not None
+                else None
+            )
+            specs.append(
+                ActionDescriptor(
+                    action_id=f"workspace.new_{session_type}",
+                    label_key=f"action.workspace.new_{session_type}",
+                    description_key=f"action.workspace.new_{session_type}_desc",
+                    breadcrumb=(_BC_WORKSPACE,),
+                    owner_tab=None,
+                    topic="workspace",
+                    help_page="file_management",
+                    run=(lambda st=session_type: new_session_runner(st)),
+                    target=target,
+                )
+            )
+    if next_session is not None:
         specs.append(
             ActionDescriptor(
-                action_id="workspace.new_image_compare",
-                label_key="action.workspace.new_image_compare",
-                description_key="action.workspace.new_image_compare_desc",
+                action_id="workspace.next_tab",
+                label_key="action.workspace.next_tab",
+                description_key="action.workspace.next_tab_desc",
                 breadcrumb=(_BC_WORKSPACE,),
                 owner_tab=None,
                 topic="workspace",
-                help_page="file_management",
-                run=new_image_compare,
-                target=new_image_compare_target,
+                shortcut="Ctrl+Tab",
+                help_page="hotkeys",
+                run=next_session,
+                target=None,
             )
         )
-    if new_multi_compare is not None:
+    if prev_session is not None:
         specs.append(
             ActionDescriptor(
-                action_id="workspace.new_multi_compare",
-                label_key="action.workspace.new_multi_compare",
-                description_key="action.workspace.new_multi_compare_desc",
+                action_id="workspace.prev_tab",
+                label_key="action.workspace.prev_tab",
+                description_key="action.workspace.prev_tab_desc",
                 breadcrumb=(_BC_WORKSPACE,),
                 owner_tab=None,
                 topic="workspace",
-                help_page="file_management",
-                run=new_multi_compare,
-                target=new_multi_compare_target,
+                shortcut="Ctrl+Shift+Tab",
+                help_page="hotkeys",
+                run=prev_session,
+                target=None,
             )
+        )
+    if undo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.undo",
+                label_key="action.platform.undo",
+                description_key="action.platform.undo_desc",
+                breadcrumb=("menu.file",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Z",
+                help_page="file_management",
+                run=undo,
+                target=None,
+            ),
+        )
+    if redo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.redo",
+                label_key="action.platform.redo",
+                description_key="action.platform.redo_desc",
+                breadcrumb=("menu.file",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Shift+Z",
+                help_page="file_management",
+                run=redo,
+                target=None,
+            ),
         )
     for action in specs:
         reg.register(action)
@@ -290,8 +342,15 @@ def register_platform_actions(
     )
 
 
-def contribute_platform_keymap_defaults(registry) -> None:
-    """Metadata defaults for platform / workspace actions (Settings → Keyboard)."""
+def contribute_platform_keymap_defaults(
+    registry, new_session_types: Sequence[str] = ()
+) -> None:
+    """Metadata defaults for platform / workspace actions (Settings → Keyboard).
+
+    *new_session_types* is every tab's ``session_type`` except the bootstrap
+    default (session_picker) — one keymap default per ``workspace.new_*``
+    action registered by :func:`register_platform_actions`.
+    """
     from ui.actions.keymap import KeymapDefaultEntry
 
     entries = (
@@ -368,6 +427,22 @@ def contribute_platform_keymap_defaults(registry) -> None:
             description_key="action.platform.paste_clipboard_image_desc",
         ),
         KeymapDefaultEntry(
+            "platform.undo",
+            "action.platform.undo",
+            "Ctrl+Z",
+            None,
+            ("menu.edit",),
+            description_key="action.platform.undo_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.redo",
+            "action.platform.redo",
+            "Ctrl+Shift+Z",
+            None,
+            ("menu.edit",),
+            description_key="action.platform.redo_desc",
+        ),
+        KeymapDefaultEntry(
             "platform.quit",
             "menu.quit",
             "Ctrl+Q",
@@ -383,21 +458,32 @@ def contribute_platform_keymap_defaults(registry) -> None:
             ("action.breadcrumb.workspace",),
             description_key="action.workspace.open_session_picker_desc",
         ),
-        KeymapDefaultEntry(
-            "workspace.new_image_compare",
-            "action.workspace.new_image_compare",
-            None,
-            None,
-            ("action.breadcrumb.workspace",),
-            description_key="action.workspace.new_image_compare_desc",
+        *(
+            KeymapDefaultEntry(
+                f"workspace.new_{session_type}",
+                f"action.workspace.new_{session_type}",
+                None,
+                None,
+                ("action.breadcrumb.workspace",),
+                description_key=f"action.workspace.new_{session_type}_desc",
+            )
+            for session_type in new_session_types
         ),
         KeymapDefaultEntry(
-            "workspace.new_multi_compare",
-            "action.workspace.new_multi_compare",
-            None,
+            "workspace.next_tab",
+            "action.workspace.next_tab",
+            "Ctrl+Tab",
             None,
             ("action.breadcrumb.workspace",),
-            description_key="action.workspace.new_multi_compare_desc",
+            description_key="action.workspace.next_tab_desc",
+        ),
+        KeymapDefaultEntry(
+            "workspace.prev_tab",
+            "action.workspace.prev_tab",
+            "Ctrl+Shift+Tab",
+            None,
+            ("action.breadcrumb.workspace",),
+            description_key="action.workspace.prev_tab_desc",
         ),
     )
     for entry in entries:

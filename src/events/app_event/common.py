@@ -25,8 +25,13 @@ def emit_update_request(presenter) -> None:
 
 def schedule_image_canvas_update(presenter) -> None:
     image_canvas_presenter = get_image_canvas_presenter(presenter)
-    if image_canvas_presenter is not None:
-        image_canvas_presenter.schedule_update()
+    if image_canvas_presenter is None:
+        return
+    # `image_canvas` is resolved lazily; tolerate the tab not being
+    # materialized yet, same as an absent presenter.
+    schedule_update = getattr(image_canvas_presenter, "schedule_update", None)
+    if schedule_update is not None:
+        schedule_update()
 
 def clear_presenter_render_snapshots(presenter) -> None:
     if presenter is None:

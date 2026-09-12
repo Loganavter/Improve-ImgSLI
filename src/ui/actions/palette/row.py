@@ -17,6 +17,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from core.actions.types import ActionDescriptor
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.buttons.layers import ContentLayer, RippleLayer
 from sli_ui_toolkit.ui.widgets.buttons.layers._base import Layer
@@ -178,7 +179,8 @@ class RowBackgroundLayer(Layer):
             ):
                 is_active = True
                 break
-        key = "list_item.background.hover" if is_active else "list_item.background.normal"
+        # Каноникал surface.list (Phase 3 plan_theme_token_unification) — один токен вместо help.nav/list_item/Button алиасов
+        key = "surface.list"
         rect = row_capsule_rect(ctx.rect).toRect()
         painter = ctx.painter
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -324,13 +326,13 @@ class CurrentIndicatorLayer(Layer):
     def draw(self, ctx, tm: ThemeManager) -> None:
         rect = ctx.rect.toRect()
         pen = QPen(resolve_theme_color(tm, "accent"))
-        pen.setWidth(3)
+        pen.setWidth(scaled_px(3))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter = ctx.painter
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(pen)
         x = rect.left() + pen.width()
-        painter.drawLine(x, rect.top() + 8, x, rect.bottom() - 8)
+        painter.drawLine(x, rect.top() + scaled_px(8), x, rect.bottom() - scaled_px(8))
 
 
 class ActionPaletteRow(Button):
@@ -382,7 +384,7 @@ class ActionPaletteRow(Button):
                 toggle=True,
             )
         ]
-        fixed_widths: dict[str, float] = {"run": _RUN_REGION_WIDTH}
+        fixed_widths: dict[str, float] = {"run": scaled_px(_RUN_REGION_WIDTH)}
 
         overrides = (
             keyboard_overrides
@@ -392,7 +394,7 @@ class ActionPaletteRow(Button):
         shortcut = (effective_shortcut(action, overrides) or "").strip()
         if shortcut:
             fixed_widths["shortcut"] = _text_width(
-                shortcut, pixel_size=11, padding=_CHROME_TEXT_PAD
+                shortcut, pixel_size=11, padding=scaled_px(_CHROME_TEXT_PAD)
             )
             regions.append(
                 ButtonRegion(
@@ -423,7 +425,7 @@ class ActionPaletteRow(Button):
         learn_label = tr_action("action.palette.learn_more", "Learn more")
         if has_help:
             fixed_widths["learn"] = _text_width(
-                learn_label, pixel_size=11, padding=_CHROME_TEXT_PAD
+                learn_label, pixel_size=11, padding=scaled_px(_CHROME_TEXT_PAD)
             )
             regions.append(
                 ButtonRegion(

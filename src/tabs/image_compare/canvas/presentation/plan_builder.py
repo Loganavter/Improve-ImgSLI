@@ -90,16 +90,33 @@ def build_canvas_plan(
         and target_size is None
         and render_scene is None
     )
+
+    def _w(img):
+        if img is None: return 1
+        if hasattr(img, "width") and callable(img.width): return int(img.width())
+        if hasattr(img, "size") and isinstance(img.size, (tuple, list)): return int(img.size[0])
+        if hasattr(img, "size") and callable(img.size): return int(img.size().width())
+        return int(img.width)
+
+    def _h(img):
+        if img is None: return 1
+        if hasattr(img, "height") and callable(img.height): return int(img.height())
+        if hasattr(img, "size") and isinstance(img.size, (tuple, list)): return int(img.size[1])
+        if hasattr(img, "size") and callable(img.size): return int(img.size().height())
+        return int(img.height)
+
+    w1, h1 = _w(display_image1), _h(display_image1)
+
     if is_live_default_plan and display_image1 is not None:
         live_virtual_layout = resolve_feature_virtual_layout(
             store,
-            drawing_width=display_image1.width,
-            drawing_height=display_image1.height,
+            drawing_width=w1,
+            drawing_height=h1,
         )
         live_pad_left, live_pad_right, live_pad_top, live_pad_bottom = (
             live_virtual_layout.resolve_padding_pixels(
-                base_width=display_image1.width,
-                base_height=display_image1.height,
+                base_width=w1,
+                base_height=h1,
             )
             if live_virtual_layout is not None
             else (0, 0, 0, 0)
@@ -107,19 +124,19 @@ def build_canvas_plan(
         pad_left = live_pad_left
         pad_top = live_pad_top
         target_size = (
-            display_image1.width + live_pad_left + live_pad_right,
-            display_image1.height + live_pad_top + live_pad_bottom,
+            w1 + live_pad_left + live_pad_right,
+            h1 + live_pad_top + live_pad_bottom,
         )
         store.runtime_cache.overlay_clip_rect = resolve_canvas_clip_rect_px(
             live_virtual_layout,
-            base_width=display_image1.width,
-            base_height=display_image1.height,
+            base_width=w1,
+            base_height=h1,
         )
 
-    canvas_w = target_size[0] if target_size is not None else (display_image1.width if display_image1 is not None else 1)
-    canvas_h = target_size[1] if target_size is not None else (display_image1.height if display_image1 is not None else 1)
-    content_w = content_size[0] if content_size is not None else (display_image1.width if display_image1 is not None else canvas_w)
-    content_h = content_size[1] if content_size is not None else (display_image1.height if display_image1 is not None else canvas_h)
+    canvas_w = target_size[0] if target_size is not None else w1
+    canvas_h = target_size[1] if target_size is not None else h1
+    content_w = content_size[0] if content_size is not None else canvas_w
+    content_h = content_size[1] if content_size is not None else canvas_h
     view = vp.view_state
     capture_visible = bool(read_canvas_feature_setting_by_key("image_compare", vp, "capture.visible"))
     capture_color = read_canvas_feature_color_by_setting_key("image_compare", vp, "capture.color")

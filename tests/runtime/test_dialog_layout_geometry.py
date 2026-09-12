@@ -7,10 +7,7 @@ from types import SimpleNamespace
 from plugins.export.layout_geometry import compute_export_dialog_size
 from plugins.help.layout_geometry import compute_help_dialog_size
 from plugins.image_properties.layout_geometry import compute_image_properties_dialog_size
-from ui.layout_geometry import (
-    compute_main_window_minimum,
-    minimum_floor_for_main_window,
-)
+from ui.layout_geometry import compute_main_window_minimum
 
 
 def test_compute_settings_dialog_size_caps_scroll_content_height(monkeypatch):
@@ -25,7 +22,7 @@ def test_compute_settings_dialog_size_caps_scroll_content_height(monkeypatch):
     monkeypatch.setattr(
         geo,
         "clamp_to_screen",
-        lambda w, h, margin=100: (w, h),
+        lambda w, h, **kwargs: (w, h),
     )
 
     class _Margins:
@@ -124,9 +121,9 @@ def test_compute_help_dialog_size_uses_nav_and_pages():
 
 
 def test_compute_image_properties_dialog_size():
-    section = SimpleNamespace(
+    document = SimpleNamespace(
         ensurePolished=lambda: None,
-        sizeHint=lambda: SimpleNamespace(width=lambda: 500, height=lambda: 180),
+        sizeHint=lambda: SimpleNamespace(width=lambda: 500, height=lambda: 380),
     )
     dialog = SimpleNamespace(
         ensurePolished=lambda: None,
@@ -138,7 +135,7 @@ def test_compute_image_properties_dialog_size():
             ensurePolished=lambda: None,
             sizeHint=lambda: SimpleNamespace(width=lambda: 220, height=lambda: 40),
         ),
-        properties_section_frames=(section,),
+        properties_document=document,
     )
 
     width, height = compute_image_properties_dialog_size(dialog)
@@ -151,55 +148,3 @@ def test_compute_main_window_minimum_before_ui_stable():
     width, height = compute_main_window_minimum(dialog)
     assert width == 260
     assert height == 310
-
-
-def test_minimum_floor_raises_for_session_picker_page():
-    from tabs.session_picker.geometry import (
-        SESSION_PICKER_WINDOW_MIN_HEIGHT,
-        SESSION_PICKER_WINDOW_MIN_WIDTH,
-    )
-
-    page = SimpleNamespace(
-        window_minimum_size=lambda: (
-            SESSION_PICKER_WINDOW_MIN_WIDTH,
-            SESSION_PICKER_WINDOW_MIN_HEIGHT,
-        )
-    )
-    stack = SimpleNamespace(currentWidget=lambda: page)
-    window = SimpleNamespace(ui=SimpleNamespace(workspace_stack=stack))
-    width, height = minimum_floor_for_main_window(window)
-    assert width == SESSION_PICKER_WINDOW_MIN_WIDTH
-    assert height == SESSION_PICKER_WINDOW_MIN_HEIGHT
-
-
-def test_session_picker_widget_declares_window_minimum(qapp):
-    from tabs.session_picker.geometry import (
-        SESSION_PICKER_PAGE_MIN_HEIGHT,
-        SESSION_PICKER_PAGE_MIN_WIDTH,
-        SESSION_PICKER_WINDOW_MIN_HEIGHT,
-        SESSION_PICKER_WINDOW_MIN_WIDTH,
-    )
-    from tabs.session_picker.widget import SessionPickerWidget
-
-    class _Ctx:
-        def tr(self, key: str, default: str = "") -> str:
-            return default or key
-
-        def call_service(self, name: str, *args, **kwargs):
-            if name == "list_session_blueprints":
-                return ()
-            if name == "get_tab_icon":
-                return None
-            raise RuntimeError(name)
-
-        def get_active_session(self):
-            return None
-
-    widget = SessionPickerWidget(context=_Ctx())
-    assert widget.minimumWidth() == SESSION_PICKER_PAGE_MIN_WIDTH
-    assert widget.minimumHeight() == SESSION_PICKER_PAGE_MIN_HEIGHT
-    assert widget.window_minimum_size() == (
-        SESSION_PICKER_WINDOW_MIN_WIDTH,
-        SESSION_PICKER_WINDOW_MIN_HEIGHT,
-    )
-    widget.deleteLater()

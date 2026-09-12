@@ -10,7 +10,10 @@ from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.host_texture_cache import HostTextureUploadCache
 from shared.rendering.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
-from tabs.multi_compare.scene.tile_geometry import build_slot_draw_plan
+from tabs.multi_compare.scene.tile_geometry import (
+    build_slot_array_tiles,
+    build_slot_draw_plan,
+)
 
 
 def test_build_slot_draw_plan_single_tile_is_identity_rect():
@@ -37,6 +40,34 @@ def test_build_slot_draw_plan_splits_oversized_slot_into_visible_tiles():
 
     tile_keys = {item.tile_key for item in items}
     assert tile_keys == {(1, 0, 0)}
+
+
+def test_build_slot_array_tiles_single_tile_uses_index_zero_zero():
+    """Unlike build_slot_draw_plan, a 1x1 grid must still resolve through
+    the array path's own index convention -- see tile_geometry.py's
+    build_slot_array_tiles docstring on why this never takes the
+    bare-source-key shortcut."""
+    service = TileTextureService(max_tile_extent=2048)
+    service.register_source(1, (512, 512))
+
+    items = build_slot_array_tiles(service, 1, pan_offset=(0.0, 0.0), fit_scale=(1.0, 1.0), zoom=1.0)
+
+    assert len(items) == 1
+    assert items[0].index == (0, 0)
+    assert items[0].tile_rect == (0.0, 0.0, 1.0, 1.0)
+
+
+def test_build_slot_array_tiles_splits_oversized_slot_into_visible_indices():
+    service = TileTextureService(max_tile_extent=2048)
+    grid = service.register_source(1, (4096, 2048))
+    assert (grid.rows, grid.columns) == (1, 2)
+
+    items = build_slot_array_tiles(
+        service, 1, pan_offset=(0.25, 0.0), fit_scale=(1.0, 1.0), zoom=5.0
+    )
+
+    indices = {item.index for item in items}
+    assert indices == {(0, 0)}
 
 
 class _FakeStageFlag:
@@ -67,6 +98,9 @@ class _FakeTexture:
     def destroy(self):
         self.destroyed = True
 
+    def setName(self, _name):
+        pass
+
 
 class _FakeSrb:
     def __init__(self):
@@ -91,6 +125,9 @@ class _FakeRhi:
     def newTexture(self, _fmt, size):
         return _FakeTexture(size)
 
+    def newTextureArray(self, _fmt, _array_size, size, _sample_count, _flags):
+        return _FakeTexture(size)
+
     def newShaderResourceBindings(self):
         return _FakeSrb()
 
@@ -107,9 +144,11 @@ class _FakeUpdates:
 
 
 def test_oversized_slot_lazily_uploads_only_visible_tiles(monkeypatch):
-    from tabs.multi_compare.scene.passes import base_images as base_images_module
+    from tabs.multi_compare.scene.passes import slot_resources as slot_resources_module
 
-    monkeypatch.setattr(base_images_module, "QRhiShaderResourceBinding", _FakeBinding)
+    monkeypatch.setattr(
+        slot_resources_module, "QRhiShaderResourceBinding", _FakeBinding
+    )
 
     render_pass = BaseImagesPass()
     host = SimpleNamespace()
@@ -128,7 +167,7 @@ def test_oversized_slot_lazily_uploads_only_visible_tiles(monkeypatch):
 
         grid = renderer.tile_service.grid_for(1)
         assert (grid.rows, grid.columns) == (1, 2)
-        assert render_pass.slot_textures == {}
+        assert render_pass.slot_resources.slot_textures == {}
         assert render_pass.slot_pixel_sources[1] is store
 
         layer = SimpleNamespace(
@@ -143,7 +182,15 @@ def test_oversized_slot_lazily_uploads_only_visible_tiles(monkeypatch):
         ctx = SimpleNamespace(projected_layers=[layer])
         render_pass._realize_tile_residency(renderer, ctx, updates)
 
-        assert set(render_pass.slot_textures) == {(1, 0, 0), (1, 0, 1)}
+        # TILE_RESIDENCY_MARGIN is 1: the tile actually intersecting the
+        # view plus its one-tile prefetch ring are realized -- (0, 1) is
+        # the only other tile in this 1x2 grid, so it's included too.
+        resident = {
+            index
+            for index in renderer.tile_service.visible_tiles(1)
+            if renderer.tile_service.is_resident(1, index)
+        }
+        assert resident == {(0, 0), (0, 1)}
         cache = getattr(host, "_host_texture_upload_cache", None)
         assert isinstance(cache, HostTextureUploadCache)
         assert cache.entries

@@ -80,7 +80,7 @@ def show_magnifier_divider_color_picker(presenter) -> None:
         presenter,
         key="magnifier_divider",
         setting_key="magnifier.divider.color",
-        title_key="ui.choose_magnifier_divider_line_color",
+        title_key="image_compare.ui.choose_magnifier_divider_line_color",
         command_id="settings.set_divider_color",
         post_apply=_post_apply,
     )
@@ -91,7 +91,7 @@ def show_magnifier_border_color_picker(presenter) -> None:
         presenter,
         key="magnifier_border",
         setting_key="magnifier.border.color",
-        title_key="ui.choose_magnifier_border_color",
+        title_key="image_compare.ui.choose_magnifier_border_color",
         command_id="settings.set_border_color",
     )
 

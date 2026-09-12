@@ -1,13 +1,16 @@
+# Audit-Meta: pattern=thin-owner reason="session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel"
 """Home-page style new-session picker."""
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
-from PySide6.QtCore import QLineF, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QLineF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
+from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
     Button,
@@ -29,9 +32,71 @@ from tabs.session_picker.geometry import (
 )
 from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
 from tabs.session_picker.recent.panel import RecentProjectsPanel
-from ui.theming import resolve_theme_color
+from ui.theming import resolve_theme_color, try_resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
+
+_TOKEN_WINDOW = "Window"
+_TOKEN_SURFACE_BG = "surface.background"
+
+
+def _themed_or_fallback(manager, token: str, fallback: QColor | str) -> QColor:
+    """Resolve theme token with hardcoded fallback to preserve visual."""
+    try:
+        if manager is not None:
+            resolved = try_resolve_theme_color(manager, token)
+            if resolved is not None and resolved.isValid():
+                return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
+
+
+def _get_theme_manager_or_none():
+    try:
+        from sli_ui_toolkit.theme import ThemeManager
+
+        return ThemeManager.get_instance()
+    except Exception:
+        return None
+
+
+def _fallback_window_color(manager=None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    # Window token is the page background; fallback preserves light visual #ffffff
+    return _themed_or_fallback(tm, _TOKEN_WINDOW, "#ffffff")
+
+
+def _fallback_surface_color(manager=None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    return _themed_or_fallback(tm, _TOKEN_SURFACE_BG, "#ffffff")
+
+
+class _OpaqueFillWidget(QWidget):
+    """Plain container that paints its background explicitly.
+
+    ``setPalette`` + ``setAutoFillBackground(True)`` is unreliable for bare
+    leaf widgets in this app (see docs/dev/KNOWN_BUGS.md) — the background
+    can silently keep the pre-switch color across a live theme change.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._fill = _fallback_surface_color()
+        self._fill.setAlpha(255)
+
+    def set_fill(self, color: QColor) -> None:
+        fill = QColor(color)
+        fill.setAlpha(255)
+        self._fill = fill
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), self._fill)
+        painter.end()
 
 
 class _SeamlessHorizontalSplit(HorizontalSplit):
@@ -59,9 +124,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._populated = False
         self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setMinimumSize(
-            SESSION_PICKER_PAGE_MIN_WIDTH,
-            SESSION_PICKER_PAGE_MIN_HEIGHT,
+            scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),
+            scaled_px(SESSION_PICKER_PAGE_MIN_HEIGHT),
         )
         # CSD translucent windows punch through clear children — keep this page
         # an opaque surface for the whole stack (scroll → content → recent).
@@ -70,7 +136,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._build()
 
     def window_minimum_size(self) -> tuple[int, int]:
-        """Main-window floor while this page is the active workspace content."""
+        """Main-window floor while this page is the active workspace content.
+
+        Deliberately **not** scaled: this floor is the main window's minimum
+        size (``apply_main_window_minimum`` → ``setMinimumSize``), and a
+        scaled floor (e.g. 840 px at 1.5x instead of 560) can exceed the
+        user's saved window height and force the window taller — a short
+        window is fine, the page scrolls its content.
+        """
         return (
             SESSION_PICKER_WINDOW_MIN_WIDTH,
             SESSION_PICKER_WINDOW_MIN_HEIGHT,
@@ -78,9 +151,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        fallback = _fallback_window_color(getattr(self, "_theme_manager", None))
+        bg = QColor(getattr(self, "_bg_color", fallback))
         if not bg.isValid() or bg.alpha() == 0:
-            bg = QColor(255, 255, 255)
+            bg = QColor(fallback)
         bg.setAlpha(255)
         painter.fillRect(self.rect(), bg)
         painter.end()
@@ -88,7 +162,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
     def on_theme_changed(self) -> None:
         self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
         if not self._bg_color.isValid():
-            self._bg_color = QColor(255, 255, 255)
+            self._bg_color = QColor(_fallback_window_color(self._theme_manager))
         self._bg_color.setAlpha(255)
         self._sync_opaque_page_fills()
         # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
@@ -104,14 +178,20 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             return
         fill = QColor(color)
         fill.setAlpha(255)
+        set_fill = getattr(widget, "set_fill", None)
+        if callable(set_fill):
+            set_fill(fill)
+            return
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         widget.setAutoFillBackground(True)
         palette = widget.palette()
         palette.setColor(widget.backgroundRole(), fill)
         widget.setPalette(palette)
+        widget.update()
 
     def _sync_opaque_page_fills(self) -> None:
-        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        fallback = _fallback_window_color(getattr(self, "_theme_manager", None))
+        bg = QColor(getattr(self, "_bg_color", fallback))
         bg.setAlpha(255)
         self._apply_opaque_fill(self, bg)
         scroll = getattr(self, "_page_scroll", None)
@@ -131,16 +211,27 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         # black wedges into the bottom window corners when the recent shelf
         # grows and the scroll content reflows.
         scroll.set_corner_radius(0)
+        # No reserved gutter: the reserve appears while the hidden page is
+        # momentarily scrollable during build, then drops after show — a 10px
+        # rightward jump of every card. Overlay bar rides the 48px page margin.
+        scroll.set_reserve_scrollbar_space(False)
         outer.addWidget(scroll)
         self._page_scroll = scroll
 
-        content = QWidget()
+        # Give the page focus when the user clicks on the scroll-area background
+        # (empty space around/above/below the cards) so that arrow-key navigation
+        # works immediately after a click.
+        scroll.viewport().installEventFilter(self)
+
+        content = _OpaqueFillWidget()
         scroll.setWidget(content)
         self._page_content = content
 
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(48, 40, 48, 40)
-        layout.setSpacing(20)
+        layout.setContentsMargins(
+            scaled_px(48), scaled_px(40), scaled_px(48), scaled_px(40)
+        )
+        layout.setSpacing(scaled_px(20))
 
         self._title_label = Label(
             self._context.tr("title", "Create a workspace"),
@@ -154,10 +245,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         )
         layout.addWidget(self._subtitle_label)
 
-        self._cards_container = QWidget()
+        self._cards_container = _OpaqueFillWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(10)
+        self._cards_layout.setSpacing(scaled_px(10))
         layout.addWidget(self._cards_container)
 
         self._recent_panel = RecentProjectsPanel(
@@ -176,10 +267,44 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.refresh()
             self._recent_panel.recover_opaque_surface()
+            # Up/Left past the first recent item → header controls.
+            # Up/Left past the first header control → create cards (not back
+            # to header — that would cycle). Return False to let the event
+            # propagate up to create cards.
+            self._recent_panel.set_keyboard_handoff(
+                lambda col: self._recent_panel.focus_header_control_near(col)
+            )
 
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
+        UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
+
+    def _on_ui_scale_changed(self, _factor: float) -> None:
+        """Re-apply scale-dependent page geometry after a live UiScale change.
+
+        The page layout margins/spacing, the create-cards spacing, and the
+        minimum size are plain px captured at build time; without this pass
+        they keep the old factor until the next app start (the create-cards
+        and other toolkit children resize themselves via their own
+        ``scale_changed`` handlers).
+        """
+        self.setMinimumSize(
+            scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),
+            scaled_px(SESSION_PICKER_PAGE_MIN_HEIGHT),
+        )
+        content = getattr(self, "_page_content", None)
+        layout = content.layout() if content is not None else None
+        if layout is not None:
+            layout.setContentsMargins(
+                scaled_px(48), scaled_px(40), scaled_px(48), scaled_px(40)
+            )
+            layout.setSpacing(scaled_px(20))
+        if self._cards_layout is not None:
+            self._cards_layout.setSpacing(scaled_px(10))
+        if self._recent_panel is not None:
+            self._recent_panel.recover_opaque_surface()
+        self.update()
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         if self._recent_panel is not None:
@@ -252,6 +377,18 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self.refresh()
         return self._cards_by_type.get(session_type)
 
+    def _card_entries(self) -> list[tuple[str, Button]]:
+        # dict preserves insertion order = create-cards' visual (layout) order.
+        return list(self._cards_by_type.items())
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and obj is self._page_scroll.viewport()
+        ):
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+        return False
+
     def _retranslate_cards(self) -> None:
         blueprints = {
             bp.session_type: bp for bp in self._registered_blueprints()
@@ -286,7 +423,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_by_type.clear()
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # type: ignore[union-attr]  # takeAt result is a layout item
             if widget is not None:
                 widget.hide()
                 widget.setParent(None)
@@ -355,6 +492,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             parent=self._cards_container,
         )
         card.regionClicked.connect(lambda _id, st=session_type: self._create(st))
+        # Keyboard Enter/Space on a focused card activates via the main
+        # ``clicked`` signal (multi-region cards only emit ``regionClicked``
+        # on mouse clicks) — without this the card is unfocusable-by-keyboard.
+        card.clicked.connect(lambda _st=session_type: self._create(_st))
         self._cards_by_type[session_type] = card
         return card
 
@@ -401,6 +542,24 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def _create(self, session_type: str) -> None:
         picker_session = self._context.get_active_session()
-        self._context.call_service("create_workspace_session", session_type, True)
-        if picker_session is not None:
-            self._context.call_service("close_workspace_session", picker_session.id)
+        # One atomic store change (create + close the picker session), so the
+        # tab strip never holds both tabs for an intermediate frame — the
+        # picker tab is replaced in place, like a browser tab navigates.
+        self._context.call_service(
+            "replace_workspace_session",
+            session_type,
+            closing_session_id=picker_session.id if picker_session is not None else None,
+        )
+
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
+
+    def focus_last_create_card(self) -> bool:
+        """Focus the last create-card.  Called by child widgets (e.g. the
+        recent shelf header bar) for internal section handoff."""
+        cards = self._card_entries()
+        if cards:
+            cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        return False

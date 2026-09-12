@@ -34,3 +34,9 @@ Snapshot prepare must **not** bake letterbox or feature padding into image
 pixels. Keep `TiledPixelStore` (or other unpadded sources) on the plan and
 express pads via `CanvasGeometry` / `overlay_clip_rect` + shader letterbox,
 matching the live canvas geometry model.
+
+**LOD parity:** the mipmap pyramid level for a given on-screen scale is
+picked by one pure function, `shared/rendering/lod.py::select_level`. Live
+canvas, export preview, final export and video snapshots all call it with
+the same `dest_scale` derivation so they resolve to the same pyramid level
+— see [tile-rendering-system.md](tile-rendering-system.md#mipmap-pyramid-and-lod-selection).

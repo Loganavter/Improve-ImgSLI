@@ -10,17 +10,6 @@ def _query_overlay_orientation(store) -> bool:
     except AttributeError:
         return False
 
-def update_magnifier_orientation_button_state(presenter):
-    binding = registry().get_feature_toolbar_binding("magnifier.orientation")
-    if binding is not None and binding.sync_state is not None:
-        binding.sync_state(presenter)
-    divider_visibility = registry().get_feature_toolbar_binding("magnifier.divider.visibility")
-    if divider_visibility is not None and divider_visibility.sync_state is not None:
-        divider_visibility.sync_state(presenter)
-    divider_thickness = registry().get_feature_toolbar_binding("magnifier.divider.thickness")
-    if divider_thickness is not None and divider_thickness.sync_state is not None:
-        divider_thickness.sync_state(presenter)
-
 def on_interpolation_combo_clicked(presenter):
     if presenter.ui_manager:
         presenter.ui_manager.transient.toggle_interpolation_flyout()

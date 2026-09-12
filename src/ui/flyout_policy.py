@@ -13,6 +13,10 @@ from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy
 # Mutual-exclusion set: opening any of these dismisses the others.
 # Context menus are intentionally excluded — they stack above other flyouts and
 # close themselves on outside click / action, not when a list animates/refreshes.
+# ``info_hud`` (the corner resolution/filename chips) and ``zoom_indicator``
+# (the corner zoom-percent chip) are also intentionally excluded: they must
+# never be a dismiss target of anything, see ``_configure_pinned_hud_rules``
+# below.
 _EXCLUSIVE_GROUPS = (
     "unified_list",
     "options",
@@ -45,12 +49,66 @@ def install_flyout_show_policy() -> GroupShowPolicy:
             dismisses=_EXCLUSIVE_GROUPS,
             claim_active=True,
         )
+    _configure_pinned_hud_rules(policy)
+    # Hosts a per-feature settings panel (e.g. combo_interpolation), whose own
+    # dropdown is an "options" flyout — letting that (or any other exclusive
+    # group) dismiss this one on open would close the panel mid-pick. Closing
+    # is hover/timer-driven instead, see the owning tab's settings hover
+    # controller (flyout_group="canvas_feature_settings", declared by the
+    # tab-owned flyout widget).
+    policy.configure_group("canvas_feature_settings", dismisses=(), claim_active=False)
+    # Magnifier enable shows two flyouts at once: the bottom magnifier
+    # controls (canvas_feature_settings) and the top panel-visibility
+    # toggles (toggle group, via MagnifierVisibilityController). Without an
+    # explicit coexistence rule the default exclusive policy would dismiss
+    # whichever opened first when the second shows (seen as
+    # PanelVisibilityFlyout hide 287ms after show while MagnifierSettingsFlyout
+    # was still visible).
+    policy.coexists_with("toggle", "canvas_feature_settings")
+    # SliderHintFlyout (the small "what does this slider do" popup) is
+    # unconfigured -> falls into the "default" group, whose fallback is
+    # exclusive (dismiss every other open flyout). Since it's shown from
+    # hover *while* the feature-settings panel above it is already open,
+    # that fallback was closing the parent panel every time a slider hint
+    # appeared. dismisses=() makes opening the hint a no-op for every other
+    # flyout, matching its own hover/timer-driven lifecycle (see
+    # SliderHintController).
+    policy.configure_group("slider_hint", dismisses=(), claim_active=False)
+    # _ScrollValueFlyout (ScrollValueButton's own wheel-nudge value popup,
+    # e.g. divider/width buttons) — same "default"-fallback
+    # DISMISS_ALL problem as slider_hint above, except worse: it was killing
+    # every flyout on screen, including the pinned zoom/info HUD chips
+    # (pinned only exempts a flyout from *its own* passive-dismiss paths,
+    # not from being named/DISMISS_ALL-targeted by another flyout opening).
+    policy.configure_group("scroll_value", dismisses=(), claim_active=False)
+
     manager = FlyoutManager.get_instance()
     manager.set_show_policy(policy)
     _install_context_menu_topmost_stacking(manager)
     _install_title_bar_resize_keeps_context_menus()
     _install_button_suppress_clears_context_menu_flag()
     return policy
+
+
+def _configure_pinned_hud_rules(policy: GroupShowPolicy) -> None:
+    """The corner HUD chips (``InfoHUD``/``ZoomIndicator``, ``flyout_group``
+    ``"info_hud"``/``"zoom_indicator"``) must never be dismissed by another
+    flyout opening.
+
+    They are already ``pinned=True`` (see ``ui/widgets/glass_hud/info.py`` and
+    ``ui/widgets/glass_hud/zoom.py``), which covers outside click / wheel /
+    window-deactivate / anchor-move — but pinned only protects a flyout from
+    *those* passive paths; a host ``GroupShowPolicy`` can still dismiss a
+    pinned flyout when another group opens (see sli-ui-toolkit's
+    FLYOUT_SYSTEM.md, "Pinned flyouts"). Every ``_EXCLUSIVE_GROUPS`` member's
+    dismiss set is scoped to that literal tuple, so simply not including
+    these groups in it is enough to make every *other* group leave them
+    alone. This call is the explicit, readable half: it stops either HUD
+    from ever dismissing anything if that assumption changes (e.g.
+    ``pinned`` is ever dropped from one of them).
+    """
+    policy.configure_group("info_hud", dismisses=(), claim_active=False)
+    policy.configure_group("zoom_indicator", dismisses=(), claim_active=False)
 
 
 def _title_bar_resize_needs_context_menu_patch() -> bool:
@@ -91,6 +149,8 @@ def _install_title_bar_resize_keeps_context_menus() -> None:
                         continue
                     if getattr(flyout, "flyout_group", None) == "context_menu":
                         continue
+                    if getattr(flyout, "pinned", False):
+                        continue
                     flyout.hide()
                 except RuntimeError:
                     getattr(mgr, "_registered_flyouts", set()).discard(flyout)
@@ -109,7 +169,7 @@ def _install_title_bar_resize_keeps_context_menus() -> None:
         except Exception:
             pass
 
-    CustomTitleBar._hide_active_flyouts = _hide_active_flyouts  # type: ignore[method-assign]
+    CustomTitleBar._hide_active_flyouts = _hide_active_flyouts
     _TITLE_BAR_RESIZE_PATCHED = True
 
 
@@ -132,7 +192,7 @@ def _install_button_suppress_clears_context_menu_flag() -> None:
     sli-ui-toolkit ≤3.1.1 sets both ``_suppress_next_click`` and
     ``_suppress_next_context_menu`` when dismissing a flyout via its anchor.
     Release consumes only the click flag, so the next File/Help click is
-    swallowed by ``TitleBarMenuStrip`` / ``popup_context_menu_for_anchor``.
+    swallowed by ``CsdMenuStrip`` / ``popup_context_menu_for_anchor``.
     """
     global _BUTTON_SUPPRESS_PATCHED
     if _BUTTON_SUPPRESS_PATCHED:
@@ -152,7 +212,7 @@ def _install_button_suppress_clears_context_menu_flag() -> None:
             return
         original(self)
 
-    Button._emit_click_signals = _emit_click_signals  # type: ignore[method-assign]
+    Button._emit_click_signals = _emit_click_signals
     _BUTTON_SUPPRESS_PATCHED = True
 
 
@@ -175,7 +235,7 @@ def _install_context_menu_topmost_stacking(manager: FlyoutManager) -> None:
 
     def request_show(flyout):
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:
@@ -193,4 +253,4 @@ def _install_context_menu_topmost_stacking(manager: FlyoutManager) -> None:
             pass
         return ok
 
-    manager.request_show = request_show  # type: ignore[method-assign]
+    manager.request_show = request_show
