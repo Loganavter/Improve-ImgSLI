@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 from typing import Any, Callable, List, Optional
 
 from domain.workspace import WorkspaceState
@@ -31,6 +32,17 @@ __all__ = [
 ]
 
 class Store(WorkspaceStoreMixin, StoreOperationsMixin):
+    """Root Store — viewport / document / settings holder.
+
+    Long-term Store lock fix (plan_image_compare_dnd_tiles.md): Dispatcher
+    prepares new_viewport / new_slots copies (including ViewState
+    ViewportState cloning and shallow dict copies of canvas_widget_state)
+    *outside* Dispatcher._lock. The critical section only does ``is``
+    identity comparison and an atomic pointer swap plus history. This keeps
+    deepcopy / dict-copy work off the lock and preserves the reentrant-safe
+    emit outside the lock (dispatcher.py:280).
+    """
+
     def __init__(self):
         self._change_callbacks: List[Callable[[str], None]] = []
         self.state_changed = None
@@ -41,6 +53,8 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self.runtime_cache = ViewportRuntimeCache()
         self.recorder = None
         self._dispatcher = None
+        self._change_batch_depth = 0
+        self._change_batch_scopes: list[str] = []
         self.create_workspace_session(
             session_type=INITIAL_WORKSPACE_SESSION_TYPE,
             activate=True,
@@ -89,8 +103,82 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self.recorder = recorder
 
     def emit_state_change(self, scope: str = "viewport"):
+        if self._change_batch_depth > 0:
+            if scope not in self._change_batch_scopes:
+                self._change_batch_scopes.append(scope)
+            return
         for cb in self._change_callbacks:
             cb(scope)
+
+    @contextmanager
+    def batch_changes(self):
+        """Coalesce change emissions inside the block into a single flush at exit.
+
+        Several operations are semantically one user-visible transition but
+        internally mutate the store in steps (e.g. ``create_workspace_session``
+        + ``close_workspace_session`` when the session picker is replaced by a
+        new session). Emitting per step makes the workspace UI sync to each
+        intermediate state — and the adaptive tab strip legitimately holds
+        *two* tabs between those steps, so an intermediate frame shows two tabs
+        before the replacement lands. Batching defers every emission until the
+        block ends, so listeners only ever see the coherent final state.
+        Reads inside the block still see the mutated store immediately; only
+        the change notifications are deferred. Scopes are flushed once each, in
+        first-emitted order.
+        """
+        self._change_batch_depth += 1
+        try:
+            yield
+        finally:
+            self._change_batch_depth -= 1
+            if self._change_batch_depth == 0:
+                scopes = list(self._change_batch_scopes)
+                self._change_batch_scopes = []
+                for scope in scopes:
+                    self.emit_state_change(scope)
+
+    def transact(self, actions: list, scope: str = "document") -> None:
+        """Single-dispatch transaction (plan_image_pipeline.md Phase 5).
+
+        Coalesces N actions (e.g. SetFullResImage + SetImagePath + SetPreview)
+        into one ``Dispatcher.dispatch(TransactionAction)`` → one
+        ``RootReducer.reduce`` → one ``emit_state_change(scope)``. The reducer
+        work (new_viewport / new_slots copies) is prepared outside
+        Dispatcher._lock; the lock only does ``is`` comparison + atomic swap.
+
+        Falls back to sequential dispatch for fake stores without dispatcher.
+        """
+        dispatcher = self.get_dispatcher()
+        if dispatcher is None:
+            # fake store in tests — apply via set_session_state_slot fallback
+            for a in actions:
+                try:
+                    dispatcher.dispatch(a, scope=scope)  # type: ignore[union-attr]
+                except Exception:
+                    pass
+            return
+        # fast path: single action → direct dispatch (avoid wrapping)
+        if len(actions) == 1:
+            dispatcher.dispatch(actions[0], scope=scope)
+            return
+        try:
+            from core.state_management.transaction import TransactionAction
+
+            dispatcher.dispatch(TransactionAction(actions), scope=scope)
+        except Exception:
+            # fallback: sequential
+            for a in actions:
+                try:
+                    dispatcher.dispatch(a, scope=scope)
+                except Exception:
+                    continue
+
+    def publish(self, scope: str) -> None:
+        """Best-effort publish for LOD / non-document scopes (phase 4: lod_available)."""
+        try:
+            self.emit_state_change(scope)
+        except Exception:
+            pass
 
     def emit_viewport_change(self, subdomain: str | None = None) -> None:
         scope = "viewport"

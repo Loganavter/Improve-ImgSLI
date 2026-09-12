@@ -2,6 +2,8 @@
   "help": {
     "help": "Помощь",
     "open_topic": "Открыть тему",
+    "search_placeholder": "Поиск по справке…",
+    "search_no_results": "Ничего не найдено",
     "context": {
       "copy": "Копировать",
       "select_all": "Выделить всё",

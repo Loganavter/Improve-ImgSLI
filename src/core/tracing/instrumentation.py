@@ -40,7 +40,7 @@ def _patch_dispatcher() -> None:
             return orig_dispatch(self, action, scope)
 
         action_type = getattr(action, "type", type(action).__name__)
-        payload = {}
+        payload: dict[str, Any] = {}
         try:
             payload["action"] = _action_payload(action)
         except Exception:
@@ -237,7 +237,7 @@ def _patch_widget_registry() -> None:
                 )
             return result
 
-        traced_cmd_alias.cache_clear = orig_cmd_alias.cache_clear
+        traced_cmd_alias.cache_clear = orig_cmd_alias.cache_clear  # type: ignore[attr-defined]  # lru_cache attribute on a wrapped callable
         registry.get_feature_command_by_alias = traced_cmd_alias
 
 _LAST_PLAN_BY_CANVAS: "dict[int, dict]" = {}

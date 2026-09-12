@@ -1,5 +1,6 @@
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
+    QMouseEvent,
     QDragEnterEvent,
     QDragMoveEvent,
     QDropEvent,
@@ -16,8 +17,55 @@ from events.router import route_drag_and_drop_override, route_global_keyboard_ev
 from events.runtime import build_event_handler_runtime
 
 import logging
+import os
 
-logger = logging.getLogger("ImproveImgSLI")
+# FOCUS/KEY-routing trace lines are extremely high-volume once --debug is on
+# (every focus change, every key press) and drown out other subsystems'
+# debug output (e.g. IMGSLI_RESIZE_DEBUG render tracing). Gated on its own
+# opt-in flag, off by default even under --debug -- same convention as
+# shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
+logger = logging.getLogger("ImproveImgSLI.nav")
+if os.environ.get("UI_NAV_DEBUG", "").strip().lower() in (
+    "",
+    "0",
+    "false",
+    "no",
+    "off",
+):
+    logger.setLevel(logging.WARNING)
+else:
+    logger.setLevel(logging.DEBUG)
+
+
+def _wname(w) -> str:
+    if w is None:
+        return "None"
+    name = getattr(w, "objectName", lambda: "")() or ""
+    cls = type(w).__name__
+    return f"{cls}({name})" if name else cls
+
+
+_KEY_NAMES = {
+    Qt.Key.Key_Down: "Down", Qt.Key.Key_Left: "Left",
+    Qt.Key.Key_Up: "Up", Qt.Key.Key_Right: "Right",
+    Qt.Key.Key_Return: "Return", Qt.Key.Key_Enter: "Enter",
+    Qt.Key.Key_Space: "Space", Qt.Key.Key_Escape: "Esc",
+    Qt.Key.Key_Tab: "Tab",
+}
+
+
+def _key_name(key: int) -> str:
+    return _KEY_NAMES.get(key, f"0x{key:X}")
+
+
+def _widget_path(w) -> str:
+    parts = []
+    p = w
+    while p is not None and len(parts) < 8:
+        parts.append(type(p).__name__)
+        p = p.parentWidget()
+    return " → ".join(parts)
+
 
 class EventHandler(QObject):
     drag_enter_event_signal = Signal(QDragEnterEvent)
@@ -56,29 +104,72 @@ class EventHandler(QObject):
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
 
+        # --- debug: structured key/focus trace ---
+        watched_name = type(watched_obj).__name__ if watched_obj is not None else "None"
+        if event_type == QEvent.Type.FocusIn:
+            w = QApplication.focusWidget()
+            logger.debug(
+                "  FOCUS → %s (reason=%s) [via=%s]",
+                _wname(w),
+                event.reason().name if hasattr(event, "reason") else "?",
+                watched_name,
+            )
+        elif event_type == QEvent.Type.FocusOut:
+            logger.debug(
+                "  FOCUS ← %s [via=%s]",
+                _wname(watched_obj),
+                watched_name,
+            )
+        elif event_type == QEvent.Type.KeyPress:
+            w = QApplication.focusWidget()
+            k = event.key()
+            path = _widget_path(w) if w else "?"
+            logger.debug(
+                "  KEY %s(0x%X) → %s  path=%s [via=%s]",
+                _key_name(k), k,
+                _wname(w),
+                path,
+                watched_name,
+            )
+        # --- end debug ---
+
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
+
+        # Close visible in-window ContextMenus on Escape before the global
+        # keyboard handler consumes it — but only if no flyout section owns
+        # the focused widget (flyout sections route Escape through
+        # NavigationManager → extra_keys → keyPressEvent).
+        if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            from sli_ui_toolkit.managers import NavigationManager
+            if not NavigationManager.get_instance().should_intercept(Qt.Key.Key_Escape):
+                from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import (
+                    ContextMenu,
+                )
+                if ContextMenu.close_visible():
+                    event.accept()
+                    return True
 
         if event_type == QEvent.Type.ApplicationDeactivate:
             self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.WindowDeactivate:
             app = QApplication.instance()
-            active_window = app.activeWindow() if app is not None else None
+            active_window = app.activeWindow() if isinstance(app, QApplication) else None
             if watched_obj is self.presenter.main_window_app or watched_obj is active_window:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.FocusOut:
             if watched_obj is self.presenter.main_window_app:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
 
-        if event_type == QEvent.Type.MouseButtonPress:
+        if event_type == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
             # Same QMouseEvent is delivered to every installEventFilter target
             # (app + window + image_label). Emit once per physical press.
             press_key = (id(event), event.button(), event.timestamp())
             if press_key != getattr(self, "_last_mouse_press_key", None):
                 self._last_mouse_press_key = press_key
                 self.mouse_press_event_signal.emit(event)
-        elif event_type == QEvent.Type.MouseButtonRelease:
+        elif event_type == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
             release_key = (id(event), event.button(), event.timestamp())
             if release_key != getattr(self, "_last_mouse_release_key", None):
                 self._last_mouse_release_key = release_key
@@ -115,6 +206,12 @@ class EventHandler(QObject):
                 pass
         if not result.applied and not session_reset:
             return
+        logger.debug(
+            "[kbd-reset] reason=%s keyboard_reset=%s session_reset=%s",
+            reason,
+            result.applied,
+            session_reset,
+        )
         self.store.emit_viewport_change("interaction")
         if not session_reset:
             try:

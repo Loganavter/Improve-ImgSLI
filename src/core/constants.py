@@ -1,14 +1,11 @@
-from enum import StrEnum
-
 class AppConstants:
-    DISPLAY_RESOLUTION_OPTIONS = {
-        "Original": 0,
-        "8K (4320p)": 4320,
-        "4K (2160p)": 2160,
-        "2K (1440p)": 1440,
-        "Full HD (1080p)": 1080,
-    }
-    DEFAULT_DISPLAY_RESOLUTION_LIMIT = 2160
+    # Kept in sync by hand with the packaging templates under build/ (AUR
+    # PKGBUILD's pkgver, the Flatpak metainfo <release> entries, and Inno
+    # Setup's MyAppVersion) -- this is the one copy the app itself reads at
+    # runtime, e.g. for QApplication.setApplicationVersion and for the
+    # last-seen-version check in core.bootstrap that offers a one-time
+    # stale-cache purge notice after upgrading from an untracked version.
+    APP_VERSION = "11.0.0"
 
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150
@@ -54,9 +51,12 @@ class AppConstants:
 
     PROGRESSIVE_LOAD_THRESHOLD_BYTES = 2 * 1024 * 1024
     PROGRESSIVE_LOAD_THRESHOLD_PIXELS = 1920 * 1080
-    # Sanity bound against pathological/corrupt files. Codecs still decompress
-    # a full frame once; spill into TiledPixelStore is strip-written (no second
-    # full HxWx4 copy). Raise further only with real streaming/region decode.
+    # Decode-backend safety bound against pathological/corrupt files, applied
+    # by the PIL/imagecodecs full-frame decode path only. When pyvips
+    # streaming decode is available for a file (see
+    # shared/image_processing/progressive_loader.py::pyvips_can_stream) the
+    # bound does not apply — libvips streams strips straight to the memmap
+    # without a full-frame decode buffer.
     MAX_SUPPORTED_IMAGE_DIMENSION = 65536
     # Soft ceiling for still-image export. Above this we warn that the path is
     # untested; we do not block or silently clamp output / native canvas size.
@@ -64,35 +64,3 @@ class AppConstants:
     # Host tile size for TiledPixelStore (GEGL-style always-tiled storage).
     # Separate from GPU live tile extent (8192 in rhi_renderer/resources.py).
     PIXEL_TILE_SIZE = 512
-
-class Events(StrEnum):
-
-    CORE_UPDATE_REQUESTED = "core.update_requested"
-    CORE_ERROR_OCCURRED = "core.error_occurred"
-
-    EXPORT_TOGGLE_RECORDING = "export.toggle_recording"
-    EXPORT_TOGGLE_PAUSE_RECORDING = "export.toggle_pause_recording"
-    EXPORT_OPEN_VIDEO_EDITOR = "export.open_video_editor"
-    EXPORT_PASTE_IMAGE_FROM_CLIPBOARD = "export.paste_image_from_clipboard"
-
-    ANALYSIS_SET_CHANNEL_VIEW_MODE = "analysis.set_channel_view_mode"
-    ANALYSIS_TOGGLE_DIFF_MODE = "analysis.toggle_diff_mode"
-    ANALYSIS_SET_DIFF_MODE = "analysis.set_diff_mode"
-    ANALYSIS_METRICS_UPDATED = "analysis.metrics_updated"
-    ANALYSIS_REQUEST_METRICS = "analysis.request_metrics"
-
-    SETTINGS_CHANGE_LANGUAGE = "settings.change_language"
-    SETTINGS_TOGGLE_INCLUDE_FILENAMES_IN_SAVED = (
-        "settings.toggle_include_filenames_in_saved"
-    )
-    SETTINGS_APPLY_FONT_SETTINGS = "settings.apply_font_settings"
-    SETTINGS_TOGGLE_AUTO_CROP_BLACK_BORDERS = "settings.toggle_auto_crop_black_borders"
-    SETTINGS_UI_MODE_CHANGED = "settings.ui_mode_changed"
-
-    COMPARISON_UI_UPDATE = "comparison.ui_update"
-    COMPARISON_ERROR = "comparison.error"
-    COMPARISON_UPDATE_REQUESTED = "comparison.update_requested"
-
-    @staticmethod
-    def plugin_event(plugin_name: str, stage: str) -> str:
-        return f"plugin.{plugin_name}.{stage}"

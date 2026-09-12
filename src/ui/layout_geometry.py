@@ -28,10 +28,8 @@ def _resolve_canvas(main_window):
     image_canvas = presenter.get_feature("image_canvas")
     if image_canvas is None:
         return None, main_window.layout()
-    from tabs.image_compare.canvas.helpers import get_canvas
-
-    widget = getattr(image_canvas, "widget", None)
-    return get_canvas(widget), main_window.layout()
+    canvas = getattr(image_canvas, "get_canvas", lambda: None)()
+    return canvas, main_window.layout()
 
 
 def _active_workspace_page(main_window):

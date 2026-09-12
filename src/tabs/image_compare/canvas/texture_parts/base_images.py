@@ -1,6 +1,8 @@
+# Audit-Meta: pattern=canvas-presentation size=exempt reason="texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
+from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
@@ -27,9 +29,21 @@ def _canvas_dims(widget) -> tuple[int, int]:
 
 def upload_image(widget, qimage: QImage, slot_index: int):
     state = widget.runtime_state
+    from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+
     if slot_index not in (0, 1) or qimage.isNull():
+        ic_first_frame_debug(
+            widget, "upload_image slot=%s SKIPPED null=%s", slot_index, qimage.isNull()
+        )
         return
 
+    ic_first_frame_debug(
+        widget,
+        "upload_image slot=%s size=%sx%s",
+        slot_index,
+        qimage.width(),
+        qimage.height(),
+    )
     queue_prepared_texture_upload(
         widget, widget.texture_ids[slot_index], qimage, slot_index
     )
@@ -82,21 +96,26 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     # Rare fallback: the "stored" (display) role normally resolves to the
     # small display-cache image, never the raw unify result -- but a cache
     # invalidation can momentarily leave only the TiledPixelStore behind
-    # (see plan_builder.build_live_store_presentation).
-    if isinstance(img, TiledPixelStore):
-        img = img.to_pil()
+    # (see plan_builder.build_live_store_presentation). Never materialize
+    # the store via to_pil() here (multi-GB on a 20k source); downscale
+    # tile-native to the display size instead.
+    is_store = isinstance(img, TiledPixelStore)
     cw, ch = _canvas_dims(widget)
     if cw <= 0 or ch <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
+        if is_store:
+            return downscale_source_to_pil(img, img.size).convert("RGBA")
         return img.convert("RGBA")
 
-    img = img.convert("RGBA")
+    from shared.image_processing.image_dims import get_image_dims
+
+    w, h = get_image_dims(img)
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
         widget_height=ch,
-        image_width=img.width,
-        image_height=img.height,
+        image_width=w,
+        image_height=h,
         virtual_layout=None,
     )
     inner = geometry.inner_rect_px or (0, 0, cw, ch)
@@ -113,16 +132,26 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
             state._content_rect_px = geometry.outer_rect_px or (0, 0, cw, ch)
             state._inner_content_rect_px = inner
             state._clip_overlays_to_content_rect = False
-    scaled = img.resize((nw, nh), PilImage.Resampling.BILINEAR)
+    if is_store:
+        scaled = downscale_source_to_pil(
+            img, (nw, nh), resample=PilImage.Resampling.BILINEAR
+        )
+    else:
+        scaled = img.convert("RGBA").resize((nw, nh), PilImage.Resampling.BILINEAR)
     result = PilImage.new("RGBA", (cw, ch), (0, 0, 0, 0))
     result.paste(scaled, (offset_x, offset_y))
     return result
 
 
+# helper removed — use shared helper (B6)
+
+
 def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: int = -1):
+    from shared.image_processing.image_dims import get_image_dims
     state = widget.runtime_state
     cw, ch = _canvas_dims(widget)
-    if img is None or cw <= 0 or ch <= 0 or img.width <= 0 or img.height <= 0:
+    w, h = get_image_dims(img)
+    if img is None or cw <= 0 or ch <= 0 or w <= 0 or h <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
             if slot_index == 0:
@@ -134,8 +163,8 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
         widget_height=ch,
-        image_width=img.width,
-        image_height=img.height,
+        image_width=w,
+        image_height=h,
         virtual_layout=None,
     )
     inner = geometry.inner_rect_px
@@ -162,16 +191,84 @@ def update_common_letterbox_geometry(
     image1: PilImage.Image | None,
     image2: PilImage.Image | None,
 ) -> None:
-    """Keep both comparison sides in one canvas coordinate system."""
-    reference = image1 if image1 is not None else image2
-    update_letterbox_geometry(widget, reference, slot_index=0)
-    while len(widget.runtime_state._letterbox_params) < 2:
-        widget.runtime_state._letterbox_params.append(
-            tuple(widget.runtime_state._letterbox_params[0])
-        )
-    widget.runtime_state._letterbox_params[1] = tuple(
-        widget.runtime_state._letterbox_params[0]
+    """Keep both comparison sides in one canvas coordinate system.
+
+    Eager max envelope (single owner): when both sides have sizes, compute
+    pw,ph = max(w1,w2), max(h1,h2) once and derive a single fitted rect via
+    shared helper ``eager_envelope_rect`` (one
+    ``resolve_canvas_content_geometry(cw,ch,pw,ph)`` call). Both letterbox
+    slots receive the same ux/cw,uy/ch,uw/cw,uh/ch, dispatched via
+    store.transact. No hold, no more_pending, no Store predicted field.
+    Fallback to per-image letterbox only when one side has no size.
+    """
+    state = widget.runtime_state
+    cw, ch = _canvas_dims(widget)
+    while len(state._letterbox_params) < 2:
+        state._letterbox_params.append((0.0, 0.0, 1.0, 1.0))
+    if cw <= 0 or ch <= 0:
+        update_letterbox_geometry(widget, image1, slot_index=0)
+        update_letterbox_geometry(widget, image2, slot_index=1)
+        return
+
+    from shared.image_processing.image_dims import get_image_dims
+    from shared.rendering.unified_envelope import eager_envelope_rect
+
+    w1, h1 = get_image_dims(image1) if image1 is not None else (0, 0)
+    w2, h2 = get_image_dims(image2) if image2 is not None else (0, 0)
+    have1 = image1 is not None and w1 > 0 and h1 > 0
+    have2 = image2 is not None and w2 > 0 and h2 > 0
+    if not have1 and not have2:
+        state._letterbox_params[0] = (0.0, 0.0, 1.0, 1.0)
+        state._letterbox_params[1] = (0.0, 0.0, 1.0, 1.0)
+        state._content_rect_px = (0, 0, max(1, cw), max(1, ch))
+        state._inner_content_rect_px = state._content_rect_px
+        state._clip_overlays_to_content_rect = False
+        return
+
+    def _dispatch_store(rect_tuple: tuple[int, int, int, int]) -> bool:
+        x, y, w, h = rect_tuple
+        store = getattr(state, "_store", None) or getattr(widget, "_store", None)
+        if store is None:
+            return False
+        try:
+            dispatcher = store.get_dispatcher()
+            if dispatcher is None:
+                return False
+            from core.state_management.geometry_actions import (
+                SetImageDisplayRectAction,
+                SetPixmapDimensionsAction,
+            )
+            from domain.types import Rect
+
+            rect = Rect(x, y, w, h)
+            store.transact(
+                [
+                    SetPixmapDimensionsAction(width=w, height=h),
+                    SetImageDisplayRectAction(rect=rect),
+                ],
+                scope="viewport",
+            )
+            return True
+        except Exception:
+            return False
+
+    if have1 and have2:
+        letterbox, candidate_rect = eager_envelope_rect(cw, ch, [(w1, h1), (w2, h2)])
+        state._letterbox_params[0] = letterbox
+        state._letterbox_params[1] = letterbox
+        state._content_rect_px = candidate_rect
+        state._inner_content_rect_px = candidate_rect
+        state._clip_overlays_to_content_rect = False
+        _dispatch_store(candidate_rect)
+        return
+
+    update_letterbox_geometry(widget, image1, slot_index=0)
+    update_letterbox_geometry(widget, image2, slot_index=1)
+    inner = getattr(state, "_inner_content_rect_px", None) or getattr(
+        state, "_content_rect_px", None
     )
+    if inner is not None:
+        _dispatch_store(inner)
 
 
 def upload_pil_images(
@@ -197,6 +294,25 @@ def upload_pil_images(
         )
     )
     stored_changed = stored_ids != state._stored_image_ids
+    if stored_changed:
+        from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+        if tile_dump_enabled():
+            log_tile_event(
+                "stored_changed",
+                old_ids=str(state._stored_image_ids),
+                new_ids=str(stored_ids),
+            )
+    from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+    ic_first_frame_debug(
+        widget,
+        "upload_pil_images stored_changed=%s stored=[%s,%s] source=[%s,%s] source_key=%s",
+        stored_changed,
+        pil_image1 is not None,
+        pil_image2 is not None,
+        source_image1 is not None,
+        source_image2 is not None,
+        source_key,
+    )
     state._stored_pil_images = [pil_image1, pil_image2]
     state._stored_image_ids = stored_ids
     state._shader_letterbox_mode = bool(shader_letterbox)
@@ -233,9 +349,11 @@ def upload_pil_images(
         if cache is not None:
             for texture_id in widget._source_texture_ids:
                 cache.pop(texture_id, None)
+    # Single geometry update — previously called twice (once per slot) with identical args
+    if stored_changed and state._shader_letterbox_mode and (pil_image1 or pil_image2):
+        update_common_letterbox_geometry(widget, pil_image1, pil_image2)
     if pil_image1 and stored_changed:
         if state._shader_letterbox_mode:
-            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
             # docs/dev/rendering/tile-rendering-system.md Phase 3: skip the
             # whole-image upload for lazy sources -- see the matching
             # comment in upload_source_pil_image; realize_tile_plan()
@@ -253,7 +371,7 @@ def upload_pil_images(
             queue_texture_upload(widget, lb1, widget.texture_ids[0], slot_index=0)
     if pil_image2 and stored_changed:
         if state._shader_letterbox_mode:
-            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
+            pass  # geometry already updated above
             if isinstance(pil_image2, TiledPixelStore):
                 state._images_uploaded[1] = True
             else:
@@ -335,9 +453,12 @@ def get_letterbox_params(widget, slot: int = 0) -> tuple:
     )
     w, h = _canvas_dims(widget)
     if img and w > 0 and h > 0:
-        ratio = min(w / img.width, h / img.height)
-        nw = max(1, int(img.width * ratio))
-        nh = max(1, int(img.height * ratio))
+        from shared.image_processing.image_dims import get_image_dims
+        iw, ih = get_image_dims(img)
+        if iw > 0 and ih > 0:
+            ratio = min(w / iw, h / ih)
+            nw = max(1, int(iw * ratio))
+            nh = max(1, int(ih * ratio))
         return (
             (w - nw) / (2.0 * w),
             (h - nh) / (2.0 * h),

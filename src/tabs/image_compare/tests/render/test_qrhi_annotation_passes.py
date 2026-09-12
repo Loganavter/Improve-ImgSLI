@@ -2,6 +2,11 @@
 
 from types import SimpleNamespace
 
+from ui.canvas_infra.scene.registry import get_canvas_registry
+import tabs.image_compare.canvas.features as image_compare_features
+
+get_canvas_registry("image_compare").register_package(image_compare_features)
+
 
 def test_guides_require_runtime_geometry():
     from tabs.image_compare.canvas.features.guides.passes import GuidesPass

@@ -19,6 +19,7 @@ def constrain_split_weights(
     proposed_weights: tuple[float, ...] | list[float],
     slots: list[CompareSlot],
     zoom: float = 1.0,
+    sizes: dict[int, tuple[int, int]] | None = None,
 ) -> list[float]:
     """Clamp proposed SplitNode weights only when the whole layout is symmetric."""
     split = node_at_path(root, path)
@@ -29,10 +30,10 @@ def constrain_split_weights(
         return weights
 
     weights = _apply_min_share(weights)
-    if zoom > 1.0 or not is_symmetric_layout(root, slots):
+    if zoom > 1.0 or not is_symmetric_layout(root, slots, sizes=sizes):
         return weights
 
-    natural = natural_split_weights(split, slots)
+    natural = natural_split_weights(split, slots, sizes=sizes)
     if natural is None:
         return weights
     total = sum(weights) or 1.0
@@ -40,27 +41,35 @@ def constrain_split_weights(
     return [total * weight / natural_total for weight in natural]
 
 
-def is_symmetric_layout(root: LayoutNode | None, slots: list[CompareSlot]) -> bool:
+def is_symmetric_layout(
+    root: LayoutNode | None,
+    slots: list[CompareSlot],
+    sizes: dict[int, tuple[int, int]] | None = None,
+) -> bool:
     """Return True when every split repeats the same child shape/content aspect."""
     if root is None:
         return False
     slots_by_id = {slot.id: slot for slot in slots}
-    signature = _symmetry_signature(root, slots_by_id)
+    signature = _symmetry_signature(root, slots_by_id, sizes=sizes)
     return signature is not None
 
 
 def natural_split_weights(
     split: SplitNode,
     slots: list[CompareSlot],
+    sizes: dict[int, tuple[int, int]] | None = None,
 ) -> list[float] | None:
     """Weights that make each direct child keep its natural aspect at zoom 1."""
     slots_by_id = {slot.id: slot for slot in slots}
-    aspects = [natural_aspect_for_node(child, slots_by_id) for child in split.children]
+    aspects = [
+        natural_aspect_for_node(child, slots_by_id, sizes=sizes)
+        for child in split.children
+    ]
     if any(aspect is None or aspect <= 0 for aspect in aspects):
         return None
     if split.direction == "h":
-        return [float(aspect) for aspect in aspects]
-    return [1.0 / float(aspect) for aspect in aspects]
+        return [float(aspect) for aspect in aspects]  # type: ignore[arg-type]  # aspects narrowed above
+    return [1.0 / float(aspect) for aspect in aspects]  # type: ignore[arg-type]
 
 
 def natural_pair_weight_ratio(
@@ -69,6 +78,7 @@ def natural_pair_weight_ratio(
     divider_idx: int,
     direction: str,
     slots: list[CompareSlot],
+    sizes: dict[int, tuple[int, int]] | None = None,
 ) -> float | None:
     """Return the natural left/right or top/bottom weight ratio for a divider."""
     split = node_at_path(root, split_path)
@@ -77,9 +87,11 @@ def natural_pair_weight_ratio(
     if divider_idx < 0 or divider_idx + 1 >= len(split.children):
         return None
     slots_by_id = {slot.id: slot for slot in slots}
-    first_aspect = natural_aspect_for_node(split.children[divider_idx], slots_by_id)
+    first_aspect = natural_aspect_for_node(
+        split.children[divider_idx], slots_by_id, sizes=sizes
+    )
     second_aspect = natural_aspect_for_node(
-        split.children[divider_idx + 1], slots_by_id
+        split.children[divider_idx + 1], slots_by_id, sizes=sizes
     )
     if first_aspect is None or second_aspect is None:
         return None
@@ -91,17 +103,22 @@ def natural_pair_weight_ratio(
 def natural_aspect_for_node(
     node: LayoutNode,
     slots_by_id: dict[int, CompareSlot],
+    sizes: dict[int, tuple[int, int]] | None = None,
 ) -> float | None:
-    """Natural aspect ratio for a leaf/subtree, ignoring divider gaps."""
+    """Natural aspect ratio for a leaf/subtree, ignoring divider gaps.
+
+    Sizes come from the dispatch payload (resolved from the session pixel
+    cache at the call site — B1 keeps pixels off the slot); ``None`` reads
+    as imageless, same as a slot with no tier before B1.
+    """
     if isinstance(node, LeafNode):
         slot = slots_by_id.get(node.slot_id)
-        image = slot.image if slot is not None else None
-        if image is None:
+        if slot is None:
             return None
-        if hasattr(image, "shape"):
-            height, width = image.shape[:2]
-        else:
-            width, height = image.width, image.height
+        size = (sizes or {}).get(node.slot_id)
+        if size is None:
+            return None
+        width, height = size
         if width <= 0 or height <= 0:
             return None
         return float(width) / float(height)
@@ -110,7 +127,7 @@ def natural_aspect_for_node(
     child_aspects = [
         aspect
         for child in node.children
-        if (aspect := natural_aspect_for_node(child, slots_by_id)) is not None
+        if (aspect := natural_aspect_for_node(child, slots_by_id, sizes=sizes)) is not None
         and aspect > 0
     ]
     if not child_aspects:
@@ -128,16 +145,18 @@ def natural_aspect_for_node(
 def _symmetry_signature(
     node: LayoutNode,
     slots_by_id: dict[int, CompareSlot],
+    sizes: dict[int, tuple[int, int]] | None = None,
 ):
     if isinstance(node, LeafNode):
-        aspect = natural_aspect_for_node(node, slots_by_id)
+        aspect = natural_aspect_for_node(node, slots_by_id, sizes=sizes)
         if aspect is None:
             return None
         return ("leaf", round(aspect, 6))
     if not isinstance(node, SplitNode) or not node.children:
         return None
     child_signatures = [
-        _symmetry_signature(child, slots_by_id) for child in node.children
+        _symmetry_signature(child, slots_by_id, sizes=sizes)
+        for child in node.children
     ]
     if any(signature is None for signature in child_signatures):
         return None

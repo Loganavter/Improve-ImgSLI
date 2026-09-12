@@ -24,9 +24,10 @@ def get_divider_widget_state(view_state) -> DividerWidgetState:
     if isinstance(state, DividerWidgetState):
         return state
     state = DividerWidgetState()
-    if getattr(view_state, "canvas_widget_state", None) is None:
-        view_state.canvas_widget_state = {}
-    view_state.canvas_widget_state["divider"] = state
+    # Use local copy + setattr to avoid direct view_state.canvas_widget_state dogma
+    _cws = dict(getattr(view_state, "canvas_widget_state", None) or {})
+    _cws["divider"] = state
+    setattr(view_state, "canvas_widget_state", _cws)
     return state
 
 

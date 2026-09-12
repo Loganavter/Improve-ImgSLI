@@ -16,9 +16,11 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QImage,
     QRhiBuffer,
+    QRhi,
     QRhiGraphicsPipeline,
     QRhiSampler,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiTexture,
     QRhiViewport,
@@ -39,16 +41,16 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
     """Rasterize-to-texture, draw-as-fullscreen-quad QRhi pass base."""
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.pipeline = None
+        self.rhi: QRhi | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
         self._render_pass_descriptor = None
         self._pipeline_sample_count: int | None = None
-        self.vertex_buffer = None
-        self.uniform_buffer = None
-        self.sampler = None
-        self.texture = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.uniform_buffer: QRhiBuffer | None = None
+        self.sampler: QRhiSampler | None = None
+        self.texture: QRhiTexture | None = None
         self.texture_size: QSize | None = None
-        self.srb = None
+        self.srb: QRhiShaderResourceBindings | None = None
         self.active = False
 
     def _raster(self, widget, ctx) -> QImage | None:
@@ -92,10 +94,10 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
         pipeline.setRenderPassDescriptor(descriptor)
         blend = QRhiGraphicsPipeline.TargetBlend()
         blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
         pipeline.setTargetBlends([blend])
         pipeline.setShaderResourceBindings(self.srb)
         pipeline.setVertexInputLayout(vertex_input_layout())
@@ -145,6 +147,7 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
         self._ensure_pipeline(target)
 
     def _build_srb(self):
+        assert self.rhi is not None
         srb = self.rhi.newShaderResourceBindings()
         stages = (
             QRhiShaderResourceBinding.StageFlag.VertexStage
@@ -183,15 +186,18 @@ class FullscreenOverlayTexturePass(CanvasRenderPass):
         overlay_size = overlay_image.size()
         if self.texture_size != overlay_size:
             try:
-                self.texture.destroy()
+                if self.texture is not None:
+                    self.texture.destroy()
             except RuntimeError:
                 pass
+            assert self.rhi is not None
             self.texture = self.rhi.newTexture(QRhiTexture.Format.RGBA8, overlay_size)
             if not self.texture.create():
                 raise RuntimeError(f"Failed to resize {type(self).__name__} texture")
             self.texture_size = overlay_size
             try:
-                self.srb.destroy()
+                if self.srb is not None:
+                    self.srb.destroy()
             except RuntimeError:
                 pass
             self.srb = self._build_srb()

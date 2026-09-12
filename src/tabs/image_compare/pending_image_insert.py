@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tabs.image_compare.tab import ImageCompareTab
 
-logger = logging.getLogger("ImproveImgSLI")
+from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl"}
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def begin_pending_image_insert(tab: "ImageCompareTab", paths) -> bool:

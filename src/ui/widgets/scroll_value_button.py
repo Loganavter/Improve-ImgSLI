@@ -8,19 +8,33 @@ color).
 
 Used for divider width, magnifier-divider width, and magnifier-guides width
 controls across multi_compare and image_compare toolbars.
+Audit-Meta: pattern=state-machine reason="single custom-painted control — painter pipeline owns visuals"
 """
 
 from __future__ import annotations
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import QLabel, QWidget
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.widgets import (
+    BackgroundLayer,
+    BadgeLayer,
     BaseFlyout,
     Button,
     ButtonRegion,
     ButtonRow,
+    ContentLayer,
+    DividerLayer,
+    Layer,
+    RippleLayer,
+    StrikethroughLayer,
+    UnderlineLayer,
     VerticalSplit,
 )
 
@@ -33,30 +47,192 @@ _WIDTH = 36
 _HEIGHT = 36
 _RADIUS = 6
 
+# Padding around the digit inside the small capsule backdrop (see
+# _ValueOverUnderlineLayer) — deliberately tight, not the full split region.
+_CAPSULE_PAD_X = 5.0
+_CAPSULE_PAD_Y = 3.0
+
+
+class _ValueOverUnderlineLayer(Layer):
+    """Repaints the "value" region's digit on top of UnderlineLayer, behind
+    a small themed capsule sized to the digit (not the whole split region).
+
+    Reuses the toolkit's own BackgroundLayer color resolution (so the
+    capsule fill tracks the button's current state/theme for free) and
+    ContentLayer for the digit itself, but draws the capsule shape by hand
+    since BackgroundLayer only knows how to fill its full region rect.
+    Stateless like the toolkit's own layers — reads the button instance off
+    ``ctx.widget`` rather than holding any state itself, so one instance is
+    shared across all ScrollValueButtons (see _LAYERS).
+    """
+
+    scope = "widget"
+
+    def __init__(self) -> None:
+        self._content_layer = ContentLayer()
+
+    def applies(self, ctx) -> bool:
+        widget = ctx.widget
+        return bool(getattr(widget, "_hovered_split", False)) and not getattr(
+            widget, "_is_scrolling", False
+        )
+
+    def draw(self, ctx, tm) -> None:
+        iter_regions = getattr(ctx.widget, "iter_regions", None)
+        if iter_regions is None:
+            return
+        for scoped_ctx in iter_regions(ctx):
+            if scoped_ctx.region_id == "value":
+                if not ctx.widget._is_at_zero():
+                    self._draw_capsule(scoped_ctx, tm, str(ctx.widget._value))
+                self._content_layer.draw(scoped_ctx, tm)
+                return
+
+    @staticmethod
+    def _clamp_capsule(capsule: QRectF, region_rect: QRectF) -> QRectF:
+        """Keep the capsule inside the value region (never over the icon)."""
+        return capsule.intersected(region_rect)
+
+    @staticmethod
+    def _draw_capsule(scoped_ctx, tm, text: str) -> None:
+        backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
+        if not backgrounds:
+            return
+        font = ui_font(pixel_size=12)
+        fm = QFontMetrics(font)
+        pad_x = scaled_px(_CAPSULE_PAD_X)
+        pad_y = scaled_px(_CAPSULE_PAD_Y)
+        width = fm.horizontalAdvance(text) + 2 * pad_x
+        height = fm.height() + 2 * pad_y
+        center = scoped_ctx.effective_rect.center()
+        rect = QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
+        # The value split region is narrower/shorter than the digit +
+        # padding for multi-digit values; clamp the capsule to the region
+        # so it never bleeds into the icon region (ContentLayer clips the
+        # digit itself to the same rect — clip_content=True).
+        rect = _ValueOverUnderlineLayer._clamp_capsule(
+            rect, QRectF(scoped_ctx.effective_rect)
+        )
+
+        p = scoped_ctx.painter
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(backgrounds[-1])
+        p.drawRoundedRect(rect, height / 2, height / 2)
+        p.restore()
+
+
+# The toolkit's Painter (buttons/painter.py) always runs every region-scoped
+# layer (ContentLayer among them) before any widget-scoped layer
+# (UnderlineLayer is scope="widget"), regardless of where each sits in this
+# list — so simply listing ContentLayer after UnderlineLayer does NOT make
+# the digit paint on top; the underline (esp. the thick end of the
+# thickness ramp below) still ends up covering it. _ValueOverUnderlineLayer
+# below is itself widget-scoped, so its list position *does* control paint
+# order relative to UnderlineLayer: it repaints just the "value" region's
+# content a second time, after the underline, whenever hover-without-scroll
+# should show the digit sitting on top of the line.
+_LAYERS = (
+    BackgroundLayer(),
+    RippleLayer(),
+    ContentLayer(),
+    BadgeLayer(),
+    UnderlineLayer(),
+    _ValueOverUnderlineLayer(),
+    DividerLayer(),
+    StrikethroughLayer(),
+)
+
+# The underline's thickness tracks the button's own value (e.g. divider/line
+# width), so a thicker configured line reads visually as a thicker indicator
+# too: value=1 -> _UNDERLINE_THICKNESS_MIN, value=max_value -> _MAX. value=0
+# is the separate "hidden" state (zero_icon) and isn't part of this ramp.
+_UNDERLINE_THICKNESS_MIN = 1.0
+_UNDERLINE_THICKNESS_MAX = 5.0
+
 
 class _ScrollValueFlyout(BaseFlyout):
     """Transient popup mirroring the current value above the button."""
 
+    # Without an explicit group this falls into flyout_policy.py's
+    # unconfigured "default" bucket, which resolves to the fallback
+    # DISMISS_ALL policy -- every wheel-nudge on a ScrollValueButton was
+    # closing every other visible flyout, including "pinned" ones like the
+    # zoom-percent/info HUD chips (pinned only exempts a flyout from being
+    # dismissed by *its own* passive-dismiss paths -- outside click/wheel/
+    # deactivate -- not from another flyout's GroupShowPolicy dismiss set
+    # naming it, or DISMISS_ALL). Same shape as "slider_hint" below.
+    flyout_group = "scroll_value"
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self._label = QLabel(self)
+        # apply_ui_font (not a bare setFont) so the digit follows font and
+        # UiScale changes live — see SliderHintFlyout for the same pattern.
+        apply_ui_font(self._label)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setFixedSize(22, 20)
+        # Minimum, NOT fixed size: the flyout is cached per button and lives
+        # across UiScale changes — a fixed design size computed once at
+        # construction stays stale when the factor rises (digit re-resolves
+        # its scaled font live, so the text overflows and clips against the
+        # panel's rounded corners). A minimum keeps the compact pill for a
+        # single digit while letting the sizeHint (scaled text) grow it on
+        # every show (show_aligned -> adjustSize), same as SliderHintFlyout.
+        self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
 
-    def show_value(self, text: str, icon=None, anchor: QWidget | None = None) -> None:
+    def keyPressEvent(self, event) -> None:
+        # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            event.accept()
+            return
+        # Avoid grouping forbidden pairs (Down+Right, Up+Left) in one tuple — see
+        # tests/contracts/test_no_arrow_key_redirection.py. Up/Right increment,
+        # Down/Left decrement — split into two tuples.
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Down):
+            anchor = getattr(self, "_anchor_widget", None)
+            if anchor is not None and hasattr(anchor, "_step_value"):
+                try:
+                    anchor._step_value(-1)  # type: ignore[attr-defined]
+                    event.accept()
+                    return
+                except Exception:
+                    pass
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Up):
+            anchor = getattr(self, "_anchor_widget", None)
+            if anchor is not None and hasattr(anchor, "_step_value"):
+                try:
+                    anchor._step_value(1)  # type: ignore[attr-defined]
+                    event.accept()
+                    return
+                except Exception:
+                    pass
+        super().keyPressEvent(event)
+
+    def show_value(self, text: str, icon=None, anchor: QWidget | None = None, grab_focus: bool | None = None) -> None:
         if icon is not None:
-            self._label.setPixmap(icon.pixmap(16, 16))
+            self._label.setPixmap(icon.pixmap(scaled_px(16), scaled_px(16)))
             self._label.setText("")
         else:
             self._label.clear()
             self._label.setText(text)
         if anchor is not None:
+            # Edit-mode (Enter) → кольцо наверх, wheel-preview → без кражи фокуса
+            _grab = grab_focus if grab_focus is not None else False
+            # Декларативный side для навигации — flyout визуально выше кнопки
+            try:
+                self._nav_side = "above"  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.show_aligned(
                 anchor,
                 anchor_point="top-center",
                 flyout_point="bottom-center",
                 offset=6,
+                grab_focus=_grab,
+                register_nav_section=_grab,
             )
         else:
             self.show()
@@ -104,12 +280,15 @@ class ScrollValueButton(Button):
         self._zero_icon = zero_icon
         self._saved_value: int | None = None
         self._hovered_split = False
+        self._is_scrolling = False
         self._underline_visible = False
         self._underline_qcolor = None
+        self._underline_thickness_value: float | None = None
         self._flyout: _ScrollValueFlyout | None = None
         self._flyout_hide_timer = QTimer()
         self._flyout_hide_timer.setSingleShot(True)
         self._flyout_hide_timer.timeout.connect(self._hide_flyout)
+        self._keyboard_edit_active = False
 
         regions, split = self._build_regions()
         super().__init__(
@@ -118,8 +297,9 @@ class ScrollValueButton(Button):
             toggle=self._toggle_enabled,
             size=(_WIDTH, _HEIGHT),
             corner_radius=_RADIUS,
-            content_padding=(0.0, 2.0, 0.0, 2.0),
+            content_padding=(0.0, float(scaled_px(2)), 0.0, float(scaled_px(2))),
             variant="default",
+            layers=list(_LAYERS),
             parent=parent,
             **kwargs,
         )
@@ -128,6 +308,8 @@ class ScrollValueButton(Button):
         # otherwise be silently lost the first time _sync_regions() reasserts
         # our (still-False) shadow copy on the first hover/scroll.
         self._underline_visible = bool(getattr(self, "_show_underline", False))
+        super().setShowUnderline(self._underline_visible and not self._is_at_zero())
+        self.setUnderlineThickness(self._underline_thickness_for_value(self._value))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         if self._toggle_enabled:
             self.regionClicked.connect(self._on_region_clicked)
@@ -153,6 +335,16 @@ class ScrollValueButton(Button):
     def setUnderlineColor(self, color) -> None:
         self._underline_qcolor = color
         super().setUnderlineColor(color)
+
+    def setUnderlineThickness(self, thickness: float) -> None:
+        self._underline_thickness_value = float(thickness)
+        super().setUnderlineThickness(thickness)
+
+    def _underline_thickness_for_value(self, value: int) -> float:
+        span = max(1, self._max_value - 1)
+        t = (max(1, value) - 1) / span
+        t = max(0.0, min(1.0, t))
+        return _UNDERLINE_THICKNESS_MIN + t * (_UNDERLINE_THICKNESS_MAX - _UNDERLINE_THICKNESS_MIN)
 
     # ---------- checked state (kept in sync with both regions, even when the
     # caller suppresses the toggled signal) ----------
@@ -187,9 +379,13 @@ class ScrollValueButton(Button):
         # (whose icon= tuple depends on it) and the split "value" region
         # (whose darkened background depends on it) are asserted explicitly
         # rather than trusting that they already picked it up.
-        self.setRegionChecked(self._icon_region_id(), checked)
+        # Must NOT emit toggled — this is a visual sync on hover/region rebuild,
+        # not a user toggle. Emitting here caused hover (enterEvent -> _set_hover_split
+        # -> _sync_regions -> this) to trigger `toggled` -> `on_magnifier_guides_toggled`
+        # -> laser disable on every hover (see [laser-debug] enterEvent stack).
+        self.setRegionChecked(self._icon_region_id(), checked, emit=False)
         if self._hovered_split:
-            self.setRegionChecked("value", checked)
+            self.setRegionChecked("value", checked, emit=False)
 
     # ---------- backward-compat value API ----------
 
@@ -199,10 +395,33 @@ class ScrollValueButton(Button):
     def set_value(self, value: int, emit: bool = True) -> None:
         clamped = max(self._min_value, min(self._max_value, int(value)))
         if clamped == self._value:
+            logger.debug("[scroll-value] set_value noop %s→%s emit=%s widget=%s", self._value, clamped, emit, type(self).__name__)
             return
+        old = self._value
         self._value = clamped
+        logger.debug("[scroll-value] set_value %s→%s emit=%s widget=%s reason=%s", old, clamped, emit, id(self), "api")
+        self.setUnderlineThickness(self._underline_thickness_for_value(clamped))
         self._sync_regions()
         if emit:
+            logger.debug("[scroll-value] valueChanged emit %s widget=%s", clamped, id(self))
+            if clamped == 0:
+                try:
+                    import traceback
+
+                    from shared.debug_flags import env_flag as _env_flag
+
+                    _lg = logging.getLogger("ImproveImgSLI")
+                    if _env_flag("IMGSLI_LASER_DEBUG"):
+                        prefix = "[laser-debug]"
+                        stack = "".join(traceback.format_stack(limit=15)[:-1])
+                        msg = "LASER SCROLL emit value=0 widget=%s id=%s objectName=%r"
+                        args = (type(self).__name__, id(self), self.objectName())
+                        if _env_flag("IMGSLI_LASER_DEBUG"):
+                            _lg.warning("%s %s\n%s", prefix, msg % args, stack)
+                        else:
+                            _lg.debug("%s %s\n%s", prefix, msg % args, stack)
+                except Exception:
+                    pass
             self.valueChanged.emit(clamped)
 
     # ---------- saved-value memory (restore previous width after hide/show) ----------
@@ -249,16 +468,93 @@ class ScrollValueButton(Button):
         self._hovered_split = active
         self._sync_regions()
 
-    # ---------- wheel-driven value stepping ----------
+    # ---------- wheel/key-driven value stepping ----------
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         delta = event.angleDelta().y()
+        logger.debug("[scroll-value] wheelEvent delta=%s value=%s widget=%s", delta, self._value, id(self))
         if not delta:
             super().wheelEvent(event)
             return
         event.accept()
-        step = 1 if delta > 0 else -1
+        self._step_value(1 if delta > 0 else -1)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        logger.debug("[scroll-value] keyPressEvent key=%s edit_active=%s value=%s widget=%s", key, self._keyboard_edit_active, self._value, id(self))
+        # Enter toggles keyboard edit mode — arrows only adjust value after
+        # explicit activation, otherwise they navigate (Left/Right → next
+        # button, Up/Down → next row). This prevents swallowing navigation
+        # without user intent and keeps flyouts open.
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._keyboard_edit_active = not self._keyboard_edit_active
+            logger.debug("[scroll-value] Enter toggle edit_active→%s widget=%s", self._keyboard_edit_active, id(self))
+            # Show flyout when entering edit mode so value is visible
+            if self._keyboard_edit_active:
+                self._show_flyout()
+                # Ring only on the button itself — preview flyout is read-only, no ring
+                self.setProperty("editActive", True)
+                self.style().polish(self)
+            else:
+                self._hide_flyout()
+                self.setProperty("editActive", False)
+                self.style().polish(self)
+            event.accept()
+            self.update()
+            return
+        if key == Qt.Key.Key_Escape:
+            logger.debug("[scroll-value] Escape edit_active=%s widget=%s", self._keyboard_edit_active, id(self))
+            if self._keyboard_edit_active:
+                self._keyboard_edit_active = False
+                self._hide_flyout()
+                self.setProperty("editActive", False)
+                self.style().polish(self)
+                self.update()
+                event.accept()
+                return
+            # Even when not in edit mode, Escape should hide the preview flyout
+            # (e.g. after wheel) and not propagate to close unrelated flyouts
+            if self._flyout is not None and self._flyout.isVisible():
+                logger.debug("[scroll-value] Escape hide preview widget=%s", id(self))
+                self._hide_flyout()
+                event.accept()
+                return
+        # Split forbidden pairs (Down+Right, Up+Left) — see test_no_arrow_key_redirection
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Down):
+            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
+            if not self._keyboard_edit_active:
+                super().keyPressEvent(event)
+                return
+            self._step_value(-1)
+            event.accept()
+            return
+        elif key in (Qt.Key.Key_Right, Qt.Key.Key_Up):
+            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
+            if not self._keyboard_edit_active:
+                super().keyPressEvent(event)
+                return
+            self._step_value(1)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса стрелками
+        if getattr(self, "_keyboard_focus", False):
+            self._set_hover_split(True)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802
+        self._keyboard_edit_active = False
+        super().focusOutEvent(event)
+        # Гасим капсулу если ушли фокусом и мышка не ховерит
+        if not self.underMouse():
+            self._set_hover_split(False)
+
+    def _step_value(self, step: int) -> None:
+        old = self._value
         new_value = max(self._min_value, min(self._max_value, self._value + step))
+        logger.debug("[scroll-value] _step_value step=%s %s→%s edit_active=%s widget=%s", step, old, new_value, self._keyboard_edit_active, id(self))
         self.set_value(new_value)
         self._show_flyout()
 
@@ -270,10 +566,15 @@ class ScrollValueButton(Button):
         # set_regions() rebuilds the button's internal region/paint state from
         # scratch, which drops any previously applied underline visibility/color.
         # Re-assert our last known desired state so hover/scroll/value changes
-        # can't silently erase the divider-color indicator.
-        super().setShowUnderline(self._underline_visible)
+        # can't silently erase the divider-color indicator. At the "hidden"
+        # value (zero_icon shown instead of a width digit), force it off
+        # regardless of the caller's requested state — there's no line to
+        # show a color for once it's hidden.
+        super().setShowUnderline(self._underline_visible and not self._is_at_zero())
         if self._underline_qcolor is not None:
             super().setUnderlineColor(self._underline_qcolor)
+        if self._underline_thickness_value is not None:
+            super().setUnderlineThickness(self._underline_thickness_value)
         # set_regions() rebuilds region runtime state from scratch too (new
         # ButtonRegion objects), so re-assert checked here as well — this is
         # what makes the "value" region already show as checked/darkened the
@@ -326,6 +627,9 @@ class ScrollValueButton(Button):
                     variant="default",
                     group=self._GROUP,
                     toggle=self._toggle_enabled,
+                    # group= disables the toolkit's default content clipping;
+                    # re-enable so the icon stays inside its own region.
+                    clip_content=True,
                 ),
             ]
             return regions, VerticalSplit()
@@ -343,6 +647,7 @@ class ScrollValueButton(Button):
             variant="default",
             group=self._GROUP,
             toggle=self._toggle_enabled,
+            clip_content=True,
         )
         if self._is_at_zero():
             value_region = ButtonRegion(
@@ -352,14 +657,22 @@ class ScrollValueButton(Button):
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
+                clip_content=True,
             )
         else:
+            # While the scroll flyout is showing the value above the button,
+            # the digit inside the button itself is suppressed (blank region)
+            # so the two aren't both flashing the number at once; it reappears
+            # here, drawn over the underline (see _LAYERS ordering above),
+            # once hover lingers past the flyout's hide delay with no scroll.
+            rows = [] if self._is_scrolling else [ButtonRow(text=str(self._value), size=12)]
             value_region = ButtonRegion(
                 id="value",
-                rows=[ButtonRow(text=str(self._value), size=12)],
+                rows=rows,
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
+                clip_content=True,
             )
         # Bottom breathing room from the underline is reserved via the
         # button-level bottom-only content_padding (see __init__) rather
@@ -370,20 +683,116 @@ class ScrollValueButton(Button):
 
     def _show_flyout(self) -> None:
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:
             pass
         if self._flyout is None:
             self._flyout = _ScrollValueFlyout(self.window())
+            # Навигация: Up входит в флайаут сверху, Left/Right выходят обратно
+            try:
+                from sli_ui_toolkit.managers import bind_flyout
+
+                bind_flyout(self, self._flyout, side="above")
+            except Exception:
+                pass
+        # Edit-mode (Enter) → кольцо наверх и без автоскрытия, wheel-preview → кольцо на кнопке с таймером
+        _grab = bool(self._keyboard_edit_active)
         if self._is_at_zero():
-            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self)
+            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self, grab_focus=_grab)
         else:
-            self._flyout.show_value(str(self._value), anchor=self)
-        self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+            self._flyout.show_value(str(self._value), anchor=self, grab_focus=_grab)
+        if _grab:
+            self._flyout_hide_timer.stop()
+            # Ослабляем ButtonGroup, чтобы не перетянул фокус (как lifecycle _grab_focus)
+            try:
+                from sli_ui_toolkit.widgets import ButtonGroup as _BG
+
+                _grp = self.parentWidget()
+                while _grp is not None:
+                    if isinstance(_grp, _BG):
+                        break
+                    _grp = _grp.parentWidget()
+                if _grp is not None:
+                    self._weakened_group = _grp  # type: ignore[attr-defined]
+                    self._weakened_policy = _grp.focusPolicy()  # type: ignore[attr-defined]
+                    _grp.setFocusPolicy(_grp.focusPolicy().__class__.NoFocus)  # type: ignore
+            except Exception:
+                pass
+            # Форсируем кольцо на флайаут — снимаем с кнопки, ставим на флайаут
+            try:
+                from PySide6.QtCore import Qt as _Qt
+
+                # Снимаем кольцо с кнопки до переноса фокуса, чтобы не было двух колец в кадре
+                self._keyboard_focus = False
+                self.clearFocus()
+                self.update()
+                self._flyout.setFocus(_Qt.FocusReason.OtherFocusReason)
+                self._flyout._keyboard_focus = True  # type: ignore[attr-defined]
+                self._flyout.update()
+                from PySide6.QtCore import QTimer as _QTimer
+
+                _QTimer.singleShot(0, lambda f=self._flyout: (f.clearFocus(), f.setFocus(_Qt.FocusReason.OtherFocusReason), setattr(f, "_keyboard_focus", True), f.update()))
+            except Exception:
+                pass
+        else:
+            self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+        if not self._is_scrolling:
+            self._is_scrolling = True
+            self._sync_regions()
+        # Preview (wheel) не регистрирует секцию — Up/Down остаются у тулбара;
+        # edit-mode регистрирует и крадёт фокус наверх.
+        if not _grab:
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                NavigationManager.get_instance().unregister(self._flyout)
+            except Exception:
+                pass
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
+        # Восстанавливаем ButtonGroup политику если ослабляли для edit-mode
+        try:
+            _grp = getattr(self, "_weakened_group", None)
+            _pol = getattr(self, "_weakened_policy", None)
+            if _grp is not None and _pol is not None:
+                _grp.setFocusPolicy(_pol)
+                self._weakened_group = None  # type: ignore[attr-defined]
+                self._weakened_policy = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
         if self._flyout is not None:
             self._flyout.hide()
+        if self._is_scrolling:
+            self._is_scrolling = False
+            self._sync_regions()
+
+ScrollValueButton.inspect_spec = InspectSpec(
+    family="ScrollValueButton",
+    state=(
+        SpecField("value", "get_value"),
+        SpecField("min_value", "_min_value", private=True),
+        SpecField("max_value", "_max_value", private=True),
+        SpecField("saved_value", "get_saved_value"),
+        SpecField("checked", "isChecked"),
+    ),
+    regions=True,
+    docs="docs/dev/widgets/scroll_value_button.md",
+)
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ScrollValueButton.widget_descriptor = WidgetDescriptor(
+    family=ScrollValueButton.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ScrollValueButton.inspect_spec, 'config', ()),
+        state=ScrollValueButton.inspect_spec.state,
+        token_family=getattr(ScrollValueButton.inspect_spec, 'token_family', ()),
+        regions=getattr(ScrollValueButton.inspect_spec, 'regions', False),
+        layers=getattr(ScrollValueButton.inspect_spec, 'layers', False),
+        docs=getattr(ScrollValueButton.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ScrollValueButton.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ScrollValueButton.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

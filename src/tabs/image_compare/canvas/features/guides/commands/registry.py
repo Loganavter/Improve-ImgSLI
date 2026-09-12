@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+import traceback
+
 from core.state_management.actions import InvalidateRenderCacheAction
+from shared.debug_flags import env_flag as _env_flag
 from tabs.image_compare.canvas.registry import registry
 
 from tabs.image_compare.canvas.features.guides.input.actions import (
@@ -13,12 +17,34 @@ from tabs.image_compare.canvas.features.guides.input.actions import (
 )
 from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
 
+_laser_logger = logging.getLogger("ImproveImgSLI")
+
+
+def _laser_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_LASER_DEBUG")
+
+
+def _log_laser_disable(reason: str) -> None:
+    if not _laser_debug_enabled():
+        return
+    try:
+        stack = "".join(traceback.format_stack(limit=15)[:-1])
+        prefix = "[laser-debug]"
+        if _env_flag("IMGSLI_LASER_DEBUG"):
+            _laser_logger.warning("%s LASER DISABLE [%s]\n%s", prefix, reason, stack)
+        else:
+            _laser_logger.debug("%s LASER DISABLE [%s]\n%s", prefix, reason, stack)
+    except Exception:
+        pass
+
 
 def _sync_active_laser_enabled(store, enabled: bool) -> None:
     # Scrolling the thickness slider to 0 must also clear the active
     # magnifier's show_laser flag, mirroring what clicking the toggle does —
     # otherwise sync_guides_toolbar_state() sees show_laser still True and
     # forces the slider back to a minimum of 1, so it can never reach 0.
+    if not enabled:
+        _log_laser_disable(f"_sync_active_laser_enabled(enabled=False) store={getattr(store, 'viewport', None) is not None}")
     if store is None:
         return
     cmd = registry().get_feature_command_by_alias("overlay.set_active_laser_enabled")
@@ -60,6 +86,7 @@ def command_toggle_guides(actions, enabled: bool) -> None:
     store = getattr(actions, "store", None)
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         store.emit_state_change()
@@ -67,6 +94,7 @@ def command_toggle_guides(actions, enabled: bool) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     state = get_guides_widget_state(viewport.view_state)
     state.enabled = enabled
     store.invalidate_render_cache()
@@ -76,6 +104,16 @@ def command_toggle_guides(actions, enabled: bool) -> None:
 def command_set_guides_thickness(actions, thickness: int) -> None:
     thickness = max(0, int(thickness))
     store = getattr(actions, "store", None)
+    if thickness == 0:
+        _log_laser_disable(f"command_set_guides_thickness(thickness=0) actions={type(actions).__name__}")
+        try:
+            viewport = getattr(store, "viewport", None) if store is not None else None
+            if viewport is not None:
+                old = int(get_guides_widget_state(viewport.view_state).thickness)
+                if old == 0:
+                    return
+        except Exception:
+            pass
     _sync_active_laser_enabled(store, thickness != 0)
     settings = getattr(actions, "settings", None)
     if settings is not None and hasattr(settings, "execute_canvas_feature_command"):
@@ -87,6 +125,7 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
         return
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")
         dispatcher.dispatch(SetGuidesEnabledAction(thickness != 0), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
@@ -95,6 +134,7 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     state = get_guides_widget_state(viewport.view_state)
     state.thickness = thickness
     state.enabled = thickness != 0
@@ -109,6 +149,7 @@ def query_guides_widget_state(view_state):
 def command_viewport_toggle_guides(store, enabled: bool) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
     else:
@@ -120,6 +161,7 @@ def command_viewport_toggle_guides(store, enabled: bool) -> None:
 def command_viewport_set_smoothing_enabled(store, enabled: bool) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesSmoothingEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
     else:
@@ -131,6 +173,7 @@ def command_viewport_set_smoothing_enabled(store, enabled: bool) -> None:
 def command_viewport_set_smoothing_interpolation_method(store, method: str) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(
             SetGuidesSmoothingInterpolationMethodAction(method), scope="viewport"
         )
@@ -142,9 +185,20 @@ def command_viewport_set_smoothing_interpolation_method(store, method: str) -> N
 
 def command_viewport_set_guides_thickness(store, thickness: int) -> None:
     thickness = max(0, int(thickness))
+    if thickness == 0:
+        _log_laser_disable("command_viewport_set_guides_thickness(thickness=0)")
+        try:
+            viewport = getattr(store, "viewport", None) if store is not None else None
+            if viewport is not None:
+                old = int(get_guides_widget_state(viewport.view_state).thickness)
+                if old == 0:
+                    return
+        except Exception:
+            pass
     _sync_active_laser_enabled(store, thickness != 0)
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")
         dispatcher.dispatch(SetGuidesEnabledAction(thickness != 0), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")

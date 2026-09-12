@@ -1,4 +1,6 @@
-"""Find Action dialog — list, filter, keyboard, run / reveal / learn more."""
+"""Find Action dialog — list, filter, keyboard, run / reveal / learn more.
+Audit-Meta: pattern=qdialog-wiring size=exempt reason="one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px"
+"""
 
 from __future__ import annotations
 
@@ -6,11 +8,12 @@ import logging
 
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
-from sli_ui_toolkit.widgets import CustomLineEdit, Label, MinimalistScrollBar
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.widgets import CustomLineEdit, Label, SurfaceScrollArea
 from tabs.registry import get_shared_tab_registry
 from ui.actions.palette.common import (
     current_keyboard_overrides as _current_keyboard_overrides,
@@ -39,18 +42,36 @@ def _active_tab_type() -> str | None:
         return None
 
 
-def open_help_page(page: str, anchor: str | None = None) -> None:
+def open_help_page(
+    page: str,
+    anchor: str | None = None,
+    *,
+    video_url: str | None = None,
+    learn_more_url: str | None = None,
+) -> None:
     try:
         registry = get_shared_tab_registry()
         context = getattr(registry, "_context", None)
         if context is not None and hasattr(context, "call_service"):
-            context.call_service("show_help_dialog", page=page, anchor=anchor)
+            context.call_service(
+                "show_help_dialog",
+                page=page,
+                anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
+            )
             return
         tab = registry.get_active_tab()
         widget = getattr(tab, "_widget", None) if tab is not None else None
         widget_context = getattr(widget, "_context", None) if widget is not None else None
         if widget_context is not None and hasattr(widget_context, "call_service"):
-            widget_context.call_service("show_help_dialog", page=page, anchor=anchor)
+            widget_context.call_service(
+                "show_help_dialog",
+                page=page,
+                anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
+            )
             return
     except Exception:
         pass
@@ -58,14 +79,19 @@ def open_help_page(page: str, anchor: str | None = None) -> None:
         from PySide6.QtWidgets import QApplication
 
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return
-        for widget in app.topLevelWidgets():
+        for widget in app.topLevelWidgets():  # ALLOWED: system-wide help fallback — walks top-levels generically for dialogs.show_help_dialog, not tab-specific
             presenter = getattr(widget, "presenter", None)
             ui_manager = getattr(presenter, "ui_manager", None) if presenter else None
             dialogs = getattr(ui_manager, "dialogs", None)
             if dialogs is not None and hasattr(dialogs, "show_help_dialog"):
-                dialogs.show_help_dialog(page=page, anchor=anchor)
+                dialogs.show_help_dialog(
+                    page=page,
+                    anchor=anchor,
+                    video_url=video_url,
+                    learn_more_url=learn_more_url,
+                )
                 return
     except Exception:
         pass
@@ -91,6 +117,7 @@ class FindActionDialog(ThemedDialog):
         # Keep parentless so Wayland/X11 do not create a transient-for link.
         del parent
         super().__init__(None)
+        self._find_action_nav_section = None
         self._topic = topic
         self._preselect_action_id = preselect_action_id
         self._auto_pulse = auto_pulse
@@ -113,8 +140,10 @@ class FindActionDialog(ThemedDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
         self._build_ui(query)
-        self.setMinimumSize(480, 320)
-        self.resize(_DIALOG_WIDTH, _DIALOG_HEIGHT)
+        self.setMinimumSize(scaled_px(480), scaled_px(320))
+        # Design size scaled like the minimum, so the two never disagree at
+        # scale > 1.0 (an unscaled resize gets clamped to the scaled minimum).
+        self.resize(scaled_px(_DIALOG_WIDTH), scaled_px(_DIALOG_HEIGHT))
         self.mark_theme_ui_ready()
 
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
@@ -124,12 +153,38 @@ class FindActionDialog(ThemedDialog):
         self._apply_independent_window_flags()
         self.installEventFilter(self)
         self._app_filter_installed = False
+        self._setup_find_action_navigation()
         self._reload()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Keep search focused so the first typed character uses the active
         # keyboard layout / input method (not a Latin Key_A→'a' fallback).
         self._search.setFocus(Qt.FocusReason.OtherFocusReason)
         self._maybe_auto_pulse()
+
+    def _setup_find_action_navigation(self) -> None:
+        """Нормальный мапинг навигации через NavigationManager (как в Help/Settings)."""
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+            from sli_ui_toolkit.ui.managers.navigation_sections import AutoNavigationSection
+
+            if self._find_action_nav_section is not None:
+                return
+            # Dialog как Auto-контейнер: поиск StrongFocus (search + ряды) → Up/Down/Left/Right
+            section = AutoNavigationSection(self, tag="find-action")
+            NavigationManager.get_instance().register(self, section)
+            self._find_action_nav_section = section
+        except Exception:
+            pass
+
+    def _teardown_find_action_navigation(self) -> None:
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            if self._find_action_nav_section is not None:
+                NavigationManager.get_instance().unregister(self)
+                self._find_action_nav_section = None
+        except Exception:
+            pass
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -138,10 +193,12 @@ class FindActionDialog(ThemedDialog):
 
     def hideEvent(self, event) -> None:
         self._release_app_event_filter()
+        self._teardown_find_action_navigation()
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
         self._release_app_event_filter()
+        self._teardown_find_action_navigation()
         super().closeEvent(event)
 
     def _install_app_event_filter(self) -> None:
@@ -237,13 +294,13 @@ class FindActionDialog(ThemedDialog):
         root = QVBoxLayout(self)
         # Top margin must stay 0: decorate_dialog adds CustomTitleBar.HEIGHT to
         # the existing top inset, so any >0 value becomes a gap under chrome.
-        root.setContentsMargins(14, 0, 14, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(scaled_px(14), 0, scaled_px(14), scaled_px(12))
+        root.setSpacing(scaled_px(10))
         # Gap under the custom title bar (top margin stays 0 — see decorate_dialog).
-        root.addSpacing(8)
+        root.addSpacing(scaled_px(8))
 
         self._search = CustomLineEdit(parent=self)
-        self._search.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._search.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._search.setPlaceholderText(
             tr_action("action.palette.search_placeholder", "Search actions…")
         )
@@ -253,17 +310,13 @@ class FindActionDialog(ThemedDialog):
         self._search.installEventFilter(self)
         root.addWidget(self._search)
 
-        self._scroll = QScrollArea(self)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBar(MinimalistScrollBar(parent=self._scroll))
+        self._scroll = SurfaceScrollArea(self)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._list_host = QWidget(self._scroll)
         self._list_layout = QVBoxLayout(self._list_host)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
-        self._list_layout.setSpacing(2)
+        self._list_layout.setSpacing(scaled_px(2))
         self._list_layout.addStretch(1)
         self._scroll.setWidget(self._list_host)
         root.addWidget(self._scroll, 1)
@@ -375,11 +428,22 @@ class FindActionDialog(ThemedDialog):
         if action is None or action.run is None:
             return
         run = action.run
-        self.accept()
-        # Defer until the modal palette has closed — otherwise combo/menu
-        # overlays opened by ``run`` are killed by the dialog's Hide/Close
-        # events (ComboBox installs an app-wide filter while expanded).
-        QTimer.singleShot(0, run)
+
+        def _accept_and_run() -> None:
+            self.accept()
+            # Defer until the modal palette has closed — otherwise combo/menu
+            # overlays opened by ``run`` are killed by the dialog's Hide/Close
+            # events (ComboBox installs an app-wide filter while expanded).
+            QTimer.singleShot(0, run)
+
+        # Wait for the row's own click ripple to finish before accept()
+        # closes (and destroys) this modal dialog -- otherwise the ripple
+        # never gets to play at all, same rationale as
+        # Button(defer_click=DEFER_CLICK_AWAIT_RIPPLE) /
+        # ContextMenuAction.defer_trigger.
+        from sli_ui_toolkit.ui.widgets.buttons.feedback import get_ripple_duration_ms
+
+        QTimer.singleShot(get_ripple_duration_ms(), _accept_and_run)
 
     def _reveal_selected(self) -> None:
         if self._current_index < 0 or self._current_index >= len(self._actions):
@@ -417,10 +481,14 @@ class FindActionDialog(ThemedDialog):
         if not page:
             return
         anchor = getattr(action, "help_anchor", None)
+        video_url = getattr(action, "video_url", None)
+        learn_more_url = getattr(action, "learn_more_url", None)
         self.accept()
         QTimer.singleShot(
             0,
-            lambda p=page, a=anchor: open_help_page(p, a),
+            lambda p=page, a=anchor, v=video_url, l=learn_more_url: open_help_page(
+                p, a, video_url=v, learn_more_url=l
+            ),
         )
 
     def _maybe_auto_pulse(self) -> None:
@@ -439,6 +507,14 @@ class FindActionDialog(ThemedDialog):
         QTimer.singleShot(0, lambda w=widget: pulse_widget(w))
 
     def eventFilter(self, obj, event):
+        # Синхронизируем current_index с фактическим фокусом (NavigationManager двигает фокус на Button-ряд)
+        if event.type() == QEvent.Type.FocusIn and isinstance(obj, QWidget):
+            # Находим ряд по виджету (row Button или его предок)
+            for idx, row in enumerate(self._rows):
+                if obj is row or row.isAncestorOf(obj):
+                    if self._current_index != idx:
+                        self._set_current_index(idx)
+                    break
         if event.type() == QEvent.Type.KeyPress:
             # App-wide filter must ignore keys belonging to other windows;
             # widget filters on ``self`` / ``_search`` always pass this check.
@@ -447,6 +523,24 @@ class FindActionDialog(ThemedDialog):
             key = event.key()
             mods = event.modifiers()
             if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                # Нормальный мапинг через NavigationManager: даём менеджеру шанс обработать Down/Up
+                try:
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    mgr = NavigationManager.get_instance()
+                    focused = QApplication.focusWidget()
+                    # Если менеджер владеет фокусом (наш Auto-секция), пусть он двигает
+                    if focused is not None and mgr.should_intercept(key, focused):
+                        return False
+                    # Если фокус на поиске или в списке — отдаём менеджеру
+                    if self.isAncestorOf(focused) if focused is not None else False:
+                        # Проверяем что наш Auto-секция владеет фокусом — без обращения к приватному _sections (C6)
+                        sec = getattr(self, "_find_action_nav_section", None)
+                        if sec is not None and sec.owns(focused):
+                            return False
+                except Exception:
+                    pass
+                # Фолбек — старый список
                 self._move_selection(1 if key == Qt.Key.Key_Down else -1)
                 return True
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

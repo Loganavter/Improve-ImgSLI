@@ -19,10 +19,6 @@ class SettingsApplyFontSettingsEvent:
     alpha: int
 
 @dataclass(frozen=True)
-class SettingsToggleAutoCropBlackBordersEvent:
-    enabled: bool
-
-@dataclass(frozen=True)
 class SettingsUIModeChangedEvent:
     ui_mode: str
 

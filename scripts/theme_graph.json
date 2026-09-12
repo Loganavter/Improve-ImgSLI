@@ -1,0 +1,391 @@
+{
+  "hex_to_keys": {
+    "#1f1f1f": [
+      "light:ButtonText",
+      "light:Text",
+      "light:ToolTipText",
+      "light:WindowText",
+      "light:color_dialog.text",
+      "light:dialog.text",
+      "light:switch.text",
+      "light:tooltip.text"
+    ],
+    "#ff0000": [
+      "dark:BrightText",
+      "light:BrightText"
+    ],
+    "#0078d4": [
+      "light:Highlight",
+      "light:accent",
+      "light:dialog.button.ok.background",
+      "light:help.nav.selected",
+      "light:toast.progress.fill"
+    ],
+    "#2d0078d7": [
+      "light:button.default.background.hover",
+      "light:button.default.background.pressed"
+    ],
+    "#50000000": [
+      "dark:shadow.color",
+      "light:button.default.border"
+    ],
+    "#32000000": [
+      "light:button.default.bottom.edge",
+      "light:button.dialog.default.bottom.edge",
+      "light:button.primary.bottom.edge"
+    ],
+    "#f8f8f8": [
+      "light:button.dialog.default.background.hover",
+      "light:button.primary.background.hover",
+      "light:help.nav.hover"
+    ],
+    "#e9e9e9": [
+      "light:button.dialog.default.background.pressed",
+      "light:button.primary.background.pressed"
+    ],
+    "#1e000000": [
+      "light:button.dialog.default.border",
+      "light:button.primary.border"
+    ],
+    "#4cd93025": [
+      "light:button.delete.background.hover",
+      "light:button.delete.background.pressed"
+    ],
+    "#66d93025": [
+      "dark:button.delete.background.hover",
+      "dark:button.delete.background.pressed",
+      "light:button.delete.border"
+    ],
+    "#000000": [
+      "light:button.primary.text",
+      "light:toast.text"
+    ],
+    "#e0e0e0": [
+      "dark:color_dialog.text",
+      "light:flyout.border",
+      "light:help.nav.border"
+    ],
+    "#ffffff": [
+      "dark:button.primary.text",
+      "dark:dialog.text",
+      "dark:toast.text",
+      "light:list_item.background.normal",
+      "light:surface.background"
+    ],
+    "#e5e5e5": [
+      "light:help.separator",
+      "light:separator.color"
+    ],
+    "#c0c0c0": [
+      "light:button.toggle.background.checked",
+      "light:color_dialog.input.border",
+      "light:dialog.border",
+      "light:tooltip.border"
+    ],
+    "#dfdfdf": [
+      "dark:ButtonText",
+      "dark:Text",
+      "dark:ToolTipText",
+      "dark:WindowText",
+      "dark:switch.text",
+      "dark:tooltip.text"
+    ],
+    "#0096ff": [
+      "dark:Highlight",
+      "dark:accent",
+      "dark:dialog.button.ok.background",
+      "dark:help.nav.selected",
+      "dark:toast.progress.fill"
+    ],
+    "#3c0096ff": [
+      "dark:button.default.background.hover",
+      "dark:button.default.background.pressed"
+    ],
+    "#1effffff": [
+      "dark:button.default.bottom.edge",
+      "dark:button.dialog.default.bottom.edge",
+      "dark:button.primary.bottom.edge"
+    ],
+    "#4a4a4a": [
+      "dark:button.dialog.default.background.hover",
+      "dark:button.primary.background.hover",
+      "dark:button.toggle.background.hover",
+      "dark:flyout.border"
+    ],
+    "#555555": [
+      "dark:button.dialog.default.background.pressed",
+      "dark:button.primary.background.pressed",
+      "dark:button.toggle.background.checked",
+      "dark:color_dialog.input.border",
+      "dark:tooltip.border"
+    ],
+    "#26ffffff": [
+      "dark:button.dialog.default.border",
+      "dark:button.primary.border"
+    ],
+    "#9a9a9a": [
+      "dark:list_item.text.rating",
+      "dark:slider.track.unfilled"
+    ],
+    "#4f4f4f": [
+      "dark:dialog.button.hover",
+      "dark:help.separator",
+      "dark:separator.color"
+    ]
+  },
+  "key_to_files": {
+    "dialog.text": [
+      "Improve-ImgSLI/src/ui/icon_manager.py:18",
+      "Improve-ImgSLI/src/ui/main_window/csd_menu_strip.py:121",
+      "Improve-ImgSLI/src/plugins/onboarding/indicator.py:63",
+      "Improve-ImgSLI/src/plugins/onboarding/overlay.py:257",
+      "Improve-ImgSLI/src/plugins/onboarding/pages.py:283"
+    ],
+    "Window": [
+      "Improve-ImgSLI/src/tabs/image_compare/widget.py:44",
+      "Improve-ImgSLI/src/tabs/session_picker/widget.py:126",
+      "Improve-ImgSLI/src/tabs/multi_compare/ui/toolbar.py:233",
+      "Improve-ImgSLI/src/tabs/multi_compare/ui/footer.py:77",
+      "Improve-ImgSLI/src/tabs/image_compare/ui/magnifier_settings_flyout.py:225"
+    ],
+    "label.image.background": [
+      "Improve-ImgSLI/src/tabs/multi_compare/tab.py:241",
+      "Improve-ImgSLI/src/ui/main_window/window.py:133"
+    ],
+    "accent": [
+      "Improve-ImgSLI/src/tabs/session_picker/recent/panel.py:274",
+      "Improve-ImgSLI/src/tabs/multi_compare/ui/toolbar.py:57",
+      "Improve-ImgSLI/src/tabs/image_compare/ui/primitives.py:114",
+      "Improve-ImgSLI/src/tabs/image_compare/ui/primitives.py:133",
+      "Improve-ImgSLI/src/ui/widgets/rating_item.py:91"
+    ],
+    "dialog.border": [
+      "Improve-ImgSLI/src/tabs/image_compare/ui/magnifier_settings_flyout.py:227",
+      "Improve-ImgSLI/src/ui/widgets/color/picker_dialog.py:165",
+      "Improve-ImgSLI/src/ui/widgets/color/picker_dialog.py:227",
+      "Improve-ImgSLI/src/plugins/help/back_bar.py:102"
+    ],
+    "WindowText": [
+      "Improve-ImgSLI/src/tabs/image_compare/ui/magnifier_settings_flyout.py:292",
+      "Improve-ImgSLI/src/ui/widgets/shelf/widget.py:288",
+      "Improve-ImgSLI/src/services/system/paste_direction_overlay.py:166",
+      "Improve-ImgSLI/src/plugins/onboarding/overlay.py:345",
+      "Improve-ImgSLI/src/plugins/onboarding/overlay.py:399"
+    ],
+    "separator.color": [
+      "Improve-ImgSLI/src/ui/widgets/rating_item.py:161",
+      "Improve-ImgSLI/src/services/system/paste_direction_overlay.py:169",
+      "Improve-ImgSLI/src/plugins/help/back_bar.py:100",
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/atomic/instances_counter_button.py:37"
+    ],
+    "list_item.text.normal": [
+      "Improve-ImgSLI/src/ui/widgets/rating_item.py:401",
+      "Improve-ImgSLI/src/ui/widgets/drag_ghost_widget.py:34",
+      "Improve-ImgSLI/src/ui/widgets/color/swatch.py:59"
+    ],
+    "list_item.text.rating": [
+      "Improve-ImgSLI/src/ui/widgets/rating_item.py:404",
+      "Improve-ImgSLI/src/ui/actions/palette/row.py:354",
+      "Improve-ImgSLI/src/ui/actions/palette/dialog.py:307",
+      "Improve-ImgSLI/src/plugins/help/hub_page.py:68",
+      "Improve-ImgSLI/src/plugins/onboarding/pages.py:311"
+    ],
+    "list_item.background.hover": [
+      "Improve-ImgSLI/src/ui/widgets/drag_ghost_widget.py:32",
+      "Improve-ImgSLI/src/ui/actions/palette/row.py:143"
+    ],
+    "button.default.border": [
+      "Improve-ImgSLI/src/ui/widgets/color/recents.py:213"
+    ],
+    "Highlight": [
+      "Improve-ImgSLI/src/ui/widgets/shelf/selection.py:48"
+    ],
+    "Base": [
+      "Improve-ImgSLI/src/ui/widgets/shelf/selection.py:73"
+    ],
+    "flyout.background": [
+      "Improve-ImgSLI/src/ui/widgets/glass_hud/hud.py:318",
+      "Improve-ImgSLI/src/services/system/paste_direction_overlay.py:165"
+    ],
+    "flyout.border": [
+      "Improve-ImgSLI/src/services/system/paste_direction_overlay.py:167"
+    ],
+    "HighlightedText": [
+      "Improve-ImgSLI/src/plugins/onboarding/overlay.py:258"
+    ],
+    "try_get_color": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/inspector/rendering.py:310"
+    ],
+    "h_align": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/buttons/content.py:269"
+    ],
+    "_corner_radii_px": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/top_tab_bar/tab_button.py:84"
+    ],
+    "button.toggle": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/top_tab_bar/variant.py:19"
+    ],
+    "#f0f0f0": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/adaptive_tab_strip/tab_bar.py:611"
+    ],
+    "position": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/context_menu/rows.py:89"
+    ],
+    "string": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/text_view/highlight.py:125"
+    ],
+    "list_item": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/sidebar_nav_list/rows.py:32"
+    ],
+    "text_col": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:14",
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:31"
+    ],
+    "gutter_bg": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:16",
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:33"
+    ],
+    "lane_bg": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:19"
+    ],
+    "footer_bg": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:21"
+    ],
+    "sep_soft": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/timeline_widget/theme.py:23"
+    ],
+    "titlebar.text": [
+      "sli-ui-toolkit/src/sli_ui_toolkit/ui/windows/custom_title_bar/zones.py:52"
+    ]
+  },
+  "color_graph": {
+    "#1f1f1f": [
+      "ButtonText",
+      "Text",
+      "ToolTipText",
+      "WindowText",
+      "color_dialog.text",
+      "dialog.text",
+      "switch.text",
+      "tooltip.text"
+    ],
+    "#0078d4": [
+      "Highlight",
+      "accent",
+      "dialog.button.ok.background",
+      "help.nav.selected",
+      "toast.progress.fill"
+    ],
+    "#2d0078d7": [
+      "button.default.background.hover",
+      "button.default.background.pressed"
+    ],
+    "#50000000": [
+      "button.default.border",
+      "shadow.color"
+    ],
+    "#32000000": [
+      "button.default.bottom.edge",
+      "button.dialog.default.bottom.edge",
+      "button.primary.bottom.edge"
+    ],
+    "#f8f8f8": [
+      "button.dialog.default.background.hover",
+      "button.primary.background.hover",
+      "help.nav.hover"
+    ],
+    "#e9e9e9": [
+      "button.dialog.default.background.pressed",
+      "button.primary.background.pressed"
+    ],
+    "#1e000000": [
+      "button.dialog.default.border",
+      "button.primary.border"
+    ],
+    "#4cd93025": [
+      "button.delete.background.hover",
+      "button.delete.background.pressed"
+    ],
+    "#66d93025": [
+      "button.delete.background.hover",
+      "button.delete.background.pressed",
+      "button.delete.border"
+    ],
+    "#000000": [
+      "button.primary.text",
+      "toast.text"
+    ],
+    "#e0e0e0": [
+      "color_dialog.text",
+      "flyout.border",
+      "help.nav.border"
+    ],
+    "#ffffff": [
+      "button.primary.text",
+      "dialog.text",
+      "list_item.background.normal",
+      "surface.background",
+      "toast.text"
+    ],
+    "#e5e5e5": [
+      "help.separator",
+      "separator.color"
+    ],
+    "#c0c0c0": [
+      "button.toggle.background.checked",
+      "color_dialog.input.border",
+      "dialog.border",
+      "tooltip.border"
+    ],
+    "#dfdfdf": [
+      "ButtonText",
+      "Text",
+      "ToolTipText",
+      "WindowText",
+      "switch.text",
+      "tooltip.text"
+    ],
+    "#0096ff": [
+      "Highlight",
+      "accent",
+      "dialog.button.ok.background",
+      "help.nav.selected",
+      "toast.progress.fill"
+    ],
+    "#3c0096ff": [
+      "button.default.background.hover",
+      "button.default.background.pressed"
+    ],
+    "#1effffff": [
+      "button.default.bottom.edge",
+      "button.dialog.default.bottom.edge",
+      "button.primary.bottom.edge"
+    ],
+    "#4a4a4a": [
+      "button.dialog.default.background.hover",
+      "button.primary.background.hover",
+      "button.toggle.background.hover",
+      "flyout.border"
+    ],
+    "#555555": [
+      "button.dialog.default.background.pressed",
+      "button.primary.background.pressed",
+      "button.toggle.background.checked",
+      "color_dialog.input.border",
+      "tooltip.border"
+    ],
+    "#26ffffff": [
+      "button.dialog.default.border",
+      "button.primary.border"
+    ],
+    "#9a9a9a": [
+      "list_item.text.rating",
+      "slider.track.unfilled"
+    ],
+    "#4f4f4f": [
+      "dialog.button.hover",
+      "help.separator",
+      "separator.color"
+    ]
+  }
+}

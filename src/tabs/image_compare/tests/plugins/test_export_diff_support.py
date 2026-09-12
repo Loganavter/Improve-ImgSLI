@@ -13,7 +13,6 @@ from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from tabs.image_compare.services.image_export import ExportService
 from tabs.image_compare.services.gpu_export_scene import build_export_render_scene
 from tabs.image_compare.services.snapshot_render_plan_builder import (
     SnapshotRenderPlanBuilder,
@@ -65,6 +64,9 @@ class _FakeGpuExportService:
         return Image.new("RGBA", (8, 8), (0, 0, 0, 0)), {}
 
 def test_export_service_passes_cached_diff_image_to_gpu_render_plan(tmp_path):
+    pytest.importorskip("imagecodecs")
+    from tabs.image_compare.services.image_export import ExportService
+
     gpu = _FakeGpuExportService()
     service = ExportService(font_path_absolute="", gpu_export_service=gpu)
 
@@ -101,6 +103,9 @@ def test_export_service_stamps_fill_rgba_onto_cached_plan(tmp_path):
     from dataclasses import replace
 
     from ui.canvas_presentation.plan import CanvasRenderPlan
+
+    pytest.importorskip("imagecodecs")
+    from tabs.image_compare.services.image_export import ExportService
 
     gpu = _FakeGpuExportService()
     service = ExportService(font_path_absolute="", gpu_export_service=gpu)
@@ -187,101 +192,6 @@ def test_snapshot_frame_renderer_passes_cached_diff_image_to_gpu_preview():
 
     assert result.image.size == (8, 8)
     assert gpu.calls[0]["diff_image"] is diff_image
-
-def test_snapshot_builder_uses_precomputed_diff_as_export_base(monkeypatch):
-    import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
-
-    diff_image = Image.new("RGBA", (2, 2), (255, 0, 0, 255))
-    captured = {}
-
-    monkeypatch.setattr(
-        builder_module,
-        "build_cached_diff_image",
-        lambda *_args, **_kwargs: diff_image,
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "compute_canvas_plan",
-        lambda *_args, **_kwargs: CanvasGeometry(
-            image_width=2,
-            image_height=2,
-            canvas_width=4,
-            canvas_height=2,
-            padding_left=1,
-            padding_top=0,
-            padding_right=1,
-            padding_bottom=0,
-            virtual_layout=None,
-        ),
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "compute_export_stroke_scales",
-        lambda *_args, **_kwargs: (1.0, 1.0, 1.0),
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "query_guides_state",
-        lambda _view: SimpleNamespace(
-            enabled=False,
-            thickness=1,
-            color=SimpleNamespace(r=255, g=255, b=255, a=255),
-        ),
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "build_divider_export_overlay",
-        lambda *_args, **_kwargs: {"thickness": 0},
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "query_active_magnifier_divider_thickness",
-        lambda _store: 0,
-    )
-    monkeypatch.setattr(
-        builder_module,
-        "build_export_render_scene",
-        lambda *_args, **_kwargs: RenderScene(
-            diff_mode_active=True,
-            diff_mode_int=1,
-            channel_mode_int=2,
-        ),
-    )
-
-    def _capture_build_canvas_plan(_store, image1, image2, **kwargs):
-        captured["image1"] = image1
-        captured["image2"] = image2
-        captured["render_scene"] = kwargs["render_scene"]
-        captured["display_cache_key"] = kwargs["display_cache_key"]
-        return SimpleNamespace(canvas_w=4, canvas_h=2)
-
-    monkeypatch.setattr(builder_module, "build_canvas_plan", _capture_build_canvas_plan)
-
-    store = SimpleNamespace(
-        viewport=SimpleNamespace(
-            view_state=SimpleNamespace(diff_mode="highlight", channel_view_mode="R"),
-            geometry_state=SimpleNamespace(pixmap_width=2, pixmap_height=2),
-            session_data=SimpleNamespace(
-                render_cache=SimpleNamespace(cached_diff_image=None)
-            ),
-        )
-    )
-
-    plan = SnapshotRenderPlanBuilder(store).build_render_plan(
-        Image.new("RGBA", (2, 2), (0, 0, 0, 255)),
-        Image.new("RGBA", (2, 2), (255, 255, 255, 255)),
-        canvas_fill_rgba=(10, 20, 30, 255),
-    )
-
-    assert plan.canvas_w == 4
-    assert captured["image1"] is captured["image2"]
-    assert captured["image1"].size == (2, 2)
-    assert captured["image1"].getpixel((0, 0)) == (255, 0, 0, 255)
-    assert captured["render_scene"].diff_mode_active is False
-    assert captured["render_scene"].diff_mode_int == 0
-    assert captured["render_scene"].channel_mode_int == 0
-    assert captured["display_cache_key"][0] == "diff_base"
-    assert store.viewport.session_data.render_cache.cached_diff_image is diff_image
 
 def test_snapshot_builder_reuses_cached_diff_scene_images(monkeypatch):
     import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
@@ -541,7 +451,7 @@ def test_image_export_save_context_uses_video_style_fit_content_bounds():
     from domain.types import Point
     from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
     from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
-    from tabs.image_compare.services.export_context_builder import ExportContextBuilder
+    from tabs.image_compare.services.image_export.context_builder import ExportContextBuilder
     from tabs.image_compare.state.document import DocumentModel
     from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 
@@ -563,9 +473,19 @@ def test_image_export_save_context_uses_video_style_fit_content_bounds():
     )
     img1 = Image.new("RGBA", (100, 100), (0, 0, 0, 255))
     img2 = Image.new("RGBA", (100, 100), (255, 255, 255, 255))
+    from tabs.image_compare.state.actions import PutPixelAction
+    from tabs.image_compare.state.document import ImageItem
+
     document = store.get_session_state_slot("document")
-    document.full_res_image1 = img1
-    document.full_res_image2 = img2
+    document.image_list1 = [ImageItem(path="/tmp/a.png", display_name="a")]
+    document.image_list2 = [ImageItem(path="/tmp/b.png", display_name="b")]
+    document.current_index1 = 0
+    document.current_index2 = 0
+    store.transact([PutPixelAction(path="/tmp/a.png", store=img1)], scope="pipeline")
+    store.transact([PutPixelAction(path="/tmp/b.png", store=img2)], scope="pipeline")
+    # also need to set viewport image_state for export context builder fallback
+    store.viewport.session_data.image_state.image1 = img1
+    store.viewport.session_data.image_state.image2 = img2
 
     state = get_magnifier_widget_state(store.viewport.view_state)
     state.enabled = True

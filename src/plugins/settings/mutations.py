@@ -190,7 +190,10 @@ class SettingsMutationService:
             setting_key="text_placement_mode",
         )
 
-        normalized_alpha = max(0, min(100, int(text_alpha_percent)))
+        # Canonical UI range is 5..100 (font flyout opacity slider); keep the
+        # stored value inside it so save -> load is a fixpoint (the feature
+        # property path clamps to the same range).
+        normalized_alpha = max(5, min(100, int(text_alpha_percent)))
         changed |= self.set_viewport_value(
             "text_alpha_percent",
             normalized_alpha,

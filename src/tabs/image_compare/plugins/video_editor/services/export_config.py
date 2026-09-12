@@ -1,10 +1,13 @@
+# Audit-Meta: pattern=state-machine reason="single export config assembly — encoding/bounds/images"
 from __future__ import annotations
 
 import logging
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -354,16 +357,38 @@ CODEC_ID_BY_DISPLAY_NAME = {
 
 _AVAILABLE_ENCODERS_CACHE: set[str] | None = None
 
-def _resolve_ffmpeg_executable() -> str | None:
+
+def resolve_ffmpeg_executable() -> str | None:
+    """Single source for ffmpeg lookup — hardened (no CWD).
+
+    Keep semantics from ``video_export/encoding.py:15``: do not trust
+    ``os.getcwd()``-relative ``ffmpeg`` (planted binary in attacker dir).
+    Instead check ``PATH`` then ``sys.executable`` parent and the app dir
+    (``parents[6]`` from this file == repo/app root).
+    """
     ffmpeg_exe = shutil.which("ffmpeg")
     if ffmpeg_exe:
         return ffmpeg_exe
-    local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg")
-    if os.path.exists(local_ffmpeg):
-        return local_ffmpeg
-    if os.path.exists(local_ffmpeg + ".exe"):
-        return local_ffmpeg + ".exe"
+    candidates: list[str] = []
+    try:
+        candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg"))
+        candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg.exe"))
+    except Exception:
+        pass
+    try:
+        candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg"))
+        candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg.exe"))
+    except Exception:
+        pass
+    found = next((c for c in candidates if os.path.exists(c)), None)
+    if found:
+        return found
     return None
+
+
+def _resolve_ffmpeg_executable() -> str | None:
+    """Back-compat alias — use :func:`resolve_ffmpeg_executable`."""
+    return resolve_ffmpeg_executable()
 
 def _get_available_ffmpeg_encoders() -> set[str]:
     global _AVAILABLE_ENCODERS_CACHE

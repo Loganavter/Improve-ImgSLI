@@ -3,6 +3,12 @@
 Field catalog for **interface** canvas contracts. For *why* they exist and how
 “contract” is used elsewhere (host call sequences, AST dogmas), start at
 [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
+Actual contracts live in `src/ui/canvas_infra/scene/` (`pass_contract.py:75`
+`CanvasRenderPass`/`SceneVisibility`/`RenderPhase`, `widget_contract.py`
+`CanvasWidgetFeature`, `feature_contract.py` `CanvasSceneFeature`) and
+`src/ui/canvas_presentation/` (`plan.py` `CanvasRenderPlan`, `composition.py`
+`CompositionPlan`/`ResolvedComposition`); geometry resolver is
+`src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`.
 
 ## CanvasWidgetFeature (`widget_contract.py`)
 
@@ -88,13 +94,24 @@ base-image coordinates (see
 [The foundation](coordinate-systems.md#the-foundation-normalized-00-10-base-image-space-and-how-uncropcrop-fits-into-it)
 for the full geometric model). Shared types live in
 `src/shared/rendering/layout_contract.py`: `NormalizedBounds`,
-`FeatureLayoutRequirement`, `VirtualCanvasLayout`.
+`FeatureLayoutRequirement`, `VirtualCanvasLayout`. Comparison base geometry is
+**not** a layout requirement — it is the eager unified envelope
+`pw,ph = max(w1,w2), max(h1,h2)` owned by
+`src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
+(`update_common_letterbox_geometry`) via
+`src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`
+(see [rendering-model.md](rendering-model.md) and
+[plan_comparison_letterbox.md](../plan_comparison_letterbox.md)); `VirtualCanvasLayout`
+is for feature padding beyond that envelope (magnifier overflow, uncrop).
 
 Registration: features register via the `render.layout_requirement` command
 alias. Shared builders resolve requirements through `VirtualCanvasLayout` via
 `resolve_feature_virtual_layout`. Disabling a feature suppresses its
 per-instance animation regardless of stored geometry tracks; core should not
 invent additional feature-specific coordinate fixes beyond this contract.
+`src/ui/canvas_presentation/composition.py` (`CompositionPlan`) carries the
+immutable composition tree so live and offscreen paths share styling without
+re-reading mutable widget state.
 
 ## Scene Pipeline
 

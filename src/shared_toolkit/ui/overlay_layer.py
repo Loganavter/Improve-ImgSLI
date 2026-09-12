@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import shiboken6 as sip
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from shared_toolkit.ui.in_window_surface import (
     create_shadow_surface,
     paint_shadowed_surface,
 )
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, apply_ui_font
 
@@ -35,11 +36,25 @@ class _PopupBubble(QWidget):
             content_spacing=0,
         )
         self._layout.setSpacing(0)
+        # The bubble paints the container surface (flyout tokens, 1px border,
+        # scaled radius) itself in paintEvent — the retired
+        # `#ValuePopupContainer` QSS rule is gone, so the container must stay
+        # transparent instead of styling itself.
+        self.container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+
+        self._theme_manager = ThemeManager.get_instance()
+        self._surface_color = QColor()
+        self._border_color = QColor()
+        self._apply_surface_colors()
+        try:
+            self._theme_manager.theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
 
         self.label = QLabel(self.container)
         self.label.setObjectName("ValuePopupLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setContentsMargins(4, 4, 4, 4)
+        self.label.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(4))
         self._apply_label_typography()
         self.content_layout.addWidget(self.label)
         self.hide()
@@ -49,6 +64,32 @@ class _PopupBubble(QWidget):
         apply_text_color(
             self.label, ThemeManager.get_instance().get_color("dialog.text")
         )
+
+    def _apply_surface_colors(self) -> None:
+        """Re-read the flyout tokens; fall back to the palette Window role."""
+        try:
+            bg = self._theme_manager.get_color("surface.background")
+            border = self._theme_manager.get_color("flyout.border")
+        except Exception:
+            bg = border = None
+        fallback = QColor(self.palette().window().color())
+        self._surface_color = (
+            QColor(bg) if bg is not None and bg.isValid() else fallback
+        )
+        self._border_color = (
+            QColor(border)
+            if border is not None and border.isValid()
+            else QColor(fallback).darker(120)
+        )
+
+    def _on_theme_changed(self, *_args) -> None:
+        """Re-tint the surface after a theme switch. Bound method, so the
+        connection dies with the widget."""
+        try:
+            self._apply_surface_colors()
+            self.update()
+        except RuntimeError:
+            pass
 
     def set_content(
         self,
@@ -73,11 +114,24 @@ class _PopupBubble(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         paint_shadowed_surface(
             painter,
             self.container.geometry(),
             shadow_radius=self.SHADOW_RADIUS,
             corner_radius=self.CONTENT_RADIUS,
+        )
+        # Container chrome the retired `#ValuePopupContainer` QSS rule used
+        # to paint: fill + 1px border at the scaled corner radius. Painted
+        # here (under the container/label) because the container itself is
+        # a plain transparent QWidget now.
+        radius = scaled_px(self.CONTENT_RADIUS)
+        painter.setPen(QPen(self._border_color, 1))
+        painter.setBrush(self._surface_color)
+        painter.drawRoundedRect(
+            QRectF(self.container.geometry()).adjusted(0.5, 0.5, -0.5, -0.5),
+            radius,
+            radius,
         )
         painter.end()
 
@@ -138,7 +192,16 @@ class OverlayLayer(QObject):
             widget.hide()
 
     def anchor_rect(self, anchor_widget: QWidget) -> QRect:
-        top_left = anchor_widget.mapTo(self._host, QPoint(0, 0))
+        # Global-difference mapping, NOT anchor_widget.mapTo(self._host):
+        # when the anchor lives in a top-level child window whose QObject
+        # parent is the host (e.g. the Settings dialog parented to the main
+        # window), Qt's mapTo() treats the host as sitting at (0, 0) and
+        # returns the anchor's *global* position instead of host-local
+        # coordinates. Every in-window flyout anchored to such a dialog then
+        # lands far off the anchor and gets clamped into the host's
+        # bottom-right corner. mapToGlobal() - mapToGlobal() is correct for
+        # any host (top-level or not).
+        top_left = anchor_widget.mapToGlobal(QPoint(0, 0)) - self._host.mapToGlobal(QPoint(0, 0))
         return QRect(top_left, anchor_widget.size())
 
     def anchor_global_rect(self, anchor_widget: QWidget) -> QRect:
@@ -165,6 +228,14 @@ class OverlayLayer(QObject):
         margin: int = 8,
     ) -> QRect:
         anchor_rect = self.anchor_rect(anchor_widget)
+        # `size` is the popup's *outer* size, which already includes
+        # _PopupBubble.SHADOW_RADIUS of transparent drop-shadow padding on
+        # every side — so the visible bubble edge sits shadow_radius further
+        # from the anchor than the outer edge computed below. `offset` is
+        # meant to be the total visible gap, so it must be at least
+        # shadow_radius (to clear the halo) but should not have shadow_radius
+        # added *again* on top once it's already large enough on its own.
+        offset = max(offset, _PopupBubble.SHADOW_RADIUS) - _PopupBubble.SHADOW_RADIUS
 
         if position == "bottom":
             x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2
@@ -189,6 +260,12 @@ class OverlayLayer(QObject):
         anchor_rect = self.anchor_global_rect(anchor_widget)
         host_window = self._host.window()
         bounds = host_window.frameGeometry().adjusted(margin, margin, -margin, -margin)
+        # See place_rect_relative_to_anchor above: `size` is the popup's
+        # outer size (already includes SHADOW_RADIUS padding on every side),
+        # so without this correction the visible bubble ends up
+        # offset + SHADOW_RADIUS from the anchor instead of just `offset` —
+        # nearly double the intended gap for offset=6/SHADOW_RADIUS=8.
+        offset = max(offset, _PopupBubble.SHADOW_RADIUS) - _PopupBubble.SHADOW_RADIUS
 
         if position == "bottom":
             x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2

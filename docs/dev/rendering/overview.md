@@ -58,7 +58,7 @@ Not a feature home. Used for live store snapshots, render/export-facing
 store transformation, canvas surface integration. Feature-specific helpers
 should not live here.
 
-### 4. QRhi canvas renderer (`src/tabs/image_compare/canvas/`, backend bits under `src/ui/widgets/canvas/`)
+### 4. QRhi canvas renderer (`src/tabs/image_compare/canvas/`, backend bits under `src/ui/canvas_infra/rhi/`)
 
 Renderer backend, not a feature home. Owns QRhi resource setup, buffer/texture
 upload/readback, renderer-facing consumption of the render scene/runtime
@@ -66,10 +66,11 @@ context, base canvas shader source, feature render-pass discovery and
 dispatch loop.
 
 Shader ownership:
-- `shader_sources/base.py` — main canvas background, split/channel/diff modes
-- `shader_sources/common.py` — shared shader prolog helpers only
+- `canvas/shaders/` — compiled `.qsb` sources (base_array, label_downsample,
+  etc.) loaded by `rhi_renderer`/`load_qshader`; legacy GLSL-string containers
+  (`shader_sources/`) were removed in the 2026-08 mass-reduction pass
 - Feature shaders live inside `canvas/features/<name>/` (`passes.py`,
-  `shaders.py`, or `shaders/`), not in the generic canvas renderer.
+  `shaders.py`, or `shaders/qrhi/*.qsb`), not in the generic canvas renderer.
 
 ## Examples
 

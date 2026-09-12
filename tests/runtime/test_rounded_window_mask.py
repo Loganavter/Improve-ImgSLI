@@ -6,6 +6,8 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QRegion
 from PySide6.QtWidgets import QApplication, QWidget
 
+from tests.helpers.drain_until_stable import drain_until_stable
+
 from sli_ui_toolkit.ui.windows.rounded_body import (
     apply_rounded_window_mask,
     rounded_window_path,
@@ -17,7 +19,12 @@ def test_rounded_window_mask_uses_region_not_bitmap():
     widget = QWidget()
     widget.resize(400, 300)
     widget.show()
-    QApplication.processEvents()
+    drain_until_stable(
+        QApplication.instance(),
+        lambda: (widget.isVisible(), widget.width(), widget.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     apply_rounded_window_mask(widget, radius=10.0, squared=False)
     mask = widget.mask()

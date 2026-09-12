@@ -19,7 +19,7 @@ Orientation for humans and agents. Misconceptions first, then affirmative facts.
 - Do widgets mutate app state directly? — **No.** Dispatch actions. EventBus is for facts (“export finished”), not a second store ([EVENT_BUS.md](EVENT_BUS.md)).
 - Are Settings / Help / Export “core”? — **No.** App-wide plugins in `src/plugins/`; workspace modes in `src/tabs/` ([tabs/index.md](tabs/index.md), [PLUGINS.md](PLUGINS.md)).
 - Is `sli-ui-toolkit` vendored here? — **No.** Separate package ([UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)). Painter pipeline owns toolkit looks — not ad-hoc QSS.
-- Do live canvas and export share one path? — **Not automatically.** Live, preview, final export, and video snapshots must stay visually consistent on purpose ([QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md)).
+- Do live canvas and export share one path? — **Not automatically.** Live, preview, final export, and video snapshots must stay visually consistent on purpose ([rendering/index.md](rendering/index.md)).
 - Is Find Action a mini-app? — **No.** `ActionRegistry` catalog with reveal/pulse into real widgets ([ACTIONS.md](ACTIONS.md)).
 - Will this be rewritten in C++/Rust? — **No (closed topic).** A short failed experiment around first-frame flicker was abandoned; the flicker was fixed in Python. A full rewrite is unlikely. Story: [Development History](../DEVELOPMENT_HISTORY.md).
 
@@ -76,22 +76,35 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 |---|---|
 | Architecture overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Interface / isolation contracts | [CONTRACTS.md](CONTRACTS.md) (three senses of “contract”) |
-| New canvas feature | [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) |
+| New canvas feature | [rendering/index.md](rendering/index.md) |
 | New workspace tab | [tabs/index.md](tabs/index.md) |
 | Dialog / CSD chrome | [DIALOGS.md](DIALOGS.md) |
 | Toolkit widgets | [UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md) |
 | Find Action row | [ACTIONS.md](ACTIONS.md) |
 | “Weird after click/zoom” | [TRACING.md](TRACING.md) |
-| Known Qt quirks | [KNOWN_BUGS.md](KNOWN_BUGS.md) |
+| Known Qt quirks | `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) |
 | Open engineering debt | [TODO.md](TODO.md) |
 | AI / agent onboarding | [AGENTS.md](../../AGENTS.md) · search `docs/dev/` · `./launcher.sh context --cloc-only` for size stats |
 
 ## Doc index
 
+Full auto-generated list of every doc (host + tab-owned) with backlinks:
+[DOC_INDEX.md](DOC_INDEX.md). Regenerate after moving/renaming a doc:
+`python src/devtools/docs_link_graph.py --write-index`
+(`tests/devtools/test_docs_link_graph.py` fails the build if it goes stale
+or any relative doc link breaks). Tab-owned docs — including per-tab
+investigations — live under `src/tabs/<tab>/docs/` (see
+[image_compare/docs/](../../src/tabs/image_compare/docs/) ·
+[multi_compare/docs/](../../src/tabs/multi_compare/docs/)), not here.
+
+Curated starting points below; for the complete list use DOC_INDEX.md.
+
 ### Architecture and state
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers and bootstrap
 - [CONTRACTS.md](CONTRACTS.md) — interface contracts, host call sequences, architectural dogmas
+- [SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md) — settings load/save, single-writer funnel, reset troubleshooting
+- [CODE_PATTERNS.md](CODE_PATTERNS.md) — code organization patterns (thin owner + `use_cases/` split) and anti-patterns
 - [STORE.md](STORE.md) — actions / reducers / store
 - [EVENT_BUS.md](EVENT_BUS.md) — pub/sub for facts, not state
 - [PRESENTERS.md](PRESENTERS.md) — UI ↔ store bridge
@@ -107,23 +120,22 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 - [THEMING.md](THEMING.md) — palette / QSS registration
 - [RESOURCES_I18N.md](RESOURCES_I18N.md) — translations and resources
 - [ACTIONS.md](ACTIONS.md) — Find Action catalog
-- [HELP_SYSTEM.md](HELP_SYSTEM.md) · [HELP_WIDGET.md](HELP_WIDGET.md)
+- [HELP_SYSTEM.md](HELP_SYSTEM.md)
 
 ### Rendering and canvas
 
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — feature system, zoom/pan
-- [rendering/index.md](rendering/index.md) — rendering docs hub
-- [rendering/patterns.md](rendering/patterns.md) — patterns & anti-patterns
-- [rendering/qrhi-gotchas.md](rendering/qrhi-gotchas.md) — QRhi / compositing case catalog
+- [rendering/index.md](rendering/index.md) — rendering docs hub: feature system, zoom/pan
+- `docs/dev/rendering/patterns.md` in `improve-imgsli-internal-docs` (private) — patterns & anti-patterns
+- `docs/dev/rendering/qrhi-gotchas.md` in `improve-imgsli-internal-docs` (private) — QRhi / compositing case catalog
 - [rendering/display-image-pipeline.md](rendering/display-image-pipeline.md)
 - [rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
-- [RHI_RENDERER_REFACTOR.md](RHI_RENDERER_REFACTOR.md) · [CANVAS_FEATURE_REGISTRY_PER_TAB.md](CANVAS_FEATURE_REGISTRY_PER_TAB.md) — active plans
 
 ### Debug, test, ops
 
 - [TESTING.md](TESTING.md) — suite layout and conventions
 - [TRACING.md](TRACING.md) — Redux / EventBus / frame tracer
-- [UI_INSPECTOR.md](UI_INSPECTOR.md) — theme / QSS inspector
+- [UI_INSPECTOR.md](UI_INSPECTOR.md) — in-app DevTools inspector (config/state/regions/layers/theme/QSS/code/docs)
+- [UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) — headless JSON widget-tree + action dump for machine reading
 - [LOGGING.md](LOGGING.md) — logging
-- [KNOWN_BUGS.md](KNOWN_BUGS.md) — diagnosed platform quirks
+- `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) — diagnosed platform quirks
 - [TODO.md](TODO.md) — open work

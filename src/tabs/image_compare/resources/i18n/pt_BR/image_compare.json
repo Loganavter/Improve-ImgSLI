@@ -40,6 +40,10 @@
       "magnifier_divider_visible": "Visibilidade do divisor da lupa",
       "magnifier_colors": "Cores da lupa",
       "magnifier_instances": "Instâncias da lupa",
+      "magnifier_visibility": "Visibilidade das instâncias da lupa",
+      "magnifier_visibility_left": "Alternar lupa esquerda",
+      "magnifier_visibility_center": "Alternar lupa central",
+      "magnifier_visibility_right": "Alternar lupa direita",
       "magnifier_divider_width": "Largura do divisor da lupa",
       "magnifier_guides_width": "Largura das guias da lupa",
       "clear_list1": "Remover imagem atual (lado 1)",
@@ -76,7 +80,112 @@
         "divider": "Divisor",
         "analysis": "Análise",
         "video": "Vídeo"
+      },
+      "context_carry_image": "Mover",
+      "context_copy_path": "Copiar caminho",
+      "context_duplicate": "Duplicar",
+      "context_name": "Nome",
+      "context_properties": "Propriedades",
+      "context_remove": "Remover",
+      "context_rename": "Renomear",
+      "export_video": "Exportar Vídeo",
+      "settings": {
+        "analysis_desc": "Abrir Configurações → Detalhes da análise"
       }
+    },
+    "button": {
+      "add_images_1": "Adicionar Imagem(ns) 1",
+      "add_images_2": "Adicionar Imagem(ns) 2",
+      "save_result": "Salvar Resultado",
+      "hold_clear_entire_list": "Segure: Limpar lista inteira",
+      "pause": "Pausar",
+      "play": "Reproduzir",
+      "record": "Gravar",
+      "redo": "Refazer",
+      "select_images": "Selecionar Imagem(ns)",
+      "stop": "Parar",
+      "trim_to_selection": "Cortar para Seleção",
+      "undo_ctrlz": "Desfazer (Ctrl+Z)"
+    },
+    "common": {
+      "position": {
+        "bottom": "Inferior",
+        "top": "Superior"
+      },
+      "file_type": {
+        "all_files": "Todos os Arquivos",
+        "image_files": "Arquivos de Imagem"
+      },
+      "warning": "Aviso"
+    },
+    "tooltip": {
+      "magnifier_colors": "Cores da lupa"
+    },
+    "ui": {
+      "drop_images_1_here": "Arraste Imagem(ns) 1 Aqui",
+      "drop_images_2_here": "Arraste Imagem(ns) 2 Aqui",
+      "choose_capture_ring_color": "Escolher Cor do Anel de Captura",
+      "choose_magnifier_base_color": "Escolher Cor Base para Elementos da Lupa",
+      "choose_magnifier_border_color": "Escolher Cor da Borda da Lupa",
+      "choose_magnifier_divider_line_color": "Escolher Cor da Linha Divisória da Lupa",
+      "choose_magnifier_guides_color": "Escolher Cor das Guias da Lupa",
+      "edit_current_image_1_name": "Editar Nome da Imagem Atual 1",
+      "edit_current_image_2_name": "Editar Nome da Imagem Atual 2",
+      "include_file_names_in_saved_image": "Incluir nomes de arq. na img salva",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
+    },
+    "label": {
+      "border": "Borda",
+      "capture_size": "Tam. Captura (%)",
+      "container": "Contêiner",
+      "fps": "FPS",
+      "guides": "Guias",
+      "line": "Linha",
+      "magnifier": "Lupa",
+      "magnifier_size": "Tam. Lupa (%)",
+      "name_1": "Nome 1",
+      "name_2": "Nome 2",
+      "output": "Saída",
+      "video_codec": "Codec de Vídeo"
+    },
+    "misc": {
+      "name_length_limit_exceeded": "Limite de comprimento do nome ({limit}) excedido!",
+      "select_an_image": "Selecione uma imagem"
+    },
+    "msg": {
+      "edge_comparison_done": "Comparação de bordas concluída",
+      "edge_comparison_in_progress": "Comparação de bordas...",
+      "error_normalizing_path": "Erro ao normalizar caminho",
+      "error_processing_path": "Erro ao processar caminho",
+      "failed_to_load_image": "Falha ao carregar imagem",
+      "failed_to_quick_save_image": "Falha ao salvar imagem rapidamente",
+      "failed_to_save_image": "Falha ao salvar imagem",
+      "grayscale_diff_done": "Diferença em escala de cinza concluída",
+      "grayscale_diff_in_progress": "Diferença em escala de cinza...",
+      "highlight_diff_done": "Destaque de diferenças concluído",
+      "highlight_diff_in_progress": "Destaque de diferenças...",
+      "invalid_data": "Dados Inválidos",
+      "invalid_item_type_or_empty_path": "Tipo de item inválido ou caminho vazio",
+      "select_both_images_first": "Por favor, carregue e selecione imagens em ambos os slots primeiro.",
+      "some_images_could_not_be_loaded": "Algumas imagens não puderam ser carregadas",
+      "specify_output_directory_and_file_name": "Por favor, especifique o diretório de saída e o nome do arquivo.",
+      "ssim_calculation_done": "SSIM concluído",
+      "ssim_calculation_in_progress": "Cálculo de SSIM...",
+      "ssim_calculation_failed": "Falha ao calcular SSIM"
+    },
+    "settings": {
+      "recording_fps": "FPS de Gravação",
+      "video_recording": "Gravação de Vídeo"
+    },
+    "workspace": {
+      "session_types": {
+        "image_compare": "Comparar imagens"
+      }
+    },
+    "magnifier": {
+      "capture_ring": "Anel de captura",
+      "fit_mode_toggle": "Alternar modo de ajuste"
     }
   }
 }

@@ -3,6 +3,11 @@
 **Interface** contract whose methods the host calls in a fixed **lifecycle
 order**. Not an architectural AST dogma — see
 [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
+Actual contract lives at `src/ui/canvas_infra/scene/pass_contract.py:75`
+(`CanvasRenderPass`, `CanvasRenderPassBase`, `SceneVisibility`, `RenderPhase`)
+with central ordering in `src/ui/canvas_infra/scene/stacking_policy.py`;
+composition used by the applicator lives in
+`src/ui/canvas_presentation/composition.py` (`CompositionPlan`).
 
 Render passes are retained/staged: resource lifetime and per-frame recording
 are explicit, separate steps.
@@ -47,8 +52,14 @@ class MyPass(CanvasRenderPass):
 ```
 
 `resolved_layer_and_priority()` resolves `stack_role` through the central
-`stacking_policy.py` — a pass never computes its own ordering. Every render
-pass is a `CanvasRenderPass`; there is no other pass base class.
+`src/ui/canvas_infra/scene/stacking_policy.py` — a pass never computes its own ordering. Every render
+pass is a `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py:75`); there is no other pass base class.
+For multi-layer frames the applicator flattens `src/ui/canvas_presentation/composition.py` `CompositionPlan`
+into `ResolvedComposition` so overlay passes read gaps/rects from the immutable plan, not widget state.
+Comparison letterbox geometry is owned once by
+`src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
+(`update_common_letterbox_geometry` — eager `max(w1,w2), max(h1,h2)`), not by passes;
+see [rendering-model.md](rendering-model.md) and [plan_comparison_letterbox.md](../plan_comparison_letterbox.md).
 
 Rules:
 - mode filtering is handled centrally by the render executor
@@ -56,14 +67,12 @@ Rules:
 - interactive-only payloads should usually be suppressed earlier in feature `apply()`
 - single-image preview is not a central render-executor flag; if a pass should be silent in that mode, it should decide that locally in `should_paint()`
 - **blank-white gating is centralized, not per-pass.** `iter_active_render_passes()`
-  (`ui/widgets/canvas/render_executor.py`) checks `should_render_blank_white(ctx.scene_frame)`
+  (`ui/canvas_infra/rhi/render_executor.py`) checks `should_render_blank_white(ctx.scene_frame)`
   once and skips every pass whose `requires_content` is `True` (the default) before
   `should_paint()` is even called. A new feature pass is blank-white-safe automatically;
   it does not need its own `blank_white` check in `should_paint()`. Only opt out
   (`requires_content = False`) for passes that must render on an empty canvas — e.g.
-  multi_compare's `DragDropOverlayPass` (drop hint before any slots are loaded). See
-  [investigations/divider-blank-white-and-drag-desync.md](investigations/divider-blank-white-and-drag-desync.md)
-  for why this exists.
+  multi_compare's `DragDropOverlayPass` (drop hint before any slots are loaded).
 
 Scene visibility:
 

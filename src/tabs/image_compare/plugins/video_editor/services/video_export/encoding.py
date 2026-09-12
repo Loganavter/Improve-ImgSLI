@@ -3,25 +3,24 @@ from __future__ import annotations
 import logging
 import os
 import shlex
-import shutil
 import subprocess
 import threading
 
-from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
+from tabs.image_compare.plugins.video_editor.services.export_config import (
+    ExportConfigBuilder,
+    resolve_ffmpeg_executable,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
 class FFmpegCommandBuilder:
     def build(self, output_path, width, height, fps, options):
-        ffmpeg_exe = "ffmpeg"
-        if not shutil.which(ffmpeg_exe):
-            local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg")
-            if os.path.exists(local_ffmpeg) or os.path.exists(local_ffmpeg + ".exe"):
-                ffmpeg_exe = local_ffmpeg
-            else:
-                raise FileNotFoundError(
-                    "FFmpeg executable not found in PATH or app directory."
-                )
+        ffmpeg_exe = resolve_ffmpeg_executable()
+        if not ffmpeg_exe:
+            raise FileNotFoundError(
+                "FFmpeg executable not found in PATH or app directory."
+            )
 
         cmd = [
             ffmpeg_exe,
@@ -46,8 +45,15 @@ class FFmpegCommandBuilder:
         ]
 
         if options.get("manual_mode", False):
-            cmd.extend(shlex.split(options.get("manual_args", "").strip()))
-            cmd.append(output_path)
+            raw = options.get("manual_args", "").strip()
+            # W3 minor: shlex posix=True mangles Windows backslashes
+            cmd.extend(shlex.split(raw, posix=(os.name != "nt")))
+            # W3 minor: -leading filename parsed as option — delimit with --
+            out = str(output_path)
+            if out.startswith("-"):
+                cmd.extend(["--", out])
+            else:
+                cmd.append(out)
             return cmd
 
         codec = options.get("codec", "h264")
@@ -127,7 +133,11 @@ class FFmpegCommandBuilder:
             else:
                 cmd.extend(["-b:v", bitrate or "8000k"])
 
-        cmd.append(output_path)
+        out = str(output_path)
+        if out.startswith("-"):
+            cmd.extend(["--", out])
+        else:
+            cmd.append(out)
         return cmd
 
 class FFmpegProcessManager:

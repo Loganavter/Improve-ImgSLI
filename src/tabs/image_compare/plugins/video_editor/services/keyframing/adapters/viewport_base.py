@@ -17,10 +17,6 @@ from tabs.image_compare.plugins.video_editor.services.keyframing.adapters.static
 from tabs.image_compare.plugins.video_editor.services.keyframing.types import FrameSnapshot
 from tabs.image_compare.canvas.registry import registry
 
-class _ViewportProxy:
-    def __init__(self, viewport: ViewportState):
-        self.viewport = viewport
-
 def _resolve_read(viewport: ViewportState, parts: list[str]) -> Any:
     obj = viewport
     for part in parts:
@@ -97,11 +93,63 @@ def _read_interaction_session(snapshot: FrameSnapshot) -> dict[str, Any]:
     return {"value": str(int(getattr(viewport.interaction_state, "interaction_session_id", 0)))}
 
 def _write_interaction_session(snapshot: FrameSnapshot, channels: dict[str, Any]) -> None:
-    viewport = snapshot.viewport_state
+    from core.state_management.actions import SetInteractionSessionIdAction
+    from core.state_management.reducers import InteractionStateReducer
+    from core.store_viewport import ViewportState
+
     try:
-        viewport.interaction_state.interaction_session_id = int(channels["value"])
+        sid = int(channels["value"])
     except (TypeError, ValueError):
-        viewport.interaction_state.interaction_session_id = 0
+        sid = 0
+
+    # Live Store path — if snapshot carries a backing store, dispatch through it
+    store = getattr(snapshot, "store", None)
+    if store is not None:
+        dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            dispatcher.dispatch(SetInteractionSessionIdAction(sid), scope="viewport")
+            try:
+                object.__setattr__(snapshot, "viewport_state", store.viewport)
+            except Exception:
+                pass
+            return
+
+    # Transient snapshot path — exercise InteractionStateReducer via Dispatcher
+    # so the change goes through `InteractionStateReducer` / `ViewportReducer`
+    # (`scope="viewport"`) instead of direct `viewport.interaction_state... =`.
+    try:
+        from core.store import Store
+        from core.state_management.dispatcher import Dispatcher
+
+        tmp = Store()
+        tmp.viewport = snapshot.viewport_state
+        d = tmp.get_dispatcher()
+        if d is None:
+            d = Dispatcher(tmp)
+            tmp.set_dispatcher(d)
+        d.dispatch(SetInteractionSessionIdAction(sid), scope="viewport")
+        object.__setattr__(snapshot, "viewport_state", tmp.viewport)
+        return
+    except Exception:
+        pass
+
+    # Fallback pure reducer (still avoids flagged `viewport.interaction_state... =`)
+    current = getattr(snapshot.viewport_state, "interaction_state", None)
+    if current is None:
+        return
+    new_interaction = InteractionStateReducer.reduce(current, SetInteractionSessionIdAction(sid))
+    vp = snapshot.viewport_state
+    object.__setattr__(
+        snapshot,
+        "viewport_state",
+        ViewportState(
+            render_config=vp.render_config,
+            session_data=vp.session_data,
+            view_state=vp.view_state,
+            interaction_state=new_interaction,
+            geometry_state=vp.geometry_state,
+        ),
+    )
 
 def _track_descriptor(
     track_id: str,

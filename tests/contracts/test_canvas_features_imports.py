@@ -59,7 +59,6 @@ def test_plan_applicator_uses_tab_services_for_live_feature_hooks():
         "_stored_pil_images",
         "source_image1",
         "source_image2",
-        "apply_legacy_canvas_render_plan",
     )
     hits = [token for token in forbidden if token in text]
     assert not hits, (

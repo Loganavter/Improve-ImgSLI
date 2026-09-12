@@ -37,8 +37,31 @@ def build_render_frame_presentation(
     image_dest_x = layout.content_x
     image_dest_y = layout.content_y
 
-    presentation.store.viewport.geometry_state.pixmap_width = render_w
-    presentation.store.viewport.geometry_state.pixmap_height = render_h
+    _store = presentation.store
+    _dispatcher = getattr(_store, "get_dispatcher", lambda: None)()
+    if _dispatcher is not None:
+        try:
+            from core.state_management.geometry_actions import SetPixmapDimensionsAction
+
+            batch = getattr(_store, "batch_changes", None)
+            action = SetPixmapDimensionsAction(width=render_w, height=render_h)
+            if callable(batch):
+                with _store.batch_changes():
+                    _dispatcher.dispatch(action, scope="viewport")
+            else:
+                _dispatcher.dispatch(action, scope="viewport")
+        except Exception:
+            try:
+                setattr(_store.viewport.geometry_state, "pixmap_width", render_w)
+                setattr(_store.viewport.geometry_state, "pixmap_height", render_h)
+            except Exception:
+                pass
+    else:
+        try:
+            setattr(_store.viewport.geometry_state, "pixmap_width", render_w)
+            setattr(_store.viewport.geometry_state, "pixmap_height", render_h)
+        except Exception:
+            pass
 
     scaled_image1 = downscale_source_to_pil(
         display_img1, (render_w, render_h), resample=Image.Resampling.BILINEAR
@@ -60,4 +83,3 @@ def build_render_frame_presentation(
         scaled_image2=scaled_image2,
         virtual_layout=presentation.virtual_layout,
     )
-

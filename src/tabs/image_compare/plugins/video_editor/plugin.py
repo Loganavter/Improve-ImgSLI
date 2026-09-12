@@ -40,16 +40,19 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
                 SettingsChangeLanguageEvent, self._on_language_changed
             )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "editor.qss"),)
-
     def open_editor(
         self, snapshots: list[Any], export_controller: Any, main_window_app: Any
     ) -> None:
+        from shared.debug_flags import env_flag as _env_flag
+        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        if _dbg:
+            logger.warning("[video-editor-debug] VideoEditorPlugin.open_editor snapshots=%s controller=%s existing_dialog=%s", bool(snapshots), bool(export_controller), self._editor_dialog is not None)
         if not snapshots or not export_controller:
             logger.warning(
                 "VideoEditorPlugin.open_editor: snapshots or export_controller is None"
             )
+            if _dbg:
+                logger.warning("[video-editor-debug] open_editor abort snapshots=%s controller=%s", bool(snapshots), bool(export_controller))
             return
 
         try:
@@ -127,7 +130,7 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
     @staticmethod
     def _can_activate_deferred_dialog(dialog) -> bool:
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return False
         if app.applicationState() != Qt.ApplicationState.ApplicationActive:
             return False
@@ -150,9 +153,5 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
     def _on_language_changed(self, event: SettingsChangeLanguageEvent) -> None:
         if self._editor_dialog is not None:
             self._editor_dialog.update_language(event.lang_code)
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}
-
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return ()

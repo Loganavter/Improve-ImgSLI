@@ -36,7 +36,9 @@ class VideoEditorService:
     def _ensure_materialized_snapshots(self) -> list[FrameSnapshot]:
         if self._current_snapshots is None:
             if self._source_recording is not None:
-                self._current_snapshots = self._source_recording.materialize_snapshots()
+                self._current_snapshots = list(
+                    self._source_recording.materialize_snapshots()  # type: ignore[attr-defined]  # recording is duck-typed
+                )
             else:
                 self._current_snapshots = []
         return self._current_snapshots
@@ -114,12 +116,14 @@ class VideoEditorService:
         return self.get_current_recording().timeline
 
     def get_duration(self) -> float:
+        # Recording is authoritative — snapshot timestamps may drift from
+        # timeline duration (ceil(duration*fps)+1). Use it when available.
+        if self._source_recording is not None:
+            return float(self._source_recording.get_duration())
         if self._current_snapshots is not None:
             if not self._current_snapshots:
                 return 0.0
             return float(self._current_snapshots[-1].timestamp)
-        if self._source_recording is not None:
-            return float(self._source_recording.get_duration())
         return 0.0
 
     def delete_selection(self, start_idx: int, end_idx: int):

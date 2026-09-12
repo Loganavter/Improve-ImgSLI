@@ -58,3 +58,32 @@ class SetChannelViewModeAction(Action):
         super().__init__(type=ActionType.SET_CHANNEL_VIEW_MODE); self.mode = mode
     def get_payload(self): return {"mode": self.mode}
 
+@dataclass
+class SetCanvasWidgetStateAction(Action):
+    """Redux action for `view_state.canvas_widget_state[feature] = state`."""
+
+    feature: str
+    state: object
+
+    def __init__(self, feature: str, state: object):
+        super().__init__(type=ActionType.SET_CANVAS_WIDGET_STATE)
+        self.feature = str(feature)
+        self.state = state
+
+    def get_payload(self):
+        return {"feature": self.feature, "state": self.state}
+
+@dataclass
+class UpdateCanvasFeatureStateAction(Action):
+    """Alias for SET_CANVAS_WIDGET_STATE — feature commands may use this name per STORE.md:164."""
+
+    feature: str
+    state: object
+
+    def __init__(self, feature: str, state: object):
+        super().__init__(type=ActionType.UPDATE_CANVAS_FEATURE_STATE)
+        self.feature = str(feature)
+        self.state = state
+
+    def get_payload(self):
+        return {"feature": self.feature, "state": self.state}

@@ -37,7 +37,9 @@ def query_feature_state(
     """
     from .registry import get_canvas_registry
 
-    queries = get_canvas_registry(_session_type(store)).get_feature_state_queries()
+    session_type = _session_type(store)
+    assert session_type is not None
+    queries = get_canvas_registry(session_type).get_feature_state_queries()
     feature_queries = queries.get(feature_name)
     if feature_queries is None:
         _log.warning(
@@ -92,7 +94,9 @@ def execute_feature_command(
     """
     from .registry import get_canvas_registry
 
-    commands = get_canvas_registry(_session_type(store)).get_feature_state_commands()
+    session_type = _session_type(store)
+    assert session_type is not None
+    commands = get_canvas_registry(session_type).get_feature_state_commands()
     feature_commands = commands.get(feature_name)
     if feature_commands is None:
         _log.warning(
@@ -129,6 +133,7 @@ def has_feature_command(
     feature_name: str,
     command_id: str,
 ) -> bool:
+    assert session_type is not None
     """Check if feature has a specific command."""
     from .registry import get_canvas_registry
 
@@ -144,6 +149,7 @@ def has_feature_query(
     feature_name: str,
     query_id: str,
 ) -> bool:
+    assert session_type is not None
     """Check if feature has a specific query."""
     from .registry import get_canvas_registry
 

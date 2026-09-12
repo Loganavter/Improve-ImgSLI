@@ -16,7 +16,13 @@ def set_snapshot_divider_state(snap, state: DividerWidgetState) -> None:
     view_state = snap.viewport_state.view_state
     canvas_widget_state = dict(getattr(view_state, "canvas_widget_state", None) or {})
     canvas_widget_state["divider"] = state
-    view_state.canvas_widget_state = canvas_widget_state
+    setattr(view_state, "canvas_widget_state", canvas_widget_state)
+
+
+def set_snapshot_split_position(snap, value: float) -> None:
+    view_state = snap.viewport_state.view_state
+    setattr(view_state, "split_position", value)
+    setattr(view_state, "split_position_visual", value)
 
 
 def track_descriptor(track_id: str, label: str, kind: str) -> TrackDescriptor:
@@ -52,15 +58,8 @@ def build_divider_properties() -> tuple[CanvasFeatureProperty, ...]:
             read_snapshot=lambda snap: {
                 "value": float(snap.viewport_state.view_state.split_position)
             },
-            write_snapshot=lambda snap, ch: (
-                setattr(
-                    snap.viewport_state.view_state, "split_position", float(ch["value"])
-                ),
-                setattr(
-                    snap.viewport_state.view_state,
-                    "split_position_visual",
-                    float(ch["value"]),
-                ),
+            write_snapshot=lambda snap, ch: set_snapshot_split_position(
+                snap, float(ch["value"])
             ),
             order=10,
         ),

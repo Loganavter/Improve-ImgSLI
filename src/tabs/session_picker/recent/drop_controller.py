@@ -5,6 +5,17 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from PySide6.QtCore import QEvent, QObject, QTimer
+
+
+def _is_alive(obj) -> bool:
+    """True while ``obj``'s C++ wrapper is still valid (singleShot may fire
+    after the owner was deleted)."""
+    try:
+        import shiboken6
+
+        return shiboken6.Shiboken.isValid(obj)
+    except Exception:
+        return True
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import QWidget
 
@@ -73,8 +84,16 @@ class RecentDropController(QObject):
         event.accept()
         if not paths:
             return
-        # Defer pin+refresh so the drop source is released first.
-        QTimer.singleShot(0, lambda: self._on_paths(list(paths)))
+        # Defer pin+refresh so the drop source is released first. The
+        # singleShot is not parented to this controller: guard against the
+        # controller being destroyed before it fires (a deleted C++ object
+        # raises inside the event loop and poisons unrelated tests).
+        QTimer.singleShot(
+            0,
+            lambda: self._on_paths(list(paths))
+            if _is_alive(self)
+            else None,
+        )
 
     def eventFilter(self, obj, event):  # noqa: N802
         et = event.type()

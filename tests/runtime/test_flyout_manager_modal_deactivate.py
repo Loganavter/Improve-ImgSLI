@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 from PySide6.QtCore import QEvent, QTimer, Qt
-from PySide6.QtWidgets import QApplication, QDialog, QWidget
+from PySide6.QtWidgets import QDialog, QWidget
 from sli_ui_toolkit.managers import FlyoutManager
 
 
@@ -19,29 +17,6 @@ class _VisibleFlyout(QWidget):
     def hide(self):  # noqa: A003 — Qt API
         self.hide_calls += 1
         super().hide()
-
-
-class _AppStateProxy:
-    """Real QApplication with overridden activate/modal probes for Windows CI.
-
-    Patching ``applicationState`` / ``activeModalWidget`` on the Qt class is
-    unreliable under Windows PySide6. ``FlyoutManager._maybe_close`` uses
-    ``QApplication.instance()``, so we return a thin proxy for that call only.
-    """
-
-    def __init__(self, real: QApplication, *, state, modal_widget):
-        self._real = real
-        self._state = state
-        self._modal_widget = modal_widget
-
-    def applicationState(self):
-        return self._state
-
-    def activeModalWidget(self):
-        return self._modal_widget
-
-    def __getattr__(self, name):
-        return getattr(self._real, name)
 
 
 def _run_deactivate(
@@ -58,16 +33,18 @@ def _run_deactivate(
         if application_active
         else Qt.ApplicationState.ApplicationInactive
     )
-    proxy = _AppStateProxy(qapp, state=state, modal_widget=modal_widget)
+
+    # FlyoutManager._maybe_close requires isinstance(app, QApplication), so
+    # the probed methods must be overridden on the real instance rather than
+    # swapped out via a duck-typed stand-in for QApplication.instance().
+    monkeypatch.setattr(qapp, "applicationState", lambda: state)
+    monkeypatch.setattr(qapp, "activeModalWidget", lambda: modal_widget)
 
     ran = []
 
     def _single_shot(_ms, fn):
         ran.append(fn)
-        # Scope the instance swap to the deferred close body so pytest-qt
-        # teardown still sees the real QApplication.
-        with patch.object(QApplication, "instance", return_value=proxy):
-            fn()
+        fn()
 
     monkeypatch.setattr(QTimer, "singleShot", _single_shot)
 

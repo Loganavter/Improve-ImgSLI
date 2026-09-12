@@ -1,4 +1,6 @@
+# Audit-Meta: pattern=qdialog-wiring reason="video editor dialog shell — one QDialog chrome"
 import logging
+import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap, QResizeEvent
@@ -33,8 +35,10 @@ from tabs.image_compare.plugins.video_editor.layout_geometry import (
 from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
 from tabs.image_compare.plugins.video_editor.dialog.persistence import VideoEditorDialogPersistence
 from tabs.image_compare.plugins.video_editor.dialog.runtime import VideoEditorDialogRuntime
+from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import VideoPreviewSurface
 from tabs.image_compare.plugins.video_editor.presenter import VideoEditorPresenter
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.managers import scaled_px
 from shared.rendering.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
@@ -65,6 +69,7 @@ class VideoEditorDialog(ThemedDialog):
     timelineHeightChanged = Signal(int)
 
     def __init__(self, snapshots, export_controller, main_window_app, parent=None):
+        _dbg_t0 = time.perf_counter()
         super().__init__(parent)
 
         self.current_language = "en"
@@ -72,7 +77,7 @@ class VideoEditorDialog(ThemedDialog):
             self.current_language = export_controller.store.settings.current_language
 
         self.setWindowTitle(tr("video.video_editor_exporter", self.current_language))
-        self.resize(1200, 850)
+        self.resize(scaled_px(1200), scaled_px(850))
         self.setMinimumHeight(MIN_VIDEO_EDITOR_DIALOG_HEIGHT)
 
         self.setWindowFlags(
@@ -101,7 +106,7 @@ class VideoEditorDialog(ThemedDialog):
         self.install_dialog_geometry(self._update_settings_panel_width)
         self.mark_theme_ui_ready()
         decorate_dialog(self, title=tr("video.video_editor_exporter", self.current_language))
-        install_dialog_help_menu(self, page="export")
+        install_dialog_help_menu(self, page="video")
 
         main_controller = (
             export_controller.presenter.main_controller
@@ -146,6 +151,11 @@ class VideoEditorDialog(ThemedDialog):
         QTimer.singleShot(0, self.presenter._initialize_output_fields)
         QTimer.singleShot(1200, self._emit_ready_to_show)
 
+        logger.warning(
+            "DBG-BUG4 VideoEditorDialog.__init__ took %.1f ms (constructor done, about to return/show)",
+            (time.perf_counter() - _dbg_t0) * 1000,
+        )
+
     def _get_first_snapshot(self):
         snapshots = getattr(self, "snapshots", None)
         if snapshots is None:
@@ -169,17 +179,28 @@ class VideoEditorDialog(ThemedDialog):
 
         self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.vertical_splitter.setChildrenCollapsible(False)
-        self.vertical_splitter.setHandleWidth(8)
+        self.vertical_splitter.setHandleWidth(scaled_px(8))
         self.main_layout.addWidget(self.vertical_splitter, stretch=1)
 
         self.top_container = QWidget()
         top_layout = QHBoxLayout(self.top_container)
-        top_layout.setContentsMargins(10, 10, 10, 10)
+        top_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
         top_layout.setSpacing(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX)
 
-        self.preview_label = create_canvas_widget()
-        self.preview_label.setObjectName("VideoEditorPreviewLabel")
-        self.preview_label.set_read_only(True)
+        canvas = create_canvas_widget()
+        if canvas is None:
+            logger.debug("VideoEditor preview canvas not available for active tab — using placeholder")
+            canvas = VideoPreviewSurface()
+            canvas.setObjectName("VideoEditorPreviewPlaceholder")
+            # Degrade gracefully: plain QWidget placeholder, no QRhi rendering.
+            canvas.set_read_only = lambda *a, **k: None  # type: ignore[attr-defined]
+        self.preview_label = canvas
+        self.preview_label.setObjectName("VideoEditorPreviewLabel" if canvas.objectName() != "VideoEditorPreviewPlaceholder" else "VideoEditorPreviewLabel")
+        if hasattr(self.preview_label, "set_read_only"):
+            try:
+                self.preview_label.set_read_only(True)
+            except Exception:
+                logger.debug("preview placeholder set_read_only no-op", exc_info=True)
         self.preview_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -206,12 +227,18 @@ class VideoEditorDialog(ThemedDialog):
         bottom_layout.addWidget(self.toolbar_frame)
 
         self.scroll_area = create_timeline_scroll_area(self)
+        try:
+            import os, logging
+            if os.getenv("IMGSLI_VIDEO_EDITOR_DEBUG") == "1" or os.getenv("IMGSLI_TIMELINE_DEBUG") == "1":
+                logging.getLogger("ImproveImgSLI").warning("[timeline-debug] create_timeline_scroll_area timeline_id=%s scroll_id=%s viewport_id=%s", id(self.timeline) if hasattr(self, 'timeline') else -1, id(self.scroll_area), id(self.scroll_area.viewport()))
+        except Exception:
+            pass
         bottom_layout.addWidget(self.scroll_area, stretch=1)
-        self.bottom_container.setMinimumHeight(250)
+        self.bottom_container.setMinimumHeight(scaled_px(250))
         self.vertical_splitter.addWidget(self.bottom_container)
         self.vertical_splitter.setStretchFactor(0, 1)
         self.vertical_splitter.setStretchFactor(1, 0)
-        self.vertical_splitter.setSizes([560, 260])
+        self.vertical_splitter.setSizes([scaled_px(560), scaled_px(260)])
         self.vertical_splitter.splitterMoved.connect(self._on_splitter_moved)
 
         self._set_focus_policies()
@@ -243,8 +270,8 @@ class VideoEditorDialog(ThemedDialog):
 
         pass
 
-    def set_preview_image(self, pixmap: QPixmap):
-        self.runtime.set_preview_image(pixmap)
+    def set_preview(self, pixmap: QPixmap):
+        self.runtime.set_preview(pixmap)
 
     def set_timeline_position(self, frame_idx: int):
         self.timeline.blockSignals(True)
@@ -387,7 +414,7 @@ class VideoEditorDialog(ThemedDialog):
         self.export_ui.on_codec_changed(codec_text)
 
     def _on_preview_updated(self, pixmap: QPixmap):
-        self.set_preview_image(pixmap)
+        self.set_preview(pixmap)
 
     def _on_timeline_position_changed(self, frame_idx: int):
         self.set_timeline_position(frame_idx)
@@ -406,6 +433,14 @@ class VideoEditorDialog(ThemedDialog):
         self.btn_undo.setProperty("opacity", undo_opacity)
         self.btn_redo.setProperty("opacity", redo_opacity)
 
+    def _on_fit_content_available_changed(self, available: bool):
+        # Nothing to uncrop when the canvas never leaves normalized 0..1
+        # (no snapshot ever padded/overflowed the frame) — toggling would be
+        # a visual no-op. Same dim-when-disabled treatment as undo/redo.
+        if hasattr(self, "btn_fit_content"):
+            self.btn_fit_content.setEnabled(available)
+            self.btn_fit_content.setProperty("opacity", "1.0" if available else "0.4")
+
     def _on_thumbnails_updated(self, thumbnails: dict):
         self.timeline.set_thumbnails(thumbnails)
 
@@ -415,7 +450,9 @@ class VideoEditorDialog(ThemedDialog):
         if hasattr(self, "export_log_edit"):
             from datetime import datetime
             ts = datetime.now().strftime("%H:%M:%S")
-            self.export_log_edit.append_status(f"Export started {ts}")
+            tpl = self._tr("video.export_started")
+            msg = tpl.format(ts=ts) if "{ts}" in tpl else f"{tpl} {ts}" if tpl != "video.export_started" else f"Export started {ts}"
+            self.export_log_edit.append_status(msg)
 
     def set_export_progress(self, value: int):
         self.runtime.set_export_progress(value)
@@ -441,8 +478,6 @@ class VideoEditorDialog(ThemedDialog):
         if not hasattr(self, "export_progress"):
             return
         self.export_progress.setProperty("state", state)
-        self.export_progress.style().unpolish(self.export_progress)
-        self.export_progress.style().polish(self.export_progress)
         self.export_progress.update()
 
     def _browse_output_dir(self, checked: bool = False):
@@ -515,6 +550,15 @@ class VideoEditorDialog(ThemedDialog):
         if hasattr(self, "timeline"):
             self.timeline.update_layout_width()
         self._position_stop_export_button()
+
+        logger.warning(
+            "DBG-BUG1 dialog=%s preview_label=%s settings_panel=%s tabs=%s top_container=%s",
+            self.geometry(),
+            self.preview_label.geometry(),
+            self.settings_panel.geometry(),
+            self.tabs.geometry() if hasattr(self, "tabs") else None,
+            self.top_container.geometry(),
+        )
 
     def showEvent(self, event):
         super().showEvent(event)

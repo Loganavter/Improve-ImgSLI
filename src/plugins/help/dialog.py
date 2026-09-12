@@ -1,4 +1,5 @@
 """Hierarchical help dialog: hubs, back bar, HelpDocumentView pages."""
+# Audit-Meta: pattern=qdialog-wiring reason="one Help QDialog — HelpDocumentView + search wiring"
 
 from __future__ import annotations
 
@@ -8,12 +9,12 @@ from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QScrollArea,
     QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
+from plugins.help import topic_search
 from plugins.help.back_bar import HelpBackBar
 from plugins.help.hub_page import HelpHubPage
 from plugins.help.labels import node_title
@@ -25,6 +26,7 @@ from plugins.help.layout_geometry import (
 )
 from plugins.help.navigator import HelpNavigator
 from plugins.help.tree import (
+    HelpNode,
     get_help_tree,
     read_help_page_markdown,
     resolve_help_asset,
@@ -37,16 +39,19 @@ from shared_toolkit.ui.layout_sizing import (
 )
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from shared_toolkit.ui.themed_dialog import ThemedDialog
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.widgets.composite.help_sections import (
     normalize_help_language,
     toc_title_for_language,
 )
 from sli_ui_toolkit.widgets import (
+    CustomLineEdit,
     HelpDocumentView,
-    MinimalistScrollBar,
     SidebarDialogShell,
+    SurfaceScrollArea,
 )
 from ui.icon_manager import AppIcon, get_app_icon
+from ui.layout_spacing import sidebar_header_host
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -99,7 +104,10 @@ class HelpDialog(ThemedDialog):
         self._tree = get_help_tree()
         self._nav = HelpNavigator(self._tree)
         self._pending_anchor: str | None = None
+        self._pending_video_url: str | None = None
+        self._pending_learn_more_url: str | None = None
         self._syncing_sidebar = False
+        self._search_mode = False
         self.overlay_layer = OverlayLayer(self)
         self._mouse_nav_filter: _HelpMouseNavFilter | None = None
 
@@ -107,6 +115,8 @@ class HelpDialog(ThemedDialog):
         self.setWindowTitle(title)
         self.setWindowIcon(get_app_icon(AppIcon.HELP))
         self.setObjectName("HelpDialog")
+        self._external_prev_focus = None
+        self._external_prev_window = None
         # Independent top-level window (not transient-for the main shell), so
         # opening Help from Video Editor / Export does not bury those windows.
         self.setWindowFlags(
@@ -118,7 +128,7 @@ class HelpDialog(ThemedDialog):
         )
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.setSizeGripEnabled(True)
-        self.resize(880, 620)
+        self.resize(scaled_px(880), scaled_px(620))
 
         self._build_ui()
         self.install_dialog_geometry(self._apply_dialog_geometry)
@@ -130,17 +140,221 @@ class HelpDialog(ThemedDialog):
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
 
         decorate_dialog(self, title=title)
+        self._setup_topic_search()
+        self._setup_help_navigation()
         self._render_current()
+
+    def _setup_help_navigation(self) -> None:
+        """Wire keyboard navigation for Help: back bar → sidebar (search+list) ↔ content."""
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+            from sli_ui_toolkit.ui.managers.navigation_sections import (
+                AutoNavigationSection,
+                ToolbarRowsSection,
+            )
+
+            if getattr(self, "_help_navigation_installed", None):
+                return
+            self._help_navigation_installed = True
+
+            # Back bar (top) — single row with back + crumbs
+            back_section = ToolbarRowsSection(
+                lambda: [self._back_bar] if self._back_bar.isVisible() else [],
+                tag="help-backbar",
+            )
+
+            # Sidebar column (search field + nav list) — auto-discovers both.
+            sidebar_column = getattr(self.shell, "sidebar_column", None)
+            sidebar_owner = sidebar_column if sidebar_column is not None else self.nav_widget
+            sidebar_section = AutoNavigationSection(
+                sidebar_owner, tag="help-sidebar"
+            )
+
+            def _focus_content() -> bool:
+                host = getattr(self, "_content_host", None)
+                if host is None:
+                    return False
+                return NavigationManager.get_instance().focus_section_for_owner(host)
+
+            def _focus_sidebar() -> bool:
+                # Сохраняем выбранный ряд, а не search (как в _restore)
+                try:
+                    btn = self.nav_widget.current_row_button()
+                    if btn is not None:
+                        from shiboken6 import isValid as _isValid
+
+                        if _isValid(btn) and btn.isVisible():
+                            btn.setFocus(Qt.FocusReason.OtherFocusReason)
+                            return True
+                except Exception:
+                    pass
+                return NavigationManager.get_instance().focus_section_for_owner(
+                    sidebar_owner
+                )
+
+            sidebar_section._on_exit_right = lambda reason=None: _focus_content()  # type: ignore[attr-defined]
+            content_host = getattr(self, "_content_host", None)
+            content_section = None
+            if content_host is not None:
+                content_section = AutoNavigationSection(
+                    content_host, tag="help-content"
+                )
+                content_section._on_exit_left = lambda reason=None: _focus_sidebar()  # type: ignore[attr-defined]
+
+            mgr = NavigationManager.get_instance()
+            mgr.register(self._back_bar, back_section)
+            mgr.register(sidebar_owner, sidebar_section)
+            if content_host is not None and content_section is not None:
+                mgr.register(content_host, content_section)
+
+            self._help_back_section = back_section
+            self._help_sidebar_section = sidebar_section
+            self._help_content_section = content_section
+        except Exception:
+            logger.exception("help navigation setup failed")
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._install_mouse_nav_filter()
+        # Сохраняем внешний фокус до того как _focus_help_container его перетянет
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            fw = QApplication.focusWidget()
+            # Ищем топ-левел вне диалога
+            if fw is not None and _isValid(fw) and not self.isAncestorOf(fw):
+                self._external_prev_focus = fw
+                # Запоминаем окно для activate
+                self._external_prev_window = fw.window()
+            else:
+                # Фолбэк — активное окно приложения (MainWindow)
+                aw = QApplication.activeWindow()
+                if aw is not None and aw is not self:
+                    self._external_prev_window = aw
+                # Пробуем NavigationManager.last_keyboard_focus
+                try:
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    kbd = NavigationManager.get_instance().last_keyboard_focus()
+                    if kbd is not None and _isValid(kbd) and not self.isAncestorOf(kbd):
+                        self._external_prev_focus = kbd
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        QTimer.singleShot(0, self._focus_help_container)
+        QTimer.singleShot(60, self._focus_help_container)
+
+    def _focus_help_container(self) -> None:
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(self) or not self.isVisible():
+                return
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                NavigationManager.get_instance()._last_input_keyboard = True
+            except Exception:
+                pass
+            reason = Qt.FocusReason.OtherFocusReason
+            # Prefer the sidebar column (search+list) when visible — like main
+            # window, keep focus on the container before first arrow, not on an
+            # invisible Button. Down from the container will land on the first
+            # visible row (search field) with a visible ring.
+            sidebar_column = getattr(self.shell, "sidebar_column", None)
+            if sidebar_column is not None and sidebar_column.isVisible():
+                sidebar_column.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                sidebar_column.setFocus(reason)
+                return
+            if self.nav_widget.isVisible() and self.nav_widget.count() > 0:
+                self.nav_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                self.nav_widget.setFocus(reason)
+                return
+            if self._back_bar.isVisible():
+                self._back_bar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                self._back_bar.setFocus(reason)
+                return
+            host = getattr(self, "_content_host", None)
+            if host is not None and isValid(host):
+                host.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                host.setFocus(reason)
+        except Exception:
+            pass
 
     def hideEvent(self, event) -> None:
         self._remove_mouse_nav_filter()
+        # Возвращаем фокус наружу, чтобы не остаться в None (сценарий 23:42:16:980)
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            # Если фокус всё ещё внутри диалога или уже потерян (None), вернём наружу
+            fw = QApplication.focusWidget()
+            inside = fw is not None and _isValid(fw) and self.isAncestorOf(fw)
+            lost = fw is None or (fw is not None and not _isValid(fw))
+            if inside or lost:
+                target = getattr(self, "_external_prev_focus", None)
+                win = getattr(self, "_external_prev_window", None)
+                if target is not None and _isValid(target) and target.isVisible():
+                    try:
+                        from sli_ui_toolkit.managers import NavigationManager
+
+                        NavigationManager.get_instance()._last_input_keyboard = True
+                    except Exception:
+                        pass
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                elif win is not None and _isValid(win):
+                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
+                        request_window_activation,
+                    )
+
+                    request_window_activation(win, reason="help-hide-restore")
+                    # Фолбэк — последний клавиатурный фокус внутри окна
+                    try:
+                        from sli_ui_toolkit.managers import NavigationManager
+
+                        kbd = NavigationManager.get_instance().last_keyboard_focus()
+                        if kbd is not None and _isValid(kbd) and kbd.isVisible() and win.isAncestorOf(kbd):
+                            kbd.setFocus(Qt.FocusReason.OtherFocusReason)
+                        else:
+                            win.setFocus(Qt.FocusReason.OtherFocusReason)
+                    except Exception:
+                        win.setFocus(Qt.FocusReason.OtherFocusReason)
+                else:
+                    # Последний фолбэк — первое topLevel MainWindow
+                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
+                        request_window_activation,
+                    )
+
+                    for w in QApplication.topLevelWidgets():  # ALLOWED: focus-fallback — generic top-level MainWindow activation, not tab-specific
+                        if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
+                            request_window_activation(w, reason="help-hide-fallback")
+                            w.setFocus(Qt.FocusReason.OtherFocusReason)
+                            break
+                    else:
+                        aw = QApplication.activeWindow()
+                        if aw is not None and _isValid(aw):
+                            request_window_activation(aw, reason="help-hide-fallback")
+        except Exception:
+            pass
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
+        # close → hide уже вернёт фокус, но на случай прямого close без hide
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            fw = QApplication.focusWidget()
+            if fw is not None and _isValid(fw) and self.isAncestorOf(fw):
+                # Тот же возврат что в hideEvent, но до super().closeEvent
+                target = getattr(self, "_external_prev_focus", None)
+                if target is not None and _isValid(target) and target.isVisible():
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+        except Exception:
+            pass
         self._remove_mouse_nav_filter()
         super().closeEvent(event)
 
@@ -192,15 +406,33 @@ class HelpDialog(ThemedDialog):
         self._back_bar.segmentActivated.connect(self._on_crumb)
         root.addWidget(self._back_bar)
 
+        self._search_field = CustomLineEdit()
+        self._search_field.setObjectName("HelpSearchField")
+        self._search_field.setPlaceholderText(
+            tr("help.search_placeholder", language=self.current_language)
+        )
+        self._search_field.setClearButtonEnabled(True)
+        # The sidebar can shrink to HELP_SIDEBAR_MIN_WIDTH — keep the field's
+        # own minimum well below that so it never blocks the drag.
+        self._search_field.setMinimumWidth(scaled_px(1))
+
         self.shell = SidebarDialogShell(
             sidebar_width=HELP_SIDEBAR_DEFAULT_WIDTH,
             content_margins=(0, 0, 0, 0),
             content_spacing=0,
+            sidebar_header=sidebar_header_host(self._search_field),
         )
         self.nav_widget = self.shell.sidebar
         self.nav_widget.enable_minimal_scrollbar()
-        self.nav_widget.setMinimumWidth(HELP_SIDEBAR_MIN_WIDTH)
-        self.nav_widget.setMaximumWidth(HELP_SIDEBAR_MAX_WIDTH)
+        self.nav_widget.setMinimumWidth(scaled_px(HELP_SIDEBAR_MIN_WIDTH))
+        self.nav_widget.setMaximumWidth(scaled_px(HELP_SIDEBAR_MAX_WIDTH))
+        if self.shell.sidebar_column is not None:
+            # The shell pins the whole column to sidebar_width (280); lower
+            # it to the same minimum as the nav list so the splitter can
+            # actually shrink the sidebar (the field's own minimum is ~0).
+            self.shell.sidebar_column.setMinimumWidth(
+                scaled_px(HELP_SIDEBAR_MIN_WIDTH)
+            )
         self.nav_widget.currentRowChanged.connect(self._on_sidebar_row)
         self._install_sidebar_splitter()
 
@@ -219,17 +451,14 @@ class HelpDialog(ThemedDialog):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        self._scroll = QScrollArea(content_col)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBar(MinimalistScrollBar(parent=self._scroll))
+        self._scroll = SurfaceScrollArea(content_col)
         # QScrollArea can report sizeHint(0,0); without a floor, stretch=1 still
         # allocates zero height and the hub looks like a blank white pane.
         self._scroll.setMinimumSize(0, 1)
         self._scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         content_layout.addWidget(self._scroll, 1)
 
         self._content_host = QWidget()
@@ -270,16 +499,29 @@ class HelpDialog(ThemedDialog):
             if widget is not None:
                 widget.setParent(None)
 
+        # With a sidebar header (search field) the splitter owns the whole
+        # sidebar column, not the bare nav list.
+        sidebar_widget = (
+            self.shell.sidebar_column
+            if self.shell.sidebar_column is not None
+            else self.shell.sidebar
+        )
         self._splitter = QSplitter(Qt.Orientation.Horizontal, self.shell)
         self._splitter.setObjectName("HelpSidebarSplitter")
         self._splitter.setChildrenCollapsible(False)
-        self._splitter.setHandleWidth(6)
-        self._splitter.addWidget(self.shell.sidebar)
+        self._splitter.setHandleWidth(scaled_px(6))
+        self._splitter.addWidget(sidebar_widget)
         self._splitter.addWidget(self.shell.content_area)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setSizes(
-            [HELP_SIDEBAR_DEFAULT_WIDTH, max(400, 880 - HELP_SIDEBAR_DEFAULT_WIDTH)]
+            [
+                scaled_px(HELP_SIDEBAR_DEFAULT_WIDTH),
+                max(
+                    scaled_px(400),
+                    scaled_px(880) - scaled_px(HELP_SIDEBAR_DEFAULT_WIDTH),
+                ),
+            ]
         )
         layout.addWidget(self._splitter)
 
@@ -290,18 +532,31 @@ class HelpDialog(ThemedDialog):
             return
         total = max(1, sum(splitter.sizes()) or self.width())
         if expanded:
-            self.nav_widget.setMinimumWidth(HELP_SIDEBAR_MIN_WIDTH)
-            self.nav_widget.setMaximumWidth(HELP_SIDEBAR_MAX_WIDTH)
+            self.nav_widget.setMinimumWidth(scaled_px(HELP_SIDEBAR_MIN_WIDTH))
+            self.nav_widget.setMaximumWidth(scaled_px(HELP_SIDEBAR_MAX_WIDTH))
             self.nav_widget.setVisible(True)
+            if self.shell.sidebar_column is not None:
+                self.shell.sidebar_column.setVisible(True)
             left = splitter.sizes()[0] if splitter.sizes() else 0
-            if left < HELP_SIDEBAR_MIN_WIDTH:
-                left = HELP_SIDEBAR_DEFAULT_WIDTH
+            if left < scaled_px(HELP_SIDEBAR_MIN_WIDTH):
+                left = scaled_px(HELP_SIDEBAR_DEFAULT_WIDTH)
             splitter.setSizes([left, max(1, total - left)])
         else:
-            self.nav_widget.setMinimumWidth(0)
-            self.nav_widget.setMaximumWidth(0)
+            # Collapse the whole sidebar column — nav list *and* the search
+            # header: at hubs (no siblings) the root/main section owns the
+            # full width, so the search field is not shown there.
             self.nav_widget.setVisible(False)
+            if self.shell.sidebar_column is not None:
+                self.shell.sidebar_column.setVisible(False)
             splitter.setSizes([0, total])
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            if getattr(self, "_search_mode", False):
+                self.clear_topic_search()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _apply_dialog_geometry(self) -> None:
         apply_help_dialog_geometry(self)
@@ -319,10 +574,23 @@ class HelpDialog(ThemedDialog):
         self.current_language = new_language
         self.setWindowTitle(tr("help.help", language=self.current_language))
         self._document.set_toc_title(toc_title_for_language(self.current_language))
+        self._search_field.setPlaceholderText(
+            tr("help.search_placeholder", language=self.current_language)
+        )
+        if self._search_mode:
+            # Re-run the live search so result rows match the new language.
+            self._apply_topic_search()
         self._render_current()
         defer_dialog_geometry(self, self._apply_dialog_geometry)
 
-    def navigate_to(self, slug: str, anchor: str | None = None) -> None:
+    def navigate_to(
+        self,
+        slug: str,
+        anchor: str | None = None,
+        *,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
+    ) -> None:
         """Open a topic by legacy slug, node id, or ``help://``-style page key."""
         try:
             node_id = self._tree.resolve_alias(slug)
@@ -330,21 +598,29 @@ class HelpDialog(ThemedDialog):
             logger.warning("Help navigate_to: unknown page %r", slug)
             return
         self._pending_anchor = anchor
+        self._pending_video_url = video_url
+        self._pending_learn_more_url = learn_more_url
         self._nav.push(node_id)
         self._render_current()
 
     def _open_node(self, node_id: str) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.push(node_id)
         self._render_current()
 
     def _go_back(self) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.pop()
         self._render_current()
 
     def _go_forward(self) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         if not self._nav.can_go_forward():
             return
         self._nav.go_forward()
@@ -352,11 +628,16 @@ class HelpDialog(ThemedDialog):
 
     def _on_crumb(self, node_id: str) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.pop_to(node_id)
         self._render_current()
 
     def _on_sidebar_row(self, row: int) -> None:
         if self._syncing_sidebar or row < 0:
+            return
+        if self._search_mode:
+            self._on_search_result_activated(row)
             return
         siblings = self._sidebar_sibling_ids()
         if row >= len(siblings):
@@ -368,13 +649,58 @@ class HelpDialog(ThemedDialog):
         self._nav.replace_sibling(target)
         self._render_current()
 
+    # ---- topic search (matches titles + page content, ranked) ----
+    # Logic lives in plugins/help/topic_search.py — see docs/dev/CODE_PATTERNS.md.
+
+    def _setup_topic_search(self) -> None:
+        topic_search._setup_topic_search(self)
+
+    def _on_search_text_changed(self, _text: str) -> None:
+        topic_search._on_search_text_changed(self, _text)
+
+    def _apply_topic_search(self) -> None:
+        topic_search._apply_topic_search(self)
+
+    def _rank_topic_matches(self, query: str) -> list[tuple[str, int, bool]]:
+        return topic_search._rank_topic_matches(self, query)
+
+    def _on_search_result_activated(self, row: int) -> None:
+        topic_search._on_search_result_activated(self, row)
+
+    def clear_topic_search(self) -> None:
+        topic_search.clear_topic_search(self)
+
     def _sidebar_sibling_ids(self) -> list[str]:
         current = self._nav.current_id
         if current == self._tree.root_id:
             return []
         return [n.node_id for n in self._tree.siblings_of(current)]
 
+    def _save_prev_focus(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid
+            fw = QApplication.focusWidget()
+            if fw is not None and isValid(fw) and self.isAncestorOf(fw):
+                # Remember which section + exact left sub-target (search vs list)
+                self._prev_focus_was_content = self._content_host.isAncestorOf(fw) or fw is self._content_host
+                self._prev_focus_was_search = fw is self._search_field or self._search_field.isAncestorOf(fw)
+                self._prev_focus_was_left = self.nav_widget.isAncestorOf(fw) or fw is self.nav_widget or self._prev_focus_was_search or self._back_bar.isAncestorOf(fw)
+            else:
+                self._prev_focus_was_content = False
+                self._prev_focus_was_search = False
+                self._prev_focus_was_left = False
+        except Exception:
+            self._prev_focus_was_content = False
+            self._prev_focus_was_search = False
+            self._prev_focus_was_left = False
+
     def _render_current(self) -> None:
+        # Save where focus was before window change for UX: keep it in same column
+        try:
+            self._save_prev_focus()
+        except Exception:
+            pass
         node = self._nav.current_node()
         lang = self.current_language
         crumbs = tuple(
@@ -402,6 +728,16 @@ class HelpDialog(ThemedDialog):
             md = read_help_page_markdown(
                 lang, body, body_root=node.body_root
             )
+            # Append per-action external links (video/learn_more) if provided
+            # via navigate_to. This keeps the descriptor optional and
+            # reuses existing markdown link rendering (no new block type).
+            extra_parts: list[str] = []
+            if self._pending_video_url:
+                extra_parts.append(f"[Video]({self._pending_video_url})")
+            if self._pending_learn_more_url:
+                extra_parts.append(f"[Learn more]({self._pending_learn_more_url})")
+            if extra_parts:
+                md = md.rstrip() + "\n\n" + " — ".join(extra_parts) + "\n"
             self._document.set_markdown(md)
             self._document.show()
             self._hub_page.hide()
@@ -411,6 +747,82 @@ class HelpDialog(ThemedDialog):
                 QTimer.singleShot(0, lambda a=anchor: self._scroll_to_anchor(a))
 
         defer_dialog_geometry(self, self._apply_dialog_geometry)
+        QTimer.singleShot(0, self._restore_focus_after_window_change)
+        QTimer.singleShot(60, self._restore_focus_after_window_change)
+
+    def _restore_focus_after_window_change(self) -> None:
+        """Декларативный рестейт фокуса после перестройки hub/document.
+
+        Заменяет 116-строчный императивный обход с ручным findChildren-сортировкой
+        на 15-строчный вызов через NavigationManager (Phase 5 plan_navigation_simplification).
+        Идея как в Settings: секции уже зарегистрированы (help-sidebar/help-content),
+        их AutoNavigationSection._auto_rows() уже сканирует StrongFocus + сортировку.
+        """
+        try:
+            from shiboken6 import isValid
+            from PySide6.QtWidgets import QApplication
+
+            if not isValid(self) or not self.isVisible():
+                return
+            focused = QApplication.focusWidget()
+            if focused is not None and isValid(focused) and self.isAncestorOf(focused) and focused.isVisible():
+                if focused.objectName() in ("HelpBackBar", "HelpSearchField", "HelpDialog"):
+                    pass
+                elif self._content_host.isAncestorOf(focused) or self.nav_widget.isAncestorOf(focused) or self._back_bar.isAncestorOf(focused) or focused is self._search_field:
+                    # Навигабельный виджет всё ещё жив — не трогаем (как в Settings)
+                    # Фильтр CustomTitleBar/OverlayScrollArea уже покрыт isAncestorOf выше:
+                    # они не внутри _content_host/nav_widget/_back_bar
+                    if focused.objectName() not in ("HelpBackBar",):
+                        return
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                NavigationManager.get_instance()._last_input_keyboard = True
+            except Exception:
+                pass
+            was_left = getattr(self, "_prev_focus_was_left", False)
+            was_search = getattr(self, "_prev_focus_was_search", False)
+            # Декларативно: фокус в ту колонку где был до навигации, без ручного findChildren
+            # Для левой колонки сохраняем точную позицию: search → search, список → текущий ряд
+            try:
+                from sli_ui_toolkit.managers import NavigationManager as _NM
+
+                mgr = _NM.get_instance()
+                sidebar_owner = getattr(self.shell, "sidebar_column", None) or self.nav_widget
+                if was_left:
+                    if was_search and self._search_field.isVisible():
+                        self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                        return
+                    # Список: предпочитаем current_row_button, а не первый StrongFocus (search)
+                    try:
+                        btn = self.nav_widget.current_row_button()
+                        if btn is not None:
+                            from shiboken6 import isValid as _isValid
+
+                            if _isValid(btn) and btn.isVisible():
+                                btn.setFocus(Qt.FocusReason.OtherFocusReason)
+                                return
+                    except Exception:
+                        pass
+                    if mgr.focus_section_for_owner(sidebar_owner):
+                        return
+                    if mgr.focus_section_for_owner(self._content_host):
+                        return
+                else:
+                    if mgr.focus_section_for_owner(self._content_host):
+                        return
+                    if mgr.focus_section_for_owner(sidebar_owner):
+                        return
+            except Exception:
+                pass
+            # Fallback — прямые setFocus
+            if self._search_field.isVisible():
+                self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                return
+            if self._back_bar.isVisible():
+                self._back_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+        except Exception:
+            pass
 
     def _scroll_to_anchor(self, anchor: str) -> None:
         widget = self._document.scroll_to_anchor(anchor)
@@ -418,6 +830,10 @@ class HelpDialog(ThemedDialog):
             self._scroll.ensureWidgetVisible(widget, 0, 24)
 
     def _sync_sidebar(self) -> None:
+        if self._search_mode:
+            # A live search owns the sidebar; navigation must not rebuild the
+            # sibling tree under it. clear_topic_search() restores the tree.
+            return
         self._syncing_sidebar = True
         try:
             self.nav_widget.clear()
@@ -428,7 +844,7 @@ class HelpDialog(ThemedDialog):
             for index, sid in enumerate(siblings):
                 title = node_title(self._tree.require(sid), lang)
                 item = self.nav_widget.add_item(title)
-                item.setSizeHint(QSize(0, 35))
+                item.setSizeHint(QSize(0, scaled_px(35)))
                 if sid == current:
                     current_row = index
             if current_row >= 0:

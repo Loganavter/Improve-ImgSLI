@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
+from tests.helpers.drain_until_stable import drain_until_stable
+
 from shared_toolkit.ui.decorate_dialog import (
     CUSTOM_DECORATION_RESIZE_MARGIN,
     configure_custom_decoration_resize_margin,
@@ -33,7 +35,12 @@ def test_qmessagebox_gets_auto_decorated(qapp):
     box.setWindowTitle("oops")
 
     box.ensurePolished()
-    QApplication.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: getattr(box, "_csd_title_bar", None),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     title_bar = getattr(box, "_csd_title_bar", None)
     assert title_bar is not None, "QMessageBox must be auto-decorated"
@@ -46,7 +53,12 @@ def test_already_decorated_dialog_skipped(qapp):
     dlg = QDialog()
     dlg._csd_title_bar = "sentinel"
     dlg.ensurePolished()
-    QApplication.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: getattr(dlg, "_csd_title_bar", None),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     assert (
         dlg._csd_title_bar == "sentinel"
@@ -60,7 +72,12 @@ def test_opt_out_dialog_skipped(qapp):
     dlg = QDialog()
     dlg._csd_opt_out = True
     dlg.ensurePolished()
-    QApplication.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: getattr(dlg, "_csd_title_bar", None),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     assert getattr(dlg, "_csd_title_bar", None) is None
     dlg.deleteLater()

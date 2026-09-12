@@ -15,9 +15,29 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from sli_ui_toolkit import CustomTitleBar, decorate_dialog as _toolkit_decorate_dialog
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE
 from ui.theming import polish_themed_dialog, resolve_theme_color
 
 CUSTOM_DECORATION_RESIZE_MARGIN = 8
+
+
+def resolve_csd_band(window) -> int:
+    """Effective CSD outer-band inset for ``window``.
+
+    The frameless surface carries a transparent outer band (resize-grab
+    margin) beyond the visible body. Maximized/fullscreen windows cannot be
+    edge-resized, so the band (and everything inset by it — the painted
+    body, the root-layout content) must collapse to 0 there; otherwise an
+    invisible strip remains around the window that window-capture tools
+    include (painted with the window background once the body fills the
+    surface).
+    """
+    if window.isMaximized() or window.isFullScreen():
+        return 0
+    try:
+        return int(window.property("_csd_outer_band") or 0)
+    except Exception:
+        return 0
 
 
 _MSGBOX_TITLE_BY_ICON = {
@@ -45,6 +65,10 @@ def decorate_dialog(
     show_maximize: bool = False,
     show_close: bool = True,
     resizable: bool = True,
+    # Closing a dialog can do real work (session save, plugin teardown) —
+    # let the close button's press ripple finish first by default. Pass
+    # None to opt a specific dialog out and keep the sync (instant) click.
+    defer_close_click: object = DEFER_CLICK_AWAIT_RIPPLE,
 ) -> CustomTitleBar | None:
     existing = getattr(dialog, "_csd_title_bar", None)
     if existing is not None:
@@ -56,7 +80,7 @@ def decorate_dialog(
 
     from ui.icon_manager import AppIcon
 
-    dialog._csd_decorating = True
+    dialog._csd_decorating = True  # type: ignore[attr-defined]  # dynamic attr
     try:
         theme_manager = ThemeManager.get_instance()
         polish_themed_dialog(theme_manager, dialog)
@@ -73,10 +97,11 @@ def decorate_dialog(
             show_close=show_close,
             resizable=resizable,
             resize_margin=CUSTOM_DECORATION_RESIZE_MARGIN,
+            defer_close_click=defer_close_click,
         )
         return title_bar
     finally:
-        dialog._csd_decorating = False
+        dialog._csd_decorating = False  # type: ignore[attr-defined]  # dynamic attr
 
 
 def install_dialog_help_menu(
@@ -99,15 +124,14 @@ def install_dialog_help_menu(
     bar = title_bar if title_bar is not None else getattr(dialog, "_csd_title_bar", None)
     if bar is None:
         return None
-    set_strip = getattr(bar, "set_menu_strip", None)
     set_leading = getattr(bar, "set_leading", None)
-    if not callable(set_strip) and not callable(set_leading):
+    if not callable(set_leading):
         return None
 
     from resources.translations import get_current_language, tr
-    from sli_ui_toolkit import TitleBarMenu, TitleBarMenuStrip
     from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
     from ui.actions.palette.dialog import open_help_page
+    from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip
 
     lang = get_current_language() or "en"
 
@@ -125,9 +149,9 @@ def install_dialog_help_menu(
             owner = getattr(dialog, "_find_action_owner_tab", None)
             show_command_palette(parent=dialog, active_tab=owner)
 
-    strip = TitleBarMenuStrip(
+    strip = CsdMenuStrip(
         [
-            TitleBarMenu(
+            CsdMenuSpec(
                 label=_tr("menu.help", "Help"),
                 entries=[
                     ContextMenuAction(
@@ -146,11 +170,8 @@ def install_dialog_help_menu(
         ],
         parent=bar,
     )
-    if callable(set_strip):
-        set_strip(strip)
-    else:
-        set_leading(strip)
-    dialog._csd_help_menu_strip = strip
+    set_leading(strip)
+    dialog._csd_help_menu_strip = strip  # type: ignore[attr-defined]  # dynamic attr
     return strip
 
 
@@ -204,5 +225,5 @@ def install_application_dialog_decorations(app: QApplication | None) -> None:
         return
     interceptor = _DialogDecorationInterceptor(app)
     app.installEventFilter(interceptor)
-    app._csd_filter_installed = True
-    app._csd_filter = interceptor
+    app._csd_filter_installed = True  # type: ignore[attr-defined]  # dynamic attr
+    app._csd_filter = interceptor  # type: ignore[attr-defined]  # dynamic attr

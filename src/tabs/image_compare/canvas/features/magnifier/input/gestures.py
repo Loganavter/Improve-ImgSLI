@@ -40,7 +40,7 @@ def _space_pressed(store) -> bool:
 
 
 def _shift_pressed(ctx) -> bool:
-    return bool(ctx.modifiers & int(Qt.KeyboardModifier.ShiftModifier))
+    return bool(ctx.modifiers & Qt.KeyboardModifier.ShiftModifier.value)
 
 
 def _query(name):

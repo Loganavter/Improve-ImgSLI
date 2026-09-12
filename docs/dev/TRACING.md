@@ -258,4 +258,4 @@ Qt event ──> patched handler ──> Tracer.begin_trace("mpress")
 - **QRhi state / shader bugs**: tracer sees CPU-side render-plan, not GPU
   calls. Use `RenderDoc` (backend-agnostic), or `apitrace`/`qt.qpa.gl=true`
   when the active QRhi backend is OpenGL (`IMPROVE_IMGSLI_RHI_BACKEND`,
-  see `ui/widgets/canvas/rhi_backend.py`; platform-default otherwise).
+  see `ui/canvas_infra/rhi/rhi_backend.py`; platform-default otherwise).

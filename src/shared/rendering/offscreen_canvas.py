@@ -32,13 +32,23 @@ def resize_offscreen_widget(widget: QWidget, target_size: tuple[int, int]) -> No
     QApplication.processEvents()
 
 
+def resize_and_show_offscreen_widget(widget: QWidget, target_size: tuple[int, int]) -> None:
+    """Resize and show with double flush — QRhiWidget needs two event loops to reallocate swapchain."""
+    widget.resize(*target_size)
+    widget.show()
+    QApplication.processEvents()
+    QApplication.processEvents()
+
+
 def render_widget_frame(widget: QWidget) -> None:
     """Request a repaint and flush events so ``grabFramebuffer`` sees the frame.
 
     ``QRhiWidget`` renders in its own ``render(cb)`` callback; ``update()`` +
     ``processEvents()`` is what schedules the frame before the sync grab.
+    Double flush is required — single leaves grabFramebuffer transparent.
     """
     widget.update()
+    QApplication.processEvents()
     QApplication.processEvents()
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
 
@@ -11,10 +12,12 @@ from plugins.settings.canvas_feature_gateway import (
 from plugins.settings.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
-    SettingsToggleAutoCropBlackBordersEvent,
 )
 from plugins.settings.mutations import SettingsMutationService
 from plugins.settings.notifier import SettingsUpdateNotifier
+
+if TYPE_CHECKING:
+    from domain.types import Color
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -99,14 +102,6 @@ class SettingsController(QObject):
     def execute_canvas_feature_alias(self, alias: str, *args):
         return execute_canvas_feature_alias(alias, self, *args)
 
-    def toggle_auto_crop_black_borders(self, enabled: bool):
-        self.mutations.set_settings_value(
-            "auto_crop_black_borders",
-            enabled,
-            setting_key="auto_crop_black_borders",
-            emit_scope="settings",
-        )
-
     def set_ui_mode(self, mode: str):
 
         if mode == "advanced":
@@ -141,8 +136,3 @@ class SettingsController(QObject):
             event.placement,
             event.alpha,
         )
-
-    def on_toggle_auto_crop_black_borders(
-        self, event: SettingsToggleAutoCropBlackBordersEvent
-    ):
-        self.toggle_auto_crop_black_borders(event.enabled)

@@ -332,6 +332,52 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "python3-pyvips",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"cffi==2.1.0\" \"pyvips==3.1.1\" \"pyvips-binary==8.18.4\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/fb/d2/4398416cd699b35167947c6e22aca52c47e69ad5695073c9f1f2c52e04aa/cffi-2.1.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                    "sha256": "aa7a1b53a2a4452ada2d1b5dade9960b2522f1e61293a811a077439e39029565",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/22/d7/1a74539db16d8bfd839ff1515948948efbb162e574650fd3d846896eea95/cffi-2.1.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                    "sha256": "88023dfe18799507b73f1dbb0d14326a17465de1bc9c9c7655c22845e9ddc3a2",
+                    "only-arches": [
+                        "aarch64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/2d/6a/282936de9faac6addf6bc8792c18e006489d0023ffd8856b8643f54d0558/pyvips-3.1.1.tar.gz",
+                    "sha256": "84fe744d023b1084ac2516bb17064cacd41c7f8aabf8e524dd383534941b9301"
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/9d/ff/08ad76bd3974791b6116026bc9e9347795d2d23f283c6fa53c208dbd04d6/pyvips_binary-8.18.4-cp37-abi3-manylinux_2_28_x86_64.whl",
+                    "sha256": "68a24313cd76c9213e1208887aa1dabaa502e2be3f180222628191478977e2d0",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/2c/47/d5af1d78a0f995755d2d1ebb3a9e1f3d5252a1e1cec4518d6c76b07d510a/pyvips_binary-8.18.4-cp37-abi3-manylinux_2_28_aarch64.whl",
+                    "sha256": "81ed9b4d281a7132c498f62564429a39b1953398597867cd576263aef9bef272",
+                    "only-arches": [
+                        "aarch64"
+                    ]
+                }
+            ]
         }
     ]
 }

@@ -1,5 +1,8 @@
 import logging
+import time
 from dataclasses import replace as _dc_replace
+
+from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
@@ -17,6 +20,8 @@ from tabs.image_compare.canvas.features.magnifier.workers.common import (
     get_live_image_label,
     is_effective_magnifier_interactive,
 )
+from shared.rendering.image_identity import image_uid
+
 from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import ensure_cached_diff_image
 
 
@@ -55,6 +60,31 @@ def _resolve_magnifier_interpolation_method(vp, *, effective_interactive: bool) 
     return str(get_effective_main_interpolation_method(vp) or "BILINEAR")
 
 
+def _is_ssim_pending(presenter, diff_mode_str, tex_img1=None, tex_img2=None) -> bool:
+    if diff_mode_str != "ssim":
+        return False
+    if getattr(presenter, "_pending_cached_diff_request_key", None) is not None:
+        return True
+    try:
+        rc = presenter.store.viewport.session_data.render_cache
+        if bool(getattr(rc, "unification_in_progress", False)):
+            return True
+    except Exception:
+        pass
+    for _img in (tex_img1, tex_img2):
+        if _img is not None and hasattr(_img, "is_open") and not _img.is_open:
+            return True
+        try:
+            if _img is not None and hasattr(_img, "generation"):
+                from shared.image_processing.store_lease import StoreLease
+                lease = StoreLease.capture(_img)
+                if lease is not None and not lease.valid:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
 def rebuild_magnifier_overlay(presenter):
     vp = presenter.store.viewport
     geometry = vp.geometry_state
@@ -64,23 +94,118 @@ def rebuild_magnifier_overlay(presenter):
     if not hasattr(image_label, "set_feature_overlay_gpu_params"):
         return
 
+    _debug_timing = tile_dump_enabled()
+    _t_start = time.perf_counter() if _debug_timing else 0.0
+    _checkpoints: list[tuple[str, float]] = []
+
+    def _mark(label: str) -> None:
+        if _debug_timing:
+            _checkpoints.append((label, time.perf_counter() - _t_start))
+
     if hasattr(image_label, "begin_update_batch"):
         image_label.begin_update_batch()
     try:
         _build_and_apply_scene_snapshot(presenter, image_label, geometry)
+        _mark("scene_snapshot")
 
+        diff_mode_early = getattr(vp.view_state, "diff_mode", "off")
         plan = getattr(image_label, "_active_render_plan", None)
         if plan is None:
+            if _is_ssim_pending(presenter, diff_mode_early):
+                return
+            if diff_mode_early in ("highlight", "grayscale", "edges") and not bool(
+                getattr(image_label, "_source_images_ready", False)
+            ):
+                return
             reset_canvas_overlays(image_label)
             return
 
         source_pil_images = getattr(image_label, "_source_pil_images", ())
         tex_img1 = source_pil_images[0] if len(source_pil_images) >= 1 else None
         tex_img2 = source_pil_images[1] if len(source_pil_images) >= 2 else None
-        document = presenter.store.get_session_state_slot("document")
-        tex_img1 = tex_img1 or document.full_res_image1 or document.original_image1
-        tex_img2 = tex_img2 or document.full_res_image2 or document.original_image2
+        if tex_img1 is None or tex_img2 is None:
+            # PipelineCache fallback
+            try:
+                store = presenter.store
+                doc = store.get_session_state_slot("document")
+                for slot, cur in ((1, tex_img1), (2, tex_img2)):
+                    if cur is not None:
+                        continue
+                    path = doc.image1_path if slot == 1 else doc.image2_path
+                    if not path:
+                        continue
+                    try:
+                        _img_state = store.viewport.session_data.image_state
+                        cand = _img_state.image1 if slot == 1 else _img_state.image2
+                        if cand is not None and getattr(cand, "is_open", True):
+                            try:
+                                if hasattr(cand, "isNull") and cand.isNull():
+                                    cand = None
+                                elif hasattr(cand, "is_open") and not cand.is_open:
+                                    cand = None
+                            except Exception:
+                                pass
+                            if cand is not None:
+                                if slot == 1:
+                                    tex_img1 = cand
+                                else:
+                                    tex_img2 = cand
+                                continue
+                    except Exception:
+                        pass
+                    try:
+                        ps = store.get_session_state_slot("pipeline")
+                        if ps is not None:
+                            import os
+
+                            from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                            for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                                try:
+                                    k = key_fn(path, None, None)
+                                    v = cache_dict.get(k)
+                                    if v is not None:
+                                        if hasattr(v, "is_open") and not v.is_open:
+                                            continue
+                                        if hasattr(v, "isNull") and v.isNull():
+                                            continue
+                                        if slot == 1:
+                                            tex_img1 = v
+                                        else:
+                                            tex_img2 = v
+                                        break
+                                except Exception:
+                                    pass
+                                if (tex_img1 if slot == 1 else tex_img2) is not None:
+                                    break
+                                try:
+                                    norm = os.path.normpath(path)
+                                    for kk, vv in cache_dict.items():
+                                        if kk[0] == norm:
+                                            if hasattr(vv, "is_open") and not vv.is_open:
+                                                continue
+                                            if hasattr(vv, "isNull") and vv.isNull():
+                                                continue
+                                            if slot == 1:
+                                                tex_img1 = vv
+                                            else:
+                                                tex_img2 = vv
+                                            break
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        _mark("resolve_source_images")
         if not tex_img1 or not tex_img2:
+            diff_mode_check = getattr(vp.view_state, "diff_mode", "off")
+            if _is_ssim_pending(presenter, diff_mode_check, tex_img1, tex_img2):
+                return
+            if diff_mode_check in ("highlight", "grayscale", "edges") and not bool(
+                getattr(image_label, "_source_images_ready", False)
+            ):
+                return
             reset_canvas_overlays(image_label)
             return
 
@@ -96,12 +221,46 @@ def rebuild_magnifier_overlay(presenter):
             if diff_mode_str == "ssim"
             else None
         )
+        if diff_mode_str == "ssim" and cached_diff_image is None:
+            try:
+                pending_already = getattr(presenter, "_pending_cached_diff_request_key", None) is not None
+                rc_async = getattr(presenter.store.viewport.session_data, "render_cache", None)
+                unification_async = bool(getattr(rc_async, "unification_in_progress", False)) if rc_async is not None else False
+                if not pending_already and not unification_async:
+                    both_ready_async = tex_img1 is not None and tex_img2 is not None
+                    if both_ready_async:
+                        try:
+                            if hasattr(tex_img1, "is_open") and not tex_img1.is_open:
+                                both_ready_async = False
+                            if hasattr(tex_img2, "is_open") and not tex_img2.is_open:
+                                both_ready_async = False
+                        except Exception:
+                            pass
+                    if both_ready_async:
+                        try:
+                            from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import (
+                                request_cached_diff_image_async,
+                            )
+                            request_cached_diff_image_async(presenter, tex_img1, tex_img2, diff_mode_str)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         current_uploaded_diff = getattr(image_label, "_diff_source_pil_image", None)
         diff_image_for_magnifier = cached_diff_image or current_uploaded_diff
         if cached_diff_image is not None:
             image_label.upload_diff_source_pil_image(cached_diff_image)
-        elif diff_mode_str != "ssim":
-            image_label.upload_diff_source_pil_image(None)
+        elif diff_mode_str == "ssim":
+            if _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
+                pass
+            else:
+                pass
+        else:
+            if bool(getattr(image_label, "_source_images_ready", False)):
+                image_label.upload_diff_source_pil_image(None)
+            else:
+                pass
+        _mark("diff_cache")
 
         effective_interactive = is_effective_magnifier_interactive(vp)
         interpolation_method = _resolve_magnifier_interpolation_method(
@@ -109,6 +268,8 @@ def rebuild_magnifier_overlay(presenter):
             effective_interactive=effective_interactive,
         )
         if diff_mode_str == "ssim":
+            if diff_image_for_magnifier is None and _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
+                return
             diff_mode_int = 4 if diff_image_for_magnifier is not None else 0
         else:
             diff_mode_int = {"highlight": 1, "grayscale": 2, "edges": 3}.get(
@@ -134,6 +295,7 @@ def rebuild_magnifier_overlay(presenter):
             interpolation_method=interpolation_method,
             diff_mode_override=diff_mode_int,
         )
+        _mark("build_layout")
         if layout is None:
             image_label._active_render_plan = _dc_replace(plan, overlay_layout=None)
             reset_canvas_overlays(image_label)
@@ -142,7 +304,16 @@ def rebuild_magnifier_overlay(presenter):
         updated_plan = _dc_replace(plan, overlay_layout=layout)
         image_label._active_render_plan = updated_plan
         apply_magnifier_plan_overlay(image_label, updated_plan)
+        _mark("apply_plan_overlay")
     finally:
+        if _debug_timing:
+            total = time.perf_counter() - _t_start
+            if total > 0.05:
+                log_tile_event(
+                    "magnifier.rebuild_overlay_timing",
+                    total_s=total,
+                    checkpoints={label: round(dt, 4) for label, dt in _checkpoints},
+                )
         if hasattr(image_label, "end_update_batch"):
             image_label.end_update_batch()
         if hasattr(image_label, "_request_update"):

@@ -1,6 +1,6 @@
 ## Atalhos de Teclado
 
-Combinações padrão abaixo. Remapeie a maioria dos atalhos de ação em {{tr:menu.settings}} → {{tr:settings.keyboard}}. Os movimentos `WASD` e `Space` do canvas permanecem fixos e não podem ser remapeados.
+Combinações padrão abaixo. Remapeie a maioria dos atalhos de ação em {{tr:menu.settings}} → {{tr:settings.keyboard}}. Os movimentos `WASD`, setas, `Space` e o zoom `+`/`-` do canvas permanecem fixos e não podem ser remapeados.
 
 ### Descubra primeiro {#discover}
 
@@ -11,6 +11,7 @@ Pressione `Ctrl+Shift+P` e digite um nome antes de memorizar uma lista. Execute 
 - `Ctrl+,` — Configurações
 - `Ctrl+F1` — Ajuda
 - `Ctrl+N` — Seletor de sessão / nova sessão
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Próxima / sessão anterior do workspace
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Colar imagem
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Abrir / salvar / salvar projeto como (`.imgsli`)
@@ -27,6 +28,7 @@ Os rótulos exatos seguem o seu pacote de idioma; remapeie em Configurações �
 - `R` / `Ctrl+E` — Gravar / Editor de Vídeo
 - `Ctrl+S` — Salvamento rápido
 - `WASD` / `QE` / `Space` — Mover lupa / espaçamento / pré-visualização de lado (fixos)
+- `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
 
 Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor de Vídeo](help://video).
 
@@ -36,9 +38,18 @@ Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor d
 - `D` — Visibilidade da grade
 - `Ctrl+S` — Salvamento rápido
 - `Esc` — Sair do foco do slot
+- `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
 
 Veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
 ### Janela do editor de vídeo {#video-editor}
 
 Enquanto o editor está aberto: `Space` reproduz/pausa, `Ctrl+Z` / `Ctrl+Y` desfazer/refazer, `Delete` / `Backspace` remove a seleção. Fluxo completo de codificação: [Editor de Vídeo](help://video).
+
+### Navegação pelo teclado {#keyboard-navigation}
+
+- `F1` — ajuda contextual para o controle em foco. Quando o foco está vinculado a uma ação, o resultado correspondente pulsa em {{tr:menu.find_action}}; caso contrário, a paleta abre pré-filtrada por tópico.
+- Em {{tr:menu.find_action}} (`Ctrl+Shift+P`): `↑` / `↓` movem a seleção, `Enter` executa, `Ctrl+Enter` abre {{tr:action.palette.learn_more}}, `Esc` fecha a paleta.
+- Na visão geral de {{tr:workspace.session_types.multi_compare}}, o foco do slot segue o ponteiro: um clique alterna o foco em uma única imagem, `Esc` sai dele. As setas deslocam o canvas em vez de mover o foco entre slots.
+- No seletor de sessão, as setas movem o foco entre cartões e `Enter` abre o cartão em foco, como clicar nele.
+- Não há travessia `Tab` entre slots do canvas: o foco segue o ponteiro, e o teclado aciona ações pela paleta.

@@ -40,6 +40,10 @@
       "magnifier_divider_visible": "放大镜分割线可见性",
       "magnifier_colors": "放大镜颜色",
       "magnifier_instances": "放大镜实例",
+      "magnifier_visibility": "放大镜实例可见性",
+      "magnifier_visibility_left": "切换左侧放大镜",
+      "magnifier_visibility_center": "切换中间放大镜",
+      "magnifier_visibility_right": "切换右侧放大镜",
       "magnifier_divider_width": "放大镜分割线宽度",
       "magnifier_guides_width": "放大镜辅助线宽度",
       "clear_list1": "移除当前图像（侧 1）",
@@ -76,7 +80,112 @@
         "divider": "分割线",
         "analysis": "分析",
         "video": "视频"
+      },
+      "context_carry_image": "移动",
+      "context_copy_path": "复制路径",
+      "context_duplicate": "复制",
+      "context_name": "名称",
+      "context_properties": "属性",
+      "context_remove": "删除",
+      "context_rename": "重命名",
+      "export_video": "导出视频",
+      "settings": {
+        "analysis_desc": "打开设置 → 分析详情"
       }
+    },
+    "button": {
+      "add_images_1": "添加图像1",
+      "add_images_2": "添加图像2",
+      "save_result": "保存结果",
+      "hold_clear_entire_list": "长按：清除整个列表",
+      "pause": "暂停",
+      "play": "播放",
+      "record": "录制",
+      "redo": "重做",
+      "select_images": "选择图像",
+      "stop": "停止",
+      "trim_to_selection": "裁剪到选择",
+      "undo_ctrlz": "撤销 (Ctrl+Z)"
+    },
+    "common": {
+      "position": {
+        "bottom": "底部",
+        "top": "顶部"
+      },
+      "file_type": {
+        "all_files": "所有文件",
+        "image_files": "图像文件"
+      },
+      "warning": "警告"
+    },
+    "tooltip": {
+      "magnifier_colors": "放大镜颜色"
+    },
+    "ui": {
+      "drop_images_1_here": "在此处拖放图像1",
+      "drop_images_2_here": "在此处拖放图像2",
+      "choose_capture_ring_color": "选择捕获环颜色",
+      "choose_magnifier_base_color": "选择放大镜元素的基础颜色",
+      "choose_magnifier_border_color": "选择放大镜边框颜色",
+      "choose_magnifier_divider_line_color": "选择放大镜分隔线颜色",
+      "choose_magnifier_guides_color": "选择放大镜引导线颜色",
+      "edit_current_image_1_name": "编辑当前图像1名称",
+      "edit_current_image_2_name": "编辑当前图像2名称",
+      "include_file_names_in_saved_image": "在保存的图像中包含文件名",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
+    },
+    "label": {
+      "border": "边框",
+      "capture_size": "捕捉大小 (%)",
+      "container": "容器",
+      "fps": "帧率",
+      "guides": "引导线",
+      "line": "线条",
+      "magnifier": "放大镜",
+      "magnifier_size": "放大镜大小 (%)",
+      "name_1": "名称1",
+      "name_2": "名称2",
+      "output": "输出",
+      "video_codec": "视频编解码器"
+    },
+    "misc": {
+      "name_length_limit_exceeded": "名称长度超出限制 ({limit})！",
+      "select_an_image": "选择一个图像"
+    },
+    "msg": {
+      "edge_comparison_done": "边缘比较完成",
+      "edge_comparison_in_progress": "边缘比较中...",
+      "error_normalizing_path": "规范化路径时出错",
+      "error_processing_path": "处理路径错误",
+      "failed_to_load_image": "加载图像失败",
+      "failed_to_quick_save_image": "快速保存图像失败",
+      "failed_to_save_image": "保存图像失败",
+      "grayscale_diff_done": "灰度差异已完成",
+      "grayscale_diff_in_progress": "灰度差异中...",
+      "highlight_diff_done": "高亮差异已完成",
+      "highlight_diff_in_progress": "高亮差异中...",
+      "invalid_data": "无效数据",
+      "invalid_item_type_or_empty_path": "无效的项目类型或空路径",
+      "select_both_images_first": "请先在两个插槽中加载并选择图像。",
+      "some_images_could_not_be_loaded": "某些图像无法加载",
+      "specify_output_directory_and_file_name": "请指定输出目录和文件名。",
+      "ssim_calculation_done": "SSIM 已完成",
+      "ssim_calculation_in_progress": "SSIM 计算中...",
+      "ssim_calculation_failed": "SSIM 计算失败"
+    },
+    "settings": {
+      "recording_fps": "录制帧率",
+      "video_recording": "视频录制"
+    },
+    "workspace": {
+      "session_types": {
+        "image_compare": "图像比较"
+      }
+    },
+    "magnifier": {
+      "capture_ring": "捕获环",
+      "fit_mode_toggle": "切换适配模式"
     }
   }
 }

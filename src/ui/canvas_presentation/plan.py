@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .composition import CompositionNode
+from .composition import CompositionNode, CompositionPlan
 
 @dataclass(frozen=True)
 class CaptureCircle:
@@ -101,7 +101,7 @@ class CanvasRenderPlan:
     handlers; the legacy fields hold a single-image placeholder so existing
     code paths that read them remain safe.
     """
-    composition_plan: object | None = None
+    composition_plan: CompositionPlan | None = None
     """
     Optional source ``CompositionPlan`` (see composition.py), carried through
     verbatim. When set, the applicator uses it as-is instead of rebuilding a

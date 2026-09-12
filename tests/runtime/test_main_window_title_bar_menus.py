@@ -12,7 +12,7 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
-from sli_ui_toolkit import TitleBarMenuStrip
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 def test_project_start_path_uses_documents_and_localized_untitled(qapp, monkeypatch, tmp_path):
@@ -204,6 +204,7 @@ def test_save_project_retargets_path_when_tab_renamed(qapp, monkeypatch, tmp_pat
 
 
 def test_menu_controller_builds_file_and_help_menus(qapp):
+    from ui.main_window.csd_menu_strip import CsdMenuStrip
     from ui.main_window.menu_controller import MainWindowMenuController
 
     window = SimpleNamespace(
@@ -213,7 +214,7 @@ def test_menu_controller_builds_file_and_help_menus(qapp):
     )
     controller = MainWindowMenuController(window)  # type: ignore[arg-type]
     strip = controller.build_menus()
-    assert isinstance(strip, TitleBarMenuStrip)
+    assert isinstance(strip, CsdMenuStrip)
     assert len(strip.buttons()) == 2
     assert strip.buttons()[0]._text == "File"
     assert strip.buttons()[0]._icon_unchecked is not None
@@ -240,6 +241,62 @@ def test_menu_controller_builds_file_and_help_menus(qapp):
     assert help_by_id["help.show"].shortcut == "Ctrl+F1"
 
 
+def test_csd_menu_opens_as_in_window_overlay(qapp):
+    """File/Help dropdowns are in-window SimpleOptionsFlyouts, not Qt.Popups."""
+    from PySide6.QtCore import QEvent
+
+    # conftest resets configure_toolkit per test; re-arm the overlay resolver
+    # so the in-window flyout attaches to the host's OverlayLayer.
+    from sli_ui_toolkit.config import configure_toolkit
+
+    from shared_toolkit.ui.overlay_layer import OverlayLayer, get_overlay_layer
+    from ui.main_window.menu_controller import MainWindowMenuController
+
+    configure_toolkit(overlay_resolver=get_overlay_layer)
+
+    host = QWidget()
+    host.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    host.resize(500, 320)
+    host.overlay_layer = OverlayLayer(host)
+    host.store = SimpleNamespace(
+        settings=SimpleNamespace(current_language="en"),
+        get_dispatcher=lambda: SimpleNamespace(can_undo=lambda: False, can_redo=lambda: False),
+        on_change=lambda _cb: None,
+    )
+    host.show()
+    drain_until_stable(qapp, lambda: host.isVisible(), timeout_ms=1000, stable_frames=2)
+
+    controller = MainWindowMenuController(host)  # type: ignore[arg-type]
+    strip = controller.build_menus()
+    host._menu_strip = strip
+    strip.setParent(host)
+    strip.show()
+    drain_until_stable(qapp, lambda: strip.isVisible(), timeout_ms=1000, stable_frames=2)
+
+    file_btn = strip.buttons()[0]
+    try:
+        row = strip.reveal_menu_action(file_btn, "file.open_project")
+        drain_until_stable(qapp, lambda: strip._flyouts.get(id(file_btn)) is not None and strip._flyouts.get(id(file_btn)).isVisible(), timeout_ms=1000, stable_frames=2)
+        assert row is not None
+
+        flyout = strip._flyouts.get(id(file_btn))
+        assert flyout is not None
+        assert flyout.isVisible()
+        assert not flyout.isWindow()
+        assert flyout.window() is host
+        assert flyout.overlay_layer is host.overlay_layer
+        # Anchored below the CSD title bar area, inside the host window.
+        assert flyout.y() >= file_btn.height()
+        assert flyout.y() < host.height()
+    finally:
+        strip.hide()
+        host.hide()
+        host.close()
+        host.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
+
+
 def test_save_project_falls_back_to_save_as_when_unsaved(qapp, monkeypatch):
     from ui.main_window.menu_controller import MainWindowMenuController
 
@@ -264,6 +321,7 @@ def test_save_project_falls_back_to_save_as_when_unsaved(qapp, monkeypatch):
 
 
 def test_startup_builds_title_bar_with_menu_strip(qapp):
+    from ui.main_window.csd_menu_strip import CsdMenuStrip
     from ui.main_window.startup import MainWindowStartupRuntime
 
     window = QWidget()
@@ -271,18 +329,127 @@ def test_startup_builds_title_bar_with_menu_strip(qapp):
     window._menu_controller = None
     runtime = MainWindowStartupRuntime(window)  # type: ignore[arg-type]
     bar = runtime._build_custom_title_bar()
-    # App icon lives inside the File trigger, not as a separate leading label.
-    assert bar._leading_host.layout().count() == 1
+    # App icon lives inside the File trigger, not as a separate leading label;
+    # the leading zone holds the menu strip plus the CSD undo/redo buttons.
+    leading_widgets = [
+        bar._leading_host.layout().itemAt(i).widget()
+        for i in range(bar._leading_host.layout().count())
+    ]
+    assert isinstance(leading_widgets[0], CsdMenuStrip)
+    assert leading_widgets[1] is window._menu_controller._undo_button
+    assert leading_widgets[2] is window._menu_controller._redo_button
     assert bar._app_icon_label is None
     assert window._menu_controller is not None
     file_btn = window._menu_controller._menu_strip.buttons()[0]
     assert file_btn._icon_unchecked is not None
-    assert file_btn.getGap() == TitleBarMenuStrip.GAP
+    assert file_btn.getGap() == CsdMenuStrip.GAP
     bar.deleteLater()
     window.deleteLater()
 
 
+def test_language_change_rebuilds_strip_and_keeps_undo_redo_alive(qapp):
+    """Regression: ``set_leading`` clears the whole leading zone (undo/redo
+    included); the controller must reinstall them so a later store change
+    cannot hit deleted C++ buttons (libshiboken RuntimeError)."""
+    from shiboken6 import isValid
+
+    from ui.main_window.csd_menu_strip import CsdMenuStrip
+    from ui.main_window.startup import MainWindowStartupRuntime
+
+    window = QWidget()
+    window.store = type(
+        "S", (), {"settings": type("S2", (), {"current_language": "en"})()}
+    )()
+    window._menu_controller = None
+    runtime = MainWindowStartupRuntime(window)  # type: ignore[arg-type]
+    bar = runtime._build_custom_title_bar()
+    controller = window._menu_controller
+    try:
+        assert isValid(controller._undo_button)
+        # Switch the store language so the rebuilt strip differs and the
+        # early-return dedupe path is not taken.
+        window.store.settings.current_language = "ru"
+        controller._on_language_changed("ru")
+
+        leading_widgets = [
+            bar._leading_host.layout().itemAt(i).widget()
+            for i in range(bar._leading_host.layout().count())
+        ]
+        assert isinstance(leading_widgets[0], CsdMenuStrip)
+        # The buttons were wiped with the zone and reinstalled alive.
+        assert isValid(controller._undo_button)
+        assert isValid(controller._redo_button)
+        assert leading_widgets[1] is controller._undo_button
+        assert leading_widgets[2] is controller._redo_button
+        # A store-change refresh must not raise on stale refs.
+        controller._refresh_undo_redo_enabled()
+    finally:
+        bar.deleteLater()
+        window.deleteLater()
+        qapp.processEvents()
+
+
+def test_csd_undo_redo_buttons_reflect_dispatcher_state(qapp):
+    from PySide6.QtWidgets import QWidget
+
+    from sli_ui_toolkit import TitleBarPresets
+
+    from ui.main_window.menu_controller import MainWindowMenuController
+
+    state = {"can_undo": False, "can_redo": False}
+    undos: list[str] = []
+    redos: list[str] = []
+
+    class _Disp:
+        def can_undo(self):
+            return state["can_undo"]
+
+        def can_redo(self):
+            return state["can_redo"]
+
+        def undo(self):
+            undos.append("u")
+
+        def redo(self):
+            redos.append("r")
+
+    store = SimpleNamespace(
+        settings=SimpleNamespace(current_language="en"),
+        on_change=lambda cb: None,
+        get_dispatcher=lambda: _Disp(),
+    )
+    window = QWidget()
+    window.store = store
+    controller = MainWindowMenuController(window)  # type: ignore[arg-type]
+    bar = TitleBarPresets.app_shell(title="t", parent=window)
+    try:
+        controller._install_undo_redo_buttons(bar)
+
+        assert controller._undo_button.isEnabled() is False
+        assert controller._redo_button.isEnabled() is False
+
+        state["can_undo"] = state["can_redo"] = True
+        controller._refresh_undo_redo_enabled()
+        assert controller._undo_button.isEnabled() is True
+        assert controller._redo_button.isEnabled() is True
+
+        controller._undo_button.click()
+        controller._redo_button.click()
+        assert undos == ["u"]
+        assert redos == ["r"]
+
+        state["can_undo"] = state["can_redo"] = False
+        controller._refresh_undo_redo_enabled()
+        assert controller._undo_button.isEnabled() is False
+        assert controller._redo_button.isEnabled() is False
+    finally:
+        bar.deleteLater()
+        window.deleteLater()
+        qapp.processEvents()
+
+
 def test_global_press_skips_flyout_close_on_title_bar_menu(qapp):
+    """Press on File/Help must not arm the deferred outside-close (first-click race)."""
     """Press on File/Help must not arm the deferred outside-close (first-click race)."""
     from PySide6.QtCore import QEvent
     from ui.presenters.main_window import connections
@@ -292,7 +459,7 @@ def test_global_press_skips_flyout_close_on_title_bar_menu(qapp):
         host.resize(200, 80)
         host.show()
         trigger = QWidget(host)
-        trigger.setObjectName("TitleBarMenuTrigger")
+        trigger.setObjectName("CsdMenuTrigger")
         trigger.setGeometry(10, 10, 60, 24)
         trigger.show()
         QApplication.processEvents()

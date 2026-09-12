@@ -51,7 +51,7 @@
 
 ### 影响放大镜的设置 {#related-settings}
 
-在 [设置 → {{tr:settings.optimization}}](help://settings#performance) 中：
+在 [设置 → 优化](help://settings#performance) 中：
 
 - 优化放大镜移动及其插值方式
 - 镜头重叠时的高亮显示

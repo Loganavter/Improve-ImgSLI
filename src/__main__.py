@@ -17,7 +17,7 @@ except Exception:
     pass
 
 if getattr(sys, "frozen", False):
-    application_path = sys._MEIPASS
+    application_path = sys._MEIPASS  # type: ignore[attr-defined]  # PyInstaller-only
 else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
@@ -28,13 +28,81 @@ from core.windowed_stdio import enable_faulthandler, ensure_stdio
 ensure_stdio()
 enable_faulthandler()
 
+
+def _install_activation_probe() -> None:
+    """TEMPORARY diagnostic (IMGSLI_ACTIVATION_PROBE=1) — REMOVE AFTER USE.
+
+    Logs every QWidget.activateWindow + QApplication override-cursor change
+    with a caller stack to catch who flashes the Wayland busy cursor on
+    kbd flyout toggles. Warning level so it is visible without --debug.
+    """
+    if os.environ.get("IMGSLI_ACTIVATION_PROBE", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+    import traceback as _tb
+
+    _probe = logging.getLogger("ImproveImgSLI.probe")
+    try:
+        from PySide6.QtWidgets import QWidget as _W
+
+        _orig_activate = _W.activateWindow
+
+        def _logged_activate(self):
+            try:
+                _active = self.isActiveWindow()
+            except Exception:
+                _active = "?"
+            _probe.warning(
+                "[activate-probe] activateWindow %s active=%s\n%s",
+                type(self).__name__,
+                _active,
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_activate(self)
+
+        _W.activateWindow = _logged_activate  # type: ignore[method-assign]
+    except Exception:
+        pass
+    try:
+        from PySide6.QtWidgets import QApplication as _A
+
+        _orig_set = _A.setOverrideCursor
+        _orig_restore = _A.restoreOverrideCursor
+
+        def _logged_set(cursor):
+            _probe.warning(
+                "[activate-probe] setOverrideCursor %s\n%s",
+                cursor,
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_set(cursor)
+
+        def _logged_restore():
+            _probe.warning(
+                "[activate-probe] restoreOverrideCursor\n%s",
+                "".join(_tb.format_stack(limit=9)[:-1]),
+            )
+            return _orig_restore()
+
+        _A.setOverrideCursor = staticmethod(_logged_set)  # type: ignore[method-assign]
+        _A.restoreOverrideCursor = staticmethod(_logged_restore)  # type: ignore[method-assign]
+    except Exception:
+        pass
+
+
+_install_activation_probe()
+
 from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
-from ui.widgets.canvas.rhi_backend import (
+from ui.canvas_infra.rhi.rhi_backend import (
     configure_rhi_process_environment,
     configure_vulkan_layer_environment,
     persist_rhi_backend_setting,
@@ -131,6 +199,40 @@ def main():
         "--ui-inspector",
         action="store_true",
         help="Enable the developer UI inspector for this session.",
+    )
+    parser.add_argument(
+        "--dump-ui-layout",
+        metavar="PATH",
+        default=None,
+        help="Dump the live widget tree (geometry + bound Find Action ids) to "
+        "PATH as JSON after startup, then exit. PATH is any writable file "
+        "path, e.g. /tmp/layout.json (parent dir must exist; overwrites if "
+        "present). Startup lands on the Session Picker, so tab actions "
+        "(image_compare.*, multi_compare.*) are only in the dump unless you "
+        "also pass --open-tab (or a project to open).",
+    )
+    parser.add_argument(
+        "--open-tab",
+        metavar="TAB_KIND",
+        default=None,
+        help="Create and switch to a new tab of this type on startup (before "
+        "--dump-ui-layout runs, if given), e.g. image_compare or "
+        "multi_compare — any kind with a registered 'workspace.new_TAB_KIND' "
+        "action (see docs/dev/ACTIONS.md). Lets you dump a tab's own chrome "
+        "instead of the Session Picker's, without needing an existing "
+        "project file. Unknown kinds are logged and ignored.",
+    )
+    parser.add_argument(
+        "--run-action",
+        metavar="ACTION_ID",
+        action="append",
+        default=[],
+        help="Run this Find Action id (see docs/dev/ACTIONS.md / "
+        "ActionRegistry) on startup, e.g. platform.settings or platform.help "
+        "— opens that dialog so --dump-ui-layout can capture it too (only "
+        "MainWindow is captured otherwise; --dump-ui-layout now walks every "
+        "top-level window). Repeatable; runs in order, after --open-tab. "
+        "Unknown ids are logged and ignored.",
     )
     parser.add_argument(
         "--rhi-backend",
@@ -234,7 +336,9 @@ def main():
 
     app.setApplicationName("Improve ImgSLI")
     app.setApplicationDisplayName("Improve ImgSLI")
-    app.setApplicationVersion("1.0.0")
+    from core.constants import AppConstants
+
+    app.setApplicationVersion(AppConstants.APP_VERSION)
     app.setOrganizationName("improve-imgsli")
     app.setOrganizationDomain("improve-imgsli.local")
     app.setDesktopFileName("improve-imgsli")
@@ -258,19 +362,79 @@ def main():
     )
     window = MainWindow(runtime_flags=runtime_flags)
     window.start()
-    from ui.widgets.canvas.rhi_fallback_notice import schedule_rhi_fallback_user_notice
+    from ui.canvas_infra.rhi.rhi_fallback_notice import schedule_rhi_fallback_user_notice
 
     schedule_rhi_fallback_user_notice(window)
 
+    from ui.main_window.cache_purge_notice import schedule_cache_purge_notice
+
+    schedule_cache_purge_notice(
+        window, getattr(window.app_context, "cache_purge_notice_bytes", None)
+    )
+
+    if args.open_tab:
+        from ui.actions.registry import get_action_registry
+
+        def _open_startup_tab(tab_kind: str = args.open_tab) -> None:
+            action_id = f"workspace.new_{tab_kind}"
+            action = get_action_registry().get(action_id)
+            if action is not None and action.run is not None:
+                action.run()
+            else:
+                logging.getLogger("ImproveImgSLI").warning(
+                    "--open-tab %s: no such action (%s not registered)",
+                    tab_kind,
+                    action_id,
+                )
+
+        QTimer.singleShot(0, _open_startup_tab)
+
+    if args.run_action:
+        from ui.actions.registry import get_action_registry
+
+        def _run_startup_actions(action_ids: list[str] = args.run_action) -> None:
+            registry = get_action_registry()
+            for action_id in action_ids:
+                action = registry.get(action_id)
+                if action is not None and action.run is not None:
+                    action.run()
+                else:
+                    logging.getLogger("ImproveImgSLI").warning(
+                        "--run-action %s: no such action", action_id
+                    )
+
+        # After --open-tab's singleShot(0, ...), same delay: Qt fires
+        # zero-delay timers in registration order.
+        QTimer.singleShot(0, _run_startup_actions)
+
+    if args.dump_ui_layout:
+        dump_path = args.dump_ui_layout
+
+        def _dump_ui_layout_and_quit(path: str = dump_path) -> None:
+            import json
+
+            from devtools.ui_layout_dump import dump_all_windows
+            from ui.actions.registry import get_action_registry
+
+            data = dump_all_windows(get_action_registry())
+            Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            app.quit()
+
+        # Give layouts one settled event-loop turn after show() so geometry
+        # isn't still the pre-resize placeholder; longer when opening a tab
+        # or running actions first so their own layout/animation settles
+        # before we snapshot it.
+        dump_delay_ms = 600 if (args.open_tab or args.run_action) else 300
+        QTimer.singleShot(dump_delay_ms, _dump_ui_layout_and_quit)
+
     if args.project:
-        from pathlib import Path
-
-        from PySide6.QtCore import QTimer
-
         project_path = str(Path(args.project).expanduser().resolve())
 
         def _open_startup_project(path: str = project_path) -> None:
-            menu = getattr(window, "_menu_controller", None)
+            # Use public accessor — avoids private ``_menu_controller`` hunt (C7).
+            menu = getattr(window, "menu_controller", None) or getattr(
+                window, "_menu_controller", None
+            )
             opener = getattr(menu, "open_project_at_path", None) if menu else None
             if callable(opener):
                 opener(path)

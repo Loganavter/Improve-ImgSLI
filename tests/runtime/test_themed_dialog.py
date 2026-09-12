@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout
 
 from shared_toolkit.ui.themed_dialog import ThemedDialog
+from tests.helpers.drain_until_stable import drain_until_stable
 
 _APP: QApplication | None = None
 
@@ -54,14 +55,24 @@ def test_themed_dialog_skips_theme_work_until_ui_ready():
 def test_themed_dialog_repaints_and_defers_geometry_after_mark_ready():
     app = _app()
     dialog = _ProbeDialog()
-    app.processEvents()
+    drain_until_stable(
+        app,
+        lambda: (dialog.polish_calls, dialog.geometry_calls, dialog.extra_calls),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     assert dialog.polish_calls == 1
     assert dialog.geometry_calls >= 1
     assert dialog.extra_calls == 1
 
     dialog.on_theme_changed()
-    app.processEvents()
+    drain_until_stable(
+        app,
+        lambda: (dialog.polish_calls, dialog.geometry_calls, dialog.extra_calls),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     assert dialog.polish_calls == 2
     assert dialog.geometry_calls >= 2

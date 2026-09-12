@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QPainter
 from domain.qt_adapters import ensure_visible_qcolor
 from domain.types import Color
 from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
-from ui.widgets.canvas.render_metrics import resolve_relative_px
+from ui.canvas_infra.rhi.render_metrics import resolve_relative_px
 
 
 class DividersOverlaySource:

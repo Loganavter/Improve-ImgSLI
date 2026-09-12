@@ -7,21 +7,16 @@ import logging
 from PIL import Image
 
 from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from shared.image_processing.resample_map import get_resample
 from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     maybe_wrap_pixel_store,
+    pixel_source_size,
     to_real_pil_copy,
 )
 from shared.image_processing.store_lease import StoreLease
 
 logger = logging.getLogger("ImproveImgSLI")
-
-_RESAMPLE = {
-    "NEAREST": Image.Resampling.NEAREST,
-    "BILINEAR": Image.Resampling.BILINEAR,
-    "BICUBIC": Image.Resampling.BICUBIC,
-    "LANCZOS": Image.Resampling.LANCZOS,
-}
 
 # Below this size unified output uses PIL resize_images_processor (exact match).
 _ACCURATE_UNIFY_MAX_PIXELS = 4096 * 4096
@@ -34,8 +29,15 @@ def unify_pair(
     *,
     lease1: StoreLease | None = None,
     lease2: StoreLease | None = None,
+    should_abort=None,
 ) -> tuple[TiledPixelStore | Image.Image | None, TiledPixelStore | Image.Image | None]:
-    """Unify two sources to a common canvas (max width/height per side)."""
+    """Unify two sources to a common canvas (max width/height per side).
+
+    ``should_abort`` is polled between output strips; a superseded unify
+    (newer pair scheduled) must stop burning CPU/IO instead of finishing a
+    result nobody will use. On abort partial stores are closed and
+    ``(None, None)`` is returned.
+    """
     if lease1 is not None and not lease1.valid:
         return None, None
     if lease2 is not None and not lease2.valid:
@@ -44,15 +46,10 @@ def unify_pair(
     if source1 is None and source2 is None:
         return None, None
 
-    resample = _RESAMPLE.get(method_name.upper(), Image.Resampling.LANCZOS)
+    resample = get_resample(method_name)
 
-    def _size(source):
-        if source is None:
-            return (0, 0)
-        return source.size
-
-    w1, h1 = _size(source1)
-    w2, h2 = _size(source2)
+    w1, h1 = pixel_source_size(source1)
+    w2, h2 = pixel_source_size(source2)
     target_w = max(w1, w2)
     target_h = max(h1, h2)
     if target_w <= 0 or target_h <= 0:
@@ -62,34 +59,94 @@ def unify_pair(
         from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
         from shared.image_processing.resize import resize_images_processor
 
-        pil1 = (
-            downscale_source_to_pil(source1, (w1, h1), resample=resample)
-            if source1 is not None
-            else None
-        )
-        pil2 = (
-            downscale_source_to_pil(source2, (w2, h2), resample=resample)
-            if source2 is not None
-            else None
-        )
+        try:
+            pil1 = (
+                downscale_source_to_pil(source1, (w1, h1), resample=resample)
+                if source1 is not None
+                else None
+            )
+            pil2 = (
+                downscale_source_to_pil(source2, (w2, h2), resample=resample)
+                if source2 is not None
+                else None
+            )
+        except RuntimeError as exc:
+            # Source closed mid-unify (race with Store swap / new unify task).
+            # Treat as abort, not error — caller will retry with live store.
+            logger.debug("Unify aborted (source closed): %s", exc)
+            return None, None
         u1, u2 = resize_images_processor(pil1, pil2, method_name)
         return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
 
-    try:
-        out1 = TiledPixelStore.allocate(target_w, target_h)
-        out2 = TiledPixelStore.allocate(target_w, target_h)
-    except OSError as exc:
-        logger.warning("Tile-native unify memmap failed, falling back to PIL: %s", exc)
-        from shared.image_processing.resize import resize_images_processor
+    if (w1, h1) == (target_w, target_h) and (w2, h2) == (target_w, target_h):
+        return source1, source2
 
-        pil1 = to_real_pil_copy(source1) if source1 is not None else None
-        pil2 = to_real_pil_copy(source2) if source2 is not None else None
-        u1, u2 = resize_images_processor(pil1, pil2, method_name)
-        return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
+    out1 = source1 if (w1, h1) == (target_w, target_h) else None
+    out2 = source2 if (w2, h2) == (target_w, target_h) else None
 
-    if source1 is not None:
-        write_resampled_to_store(out1, source1, target_w, target_h, resample)
-    if source2 is not None:
-        write_resampled_to_store(out2, source2, target_w, target_h, resample)
+    if out1 is None and source1 is not None:
+        try:
+            out1 = TiledPixelStore.allocate(target_w, target_h)
+            if not write_resampled_to_store(
+                out1, source1, target_w, target_h, resample, should_abort=should_abort
+            ):
+                out1.close()
+                return None, None
+        except (OSError, RuntimeError) as exc:
+            # RuntimeError = source closed mid-unify (race) — treat as abort
+            if isinstance(exc, RuntimeError) and "closed" in str(exc).lower():
+                logger.debug("Unify aborted (source1 closed): %s", exc)
+                if out1 is not None and out1 is not source1:
+                    try:
+                        out1.close()
+                    except Exception:
+                        pass
+                return None, None
+            logger.warning("Tile-native unify memmap failed for source1, falling back to PIL: %s", exc)
+            try:
+                pil1 = to_real_pil_copy(source1)
+            except RuntimeError:
+                return None, None
+            pil2 = to_real_pil_copy(source2) if source2 is not None else None
+            u1, u2 = resize_images_processor(pil1, pil2, method_name)
+            return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
+
+    if out2 is None and source2 is not None:
+        try:
+            out2 = TiledPixelStore.allocate(target_w, target_h)
+            if not write_resampled_to_store(
+                out2, source2, target_w, target_h, resample, should_abort=should_abort
+            ):
+                assert out2 is not None
+                out2.close()
+                if out1 is not source1:
+                    assert out1 is not None
+                    out1.close()
+                return None, None
+        except (OSError, RuntimeError) as exc:
+            if isinstance(exc, RuntimeError) and "closed" in str(exc).lower():
+                logger.debug("Unify aborted (source2 closed): %s", exc)
+                if out2 is not None and out2 is not source2:
+                    try:
+                        out2.close()
+                    except Exception:
+                        pass
+                if out1 is not None and out1 is not source1:
+                    try:
+                        out1.close()
+                    except Exception:
+                        pass
+                return None, None
+            logger.warning("Tile-native unify memmap failed for source2, falling back to PIL: %s", exc)
+            try:
+                pil1 = to_real_pil_copy(source1) if source1 is not None else None
+            except RuntimeError:
+                return None, None
+            try:
+                pil2 = to_real_pil_copy(source2) if source2 is not None else None
+            except RuntimeError:
+                return None, None
+            u1, u2 = resize_images_processor(pil1, pil2, method_name)
+            return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
 
     return out1, out2

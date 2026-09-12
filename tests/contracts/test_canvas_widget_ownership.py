@@ -8,7 +8,7 @@ from ._framework import SRC, iter_py, read, rel
 
 
 def test_pair_canvas_modules_live_under_image_compare_tab():
-    shared_canvas = SRC / "ui" / "widgets" / "canvas"
+    shared_canvas = SRC / "ui" / "canvas_infra" / "rhi"
     forbidden = (
         "__init__.py",
         "contracts.py",
@@ -55,7 +55,7 @@ def test_pair_canvas_modules_live_under_image_compare_tab():
 def test_no_public_pair_canvas_imports_from_shared_facade():
     offenders: list[str] = []
     for path in iter_py(SRC):
-        if path == SRC / "ui" / "widgets" / "canvas" / "__init__.py":
+        if path == SRC / "ui" / "canvas_infra" / "rhi" / "__init__.py":
             continue
         try:
             tree = ast.parse(read(path))
@@ -64,7 +64,7 @@ def test_no_public_pair_canvas_imports_from_shared_facade():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue
-            if node.module != "ui.widgets.canvas":
+            if node.module != "ui.canvas_infra.rhi":
                 continue
             names = {alias.name for alias in node.names}
             leaked = names & {"CanvasWidget"}
@@ -101,11 +101,15 @@ def test_magnifier_feature_widgets_live_under_image_compare_tab():
         "managers/transient_ui_parts/magnifier.py",
         "managers/transient_ui_parts/magnifier_instances.py",
         "widgets/magnifier_color_controls.py",
-        "widgets/magnifier_visibility_flyout.py",
     ):
         path = SRC / "ui" / relative
         if path.exists():
             offenders.append(rel(path))
+    # panel_visibility_flyout.py (formerly magnifier_visibility_flyout.py) is
+    # a generic, tab-agnostic widget class that lives in ui/widgets/ by
+    # design — but the instance itself is created and owned by image_compare
+    # (tabs/image_compare/tab.py::_create_magnifier_flyout, stored on
+    # tab._widget), not by the host.
     assert not offenders, (
         "magnifier feature UI belongs under tabs.image_compare.ui: "
         + ", ".join(offenders)

@@ -1,12 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action, ActionType
 
 @dataclass
 class SetLanguageAction(Action):
     language: str
-    def __init__(self, language: str):
-        super().__init__(type=ActionType.SET_LANGUAGE); self.language = language
+    type: str = field(default=ActionType.SET_LANGUAGE.value, kw_only=True)
     def get_payload(self): return {"language": self.language}
 
 @dataclass
@@ -43,6 +42,14 @@ class SetUIFontFamilyAction(Action):
     def __init__(self, family: str):
         super().__init__(type=ActionType.SET_UI_FONT_FAMILY); self.family = family
     def get_payload(self): return {"family": self.family}
+
+@dataclass
+class SetUIScaleFactorAction(Action):
+    factor: float
+    def __init__(self, factor: float):
+        super().__init__(type=ActionType.SET_UI_SCALE_FACTOR)
+        self.factor = float(factor)
+    def get_payload(self): return {"factor": self.factor}
 
 @dataclass
 class SetDebugModeEnabledAction(Action):

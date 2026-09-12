@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "divider_color": "Divider color",
+    "quick_save_image": "Quick save image",
+    "reset_zoom": "Reset zoom",
+    "save_result": "Save result",
+    "toggle_divider_visibility": "Toggle divider visibility"
+  }
+}

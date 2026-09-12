@@ -31,7 +31,7 @@ class CanvasFeatureRegistry:
     docs/dev/CANVAS_FEATURE_REGISTRY_PER_TAB.md.
     """
 
-    def __init__(self, tab_type: str) -> None:
+    def __init__(self, tab_type: str | None) -> None:
         self.tab_type = tab_type
         self._packages: list[ModuleType] = []
 
@@ -207,7 +207,7 @@ class CanvasFeatureRegistry:
         payloads: dict[str, object] = {}
         for feature_name, commands in self.get_feature_commands().items():
             payload_command = commands.get("render.canvas_payload")
-            if payload_command is None:
+            if payload_command is None or not callable(payload_command):
                 continue
             payloads[feature_name] = payload_command(store)
         return payloads
@@ -368,10 +368,10 @@ class CanvasFeatureRegistry:
         return tuple(passes)
 
 
-_REGISTRIES: dict[str, CanvasFeatureRegistry] = {}
+_REGISTRIES: dict[str | None, CanvasFeatureRegistry] = {}
 
 
-def get_canvas_registry(tab_type: str) -> CanvasFeatureRegistry:
+def get_canvas_registry(tab_type: str | None) -> CanvasFeatureRegistry:
     registry = _REGISTRIES.get(tab_type)
     if registry is None:
         registry = CanvasFeatureRegistry(tab_type)

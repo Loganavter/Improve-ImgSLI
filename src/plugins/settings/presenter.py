@@ -23,9 +23,13 @@ class SettingsPresenter(QObject):
             main_window_app=main_window_app,
             tr_func=self._tr,
         )
-        self.view_state = SettingsViewStateCoordinator(
-            store=store,
-            tr_func=self._tr,
+        setattr(
+            self,
+            "view_state",
+            SettingsViewStateCoordinator(
+                store=store,
+                tr_func=self._tr,
+            ),
         )
 
     def show_canvas_feature_color_picker(
@@ -65,7 +69,7 @@ class SettingsPresenter(QObject):
         title_key: str,
         on_selected,
         post_apply=None,
-        show_alpha: bool = False,
+        show_alpha: bool = True,
         parent_window=None,
     ):
         self.color_pickers.show_color_picker(
@@ -91,20 +95,9 @@ class SettingsPresenter(QObject):
         return tr(text, self.store.settings.current_language)
 
     def _create_color_picker_coordinator(self, **kwargs):
-        from tabs.registry import TabRegistry
+        from tabs.registry import LazyTabService
 
-        registry = TabRegistry()
-        registry.discover()
-        coordinator = registry.create_startup_service(
-            "settings_color_picker_coordinator",
-            **kwargs,
-        )
-        if coordinator is None:
-            raise RuntimeError(
-                "No tab provides settings_color_picker_coordinator; "
-                "canvas feature color pickers must be supplied by the tab owner."
-            )
-        return coordinator
+        return LazyTabService("settings_color_picker_coordinator", **kwargs)
 
     def on_language_changed(self):
         self.update_interpolation_combo_box_ui()

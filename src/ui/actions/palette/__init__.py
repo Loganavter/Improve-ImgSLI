@@ -22,10 +22,10 @@ def refresh_open_dialog_find_actions() -> int:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return 0
     refreshed = 0
-    for widget in app.topLevelWidgets():
+    for widget in app.topLevelWidgets():  # ALLOWED: system-wide action refresh — walks top-levels generically for _contribute_find_actions, not tab-specific
         contribute = getattr(widget, "_contribute_find_actions", None)
         if not callable(contribute):
             continue
@@ -124,29 +124,8 @@ def install_dialog_find_action_shortcut(
     shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
     shortcut.setAutoRepeat(False)
     shortcut.activated.connect(_open)
-    dialog._find_action_shortcut = shortcut
+    dialog._find_action_shortcut = shortcut  # type: ignore[attr-defined]  # dynamic attr
     return shortcut
 
 
-def install_find_action_shortcut(window: QWidget, callback) -> None:
-    """Deprecated: shortcuts come from ActionShortcutBinder. Kept as no-op sync."""
-    del callback
-    from ui.actions.binder import resync_action_shortcuts
 
-    resync_action_shortcuts(window)
-
-
-def install_contextual_palette_shortcut(window: QWidget, callback) -> None:
-    """Deprecated: shortcuts come from ActionShortcutBinder. Kept as no-op sync."""
-    del callback
-    from ui.actions.binder import resync_action_shortcuts
-
-    resync_action_shortcuts(window)
-
-
-def resolve_palette_topic_from_focus(*, active_tab: str | None = None) -> str | None:
-    from PySide6.QtWidgets import QApplication
-    from ui.actions.registry import get_action_registry
-
-    focused = QApplication.focusWidget()
-    return get_action_registry().topic_for_widget(focused, active_tab=active_tab)

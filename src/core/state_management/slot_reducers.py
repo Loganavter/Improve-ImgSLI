@@ -21,9 +21,6 @@ def register_state_slot_reducer(slot_name: str, reducer: SlotReducer) -> None:
     _SLOT_REDUCERS[slot_name] = reducer
 
 
-def get_state_slot_reducer(slot_name: str) -> SlotReducer | None:
-    return _SLOT_REDUCERS.get(slot_name)
-
 
 def iter_state_slot_reducers() -> tuple[tuple[str, SlotReducer], ...]:
     return tuple(_SLOT_REDUCERS.items())

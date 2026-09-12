@@ -14,7 +14,6 @@ src/resources/
 │   ├── pt_BR/
 │   └── zh/
 ├── themes.json                 # color palettes (see THEMING.md)
-├── styles/app.qss              # app-wide QSS
 ├── icons/                      # SVG/PNG icon assets
 ├── assets/                     # other static binaries
 └── help/                       # host Help shell (tree.json + ui/platform bodies; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)

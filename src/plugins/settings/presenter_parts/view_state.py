@@ -30,7 +30,24 @@ class SettingsViewStateCoordinator:
                     else AppConstants.DEFAULT_INTERPOLATION_METHOD
                 )
             )
-            self.store.viewport.render_config.interpolation_method = target_method_key
+            # Redux: render_config.interpolation_method via SetInterpolationMethodAction
+            try:
+                _dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+            except Exception:
+                _dispatcher = None
+            if _dispatcher is not None:
+                try:
+                    from core.state_management.appearance_actions import SetInterpolationMethodAction
+
+                    _dispatcher.dispatch(SetInterpolationMethodAction(method=target_method_key), scope="viewport")
+                except Exception:
+                    setattr(self.store.viewport.render_config, "interpolation_method", target_method_key)
+                    if hasattr(self.store, "emit_viewport_change"):
+                        self.store.emit_viewport_change()
+            else:
+                setattr(self.store.viewport.render_config, "interpolation_method", target_method_key)
+                if hasattr(self.store, "emit_viewport_change"):
+                    self.store.emit_viewport_change()
 
         try:
             current_index = method_keys.index(target_method_key)

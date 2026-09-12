@@ -32,7 +32,8 @@ class MyTab(TabContract):
 
     @property
     def is_bootstrap_default(self) -> bool:
-        """True for exactly one tab — see capability-mechanisms.md §Bootstrap seam. Default False."""
+        """True only for session_picker — reserved for the initial workspace session tab.
+        See capability-mechanisms.md §Bootstrap seam. Default False."""
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         """
@@ -66,6 +67,11 @@ class MyTab(TabContract):
 
     def serialize_session(self, session_id: str, context: TabContext) -> dict | None:
         """JSON-serializable project snapshot, or ``None`` if unsupported."""
+
+    def collect_pixel_cache_sources(self, session_id: str, context: TabContext) -> dict:
+        """Map absolute source path -> live, open ``TiledPixelStore`` for this
+        session. Opt-in per tab (default: ``{}``); used only when a project
+        save embeds a decode-skip pixel cache — see `CONTAINER_FORMAT.md`."""
 
     def deserialize_session(
         self, session_id: str, data: dict, context: TabContext

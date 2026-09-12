@@ -1,7 +1,9 @@
+# Audit-Meta: pattern=qdialog-wiring reason="one Settings QDialog — 6 pages + load/save"
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 import logging
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 
 from plugins.settings.dialog_context import SettingsDialogContext
@@ -22,10 +24,17 @@ from plugins.settings.models import SettingsDialogData
 from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomGroupWidget
+from ui.actions.widget_pulse import PULSE_DURATION_MS
 from ui.icon_manager import AppIcon
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
+
+# The search line stays up while the matched controls pulse after activation;
+# it is cleared shortly after the pulse finishes — the duration comes from
+# the pulse mechanism itself (``PULSE_DURATION_MS``), with a small margin so
+# the reset never races the ring's last fade-out tick.
+_SEARCH_CLEAR_AFTER_PULSE_MS = PULSE_DURATION_MS + 150
 
 class SettingsDialog(ThemedDialog):
     """Settings chrome. OK applies and keeps the window open; Cancel closes."""
@@ -41,11 +50,11 @@ class SettingsDialog(ThemedDialog):
         max_limit,
         debug_mode_enabled,
         system_notifications_enabled,
-        current_resolution_limit,
         parent=None,
         tr_func=None,
         current_ui_font_mode: str = "builtin",
         current_ui_font_family: str = "",
+        current_ui_scale_factor: float = 1.0,
         current_ui_mode: str = "beginner",
         optimize_magnifier_movement: bool = True,
         movement_interpolation_method: str = "BILINEAR",
@@ -76,10 +85,10 @@ class SettingsDialog(ThemedDialog):
             max_limit=max_limit,
             debug_mode_enabled=debug_mode_enabled,
             system_notifications_enabled=system_notifications_enabled,
-            current_resolution_limit=current_resolution_limit,
             tr_func=self.tr,
             current_ui_font_mode=current_ui_font_mode,
             current_ui_font_family=current_ui_font_family,
+            current_ui_scale_factor=current_ui_scale_factor,
             current_ui_mode=current_ui_mode,
             optimize_magnifier_movement=optimize_magnifier_movement,
             movement_interpolation_method=movement_interpolation_method,
@@ -115,14 +124,18 @@ class SettingsDialog(ThemedDialog):
 
         self.main_layout = QHBoxLayout(self)
         setup_dialog_shell(self)
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
         decorate_dialog(self, title=self.tr("misc.settings", self.current_language))
+        install_dialog_help_menu(self, page="settings")
         self.active_tab = active_tab
+        self._search_mode = False
+        self._search_prev_row = 0
         ensure_tab_settings_contributions()
         self._active_sections = get_settings_registry().sections_for(active_tab)
         for section in self._active_sections:
             section.build(self, self.context)
         self._setup_sidebar_items()
+        self._setup_in_dialog_search()
         self.install_dialog_geometry(self._calculate_and_apply_geometry)
         self.mark_theme_ui_ready()
         self.sidebar.setCurrentRow(0)
@@ -213,8 +226,112 @@ class SettingsDialog(ThemedDialog):
         return page_scroll_area(page)
 
     def _on_category_changed(self, row):
+        if self._search_mode:
+            self._on_search_result_activated(row)
+            return
         self.pages_stack.setCurrentIndex(row)
         self._update_sidebar_icons()
+
+    # ---- in-dialog search (Find Action catalog reuse) ----
+
+    def _setup_in_dialog_search(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(120)
+        self._search_timer.timeout.connect(self._apply_search)
+        self._search_clear_timer = QTimer(self)
+        self._search_clear_timer.setSingleShot(True)
+        self._search_clear_timer.timeout.connect(self.clear_search)
+        self.search_field.textChanged.connect(self._on_search_text_changed)
+        self.sidebar.set_no_results_text(
+            self.tr("settings.search_no_results", self.current_language)
+        )
+        self._search_escape = QShortcut(
+            QKeySequence(Qt.Key.Key_Escape), self.search_field
+        )
+        # WidgetShortcut (not the QShortcut default WindowShortcut): a
+        # window-scoped shortcut fires on Escape anywhere in this dialog,
+        # regardless of what actually has focus — it was silently stealing
+        # Escape from any other focused control in the window (e.g. an open
+        # ComboBox dropdown, which never got the key to close itself) even
+        # while the search field itself had nothing to clear.
+        self._search_escape.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self._search_escape.activated.connect(self.clear_search)
+        # Do not let the field steal Ctrl+A / typing focus semantics from
+        # normal usage: typing in the field filters, and only the filter.
+        self.search_field.setAttribute(
+            Qt.WidgetAttribute.WA_InputMethodEnabled, True
+        )
+        _ = QApplication
+
+    def _on_search_text_changed(self, _text: str) -> None:
+        if self._search_clear_timer.isActive():
+            # The user is typing again — the pending post-pulse clear must
+            # not wipe the new input.
+            self._search_clear_timer.stop()
+        if self._search_timer.isActive():
+            self._search_timer.stop()
+        self._search_timer.start()
+
+    def _apply_search(self) -> None:
+        query = self.search_field.text().strip()
+        if not query:
+            self.clear_search()
+            return
+        if not self._search_mode:
+            self._search_prev_row = self.sidebar.currentRow()
+            # Materialize the settings catalog once per search session; the
+            # widget filters it in place per keystroke (no rebuilds).
+            from plugins.settings.dialog_search import catalog_rows
+
+            self._search_catalog = catalog_rows(self)
+            self.sidebar.set_items(self._search_catalog)
+        self.sidebar.set_search_text(query)
+        self._search_mode = True
+        self.sidebar.setCurrentRow(-1)
+
+    def _on_search_result_activated(self, row: int) -> None:
+        item = self.sidebar.item(row)
+        if item is None:
+            return
+        result = item.data()
+        if result is None:
+            return
+        from plugins.settings.dialog_search import navigate
+        from ui.actions.widget_pulse import pulse_widgets
+
+        # Highlight the matched controls inside the section (the least-deep
+        # match level, 1..N).
+        targets = navigate(self, result, query=self.search_field.text())
+        if targets:
+            pulse_widgets(targets)
+        for index, section in enumerate(self._active_sections):
+            if section.section_id == result.section_id:
+                self._search_prev_row = index
+                break
+        if targets:
+            # Clear the search line only after the highlight pulse finishes,
+            # so the user sees the matched controls flash before the sidebar
+            # returns to the section list. A new keystroke cancels the
+            # pending clear.
+            self._search_clear_timer.start(_SEARCH_CLEAR_AFTER_PULSE_MS)
+        else:
+            self.clear_search()
+
+    def clear_search(self) -> None:
+        if not self._search_mode:
+            return
+        if self._search_clear_timer.isActive():
+            self._search_clear_timer.stop()
+        self._search_mode = False
+        if self.search_field.text():
+            self.search_field.blockSignals(True)
+            self.search_field.clear()
+            self.search_field.blockSignals(False)
+        self._setup_sidebar_items()
+        self.sidebar.setCurrentRow(self._search_prev_row)
 
     def on_dialog_theme_changed(self) -> None:
         self._update_sidebar_icons()
@@ -253,6 +370,7 @@ class SettingsDialog(ThemedDialog):
                 for radio, mode in {
                     self.radio_ui_mode_expert: "expert",
                     self.radio_ui_mode_advanced: "advanced",
+                    self.radio_ui_mode_beginner: "beginner",
                 }.items()
                 if radio.isChecked()
             ),
@@ -283,9 +401,13 @@ class SettingsDialog(ThemedDialog):
             max_name_length=self.spin_max_length.value(),
             debug_enabled=self.debug_checkbox.isChecked(),
             system_notifications_enabled=self.system_notifications_checkbox.isChecked(),
-            resolution_limit=_val("combo_resolution", ctx.current_resolution_limit),
             ui_font_mode=ui_font_mode,
             ui_font_family=self.combo_font_family.currentData() or "",
+            ui_scale_factor=(
+                self.slider_ui_scale.value() / 100.0
+                if hasattr(self, "slider_ui_scale")
+                else ctx.current_ui_scale_factor
+            ),
             optimize_magnifier_movement=_val(
                 "optimize_movement_checkbox", ctx.optimize_magnifier_movement
             ),
@@ -347,10 +469,24 @@ class SettingsDialog(ThemedDialog):
             keyboard_page.refresh_language(self)
         except Exception:
             logger.exception("Settings keyboard page retranslation failed")
+        self.search_field.setPlaceholderText(
+            self.tr("settings.search_placeholder", self.current_language)
+        )
+        self.sidebar.set_no_results_text(
+            self.tr("settings.search_no_results", self.current_language)
+        )
         self._setup_sidebar_items()
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)
         self.sidebar.setCurrentRow(curr)
+        if self._search_mode:
+            # Re-materialize the catalog (row texts are cached in the old
+            # language) and re-run the live search.
+            from plugins.settings.dialog_search import catalog_rows
+
+            self._search_catalog = catalog_rows(self)
+            self.sidebar.set_items(self._search_catalog)
+            self.sidebar.set_search_text(self.search_field.text())
         defer_geometry(self)
 
     def confirm_settings(self):
@@ -359,7 +495,17 @@ class SettingsDialog(ThemedDialog):
         self.settings_confirmed.emit()
 
     def sync_from_store(self) -> None:
-        """Re-read live store values into general toggles before showing."""
+        """Re-read live store values into general toggles before showing.
+
+        Must cover every control ``get_settings`` reads back, not just the
+        checkboxes: the dialog can survive a hide() (the Find Action member
+        path) and be re-shown with widget state that drifted from the store.
+        A stale radio/slider/combo then reads back as the *widget default*
+        and ``SettingsApplicationService.apply`` silently overwrites the
+        user's real values on the next OK (observed reset: ui_mode ->
+        beginner, ui_scale_factor -> widget default, rhi_backend -> default
+        written over the persisted values without any log).
+        """
         store = getattr(self.context, "store", None)
         settings = getattr(store, "settings", None) if store is not None else None
         if settings is None:
@@ -377,12 +523,48 @@ class SettingsDialog(ThemedDialog):
         if debug_cb is not None:
             debug_cb.setChecked(debug_enabled)
 
+        ui_mode = getattr(settings, "ui_mode", "beginner")
+        radio_for_mode = {
+            "expert": getattr(self, "radio_ui_mode_expert", None),
+            "advanced": getattr(self, "radio_ui_mode_advanced", None),
+            "beginner": getattr(self, "radio_ui_mode_beginner", None),
+        }
+        radio = radio_for_mode.get(ui_mode)
+        if radio is not None:
+            radio.setChecked(True)
+
+        scale_slider = getattr(self, "slider_ui_scale", None)
+        if scale_slider is not None:
+            scale_slider.setValue(
+                int(round(float(getattr(settings, "ui_scale_factor", 1.0) or 1.0) * 100))
+            )
+
+        rhi_combo = getattr(self, "combo_rhi_backend", None)
+        rhi = getattr(settings, "rhi_backend", "default") or "default"
+        if rhi_combo is not None and hasattr(rhi_combo, "setCurrentData"):
+            try:
+                rhi_combo.setCurrentData(rhi)
+            except Exception:
+                logger.debug("rhi combo sync failed for %s", rhi, exc_info=True)
+
     def accept(self):
         self.confirm_settings()
 
     def reject(self):
         self._reset_button_states()
         super().reject()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            # Settings window must not close on Esc — navigation owns Esc
+            # for in-dialog search clearing and widget-local dismissals
+            # (e.g. ComboBox dropdown). Consume the key so QDialog's
+            # default Esc -> reject() never fires; clear search if active.
+            if getattr(self, "_search_mode", False):
+                self.clear_search()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _reset_button_states(self):
         if hasattr(self, "ok_button"):
@@ -397,7 +579,71 @@ class SettingsDialog(ThemedDialog):
             self.clear_input_focus()
         super().mousePressEvent(event)
 
+    def focus_initial_widget(self) -> None:
+        """Give keyboard focus to the search field once the window is mapped.
+
+        Called deferred (``QTimer.singleShot(0, …)``) from the show path:
+        Wayland compositors fire a "window opened" notification when a window
+        appears without keyboard focus, and ``setFocus`` on an unmapped
+        window is silently dropped.
+        """
+        try:
+            from shiboken6 import isValid  # type: ignore[attr-defined]
+
+            if not isValid(self):
+                return
+            field = getattr(self, "search_field", None)
+            if not isValid(field):
+                return
+        except ImportError:
+            field = getattr(self, "search_field", None)
+        # The native-handle activation request is what Wayland composites
+        # (KDE: the "window opened" notification fires when a window maps
+        # without one). ``activateWindow()`` alone can be a no-op while the
+        # platform window is still being mapped.
+        handle = self.windowHandle()
+        if handle is not None:
+            try:
+                if isValid(handle):
+                    handle.requestActivate()
+            except RuntimeError:
+                pass
+        if field is not None and self.isVisible():
+            field.setFocus()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # Retry once after the Wayland configure round-trip: the first call
+        # may run before the native window is mapped. Guards inside
+        # ``focus_initial_widget`` keep pending ticks from a dialog that was
+        # deleteLater'd safe (the field may already be gone).
+        QTimer.singleShot(0, self.focus_initial_widget)
+        QTimer.singleShot(60, self.focus_initial_widget)
+
     def clear_input_focus(self):
         focused_widget = self.focusWidget()
         if focused_widget and hasattr(focused_widget, "clearFocus"):
             focused_widget.clearFocus()
+
+SettingsDialog.inspect_spec = InspectSpec(
+    family="SettingsDialog",
+    state=(
+        SpecField("current_section", lambda w: w.sidebar.currentRow()),
+    ),
+    docs="docs/dev/widgets/settings_dialog.md",
+)
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+SettingsDialog.widget_descriptor = WidgetDescriptor(
+    family=SettingsDialog.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(SettingsDialog.inspect_spec, 'config', ()),
+        state=SettingsDialog.inspect_spec.state,
+        token_family=getattr(SettingsDialog.inspect_spec, 'token_family', ()),
+        regions=getattr(SettingsDialog.inspect_spec, 'regions', False),
+        layers=getattr(SettingsDialog.inspect_spec, 'layers', False),
+        docs=getattr(SettingsDialog.inspect_spec, 'docs', ''),
+        preview_seed=getattr(SettingsDialog.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(SettingsDialog.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

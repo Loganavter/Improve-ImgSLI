@@ -23,6 +23,13 @@ from typing import Callable, Optional
 
 from PIL import Image
 
+from shared.image_processing.export_encoding import (
+    SAVE_CANCELED_MESSAGE,
+    build_save_kwargs,
+    flatten_alpha_if_needed,
+    normalize_format,
+    resolve_extension,
+)
 from shared.image_processing.pil_save import (
     next_available_path,
     write_pil_image_cancelable,
@@ -44,8 +51,8 @@ def save_composite(
 
     output_dir = Path(options["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
-    image_format = str(options.get("format", "PNG")).upper()
-    extension = ".jpg" if image_format == "JPEG" else f".{image_format.lower()}"
+    image_format = normalize_format(options.get("format", "PNG"))
+    extension = resolve_extension(image_format)
     output_path = next_available_path(
         output_dir / f"{options['file_name']}{extension}",
         style="underscore",
@@ -53,23 +60,21 @@ def save_composite(
     emit_progress(5)
 
     if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("Save canceled by user")
+        raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
-    save_kwargs: dict = {}
-    if image_format in {"JPEG", "BMP"}:
-        background = tuple(options.get("background_color") or (255, 255, 255, 255))
-        flattened = Image.new("RGBA", pil_image.size, background)
-        flattened.alpha_composite(pil_image)
-        pil_image = flattened.convert("RGB")
-    if image_format in {"JPEG", "WEBP"}:
-        save_kwargs["quality"] = int(options.get("quality", 95))
-    if image_format == "PNG":
-        save_kwargs["compress_level"] = int(options.get("png_compress_level", 9))
-        save_kwargs["optimize"] = bool(options.get("png_optimize", True))
+    # Alpha flatten + save_kwargs via shared helpers (B4) — parity with IC path
+    background = tuple(options.get("background_color") or (255, 255, 255, 255))
+    pil_image = flatten_alpha_if_needed(pil_image, image_format, background)
+    save_kwargs = build_save_kwargs(
+        image_format,
+        quality=int(options.get("quality", 95)),
+        png_compress_level=int(options.get("png_compress_level", 9)),
+        png_optimize=bool(options.get("png_optimize", True)),
+    )
     emit_progress(10)
 
     if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("Save canceled by user")
+        raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
     write_pil_image_cancelable(
         pil_image,

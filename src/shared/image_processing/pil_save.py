@@ -20,6 +20,8 @@ from PIL import Image
 
 logger = logging.getLogger("ImproveImgSLI")
 
+SAVE_CANCELED_MESSAGE = "Save canceled by user"
+
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/*?:"<>|]')
 _FORMATS_WITH_ALPHA = frozenset({"PNG", "TIFF", "WEBP", "JXL"})
 _MODE_BYTES_PER_PIXEL = {
@@ -60,58 +62,7 @@ def next_available_path(path: Path, *, style: str = "paren") -> Path:
         index += 1
 
 
-def flatten_rgba_over_background(
-    pil_img: Image.Image,
-    background_color,
-    *,
-    convert_to: str = "RGB",
-) -> Image.Image:
-    """Composite ``pil_img`` over ``background_color`` and return ``convert_to`` mode."""
-    background_color = tuple(background_color) if background_color else (255, 255, 255, 255)
-    if len(background_color) == 3:
-        background_color = (*background_color, 255)
-    flat = Image.new("RGBA", pil_img.size, background_color)
-    if pil_img.mode == "RGBA":
-        flat.alpha_composite(pil_img)
-    else:
-        flat.paste(pil_img)
-    return flat.convert(convert_to) if convert_to != "RGBA" else flat
 
-
-def format_needs_alpha_flatten(pil_format: str, pil_mode: str) -> bool:
-    """True if ``pil_format`` can't carry alpha and ``pil_img`` has RGBA."""
-    return pil_format.upper() not in _FORMATS_WITH_ALPHA and pil_mode == "RGBA"
-
-
-def attach_comment_metadata(
-    pil_img: Image.Image,
-    save_kwargs: dict,
-    pil_format: str,
-    comment_text: str,
-) -> None:
-    """Attach ``comment_text`` to ``save_kwargs`` for supported PIL formats.
-
-    Mutates ``save_kwargs`` in place. Silently ignores unsupported formats and
-    errors — export shouldn't fail because a metadata attach failed.
-    """
-    try:
-        if pil_format == "PNG":
-            import PIL.PngImagePlugin as PngImagePlugin
-
-            meta = PngImagePlugin.PngInfo()
-            meta.add_text("Comment", comment_text)
-            save_kwargs["pnginfo"] = meta
-            return
-
-        exif = pil_img.getexif()
-        exif[0x9286] = comment_text
-        save_kwargs["exif"] = exif.tobytes()
-    except Exception:
-        logger.debug(
-            "Failed to attach export comment metadata for format=%s",
-            pil_format,
-            exc_info=True,
-        )
 
 
 def estimate_encoded_size(
@@ -206,7 +157,7 @@ class _CancelableStream:
 
     def write(self, b):
         if self._e is not None and self._e.is_set():
-            raise RuntimeError("Save canceled by user")
+            raise RuntimeError(SAVE_CANCELED_MESSAGE)
         written = self._b.write(b)
         if self._progress_callback is not None and self._expected_bytes > 0:
             try:
@@ -263,7 +214,13 @@ def write_pil_image_cancelable(
 ) -> None:
     """Write ``pil_img`` to ``full_path`` via a cancelable stream.
 
-    Deletes a partial file on failure. Caller owns ``os.makedirs`` for
+    Atomic via tmp+replace: the encoder writes to ``full_path.tmp`` in the
+    same directory and the file is moved into place only on success, so a
+    hard exit (os._exit in ``__main__.py:385``) mid-encode leaves the
+    previous file intact (or no file) rather than a truncated image at the
+    final path — same guarantee project packaging already has.
+
+    Deletes a partial tmp file on failure. Caller owns ``os.makedirs`` for
     ``dirname(full_path)``. When ``progress_callback`` is set, encode progress
     is reported in ``[progress_start, progress_end]`` from bytes written;
     callers should emit 100 after a successful return.
@@ -277,8 +234,17 @@ def write_pil_image_cancelable(
         else 0
     )
 
+    tmp_path = full_path + ".tmp"
+    # If a stale tmp from a crashed previous run exists, remove it first so
+    # open() below doesn't append to it.
     try:
-        with open(full_path, "wb") as f:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    except Exception:
+        pass
+
+    try:
+        with open(tmp_path, "wb") as f:
             stream = _CancelableStream(
                 f,
                 cancel_event,
@@ -288,10 +254,11 @@ def write_pil_image_cancelable(
                 expected_bytes=expected_bytes,
             )
             pil_img.save(stream, format=pil_format, **save_kwargs)
+        os.replace(tmp_path, full_path)
     except Exception:
         try:
-            if os.path.exists(full_path):
-                os.remove(full_path)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         except Exception:
             pass
         raise

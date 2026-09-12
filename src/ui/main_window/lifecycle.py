@@ -4,6 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass, field
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
@@ -40,6 +41,23 @@ class ApplyThemeStep(WindowStartupStep):
         )
         window.apply_application_theme(final_theme_setting)
 
+class ApplyUiScaleStep(WindowStartupStep):
+    name = "apply_ui_scale"
+
+    def run(self, window) -> None:
+        # Re-assert the persisted factor (already applied at bootstrap) so
+        # ApplyThemeStep's QSS push and BootstrapContentStep's widget
+        # construction scale correctly even on code paths that skipped the
+        # ApplicationContext bootstrap. No-op when unchanged.
+        try:
+            from sli_ui_toolkit.managers import UiScale
+
+            UiScale.get_instance().set_factor(
+                getattr(window.store.settings, "ui_scale_factor", 1.0) or 1.0
+            )
+        except Exception:
+            pass
+
 class ApplyFontSettingsStep(WindowStartupStep):
     name = "apply_fonts"
 
@@ -58,6 +76,7 @@ class ApplyFontSettingsStep(WindowStartupStep):
                 remasure()
             except Exception:
                 pass
+
 
 class BootstrapContentStep(WindowStartupStep):
     name = "bootstrap_content"
@@ -115,10 +134,10 @@ class CloseDerivedWindowsStep(WindowShutdownStep):
 
     def run(self, window) -> None:
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return
 
-        for widget in list(app.topLevelWidgets()):
+        for widget in list(app.topLevelWidgets()):  # ALLOWED: system-wide shutdown — closes every derived top-level generically, not tab-specific
             if widget is None or widget is window:
                 continue
             try:
@@ -173,6 +192,7 @@ class ShutdownAppContextStep(WindowShutdownStep):
 class MainWindowStartupPipeline:
     steps: tuple[WindowStartupStep, ...] = (
         LoadWindowStateStep(),
+        ApplyUiScaleStep(),
         ApplyThemeStep(),
         ApplyFontSettingsStep(),
         BootstrapContentStep(),
@@ -232,11 +252,91 @@ class MainWindowStartupController:
         app = QApplication.instance()
         if app is not None:
             app.processEvents()
+        # The window may have been shown before its layout ever ran: the
+        # root layout sizes the title bar only on the first real pass, and
+        # the bar's own layout can stay at its construction-time activation
+        # (zones squeezed to a few px — clipped File/Help buttons, elided
+        # title) for the first visible frame. Force both layouts now, before
+        # the compositor paints the first buffer.
+        try:
+            root_layout = window.layout()
+            if root_layout is not None:
+                root_layout.invalidate()
+                root_layout.activate()
+            bar = getattr(window, "_custom_title_bar", None)
+            if bar is not None:
+                sync = getattr(bar, "_sync_balance_spacer", None)
+                if callable(sync):
+                    sync()
+                update = getattr(bar, "update", None)
+                if callable(update):
+                    update()
+        except Exception:
+            pass
+        # Widgets that size against the first real layout defer their reflow
+        # to 0-timers (e.g. the Session Picker recent shelf: deferred
+        # relayout -> height settle -> chrome refresh). Those timers would
+        # otherwise fire only after the deferred plugin loading that blocks
+        # the loop right after show(), leaving the first visible frames at
+        # the pre-layout arrangement for a full second. Drain the pending
+        # timer turns here, while the event loop is still free, so the first
+        # presented frame is already settled.
+        if app is not None:
+            for _ in range(4):
+                app.processEvents()
+                logger.debug(
+                    "Main window startup drain pass %d: window=%s maximized=%s",
+                    _ + 1,
+                    window.size().toTuple(),
+                    window.isMaximized(),
+                )
+        logger.debug(
+            "Main window startup drain done: window=%s maximized=%s",
+            window.size().toTuple(),
+            window.isMaximized(),
+        )
+        # Ensure initial focus lands on the tab strip add button, not on a
+        # CSD menu trigger (which is now StrongFocus after keyboard nav was
+        # added to the title bar).
+        ui = getattr(window, "ui", None)
+        tab_strip = getattr(ui, "workspace_tabs", None) if ui is not None else None
+        if tab_strip is not None:
+            add_btn = getattr(tab_strip, "add_button", None)
+            target = add_btn if add_btn is not None and add_btn.isVisible() else tab_strip
+            target.setFocus(Qt.FocusReason.MouseFocusReason)
+        self._log_layout_summary(window)
         # Onboarding is built during prepare() before the window has a real
         # layout; re-apply geometry/scale after the first show pass.
         from plugins.onboarding import host as onboarding_host
 
         onboarding_host.prepare_after_show(window)
+
+        self._log_layout_summary(window)
+
+    def _log_layout_summary(self, window) -> None:
+        """Log a compact summary of the main window widget tree for debug."""
+        from PySide6.QtWidgets import QWidget
+        from PySide6.QtCore import Qt
+
+        def _tree(w, depth=0, max_depth=3):
+            if depth > max_depth:
+                return
+            cls = type(w).__name__
+            name = w.objectName() or ""
+            geo = w.geometry()
+            vis = "v" if w.isVisible() else "h"
+            parts = [f"{'  ' * depth}{cls}({name}) [{geo.width()}x{geo.y()}+{geo.x()},{geo.y()}] {vis}"]
+            if depth < max_depth:
+                for child in w.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
+                    parts.extend(_tree(child, depth + 1, max_depth))
+            return parts
+
+        lines = _tree(window)
+        if lines:
+            logger.debug(
+                "[layout-tree] main window tree:\n  %s",
+                "\n  ".join(lines),
+            )
 
     def start(self, window) -> None:
         self.show(window)

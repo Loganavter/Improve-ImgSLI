@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# File-Size-Exempt: flat per-field viewport setters sharing one guard/emit
+# shape — splitting by field (size/offset/color/...) creates grab-bag
+# modules threading the same store/viewport/render_config triple.
+
 from typing import Any
 
 from domain.types import Point
@@ -107,7 +111,45 @@ def viewport_set_active_divider_color(store, color):
     return result
 
 
+def viewport_set_active_guides_color(store, color):
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
+
+    if store is None or getattr(store, "viewport", None) is None:
+        return None
+    scene_state = MagnifierStoreService(store)
+    model = scene_state.get_active_or_first_magnifier()
+    if model is None:
+        return None
+    result = update_magnifier_model(
+        store.viewport.view_state,
+        store.viewport.render_config,
+        model.id,
+        guides_color=color,
+    )
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change()
+    return result
+
+
 def viewport_set_active_laser_enabled(store, enabled: bool):
+    if not bool(enabled):
+        try:
+            import logging
+            import traceback
+
+            from shared.debug_flags import env_flag as _env_flag
+
+            _lg = logging.getLogger("ImproveImgSLI")
+            if _env_flag("IMGSLI_LASER_DEBUG"):
+                prefix = "[laser-debug]"
+                stack = "".join(traceback.format_stack(limit=15)[:-1])
+                if _env_flag("IMGSLI_LASER_DEBUG"):
+                    _lg.warning("%s LASER DISABLE [viewport_set_active_laser_enabled(enabled=False)]\n%s", prefix, stack)
+                else:
+                    _lg.debug("%s LASER DISABLE [viewport_set_active_laser_enabled(enabled=False)]\n%s", prefix, stack)
+        except Exception:
+            pass
     from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
     from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
 

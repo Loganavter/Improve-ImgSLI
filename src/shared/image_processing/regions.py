@@ -43,14 +43,22 @@ class UniformTileGrid:
     def iter_regions(self):
         for row in range(self.rows):
             for col in range(self.columns):
-                left = col * self.tile_width
-                top = row * self.tile_height
-                yield row, col, ImageRegion(
-                    left=left,
-                    top=top,
-                    width=min(self.tile_width, self.padded_width - left),
-                    height=min(self.tile_height, self.padded_height - top),
-                )
+                yield row, col, self.region_for(row, col)
+
+    def region_for(self, row: int, col: int) -> ImageRegion:
+        """Single tile's region, computed directly (no full-grid scan) --
+        the hot-path counterpart of iterating ``iter_regions`` just to look
+        up one or a few indices (see ``realize_tile_plan``'s per-batch tile
+        crop, which only ever needs the handful of indices in that call's
+        upload batch, not the whole grid)."""
+        left = col * self.tile_width
+        top = row * self.tile_height
+        return ImageRegion(
+            left=left,
+            top=top,
+            width=min(self.tile_width, self.padded_width - left),
+            height=min(self.tile_height, self.padded_height - top),
+        )
 
 def build_uniform_tile_grid(
     total_width: int,

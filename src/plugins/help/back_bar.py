@@ -6,9 +6,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
+from sli_ui_toolkit.managers import UiScale
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 
 from ui.theming import resolve_theme_color
+from ui.layout_spacing import control_edge_padding
 from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
 from sli_ui_toolkit.widgets import Button, Label
 
@@ -42,12 +45,14 @@ def _crumb_button(title: str, *, bold: bool, parent: QWidget) -> Button:
         font = btn.font()
         font.setBold(True)
         btn.setFont(font)
-    width = QFontMetrics(btn.font()).horizontalAdvance(title) + _CRUMB_PAD_X * 2
+    # Measure with the scale-resolved UI font (the same font the button
+    # paints with), so the fixed width already includes the UiScale factor
+    # instead of being frozen at the design-size app font.
+    width_font = QFont(ui_font())
     if bold:
         # Width must account for bold metrics even if polish later clears setFont.
-        bold_font = QFont(btn.font())
-        bold_font.setBold(True)
-        width = QFontMetrics(bold_font).horizontalAdvance(title) + _CRUMB_PAD_X * 2
+        width_font.setBold(True)
+    width = QFontMetrics(width_font).horizontalAdvance(title) + _CRUMB_PAD_X * 2
     btn.setFixedSize(max(width, 1), _CRUMB_H)
     return btn
 
@@ -63,7 +68,9 @@ class HelpBackBar(QWidget):
         self.setObjectName("HelpBackBar")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(8, 6, 8, 7)
+        self._layout.setContentsMargins(
+            control_edge_padding(), 6, control_edge_padding(), 7
+        )
         self._layout.setSpacing(6)
 
         self._back = Button(
@@ -75,6 +82,8 @@ class HelpBackBar(QWidget):
         self._back.clicked.connect(self.backRequested.emit)
         self._layout.addWidget(self._back, 0)
 
+        self._crumbs: tuple[tuple[str, str], ...] = ()
+        UiScale.get_instance().scale_changed.connect(self._remeasure_crumbs)
         self._crumbs_host = QWidget(self)
         self._crumbs_layout = QHBoxLayout(self._crumbs_host)
         self._crumbs_layout.setContentsMargins(0, 0, 0, 0)
@@ -101,13 +110,19 @@ class HelpBackBar(QWidget):
         self._back.setEnabled(bool(enabled))
         self.setVisible(True)
 
+    def _remeasure_crumbs(self, _factor: float | None = None) -> None:
+        # Crumbs' fixed widths are measured from the scaled UI font; rebuild
+        # them on a live UiScale change so they keep fitting their text.
+        self.set_breadcrumb(self._crumbs)
+
     def set_breadcrumb(self, crumbs: tuple[tuple[str, str], ...]) -> None:
         while self._crumbs_layout.count():
             item = self._crumbs_layout.takeAt(0)
-            w = item.widget()
+            w = item.widget()  # type: ignore[union-attr]  # takeAt result is a layout item
             if w is not None:
                 _dispose_hover_widget(w)
 
+        self._crumbs = crumbs
         if not crumbs:
             self._back.setEnabled(False)
             return

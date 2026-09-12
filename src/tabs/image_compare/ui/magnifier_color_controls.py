@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shiboken6 as sip
+
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 
@@ -17,6 +19,11 @@ from sli_ui_toolkit.widgets import (
 
 
 class MagnifierColorOptionsFlyout(IconActionFlyout):
+    _nav_side = "above"
+    _nav_mode = "preview"
+    _nearest_focus = True  # Up→ближайший к якорю, а не всегда capture слева
+    _nav_exit = "down"  # Down из любого места флайаута → к якорю (side=above)
+
     def __init__(self, parent=None, current_language: str = "en", store=None):
         self.current_language = current_language
         self.store = store
@@ -31,25 +38,25 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
             IconAction(
                 "capture",
                 Icon.CAPTURE_AREA_COLOR,
-                tr("magnifier.capture_ring", self.current_language),
+                tr("image_compare.magnifier.capture_ring", self.current_language),
                 visible=self._is_capture_active(),
             ),
             IconAction(
                 "laser",
                 Icon.MAGNIFIER_GUIDES,
-                tr("label.guides", self.current_language),
+                tr("image_compare.label.guides", self.current_language),
                 visible=self._is_laser_active(),
             ),
             IconAction(
                 "border",
                 Icon.MAGNIFIER_BORDER_COLOR,
-                tr("label.border", self.current_language),
+                tr("image_compare.label.border", self.current_language),
                 visible=self._is_magnifier_active(),
             ),
             IconAction(
                 "divider",
                 Icon.VERTICAL_SPLIT,
-                tr("ui.choose_magnifier_divider_line_color", self.current_language),
+                tr("image_compare.ui.choose_magnifier_divider_line_color", self.current_language),
                 visible=self._is_divider_active(),
             ),
         ]
@@ -86,12 +93,24 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
         self.set_actions(self._build_actions())
 
     def update_state(self):
+        if not sip.isValid(self):  # type: ignore[attr-defined]
+            return
+        # h_layout may already be deleted during shutdown (see icon_action_flyout fix)
+        h_layout = getattr(self, "h_layout", None)
+        if h_layout is not None and not sip.isValid(h_layout):  # type: ignore[attr-defined]
+            return
         is_active = self._is_magnifier_active()
-        self.set_action_state("capture", visible=self._is_capture_active())
-        self.set_action_state("laser", visible=self._is_laser_active())
-        self.set_action_state("border", visible=is_active)
-        self.set_action_state("divider", visible=self._is_divider_active())
-        super().update_state()
+        try:
+            self.set_action_state("capture", visible=self._is_capture_active())
+            self.set_action_state("laser", visible=self._is_laser_active())
+            self.set_action_state("border", visible=is_active)
+            self.set_action_state("divider", visible=self._is_divider_active())
+        except RuntimeError:
+            return
+        try:
+            super().update_state()
+        except RuntimeError:
+            return
 
 
 class ColorSettingsButton(Button):
@@ -104,6 +123,7 @@ class ColorSettingsButton(Button):
         super().__init__(
             Icon.DIVIDER_COLOR,
             show_underline=True,
+            underline_thickness=2.0,
             parent=parent,
         )
         self.current_language = current_language
@@ -116,13 +136,51 @@ class ColorSettingsButton(Button):
         self._hide_timer = None
         self.clicked.connect(self.smartColorSetRequested.emit)
         self.flyout.actionTriggered.connect(self.colorOptionClicked.emit)
+        # Декларативно: side + nearest + exit на классе + auto-preview wiring
+        try:
+            from sli_ui_toolkit.managers import bind_auto_preview
+
+            bind_auto_preview(self, self.flyout, side="above")
+        except Exception:
+            # fallback к старому фасаду
+            try:
+                from sli_ui_toolkit.managers import bind_flyout
+
+                bind_flyout(self, self.flyout, side="above")
+            except Exception:
+                pass
         if self.store:
             self.store.state_changed.connect(self._on_store_state_changed)
             self._update_underline_colors()
+        # A store signal must never reach a destroyed widget: PySide6 keeps
+        # this Python wrapper alive through the bound-method connection, so
+        # without this the handler would fire after the C++ widget (and its
+        # flyout buttons) are gone and crash with "Internal C++ object
+        # (Button) already deleted" (icon_action_flyout.set_action_state).
+        self.destroyed.connect(self._on_destroyed)
+
+    def _on_destroyed(self):
+        store = getattr(self, "store", None)
+        if store is None:
+            return
+        try:
+            store.state_changed.disconnect(self._on_store_state_changed)
+        except Exception:
+            pass
 
     def refresh_visual_state(self):
-        self._update_underline_colors()
-        self.flyout.update_state()
+        flyout = getattr(self, "flyout", None)
+        if flyout is not None and not sip.isValid(flyout):  # type: ignore[attr-defined]
+            return
+        try:
+            self._update_underline_colors()
+        except RuntimeError:
+            return
+        if flyout is not None:
+            try:
+                flyout.update_state()
+            except RuntimeError:
+                return
 
     def update_language(self, lang_code: str):
         self.current_language = lang_code
@@ -147,8 +205,9 @@ class ColorSettingsButton(Button):
         enabled_cmd = registry().get_feature_command_by_alias("overlay.enabled")
         use_mag = bool(enabled_cmd(self.store)) if enabled_cmd is not None else False
         if not use_mag:
-            self.setUnderlineColor(QColor(255, 255, 255, 230))
+            self.setShowUnderline(False)
             return
+        self.setShowUnderline(True)
 
         state_cmd = registry().get_feature_command_by_alias("overlay.active_state")
         active_state = state_cmd(self.store) if state_cmd is not None else None
@@ -213,27 +272,100 @@ class ColorSettingsButton(Button):
         self.setUnderlineColor([color for condition, color in zones if condition])
 
     def _on_store_state_changed(self, domain: str):
+        # Shutdown guard: wrapper can outlive C++ (bound-method connection)
+        # — same class as toolkit 4.1.0/4.2.1 stale-widget fix. Without this,
+        # a viewport emission during app close reaches a half-deleted flyout
+        # and crashes in h_layout.invalidate() (QHBoxLayout already deleted).
+        if not sip.isValid(self):  # type: ignore[attr-defined]
+            try:
+                store = getattr(self, "store", None)
+                if store is not None and hasattr(store, "state_changed"):
+                    store.state_changed.disconnect(self._on_store_state_changed)
+            except Exception:
+                pass
+            return
+        flyout = getattr(self, "flyout", None)
+        if flyout is not None and not sip.isValid(flyout):  # type: ignore[attr-defined]
+            return
         if domain == "settings" or domain == "viewport" or domain.startswith("viewport."):
-            self.refresh_visual_state()
-            if self.flyout.isVisible():
-                if self.flyout.has_visible_actions():
-                    self.flyout.show_aligned(
-                        self, "top-center", "bottom-center", toggle=False
-                    )
-                else:
-                    self.flyout.hide()
+            try:
+                self.refresh_visual_state()
+            except RuntimeError:
+                return
+            try:
+                if flyout is not None and flyout.isVisible():
+                    if flyout.has_visible_actions():
+                        self._show_preview()
+                    else:
+                        flyout.hide()
+            except RuntimeError:
+                return
+
+    def _show_preview(self):
+        """Preview без кражи фокуса — Up входит через extension_below."""
+        self.flyout.show_aligned(
+            self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
+        )
+
+    def _show_interactive(self):
+        """Enter/Click — с захватом фокуса, _nearest_focus выберет ближайший к якорю."""
+        self.flyout.show_aligned(self, "top-center", "bottom-center", toggle=False, animation="none")
 
     def enterEvent(self, event):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
-            self.flyout.show_aligned(
-                self, "top-center", "bottom-center", toggle=False
-            )
-            self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+            self._show_preview()
+            self.flyout.cancel_auto_hide()
 
     def leaveEvent(self, event):
         self.elementHoverEnded.emit()
         self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if event.button() == event.button().LeftButton:
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                self._show_interactive()
+                self.flyout.cancel_auto_hide()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        from PySide6.QtCore import Qt
+        reason = getattr(event, "reason", lambda: None)()
+        is_keyboard = reason not in (Qt.FocusReason.MouseFocusReason, Qt.FocusReason.MenuBarFocusReason)
+        if is_keyboard and getattr(self, "_keyboard_focus", False):
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                self._show_preview()
+                self.flyout.cancel_auto_hide()
+
+    def keyPressEvent(self, event):
+        from PySide6.QtCore import Qt
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                self._show_interactive()
+                self.flyout.cancel_auto_hide()
+                event.accept()
+                return
+        if event.key() == Qt.Key.Key_Escape and self.flyout.isVisible():
+            self.flyout.hide()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.elementHoverEnded.emit()
+        try:
+            from PySide6.QtWidgets import QApplication
+            new_focus = QApplication.focusWidget()
+            if new_focus is not None and self.flyout is not None and self.flyout.isAncestorOf(new_focus):
+                return
+        except Exception:
+            pass
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)

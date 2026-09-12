@@ -1,6 +1,10 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from core.state_management.action_base import Action, ActionType
+
+if TYPE_CHECKING:
+    from domain.types import Point
 
 @dataclass
 class SetInteractiveModeAction(Action):

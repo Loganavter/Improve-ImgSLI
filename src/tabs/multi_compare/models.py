@@ -4,24 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
-
-if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from typing import Union
 
 
 @dataclass
 class CompareSlot:
-    """One image slot referenced by a Leaf in the layout tree."""
+    """One image slot referenced by a Leaf in the layout tree.
+
+    Path-only ``SlotSource`` (B1, IC ``ImageItem`` parity): pixels live in
+    the session-owned :class:`pipeline.cache.MultiComparePixelCache`
+    (keyed ``(normpath, mtime, size)``), never here — so Redux snapshots
+    (incl. undo) stay small, serializable, and free of closable stores.
+    ``revision`` bumps once per decoded-tier arrival (``NoteSlotPixels``)
+    so tier fills still produce a new state object for subscribers without
+    carrying any pixels through the reducer.
+    """
 
     id: int
     path: Path | None = None
     label: str = ""
-    image: "TiledPixelStore | None" = None
-
-    @property
-    def is_loaded(self) -> bool:
-        return self.image is not None
+    revision: int = 0
 
 
 @dataclass

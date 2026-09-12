@@ -1,15 +1,27 @@
 from __future__ import annotations
 
+import logging
+
 from .composition import CompositionPlan, resolve_composition
 from .plan import CanvasRenderPlan
 
+logger = logging.getLogger("ImproveImgSLI")
+
 
 def _call_tab_canvas_service(service_id: str, *args, **kwargs):
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
-    return registry.create_service(service_id, *args, **kwargs)
+    # Hot path (per-frame) — must not call TabRegistry().discover() fresh
+    # each time, use the process-wide shared registry (see TabRegistry
+    # docstring). Discover is idempotent, but the fresh-instance + log
+    # per frame spams DEBUG when the active tab has no canvas (session_picker).
+    registry = get_shared_tab_registry()
+    result = registry.create_service(service_id, *args, **kwargs)
+    if result is None:
+        # Expected for tabs without canvas — log once per session type, not per frame.
+        # Keep at DEBUG but avoid flood; callers already degrade gracefully.
+        pass
+    return result
 
 
 def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
@@ -61,8 +73,10 @@ def _apply_composition_plan(canvas, plan: CanvasRenderPlan) -> None:
     """
     composition = plan.composition_plan
     if composition is None:
+        root = plan.composition_root
+        assert root is not None
         composition = CompositionPlan(
-            root=plan.composition_root,
+            root=root,
             canvas_w=int(plan.canvas_w),
             canvas_h=int(plan.canvas_h),
             fill_rgba=plan.fill_rgba,

@@ -33,7 +33,7 @@ Com a lupa desligada, arraste o divisor sobre o par.
 
 ### Métricas {#metrics}
 
-- **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://settings#analysis).
+- **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://settings).
 - **Propriedades** — [Propriedades da imagem](help://image_properties) pelo menu de contexto de uma linha da lista (metadados do arquivo e lado / avaliação na sessão).
 - **Mover** — o menu de contexto no canvas ou na lista coloca um fantasma de arraste sob o ponteiro (pendurado à esquerda e abaixo); mova um pouco e clique em outra aba da área de trabalho (ou no canvas) para iniciar o mesmo fluxo de inserção do Duplicar / colar. `Esc` ou clique direito cancela.
 

@@ -3,9 +3,7 @@
     "palette": {
       "search_placeholder": "Search actions…",
       "empty": "No matching actions",
-      "learn_more": "Learn more",
-      "run": "Run",
-      "cancel": "Cancel"
+      "learn_more": "Learn more"
     },
     "settings": {
       "page_desc": "Open this settings page",
@@ -14,8 +12,7 @@
       "general_desc": "Open Settings → General",
       "appearance_desc": "Open Settings → Appearance",
       "optimization_desc": "Open Settings → Optimization",
-      "keyboard_desc": "Open Settings → Keyboard",
-      "analysis_desc": "Open Settings → Analysis details"
+      "keyboard_desc": "Open Settings → Keyboard"
     },
     "breadcrumb": {
       "workspace": "Workspace"
@@ -32,7 +29,11 @@
       "find_action_context": "Find Action (context)",
       "find_action_context_desc": "Open Find Action filtered to the focused control",
       "paste_clipboard_image": "Paste image from clipboard",
-      "paste_clipboard_image_desc": "Paste an image from the system clipboard into the active session"
+      "paste_clipboard_image_desc": "Paste an image from the system clipboard into the active session",
+      "undo": "Undo",
+      "undo_desc": "Revert the last change to the active session",
+      "redo": "Redo",
+      "redo_desc": "Reapply the last undone change"
     },
     "workspace": {
       "open_session_picker": "Open Session Picker",
@@ -40,7 +41,13 @@
       "new_image_compare": "New Image Compare Session",
       "new_image_compare_desc": "Create and open an image compare workspace session",
       "new_multi_compare": "New Multi Compare Session",
-      "new_multi_compare_desc": "Create and open a multi-compare workspace session"
+      "new_multi_compare_desc": "Create and open a multi-compare workspace session",
+      "new_image_gallery": "New Image Gallery Session",
+      "new_image_gallery_desc": "Create and open an image gallery workspace session",
+      "next_tab": "Next Workspace Session",
+      "next_tab_desc": "Switch to the next open workspace session",
+      "prev_tab": "Previous Workspace Session",
+      "prev_tab_desc": "Switch to the previous open workspace session"
     }
   }
 }

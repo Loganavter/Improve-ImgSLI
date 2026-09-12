@@ -7,10 +7,12 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import Button, ThemedWidget
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, ThemedWidget
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.managers import scaled_px
+from ui.layout_spacing import control_edge_padding
 from tabs.multi_compare.ui.layout_manager import MultiCompareLayoutManager
 from tabs.multi_compare.icons import Icon
 from ui.theming import resolve_theme_color
@@ -44,11 +46,11 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         text: str = "Add images",
     ):
         super().__init__(parent)
-        self.setFixedHeight(44)
+        self.setFixedHeight(scaled_px(44))
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(control_edge_padding(), scaled_px(4), control_edge_padding(), scaled_px(4))
+        layout.setSpacing(scaled_px(8))
         self._layout = layout
         self._ui_mode = "beginner"
 
@@ -75,6 +77,9 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             Icon.DIVIDER_COLOR,
             show_underline=True,
             parent=self,
+            # divider_color_clicked -> controller opens the themed
+            # ColorPickerDialog (non-modal) -- ripple must finish first.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         self.btn_divider_color.setObjectName("mc_btn_divider_color")
         translatable_tooltip(
@@ -109,7 +114,14 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
                 self._on_divider_width_right_clicked
             )
 
-        self.btn_add = Button(Icon.PHOTO, text=text, variant="surface", parent=self)
+        self.btn_add = Button(
+            Icon.PHOTO,
+            text=text,
+            variant="surface",
+            parent=self,
+            # add_clicked -> QFileDialog.getOpenFileNames (native, modal).
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
+        )
         translatable_text(
             self.btn_add,
             "add_images",
@@ -146,7 +158,12 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_text_settings.clicked.connect(self.text_settings_clicked)
 
         self.btn_quick_save = Button(
-            Icon.QUICK_SAVE, variant="surface", background_color=accent, parent=self
+            Icon.QUICK_SAVE,
+            variant="surface",
+            background_color=accent,
+            parent=self,
+            # quick_save can pop a modal confirm-untested-resolution dialog.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         self.btn_quick_save.setIconSizePx(24)
         translatable_tooltip(
@@ -191,7 +208,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         container = QWidget(self)
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         for button in buttons:
             layout.addWidget(button)
         return container

@@ -39,13 +39,13 @@ registry.install_pages(stack, context)                # Create pages in QStacked
 registry.install_missing_pages(stack)                 # Deferred tabs after first install
 registry.get_page(session_type) -> QWidget             # Retrieve page by type
 registry.activate(session_type)                        # Notify activation
-registry.activate_default()                             # Activate the is_bootstrap_default tab
+registry.activate_default()                             # Activate the is_bootstrap_default tab (session_picker only)
 registry.deactivate(session_type)                       # Notify deactivation
 registry.route_drop(session_type, paths)                # Route drag-and-drop
 registry.create_service(service_id, *args, **kwargs)    # Active-tab-only dispatch
 registry.create_service_for(session_type, service_id, …)  # Named hub tab (e.g. session picker)
-registry.create_startup_service(service_id, *a, **kw)   # Bootstrap-default-tab-only dispatch
-registry.create_main_window_feature(feature_id, **kw)   # Active-tab-only; do not extend (single-ID hook)
+registry.create_startup_service(service_id, *a, **kw)   # By capability: first tab that answers
+registry.create_main_window_feature(feature_id, **kw)   # By capability: first tab that answers (do not extend)
 registry.notify_all(hook_id, *args, **kwargs)           # Broadcast to every registered tab
 registry.dispose_all()                                  # Cleanup
 registry.notify_session_created(session_type, session_id)

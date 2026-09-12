@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog, QGridLayout, QVBoxLayout, QWidget
 
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label
 from utils.resource_loader import resource_path
 
@@ -89,13 +90,13 @@ class AppTextInputDialog(ThemedDialog):
         self._cancel_button = Button(
             text=self._cancel_text, variant="surface", parent=actions
         )
-        self._cancel_button.setMinimumSize(96, 34)
+        self._cancel_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._cancel_button.clicked.connect(self.reject)
 
         self._ok_button = Button(
             text=self._ok_text, variant="surface", parent=actions
         )
-        self._ok_button.setMinimumSize(96, 34)
+        self._ok_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._ok_button.clicked.connect(self.accept)
 
         action_layout.addWidget(self._cancel_button, 0, 1)

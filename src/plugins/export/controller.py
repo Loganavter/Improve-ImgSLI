@@ -50,13 +50,18 @@ class ExportController(QObject):
     def _tr(self, key: str) -> str:
         return tr(key, self.store.settings.current_language)
 
-    def toggle_recording(self, checked: bool = None):
+    def toggle_recording(self, checked: bool | None = None):
         self.recording_flow.toggle_recording(checked)
 
-    def toggle_pause_recording(self, checked: bool = None):
+    def toggle_pause_recording(self, checked: bool | None = None):
         self.recording_flow.toggle_pause_recording(checked)
 
     def open_video_editor(self, checked: bool = False):
+        from shared.debug_flags import env_flag as _env_flag
+        if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+            logger.warning("[video-editor-debug] ExportController.open_video_editor checked=%s has_recording=%s", checked, self.recorder.has_recording_data() if self.recorder else None)
+        else:
+            logger.debug("[video-editor-debug] ExportController.open_video_editor checked=%s", checked)
         self.recording_flow.open_video_editor(checked)
 
     def export_video_from_editor(
@@ -89,6 +94,9 @@ class ExportController(QObject):
         self.toggle_pause_recording()
 
     def on_open_video_editor(self, event: ExportOpenVideoEditorEvent):
+        from shared.debug_flags import env_flag as _env_flag
+        if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+            logger.warning("[video-editor-debug] on_open_video_editor event=%s subscribers will handle", event)
         self.open_video_editor()
 
     def on_paste_image_from_clipboard(self, event: ExportPasteImageFromClipboardEvent):

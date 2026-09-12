@@ -17,8 +17,9 @@ ALLOWED_THEME_INFRA_FILES = {
     Path("core/bootstrap.py"),
     Path("core/theme.py"),
     Path("devtools/ui_inspector/installer.py"),
-    Path("devtools/ui_inspector/qss_index.py"),
-    Path("devtools/ui_inspector/widget_snapshot.py"),
+    # Headless layout dump resolves token_family → chain + hex for its
+    # top-level "theme" section (read-only inspection, never paints UI).
+    Path("devtools/ui_layout_dump.py"),
     Path("shared_toolkit/ui/overlay_layer.py"),
     Path("ui/theming.py"),
 }

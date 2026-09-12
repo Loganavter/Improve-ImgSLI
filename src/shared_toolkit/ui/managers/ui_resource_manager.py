@@ -132,9 +132,9 @@ class UIResourceManager(QObject):
                     type(obj).__name__,
                 )
 
-        if app is not None:
+        if isinstance(app, QApplication):
             try:
-                top_levels = list(app.topLevelWidgets())
+                top_levels = list(app.topLevelWidgets())  # ALLOWED: debug_dump — enumerates top-levels generically for logging, not tab-specific
                 logger.debug(
                     "[UIResourceManager] stage=%s top_levels=%d",
                     stage,

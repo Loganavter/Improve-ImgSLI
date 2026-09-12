@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from shared.rendering.tile_coverage import FALLBACK_COVERAGE_THRESHOLD, covered_fraction
 from shared.rendering.tile_geometry import _apron_rect, _TILE_APRON_PX
 from shared.rendering.tile_texture_service import TileTextureService
 
@@ -20,6 +21,18 @@ _FULL_TILE_RECT = (0.0, 0.0, 1.0, 1.0)
 class SlotDrawItem:
     tile_key: object
     tile_rect: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class SlotArrayTile:
+    """One (row, col) tile of a slot, for the texture-array instanced draw
+    path (docs/dev/rendering/tile-array-atlas-plan.md Phase 4). Carries the
+    tile's own grid index (needed to look up its array slot/content-scale
+    via ``TileTextureService.slot_for``/``content_size_for``) instead of a
+    resolved GPU texture key like ``SlotDrawItem``."""
+
+    tile_rect: tuple[float, float, float, float]
+    index: tuple[int, int]
 
 
 def _visible_slot_image_rect(
@@ -87,3 +100,64 @@ def build_slot_draw_plan(
         )
         items.append(SlotDrawItem(tile_key, rect))
     return items or [SlotDrawItem(slot_id, _FULL_TILE_RECT)]
+
+
+def build_slot_array_tiles(
+    tile_service: TileTextureService,
+    slot_id: object,
+    pan_offset: tuple[float, float],
+    fit_scale: tuple[float, float],
+    zoom: float,
+) -> list[SlotArrayTile]:
+    """Array-path counterpart of ``build_slot_draw_plan``: every visible
+    tile's own ``(row, col)`` index, needed to resolve its array slot/
+    content-scale, resolved instead of a GPU texture key. Unlike
+    ``build_slot_draw_plan``, never takes the 1x1-grid shortcut -- an
+    array-path frame uploads a still-1x1 slot into the array too (mirrors
+    image_compare's ``_array_side_tiles``, see its docstring), since every
+    slot's tiles this frame end up in the same shared instanced draw."""
+    grid = tile_service.grid_for(slot_id)
+    if grid is None:
+        return [SlotArrayTile(_FULL_TILE_RECT, (0, 0))]
+    if grid.rows == 1 and grid.columns == 1:
+        return [SlotArrayTile(_FULL_TILE_RECT, (0, 0))]
+    visible_rect = _visible_slot_image_rect(pan_offset, fit_scale, zoom, grid)
+    visible_indices = tile_service.visible_tiles(slot_id, visible_rect)
+    items: list[SlotArrayTile] = []
+    for row, col, region in grid.iter_regions():
+        if (row, col) not in visible_indices:
+            continue
+        left, top, right, bottom = _apron_rect(
+            grid.total_width, grid.total_height, region, _TILE_APRON_PX
+        )
+        rect = (
+            left / grid.total_width,
+            top / grid.total_height,
+            (right - left) / grid.total_width,
+            (bottom - top) / grid.total_height,
+        )
+        items.append(SlotArrayTile(rect, (row, col)))
+    return items
+
+
+def drop_covered_fallback_tiles(
+    fallback_tiles: list[SlotArrayTile],
+    current_tiles: list[SlotArrayTile],
+) -> list[SlotArrayTile]:
+    """Drops fallback-LOD tiles whose footprint is already fully covered by
+    the current level's (possibly partial) tile set (docs/dev/rendering/
+    tile-array-atlas-plan.md Phase 9, mirrors image_compare's
+    ``drop_covered_fallback_items``, simplified for multi_compare's
+    single-image-per-slot model): ``tile_rect`` is already a fraction of the
+    slot's own image with no letterbox to map through, and every pyramid
+    level of the same base image shares that same 0..1 fraction space, so a
+    fallback tile's rect and a current tile's rect are directly comparable
+    with no coordinate transform needed."""
+    if not current_tiles:
+        return fallback_tiles
+    current_rects = [tile.tile_rect for tile in current_tiles]
+    return [
+        tile
+        for tile in fallback_tiles
+        if covered_fraction(tile.tile_rect, current_rects) < FALLBACK_COVERAGE_THRESHOLD
+    ]

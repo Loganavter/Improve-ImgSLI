@@ -6,9 +6,11 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QRhiBuffer,
+    QRhi,
     QRhiGraphicsPipeline,
     QRhiScissor,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -70,10 +72,15 @@ def scissor_from_widget_rect(
     widget, rhi, ctx, x: float, y: float, width: float, height: float
 ) -> QRhiScissor:
     dpr = max(1.0, float(widget.devicePixelRatioF()))
+    # Round the rect's *edges*, not its position/size independently: two
+    # adjacent scissor rects that share a float-px edge (e.g. neighboring
+    # magnifier tile slices) must round to the same integer-px edge too, or
+    # rounding either side outward/inward independently opens a 1px gap or
+    # overlap seam at the shared boundary.
     px_x = int(round(x * dpr))
     px_y = int(round(y * dpr))
-    px_width = int(round(width * dpr))
-    px_height = int(round(height * dpr))
+    px_width = int(round((x + width) * dpr)) - px_x
+    px_height = int(round((y + height) * dpr)) - px_y
     y_up = rhi.isYUpInFramebuffer()
     # QRhiWidget always renders into an offscreen texture; for widgets that are
     # actually shown, Qt's QPainter compositing step (backing store blit) silently
@@ -124,10 +131,10 @@ def build_fullscreen_quad_pipeline(
     pipeline.setFlags(QRhiGraphicsPipeline.Flag.UsesScissor)
     blend = QRhiGraphicsPipeline.TargetBlend()
     blend.enable = True
-    blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-    blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-    blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-    blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+    blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+    blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+    blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+    blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
     pipeline.setTargetBlends([blend])
     layout = QRhiVertexInputLayout()
     layout.setBindings([QRhiVertexInputBinding(16)])
@@ -148,11 +155,11 @@ def build_fullscreen_quad_pipeline(
 class FullscreenUniformPassResources:
     def __init__(self, uniform_size: int) -> None:
         self.uniform_size = uniform_size
-        self.rhi = None
-        self.vertex_buffer = None
-        self.pipeline = None
-        self.uniform_buffers: list[object] = []
-        self.srbs: list[object] = []
+        self.rhi: QRhi | None = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
+        self.uniform_buffers: list[QRhiBuffer] = []
+        self.srbs: list[QRhiShaderResourceBindings] = []
         self.pipeline_created = False
 
     def initialize(self, rhi, target, shader_dir: Path, shader_stem: str) -> None:
@@ -171,6 +178,7 @@ class FullscreenUniformPassResources:
         )
 
     def ensure_items(self, count: int) -> None:
+        assert self.rhi is not None
         stage = (
             QRhiShaderResourceBinding.StageFlag.VertexStage
             | QRhiShaderResourceBinding.StageFlag.FragmentStage
@@ -190,6 +198,7 @@ class FullscreenUniformPassResources:
             self.uniform_buffers.append(buffer)
             self.srbs.append(srb)
         if not self.pipeline_created and self.srbs:
+            assert self.pipeline is not None
             self.pipeline.setShaderResourceBindings(self.srbs[0])
             if not self.pipeline.create():
                 raise RuntimeError("Failed to create feature pipeline")

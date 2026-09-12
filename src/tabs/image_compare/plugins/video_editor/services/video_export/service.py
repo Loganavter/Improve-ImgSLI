@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up"
 from __future__ import annotations
 
 import logging
@@ -41,19 +42,17 @@ VIDEO_EDITOR_AUTO_CROP = False
 
 class VideoExporterService:
     def __init__(self, recorder, store, main_controller=None, gpu_export_service=None):
+        import threading
+
         self.recorder = recorder
         self.main_store = store
         self.main_controller = main_controller
         self.gpu_export_service = gpu_export_service
-        thumbnail_resource_manager = None
-        if gpu_export_service is not None:
-            thumbnail_resource_manager = getattr(
-                getattr(gpu_export_service, "_proxy", None),
-                "_resource_manager",
-                None,
-            )
+        # Thumbnails render at 160×90, preview/export at 640×480 — sharing one
+        # QRhiWidget forces resize thrash (paint_gl_ms 50→1100ms) and size
+        # mismatch transparent grabs. Keep separate offscreen widgets.
         self._thumbnail_gpu_export_service = (
-            GpuExportService(resource_manager=thumbnail_resource_manager)
+            GpuExportService(resource_manager=None)
             if gpu_export_service is not None
             else None
         )
@@ -62,6 +61,7 @@ class VideoExporterService:
         self._cached_bounds_snapshots_hash = None
         self._active_processes = []
         self._cancel_requested = False
+        self._cancel_lock = threading.Lock()
         self._last_render_backend = "gpu"
 
         self._image_repository = VideoExportImageRepository()
@@ -78,6 +78,18 @@ class VideoExporterService:
         self._process_manager = FFmpegProcessManager(self._active_processes)
         self._render_loop = VideoRenderLoop(self)
 
+    def warm_up_gpu_widgets(self) -> None:
+        """Pre-create the offscreen GPU render widgets used for preview and
+        thumbnails, well ahead of the video editor dialog being opened."""
+        if self.gpu_export_service is not None and hasattr(
+            self.gpu_export_service, "warm_up"
+        ):
+            self.gpu_export_service.warm_up()
+        if self._thumbnail_gpu_export_service is not None and hasattr(
+            self._thumbnail_gpu_export_service, "warm_up"
+        ):
+            self._thumbnail_gpu_export_service.warm_up()
+
     def _drain_last_render_debug(self) -> dict:
         return self._frame_renderer.drain_last_debug()
 
@@ -87,8 +99,13 @@ class VideoExporterService:
         self._thumbnail_frame_renderer.reset_backend_state()
 
     def request_cancel(self):
-        self._cancel_requested = True
+        with self._cancel_lock:
+            self._cancel_requested = True
         self.cleanup()
+
+    def is_cancel_requested(self) -> bool:
+        with self._cancel_lock:
+            return bool(self._cancel_requested)
 
     def _coerce_recording(self, snapshots_or_recording):
         if isinstance(snapshots_or_recording, KeyframedRecording):
@@ -267,6 +284,53 @@ class VideoExporterService:
             request,
         )
 
+    def render_snapshot_thumbnail_to_pil_async(
+        self,
+        snap,
+        out_w,
+        out_h,
+        callback,
+        font_path=None,
+        auto_crop=False,
+        fit_content=False,
+        global_bounds=None,
+        fill_color=(0, 0, 0, 0),
+    ) -> None:
+        """Non-blocking counterpart to :meth:`render_snapshot_thumbnail_to_pil`.
+
+        ``callback(pil_image_or_None)`` fires later, on the main thread.
+        Used by ThumbnailService so its background worker never blocks on
+        the GPU round-trip.
+        """
+        request = self._build_render_request(
+            out_w,
+            out_h,
+            font_path,
+            auto_crop,
+            fit_content,
+            self._coerce_global_bounds(global_bounds),
+            fill_color,
+        )
+        _vrlog.debug(
+            "render_begin renderer=thumbnail out=%sx%s fit_content=%s ts=%s async=True",
+            request.target_surface.width,
+            request.target_surface.height,
+            request.fit_content,
+            getattr(snap, "timestamp", None),
+        )
+
+        def _on_result(result) -> None:
+            _vrlog.debug(
+                "render_done renderer=thumbnail out=%sx%s backend=%s async=True",
+                request.target_surface.width,
+                request.target_surface.height,
+                result.backend,
+            )
+            self._last_render_backend = result.backend
+            callback(result.image)
+
+        self._thumbnail_frame_renderer.render_async(snap, request, _on_result)
+
     def _build_export_job(self, recording, resolution, fps, export_options):
         out_w, out_h = resolution
 
@@ -371,7 +435,12 @@ class VideoExporterService:
         if not recording:
             return None
 
-        self._cancel_requested = False
+        with self._cancel_lock:
+            if self._cancel_requested:
+                # Cancel was pressed before the worker even started; honor it
+                # instead of erasing the flag with an unconditional False.
+                return None
+            self._cancel_requested = False
         self._frame_renderer.reset_backend_state()
         self._thumbnail_frame_renderer.reset_backend_state()
 
@@ -409,11 +478,12 @@ class VideoExporterService:
         try:
             export_canceled = self._render_loop.render(process, job, progress_callback)
         except Exception as exc:
-            logger.error("Error during video rendering loop: %s", exc)
+            logger.error("Error during video rendering loop: %s", exc, exc_info=True)
+            raise
         finally:
             process_returncode, stderr_output = self._process_manager.finalize(process)
 
-        if self._cancel_requested or export_canceled:
+        if self.is_cancel_requested() or export_canceled:
             self._clear_frame_caches()
             return None
 

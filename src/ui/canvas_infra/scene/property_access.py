@@ -11,17 +11,10 @@ from .widget_contract import CanvasFeatureProperty, PropertySnapshot
 
 _log = logging.getLogger("ImproveImgSLI.canvas.properties")
 
-def get_canvas_feature_property_by_id(
-    session_type: str | None, property_id: str
-) -> CanvasFeatureProperty | None:
-    for item in get_canvas_registry(session_type).get_feature_properties():
-        if item.id == property_id:
-            return item
-    return None
-
 def get_canvas_feature_property_by_setting_key(
     session_type: str | None, setting_key: str
 ) -> CanvasFeatureProperty | None:
+    assert session_type is not None
     for item in get_canvas_registry(session_type).get_feature_properties():
         if item.setting_key == setting_key:
             return item
@@ -112,6 +105,7 @@ def read_canvas_feature_color_by_setting_key(
     viewport_state: ViewportState,
     setting_key: str,
 ):
+    assert session_type is not None
     prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
     if prop is None:
         available_keys = tuple(
@@ -132,6 +126,7 @@ def read_canvas_feature_setting_by_key(
     viewport_state: ViewportState,
     setting_key: str,
 ):
+    assert session_type is not None
     prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
     if prop is None:
         available_keys = tuple(

@@ -7,15 +7,23 @@ from typing import Any
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QStackedWidget
 
+from core.events import WorkspaceSessionActivatedEvent
 from core.plugin_system import Plugin, plugin
 from plugins.onboarding.overlay import OnboardingOverlay
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Tabs opt into first-run onboarding by answering the
+# ``requires_first_run_onboarding`` capability (see
+# docs/dev/tabs/capability-mechanisms.md). Onboarding fires once per install
+# (SettingsManager.is_first_run), the first time such a tab is opened — the
+# session picker and other tabs never show it.
+_ONBOARDING_CAPABILITY = "requires_first_run_onboarding"
+
 
 @plugin(name="onboarding", version="1.0", startup_tier="bootstrap")
 class OnboardingPlugin(Plugin):
-    """First-run UI-mode picker mounted on the main-window startup stack."""
+    """First-run UI-mode picker shown over the first onboarding-capable tab."""
 
     capabilities = ("onboarding",)
 
@@ -27,17 +35,26 @@ class OnboardingPlugin(Plugin):
         self._window: Any | None = None
         self._overlay: OnboardingOverlay | None = None
         self._on_completed: Callable[[str], None] | None = None
+        self._default_on_completed: Callable[[str], None] | None = None
 
     def initialize(self, context: Any) -> None:
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.settings_manager = getattr(context, "settings_manager", None)
         self.event_bus = getattr(context, "event_bus", None)
+        if self.event_bus is not None:
+            self.event_bus.subscribe(
+                WorkspaceSessionActivatedEvent, self._on_session_activated
+            )
 
     def bind_window_shell(self, window_shell: Any) -> None:
         window = getattr(window_shell, "main_window_app", None) or window_shell
         self._window = window
         setattr(window, "onboarding_host", self)
+        runtime = getattr(window, "startup_runtime", None)
+        completion = getattr(runtime, "on_onboarding_completed", None)
+        if callable(completion):
+            self._default_on_completed = completion
 
     def should_present(self) -> bool:
         if self.settings_manager is None:
@@ -46,6 +63,40 @@ class OnboardingPlugin(Plugin):
 
     def is_active(self) -> bool:
         return self._overlay is not None
+
+    def _on_session_activated(self, event: WorkspaceSessionActivatedEvent) -> None:
+        # Trigger onboarding only when the opened tab opts in via the
+        # ``requires_first_run_onboarding`` capability, and only while
+        # first-run is still pending (one shot across all onboarding tabs —
+        # the flag flips on completion). Querying the tab by capability keeps
+        # this platform plugin tab-agnostic (no tab names here).
+        if self.is_active():
+            return
+        if not self.should_present():
+            return
+        window = self._window
+        if window is None:
+            return
+        if not self._tab_requests_onboarding(event.session_type):
+            return
+        self.present(window, on_completed=self._default_on_completed)
+
+    def _tab_requests_onboarding(self, session_type: str) -> bool:
+        try:
+            from tabs.registry import get_shared_tab_registry
+
+            registry = get_shared_tab_registry()
+            return bool(
+                registry.create_service_for(
+                    session_type, _ONBOARDING_CAPABILITY
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Onboarding capability probe failed for session %r",
+                session_type,
+            )
+            return False
 
     def present(
         self,

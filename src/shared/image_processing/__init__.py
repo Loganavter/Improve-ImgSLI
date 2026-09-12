@@ -1,7 +1,6 @@
 from shared.image_processing.progressive_loader import (
     ProgressiveImageLoader,
     get_image_format_info,
-    load_full_image,
     load_preview_image,
     should_use_progressive_load,
 )
@@ -28,7 +27,6 @@ from shared.image_processing.resize import (
 __all__ = [
     "should_use_progressive_load",
     "load_preview_image",
-    "load_full_image",
     "get_image_format_info",
     "ProgressiveImageLoader",
     "resample_image",

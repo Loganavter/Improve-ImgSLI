@@ -57,22 +57,25 @@ class MainWindowComposer:
                 resource_manager=ui_resource_manager,
             )
             tray_manager.toggle_visibility_requested.connect(
-                window.actions.toggle_main_window_visibility
+                window.action_registry.toggle_main_window_visibility
             )
             tray_manager.open_last_file_requested.connect(
-                window.actions.open_last_saved_file
+                window.action_registry.open_last_saved_file
             )
             tray_manager.open_last_folder_requested.connect(
-                window.actions.open_last_saved_folder
+                window.action_registry.open_last_saved_folder
             )
-            tray_manager.quit_requested.connect(QApplication.instance().quit)
+            app = QApplication.instance()
+            if app is not None:
+                tray_manager.quit_requested.connect(app.quit)
 
-        image_compare_widget = window.image_compare_widget
         main_controller = MainController(self.context)
         event_handler = EventHandler(self.context.store, None)
         image_canvas = self._create_tab_owned_feature(
-            window,
             "image_canvas",
+            on_resolved=lambda canvas: canvas.connect_event_handler_signals(
+                event_handler
+            ),
             store=self.context.store,
             main_controller=main_controller,
             ui=window.ui,
@@ -84,7 +87,6 @@ class MainWindowComposer:
             ui=window.ui,
             main_window_app=window,
             image_canvas=image_canvas,
-            plugin_ui_registry=self.context.plugin_ui_registry,
         )
         presenter = MainWindowPresenter(
             window,
@@ -92,8 +94,6 @@ class MainWindowComposer:
             self.context.store,
             main_controller,
             features=features,
-            plugin_ui_registry=self.context.plugin_ui_registry,
-            widget=image_compare_widget,
         )
         event_handler.presenter = presenter
         main_controller.attach_window_shell(presenter)
@@ -112,18 +112,15 @@ class MainWindowComposer:
             ui_resource_manager=ui_resource_manager,
         )
 
-    def _create_tab_owned_feature(
-        self,
-        window,
-        feature_id: str,
-        **kwargs,
-    ):
-        registry = getattr(window.ui, "_tab_registry", None)
-        if registry is None:
-            raise RuntimeError(
-                f"Tab-owned feature {feature_id!r} requested before tab discovery"
-            )
-        feature = registry.create_main_window_feature(feature_id, **kwargs)
-        if feature is None:
-            raise RuntimeError(f"No tab provided feature {feature_id!r}")
-        return feature
+    def _create_tab_owned_feature(self, feature_id: str, **kwargs):
+        """Return a lazily-resolved tab-owned legacy-shell feature.
+
+        Not resolved until first access (`LazyTabService`) — the owning
+        tab's page need not exist yet at shell-build time. See
+        docs/dev/investigations/lazy-legacy-shell-plan.md.
+        """
+        from tabs.registry import LazyTabService
+
+        return LazyTabService(
+            feature_id, probe_method="create_main_window_feature", **kwargs
+        )

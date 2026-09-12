@@ -23,14 +23,19 @@ layout(std140, binding = 0) uniform UBuf
     int   magDiffMode;
     int   magChannelMode;
     int   magInterpMode;
+    int   magLayer1;
+    int   magLayer2;
+    int   magLayerDiff;
     int   _pad1;
+    int   _pad2;
     vec4 uvRect1;
     vec4 uvRect2;
+    vec4 magContentScale12;
+    vec4 magContentScaleDiffPad;
+    vec4 clipRect;
 };
 
-layout(binding = 1) uniform sampler2D bgTex1;
-layout(binding = 2) uniform sampler2D bgTex2;
-layout(binding = 3) uniform sampler2D bgTexDiff;
+layout(binding = 1) uniform sampler2DArray bgArray;
 layout(binding = 4) uniform sampler2D circleMaskTex;
 layout(binding = 5) uniform sampler2D magTex;
 layout(binding = 6) uniform sampler2D magTex2;
@@ -48,12 +53,11 @@ vec4 applyChannel(vec4 c) {
     return c;
 }
 
-vec4 sampleNearest(sampler2D tex, vec2 uv) {
-    ivec2 texSize = textureSize(tex, 0);
+vec4 sampleNearest(int layer, vec2 uv, ivec2 texSize, ivec2 contentSize) {
     vec2 texelPos = uv * vec2(texSize) - 0.5;
     ivec2 texel = ivec2(round(texelPos));
-    texel = clamp(texel, ivec2(0), texSize - ivec2(1));
-    return texelFetch(tex, texel, 0);
+    texel = clamp(texel, ivec2(0), contentSize - ivec2(1));
+    return texelFetch(bgArray, ivec3(texel, layer), 0);
 }
 
 float cubicWeight(float x) {
@@ -63,8 +67,7 @@ float cubicWeight(float x) {
     return 0.0;
 }
 
-vec4 sampleBicubic(sampler2D tex, vec2 uv) {
-    ivec2 texSizeI = textureSize(tex, 0);
+vec4 sampleBicubic(int layer, vec2 uv, ivec2 texSizeI, ivec2 contentSizeI) {
     vec2 texSize = vec2(texSizeI);
     vec2 pos  = uv * texSize - 0.5;
     vec2 base = floor(pos);
@@ -76,14 +79,14 @@ vec4 sampleBicubic(sampler2D tex, vec2 uv) {
         for (int k = -1; k <= 2; k++) {
             float wx = cubicWeight(float(k) - f.x);
             float w  = wx * wy;
-            ivec2 sampleTexel = clamp(ivec2(base) + ivec2(k, j), ivec2(0), texSizeI - ivec2(1));
-            result += texelFetch(tex, sampleTexel, 0) * w;
+            ivec2 sampleTexel = clamp(ivec2(base) + ivec2(k, j), ivec2(0), contentSizeI - ivec2(1));
+            result += texelFetch(bgArray, ivec3(sampleTexel, layer), 0) * w;
             totalWeight += w;
         }
     }
     if (totalWeight <= 0.0) {
-        ivec2 fb = clamp(ivec2(round(pos)), ivec2(0), texSizeI - ivec2(1));
-        return texelFetch(tex, fb, 0);
+        ivec2 fb = clamp(ivec2(round(pos)), ivec2(0), contentSizeI - ivec2(1));
+        return texelFetch(bgArray, ivec3(fb, layer), 0);
     }
     return result / totalWeight;
 }
@@ -101,9 +104,8 @@ float lanczosWeight(float x, float a) {
     return sinc(x) * sinc(x / a);
 }
 
-vec4 sampleLanczos(sampler2D tex, vec2 uv) {
+vec4 sampleLanczos(int layer, vec2 uv, ivec2 texSizeI, ivec2 contentSizeI) {
     const float A = 3.0;
-    ivec2 texSizeI = textureSize(tex, 0);
     vec2 texSize = vec2(texSizeI);
     vec2 pos  = uv * texSize - 0.5;
     ivec2 base = ivec2(floor(pos));
@@ -116,22 +118,21 @@ vec4 sampleLanczos(sampler2D tex, vec2 uv) {
             float wx = lanczosWeight(float(k) - f.x, A);
             float w  = wx * wy;
             if (w == 0.0) continue;
-            ivec2 st = clamp(base + ivec2(k, j), ivec2(0), texSizeI - ivec2(1));
-            result += texelFetch(tex, st, 0) * w;
+            ivec2 st = clamp(base + ivec2(k, j), ivec2(0), contentSizeI - ivec2(1));
+            result += texelFetch(bgArray, ivec3(st, layer), 0) * w;
             totalWeight += w;
         }
     }
     if (totalWeight <= 0.0) {
-        ivec2 fb = clamp(ivec2(round(pos)), ivec2(0), texSizeI - ivec2(1));
-        return texelFetch(tex, fb, 0);
+        ivec2 fb = clamp(ivec2(round(pos)), ivec2(0), contentSizeI - ivec2(1));
+        return texelFetch(bgArray, ivec3(fb, layer), 0);
     }
     return result / totalWeight;
 }
 
-vec4 sampleEwaLanczos(sampler2D tex, vec2 uv, vec2 ddx, vec2 ddy) {
+vec4 sampleEwaLanczos(int layer, vec2 uv, vec2 ddx, vec2 ddy, ivec2 texSizeI, ivec2 contentSizeI) {
     const float A = 3.0;
     const int MAX_RADIUS = 6;
-    ivec2 texSizeI = textureSize(tex, 0);
     vec2 texSize = vec2(texSizeI);
     vec2 pos = uv * texSize - 0.5;
     vec2 dx = ddx * texSize;
@@ -141,7 +142,7 @@ vec4 sampleEwaLanczos(sampler2D tex, vec2 uv, vec2 ddx, vec2 ddy) {
         dot(dx, dy), dot(dy, dy) + 1.0
     );
     float det = footprint[0][0]*footprint[1][1] - footprint[0][1]*footprint[1][0];
-    if (det <= 1e-6) { return sampleLanczos(tex, uv); }
+    if (det <= 1e-6) { return sampleLanczos(layer, uv, texSizeI, contentSizeI); }
     mat2 invF = mat2(
         footprint[1][1], -footprint[0][1],
         -footprint[1][0], footprint[0][0]
@@ -160,41 +161,107 @@ vec4 sampleEwaLanczos(sampler2D tex, vec2 uv, vec2 ddx, vec2 ddy) {
             if (r2 >= A * A) continue;
             float w = lanczosWeight(sqrt(r2), A);
             if (w == 0.0) continue;
-            ivec2 st = clamp(center + ivec2(k, j), ivec2(0), texSizeI - ivec2(1));
-            result += texelFetch(tex, st, 0) * w;
+            ivec2 st = clamp(center + ivec2(k, j), ivec2(0), contentSizeI - ivec2(1));
+            result += texelFetch(bgArray, ivec3(st, layer), 0) * w;
             totalWeight += w;
         }
     }
-    if (totalWeight <= 0.0) { return sampleLanczos(tex, uv); }
+    if (totalWeight <= 0.0) { return sampleLanczos(layer, uv, texSizeI, contentSizeI); }
     return result / totalWeight;
 }
 
-vec4 sampleInterp(sampler2D tex, vec2 uv, vec2 ddx, vec2 ddy) {
-    if (magInterpMode == 0) return sampleNearest(tex, uv);
-    if (magInterpMode == 2) return sampleBicubic(tex, uv);
-    if (magInterpMode == 3) return sampleLanczos(tex, uv);
-    if (magInterpMode == 4) return sampleEwaLanczos(tex, uv, ddx, ddy);
-    return texture(tex, uv);
+// Manual bilinear, clamped to the tile's own content bounds -- the default
+// interpolation mode (``magInterpMode`` outside 0/2/3/4, i.e. "linear")
+// used to fall through to the hardware ``texture()`` sampler. That sampler
+// is set to ClampToEdge (see MagnifierPass.initialize), but ClampToEdge
+// only stops wraparound at the *array layer's* true 0/1 edges -- it has no
+// idea the tile's real content ends earlier, at content_scale, so its own
+// bilinear filtering still blends the last real content texel with the
+// first padding texel right at that boundary. Since "linear" is
+// gpu_interp_mode's actual default, this was the sampling path most users
+// hit, and it was untouched by sampleNearest/Bicubic/Lanczos/EwaLanczos's
+// own contentSize clamp above.
+vec4 sampleBilinear(int layer, vec2 uv, ivec2 texSize, ivec2 contentSize) {
+    vec2 texelPos = uv * vec2(texSize) - 0.5;
+    ivec2 base = ivec2(floor(texelPos));
+    vec2 f = fract(texelPos);
+    ivec2 c00 = clamp(base + ivec2(0, 0), ivec2(0), contentSize - ivec2(1));
+    ivec2 c10 = clamp(base + ivec2(1, 0), ivec2(0), contentSize - ivec2(1));
+    ivec2 c01 = clamp(base + ivec2(0, 1), ivec2(0), contentSize - ivec2(1));
+    ivec2 c11 = clamp(base + ivec2(1, 1), ivec2(0), contentSize - ivec2(1));
+    vec4 v00 = texelFetch(bgArray, ivec3(c00, layer), 0);
+    vec4 v10 = texelFetch(bgArray, ivec3(c10, layer), 0);
+    vec4 v01 = texelFetch(bgArray, ivec3(c01, layer), 0);
+    vec4 v11 = texelFetch(bgArray, ivec3(c11, layer), 0);
+    vec4 top = mix(v00, v10, f.x);
+    vec4 bot = mix(v01, v11, f.x);
+    return mix(top, bot, f.y);
+}
+
+// ``uv`` is already normalized against the *full* array layer (callers do
+// ``contentRelativeUV * contentScale`` before this, so it lands in
+// ``[0, contentScale]`` of the full-layer [0,1] range) -- ``texSize`` (the
+// full layer's own pixel size) is what correctly turns that back into a
+// texel position, same as it always was. ``contentSize`` (layer size *
+// content_scale) is only for *clamping* the kernel taps: tiles upload
+// unresampled 1:1 into a layer's top-left corner (see array_resources.py's
+// upload_tile_to_array), so anything beyond content_scale within that same
+// layer is padding/leftover-previous-tile data, and the non-nearest kernels
+// below sample several neighboring texels -- clamping their taps to the
+// full layer size (as this used to, and as an earlier one-parameter version
+// of this fix incorrectly still did by reusing texSize for both jobs) let
+// them read into that padding near a tile's real edge -- exactly where
+// panning across a tile boundary would show it, as wrong/black pixels
+// ("holes") that got worse the wider the kernel (EWA's radius-6 taps most
+// of all).
+vec4 sampleInterp(int layer, vec2 uv, vec2 ddx, vec2 ddy, ivec2 texSize, ivec2 contentSize) {
+    if (magInterpMode == 0) return sampleNearest(layer, uv, texSize, contentSize);
+    if (magInterpMode == 2) return sampleBicubic(layer, uv, texSize, contentSize);
+    if (magInterpMode == 3) return sampleLanczos(layer, uv, texSize, contentSize);
+    if (magInterpMode == 4) return sampleEwaLanczos(layer, uv, ddx, ddy, texSize, contentSize);
+    return sampleBilinear(layer, uv, texSize, contentSize);
 }
 
 vec4 sampleBgFromSource(int source, vec2 tc, vec2 ddx_tc, vec2 ddy_tc) {
     vec2 uv; vec4 c;
     vec2 ddx; vec2 ddy;
+    int layer; vec2 scale;
+    ivec2 arraySize = textureSize(bgArray, 0).xy;
     if (source == 0) {
-        uv = mix(uvRect1.xy, uvRect1.zw, tc);
-        ddx = (uvRect1.zw - uvRect1.xy) * ddx_tc;
-        ddy = (uvRect1.zw - uvRect1.xy) * ddy_tc;
-        c  = sampleInterp(bgTex1, uv, ddx, ddy);
+        layer = magLayer1;
+        scale = magContentScale12.xy;
+        // Clamp the tile-local (pre-scale) uv to [0,1] before scaling into
+        // layer space: uvRect1 is extrapolated (see
+        // expand_uv_rect_to_absolute_tc) so mix() only lands in [0,1] for
+        // tc strictly inside this record's own scissor window -- but the
+        // GPU scissor test is pixel-quantized while tc is a continuous
+        // per-fragment interpolation, so fragments right at a tile
+        // boundary can carry a tc a hair outside that window. For a
+        // capture split across many tiles that window is narrow, so the
+        // extrapolation slope is steep and even that sub-pixel tc error
+        // blows up into a uv landing well past this tile's real content,
+        // into the array layer's stale padding/leftover-previous-tile
+        // data (a genuinely different, unrelated tile's old pixels) --
+        // that's the "random other tile" garbage. Clamping pins any such
+        // overshoot to this tile's own edge instead.
+        uv = clamp(mix(uvRect1.xy, uvRect1.zw, tc), 0.0, 1.0) * scale;
+        ddx = (uvRect1.zw - uvRect1.xy) * ddx_tc * scale;
+        ddy = (uvRect1.zw - uvRect1.xy) * ddy_tc * scale;
+        c  = sampleInterp(layer, uv, ddx, ddy, arraySize, ivec2(round(vec2(arraySize) * scale)));
     } else if (source == 1) {
-        uv = mix(uvRect2.xy, uvRect2.zw, tc);
-        ddx = (uvRect2.zw - uvRect2.xy) * ddx_tc;
-        ddy = (uvRect2.zw - uvRect2.xy) * ddy_tc;
-        c  = sampleInterp(bgTex2, uv, ddx, ddy);
+        layer = magLayer2;
+        scale = magContentScale12.zw;
+        uv = clamp(mix(uvRect2.xy, uvRect2.zw, tc), 0.0, 1.0) * scale;
+        ddx = (uvRect2.zw - uvRect2.xy) * ddx_tc * scale;
+        ddy = (uvRect2.zw - uvRect2.xy) * ddy_tc * scale;
+        c  = sampleInterp(layer, uv, ddx, ddy, arraySize, ivec2(round(vec2(arraySize) * scale)));
     } else {
-        uv = mix(uvRect1.xy, uvRect1.zw, tc);
-        ddx = (uvRect1.zw - uvRect1.xy) * ddx_tc;
-        ddy = (uvRect1.zw - uvRect1.xy) * ddy_tc;
-        c  = sampleInterp(bgTexDiff, uv, ddx, ddy);
+        layer = magLayerDiff;
+        scale = magContentScaleDiffPad.xy;
+        uv = clamp(mix(uvRect1.xy, uvRect1.zw, tc), 0.0, 1.0) * scale;
+        ddx = (uvRect1.zw - uvRect1.xy) * ddx_tc * scale;
+        ddy = (uvRect1.zw - uvRect1.xy) * ddy_tc * scale;
+        c  = sampleInterp(layer, uv, ddx, ddy, arraySize, ivec2(round(vec2(arraySize) * scale)));
     }
     return applyChannel(c);
 }
@@ -206,14 +273,17 @@ vec4 sampleSelectedBg(vec2 tc, vec2 ddx, vec2 ddy) {
 }
 
 vec4 computeDiff(vec2 tc, vec2 ddx_tc, vec2 ddy_tc) {
-    vec2 uv1 = mix(uvRect1.xy, uvRect1.zw, tc);
-    vec2 uv2 = mix(uvRect2.xy, uvRect2.zw, tc);
-    vec2 ddx1 = (uvRect1.zw - uvRect1.xy) * ddx_tc;
-    vec2 ddy1 = (uvRect1.zw - uvRect1.xy) * ddy_tc;
-    vec2 ddx2 = (uvRect2.zw - uvRect2.xy) * ddx_tc;
-    vec2 ddy2 = (uvRect2.zw - uvRect2.xy) * ddy_tc;
-    vec4 c1  = sampleInterp(bgTex1, uv1, ddx1, ddy1);
-    vec4 c2  = sampleInterp(bgTex2, uv2, ddx2, ddy2);
+    vec2 scale1 = magContentScale12.xy;
+    vec2 scale2 = magContentScale12.zw;
+    vec2 uv1 = clamp(mix(uvRect1.xy, uvRect1.zw, tc), 0.0, 1.0) * scale1;
+    vec2 uv2 = clamp(mix(uvRect2.xy, uvRect2.zw, tc), 0.0, 1.0) * scale2;
+    vec2 ddx1 = (uvRect1.zw - uvRect1.xy) * ddx_tc * scale1;
+    vec2 ddy1 = (uvRect1.zw - uvRect1.xy) * ddy_tc * scale1;
+    vec2 ddx2 = (uvRect2.zw - uvRect2.xy) * ddx_tc * scale2;
+    vec2 ddy2 = (uvRect2.zw - uvRect2.xy) * ddy_tc * scale2;
+    ivec2 arraySize = textureSize(bgArray, 0).xy;
+    vec4 c1  = sampleInterp(magLayer1, uv1, ddx1, ddy1, arraySize, ivec2(round(vec2(arraySize) * scale1)));
+    vec4 c2  = sampleInterp(magLayer2, uv2, ddx2, ddy2, arraySize, ivec2(round(vec2(arraySize) * scale2)));
     if (magDiffMode == 1) {
         vec3 diff = abs(c1.rgb - c2.rgb);
         float maxDiff = max(diff.r, max(diff.g, diff.b));
@@ -226,24 +296,27 @@ vec4 computeDiff(vec2 tc, vec2 ddx_tc, vec2 ddy_tc) {
         return vec4(g, g, g, 1.0);
     }
     if (magDiffMode == 3) {
-        vec2 uv   = mix(uvRect1.xy, uvRect1.zw, tc);
-        vec2 step = (uvRect1.zw - uvRect1.xy) / vec2(textureSize(bgTex1, 0));
-        float tl = luminance(texture(bgTex1, uv + vec2(-step.x, -step.y)).rgb);
-        float t  = luminance(texture(bgTex1, uv + vec2( 0.0,    -step.y)).rgb);
-        float tr = luminance(texture(bgTex1, uv + vec2( step.x, -step.y)).rgb);
-        float l  = luminance(texture(bgTex1, uv + vec2(-step.x,  0.0   )).rgb);
-        float r  = luminance(texture(bgTex1, uv + vec2( step.x,  0.0   )).rgb);
-        float bl = luminance(texture(bgTex1, uv + vec2(-step.x,  step.y)).rgb);
-        float b  = luminance(texture(bgTex1, uv + vec2( 0.0,     step.y)).rgb);
-        float br = luminance(texture(bgTex1, uv + vec2( step.x,  step.y)).rgb);
+        vec2 uv   = uv1;
+        vec2 step = ((uvRect1.zw - uvRect1.xy) * scale1) / vec2(textureSize(bgArray, 0).xy);
+        float tl = luminance(texture(bgArray, vec3(uv + vec2(-step.x, -step.y), magLayer1)).rgb);
+        float t  = luminance(texture(bgArray, vec3(uv + vec2( 0.0,    -step.y), magLayer1)).rgb);
+        float tr = luminance(texture(bgArray, vec3(uv + vec2( step.x, -step.y), magLayer1)).rgb);
+        float l  = luminance(texture(bgArray, vec3(uv + vec2(-step.x,  0.0   ), magLayer1)).rgb);
+        float r  = luminance(texture(bgArray, vec3(uv + vec2( step.x,  0.0   ), magLayer1)).rgb);
+        float bl = luminance(texture(bgArray, vec3(uv + vec2(-step.x,  step.y), magLayer1)).rgb);
+        float b  = luminance(texture(bgArray, vec3(uv + vec2( 0.0,     step.y), magLayer1)).rgb);
+        float br = luminance(texture(bgArray, vec3(uv + vec2( step.x,  step.y), magLayer1)).rgb);
         float gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
         float gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
         float edge = smoothstep(0.05, 0.3, sqrt(gx*gx + gy*gy));
         return vec4(edge, edge, edge, 1.0);
     }
     if (magDiffMode == 4) {
-        vec2 uv = mix(uvRect1.xy, uvRect1.zw, tc);
-        return applyChannel(sampleInterp(bgTexDiff, uv, ddx1, ddy1));
+        vec2 scaleD = magContentScaleDiffPad.xy;
+        vec2 uv = clamp(mix(uvRect1.xy, uvRect1.zw, tc), 0.0, 1.0) * scaleD;
+        vec2 ddxD = (uvRect1.zw - uvRect1.xy) * ddx_tc * scaleD;
+        vec2 ddyD = (uvRect1.zw - uvRect1.xy) * ddy_tc * scaleD;
+        return applyChannel(sampleInterp(magLayerDiff, uv, ddxD, ddyD, arraySize, ivec2(round(vec2(arraySize) * scaleD))));
     }
     return applyChannel(c1);
 }
@@ -252,6 +325,24 @@ void main()
 {
     vec2 ddx_tc = dFdx(TexCoord);
     vec2 ddy_tc = dFdy(TexCoord);
+
+    // Per-record clip in tc space, replacing GPU scissor state for
+    // multi-tile magnifier captures: each tile-record draw call used to
+    // rely on `command_buffer.setScissor()` changing between consecutive
+    // draw() calls within one pass to confine it to its own tc sub-window
+    // -- confirmed (by forcing every draw to bind the same uniform slot
+    // while keeping distinct scissors, and seeing only one tile's content
+    // instead of it tiled across every scissor region) not to reliably
+    // take effect per draw call. `clipRect` is (tcXLo, tcYLo, tcXHi,
+    // tcYHi) for this record; discard-based clipping lives entirely in
+    // per-fragment data instead of GPU pipeline state, so it can't go
+    // stale between draw calls the way scissor state did.
+    if (
+        TexCoord.x < clipRect.x || TexCoord.x > clipRect.z ||
+        TexCoord.y < clipRect.y || TexCoord.y > clipRect.w
+    ) {
+        discard;
+    }
 
     vec4 col;
     if (magGpuSampling != 0) {

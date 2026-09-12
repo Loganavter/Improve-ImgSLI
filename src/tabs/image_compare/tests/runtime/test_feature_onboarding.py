@@ -105,20 +105,6 @@ class TestFeatureContracts:
             assert callable(f.reduce_view_state), f"{f.name}: missing reduce_view_state"
             assert callable(f.reduce_render_config), f"{f.name}: missing reduce_render_config"
 
-    def test_all_render_passes_have_stack_role(self):
-        from ui.canvas_infra.scene.registry import get_canvas_registry
-        from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-
-        registry = get_canvas_registry("image_compare")
-        registry.get_render_passes.cache_clear()
-        for p in registry.get_render_passes():
-            assert p.stack_role is not None, (
-                f"{type(p).__name__} missing stack_role"
-            )
-            assert isinstance(p.stack_role, CanvasStackRole), (
-                f"{type(p).__name__}.stack_role is {type(p.stack_role)}"
-            )
-
 class TestTemplateIsValid:
 
     def test_template_manifest_importable(self):

@@ -16,14 +16,10 @@ from core.state_management.actions import (
     Action,
     ClearAllCachesAction,
     ClearImageSlotDataAction,
-    InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetCachedDiffImageAction,
-    SetCachedScaledImageDimsAction,
-    SetDisplayCacheImageAction,
-    SetDisplayResolutionLimitAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
     SetFileNameColorAction,
@@ -32,12 +28,10 @@ from core.state_management.actions import (
     SetImageSessionImageAction,
     SetIncludeFileNamesInSavedAction,
     SetInterpolationMethodAction,
-    SetLastDisplayCacheParamsAction,
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetPendingUnificationPathsAction,
     SetPsnrValueAction,
-    SetScaledImageForDisplayAction,
     SetSsimValueAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
@@ -46,6 +40,7 @@ from core.state_management.actions import (
 )
 from tabs.image_compare.state.models import (
     ImageSessionState,
+    PipelineCacheState,
     RenderCacheState,
     RenderConfig,
     SessionData,
@@ -76,22 +71,6 @@ class ImageSessionReducer:
 class RenderCacheReducer:
     @staticmethod
     def reduce(cache_state: RenderCacheState, action: Action) -> RenderCacheState:
-        if isinstance(action, SetDisplayCacheImageAction):
-            field_name = (
-                "display_cache_image1" if action.slot == 1 else "display_cache_image2"
-            )
-            return replace(cache_state, **{field_name: action.image})
-        if isinstance(action, SetScaledImageForDisplayAction):
-            field_name = (
-                "scaled_image1_for_display"
-                if action.slot == 1
-                else "scaled_image2_for_display"
-            )
-            return replace(cache_state, **{field_name: action.image})
-        if isinstance(action, SetCachedScaledImageDimsAction):
-            return replace(cache_state, cached_scaled_image_dims=action.dims)
-        if isinstance(action, SetLastDisplayCacheParamsAction):
-            return replace(cache_state, last_display_cache_params=action.params)
         if isinstance(action, SetCachedDiffImageAction):
             return replace(cache_state, cached_diff_image=action.image)
         if isinstance(action, SetUnificationInProgressAction):
@@ -99,12 +78,6 @@ class RenderCacheReducer:
         if isinstance(action, SetPendingUnificationPathsAction):
             return replace(cache_state, pending_unification_paths=action.paths)
         if isinstance(action, InvalidateRenderCacheAction):
-            cache_state = replace(
-                cache_state,
-                caches={},
-                cached_split_base_image=None,
-                last_split_cached_params=None,
-            )
             for feature in sorted(
                 registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
@@ -112,30 +85,7 @@ class RenderCacheReducer:
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
-        if isinstance(action, InvalidateGeometryCacheAction):
-            return replace(
-                cache_state,
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None,
-            )
         if isinstance(action, ClearAllCachesAction):
-            cache_state = replace(
-                cache_state,
-                unified_image_cache=cache_state.unified_image_cache.__class__(),
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None,
-                caches={},
-                cached_split_base_image=None,
-                last_split_cached_params=None,
-            )
             for feature in sorted(
                 registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
@@ -143,24 +93,6 @@ class RenderCacheReducer:
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
-        if isinstance(action, ClearImageSlotDataAction):
-            # Only invalidate this slot's display/scaled caches. Pair-level
-            # layout params go stale, but wiping the other side's scaled
-            # image forces a blank flash of the live half (e.g. Duplicate
-            # onto an empty side via load_images_from_paths).
-            if action.slot == 1:
-                kwargs = {
-                    "display_cache_image1": None,
-                    "scaled_image1_for_display": None,
-                }
-            else:
-                kwargs = {
-                    "display_cache_image2": None,
-                    "scaled_image2_for_display": None,
-                }
-            kwargs["cached_scaled_image_dims"] = None
-            kwargs["last_display_cache_params"] = None
-            return replace(cache_state, **kwargs)
         return cache_state
 
 
@@ -186,9 +118,344 @@ class SessionDataReducer:
         return SessionData(image_state=new_image_state, render_cache=new_render_cache)
 
 
+class PipelineCacheReducer:
+    """Bucket C — PipelineCache as Store slot (plan_render_dispatch_and_gap_fix.md).
+
+    Owns the three LRU tiers; all ``put_*`` goes via ``Put*Action`` + ``transact``
+    (single Store alloc). ``get_pixel`` is_open check lives here as replace +
+    ``close_pixel_store`` defer. ``EvictPipelineAction`` sweeps
+    ``pyramid_registry`` + eager-drop unify by uid. Budgets: count AND bytes.
+    box_tuple в ключи не входит (см. pipeline/cache._pixel_key).
+    """
+
+    @staticmethod
+    def reduce(state: PipelineCacheState | None, action: Action) -> PipelineCacheState | None:
+        if state is None:
+            state = PipelineCacheState()
+        try:
+            from tabs.image_compare.state.actions import (
+                EvictPipelineAction,
+                PutPixelAction,
+                PutPreviewAction,
+                PutUnifiedAction,
+            )
+        except Exception:
+            return state
+        if isinstance(action, PutPixelAction):
+            return PipelineCacheReducer._put_pixel(state, action)
+        if isinstance(action, PutPreviewAction):
+            return PipelineCacheReducer._put_preview(state, action)
+        if isinstance(action, PutUnifiedAction):
+            return PipelineCacheReducer._put_unified(state, action)
+        if isinstance(action, EvictPipelineAction):
+            return PipelineCacheReducer._evict(state, action)
+        if isinstance(action, ClearAllCachesAction):
+            for s in list(state.pixel.values()):
+                PipelineCacheReducer._close_store(s)
+            for v in list(state.unify.values()):
+                if isinstance(v, tuple):
+                    for x in v:
+                        PipelineCacheReducer._close_store(x)
+            return PipelineCacheState()
+        return state
+
+    @staticmethod
+    def _close_store(store) -> None:
+        try:
+            from shared.image_processing.tiled_pixel_store import close_pixel_store
+            close_pixel_store(store)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _uid_of(store):
+        try:
+            from shared.rendering.image_identity import image_uid
+            return int(image_uid(store))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _store_bytes(store) -> int:
+        try:
+            from shared.image_processing.tiled_pixel_store import pixel_source_size
+            w, h = pixel_source_size(store)
+            if w > 0 and h > 0:
+                return int(w) * int(h) * 4
+        except Exception:
+            pass
+        return 0
+
+    @staticmethod
+    def _close_unify_pair(pixel_dict, pair) -> None:
+        if pair is None:
+            return
+        try:
+            u1, u2 = pair
+        except Exception:
+            return
+        try:
+            live_ids = {id(s) for s in list(pixel_dict.values())}
+        except Exception:
+            live_ids = set()
+        for s in (u1, u2):
+            try:
+                if s is not None and id(s) not in live_ids:
+                    PipelineCacheReducer._close_store(s)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _drop_unify_for_uids(pixel_dict, unify_dict, uids: set):
+        uids = {u for u in (uids or set()) if u is not None}
+        if not uids:
+            return unify_dict
+        for k in list(unify_dict.keys()):
+            try:
+                uid1, uid2 = k[0], k[1]
+            except Exception:
+                continue
+            if uid1 in uids or uid2 in uids:
+                pair = unify_dict.pop(k, None)
+                PipelineCacheReducer._close_unify_pair(pixel_dict, pair)
+        return unify_dict
+
+    @staticmethod
+    def _limits():
+        try:
+            from tabs.image_compare.pipeline.cache import (
+                _PIXEL_CACHE_MAX,
+                _PIXEL_CACHE_MAX_BYTES,
+                _PREVIEW_CACHE_MAX,
+                _PREVIEW_CACHE_MAX_BYTES,
+                _UNIFY_CACHE_MAX,
+                _UNIFY_CACHE_MAX_BYTES,
+            )
+            return (_PIXEL_CACHE_MAX, _PIXEL_CACHE_MAX_BYTES, _PREVIEW_CACHE_MAX,
+                    _PREVIEW_CACHE_MAX_BYTES, _UNIFY_CACHE_MAX, _UNIFY_CACHE_MAX_BYTES)
+        except Exception:
+            return (8, 1536 * 1024 * 1024, 8, 128 * 1024 * 1024, 8, 1536 * 1024 * 1024)
+
+    @staticmethod
+    def _put_pixel(state: PipelineCacheState, action) -> PipelineCacheState:
+        from collections import OrderedDict
+        import os
+        try:
+            from tabs.image_compare.pipeline.cache import _pixel_key
+        except Exception:
+            def _pixel_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+                import os as _os
+                try:
+                    st = _os.stat(path)
+                    mtime = st.st_mtime_ns
+                    size = st.st_size
+                except OSError:
+                    mtime = 0
+                    size = 0
+                return (_os.path.normpath(path), mtime, size, bool(crop_service))
+        store = action.store
+        if store is None:
+            return state
+        try:
+            is_open = getattr(store, "is_open", None)
+            if is_open is not None:
+                if callable(is_open):
+                    if not is_open():
+                        return state
+                elif not is_open:
+                    return state
+        except Exception:
+            pass
+        path = action.path
+        crop_service = action.crop_service
+        auto_crop = action.auto_crop
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        if isinstance(crop_service, bool):
+            auto_crop = crop_service
+            crop_service = None
+        try:
+            key = _pixel_key(path, crop_service, auto_crop)
+        except Exception:
+            key = (os.path.normpath(path), 0, 0, bool(crop_service))
+        new_pixel = OrderedDict(state.pixel)
+        if key in new_pixel:
+            try:
+                old = new_pixel[key]
+                if old is not store:
+                    PipelineCacheReducer._close_store(old)
+            except Exception:
+                pass
+            new_pixel.pop(key, None)
+        new_pixel[key] = store
+        new_unify = OrderedDict(state.unify)
+        max_pixel, max_pixel_bytes, _, _, _, _ = PipelineCacheReducer._limits()
+        while len(new_pixel) > max_pixel or sum(PipelineCacheReducer._store_bytes(s) for s in new_pixel.values()) > max_pixel_bytes:
+            try:
+                _k, _old = new_pixel.popitem(last=False)
+                uid = PipelineCacheReducer._uid_of(_old)
+                PipelineCacheReducer._close_store(_old)
+                if uid is not None:
+                    PipelineCacheReducer._drop_unify_for_uids(new_pixel, new_unify, {uid})
+            except Exception:
+                break
+        if len(new_unify) != len(state.unify):
+            return replace(state, pixel=new_pixel, unify=new_unify)
+        return replace(state, pixel=new_pixel)
+
+    @staticmethod
+    def _put_preview(state: PipelineCacheState, action) -> PipelineCacheState:
+        from collections import OrderedDict
+        import os
+        try:
+            from tabs.image_compare.pipeline.cache import _preview_key
+        except Exception:
+            def _preview_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+                import os as _os
+                try:
+                    st = _os.stat(path)
+                    mtime = st.st_mtime_ns
+                    size = st.st_size
+                except OSError:
+                    mtime = 0
+                    size = 0
+                return (_os.path.normpath(path), mtime, size, bool(crop_service), 1024)
+        qimage = action.qimage
+        if qimage is None:
+            return state
+        try:
+            if hasattr(qimage, "isNull") and qimage.isNull():
+                return state
+        except Exception:
+            pass
+        path = action.path
+        crop_service = action.crop_service
+        auto_crop = action.auto_crop
+        if isinstance(crop_service, bool) and auto_crop is None:
+            auto_crop = crop_service
+            crop_service = None
+        if isinstance(crop_service, bool):
+            auto_crop = crop_service
+            crop_service = None
+        try:
+            key = _preview_key(path, crop_service, auto_crop)
+        except Exception:
+            key = (os.path.normpath(path), 0, 0, bool(crop_service), 1024)
+        new_preview = OrderedDict(state.preview)
+        if key in new_preview:
+            new_preview.pop(key, None)
+        new_preview[key] = qimage
+        _, _, max_preview, max_preview_bytes, _, _ = PipelineCacheReducer._limits()
+        def _pv_bytes(q):
+            try:
+                from shared.image_processing.tiled_pixel_store import pixel_source_size
+                w, h = pixel_source_size(q)
+                if w > 0 and h > 0:
+                    return int(w) * int(h) * 4
+            except Exception:
+                pass
+            return 0
+        while len(new_preview) > max_preview or sum(_pv_bytes(q) for q in new_preview.values()) > max_preview_bytes:
+            try:
+                new_preview.popitem(last=False)
+            except Exception:
+                break
+        return replace(state, preview=new_preview)
+
+    @staticmethod
+    def _put_unified(state: PipelineCacheState, action) -> PipelineCacheState:
+        from collections import OrderedDict
+        try:
+            from tabs.image_compare.pipeline.cache import _unify_key
+        except Exception:
+            def _unify_key(uid1, uid2, method, w, h):
+                return (uid1, uid2, method, int(w), int(h))
+        if action.pair is None:
+            return state
+        try:
+            key = _unify_key(action.uid1, action.uid2, action.method, action.w, action.h)
+        except Exception:
+            key = (action.uid1, action.uid2, action.method, int(action.w), int(action.h))
+        try:
+            for s in action.pair:
+                if hasattr(s, "isNull") and s.isNull():
+                    return state
+                is_open = getattr(s, "is_open", None)
+                if is_open is not None:
+                    if callable(is_open):
+                        if not is_open():
+                            return state
+                    elif not is_open:
+                        return state
+        except Exception:
+            pass
+        new_unify = OrderedDict(state.unify)
+        if key in new_unify:
+            new_unify.pop(key, None)
+        new_unify[key] = action.pair
+        _, _, _, _, max_unify, max_unify_bytes = PipelineCacheReducer._limits()
+        def _pair_bytes(p):
+            try:
+                a, b = p
+            except Exception:
+                return 0
+            return PipelineCacheReducer._store_bytes(a) + PipelineCacheReducer._store_bytes(b)
+        while len(new_unify) > max_unify or sum(_pair_bytes(p) for p in new_unify.values()) > max_unify_bytes:
+            try:
+                _k, _pair = new_unify.popitem(last=False)
+                PipelineCacheReducer._close_unify_pair(state.pixel, _pair)
+            except Exception:
+                break
+        return replace(state, unify=new_unify)
+
+    @staticmethod
+    def _evict(state: PipelineCacheState, action) -> PipelineCacheState:
+        import os
+        from collections import OrderedDict
+        path = action.path
+        try:
+            from tabs.image_compare.pipeline.cache import pop_embedded_cache
+            pop_embedded_cache(path)
+        except Exception:
+            pass
+        norm = os.path.normpath(path)
+        new_pixel = OrderedDict(state.pixel)
+        to_drop = [k for k in list(new_pixel.keys()) if k and k[0] == norm]
+        evicted_uids: set = set()
+        for k in to_drop:
+            old = new_pixel.pop(k, None)
+            uid = PipelineCacheReducer._uid_of(old)
+            if uid is not None:
+                evicted_uids.add(uid)
+            PipelineCacheReducer._close_store(old)
+        new_preview = OrderedDict(state.preview)
+        to_drop_prev = [k for k in list(new_preview.keys()) if k and k[0] == norm]
+        for k in to_drop_prev:
+            new_preview.pop(k, None)
+        new_unify = OrderedDict(state.unify)
+        PipelineCacheReducer._drop_unify_for_uids(new_pixel, new_unify, evicted_uids)
+        try:
+            from shared.rendering.pyramid_registry import get_pyramid_registry
+            reg = get_pyramid_registry()
+            if reg is not None:
+                try:
+                    reg.sweep(path)
+                except TypeError:
+                    reg.sweep()
+        except Exception:
+            try:
+                from shared.image_processing import pyramid_registry
+                pyramid_registry.sweep()
+            except Exception:
+                pass
+        return replace(state, pixel=new_pixel, preview=new_preview, unify=new_unify)
+
+
 class ImageRenderConfigReducer:
     @staticmethod
     def reduce(config: RenderConfig, action: Action) -> RenderConfig:
+
         for feature in sorted(
             registry().get_widget_features(),
             key=lambda item: (item.reducer_order, item.name),
@@ -220,6 +487,4 @@ class ImageRenderConfigReducer:
             return replace(config, text_placement_mode=action.mode)
         if isinstance(action, SetMaxNameLengthAction):
             return replace(config, max_name_length=action.length)
-        if isinstance(action, SetDisplayResolutionLimitAction):
-            return replace(config, display_resolution_limit=action.limit)
         return config

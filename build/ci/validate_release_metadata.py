@@ -13,6 +13,7 @@ PKGBUILD_PATH = REPO_ROOT / "build" / "AUR-template" / "PKGBUILD"
 INNO_PATH = REPO_ROOT / "build" / "Windows-template" / "inno_setup_6.iss"
 BUILD_WINDOWS_PATH = REPO_ROOT / "build" / "Windows-template" / "build_windows.py"
 FLATPAK_YAML_PATH = REPO_ROOT / "build" / "Flatpak-template" / "io.github.Loganavter.Improve-ImgSLI.yaml"
+FLATPAK_MODULES_PATH = REPO_ROOT / "build" / "Flatpak-template" / "python3-modules.json"
 
 
 def _fail(message: str) -> int:
@@ -29,6 +30,51 @@ def _extract(pattern: str, text: str, label: str) -> str:
     if not match:
         raise ValueError(f"Unable to find {label}")
     return match.group(1)
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _check_sli_ui_toolkit_version_floor() -> str | None:
+    """AUR's declared minimum sli-ui-toolkit version must not lag behind the
+    exact version Flatpak pins and actually tests against.
+
+    Regression this guards: an unpinned/too-low ``python-sli-ui-toolkit``
+    dependency in PKGBUILD let pacman install an old toolkit release whose
+    API didn't have symbols this app's release already imports
+    (``ModuleNotFoundError`` / ``ImportError: cannot import name '...'``
+    reported by AUR users). Flatpak's pin in python3-modules.json is the
+    version this project has actually verified the release against, so it's
+    the source of truth for the AUR floor.
+    """
+    flatpak_modules_text = _read_text(FLATPAK_MODULES_PATH)
+    flatpak_toolkit_version = _extract(
+        r"sli_ui_toolkit-([0-9]+(?:\.[0-9]+)+)\.tar\.gz",
+        flatpak_modules_text,
+        "Flatpak-pinned sli-ui-toolkit version",
+    )
+
+    pkgbuild_text = _read_text(PKGBUILD_PATH)
+    match = re.search(r"'python-sli-ui-toolkit>=([0-9]+(?:\.[0-9]+)+)'", pkgbuild_text)
+    if not match:
+        return (
+            "PKGBUILD's 'depends' must pin a minimum sli-ui-toolkit version "
+            "('python-sli-ui-toolkit>=X.Y.Z'), not an unbounded dependency — "
+            "an unbounded/absent version let AUR install an incompatible "
+            "toolkit release before (ModuleNotFoundError / ImportError on "
+            "startup)."
+        )
+    aur_floor = match.group(1)
+
+    if _version_tuple(aur_floor) < _version_tuple(flatpak_toolkit_version):
+        return (
+            f"PKGBUILD's python-sli-ui-toolkit floor ({aur_floor}) is older than "
+            f"the sli-ui-toolkit version Flatpak actually pins/tests "
+            f"({flatpak_toolkit_version}) — bump PKGBUILD's depends bound to "
+            f"at least {flatpak_toolkit_version}."
+        )
+    return None
 
 
 def main() -> int:
@@ -87,6 +133,11 @@ def main() -> int:
         return _fail(f"Version mismatch detected: {lines}")
 
     version = unique_versions.pop()
+
+    toolkit_error = _check_sli_ui_toolkit_version_floor()
+    if toolkit_error:
+        return _fail(toolkit_error)
+
     print(f"Release metadata OK: version={version}, date={flatpak_date}")
     return 0
 

@@ -14,7 +14,7 @@ from sli_ui_toolkit.i18n import get_current_language
 from sli_ui_toolkit.i18n import tr as app_tr
 from services.io.recent_projects import RecentProjectRecord, _snapshot_file_times
 from tabs.session_picker.recent.cards import format_session_types
-from tabs.session_picker.recent.relative_time import format_absolute_timestamp
+from ui.widgets.shelf.relative_time import format_absolute_timestamp
 from ui.context_menu.manager import open_context_menu_entries
 
 
@@ -29,7 +29,7 @@ def open_recent_project_menu(
     on_remove_selected: Callable[[], None] | None = None,
 ) -> None:
     missing = not Path(record.path).is_file()
-    multi = bool(selected_paths) and len(selected_paths) > 1 and record.path in selected_paths
+    multi = bool(selected_paths) and len(selected_paths) > 1 and record.path in selected_paths  # type: ignore[arg-type,operator]  # selected_paths guarded by bool()
     entries = [
         ContextMenuAction(
             "recent.open",
@@ -49,7 +49,7 @@ def open_recent_project_menu(
                 tr(
                     "recent.action_remove_selected",
                     "Remove selected ({n})",
-                ).format(n=len(selected_paths)),
+                ).format(n=len(selected_paths)),  # type: ignore[arg-type]  # selected_paths non-None when multi
             )
         )
     else:

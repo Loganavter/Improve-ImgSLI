@@ -79,32 +79,32 @@ class ImageCompareContextMenuProvider:
         return (
             ContextMenuAction(
                 "image_compare.copy_path",
-                self._tr("action.context_copy_path", "Copy path"),
+                self._tr("image_compare.action.context_copy_path", "Copy path"),
                 icon=Icon.COPY,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.duplicate_image",
-                self._tr("action.context_duplicate", "Duplicate"),
+                self._tr("image_compare.action.context_duplicate", "Duplicate"),
                 icon=Icon.ADD,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.show_properties",
-                self._tr("action.context_properties", "Properties"),
+                self._tr("image_compare.action.context_properties", "Properties"),
                 icon=Icon.PHOTO,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.carry_image",
-                self._tr("action.context_carry_image", "Move"),
-                icon=Icon.COPY,
+                self._tr("image_compare.action.context_carry_image", "Move"),
+                icon=Icon.MOVE,
                 data=slot,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_image",
-                self._tr("action.context_remove", "Remove"),
+                self._tr("image_compare.action.context_remove", "Remove"),
                 icon=Icon.DELETE,
                 danger=True,
                 data=slot,
@@ -125,33 +125,33 @@ class ImageCompareContextMenuProvider:
         return (
             ContextMenuAction(
                 "image_compare.rename_list_item",
-                self._tr("action.context_rename", "Rename"),
+                self._tr("image_compare.action.context_rename", "Rename"),
                 icon=Icon.TEXT_MANIPULATOR,
                 data=ref,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.copy_path",
-                self._tr("action.context_copy_path", "Copy path"),
+                self._tr("image_compare.action.context_copy_path", "Copy path"),
                 icon=Icon.COPY,
                 data=ref,
             ),
             ContextMenuAction(
                 "image_compare.show_properties",
-                self._tr("action.context_properties", "Properties"),
+                self._tr("image_compare.action.context_properties", "Properties"),
                 icon=Icon.PHOTO,
                 data=ref,
             ),
             ContextMenuAction(
                 "image_compare.carry_list_item",
-                self._tr("action.context_carry_image", "Move"),
-                icon=Icon.COPY,
+                self._tr("image_compare.action.context_carry_image", "Move"),
+                icon=Icon.MOVE,
                 data=ref,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_list_item",
-                self._tr("action.context_remove", "Remove"),
+                self._tr("image_compare.action.context_remove", "Remove"),
                 icon=Icon.DELETE,
                 danger=True,
                 data=ref,
@@ -192,8 +192,8 @@ class ImageCompareContextMenuProvider:
             parent = self.canvas.window()
         text, ok = self._run_modal_text_prompt(
             parent,
-            self._tr("action.context_rename", "Rename"),
-            self._tr("action.context_name", "Name"),
+            self._tr("image_compare.action.context_rename", "Rename"),
+            self._tr("image_compare.action.context_name", "Name"),
             current,
         )
         if not ok:
@@ -261,7 +261,7 @@ class ImageCompareContextMenuProvider:
     ) -> int | None:
         raw = value if value is not None else request.target.id
         try:
-            slot = int(raw)
+            slot = int(raw)  # type: ignore[arg-type]  # raw is duck-typed
         except (TypeError, ValueError):
             return None
         return slot if slot in (1, 2) else None
@@ -280,8 +280,8 @@ class ImageCompareContextMenuProvider:
             return None, None
         payload = request.target.payload or {}
         try:
-            list_num = int(payload.get("list_num"))
-            index = int(payload.get("index"))
+            list_num = int(payload.get("list_num"))  # type: ignore[arg-type]  # payload values are dynamic
+            index = int(payload.get("index"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None, None
         if list_num in (1, 2) and index >= 0:
@@ -323,12 +323,59 @@ class ImageCompareContextMenuProvider:
         path = getattr(item, "path", None) or ""
         return Path(path).name if path else ""
 
+    def _peek_image(self, slot: int):
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path = getattr(doc, f"image{slot}_path", None)
+            if not path:
+                return None
+            try:
+                vp = self.store.viewport.session_data.image_state
+                cand = vp.image1 if slot == 1 else vp.image2
+                if cand is not None and getattr(cand, "is_open", True):
+                    try:
+                        if hasattr(cand, "isNull") and cand.isNull():
+                            cand = None
+                        elif hasattr(cand, "is_open") and not cand.is_open:
+                            cand = None
+                    except Exception:
+                        pass
+                    if cand is not None:
+                        return cand
+            except Exception:
+                pass
+            try:
+                ps = self.store.get_session_state_slot("pipeline")
+                if ps is not None:
+                    import os
+
+                    from tabs.image_compare.pipeline.cache import _pixel_key, _preview_key
+
+                    for cache_dict, key_fn in ((ps.pixel, _pixel_key), (ps.preview, _preview_key)):
+                        try:
+                            k = key_fn(path, None, None)
+                            v = cache_dict.get(k)
+                            if v is not None and getattr(v, "is_open", True) and not (hasattr(v, "isNull") and v.isNull()):
+                                return v
+                        except Exception:
+                            pass
+                        try:
+                            norm = os.path.normpath(path)
+                            for kk, vv in cache_dict.items():
+                                if kk[0] == norm and getattr(vv, "is_open", True) and not (hasattr(vv, "isNull") and vv.isNull()):
+                                    return vv
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return None
+
     def _show_properties(self, slot: int) -> None:
         path = self._path_for(slot)
         name = self._display_name_for(slot)
-        image = getattr(
-            self.store.get_session_state_slot("document"), f"original_image{slot}", None
-        )
+        image = self._peek_image(slot)
         rating = self._rating_for(slot)
         self._open_properties(path, name, image, slot, rating)
 
@@ -380,8 +427,7 @@ class ImageCompareContextMenuProvider:
                 ui_manager.set_modal_dialog_active(False)
 
     def _begin_duplicate(self, source_slot: int) -> None:
-        document = self.store.get_session_state_slot("document")
-        image = getattr(document, f"original_image{source_slot}", None)
+        image = self._peek_image(source_slot)
         path = self._path_for(source_slot)
         name = self._display_name_for(source_slot)
         if image is None and not path:
@@ -427,8 +473,7 @@ class ImageCompareContextMenuProvider:
         path = self._path_for(slot)
         if not path:
             return
-        document = self.store.get_session_state_slot("document")
-        image = getattr(document, f"original_image{slot}", None)
+        image = self._peek_image(slot)
         from events.image_carry import begin_image_carry
 
         begin_image_carry([path], image=image)

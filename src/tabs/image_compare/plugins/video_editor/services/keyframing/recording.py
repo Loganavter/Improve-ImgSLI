@@ -172,6 +172,9 @@ class KeyframedRecording:
     def evaluate_at(self, timestamp: float) -> FrameSnapshot:
         if not self.timeline.sample_timestamps:
             raise ValueError("Recording is empty")
+        import time
+
+        t0 = time.perf_counter()
         clamped_time = max(0.0, min(float(timestamp), self.get_duration()))
         snapshot = FrameSnapshot(
             timestamp=clamped_time,
@@ -183,6 +186,16 @@ class KeyframedRecording:
             name2=self.tracks[CORE_NAME2_TRACK_ID].evaluate_at(clamped_time),
         )
         self.registry.apply_snapshot_values(snapshot, self._evaluate_tool_values(clamped_time))
+        try:
+            dt = (time.perf_counter() - t0) * 1000.0
+            cnt = getattr(self.evaluate_at, "_cnt", 0) + 1
+            self.evaluate_at._cnt = cnt
+            if cnt % 60 == 0 or dt > 1.0:
+                from tabs.image_compare.debug import ic_perf_debug
+
+                ic_perf_debug("evaluate_at took %.2fms cnt=%s ts=%.3f", dt, cnt, timestamp)
+        except Exception:
+            pass
         return snapshot
 
     def materialize_snapshots(self) -> list[FrameSnapshot]:

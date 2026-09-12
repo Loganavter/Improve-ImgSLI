@@ -128,7 +128,8 @@ class FontSettingsController:
     def on_font_changed(self):
         host = self.manager.host
         host.repopulate_visible_flyouts()
-        self.widget.reapply_button_styles()
+        if self.widget is not None:
+            self.widget.reapply_button_styles()
         if host.parent_widget is not None:
             host.parent_widget.update()
 

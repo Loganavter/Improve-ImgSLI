@@ -1,19 +1,23 @@
 """Host-level title bar menus (File, Help) and platform action runners."""
+# Audit-Meta: pattern=state-machine reason="single menu controller — platform menu assembly"
 
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr, translation_events
-from sli_ui_toolkit import TitleBarMenu, TitleBarMenuStrip, TitleBarPresets, WindowControlsConfig
-from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
-from ui.main_window.project_io import (
-    MainWindowProjectIo,
-    resolve_session_picker_host_chrome,
+from sli_ui_toolkit import TitleBarPresets, WindowControlsConfig
+from sli_ui_toolkit.widgets import (
+    ContextMenuAction,
+    ContextMenuSeparator,
+    DEFER_CLICK_AWAIT_RIPPLE,
 )
+from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip, csd_debug
+from ui.main_window.project_io import MainWindowProjectIo
+from ui.main_window.use_cases import platform_actions, settings_navigation
 
 if TYPE_CHECKING:
     from ui.main_window.window import MainWindow
@@ -29,7 +33,7 @@ class MainWindowMenuController:
 
     def __init__(self, window: MainWindow) -> None:
         self._window = window
-        self._menu_strip: TitleBarMenuStrip | None = None
+        self._menu_strip: CsdMenuStrip | None = None
         self._find_action_shortcut = None
         self._contextual_palette_shortcut = None
         self.project_io = MainWindowProjectIo(window, tr=self._tr)
@@ -67,18 +71,119 @@ class MainWindowMenuController:
         bar = TitleBarPresets.app_shell(
             title=window.windowTitle() or "Improve ImgSLI",
             parent=shell_parent,
-            menus=strip,
             controls=WindowControlsConfig(
                 minimize_icon=AppIcon.MINIMIZE,
                 maximize_icon=AppIcon.MAXIMIZE,
                 restore_icon=AppIcon.RESTORE,
                 close_icon=AppIcon.WINDOW_CLOSE,
+                # Closing the main window tears down the whole app (session
+                # save, plugin shutdown) — let the press ripple finish first.
+                defer_close_click=DEFER_CLICK_AWAIT_RIPPLE,
             ),
         )
+        # The title bar is a generic shell; the app injects its own CSD menu
+        # strip (trigger buttons + app-decided popup/in-window surface).
+        bar.set_leading(strip)
         bar.attach_window(window)
+        self._install_undo_redo_buttons(bar)
+        self._wire_undo_redo_refresh()
         self._register_platform_actions()
         self._resync_action_shortcuts()
         return bar
+
+    def _install_undo_redo_buttons(self, bar) -> None:
+        """CSD undo/redo controls after the menu strip (leading zone).
+
+        Styled like the File/Help menu triggers (ghost, radius 6, trigger
+        height, titlebar.text foreground); disabled buttons render at reduced
+        opacity via a QGraphicsOpacityEffect.
+
+        May be called more than once: ``set_leading`` (menu strip rebuild on
+        language change) clears the whole leading zone, so the buttons are
+        reinstalled after it.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        from sli_ui_toolkit.ui.widgets.buttons import Button
+        from sli_ui_toolkit.ui.windows.custom_title_bar import (
+            CustomTitleBar,
+            resolve_titlebar_color,
+        )
+
+        from ui.icon_manager import AppIcon
+
+        trigger_h = max(20, CustomTitleBar.HEIGHT - 2 * 4)
+
+        def _mk(icon, role: str, tooltip_key: str, tooltip_fallback: str, run, *, pad_left: int = 0):
+            btn = Button(
+                icon,
+                variant="ghost",
+                size=(40, trigger_h),
+                icon_size=16,
+                corner_radius=6,
+                content_padding=(pad_left, 0, 0, 0),
+                parent=bar,
+            )
+            btn.setObjectName("CustomTitleBarButton")
+            btn.setProperty("titlebarRole", role)
+            btn.setCursor(Qt.CursorShape.ArrowCursor)
+            btn.setForegroundColor(
+                resolve_titlebar_color("titlebar.text", fallback="WindowText")
+            )
+            btn.setToolTip(self._tr(tooltip_key, tooltip_fallback))
+            btn.clicked.connect(run)
+            btn.setEnabled(False)
+            effect = QGraphicsOpacityEffect(btn)
+            effect.setOpacity(0.4)
+            btn.setGraphicsEffect(effect)
+            return btn, effect
+
+        self._undo_button, self._undo_effect = _mk(
+            AppIcon.UNDO, "undo", "action.platform.undo", "Undo", self._undo, pad_left=10
+        )
+        self._redo_button, self._redo_effect = _mk(
+            AppIcon.REDO, "redo", "action.platform.redo", "Redo", self._redo
+        )
+        bar.add_buttons([self._undo_button, self._redo_button], zone="leading")
+
+    def _wire_undo_redo_refresh(self) -> None:
+        """Connect store changes to the CSD undo/redo enabled state.
+
+        Called once (``build_title_bar``): re-installing the buttons after a
+        menu-strip rebuild must not re-subscribe the store handler.
+        """
+        from PySide6.QtCore import QTimer
+
+        store = getattr(self._window, "store", None)
+        if store is not None and hasattr(store, "on_change"):
+            # emit_state_change fires inside the dispatcher lock (undo/redo
+            # read the stacks under the same lock), so defer the refresh.
+            store.on_change(lambda _scope, s=self: QTimer.singleShot(0, s._refresh_undo_redo_enabled))
+        self._refresh_undo_redo_enabled()
+
+    def _refresh_undo_redo_enabled(self, _scope: str = "") -> None:
+        if not hasattr(self, "_undo_button"):
+            return
+        try:
+            from shiboken6 import isValid
+
+            # ``set_leading`` clears the whole leading zone on menu rebuilds;
+            # a stale ref (or a pending refresh tick after a rebuild) must
+            # not hit a deleted C++ button.
+            if not isValid(self._undo_button) or not isValid(self._redo_button):
+                return
+        except ImportError:
+            pass
+        try:
+            dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        except Exception:
+            dispatcher = None
+        can_undo = bool(dispatcher is not None and dispatcher.can_undo())
+        can_redo = bool(dispatcher is not None and dispatcher.can_redo())
+        self._undo_button.setEnabled(can_undo)
+        self._redo_button.setEnabled(can_redo)
+        self._undo_effect.setOpacity(1.0 if can_undo else 0.4)
+        self._redo_effect.setOpacity(1.0 if can_redo else 0.4)
 
     def _app_icon(self):
         from PySide6.QtGui import QIcon
@@ -87,18 +192,20 @@ class MainWindowMenuController:
 
         return QIcon(resource_path("resources/icons/icon.png"))
 
-    def build_menus(self) -> TitleBarMenuStrip:
+    def build_menus(self) -> CsdMenuStrip:
         language = self._language()
         parent = self._window if isinstance(self._window, QWidget) else None
-        return TitleBarMenuStrip(
+        csd_debug("build_menus language=%r file=%r help=%r", language,
+                  tr("menu.file", language), tr("menu.help", language))
+        return CsdMenuStrip(
             [
-                TitleBarMenu(
+                CsdMenuSpec(
                     label=tr("menu.file", language),
                     icon=self._app_icon(),
                     entries=self._file_context_entries(),
                     on_triggered=self._on_file_action,
                 ),
-                TitleBarMenu(
+                CsdMenuSpec(
                     label=tr("menu.help", language),
                     entries=self._help_context_entries(),
                     on_triggered=self._on_help_action,
@@ -160,6 +267,11 @@ class MainWindowMenuController:
                 action_id="file.settings",
                 text=self._tr("menu.settings", "Settings"),
                 shortcut=self._menu_shortcut("platform.settings", "Ctrl+,"),
+                # Row click always hides (and destroys) this menu
+                # synchronously regardless of what the action does next --
+                # without this the row's own click ripple never gets to
+                # play at all, same as help.find_action below.
+                defer_trigger=True,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
@@ -175,11 +287,16 @@ class MainWindowMenuController:
                 action_id="help.show",
                 text=self._tr("menu.show_help", "Help"),
                 shortcut=self._menu_shortcut("platform.help", "Ctrl+F1"),
+                defer_trigger=True,
             ),
             ContextMenuAction(
                 action_id="help.find_action",
                 text=self._tr("menu.find_action", "Find Action…"),
                 shortcut=self._menu_shortcut("platform.find_action", "Ctrl+Shift+P"),
+                # Opens the modal Find Action palette (dialog.exec()) --
+                # without this the row (and its click ripple) is destroyed
+                # by the menu closing before the ripple gets to play at all.
+                defer_trigger=True,
             ),
         ]
 
@@ -226,7 +343,11 @@ class MainWindowMenuController:
         try:
             new_strip = self.build_menus()
             self._menu_strip = new_strip
-            title_bar.set_menu_strip(new_strip)
+            title_bar.set_leading(new_strip)
+            # ``set_leading`` clears the whole leading zone — including the
+            # CSD undo/redo buttons added after the strip. Reinstall them so
+            # the next store change cannot hit deleted C++ buttons.
+            self._install_undo_redo_buttons(title_bar)
             self._register_platform_actions()
         except RuntimeError:
             self._menu_strip = None
@@ -254,6 +375,9 @@ class MainWindowMenuController:
     def _new_session(self) -> None:
         from tabs.registry import TabRegistry
 
+        # bootstrap_default_tab() is reserved exclusively for session_picker
+        # (the app's initial workspace session), so File → New Session opens
+        # the session picker — same target as the workspace `+` button.
         tab = TabRegistry().bootstrap_default_tab()
         if tab is None:
             return
@@ -270,6 +394,33 @@ class MainWindowMenuController:
                 "Failed to create workspace session from host menu (%s)",
                 session_type,
             )
+
+    def _switch_workspace_session(self, direction: int) -> None:
+        """Cycle to the next/previous open workspace session (Ctrl+Tab)."""
+        presenter = self._presenter()
+        manager = getattr(presenter, "session_manager", None) if presenter else None
+        workspace = self._workspace()
+        if manager is None or workspace is None:
+            return
+        try:
+            sessions = list(manager.list_sessions())
+        except Exception:
+            logger.exception("_switch_workspace_session: list_sessions failed")
+            return
+        if len(sessions) < 2:
+            return
+        from ui.main_window.use_cases.platform_actions import cycle_session_id
+
+        active = manager.get_active_session()
+        target_id = cycle_session_id(
+            sessions, getattr(active, "id", None), direction
+        )
+        if target_id is None:
+            return
+        try:
+            workspace.switch_workspace_session(target_id)
+        except Exception:
+            logger.exception("_switch_workspace_session: switch failed")
 
     def _open_project(self) -> None:
         self.project_io.open_project()
@@ -289,95 +440,30 @@ class MainWindowMenuController:
         self.project_io.wire_session_picker_recent()
 
     def _show_settings(self) -> None:
-        ui_manager = self._ui_manager()
-        if ui_manager is not None:
-            ui_manager.dialogs.show_settings_dialog()
+        settings_navigation.show_settings(self)
 
     def _show_settings_section(self, section_id: str) -> None:
-        ui_manager = self._ui_manager()
-        if ui_manager is not None:
-            ui_manager.dialogs.show_settings_dialog(section_id=section_id)
+        settings_navigation.show_settings_section(self, section_id)
 
     def _resolve_settings_sidebar(self, section_id: str):
-        """Sidebar row widget for Find Action reveal after Settings is shown."""
-        ui_manager = self._ui_manager()
-        if ui_manager is None:
-            return None
-        dialog = ui_manager.dialogs.settings_dialog
-        if dialog is None:
-            return None
-        resolve = getattr(dialog, "sidebar_row_widget_for", None)
-        if not callable(resolve):
-            return None
-        try:
-            return resolve(section_id)
-        except Exception:
-            logger.exception(
-                "Failed to resolve Settings sidebar row for section %s", section_id
-            )
-            return None
+        return settings_navigation.resolve_settings_sidebar(self, section_id)
 
     def _resolve_settings_group(self, section_id: str, group_key: str):
-        ui_manager = self._ui_manager()
-        if ui_manager is None:
-            return None
-        dialog = ui_manager.dialogs.settings_dialog
-        if dialog is None:
-            return None
-        resolve = getattr(dialog, "group_widget_for", None)
-        if not callable(resolve):
-            return None
-        try:
-            return resolve(section_id, group_key)
-        except Exception:
-            logger.exception(
-                "Failed to resolve Settings group %s on section %s",
-                group_key,
-                section_id,
-            )
-            return None
+        return settings_navigation.resolve_settings_group(self, section_id, group_key)
 
     def _resolve_settings_member(
         self, section_id: str, group_key: str, member_key: str
     ):
-        ui_manager = self._ui_manager()
-        if ui_manager is None:
-            return None
-        dialog = ui_manager.dialogs.settings_dialog
-        if dialog is None:
-            return None
-        resolve = getattr(dialog, "member_widget_for", None)
-        if not callable(resolve):
-            return None
-        try:
-            return resolve(section_id, group_key, member_key)
-        except Exception:
-            logger.exception(
-                "Failed to resolve Settings member %s in group %s on section %s",
-                member_key,
-                group_key,
-                section_id,
-            )
-            return None
+        return settings_navigation.resolve_settings_member(
+            self, section_id, group_key, member_key
+        )
 
     def _run_settings_member(
         self, section_id: str, group_key: str, member_key: str
     ) -> None:
-        ui_manager = self._ui_manager()
-        if ui_manager is None:
-            return
-        apply_member = getattr(ui_manager.dialogs, "apply_settings_member", None)
-        if not callable(apply_member):
-            return
-        try:
-            apply_member(section_id, group_key, member_key)
-        except Exception:
-            logger.exception(
-                "Failed to run Settings member %s in group %s on section %s",
-                member_key,
-                group_key,
-                section_id,
-            )
+        settings_navigation.run_settings_member(
+            self, section_id, group_key, member_key
+        )
 
     def _show_help(self) -> None:
         ui_manager = self._ui_manager()
@@ -385,129 +471,34 @@ class MainWindowMenuController:
             ui_manager.dialogs.show_help_dialog()
 
     def _open_session_picker(self) -> None:
-        presenter = self._presenter()
-        if presenter is None:
-            return
-        try:
-            from ui.presenters.main_window.workspace import ensure_session_picker_visible
-
-            ensure_session_picker_visible(presenter)
-        except Exception:
-            logger.exception("Failed to open session picker from Find Action")
+        platform_actions.open_session_picker(self)
 
     def _show_find_action(self) -> None:
-        from ui.actions.palette import show_command_palette
-
-        show_command_palette(parent=self._window)
+        platform_actions.show_find_action(self)
 
     def _show_contextual_palette(self) -> None:
         """F1: open Find Action, preferably filtered to the focused chrome topic."""
-        from PySide6.QtWidgets import QApplication
-
-        from tabs.registry import get_shared_tab_registry
-        from ui.actions.palette import show_command_palette
-        from ui.actions.registry import get_action_registry
-
-        active_tab = None
-        try:
-            tab = get_shared_tab_registry().get_active_tab()
-            active_tab = getattr(tab, "session_type", None) if tab is not None else None
-        except Exception:
-            active_tab = None
-
-        focused = QApplication.focusWidget()
-        match = get_action_registry().find_for_widget(
-            focused,
-            active_tab=active_tab,
-        )
-        topic = match.topic if match is not None else None
-        preselect = match.action_id if match is not None else None
-        show_command_palette(
-            topic=topic,
-            preselect_action_id=preselect,
-            parent=self._window,
-            auto_pulse=match is not None,
-        )
+        platform_actions.show_contextual_palette(self)
 
     def _register_platform_actions(self) -> None:
-        from core.actions.types import ActionTarget
-        from ui.actions.platform import register_platform_actions
-        from ui.actions.workspace_new_sessions import (
-            image_compare_runner,
-            image_compare_target,
-            multi_compare_runner,
-            multi_compare_target,
-        )
-
-        file_btn = help_btn = None
-        strip = self._menu_strip
-        if strip is not None:
-            buttons = strip.buttons()
-            if len(buttons) >= 1:
-                file_btn = buttons[0]
-            if len(buttons) >= 2:
-                help_btn = buttons[1]
-
-        add_tab_btn = None
-        ui = getattr(self._presenter(), "ui", None) if self._presenter() else None
-        if ui is None:
-            ui = getattr(self._window, "ui", None)
-        if ui is not None:
-            add_tab_btn = getattr(ui, "btn_new_session", None)
-
-        def _resolve_picker_card(session_type: str):
-            chrome = resolve_session_picker_host_chrome()
-            if chrome is None:
-                return None
-            return chrome.card_for(session_type)
-
-        open_picker_target = (
-            ActionTarget(widget=add_tab_btn) if add_tab_btn is not None else None
-        )
-
-        register_platform_actions(
-            show_settings=self._show_settings,
-            show_help=self._show_help,
-            new_session=self._new_session,
-            show_find_action=self._show_find_action,
-            quit_app=self._quit,
-            show_contextual_palette=self._show_contextual_palette,
-            show_settings_section=self._show_settings_section,
-            resolve_settings_sidebar=self._resolve_settings_sidebar,
-            resolve_settings_group=self._resolve_settings_group,
-            resolve_settings_member=self._resolve_settings_member,
-            run_settings_member=self._run_settings_member,
-            open_session_picker=self._open_session_picker,
-            new_image_compare=image_compare_runner(self._create_workspace_session),
-            new_multi_compare=multi_compare_runner(self._create_workspace_session),
-            open_project=self._open_project,
-            save_project=self._save_project,
-            save_project_as=self._save_project_as,
-            file_menu_button=file_btn,
-            help_menu_button=help_btn,
-            open_session_picker_target=open_picker_target,
-            new_image_compare_target=image_compare_target(
-                ensure_visible=self._open_session_picker,
-                resolve_card=_resolve_picker_card,
-            ),
-            new_multi_compare_target=multi_compare_target(
-                ensure_visible=self._open_session_picker,
-                resolve_card=_resolve_picker_card,
-            ),
-        )
-        self._wire_session_picker_recent()
+        platform_actions.register_platform_actions(self)
 
     def refresh_platform_action_targets(self) -> None:
         """Re-bind reveal targets once host chrome (e.g. Add-tab) exists."""
-        self._register_platform_actions()
-        self._resync_action_shortcuts()
+        platform_actions.refresh_platform_action_targets(self)
 
     def _resync_action_shortcuts(self) -> None:
-        from ui.actions.binder import resync_action_shortcuts
-
-        resync_action_shortcuts(self._window)
+        platform_actions.resync_action_shortcuts(self)
 
     def _quit(self) -> None:
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        platform_actions.quit_app(self)
+
+    def _undo(self) -> None:
+        dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None and dispatcher.can_undo():
+            dispatcher.undo()
+
+    def _redo(self) -> None:
+        dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None and dispatcher.can_redo():
+            dispatcher.redo()

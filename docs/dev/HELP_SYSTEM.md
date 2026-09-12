@@ -9,7 +9,6 @@ for `help_page` / `help_anchor` on actions.
 Related:
 
 - [tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md) — `notify_all("contribute_help")`
-- [HELP_WIDGET.md](./HELP_WIDGET.md) — toolkit `MarkdownHelpDialog` / `QTextBrowser` helpers (tests only)
 - Toolkit: `sli_ui_toolkit.widgets.HelpDocumentView`
 
 ---
@@ -26,14 +25,21 @@ Host **must not** import `tabs.*` for icons or hardcode tab topic trees.
 Tabs publish via the same broadcast pattern as settings/actions.
 
 ```text
-TabRegistry.notify_all("contribute_help", HelpContributionRegistry)
-  → each tab create_service("contribute_help", registry)
-  → merge into host HelpTree
+TabRegistry.collect_help_contributions()  # capability_routing.py:32
+  → each tab create_service("contribute_help") -> HelpContribution(owner_tab, nodes, aliases, body_root, asset_root, resolve_icon)
+  → collect return values (per-tab exception logged, others continue)
+  → install_help_contributions(contributions: list[HelpContribution])  # tree.py — immutable copy, uniq node_id, alias conflict raise
+  → merged host HelpTree
 ```
 
+Legacy ``notify_all("contribute_help", HelpContributionRegistry)`` +
+``HelpContributionRegistry`` is deprecated shim (one release); host now
+collects typed ``HelpContribution`` (frozen, ``owner_tab == i18n_namespace``
+per ``isolation.md:60``) so ``tabs.*`` is never imported by the Help plugin.
+
 Called from `TabRegistry.install_pages` via `contribute_all_help()`:
-collect contributions with `notify_all("contribute_help", registry)`, then
-`install_help_contributions(registry)` so the Help plugin never imports
+collect typed contributions with `collect_help_contributions()`, then
+`install_help_contributions(contributions)` so the Help plugin never imports
 `tabs.*`.
 
 ---
@@ -47,8 +53,8 @@ collect contributions with `notify_all("contribute_help", registry)`, then
 | `navigator.py` | Stack + back / forward |
 | `hub_page.py` | Session-picker-style topic cards |
 | `back_bar.py` | Full-width breadcrumb + back |
-| `tree.py` | Host load, contribution merge, body/asset resolve |
-| `contribution.py` | `HelpContributionRegistry` API for tabs |
+| `tree.py` | Host load, contribution merge (`install_help_contributions(list[HelpContribution])` immutable), body/asset resolve |
+| `contribution.py` | `HelpContribution` (frozen, `owner_tab`, typed `nodes/aliases/body_root/asset_root/resolve_icon`) + deprecated `HelpContributionRegistry` shim |
 | `labels.py` | `title_key` / `description_key` via `tr()` |
 | `icons.py` | App icons + contributed tab resolvers |
 | `interpolate.py` | `{{tr:dotted.key}}` / `{{img:figure.slot}}` in markdown bodies |
@@ -189,6 +195,30 @@ In user-facing text say **panel** / **всплывающая панель** / **
 and anchor ids (`#toolbar-flyouts`). Contrast: panel = in-window
 chrome; dialog = separate window (export, settings, properties).
 
+### Tables
+
+GFM-style pipe tables render as bordered grids (the same `TableBlock`
+surface the Image Properties dialog uses — label/value columns with real
+divider lines). The first row becomes the **bold header** when the next
+line is a `---` separator:
+
+```markdown
+| Setting | Meaning |
+|---|---|
+| `quality` | JPEG quality, 1–100 |
+| Alpha | keep the alpha channel |
+```
+
+- Header optional: without the `---` separator row the first line is a
+  plain body row.
+- Alignment markers (`:---:` / `---:`) are accepted and ignored — all cells
+  render left-aligned.
+- `\|` escapes a literal pipe inside a cell; cells support the usual
+  inline formatting (`` `code` ``, `**bold**`, `{{tr:…}}`).
+- Use tables for short key/value inventories (≤ 5–6 columns). Prefer
+  definition bullets (above) when the left column is a term with a long
+  explanation.
+
 ### Figures and tips
 
 - Figure policy above still applies (budget, placement beside the `###`).
@@ -245,7 +275,6 @@ already work:
 | True definition-list / term heading style | `###` + `- **Term** — …` bullets |
 | Nested indented terms | Flat lists only |
 | Tip / note admonitions | Plain sentence (or deferred `:::tip`) |
-| GFM pipe tables | Bullet chord lists |
 | Figure left / center / right | `side=left\|center\|right\|block` (v1+) |
 | Glossary dotted links | Normal `help://` / http(s) links |
 
@@ -356,10 +385,14 @@ Help body right-click opens a toolkit `ContextMenu` via
 Dismiss and hit-testing go through the manager's `contains_global` /
 outside-close paths like canvas ПКМ menus.
 
-v1 blocks: headings (+ `{#anchor}`), paragraphs (bold/italic/code/kbd/links),
-lists, optional `:::figure` / images (see [Figure policy](#figure-policy)),
+v2 blocks: headings `#` … `######` (+ `{#anchor}`), paragraphs
+(bold/italic/code/kbd/links), lists, fenced `` ``` ``` `` code blocks
+(monospaced), optional `:::figure` / images (see [Figure policy](#figure-policy)),
 optional TOC. **No GFM pipe tables** — consecutive `| … |` rows become one
 paragraph; use `- \`chord\` — action` lists instead (see `platform/hotkeys.md`).
+The toolkit's own `docs/user/*.md` (shown in the inspector's Docs section)
+rely on `#` headings and code fences; app help pages keep using `##`/`###`
+for TOC-friendly anchors.
 
 Dialog navigation:
 
@@ -385,6 +418,30 @@ window group and bury independent windows like Video Editor.
 
 No new methods on `TabContract` — only `create_service("contribute_help", …)`.
 
+## Topic search
+
+`HelpDialog` has a search field pinned above the topic tree (toolkit
+`SidebarDialogShell(sidebar_header=…)`). It matches node **titles** and
+**page body content** in the current language **and** English (Find
+Action-style cross-language haystack — a query survives a language switch),
+ranks with the toolkit `match_score` scorer, and shows the top ~12 results
+in the sidebar list with node icons. Matching is NFKD-normalized and
+**non-fuzzy** (exact / prefix / substring): body content only ranks when
+the query is a real locatable substring — a fuzzy subsequence hit cannot
+be found on the page, so it never appears in results. Topic **descriptions
+are deliberately not indexed** — page content replaces them as the
+body-text haystack. Activating a content match pushes the topic through the
+existing navigator, **scrolls to the first occurrence and highlights it**
+with the document's text selection (accent wash, same normalization as the
+scorer); title-only matches just open the page normally. The result list
+stays until Esc/clear restores the sibling tree. A live search re-runs on
+`update_language`.
+
+The sidebar column (nav list + search field) is only shown when the current
+node has siblings — at the root hub the whole column collapses so the main
+section owns the full width, and the search field appears once you drill
+into a hub or page.
+
 ---
 
 ## Testing
@@ -409,11 +466,6 @@ python src/devtools/check_help_figures.py
 
 ## Follow-ups
 
-- Real screenshots per [Figure policy](#figure-policy): overwrite files under
-  the owning package’s `assets/` (host or `tabs/<tab>/resources/help/assets/`);
-  re-run `check_help_figures.py` until stubs = 0
 - Toolkit: optional `:::tip` / richer definition-list blocks if the subset grows
 - F1 → topic page without opening the palette
-- Optional Help menu demotion vs Find Action
 - Guides / capture / laser as separate pages (only if first-class UI grows)
-

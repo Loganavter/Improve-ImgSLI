@@ -1,18 +1,23 @@
-"""Header bar for the Session Picker Recent shelf (title + sort/view)."""
+"""Control buttons for the Session Picker Recent shelf header (sort/view).
+
+The shelf title lives in the shared ``ShelfWidget`` (``ui.widgets.shelf``);
+this widget is the "control buttons on top" cluster the shelf host adds via
+``add_header_widget``. Emits prefs changes; does not own MRU data.
+"""
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
-    Label,
-    popup_context_menu_for_anchor,
 )
+from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import ContextMenu
 
 from services.io.recent_projects import (
     SORT_ASC,
@@ -30,9 +35,11 @@ from services.io.recent_projects import (
 from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.icons import get_icon as get_session_picker_icon
 
+logger = logging.getLogger("ImproveImgSLI")
+
 
 class RecentHeaderBar(QWidget):
-    """Title plus sort/view chips. Emits prefs changes; does not own MRU data."""
+    """Sort/view chips for the shelf header. Emits prefs changes; no MRU data."""
 
     prefs_changed = Signal()
 
@@ -43,18 +50,11 @@ class RecentHeaderBar(QWidget):
         self._sort_order = SORT_DESC
         self._view_mode = "grid"
         self.setObjectName("RecentHeaderBar")
+        self._sort_menu: ContextMenu | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-
-        self.title_label = Label(
-            self._tr("recent.title", "Recent"),
-            pixel_size=16,
-            bold=True,
-        )
-        layout.addWidget(self.title_label)
-        layout.addStretch(1)
 
         self.sort_button = Button(
             text=self._sort_label(),
@@ -83,6 +83,78 @@ class RecentHeaderBar(QWidget):
         self.view_button.clicked.connect(self._toggle_view)
         layout.addWidget(self.view_button)
 
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        from PySide6.QtWidgets import QApplication
+
+        key = event.key()
+        buttons = [
+            b for b in (self.sort_button, self.sort_order_button, self.view_button)
+            if b.isVisible()
+        ]
+        if not buttons:
+            super().keyPressEvent(event)
+            return
+        focused = QApplication.focusWidget()
+        idx = next((i for i, b in enumerate(buttons) if b is focused), None)
+        if key == Qt.Key.Key_Left:
+            if idx is not None and idx > 0:
+                buttons[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                event.accept()
+                logger.debug(
+                    "[shelf-nav] header left idx=%d -> button %d/%d",
+                    idx, idx - 1, len(buttons),
+                )
+                return
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Up:
+            # Up from any header button → last create-card (vertical exit).
+            logger.debug(
+                "[shelf-nav] header up idx=%s -> create-cards", idx
+            )
+            picker = self.parentWidget()
+            while picker is not None and not hasattr(picker, "focus_last_create_card"):
+                picker = picker.parentWidget()
+            if picker is not None and picker.focus_last_create_card():
+                event.accept()
+                return
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Right:
+            if idx is not None and idx < len(buttons) - 1:
+                buttons[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                event.accept()
+                logger.debug(
+                    "[shelf-nav] header right idx=%d -> button %d/%d",
+                    idx, idx + 1, len(buttons),
+                )
+                return
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Down:
+            # Down from any header button → first shelf card.
+            logger.debug(
+                "[shelf-nav] header down idx=%s -> shelf cards", idx
+            )
+            panel = self.parentWidget()
+            while panel is not None and not hasattr(panel, "focus_recent_item"):
+                panel = panel.parentWidget()
+            if panel is not None and panel.focus_recent_item(True):
+                event.accept()
+                return
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if idx is not None:
+                buttons[idx].clicked.emit()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
     def sync(
         self,
         *,
@@ -95,7 +167,6 @@ class RecentHeaderBar(QWidget):
         self._sort_mode = sort_mode
         self._sort_order = sort_order
         self._view_mode = view_mode
-        self.title_label.setText(self._tr("recent.title", "Recent"))
         self.sort_button.setText(self._sort_label())
         # Exact opaque fill — custom_bg is an 18% tint and cannot lighten
         # a shelf (only darken), so override_bg is required here.
@@ -185,11 +256,31 @@ class RecentHeaderBar(QWidget):
             set_recent_sort_mode(self._sort_mode)
             self.prefs_changed.emit()
 
-        popup_context_menu_for_anchor(
+        # Toggle: hide the old menu if still visible.
+        existing = getattr(self.sort_button, "_anchor_context_menu", None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.hide()
+                    return
+            except RuntimeError:
+                pass
+            self.sort_button._anchor_context_menu = None  # type: ignore[attr-defined]
+
+        menu = ContextMenu(
             parent,
-            self.sort_button,
-            entries,
+            entries=entries,
             on_triggered=on_triggered,
+            surface="in_window",
+        )
+        self._sort_menu = menu
+        self.sort_button._anchor_context_menu = menu  # type: ignore[attr-defined]
+        menu.show_aligned(
+            self.sort_button,
+            anchor_point="bottom-center",
+            flyout_point="top-center",
+            offset=2,
+            animation_axis="vertical",
         )
 
     def _toggle_sort_order(self) -> None:

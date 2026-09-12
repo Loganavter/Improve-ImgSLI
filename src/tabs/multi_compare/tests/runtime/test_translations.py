@@ -1,10 +1,18 @@
 """MultiCompare controls use tab-owned translations for every supported language."""
 
 import json
+import re
 from pathlib import Path
 
 TAB_ROOT = Path(__file__).parents[2]
 I18N_ROOT = TAB_ROOT / "resources" / "i18n"
+
+
+def _button_passes_visible_text(source: str, icon: str) -> bool:
+    """Whitespace-tolerant check that a ``Button(<icon>, ..., text=text, ...)``
+    call exists — the exact formatting (one line vs wrapped) shouldn't matter."""
+    pattern = rf"Button\(\s*{re.escape(icon)}\s*,[^)]*?\btext\s*=\s*text\b"
+    return re.search(pattern, source, re.DOTALL) is not None
 
 
 def _translations(language: str) -> dict[str, str]:
@@ -27,5 +35,5 @@ def test_multi_compare_buttons_are_constructed_with_visible_text():
     toolbar_source = (TAB_ROOT / "ui" / "toolbar.py").read_text(encoding="utf-8")
     footer_source = (TAB_ROOT / "ui" / "footer.py").read_text(encoding="utf-8")
 
-    assert 'Icon.PHOTO, text=text' in toolbar_source
-    assert 'Icon.SAVE, text=text' in footer_source
+    assert _button_passes_visible_text(toolbar_source, "Icon.PHOTO")
+    assert _button_passes_visible_text(footer_source, "Icon.SAVE")

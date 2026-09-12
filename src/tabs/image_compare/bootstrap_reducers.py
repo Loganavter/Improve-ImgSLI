@@ -6,11 +6,14 @@ from core.state_management.extension_reducers import (
 )
 from core.state_management.slot_reducers import register_state_slot_reducer
 from tabs.image_compare.state.reducer import DocumentReducer
+from tabs.image_compare.state.models import PipelineCacheState
 from tabs.image_compare.state.reducers import (
     ImageRenderConfigReducer,
+    PipelineCacheReducer,
     SessionDataReducer,
 )
 
 register_state_slot_reducer("document", DocumentReducer.reduce)
+register_state_slot_reducer("pipeline", PipelineCacheReducer.reduce)
 register_session_data_reducer("image_compare", SessionDataReducer().reduce)
 register_render_config_reducer(ImageRenderConfigReducer.reduce)

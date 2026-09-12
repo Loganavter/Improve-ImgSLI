@@ -20,7 +20,6 @@ def test_settings_dialog_select_section_by_id():
         max_limit=200,
         debug_mode_enabled=False,
         system_notifications_enabled=True,
-        current_resolution_limit=0,
         active_tab="image_compare",
     )
     assert dialog.sidebar.currentRow() == 0
@@ -67,7 +66,7 @@ def test_help_plugin_show_dialog_navigates_to_page(monkeypatch):
         def activateWindow(self) -> None:
             return None
 
-        def navigate_to(self, slug: str, anchor: str | None = None) -> None:
+        def navigate_to(self, slug: str, anchor: str | None = None, **kwargs) -> None:
             navigated.append((slug, anchor))
 
     monkeypatch.setattr("plugins.help.plugin.HelpDialog", FakeHelpDialog)

@@ -60,6 +60,9 @@ def test_upload_pil_images_marks_tiled_store_ready_without_host_qimage(tmp_path)
 
 
 def test_realize_tile_plan_uploads_single_tile_tiled_pixel_store(tmp_path):
+    """docs/dev/rendering/tile-array-atlas-plan.md: every grid, including a
+    1x1 one, now uploads through the shared texture-array path (no more
+    whole-image upload_whole special-case for TiledPixelStore sources)."""
     store = _tps(Image.new("RGBA", (128, 96), "blue"), tmp_path)
     widget = _widget(stored0=store)
     resources = RhiResources()
@@ -70,7 +73,7 @@ def test_realize_tile_plan_uploads_single_tile_tiled_pixel_store(tmp_path):
         "shared.rendering.tile_texture_service", fromlist=["TileTextureService"]
     ).TileTextureService(max_tile_extent=512)
     updates = MagicMock()
-    resources.upload_whole = MagicMock()
+    resources.array_resources.upload_tile_to_array = MagicMock(wraps=resources.array_resources.upload_tile_to_array)
 
     base_image = SimpleNamespace(
         letterbox1=(0.0, 0.0, 1.0, 1.0),
@@ -79,7 +82,7 @@ def test_realize_tile_plan_uploads_single_tile_tiled_pixel_store(tmp_path):
         pan_offset_x=0.0,
         pan_offset_y=0.0,
     )
-    resources.realize_tile_plan(
+    resources.residency.realize_tile_plan(
         tile_service,
         widget,
         ("stored_0", "stored_1"),
@@ -87,11 +90,9 @@ def test_realize_tile_plan_uploads_single_tile_tiled_pixel_store(tmp_path):
         updates,
     )
 
-    assert resources.upload_whole.call_count >= 1
-    tile_key = tile_service.tile_key("stored_0", 0, 0)
+    assert resources.array_resources.upload_tile_to_array.call_count >= 1
     assert tile_service.is_resident("stored_0", (0, 0))
-    uploaded_key = resources.upload_whole.call_args_list[0].args[0]
-    assert uploaded_key == tile_key
+    assert tile_service.slot_for("stored_0", (0, 0)) is not None
 
 
 def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
@@ -116,7 +117,7 @@ def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
         "shared.rendering.tile_texture_service", fromlist=["TileTextureService"]
     ).TileTextureService(max_tile_extent=512)
     updates = MagicMock()
-    resources.upload_whole = MagicMock()
+    resources.array_resources.upload_tile_to_array = MagicMock(wraps=resources.array_resources.upload_tile_to_array)
 
     base_image = SimpleNamespace(
         letterbox1=(0.0, 0.0, 1.0, 1.0),
@@ -128,7 +129,7 @@ def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
     )
 
     # Canvas path: only stored — sources stay cold.
-    resources.realize_tile_plan(
+    resources.residency.realize_tile_plan(
         tile_service,
         widget,
         ("stored_0", "stored_1"),
@@ -138,7 +139,7 @@ def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
     assert not tile_service.is_resident("source_0", (0, 0))
 
     # Magnifier path: realize source keys even though use_hires is false.
-    resources.realize_tile_plan(
+    resources.residency.realize_tile_plan(
         tile_service,
         widget,
         ("source_0", "source_1"),
@@ -149,7 +150,7 @@ def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
     assert tile_service.is_resident("source_0", (0, 0))
     assert tile_service.is_resident("source_1", (0, 0))
     assert tile_service.tile_key("source_0", 0, 0) == "source_0"
-    uploaded_keys = [call.args[0] for call in resources.upload_whole.call_args_list]
+    uploaded_keys = [call.args[1] for call in resources.array_resources.upload_tile_to_array.call_args_list]
     assert "source_0" in uploaded_keys
     assert "source_1" in uploaded_keys
 
@@ -180,6 +181,7 @@ def test_realize_tile_plan_reregisters_stale_grid_when_source_grows(tmp_path):
     updates = MagicMock()
     resources.upload_whole = MagicMock()
     resources._evict_stale_tiles = MagicMock()
+    resources.residency._evict_stale_tiles = resources._evict_stale_tiles
 
     base_image = SimpleNamespace(
         letterbox1=(0.0, 0.0, 1.0, 1.0),
@@ -189,7 +191,7 @@ def test_realize_tile_plan_reregisters_stale_grid_when_source_grows(tmp_path):
         pan_offset_y=0.0,
     )
 
-    resources.realize_tile_plan(
+    resources.residency.realize_tile_plan(
         tile_service,
         widget,
         ("source_0", "source_1"),
@@ -202,7 +204,7 @@ def test_realize_tile_plan_reregisters_stale_grid_when_source_grows(tmp_path):
     assert stale.rows == 1 and stale.columns == 1
 
     widget.runtime_state._source_pil_images = [large, large]
-    resources.realize_tile_plan(
+    resources.residency.realize_tile_plan(
         tile_service,
         widget,
         ("source_0", "source_1"),

@@ -49,14 +49,9 @@ from core.state_management.interaction_actions import (
 from core.state_management.session_actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
-    SetCachedScaledImageDimsAction,
-    SetDisplayCacheImageAction,
-    SetDisplayResolutionLimitAction,
     SetImageSessionImageAction,
-    SetLastDisplayCacheParamsAction,
     SetPendingUnificationPathsAction,
     SetPsnrValueAction,
-    SetScaledImageForDisplayAction,
     SetSsimValueAction,
     SetUnificationInProgressAction,
     SetZoomInterpolationMethodAction,
@@ -71,12 +66,14 @@ from core.state_management.settings_actions import (
     SetThemeAction,
     SetUIFontFamilyAction,
     SetUIFontModeAction,
+    SetUIScaleFactorAction,
     SetUIModeAction,
     SetVideoRecordingFpsAction,
     SetWindowGeometryAction,
     SetWindowWasMaximizedAction,
 )
 from core.state_management.viewport_actions import (
+    SetCanvasWidgetStateAction,
     SetChannelViewModeAction,
     SetDiffModeAction,
     SetIsDraggingSliderAction,
@@ -85,6 +82,7 @@ from core.state_management.viewport_actions import (
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
     ToggleOrientationAction,
+    UpdateCanvasFeatureStateAction,
 )
 
 __all__ = [name for name in globals() if name.endswith("Action")] + ["Action", "ActionType"]

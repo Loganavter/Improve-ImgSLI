@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 
 from core.events import CoreErrorOccurredEvent
+from sli_ui_toolkit.i18n import get_current_language, tr
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -74,8 +76,13 @@ def build_video_notification_preview(
         thumb_path = thumb_file.name
         thumb_file.close()
         frame.save(thumb_path, format="PNG")
+        _schedule_temp_delete(thumb_path, delay_ms=60000)
         return thumb_path
     except Exception:
+        logger.warning(
+            "video export preview frame generation failed; continuing without thumbnail",
+            exc_info=True,
+        )
         return None
 
 
@@ -148,11 +155,30 @@ class VideoExportFlow:
                         safe_resolution,
                         options,
                     )
+                    lang = get_current_language()
+                    try:
+                        store_lang = getattr(getattr(controller.main_controller, "store", None), "settings", None)
+                        if store_lang is not None:
+                            lang = getattr(store_lang, "current_language", lang) or lang
+                    except Exception:
+                        pass
+                    title = tr("video.video_exported", lang)
+                    if title == "video.video_exported":
+                        title = "Video Exported"
+                    saved_tpl = tr("video.saved_to", lang)
+                    if saved_tpl == "video.saved_to":
+                        saved_tpl = "Saved to: {path}"
+                    try:
+                        msg = saved_tpl.format(path=path) if "{path}" in saved_tpl else f"{saved_tpl} {path}"
+                    except Exception:
+                        msg = f"Saved to: {path}"
                     controller.presenter.main_window_app.actions.notify_system(
-                        "Video Exported",
-                        f"Saved to: {path}",
+                        title,
+                        msg,
                         image_path=preview,
                     )
+                    if preview:
+                        _schedule_temp_delete(preview, delay_ms=10000)
             else:
                 self._emit_export_finished(False)
 

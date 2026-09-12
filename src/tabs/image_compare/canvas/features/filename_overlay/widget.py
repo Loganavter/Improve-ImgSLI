@@ -172,7 +172,7 @@ def build_filename_overlay_render_scene_overrides(store) -> dict:
     split_position_visual = float(
         getattr(viewport.view_state, "split_position_visual", 0.5)
     )
-    divider_style = {}
+    divider_style: dict = {}
     query_divider_style = registry().get_feature_command_by_alias("splitter.overlay_style")
     if query_divider_style is not None:
         divider_style = query_divider_style(store) or {}

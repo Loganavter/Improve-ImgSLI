@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single canvas interaction router — gesture/drag/zoom routing"
 from __future__ import annotations
 
 import logging
@@ -28,6 +29,7 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
+from .rhi_renderer._debug import rhi_render_debug
 
 
 def _float_attr(obj, attr: str, default: float) -> float:
@@ -192,6 +194,20 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         new_pan_y=float(new_pan_y),
         content_rect=content_rect,
     )
+    rhi_render_debug(
+        "update_split_for_zoom is_horizontal=%s split_visual=%.4f->%s "
+        "zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f) content_rect=%s",
+        is_horizontal,
+        split_visual,
+        f"{new_split:.4f}" if new_split is not None else None,
+        get_zoom_level(widget),
+        float(new_zoom),
+        get_pan_offset_x(widget),
+        get_pan_offset_y(widget),
+        float(new_pan_x),
+        float(new_pan_y),
+        content_rect_px,
+    )
     if new_split is not None:
         synced = False
         if sync_callback is not None:
@@ -308,7 +324,6 @@ def set_overlay_coords(
         state._occluded_capture_arcs = []
         for i in range(len(overlay._quads)):
             overlay._quads[i] = None
-        state._feature_overlay_quad_ndc = None
     widget._request_update()
 
 
@@ -364,25 +379,56 @@ def handle_wheel_event(widget, event):
     modifiers = event.modifiers()
 
     if modifiers & Qt.KeyboardModifier.ControlModifier:
+        # Every wheel tick is applied immediately and unconditionally --
+        # no "render still pending, drop this tick" throttle. That throttle
+        # used to exist to protect a slow render from a buffered OS burst of
+        # wheel deltas, but it only moved the problem: dropped ticks lost
+        # their direction and magnitude, which is what caused zoom to
+        # visibly reverse or stall on bursts (see
+        # docs/dev/rendering/tile-array-atlas-plan.md Findings). State
+        # updates here are cheap float math; Qt's own widget.update()
+        # already coalesces into a single repaint no matter how many times
+        # it's called before the next frame, so there is nothing left for a
+        # custom throttle to protect.
+        angle_delta_y = int(event.angleDelta().y())
+        cur_zoom = get_zoom_level(widget)
+        cur_pan_x = get_pan_offset_x(widget)
+        cur_pan_y = get_pan_offset_y(widget)
         result = compute_wheel_zoom_transform(
             WheelZoomRequest(
                 widget_width=widget.width(),
                 widget_height=widget.height(),
                 mouse_x=float(event.position().x()),
                 mouse_y=float(event.position().y()),
-                current_zoom=get_zoom_level(widget),
-                current_pan_x=get_pan_offset_x(widget),
-                current_pan_y=get_pan_offset_y(widget),
-                angle_delta_y=int(event.angleDelta().y()),
+                current_zoom=cur_zoom,
+                current_pan_x=cur_pan_x,
+                current_pan_y=cur_pan_y,
+                angle_delta_y=angle_delta_y,
             )
         )
         if result is not None:
             new_zoom, new_pan_x, new_pan_y = result
+            rhi_render_debug(
+                "wheel_zoom APPLIED angle_delta_y=%d zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f)",
+                angle_delta_y,
+                cur_zoom,
+                new_zoom,
+                cur_pan_x,
+                cur_pan_y,
+                new_pan_x,
+                new_pan_y,
+            )
             update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
             set_pan_offsets(widget, new_pan_x, new_pan_y)
             set_zoom_level(widget, new_zoom)
             widget.zoomChanged.emit(get_zoom_level(widget))
             widget.update()
+        else:
+            rhi_render_debug(
+                "wheel_zoom REJECTED (transform returned None) angle_delta_y=%d cur_zoom=%.3f",
+                angle_delta_y,
+                cur_zoom,
+            )
 
         event.accept()
         return
@@ -451,7 +497,68 @@ def handle_mouse_move_event(widget, event):
     widget.mouseMoved.emit(event)
 
 
+from shared.canvas.keyboard_constants import (
+    KEY_PAN as _KEY_PAN,
+    KEY_PAN_NUDGE as _KEY_PAN_NUDGE,
+    KEY_ZOOM_IN as _KEY_ZOOM_IN,
+    KEY_ZOOM_OUT as _KEY_ZOOM_OUT,
+)
+
+
+def _apply_keyboard_pan(widget, key) -> None:
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
+    zoom = get_zoom_level(widget)
+    dx = -1 if key == Qt.Key.Key_Left else (1 if key == Qt.Key.Key_Right else 0)
+    dy = -1 if key == Qt.Key.Key_Up else (1 if key == Qt.Key.Key_Down else 0)
+    dpan_x = dx * _KEY_PAN_NUDGE / max(zoom, 1e-6)
+    dpan_y = dy * _KEY_PAN_NUDGE / max(zoom, 1e-6)
+    set_pan(
+        widget,
+        get_pan_offset_x(widget) + dpan_x,
+        get_pan_offset_y(widget) + dpan_y,
+    )
+
+
+def _apply_keyboard_zoom(widget, key) -> None:
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
+    angle_delta_y = 120 if key in _KEY_ZOOM_IN else -120
+    result = compute_wheel_zoom_transform(
+        WheelZoomRequest(
+            widget_width=widget.width(),
+            widget_height=widget.height(),
+            # Keyboard zoom anchors at the viewport center (mouse at center),
+            # which leaves pan unchanged — same result as the wheel around the
+            # middle of the widget.
+            mouse_x=float(widget.width()) / 2.0,
+            mouse_y=float(widget.height()) / 2.0,
+            current_zoom=get_zoom_level(widget),
+            current_pan_x=get_pan_offset_x(widget),
+            current_pan_y=get_pan_offset_y(widget),
+            angle_delta_y=angle_delta_y,
+        )
+    )
+    if result is None:
+        return
+    new_zoom, new_pan_x, new_pan_y = result
+    update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
+    set_pan_offsets(widget, new_pan_x, new_pan_y)
+    set_zoom_level(widget, new_zoom)
+    widget.zoomChanged.emit(get_zoom_level(widget))
+    widget.update()
+
+
 def handle_key_press_event(widget, event):
+    key = event.key()
+    if key in _KEY_PAN:
+        _apply_keyboard_pan(widget, key)
+        event.accept()
+        return
+    if key in _KEY_ZOOM_IN or key in _KEY_ZOOM_OUT:
+        _apply_keyboard_zoom(widget, key)
+        event.accept()
+        return
     widget.keyPressed.emit(event)
 
 

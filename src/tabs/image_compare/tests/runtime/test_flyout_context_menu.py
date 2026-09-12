@@ -25,8 +25,6 @@ def _store_with_lists():
         ],
         current_index1=0,
         current_index2=0,
-        image1_path="/tmp/a.png",
-        image2_path="/tmp/c.png",
     )
     return SimpleNamespace(
         get_session_state_slot=lambda _name: document,
@@ -96,7 +94,7 @@ def test_list_item_remove_calls_specific_index(qapp):
 
 
 def test_unified_flyout_right_click_emits_context_menu_signal(qapp):
-    from sli_ui_toolkit.ui.widgets.composite.unified_flyout import UnifiedFlyout
+    from ui.widgets.unified_list_picker import UnifiedListPicker as UnifiedFlyout
 
     host = QWidget()
     left = QWidget(host)

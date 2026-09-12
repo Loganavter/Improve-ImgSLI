@@ -1,11 +1,9 @@
 import logging
-from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QObject, QPointF, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-from core.plugin_system.ui_integration import PluginUIRegistry
 from ui.managers.dialog_manager import DialogManager
 from ui.managers.message_manager import MessageManager
 from ui.managers.transient_ui_manager import TransientUIManager
@@ -23,7 +21,6 @@ class UIManager(QObject):
         main_controller,
         ui,
         parent_widget,
-        plugin_ui_registry: PluginUIRegistry | None = None,
     ):
         super().__init__(parent_widget)
         self.store = store
@@ -31,22 +28,16 @@ class UIManager(QObject):
         self.ui = ui
         self.parent_widget = parent_widget
         self.app_ref = parent_widget
-        self.plugin_ui_registry = plugin_ui_registry
         self.event_bus = main_controller.event_bus if main_controller else None
         self._settings_application_service = None
         self._unified_flyout_ref = None
 
-        self._active_message_boxes = []
+        self._active_message_boxes: list = []
         initialize_ui_manager_pre_transient(self)
         self.transient = TransientUIManager(self)
         initialize_ui_manager_post_transient(self)
         self.dialogs = DialogManager(self)
         self.messages = MessageManager(self)
-
-    def get_plugin_action(self, action_id: str) -> Callable[..., Any] | None:
-        if self.plugin_ui_registry:
-            return self.plugin_ui_registry.get_action(action_id)
-        return None
 
     @property
     def unified_flyout(self):
@@ -104,27 +95,6 @@ class UIManager(QObject):
     def _on_unified_flyout_closed(self):
         self.transient.on_unified_flyout_closed()
 
-    def _update_magnifier_flyout_states(self):
-        self.transient.magnifier.update_states()
-
-    def _on_magnifier_toggle_with_hover(self, checked: bool):
-        self.transient.magnifier.on_toggle_with_hover(checked)
-
-    def _show_magnifier_visibility_flyout(self, reason: str = "hover"):
-        self.transient.magnifier.show(reason)
-
-    def _hide_magnifier_visibility_flyout(self):
-        self.transient.magnifier.hide()
-
-    def _show_magnifier_instances_popup(self):
-        self.transient.magnifier_instances.show()
-
-    def _hide_magnifier_instances_popup(self):
-        self.transient.magnifier_instances.hide()
-
-    def _on_magnifier_instances_count_changed(self):
-        self.transient.magnifier_instances.on_count_changed()
-
     def eventFilter(self, watched, event):
         app = QApplication.instance()
         if (
@@ -164,7 +134,7 @@ class UIManager(QObject):
                 return
             gui = QGuiApplication.instance()
             app_active = (
-                gui is not None
+                isinstance(gui, QGuiApplication)
                 and gui.applicationState() == Qt.ApplicationState.ApplicationActive
             )
             win_active = bool(self.parent_widget.isActiveWindow())
@@ -179,8 +149,17 @@ class UIManager(QObject):
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.transient.close_all_flyouts_if_needed(global_pos)
 
-    def show_help_dialog(self, *, page: str | None = None, anchor: str | None = None):
-        self.dialogs.show_help_dialog(page=page, anchor=anchor)
+    def show_help_dialog(
+        self,
+        *,
+        page: str | None = None,
+        anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
+    ):
+        self.dialogs.show_help_dialog(
+            page=page, anchor=anchor, video_url=video_url, learn_more_url=learn_more_url
+        )
 
     def show_settings_dialog(self, *, section_id: str | None = None):
         self.dialogs.show_settings_dialog(section_id=section_id)

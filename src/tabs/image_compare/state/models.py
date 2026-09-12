@@ -22,12 +22,11 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from PIL import Image
-
 from core.store_viewport import RenderConfig, SessionData
 
 __all__ = [
     "ImageSessionState",
+    "PipelineCacheState",
     "RenderCacheState",
     "RenderConfig",
     "SessionData",
@@ -57,28 +56,46 @@ class ImageSessionState:
 @dataclass
 class RenderCacheState:
 
-    display_cache_image1: Optional[Image.Image] = None
-    display_cache_image2: Optional[Image.Image] = None
-    scaled_image1_for_display: Optional[Image.Image] = None
-    scaled_image2_for_display: Optional[Image.Image] = None
-    cached_scaled_image_dims: Optional[tuple[int, int]] = None
-    last_display_cache_params: Optional[tuple] = None
-
-    unified_image_cache: OrderedDict = field(default_factory=OrderedDict)
     unification_in_progress: bool = False
     pending_unification_paths: Optional[tuple[str, str]] = None
 
-    caches: dict = field(default_factory=dict)
-    feature_caches: dict = field(default_factory=dict)
-    cached_split_base_image: Optional[Any] = None
-    last_split_cached_params: Optional[tuple] = None
     cached_diff_image: Optional[Any] = None
+    # request_key (diff_mode, image_uid(source1), image_uid(source2), size1,
+    # size2) cached_diff_image was computed for -- see diff_cache.py's
+    # request_cached_diff_image_async, which compares this against the
+    # live sources' own key to decide whether a recompute is needed,
+    # instead of gating on cached_diff_image being None. Keeping the stale
+    # image in place (rather than clearing it to None on every image swap)
+    # lets the canvas keep showing the previous diff until the new one is
+    # ready, instead of a diff-vanishes/plain-image/diff-reappears flash
+    # (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up).
+    cached_diff_source_key: Optional[Any] = None
+
+    def clone(self):
+        return copy.copy(self)
+
+
+@dataclass
+class PipelineCacheState:
+    """Store slot for PipelineCache — Bucket C (plan_render_dispatch_and_gap_fix.md).
+
+    Holds the three LRU tiers as frozen copies. Reducer owns lifecycle
+    (max 8 each) and ``close_pixel_store`` defer, not direct ``cache.put_*``.
+    ``ImagePipeline.peek`` reads from this slot when a Store is present
+    (falls back to the legacy ``PipelineCache`` for headless tests).
+    """
+
+    pixel: Any = field(default_factory=OrderedDict)
+    preview: Any = field(default_factory=OrderedDict)
+    unify: Any = field(default_factory=OrderedDict)
+
+    max_pixel: int = 8
+    max_preview: int = 8
+    max_unify: int = 8
 
     def clone(self):
         new_obj = copy.copy(self)
-        new_obj.unified_image_cache = self.unified_image_cache.__class__(
-            self.unified_image_cache
-        )
-        new_obj.caches = dict(self.caches)
-        new_obj.feature_caches = dict(self.feature_caches)
+        new_obj.pixel = OrderedDict(self.pixel)
+        new_obj.preview = OrderedDict(self.preview)
+        new_obj.unify = OrderedDict(self.unify)
         return new_obj

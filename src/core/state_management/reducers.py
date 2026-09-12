@@ -1,5 +1,14 @@
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+# Long-term Store lock fix (plan_image_compare_dnd_tiles.md):
+# All ViewportState / slot copies (dict shallow copies, ViewState/ViewportState
+# replacements) are prepared here inside RootReducer.reduce — which Dispatcher
+# now calls *outside* Dispatcher._lock. The critical section in
+# Dispatcher.dispatch only does ``is``-comparison and an atomic swap of the
+# already-prepared objects. This file must not use deepcopy; shallow
+# ``dict(...)`` / ``replace`` is sufficient because feature states are
+# immutable.
 
 from core.store import (
     GeometryState,
@@ -18,9 +27,15 @@ from .extension_reducers import (
 )
 from .slot_reducers import iter_state_slot_reducers
 
+if TYPE_CHECKING:
+    from core.store import Store
+
+from domain.types import Rect
+
 from .actions import (
     Action,
     ClearAllCachesAction,
+    InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
     SetAutoCropBlackBordersAction,
     SetChannelViewModeAction,
@@ -50,6 +65,7 @@ from .actions import (
     SetThemeAction,
     SetUIFontFamilyAction,
     SetUIFontModeAction,
+    SetUIScaleFactorAction,
     SetUIModeAction,
     SetUserInteractingAction,
     SetVideoRecordingFpsAction,
@@ -80,6 +96,20 @@ def _build_viewport_state(
 class ViewStateReducer:
     @staticmethod
     def reduce(view_state: ViewState, action: Action, session_type: str | None = None) -> ViewState:
+        feature_name = getattr(action, "feature", None)
+        feature_state = getattr(action, "state", None)
+        if feature_name is not None and feature_state is not None and getattr(action, "type", None) in (
+            "SET_CANVAS_WIDGET_STATE",
+            "UPDATE_CANVAS_FEATURE_STATE",
+        ):
+            # Shallow dict copy — no deepcopy (removed from critical section).
+            # Feature states are immutable, so sharing values is safe and the
+            # copy itself is prepared outside Dispatcher._lock.
+            current = dict(getattr(view_state, "canvas_widget_state", None) or {})
+            if current.get(feature_name) is feature_state:
+                return view_state
+            current[feature_name] = feature_state
+            return replace(view_state, canvas_widget_state=current)
         if isinstance(action, SetSplitPositionAction):
             return replace(
                 view_state, split_position=max(0.0, min(1.0, action.position))
@@ -106,6 +136,10 @@ class ViewStateReducer:
             if reduced is not view_state:
                 return reduced
         if isinstance(action, InvalidateRenderCacheAction):
+            return replace(
+                view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
+            )
+        if isinstance(action, InvalidateGeometryCacheAction):
             return replace(
                 view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
             )
@@ -160,6 +194,24 @@ class GeometryStateReducer:
     def reduce(
         geometry_state: GeometryState, action: Action, session_type: str | None = None
     ) -> GeometryState:
+        if isinstance(action, InvalidateGeometryCacheAction):
+            return replace(
+                geometry_state,
+                pixmap_width=0,
+                pixmap_height=0,
+                image_display_rect_on_label=Rect(),
+                fixed_label_width=None,
+                fixed_label_height=None,
+            )
+        if isinstance(action, ClearAllCachesAction):
+            return replace(
+                geometry_state,
+                pixmap_width=0,
+                pixmap_height=0,
+                image_display_rect_on_label=Rect(),
+                fixed_label_width=None,
+                fixed_label_height=None,
+            )
         if isinstance(action, SetPixmapDimensionsAction):
             return replace(
                 geometry_state, pixmap_width=action.width, pixmap_height=action.height
@@ -236,6 +288,8 @@ class SettingsReducer:
             return replace(settings, ui_font_mode=action.mode)
         if isinstance(action, SetUIFontFamilyAction):
             return replace(settings, ui_font_family=action.family)
+        if isinstance(action, SetUIScaleFactorAction):
+            return replace(settings, ui_scale_factor=action.factor)
         if isinstance(action, SetDebugModeEnabledAction):
             return replace(settings, debug_mode_enabled=action.enabled)
         if isinstance(action, SetSystemNotificationsEnabledAction):
@@ -264,8 +318,81 @@ class RootReducer:
         self.viewport_reducer = ViewportReducer()
         self.settings_reducer = SettingsReducer()
 
+    def _reduce_one(self, store: "Store", action: Action, session_type: str | None) -> tuple[Any, Any, dict[str, Any], bool, bool]:
+        """Single-action reduction without allocating Store. Returns (new_viewport, new_settings, new_slot_values, any_slot_changed, viewport_changed)."""
+        new_viewport = self.viewport_reducer.reduce(store.viewport, action, session_type)
+        new_render_config = reduce_render_config_extensions(
+            new_viewport.render_config, action
+        )
+        if new_render_config is not new_viewport.render_config:
+            new_viewport = _build_viewport_state(
+                new_viewport, render_config=new_render_config
+            )
+        new_settings = self.settings_reducer.reduce(store.settings, action)
+        new_slot_values: dict[str, Any] = {}
+        any_slot_changed = False
+        for slot_name, slot_reducer in iter_state_slot_reducers():
+            # For intermediate steps in a transaction we need current accumulated value, not original store's
+            # This helper is only for single action; caller handles accumulation for transaction.
+            current_value = store.get_session_state_slot(slot_name)
+            new_value = slot_reducer(current_value, action)
+            new_slot_values[slot_name] = new_value
+            if new_value is not current_value:
+                any_slot_changed = True
+        return new_viewport, new_settings, new_slot_values, any_slot_changed, new_viewport is not store.viewport
+
     def reduce(self, store: "Store", action: Action) -> "Store":
         from core.store import Store
+
+        # Transaction — single Store alloc for N inner actions (plan_image_pipeline.md Phase 5)
+        if getattr(action, "type", None) == "TRANSACTION":
+            inner = getattr(action, "actions", None) or []
+            if not inner:
+                return store
+            active_session = store.get_active_workspace_session()
+            session_type = active_session.session_type if active_session is not None else None
+            cur_viewport = store.viewport
+            cur_settings = store.settings
+            # accumulate slot values in dict, starting from current store
+            cur_slots: dict[str, Any] = {
+                name: store.get_session_state_slot(name) for name, _ in iter_state_slot_reducers()
+            }
+            any_changed = False
+            for sub in inner:
+                # reduce viewport/settings incrementally
+                new_viewport = self.viewport_reducer.reduce(cur_viewport, sub, session_type)
+                new_render_config = reduce_render_config_extensions(new_viewport.render_config, sub)
+                if new_render_config is not new_viewport.render_config:
+                    new_viewport = _build_viewport_state(new_viewport, render_config=new_render_config)
+                new_settings = self.settings_reducer.reduce(cur_settings, sub)
+                # reduce each slot against accumulated value
+                new_slots: dict[str, Any] = {}
+                slot_changed_this_step = False
+                for slot_name, slot_reducer in iter_state_slot_reducers():
+                    cur_val = cur_slots.get(slot_name)
+                    new_val = slot_reducer(cur_val, sub)
+                    new_slots[slot_name] = new_val
+                    if new_val is not cur_val:
+                        slot_changed_this_step = True
+                        any_changed = True
+                if new_viewport is not cur_viewport:
+                    any_changed = True
+                if new_settings is not cur_settings:
+                    any_changed = True
+                if slot_changed_this_step:
+                    # will set any_changed already
+                    pass
+                cur_viewport, cur_settings, cur_slots = new_viewport, new_settings, new_slots
+            if not any_changed:
+                return store
+            new_store = Store()
+            new_store.viewport = cur_viewport
+            for slot_name, new_value in cur_slots.items():
+                new_store.set_session_state_slot(slot_name, new_value, emit_scope="")
+            new_store.settings = cur_settings
+            new_store.recorder = store.recorder
+            new_store._dispatcher = store._dispatcher
+            return new_store
 
         active_session = store.get_active_workspace_session()
         session_type = active_session.session_type if active_session is not None else None

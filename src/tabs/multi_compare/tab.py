@@ -2,210 +2,45 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QSettings
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from shared.image_extensions import is_accepted_image_path
 from tabs.contract import TabContext, TabContract, TabTransitionHint
+from tabs.multi_compare.use_cases import persistence
+from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 
-logger = logging.getLogger(__name__)
-
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
-_STATE_SLOT = "multi_compare.state"
-_QS_ORG = "improve-imgsli"
-_QS_APP = "improve-imgsli"
-_QS_KEY = "multi_compare/last_session_settings"
+logger = logging.getLogger("ImproveImgSLI")
 
 
-def _divider_to_dict(divider) -> dict:
-    return {
-        "visible": divider.visible,
-        "thickness": divider.thickness,
-        "color_rgba": list(divider.color_rgba),
-    }
+def _filter_image_paths(paths: list[Path]) -> list[Path]:
+    """Suffix-only image filter from the single shared source (bug-a1 guard).
 
-
-def _divider_from_dict(d: dict):
-    from tabs.multi_compare.models import (
-        DEFAULT_DIVIDER_COLOR_RGBA,
-        MultiCompareDividerSettings,
-    )
-
-    raw = d.get("color_rgba")
-    if (
-        isinstance(raw, (list, tuple))
-        and len(raw) == 4
-        and all(isinstance(v, (int, float)) for v in raw)
-        and int(raw[3]) > 0
-    ):
-        color_rgba = (int(raw[0]), int(raw[1]), int(raw[2]), int(raw[3]))
-    else:
-        color_rgba = DEFAULT_DIVIDER_COLOR_RGBA
-    return MultiCompareDividerSettings(
-        visible=d.get("visible", True),
-        thickness=d.get("thickness", 4),
-        color_rgba=color_rgba,
-    )
-
-
-def _label_to_dict(label) -> dict:
-    return {
-        "font_size_percent": label.font_size_percent,
-        "font_weight": label.font_weight,
-        "text_rgba": list(label.text_rgba),
-        "bg_rgba": list(label.bg_rgba),
-        "draw_background": label.draw_background,
-        "text_alpha_percent": label.text_alpha_percent,
-    }
-
-
-def _label_from_dict(l: dict):
-    from domain.qt_adapters import ensure_visible_color
-    from domain.types import Color
-    from tabs.multi_compare.models import MultiCompareLabelSettings
-
-    text_fallback = Color(255, 255, 255, 255)
-    bg_fallback = Color(0, 0, 0, 255)
-    text = ensure_visible_color(l.get("text_rgba"), fallback=text_fallback)
-    bg = ensure_visible_color(l.get("bg_rgba"), fallback=bg_fallback)
-    return MultiCompareLabelSettings(
-        font_size_percent=l.get("font_size_percent", 100),
-        font_weight=l.get("font_weight", 0),
-        text_rgba=(text.r, text.g, text.b, text.a),
-        bg_rgba=(bg.r, bg.g, bg.b, bg.a),
-        draw_background=l.get("draw_background", True),
-        text_alpha_percent=l.get("text_alpha_percent", 100),
-    )
-
-
-def _serialize_layout_node(node) -> dict | None:
-    from tabs.multi_compare.models import LeafNode
-
-    if node is None:
-        return None
-    if isinstance(node, LeafNode):
-        return {"type": "leaf", "slot_id": node.slot_id}
-    return {
-        "type": "split",
-        "direction": node.direction,
-        "weights": list(node.weights),
-        "children": [_serialize_layout_node(c) for c in node.children],
-    }
-
-
-def _deserialize_layout_node(data: dict | None):
-    from tabs.multi_compare.models import LeafNode, SplitNode
-
-    if data is None:
-        return None
-    if data.get("type") == "leaf":
-        return LeafNode(slot_id=data["slot_id"])
-    return SplitNode(
-        direction=data.get("direction", "h"),
-        children=[_deserialize_layout_node(c) for c in data.get("children", [])],
-        weights=list(data.get("weights", [])),
-    )
-
-
-def _save_last_settings(divider, label) -> None:
-    try:
-        data = {"divider": _divider_to_dict(divider), "label": _label_to_dict(label)}
-        settings = QSettings(_QS_ORG, _QS_APP)
-        settings.setValue(_QS_KEY, json.dumps(data))
-        settings.sync()
-        logger.debug(
-            "[mc-divider-persist] save QSettings color=%s thickness=%s file=%s",
-            list(divider.color_rgba),
-            divider.thickness,
-            settings.fileName(),
-        )
-    except Exception:
-        logger.exception("mc: failed to save last session settings")
-
-
-def _load_last_settings():
-    try:
-        settings = QSettings(_QS_ORG, _QS_APP)
-        raw = settings.value(_QS_KEY)
-        if not raw:
-            logger.debug(
-                "[mc-divider-persist] load QSettings empty key=%s file=%s",
-                _QS_KEY,
-                settings.fileName(),
-            )
-            return None
-        if isinstance(raw, (bytes, bytearray)):
-            raw = bytes(raw).decode("utf-8")
-        elif not isinstance(raw, str):
-            raw = str(raw)
-        data = json.loads(raw)
-        divider = _divider_from_dict(data.get("divider", {}))
-        label = _label_from_dict(data.get("label", {}))
-        logger.debug(
-            "[mc-divider-persist] load QSettings color=%s thickness=%s",
-            list(divider.color_rgba),
-            divider.thickness,
-        )
-        return (divider, label)
-    except Exception:
-        logger.exception("mc: failed to load last session settings")
-        return None
-
-
-def _settings_from_qsettings():
-    """Last-used divider/label from QSettings — seed for every new MC session."""
-    loaded = _load_last_settings()
-    if loaded is None:
-        return None
-    from tabs.multi_compare.models import MultiCompareState
-
-    divider, label = loaded
-    return MultiCompareState(divider_settings=divider, label_settings=label)
-
-
-def _settings_from_sibling_session(store, *, exclude: str):
-    """Copy divider/label chrome from another live MC session (QSettings fallback)."""
-    from dataclasses import replace
-
-    from tabs.multi_compare.models import MultiCompareState
-
-    for session in store.list_workspace_sessions():
-        if getattr(session, "session_type", None) != "multi_compare":
-            continue
-        if session.id == exclude:
-            continue
-        slot = session.state_slots.get(_STATE_SLOT)
-        if slot is None:
-            continue
-        return replace(
-            MultiCompareState(),
-            divider_settings=slot.divider_settings,
-            label_settings=slot.label_settings,
-        )
-    return None
-
-
-def _fresh_default_state():
-    from tabs.multi_compare.models import MultiCompareState
-
-    return MultiCompareState()
+    No ``is_file`` stat here — verdicts that gate accept/route must stay
+    synchronous and cheap; existence is validated downstream
+    (``load_external_paths`` / deferred drop finish).
+    """
+    return [p for p in paths if is_accepted_image_path(p)]
 
 
 def _default_state():
-    """Blueprint factory: clean defaults only (no in-memory leak)."""
-    return _fresh_default_state()
+    from tabs.multi_compare.models import MultiCompareState
 
-
-def _multi_compare_session_count(store) -> int:
-    return sum(
-        1
-        for session in store.list_workspace_sessions()
-        if getattr(session, "session_type", None) == "multi_compare"
-    )
+    global _last_session_settings
+    if _last_session_settings is None:
+        _last_session_settings = _load_last_settings()
+    if _last_session_settings is not None:
+        divider, label = _last_session_settings
+        logger.warning(
+            "[divider-color-debug] _default_state: using cached/loaded color_rgba=%s",
+            divider.color_rgba,
+        )
+        return MultiCompareState(divider_settings=divider, label_settings=label)
+    logger.warning("[divider-color-debug] _default_state: falling back to built-in default")
+    return MultiCompareState()
 
 
 class MultiCompareTab(TabContract):
@@ -215,7 +50,7 @@ class MultiCompareTab(TabContract):
         self._controller = None
         self._widget = None
         self._active_session_id: str | None = None
-        self._store_context = None
+        self._nav_section = None
 
     @property
     def session_type(self) -> str:
@@ -247,7 +82,15 @@ class MultiCompareTab(TabContract):
         return translated if translated != key else self.display_name
 
     def transition_hint(self) -> TabTransitionHint:
-        # No workspace.transition_mask.release() wired yet — avoid contract errors.
+        # No cover mask on enter: the WorkspaceTransitionMask overlay blocks
+        # the QRhiWidget's first expose/initialize while it covers the stack
+        # (measured again 2026-08-09: initialize starts only after the mask
+        # force-releases at max_duration -> 400ms blank cover + transition_hint
+        # contract-violation error, so the mask just trades one blank window
+        # for another). The first-present transparency is instead handled by
+        # the canvas's own startup placeholder, which is gated on the genuinely
+        # compositor-visible present (#2, see canvas_widget._first_visual_present_count)
+        # and hides only after that frame is on screen.
         return TabTransitionHint(cover_on_enter=False)
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
@@ -269,6 +112,7 @@ class MultiCompareTab(TabContract):
             page,
             translate=context.tr,
             lang_provider=_lang,
+            context=context,
         )
         def open_export_dialog(**kwargs):
             return context.call_service("open_image_export_dialog", **kwargs)
@@ -281,23 +125,24 @@ class MultiCompareTab(TabContract):
             open_export_dialog=open_export_dialog,
             context=context,
         )
-        self._store_context = context.store
         self._widget.store.subscribe(self._on_widget_state_changed)
         layout.addWidget(self._widget)
 
-        # Session may already be active before the deferred page exists. The
-        # earlier ``on_active_session_changed`` then no-oped ``_restore_from``
-        # (widget was None) and would early-return forever for the same id —
-        # leaving the live widget on defaults and wiping QSettings on the next
-        # divider edit. Pull the seeded slot now.
+        # Session may already be active before the deferred page exists. With
+        # the slot authoritative, binding is a re-read, not a replace_state.
         session_id = self._active_session_id or self._resolve_active_session_id(context)
-        logger.debug(
-            "[mc-divider-persist] create_page widget_ready active_session=%s",
-            session_id,
-        )
         if session_id is not None:
             self._active_session_id = session_id
-            self._restore_from(session_id)
+            self._widget.refresh_from_session()
+            # Deferred page after early activation (P6/B1): same
+            # refresh-then-fill ordering as on_active_session_changed.
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on deferred bind for %s", session_id
+                )
 
         return page
 
@@ -318,267 +163,105 @@ class MultiCompareTab(TabContract):
             return None
         return getattr(session, "id", None)
 
-    def _snapshot_into(self, session_id: str | None) -> None:
-        if session_id is None or self._widget is None:
-            return
-        store = self._store_context
-        if store is None:
-            return
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            self._widget.store.state,
-            session_id=session_id,
-            emit_scope=None,
-        )
-
-    def _restore_from(self, session_id: str | None) -> None:
-        if self._widget is None:
-            logger.debug(
-                "[mc-divider-persist] restore skipped (no widget) session=%s",
-                session_id,
-            )
-            return
-
-        store = self._store_context
-        if session_id is not None and store is not None:
-            state = store.ensure_session_state_slot(
-                _STATE_SLOT,
-                session_id=session_id,
-                factory=_fresh_default_state,
-            )
-        else:
-            state = _fresh_default_state()
-        color = getattr(getattr(state, "divider_settings", None), "color_rgba", None)
-        logger.debug(
-            "[mc-divider-persist] restore → widget session=%s color=%s",
-            session_id,
-            list(color) if color is not None else None,
-        )
-        self._widget.store.replace_state(state)
-
     def _on_widget_state_changed(self, action, state) -> None:
-        # Only persist "last used" prefs on intentional divider/label edits.
-        # ``replace_state`` (session switch/restore) must not overwrite QSettings
-        # with a transient widget default.
-        action_type = getattr(action, "type", "")
-        if action_type in {
-            "multi_compare/set_divider_settings",
-            "multi_compare/set_label_settings",
-        }:
-            _save_last_settings(state.divider_settings, state.label_settings)
-        session_id = self._active_session_id
-        store = self._store_context
-        if session_id is None or store is None:
-            return
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            state,
-            session_id=session_id,
-            emit_scope=None,
-        )
+        persistence.on_widget_state_changed(self, action, state)
 
     def on_activated(self, context: TabContext) -> None:
         session_id = self._resolve_active_session_id(context)
-        logger.debug(
-            "[mc-divider-persist] on_activated session=%s widget=%s",
-            session_id,
-            self._widget is not None,
-        )
         if session_id is not None:
             self.on_active_session_changed(session_id, context)
         if self._widget:
-            self._widget.setFocus()
+            self._register_nav_section()
+            from PySide6.QtCore import Qt
+
+            try:
+                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+                reason = (
+                    Qt.FocusReason.OtherFocusReason
+                    if NavigationManager.get_instance().last_input_was_keyboard()
+                    else Qt.FocusReason.MouseFocusReason
+                )
+            except Exception:
+                reason = Qt.FocusReason.OtherFocusReason
+            self._widget.setFocus(reason)
+            # Phase2 stale-flush: MC composition may have been deferred.
+            try:
+                canvas = getattr(self._widget, "canvas", None)
+                if canvas is not None and hasattr(canvas, "flush_stale_composition"):
+                    # only flush if page is now current (mirrors appearance.py)
+                    try:
+                        if hasattr(canvas, "is_current_stack_page") and canvas.is_current_stack_page():
+                            canvas.flush_stale_composition()
+                        elif getattr(canvas, "_composition_stale", False):
+                            canvas.flush_stale_composition()
+                    except Exception:
+                        canvas.flush_stale_composition()
+            except Exception:
+                pass
         from ui.actions.registry import get_action_registry
 
         self._register_actions(get_action_registry())
 
-    def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
-        # Skip only when this session is already bound to a live widget whose
-        # divider prefs already match the session slot. Workspace activate can
-        # fire *before* ``on_session_created`` seeds QSettings into the slot —
-        # then a blind early-return would leave the widget on defaults forever.
-        if session_id == self._active_session_id and self._widget is not None:
-            if self._widget_matches_session_slot(session_id):
-                logger.debug(
-                    "[mc-divider-persist] active_session skip (already in sync) %s",
-                    session_id,
-                )
-                return
-            logger.debug(
-                "[mc-divider-persist] active_session re-sync after slot change %s",
-                session_id,
-            )
-            self._restore_from(session_id)
-            return
-        if (
-            self._widget is not None
-            and self._active_session_id is not None
-            and self._active_session_id != session_id
-        ):
-            self._snapshot_into(self._active_session_id)
-        self._active_session_id = session_id
-        logger.debug(
-            "[mc-divider-persist] active_session_changed → %s widget=%s",
-            session_id,
-            self._widget is not None,
-        )
-        self._restore_from(session_id)
+    def _toolbar_rows(self) -> list[QWidget | None]:
+        w = self._widget
+        if w is None:
+            return []
+        return [getattr(w, "toolbar", None), getattr(w, "footer", None)]
 
-    def _widget_matches_session_slot(self, session_id: str) -> bool:
-        if self._widget is None or self._store_context is None:
-            return False
-        slot = self._store_context.get_session_state_slot(
-            _STATE_SLOT, session_id=session_id
+    def _register_nav_section(self) -> None:
+        if self._widget is None:
+            return
+        from tabs.host_helpers import declare_toolbar_navigation
+
+        self._nav_section = declare_toolbar_navigation(
+            self._widget, self._toolbar_rows(), tag="multi-compare"
         )
-        if slot is None:
-            return False
-        return (
-            self._widget.store.state.divider_settings == slot.divider_settings
-            and self._widget.store.state.label_settings == slot.label_settings
-        )
+
+    def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
+        # The session slot is authoritative; the bound facade re-reads it.
+        # P6/B1 ordering: refresh first, then demand-fill imageless slots —
+        # a restored (path-only) session must start its async fills on
+        # activation, not depend on the load-time conditional rehydrate.
+        if self._widget is not None:
+            self._active_session_id = session_id
+            self._widget.refresh_from_session()
+            try:
+                if self._controller is not None:
+                    self._controller.ensure_visible_slots_loading()
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed on activation for %s", session_id
+                )
+        else:
+            self._active_session_id = session_id
 
     def on_deactivated(self, context: TabContext) -> None:
-        self._snapshot_into(self._active_session_id)
+        if self._widget is not None:
+            from core.navigation import NavigationManager
+
+            NavigationManager.get_instance().unregister(self._widget)
+        # The slot already holds the session state (written on every dispatch).
+        pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return
-        state = store.ensure_session_state_slot(
-            _STATE_SLOT,
-            session_id=session_id,
-            factory=_fresh_default_state,
-        )
-        count = _multi_compare_session_count(store)
-        seeded = False
-        # Every new MC tab inherits last-used divider/label chrome (QSettings).
-        # Session slots stay isolated — only the seed is shared, not live state.
-        remembered = _settings_from_qsettings()
-        if remembered is None and count > 1:
-            remembered = _settings_from_sibling_session(store, exclude=session_id)
-        if remembered is not None:
-            from dataclasses import replace
-
-            state = replace(
-                state,
-                divider_settings=remembered.divider_settings,
-                label_settings=remembered.label_settings,
-            )
-            store.set_session_state_slot(
-                _STATE_SLOT,
-                state,
-                session_id=session_id,
-                emit_scope=None,
-            )
-            seeded = True
-        logger.debug(
-            "[mc-divider-persist] on_session_created id=%s count=%s seeded=%s color=%s",
-            session_id,
-            count,
-            seeded,
-            list(state.divider_settings.color_rgba),
-        )
-        # ``create_workspace_session`` emits workspace state *before*
-        # WorkspaceSessionCreatedEvent. The presenter can therefore activate the
-        # tab and ``_restore_from`` defaults into the live widget *before* this
-        # seed runs. Push the seeded slot into the widget if it is already bound.
-        if (
-            seeded
-            and self._widget is not None
-            and (
-                self._active_session_id == session_id
-                or self._resolve_active_session_id(context) == session_id
-            )
-        ):
-            self._active_session_id = session_id
-            self._restore_from(session_id)
+        persistence.on_session_created(self, session_id, context)
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:
             self._active_session_id = None
 
     def serialize_session(self, session_id: str, context: TabContext) -> dict | None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return None
-        session = store.get_workspace_session(session_id)
-        if session is None or session.session_type != self.session_type:
-            return None
-        state = session.state_slots.get(_STATE_SLOT)
-        if state is None:
-            return None
-        return {
-            "version": 1,
-            # `image=None` is not persisted — pixel arrays are reloaded from
-            # `path` on demand, same rationale as image_compare's ImageItem.
-            "slots": [
-                {
-                    "id": s.id,
-                    "path": str(s.path) if s.path is not None else None,
-                    "label": s.label,
-                }
-                for s in state.slots
-            ],
-            "root": _serialize_layout_node(state.root),
-            "focused_slot_id": state.focused_slot_id,
-            "zoom": state.zoom,
-            "pan_x": state.pan_x,
-            "pan_y": state.pan_y,
-            "max_slots": state.max_slots,
-            "label_settings": _label_to_dict(state.label_settings),
-            "divider_settings": _divider_to_dict(state.divider_settings),
-        }
+        return persistence.serialize_session(self, session_id, context)
+
+    def collect_pixel_cache_sources(self, session_id: str, context: TabContext) -> dict:
+        return persistence.collect_pixel_cache_sources(self, session_id, context)
 
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
-        store = getattr(context, "store", None)
-        if store is None or not data:
-            return
-        from tabs.multi_compare.models import CompareSlot, MultiCompareState
-
-        slots = [
-            CompareSlot(
-                id=e["id"],
-                path=Path(e["path"]) if e.get("path") else None,
-                label=e.get("label", ""),
-            )
-            for e in data.get("slots", [])
-        ]
-        state = MultiCompareState(
-            slots=slots,
-            root=_deserialize_layout_node(data.get("root")),
-            focused_slot_id=data.get("focused_slot_id"),
-            zoom=data.get("zoom", 1.0),
-            pan_x=data.get("pan_x", 0.0),
-            pan_y=data.get("pan_y", 0.0),
-            max_slots=data.get("max_slots", 12),
-            label_settings=_label_from_dict(data.get("label_settings") or {}),
-            divider_settings=_divider_from_dict(data.get("divider_settings") or {}),
-        )
-        store.set_session_state_slot(
-            _STATE_SLOT, state, session_id=session_id, emit_scope=None,
-        )
+        persistence.deserialize_session(self, session_id, data, context)
 
     def rehydrate_session(self, session_id: str, context: TabContext) -> None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return
-        state = store.get_session_state_slot(_STATE_SLOT, session_id=session_id)
-        if state is None:
-            return
-
-        controller = self._controller
-        if controller is None:
-            logger.warning(
-                "mc: rehydrate_session skipped — controller unavailable for %s",
-                session_id,
-            )
-            return
-
-        if not controller.rehydrate_slots(state):
-            return
-
-        if session_id == self._active_session_id and self._widget is not None:
-            self._widget.store.replace_state(state)
+        persistence.rehydrate_session(self, session_id, context)
 
     def register_canvas_features(self) -> None:
         import tabs.multi_compare.canvas.features as features_pkg
@@ -628,19 +311,26 @@ class MultiCompareTab(TabContract):
         self._resync_action_shortcuts()
 
     def _resync_action_shortcuts(self) -> None:
-        from PySide6.QtWidgets import QApplication
-
         from ui.actions.binder import resync_action_shortcuts
+        from ui.helpers.window_resolver import find_main_window
 
-        for widget in QApplication.topLevelWidgets():
-            if getattr(widget, "presenter", None) is not None:
-                resync_action_shortcuts(widget, active_tab=self.session_type)
-                return
+        window = find_main_window()
+        if window is not None:
+            resync_action_shortcuts(window, active_tab=self.session_type)
+
+    def _build_settings_contribution(self):  # type: ignore[no-untyped-def]
+        from plugins.settings.registry import SettingsContribution
+
+        # No tab-owned settings pages yet — empty but typed contribution.
+        return SettingsContribution(owner_tab=self.session_type, sections=(), extras=())
 
     def create_service(self, service_id: str, *args, **kwargs):
         if service_id == "contribute_settings":
-            # No tab-owned settings pages yet.
-            return True
+            legacy_registry = args[0] if args else kwargs.get("registry")
+            if legacy_registry is not None:
+                # Legacy mutate path (no sections)
+                return True
+            return self._build_settings_contribution()
         if service_id == "contribute_actions":
             registry = args[0] if args else kwargs.get("registry")
             if registry is None:
@@ -656,43 +346,120 @@ class MultiCompareTab(TabContract):
             contribute_keymap_defaults(registry)
             return True
         if service_id == "contribute_help":
-            registry = args[0] if args else kwargs.get("registry")
-            if registry is None:
-                return None
-            from tabs.multi_compare.help import contribute_help
+            legacy_registry = args[0] if args else kwargs.get("registry")
+            if legacy_registry is not None:
+                from tabs.multi_compare.help import contribute_help
 
-            contribute_help(registry)
-            return True
+                contribute_help(legacy_registry)
+                return True
+            from tabs.multi_compare.help import build_help_contribution
+
+            return build_help_contribution()
         if service_id == "clipboard_paste_service":
             if self._controller is None:
                 return None
             from tabs.multi_compare.services.clipboard import ClipboardService
 
             return ClipboardService(*args, controller=self._controller, **kwargs)
+        if service_id == "requires_first_run_onboarding":
+            return True
         if service_id == "begin_pending_image_insert":
             paths = args[0] if args else kwargs.get("paths")
             if paths is None or self._widget is None:
                 return False
             image_paths = [
-                p for p in (Path(x) for x in paths) if p.suffix.lower() in _IMAGE_EXTENSIONS
+                p if isinstance(p, Path) else Path(p) for p in paths
             ]
+            image_paths = _filter_image_paths(image_paths)
             if not image_paths:
                 return False
-            self._widget.begin_pending_paste(image_paths)
+            # P3A: load directly like IC instead of arming begin_pending_paste
+            # (no click-to-place, no Esc cancel); carry drops carry no canvas
+            # position, so placement is auto (load_external_paths).
+            if self._controller is not None:
+                return bool(self._controller.load_external_paths(image_paths))
+            self._widget.images_dropped.emit(
+                list(image_paths), (None, False), None
+            )
             return True
+        if service_id == "toast_anchor_widget":
+            if self._widget is None:
+                return None
+            return self._widget.canvas
+        if service_id == "capture_preview_image":
+            canvas = self._canvas()
+            if canvas is None:
+                return None
+            try:
+                if hasattr(canvas, "grabFramebuffer"):
+                    try:
+                        canvas.update()
+                        from PySide6.QtWidgets import QApplication
+
+                        app = QApplication.instance()
+                        if app is not None:
+                            app.processEvents()
+                    except Exception:
+                        pass
+                    from PySide6.QtGui import QImage
+
+                    image = canvas.grabFramebuffer()
+                    if isinstance(image, QImage) and not image.isNull():
+                        return image
+                pix = canvas.grab()
+                if pix is not None and not pix.isNull():
+                    return pix.toImage()
+            except Exception:
+                return None
+            return None
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:
-        return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab accepts_drop: %d paths", len(paths))
+        ok = any(is_accepted_image_path(p) for p in paths)
+        mc_dnd_debug("Tab accepts_drop -> %s", ok)
+        return ok
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
+        from tabs.multi_compare.debug import mc_dnd_debug
+
+        mc_dnd_debug("Tab handle_drop: ENTER %d paths hint=%r", len(paths), hint)
         if self._widget is None:
+            mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
             return
-        image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
-        if image_paths:
-            # Same placement UX as external DnD / clipboard paste.
-            self._widget.begin_pending_paste(image_paths)
+        image_paths = _filter_image_paths(paths)
+        if not image_paths:
+            mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
+            return
+        # P3A: load directly like IC — auto-place via the P2 async path
+        # (imageless slot + toast now, preview worker decode). No
+        # begin_pending_paste arming, so no click-to-place and no Esc
+        # cancel; the chrome/carry hint carries no canvas position and is
+        # ignored for placement. Same placement UX as external canvas DnD.
+        # P7: this runs synchronously inside the window's
+        # acceptProposedAction window (window_event_handler accepts right
+        # after route_drop returns), so only the suffix-only verdict stays
+        # synchronous — slot/toast/worker-start move past accept via
+        # singleShot, otherwise the DnD source holds its busy cursor.
+        if self._controller is not None:
+            mc_dnd_debug("Tab handle_drop: direct-load %d paths (deferred past accept)", len(image_paths))
+            from PySide6.QtCore import QTimer
+
+            controller = self._controller
+            deferred = list(image_paths)
+            QTimer.singleShot(
+                0, lambda: controller.load_external_paths(deferred)
+            )
+        else:
+            mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
+            self._widget.images_dropped.emit(list(image_paths), (None, False), None)
 
     def dispose(self) -> None:
+        if self._widget is not None:
+            from core.navigation import NavigationManager
+
+            NavigationManager.get_instance().unregister(self._widget)
         self._controller = None
         self._widget = None

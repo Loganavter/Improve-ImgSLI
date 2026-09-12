@@ -3,7 +3,9 @@
 Host-owned discovery surface for the command palette.
 
 Related: [TODO.md](./TODO.md) (P2 Action palette),
-[tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md).
+[tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md),
+[UI_LAYOUT_DUMP.md](./UI_LAYOUT_DUMP.md) (this catalog cross-referenced onto
+widget geometry — a machine-readable "where is everything" view).
 
 ## Ownership
 
@@ -129,6 +131,24 @@ Settings **page** actions (`settings.page.*`, mirrored from `SettingsRegistry`):
   ``setCurrentIndex`` on the closed field.
   Do not hand-register Settings chrome or parallel `search_keys` lists in
   `ui/actions/platform.py`.
+- Settings rows are **ambient** — they carry `owner_tab=None`, so per-tab
+  settings pages stay discoverable from any session (the sidebar sections
+  themselves are always visible too — see the settings registry).
+- **The Settings dialog reuses this catalog for its own in-window search**
+  (`plugins/settings/dialog_search.py`): results are **sections** — a query
+  matching anything inside a section (group title, control name, any
+  translation) collapses into one sidebar row titled by the section.
+  Activating a row opens the section and **pulses the matched controls**:
+  the least-deep match level wins (section title < group < member), and
+  *every* matched control on that level is highlighted (1..N, e.g. both
+  PSNR and SSIM checkboxes for "calculate"). The section catalog is built
+  once per search session (`chrome_map` + `compute_action_haystacks` — same
+  matching as Find Action) and filtered **in the widget**
+  (`IconListWidget.set_search_text` — ComboBox-style visible-index pool, no
+  per-keystroke rebuilds). No second index. `pulse_widgets()` blinks the
+  rings simultaneously (multi-target pulse).
+- The Settings sidebar is user-resizable (`SidebarDialogShell(resizable_sidebar=True)`
+  — draggable divider, same interaction as the Help dialog's splitter).
 - Haystack resolves every `search_key` in **all** UI languages (`en` / `ru` /
   `zh` / `pt_BR`), and folds `ё`→`е` before comparing so «тёмная»/«темная»
   match the same slot. New Settings chrome must go through `SearchGroup` +

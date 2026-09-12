@@ -18,6 +18,9 @@ import zipfile
 from pathlib import Path
 
 PREVIEW_MEMBERS = ("preview.png", "preview.jpg")
+# W3.2 caps — same as services.io.project_package but self-contained (thumbnailer has no package import)
+_ZIP_MAX_PREVIEW_BYTES = 32 * 1024 * 1024
+_ZIP_MAX_PROJECT_JSON_BYTES = 16 * 1024 * 1024  # reserved for future validation
 
 
 def _path_from_arg(value: str) -> Path:
@@ -200,11 +203,34 @@ def main(argv: list[str]) -> int:
             data = None
             for member in PREVIEW_MEMBERS:
                 if member in names:
-                    data = zf.read(member)
-                    break
+                    try:
+                        info = zf.getinfo(member)
+                        if info.file_size > _ZIP_MAX_PREVIEW_BYTES:
+                            continue
+                    except KeyError:
+                        pass
+                    # Capped read — thumbnailer runs on directory listing, must not blow RAM
+                    import io as _io
+
+                    with zf.open(member) as fh:
+                        buf = _io.BytesIO()
+                        copied = 0
+                        while True:
+                            chunk = fh.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            copied += len(chunk)
+                            if copied > _ZIP_MAX_PREVIEW_BYTES:
+                                buf = None
+                                break
+                            buf.write(chunk)
+                        if buf is None:
+                            continue
+                        data = buf.getvalue()
+                        break
             if data is None:
                 return 1
-    except (OSError, zipfile.BadZipFile):
+    except (OSError, zipfile.BadZipFile, ValueError):
         return 1
     if not data:
         return 1

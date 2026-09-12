@@ -20,33 +20,40 @@ def create_service(
     **kwargs: Any,
 ) -> Any:
     if service_id == "contribute_settings":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
-            return None
-        tab._register_settings(registry)
-        return True
+        # Typed path: caller collects return value (no registry arg).
+        # Keep deprecated registry-mutation for transitional callers that still
+        # pass a registry (e.g. legacy tests via notify_all).
+        legacy_registry = args[0] if args else kwargs.get("registry")
+        if legacy_registry is not None:
+            tab._register_settings(legacy_registry)
+            return True
+        from tabs.image_compare.use_cases.registration import build_settings_contribution
+
+        return build_settings_contribution(tab)
     if service_id == "contribute_actions":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
-        tab._register_actions(registry)
+        tab._register_actions(settings_registry)
         return True
     if service_id == "contribute_keymap_defaults":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
         from tabs.image_compare.actions import contribute_keymap_defaults
 
-        contribute_keymap_defaults(registry)
+        contribute_keymap_defaults(settings_registry)
         return True
     if service_id == "contribute_help":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
-            return None
-        from tabs.image_compare.help import contribute_help
+        legacy_registry = args[0] if args else kwargs.get("registry")
+        if legacy_registry is not None:
+            from tabs.image_compare.help import contribute_help
 
-        contribute_help(registry)
-        return True
+            contribute_help(legacy_registry)
+            return True
+        from tabs.image_compare.help import build_help_contribution
+
+        return build_help_contribution()
     if service_id == "snapshot_frame_renderer":
         from tabs.image_compare.services.video_snapshot_rendering import (
             SnapshotFrameRenderer,
@@ -71,27 +78,13 @@ def create_service(
         )
 
         return build_live_frame_snapshot(*args, **kwargs)
-    if service_id == "export_save_context_builder":
-        from tabs.image_compare.services.export_context_builder import (
-            ExportContextBuilder,
-        )
+    if service_id == "export_presenter":
+        from tabs.image_compare.presenters.export_presenter import ExportPresenter
 
-        return ExportContextBuilder(*args, **kwargs)
-    if service_id == "export_state_coordinator":
-        from tabs.image_compare.services.export_state import ExportStateCoordinator
-
-        return ExportStateCoordinator(*args, **kwargs)
-    if service_id == "export_save_flow":
-        from tabs.image_compare.services.export_save_flow import (
-            ExportSaveFlowCoordinator,
-        )
-
-        return ExportSaveFlowCoordinator(*args, **kwargs)
-    if service_id == "image_export_service":
-        from tabs.image_compare.services.image_export import ExportService
-
-        return ExportService(*args, **kwargs)
+        return ExportPresenter(*args, **kwargs)
     if service_id == "clipboard_paste_service":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.services.clipboard import ClipboardService
 
         return ClipboardService(*args, widget=tab._widget, **kwargs)
@@ -134,6 +127,8 @@ def create_service(
         return query_image_compare_metrics_settings(*args, **kwargs)
     if service_id == "session_has_content":
         store = args[0] if args else kwargs.get("store")
+        if store is None:
+            return False
         image_state = store.viewport.session_data.image_state
         return image_state is not None and bool(image_state.image1)
     if service_id == "settings_canvas_feature_load":
@@ -150,19 +145,17 @@ def create_service(
 
         save_image_compare_feature_settings(*args, **kwargs)
         return True
-    if service_id == "magnifier_visibility_flyout":
-        from tabs.image_compare.ui.magnifier_visibility_flyout import (
-            MagnifierVisibilityFlyout,
-        )
-
-        return MagnifierVisibilityFlyout(*args, **kwargs)
-    if service_id == "magnifier_visibility_controller":
+    if service_id == "panel_visibility_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_magnifier import (
             MagnifierVisibilityController,
         )
 
         return MagnifierVisibilityController(*args, widget=tab._widget, **kwargs)
-    if service_id == "magnifier_instances_popup_controller":
+    if service_id == "panel_instances_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_magnifier_instances import (
             MagnifierInstancesPopupController,
         )
@@ -171,11 +164,23 @@ def create_service(
             *args, widget=tab._widget, **kwargs
         )
     if service_id == "toolbar_presenter":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.presenters.toolbar_presenter import (
             ToolbarPresenter,
         )
 
-        return ToolbarPresenter(*args, widget=tab._widget, **kwargs)
+        presenter = ToolbarPresenter(*args, widget=tab._widget, **kwargs)
+        if tab._widget is not None and getattr(presenter, "store", None) is not None:
+            from tabs.image_compare.use_cases.chrome_sync import ImageCompareChromeSync
+
+            window = getattr(getattr(tab._widget, "_context", None), "main_window", None)
+            presenter.chrome_sync = ImageCompareChromeSync(
+                tab._widget,
+                presenter.store,
+                lambda: getattr(window, "presenter", None) if window is not None else None,
+            )
+        return presenter
     if service_id == "install_translations":
         if tab._widget is None:
             return False
@@ -254,28 +259,36 @@ def create_service(
         return sync_geometry_state(*args, **kwargs)
     if service_id == "canvas_legacy_render_plan":
         from tabs.image_compare.canvas.presentation.plan_applicator import (
-            apply_legacy_canvas_render_plan,
+            apply_canvas_render_plan,
         )
 
         canvas, plan = args
-        return apply_legacy_canvas_render_plan(canvas, plan, **kwargs)
+        return apply_canvas_render_plan(canvas, plan, **kwargs)
     if service_id == "unified_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_flyouts import FlyoutController
 
         return FlyoutController(*args, widget=tab._widget, **kwargs)
     if service_id == "interpolation_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_interpolation import (
             InterpolationFlyoutController,
         )
 
         return InterpolationFlyoutController(*args, widget=tab._widget, **kwargs)
     if service_id == "font_settings_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_font_settings import (
             FontSettingsController,
         )
 
         return FontSettingsController(*args, widget=tab._widget, **kwargs)
     if service_id == "popup_close_extension":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.popup_closing import ImageComparePopupClosing
 
         return ImageComparePopupClosing(*args, widget=tab._widget, **kwargs)
@@ -286,6 +299,8 @@ def create_service(
 
         return has_initial_canvas_content(*args, **kwargs)
     if service_id == "requires_first_frame_startup_gate":
+        return True
+    if service_id == "requires_first_run_onboarding":
         return True
     if service_id == "refresh_startup_button_visuals":
         if tab._widget is None:
@@ -304,4 +319,37 @@ def create_service(
         return tab._setup_view_mode_buttons(*args, **kwargs)
     if service_id == "is_canvas_content_ready":
         return tab._is_canvas_content_ready()
+    if service_id == "toast_anchor_widget":
+        if tab._widget is None:
+            return None
+        return tab._widget.image_label
+    if service_id == "capture_preview_image":
+        if tab._widget is None:
+            return None
+        canvas = getattr(tab._widget, "image_label", None)
+        if canvas is None:
+            return None
+        try:
+            # Mirror project_preview._grab_widget_image logic but lives on tab.
+            if hasattr(canvas, "grabFramebuffer"):
+                try:
+                    canvas.update()
+                    from PySide6.QtWidgets import QApplication
+
+                    app = QApplication.instance()
+                    if app is not None:
+                        app.processEvents()
+                except Exception:
+                    pass
+                from PySide6.QtGui import QImage
+
+                image = canvas.grabFramebuffer()
+                if isinstance(image, QImage) and not image.isNull():
+                    return image
+            pix = canvas.grab()
+            if pix is not None and not pix.isNull():
+                return pix.toImage()
+        except Exception:
+            return None
+        return None
     return None

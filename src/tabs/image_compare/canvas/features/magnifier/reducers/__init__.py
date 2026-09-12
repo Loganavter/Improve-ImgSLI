@@ -1,4 +1,3 @@
-from tabs.image_compare.canvas.features.magnifier.reducers.cache import reduce_magnifier_cache_state
 from tabs.image_compare.canvas.features.magnifier.reducers.geometry import reduce_magnifier_geometry_state
 from tabs.image_compare.canvas.features.magnifier.reducers.interaction import reduce_magnifier_interaction_state
 from tabs.image_compare.canvas.features.magnifier.reducers.render_config import reduce_magnifier_render_config

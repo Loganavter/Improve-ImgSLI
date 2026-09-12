@@ -21,7 +21,7 @@ def _modal_dialog_blocks_transient_hide(host, widget=None) -> bool:
     if getattr(host, "_is_modal_active", False):
         return True
     app = QApplication.instance()
-    if app is not None and app.activeModalWidget() is not None:
+    if isinstance(app, QApplication) and app.activeModalWidget() is not None:
         return True
     if widget is not None:
         try:
@@ -55,6 +55,16 @@ class PopupClosingController:
         # Font settings / interp / options are FlyoutManager-owned; the tab
         # extension only knows UnifiedFlyout. Keep them on the same outside-click
         # path as the dual list.
+        #
+        # Deliberately not FlyoutManager.close_if_outside(): that calls
+        # close_all(), which (unlike the manager's own app-wide event filter)
+        # does not exempt pinned=True HUDs (ZoomIndicator, InfoHUD — see
+        # FLYOUT_SYSTEM.md "Pinned flyouts", which promises outside clicks
+        # never close them). This call exists because the QRhi canvas can
+        # swallow the mouse press before it reaches the manager's own
+        # eventFilter, so it must apply the same pinned exemption by hand
+        # (_dismiss_passive, the exact routine the manager's eventFilter uses
+        # for outside clicks) instead of delegating to the blunter close_all.
         try:
             from PySide6.QtCore import QPoint
             from sli_ui_toolkit.managers import FlyoutManager
@@ -64,18 +74,34 @@ class PopupClosingController:
                 if hasattr(global_pos, "toPoint")
                 else QPoint(int(global_pos.x()), int(global_pos.y()))
             )
-            FlyoutManager.get_instance().close_if_outside(point)
+            manager = FlyoutManager.get_instance()
+            if not manager._contains_global(point):
+                manager._dismiss_passive()
         except Exception:
             pass
 
     def hide_transient_same_window_ui(self, *, reason: str = "unspecified"):
+        import logging, traceback
+
+        logger = logging.getLogger("ImproveImgSLI")
+        # DIAGNOSTIC: log reason + caller for duplicate hide spams (file.settings → dialog)
+        _caller = "".join(traceback.format_stack()[-4:-2])
+        logger.debug(
+            "[transient-close] hide_transient_same_window_ui reason=%s scheduled=%s caller=%s old_active=%s",
+            reason,
+            getattr(self, "_hide_transient_scheduled", False),
+            _caller.strip(),
+            getattr(self.manager.host, "_active_session_type", None),
+        )
         # Coalesce bursts from deactivate + focus_changed in one event-loop turn.
         if getattr(self, "_hide_transient_scheduled", False):
+            logger.debug("[transient-close] hide suppressed — already scheduled reason=%s", reason)
             return
         self._hide_transient_scheduled = True
 
         def _run() -> None:
             self._hide_transient_scheduled = False
+            logger.debug("[transient-close] hide_run reason=%s", reason)
             self._hide_transient_same_window_ui_now()
 
         from PySide6.QtCore import QTimer
@@ -127,13 +153,38 @@ class PopupClosingController:
             pass
 
     def _focus_aware_owners(self):
-        return (self._tab_extension, self.manager.interpolation, self.manager.font_settings)
+        # Use cached services only — accessing self.manager.interpolation /
+        # font_settings here would force a TabRegistry probe on every
+        # focusChanged (which fires at high frequency due to the flyout
+        # focus guard). Passive focus checks must not create services.
+        return (
+            self._tab_extension,
+            self.manager._services.get("interpolation"),
+            self.manager._services.get("font_settings"),
+        )
 
     def on_app_focus_changed(self, old_widget, new_widget):
+        import logging
+
+        logger = logging.getLogger("ImproveImgSLI")
         host = self.manager.host
+        try:
+            window_active = host.parent_widget.isActiveWindow() if hasattr(host, "parent_widget") else None
+        except RuntimeError:
+            window_active = None
+        logger.debug(
+            "[transient-close] on_app_focus_changed old=%s new=%s window_active=%s",
+            type(old_widget).__name__ if old_widget else None,
+            type(new_widget).__name__ if new_widget else None,
+            window_active,
+        )
         if _modal_dialog_blocks_transient_hide(host, new_widget):
+            logger.debug("[transient-close] focus change blocked by modal")
             return
-        window_active = host.parent_widget.isActiveWindow()
+        try:
+            window_active = host.parent_widget.isActiveWindow()
+        except RuntimeError:
+            window_active = None
 
         # Window fully deactivated → sweep. Otherwise ignore null-focus flicker.
         if new_widget is None:

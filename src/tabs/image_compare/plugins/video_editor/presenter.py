@@ -1,3 +1,6 @@
+import logging
+import time
+
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QPixmap
 
@@ -16,12 +19,15 @@ from tabs.image_compare.plugins.video_editor.services.playback import PlaybackEn
 from tabs.image_compare.plugins.video_editor.services.thumbnails import ThumbnailService
 
 
+logger = logging.getLogger("ImproveImgSLI")
+
 class VideoEditorPresenter(QObject):
     previewUpdated = Signal(QPixmap)
     previewReady = Signal()
     timelinePositionChanged = Signal(int)
     playbackStateChanged = Signal(bool)
     buttonsStateChanged = Signal(bool, bool)
+    fitContentAvailableChanged = Signal(bool)
     thumbnailsUpdated = Signal(dict)
     thumbnailReady = Signal(int, QPixmap)
     exportStarted = Signal()
@@ -39,12 +45,22 @@ class VideoEditorPresenter(QObject):
         self.playback_engine = PlaybackEngine()
         self.playback_engine.set_playback_speed(1.0)
         self.thumbnail_service = ThumbnailService()
-        if self.export_controller is not None and getattr(
-            self.export_controller, "video_exporter", None
-        ):
+        video_exporter = (
+            getattr(self.export_controller, "video_exporter", None)
+            if self.export_controller is not None
+            else None
+        )
+        if video_exporter is not None:
             self.thumbnail_service.set_snapshot_renderer(
-                self.export_controller.video_exporter.render_snapshot_thumbnail_to_pil
+                video_exporter.render_snapshot_thumbnail_to_pil
             )
+            async_renderer = getattr(
+                video_exporter, "render_snapshot_thumbnail_to_pil_async", None
+            )
+            if callable(async_renderer):
+                # Preferred path: keeps the thumbnail worker thread from
+                # blocking on the GPU round-trip (see ThumbnailService docs).
+                self.thumbnail_service.set_async_snapshot_renderer(async_renderer)
 
         self.preview_coordinator = PreviewCoordinator(
             view=view,
@@ -54,6 +70,7 @@ class VideoEditorPresenter(QObject):
             editor_service=self.editor_service,
             timer_parent=self,
             emit_preview_ready=self.previewReady.emit,
+            emit_fit_content_available=self.fitContentAvailableChanged.emit,
         )
         self.output_coordinator = OutputPathCoordinator(
             view=view,
@@ -115,6 +132,32 @@ class VideoEditorPresenter(QObject):
         if self.main_controller and hasattr(self.main_controller, "video_export_log"):
             self.main_controller.video_export_log.connect(self.exportLog)
 
+    def _disconnect_service_signals(self):
+        def _safe_disconnect(signal, slot):
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
+        try:
+            _safe_disconnect(self.playback_engine.frameChanged, self.playback_coordinator.on_frame_changed)
+            _safe_disconnect(self.playback_engine.playbackStateChanged, self.playback_coordinator.on_playback_state_changed)
+            _safe_disconnect(self.thumbnail_service.thumbnailReady, self.thumbnail_coordinator.on_single_thumbnail_ready)
+            _safe_disconnect(self.thumbnail_service.thumbnailsGenerated, self.thumbnail_coordinator.on_thumbnails_generated)
+            _safe_disconnect(self.thumbnail_service.generationFinished, self.thumbnail_coordinator.on_thumbnails_generation_finished)
+        except Exception:
+            pass
+        if self.main_controller:
+            try:
+                if hasattr(self.main_controller, "video_export_progress"):
+                    _safe_disconnect(self.main_controller.video_export_progress, self._on_export_progress)
+                    _safe_disconnect(self.main_controller.video_export_finished, self._on_export_finished)
+                if hasattr(self.main_controller, "error_occurred"):
+                    _safe_disconnect(self.main_controller.error_occurred, self.errorOccurred)
+                if hasattr(self.main_controller, "video_export_log"):
+                    _safe_disconnect(self.main_controller.video_export_log, self.exportLog)
+            except Exception:
+                pass
+
     def _connect_view_signals(self):
         self.view.destroyed.connect(self._on_view_destroyed)
         self.view.playClicked.connect(self.playback_coordinator.toggle_playback)
@@ -151,28 +194,48 @@ class VideoEditorPresenter(QObject):
                 self.thumbnail_coordinator.on_timeline_viewport_changed
             )
             self.view.timeline.resized.connect(self.thumbnail_coordinator.on_timeline_resized)
+            if hasattr(self.view.timeline, "layoutSettled"):
+                self.view.timeline.layoutSettled.connect(
+                    self.thumbnail_coordinator.on_layout_settled
+                )
         self.view.windowResized.connect(self.preview_coordinator.on_window_resized)
 
     def _on_view_destroyed(self, *_args):
+        self._disconnect_service_signals()
         self.preview_coordinator.on_view_destroyed()
         self.output_coordinator.detach_view()
         self.thumbnail_coordinator.detach_view()
         self.playback_coordinator.detach_view()
         self.export_coordinator.detach_view()
         self.view = None
+        if self.parent() is None:
+            try:
+                self.deleteLater()
+            except Exception:
+                pass
 
     def _initialize_from_snapshots(self):
+        _dbg_t0 = time.perf_counter()
         if not initialize_editor_from_snapshots(
             self.view, self.editor_service, self.playback_engine, self.model
         ):
             return
+        _dbg_t1 = time.perf_counter()
         self.preview_coordinator.reset_render_state()
         self.playback_coordinator.update_buttons_state()
         self.thumbnail_coordinator.generate_thumbnails()
         self.preview_coordinator.schedule_update()
+        # Eager, independent of fit_content_mode: lets the UI disable the
+        # fit-content toggle up front when the canvas never leaves 0..1.
+        self.preview_coordinator.recalculate_global_bounds()
 
     def _initialize_output_fields(self):
+        _dbg_t0 = time.perf_counter()
         self.output_coordinator.initialize_output_fields()
+        logger.warning(
+            "DBG-BUG4 _initialize_output_fields took %.1fms",
+            (time.perf_counter() - _dbg_t0) * 1000,
+        )
 
     def set_favorite_path(self, path):
         self.output_coordinator.set_favorite_path(path)
@@ -208,6 +271,7 @@ class VideoEditorPresenter(QObject):
         self.export_coordinator.stop_export()
 
     def cleanup(self):
+        self._disconnect_service_signals()
         self.playback_engine.stop()
         self.thumbnail_coordinator.cleanup()
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
@@ -220,6 +284,11 @@ class VideoEditorPresenter(QObject):
         self.playback_coordinator.detach_view()
         self.export_coordinator.detach_view()
         self.view = None
+        if self.parent() is None:
+            try:
+                self.deleteLater()
+            except Exception:
+                pass
 
     def _on_export_progress(self, value):
         if self.view is not None:

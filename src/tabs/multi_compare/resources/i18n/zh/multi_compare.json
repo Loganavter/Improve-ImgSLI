@@ -29,6 +29,9 @@
         "export": "导出",
         "divider": "网格"
       }
+    },
+    "tooltip": {
+      "save_grid": "保存网格"
     }
   }
 }

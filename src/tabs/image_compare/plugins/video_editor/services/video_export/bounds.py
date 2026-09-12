@@ -19,15 +19,13 @@ class CanvasBoundsAnalyzer:
         return self._calculate_featureless_bounds(snapshots, auto_crop=auto_crop)
 
     def _calculate_tab_bounds(self, snapshots, *, auto_crop: bool):
-        from tabs.registry import TabRegistry
+        # Tab→tab direct import — no TabRegistry hop.
+        # Host→tab path preserved in tabs.image_compare.service_factory
+        # ("global_canvas_bounds"). See tabs._shared.canvas.
+        from tabs._shared.canvas import calculate_global_canvas_bounds_direct
 
-        registry = TabRegistry()
-        registry.discover()
-        return registry.create_service(
-            "global_canvas_bounds",
-            snapshots,
-            self._image_loader,
-            auto_crop,
+        return calculate_global_canvas_bounds_direct(
+            snapshots, self._image_loader, auto_crop
         )
 
     def _calculate_featureless_bounds(self, snapshots, *, auto_crop: bool):

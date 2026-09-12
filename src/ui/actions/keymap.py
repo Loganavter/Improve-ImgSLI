@@ -218,11 +218,3 @@ class KeymapDefaultsRegistry:
     def clear(self) -> None:
         self._by_id.clear()
 
-
-def collect_bindings(
-    actions: Iterable[ActionDescriptor],
-    overrides: Mapping[str, str] | None,
-) -> dict[str, str | None]:
-    return {
-        action.action_id: effective_shortcut(action, overrides) for action in actions
-    }
