@@ -44,7 +44,7 @@ def scan_usages():
 def test_no_large_alias_clusters():
     """Same hex under many keys — full graph audit (not top-10 sampling). Currently informational; Phase 4 will enforce ≤2."""
     hex_to_keys = load_themes()
-    allowed_hexes = {"#0078d4","#0096ff","#ffffff","#3c3c3c","#1f1f1f","#dfdfdf","#f0f0f0","#e1e1e1","#2b2b2b"}  # known clusters — Phase 4 will shrink to ≤2
+    allowed_hexes = {"#0078d4","#0096ff","#ffffff","#3c3c3c","#1f1f1f","#dfdfdf","#f0f0f0","#e1e1e1"}  # known clusters — Phase 4 will shrink to ≤2
     offenders = []
     for hx, keys in hex_to_keys.items():
         uniq = sorted(set(keys))
