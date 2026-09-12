@@ -96,7 +96,7 @@
     "progress.success": "#28a745",
     "video.preview.background": "#0a0a0a",
     "Window": "#f5f5f5",
-    "label.image.background": "#f0f0f0",
+    "label.image.background": "#ffffff",
     "quick_look.bar.background": "#e8e8e8",
     "list_item.text.normal": "#1f1f1f"
   },
@@ -199,7 +199,7 @@
     "progress.success": "#28a745",
     "video.preview.background": "#0a0a0a",
     "Window": "#1e1e1e",
-    "label.image.background": "#1e1e1e",
+    "label.image.background": "#2b2b2b",
     "quick_look.bar.background": "#262626",
     "list_item.text.normal": "#dfdfdf"
   }
