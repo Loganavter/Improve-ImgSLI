@@ -391,7 +391,7 @@
     },
     {
       "path": "src/tabs/image_compare/pipeline/cache.py",
-      "lines": 737,
+      "lines": 734,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid\"",
@@ -512,8 +512,20 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/ui/context_menu.py",
+      "lines": 605,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 682,
+      "lines": 724,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
@@ -525,7 +537,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 663,
+      "lines": 668,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
