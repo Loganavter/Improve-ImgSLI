@@ -7,6 +7,12 @@ from PySide6.QtCore import QPoint, QPointF, QRect
 
 from core.store import Store
 
+from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
+    box_clamp_domain,
+    capture_window_px,
+    resolve_crop_boxes_for_store,
+    valid_box_for_full,
+)
 from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
 _mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
@@ -151,35 +157,26 @@ def get_magnifier_drawing_coords(
     eff_rel_x = max(radius_rel_x, min(raw_pos.x, 1.0 - radius_rel_x))
     eff_rel_y = max(radius_rel_y, min(raw_pos.y, 1.0 - radius_rel_y))
 
-    capture_center_full1_x = eff_rel_x * full1_width
-    capture_center_full1_y = eff_rel_y * full1_height
-    capture_center_full2_x = eff_rel_x * full2_width
-    capture_center_full2_y = eff_rel_y * full2_height
-
     capture_frac_w = inner_capture_size_on_unified / unified_width
     capture_frac_h = inner_capture_size_on_unified / unified_height
 
-    crop_width1 = int(round(capture_frac_w * full1_width))
-    crop_height1 = int(round(capture_frac_h * full1_height))
-    crop_width2 = int(round(capture_frac_w * full2_width))
-    crop_height2 = int(round(capture_frac_h * full2_height))
+    # W3b: full-frame stores map the capture over the crop box, not the
+    # store (box None → capture_window_px is today's math, bit-identical).
+    _crop1, _crop2 = resolve_crop_boxes_for_store(store)
+    _crop1 = valid_box_for_full(_crop1, full1_width, full1_height)
+    _crop2 = valid_box_for_full(_crop2, full2_width, full2_height)
 
-    if crop_width1 % 2 != 0:
-        crop_width1 += 1
-    if crop_height1 % 2 != 0:
-        crop_height1 += 1
-    if crop_width2 % 2 != 0:
-        crop_width2 += 1
-    if crop_height2 % 2 != 0:
-        crop_height2 += 1
+    _, _, crop_width1, crop_height1, left1, top1, right1, bottom1 = capture_window_px(
+        eff_rel_x=eff_rel_x, eff_rel_y=eff_rel_y, frac_w=capture_frac_w,
+        frac_h=capture_frac_h, full_w=full1_width, full_h=full1_height, box=_crop1,
+    )
+    _, _, crop_width2, crop_height2, left2, top2, right2, bottom2 = capture_window_px(
+        eff_rel_x=eff_rel_x, eff_rel_y=eff_rel_y, frac_w=capture_frac_w,
+        frac_h=capture_frac_h, full_w=full2_width, full_h=full2_height, box=_crop2,
+    )
 
-    left1 = int(round(capture_center_full1_x - crop_width1 / 2.0))
-    top1 = int(round(capture_center_full1_y - crop_height1 / 2.0))
-    left2 = int(round(capture_center_full2_x - crop_width2 / 2.0))
-    top2 = int(round(capture_center_full2_y - crop_height2 / 2.0))
-
-    crop_box1 = (left1, top1, left1 + crop_width1, top1 + crop_height1)
-    crop_box2 = (left2, top2, left2 + crop_width2, top2 + crop_height2)
+    crop_box1 = (left1, top1, right1, bottom1)
+    crop_box2 = (left2, top2, right2, bottom2)
 
     magnifier_midpoint_on_image = QPoint()
     magnifier_bbox_on_image = QRect()
@@ -345,15 +342,17 @@ def get_magnifier_drawing_coords(
         eff_rel_x * unified_width, eff_rel_y * unified_height
     )
 
+    _lo1x, _lo1y, _hi1x, _hi1y = box_clamp_domain(_crop1, full1_width, full1_height)
+    _lo2x, _lo2y, _hi2x, _hi2y = box_clamp_domain(_crop2, full2_width, full2_height)
     out_of_bounds = (
-        left1 < 0
-        or top1 < 0
-        or left2 < 0
-        or top2 < 0
-        or crop_box1[2] > full1_width
-        or crop_box1[3] > full1_height
-        or crop_box2[2] > full2_width
-        or crop_box2[3] > full2_height
+        left1 < _lo1x
+        or top1 < _lo1y
+        or left2 < _lo2x
+        or top2 < _lo2y
+        or crop_box1[2] > _hi1x
+        or crop_box1[3] > _hi1y
+        or crop_box2[2] > _hi2x
+        or crop_box2[3] > _hi2y
         or magnifier_bbox_on_image.left() < 0
         or magnifier_bbox_on_image.top() < 0
         or magnifier_bbox_on_image.right() > drawing_width
