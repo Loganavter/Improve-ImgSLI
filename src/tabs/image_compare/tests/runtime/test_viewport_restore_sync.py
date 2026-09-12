@@ -199,13 +199,32 @@ def _toolbar_presenter(flag, checked):
     return presenter, control
 
 
-def test_refresh_toolbar_drives_control_to_store_value():
+def test_refresh_toolbar_drives_control_to_store_value(monkeypatch):
+    # Route through the existing toolbar sync entry point, not a direct
+    # feature import (canvas-features import dogma): the monkeypatched
+    # update_toolbar_states stands in for the real fan-out (covered by
+    # toolbar tests), mimicking its contract — drive the button from the
+    # Store flag.
+    import tabs.image_compare.presenters.toolbar.state as _toolbar_state
+
+    calls = []
+
+    def _fake_sync(presenter):
+        flag = bool(
+            presenter.store.viewport.render_config.include_file_names_in_saved
+        )
+        presenter.widget.btn_file_names.setChecked(flag, emit_signal=False)
+        calls.append(presenter)
+
+    monkeypatch.setattr(_toolbar_state, "update_toolbar_states", _fake_sync)
+
     presenter, control = _toolbar_presenter(True, False)
     refresh_filename_overlay_toolbar(presenter.store, presenter)
     assert control.isChecked() is True
     assert any(
         isinstance(c, tuple) and c == (True, False) for c in control.calls
     ), control.calls
+    assert calls == [presenter]
 
     presenter, control = _toolbar_presenter(False, True)
     refresh_filename_overlay_toolbar(presenter.store, presenter)

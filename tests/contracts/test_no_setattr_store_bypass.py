@@ -134,15 +134,13 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
     }
 )
 
-# Persistence-path offenders being fixed in parallel — tolerated for now.
+# Persistence-path offender not yet migrated — tolerated for now.
 # Delete the entry (not the scan) once the site migrates to dispatch.
+# (session_persistence.py sites were migrated by the dispatch-or-defer
+# restore; use_cases/persistence.py widget IO was removed with it.)
 PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
-        ("src/tabs/image_compare/session_persistence.py", 167, "image_state"),
-        ("src/tabs/image_compare/session_persistence.py", 169, "image_state"),
-        ("src/tabs/image_compare/session_persistence.py", 312, "viewport"),
-        ("src/tabs/image_compare/session_persistence.py", 317, "viewport"),
-        ("src/tabs/image_compare/use_cases/persistence.py", 271, "session.document"),
+        ("src/tabs/image_compare/use_cases/persistence.py", 254, "session.document"),
     }
 )
 
