@@ -25,20 +25,18 @@ def effective_crop_box_for_path(
     path: str,
     *,
     crop_service: Any | None = None,
-    override: Any | None = None,
+    override: bool | None = None,
 ) -> CropBox | None:
     """Detected box for *path* in full-source coords, or ``None``.
 
-    * ``crop_service=None`` (crop disabled) → ``None``.
-    * ``override`` is RESERVED for a later wave (per-image wiring):
-      accepted and ``None``-guarded, not implemented — a non-``None``
-      override currently yields ``None``.
-    * Otherwise delegates to ``crop_service.get(path)`` (detection only,
-      never bakes). Any failure → ``None``.
+    * ``override is False`` (per-image Off) → ``None`` without touching
+      detection (skips ``CropService.get`` entirely).
+    * Otherwise (``None`` == Auto, ``True`` == On) → detection as today:
+      ``crop_service=None`` (crop disabled) → ``None``, else delegates to
+      ``crop_service.get(path)`` (detection only, never bakes). On with no
+      detected box yields ``None`` naturally. Any failure → ``None``.
     """
-    if override is not None:
-        # Reserved for per-image override wiring (later wave) — accept and
-        # None-guard, do not implement.
+    if override is False:
         return None
     if crop_service is None or isinstance(crop_service, bool):
         return None

@@ -46,7 +46,7 @@ def _box_clipped_live_inputs(store, display_image1, display_image2):
     content (canvas, pads, clip rect), not the full frame — the envelope,
     uploads and Store geometry already fit the box. Resolves through the
     canvas layer's single box seam (``texture_parts.crop_clip``: document
-    paths + pipeline-slot ``crop_service``); any failure — no service,
+    paths + per-image overrides + pipeline-slot ``crop_service``); any failure — no service,
     unwarmed service (GUI-thread warmup kick instead of blocking), no box —
     returns ``None`` and the caller keeps today's full-frame behavior
     bit-identical. PIL/QImage inputs are clipped to views;
@@ -62,6 +62,7 @@ def _box_clipped_live_inputs(store, display_image1, display_image2):
             resolve_box_for_path,
             scaled_box_for_source,
         )
+        from tabs.image_compare.state.document import crop_override_for_path
     except Exception:
         return None
     try:
@@ -75,8 +76,13 @@ def _box_clipped_live_inputs(store, display_image1, display_image2):
     if svc is None:
         return None
     try:
+        ov1 = crop_override_for_path(doc, path1)
+        ov2 = crop_override_for_path(doc, path2)
+    except Exception:
+        ov1, ov2 = None, None
+    try:
         live1 = get_image_dims(display_image1)
-        raw1 = resolve_box_for_path(path1, svc)
+        raw1 = resolve_box_for_path(path1, svc, override=ov1)
         box1 = scaled_box_for_source(raw1, path=path1, live_size=live1)
     except Exception:
         box1 = None
@@ -84,7 +90,7 @@ def _box_clipped_live_inputs(store, display_image1, display_image2):
         return None
     try:
         live2 = get_image_dims(display_image2)
-        raw2 = resolve_box_for_path(path2, svc)
+        raw2 = resolve_box_for_path(path2, svc, override=ov2)
         box2 = scaled_box_for_source(raw2, path=path2, live_size=live2)
     except Exception:
         box2 = None

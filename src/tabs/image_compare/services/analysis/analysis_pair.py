@@ -112,6 +112,8 @@ def resolve_crop_boxes_for_paths(
     path1: str | None,
     path2: str | None,
     get_crop_service: Any | None = None,
+    *,
+    document: Any | None = None,
 ) -> tuple[CropBox | None, CropBox | None]:
     """Detected crop windows for a comparison pair (W3c box-aware analysis).
 
@@ -120,8 +122,10 @@ def resolve_crop_boxes_for_paths(
     here. ``get_crop_service`` is an optional zero-arg callable returning the
     session detection service (``controller._get_crop_service()`` — ``None``
     when autocrop is OFF); unset/``None`` service → ``(None, None)`` and every
-    consumer below keeps today's full-frame behavior. ``override`` stays
-    reserved for the later per-image wave — never passed.
+    consumer below keeps today's full-frame behavior. ``document`` (W5b)
+    supplies the per-image override lookup via ``crop_override_for_path``:
+    Off → ``None`` without detection, otherwise detection as today;
+    ``None`` document → today's behavior bit-identical.
     """
     if get_crop_service is None:
         return None, None
@@ -134,11 +138,26 @@ def resolve_crop_boxes_for_paths(
     from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
 
     try:
-        box1 = effective_crop_box_for_path(path1, crop_service=service) if path1 else None
+        from tabs.image_compare.state.document import crop_override_for_path
+
+        ov1 = crop_override_for_path(document, path1) if document is not None else None
+        ov2 = crop_override_for_path(document, path2) if document is not None else None
+    except Exception:
+        ov1, ov2 = None, None
+    try:
+        box1 = (
+            effective_crop_box_for_path(path1, crop_service=service, override=ov1)
+            if path1
+            else None
+        )
     except Exception:
         box1 = None
     try:
-        box2 = effective_crop_box_for_path(path2, crop_service=service) if path2 else None
+        box2 = (
+            effective_crop_box_for_path(path2, crop_service=service, override=ov2)
+            if path2
+            else None
+        )
     except Exception:
         box2 = None
     return box1, box2
