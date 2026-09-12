@@ -655,6 +655,14 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
             if _should_log_set:
                 ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
             pass
+    try:
+        _sess = controller._get_image_session() if hasattr(controller, "_get_image_session") else None
+        _cache = getattr(_sess, "cache", None) if _sess is not None else getattr(pl, "cache", None)
+        _pin = getattr(_cache, "set_pinned_paths", None)
+        if callable(_pin):
+            _pin([document.image1_path, document.image2_path])
+    except Exception:
+        pass
     if _should_log_set:
         ic_preview_debug("set_current_image slot=%s -> invalidate_render + schedule_update", image_number)
     controller.store.invalidate_render_cache()

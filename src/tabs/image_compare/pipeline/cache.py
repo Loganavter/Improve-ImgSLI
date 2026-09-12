@@ -1,16 +1,18 @@
 # Audit-Meta: pattern=state-machine reason="single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid"
 """PipelineCache — memoised pixel + unify cache with LRU eviction.
 
-Replaces ProgressiveImageLoader full and preview caches LRU 8 + ad-hoc
-legacy dedup in session controller.
-
 Keys:
-  pixel: (path, mtime_ns, auto_crop, crop_box) -> TiledPixelStore
+  pixel: (path, mtime_ns, size, has_crop) -> TiledPixelStore
+  preview: (path, mtime_ns, size, has_crop, 1024) -> QImage
   unify: (uid1, uid2, method, target_w, target_h) -> (TiledPixelStore, TiledPixelStore)
+
+box_tuple НЕ входит в ключи: CropService детерминирован для того же
+контента, box уже запечён в пиксели при заливке (src_box).
 
 Both memoise by identity; second slot with same path shares the same store
 via refcount (no duplicate decode). Eviction calls close_pixel_store +
-pyramid_registry sweep (like ProgressiveImageLoader.clear_cache).
+pyramid_registry sweep + eager-drop unify by uid. Budgets: count AND bytes;
+pinned (currently displayed) entries are never evicted.
 """
 
 from __future__ import annotations
@@ -109,19 +111,69 @@ _pixel_registry = None  # type: ignore
 
 _PIXEL_CACHE_MAX = 8
 _UNIFY_CACHE_MAX = 8
+_PREVIEW_CACHE_MAX = 8
+_PREVIEW_SIZE = 1024
+
+# Byte budgets (count limits above still apply; eviction triggers on either).
+# ~8 × 24MP RGBA (96MB) fits in the pixel/unify budgets; previews are ~4MB each.
+_PIXEL_CACHE_MAX_BYTES = 1536 * 1024 * 1024
+_UNIFY_CACHE_MAX_BYTES = 1536 * 1024 * 1024
+_PREVIEW_CACHE_MAX_BYTES = 128 * 1024 * 1024
+
+
+def _store_bytes(store) -> int:
+    """Best-effort RGBA byte size for budget accounting (0 when unknown/closed)."""
+    try:
+        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+        w, h = pixel_source_size(store)
+        if w > 0 and h > 0:
+            return int(w) * int(h) * 4
+    except Exception:
+        pass
+    return 0
+
+
+def _qimage_bytes(qimage) -> int:
+    try:
+        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+        w, h = pixel_source_size(qimage)
+        if w > 0 and h > 0:
+            return int(w) * int(h) * 4
+    except Exception:
+        pass
+    return 0
+
+
+def _unify_pair_bytes(pair) -> int:
+    try:
+        u1, u2 = pair
+    except Exception:
+        return 0
+    return _store_bytes(u1) + _store_bytes(u2)
+
+
+def _uid_of(store) -> int | None:
+    try:
+        from shared.rendering.image_identity import image_uid
+
+        return int(image_uid(store))
+    except Exception:
+        return None
 
 
 def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
-    # Long-term fix: ключ без box_tuple, только (path,mtime,size,has_crop).
-    # box вычисляется lazy внутри GenericWorker и включается в put_pixel ключ
-    # только если явно передан (worker-side). GUI не делает sync crop_service.get.
+    # Ключ без box_tuple, только (path,mtime,size,has_crop).
+    # box детерминирован CropService для того же контента (compute кэширует
+    # по normpath, thr15→thr30), уже запечён в пиксели при заливке через
+    # src_box — включать его в ключ значит плодить дубли одной картинки.
+    # box_tuple принят для совместимости и игнорируется.
     has_crop = False
     if crop_service is not None:
         has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
     elif auto_crop is not None:
         has_crop = bool(auto_crop)
-    # box_tuple intentionally NOT fetched synchronously here (was cache.py:121).
-    # If caller explicitly provides box_tuple (lazy worker), include it for precise key.
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -129,8 +181,6 @@ def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, box_
     except OSError:
         mtime = 0
         size = 0
-    if box_tuple is not None:
-        return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple)
     return (os.path.normpath(path), mtime, size, bool(has_crop))
 
 
@@ -138,16 +188,10 @@ def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) 
     return (uid1, uid2, method, int(w), int(h))
 
 
-_PREVIEW_CACHE_MAX = 8
-_PREVIEW_SIZE = 1024
-
-
 def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
-    """Preview tier key: (path, mtime_ns, size, has_crop, 1024) без box.
+    """Preview tier key: (path, mtime_ns, size, has_crop, 1024), box игнирируется.
 
-    Long-term fix: как _pixel_key, без синхронного crop_service.get.
-    Mirrors _pixel_key but appends PREVIEW_SIZE sentinel. box вычисляется
-    lazy в воркере и передаётся явно если нужен.
+    См. _pixel_key: box детерминирован и запечён в пиксели, в ключ не входит.
     """
     has_crop = False
     if crop_service is not None:
@@ -161,8 +205,6 @@ def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, bo
     except OSError:
         mtime = 0
         size = 0
-    if box_tuple is not None:
-        return (os.path.normpath(path), mtime, size, bool(has_crop), box_tuple, _PREVIEW_SIZE)
     return (os.path.normpath(path), mtime, size, bool(has_crop), _PREVIEW_SIZE)
 
 
@@ -179,6 +221,9 @@ class PipelineCache:
         max_unify: int = _UNIFY_CACHE_MAX,
         crop_service=None,
         max_preview: int = _PREVIEW_CACHE_MAX,
+        max_pixel_bytes: int = _PIXEL_CACHE_MAX_BYTES,
+        max_unify_bytes: int = _UNIFY_CACHE_MAX_BYTES,
+        max_preview_bytes: int = _PREVIEW_CACHE_MAX_BYTES,
     ):
         self._pixel: OrderedDict[tuple, object] = OrderedDict()
         self._unify: OrderedDict[tuple, tuple] = OrderedDict()
@@ -186,7 +231,142 @@ class PipelineCache:
         self._max_pixel = int(max_pixel)
         self._max_unify = int(max_unify)
         self._max_preview = int(max_preview)
+        self._max_pixel_bytes = int(max_pixel_bytes)
+        self._max_unify_bytes = int(max_unify_bytes)
+        self._max_preview_bytes = int(max_preview_bytes)
+        # Pin: pixel-ключи и unify-uid которые сейчас на canvas.
+        # Eviction пропускает их (см. tile/texture evict_over_budget с protected).
+        self._pinned_pixel_keys: set[tuple] = set()
+        self._pinned_uids: set[int] = set()
         self.crop_service = crop_service
+
+    # -- pin (защита видимого от eviction) --
+
+    def pin_paths(self, paths) -> None:
+        """Запинить пути текущего показа (ключи без box, все has_crop-варианты)."""
+        try:
+            for p in list(paths or []):
+                if not p:
+                    continue
+                norm = os.path.normpath(str(p))
+                for k in list(self._pixel.keys()):
+                    if k and k[0] == norm:
+                        self._pinned_pixel_keys.add(k)
+                for s in list(self._pixel.values()):
+                    uid = _uid_of(s)
+                    # пиним только uid показанных путей
+                    try:
+                        same = any(k and k[0] == norm for k in list(self._pixel.keys()))
+                    except Exception:
+                        same = False
+                    if same and uid is not None:
+                        self._pinned_uids.add(uid)
+        except Exception:
+            pass
+
+    def unpin_paths(self, paths) -> None:
+        try:
+            norms = {os.path.normpath(str(p)) for p in list(paths or []) if p}
+        except Exception:
+            return
+        self._pinned_pixel_keys = {k for k in self._pinned_pixel_keys if not (k and k[0] in norms)}
+        # uids чистим лениво: дропаем те, чьих путей больше нет в пикселях
+        try:
+            live_uids = {_uid_of(s) for s in self._pixel.values()}
+            self._pinned_uids = {u for u in self._pinned_uids if u in live_uids}
+        except Exception:
+            pass
+
+    def set_pinned_paths(self, paths) -> None:
+        self._pinned_pixel_keys.clear()
+        self._pinned_uids.clear()
+        self.pin_paths(paths)
+
+    # -- budget helpers --
+
+    def _pixel_bytes(self) -> int:
+        return sum(_store_bytes(s) for s in self._pixel.values())
+
+    def _preview_bytes(self) -> int:
+        return sum(_qimage_bytes(q) for q in self._preview.values())
+
+    def _unify_bytes(self) -> int:
+        return sum(_unify_pair_bytes(p) for p in self._unify.values())
+
+    def _ensure_pixel_budget(self) -> None:
+        while (len(self._pixel) > self._max_pixel or self._pixel_bytes() > self._max_pixel_bytes) and self._pixel:
+            evicted = False
+            for k in list(self._pixel.keys()):
+                if k in self._pinned_pixel_keys:
+                    continue
+                old = self._pixel.pop(k, None)
+                uid = _uid_of(old)
+                if uid is not None:
+                    self._pinned_uids.discard(uid)
+                self._drop_unify_for_uids({uid})
+                self._close_store(old)
+                evicted = True
+                break
+            if not evicted:
+                break  # всё запинено — терпим over-budget, не выселяем видимое
+
+    def _ensure_preview_budget(self) -> None:
+        while (len(self._preview) > self._max_preview or self._preview_bytes() > self._max_preview_bytes) and self._preview:
+            try:
+                self._preview.popitem(last=False)
+            except Exception:
+                break
+
+    def _ensure_unify_budget(self) -> None:
+        while (len(self._unify) > self._max_unify or self._unify_bytes() > self._max_unify_bytes) and self._unify:
+            evicted = False
+            for k in list(self._unify.keys()):
+                try:
+                    u1, u2 = self._unify[k][0], self._unify[k][1]
+                    uids = {_uid_of(u1), _uid_of(u2)} - {None}
+                except Exception:
+                    uids = set()
+                if uids & self._pinned_uids:
+                    continue
+                pair = self._unify.pop(k, None)
+                self._close_unify_pair(pair)
+                evicted = True
+                break
+            if not evicted:
+                break
+
+    def _close_unify_pair(self, pair) -> None:
+        """Закрыть unify-пару, не трогая сторы всё ещё живые в _pixel."""
+        if pair is None:
+            return
+        try:
+            u1, u2 = pair
+        except Exception:
+            return
+        try:
+            live_ids = {id(s) for s in self._pixel.values()}
+        except Exception:
+            live_ids = set()
+        for s in (u1, u2):
+            try:
+                if s is not None and id(s) not in live_ids:
+                    self._close_store(s)
+            except Exception:
+                pass
+
+    def _drop_unify_for_uids(self, uids: set) -> None:
+        """Eager-drop unify-записей, ссылающихся на выселяемые пиксели."""
+        uids = {u for u in (uids or set()) if u is not None}
+        if not uids:
+            return
+        for k in list(self._unify.keys()):
+            try:
+                uid1, uid2 = k[0], k[1]
+            except Exception:
+                continue
+            if uid1 in uids or uid2 in uids:
+                pair = self._unify.pop(k, None)
+                self._close_unify_pair(pair)
 
     # -- pixel tier --
 
@@ -197,25 +377,8 @@ class PipelineCache:
             crop_service = None
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
         # если явно передан auto_crop, он приоритетнее сервиса
-        box_tuple = _kw.get("box_tuple")
-        # support explicit box passed via positional _kw? also check if crop_service hack carried box
-        key = _pixel_key(path, eff, auto_crop, box_tuple=box_tuple)
+        key = _pixel_key(path, eff, auto_crop)
         hit = key in self._pixel
-        # fallback: if miss and box not in key, try any box variant (old cache entries or lazy put with box)
-        fallback_key = None
-        if not hit and box_tuple is None:
-            # scan for any key with same prefix (path,mtime,size,has_crop) — handles lazy put with box or old 5-tuple
-            try:
-                norm = os.path.normpath(path)
-                # mtime/size from key (already computed)
-                _, mtime, size, has_crop = key[:4] if len(key) >= 4 else (None, None, None, None)
-                for k in list(self._pixel.keys()):
-                    if len(k) >= 4 and k[0] == norm and k[1] == mtime and k[2] == size and k[3] == bool(has_crop):
-                        fallback_key = k
-                        hit = True
-                        break
-            except Exception:
-                pass
         # throttle: same (key, hit) repeats at 60Hz from render_flow _peek
         try:
             _last = _last_cache_get_pixel_sig.get(key)
@@ -229,9 +392,6 @@ class PipelineCache:
         except Exception:
             ic_preview_debug("cache get_pixel path=%s eff=%s auto_crop=%s key=%s hit=%s", path, bool(eff), auto_crop, key, hit)
         store = self._pixel.get(key)
-        if store is None and fallback_key is not None:
-            store = self._pixel.get(fallback_key)
-            key = fallback_key
         if store is not None:
             # LRU bump
             try:
@@ -240,7 +400,14 @@ class PipelineCache:
                 pass
             # validate store still open
             is_open = getattr(store, "is_open", None)
-            if is_open is not None and not is_open:
+            if callable(is_open):
+                try:
+                    if not is_open():
+                        self._pixel.pop(key, None)
+                        return None
+                except Exception:
+                    pass
+            elif is_open is not None and not is_open:
                 # stale closed store — evict and miss
                 self._pixel.pop(key, None)
                 return None
@@ -263,21 +430,14 @@ class PipelineCache:
             auto_crop = crop_service
             crop_service = None
         eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
-        box_tuple = _kw.get("box_tuple")
-        # Если box вычислен lazy в воркере — включаем в ключ (long-term fix)
-        key = _pixel_key(path, eff, auto_crop, box_tuple=box_tuple)
+        key = _pixel_key(path, eff, auto_crop)
         ic_preview_debug("cache put_pixel path=%s eff=%s auto_crop=%s key=%s store=%s", path, bool(eff), auto_crop, key, getattr(store, "uid", id(store)))
         self._pixel[key] = store
         try:
             self._pixel.move_to_end(key)
         except Exception:
             pass
-        while len(self._pixel) > self._max_pixel:
-            try:
-                _k, _old = self._pixel.popitem(last=False)
-                self._close_store(_old)
-            except Exception:
-                break
+        self._ensure_pixel_budget()
 
     def _close_store(self, store) -> None:
         try:
@@ -357,22 +517,8 @@ class PipelineCache:
         else:
             has_crop_arg = None
             eff = eff
-        box_tuple = _kw.get("box_tuple")
-        key = _preview_key(path, eff, has_crop_arg, box_tuple=box_tuple)
+        key = _preview_key(path, eff, has_crop_arg)
         qimg = self._preview.get(key)
-        fallback_key = None
-        if qimg is None and box_tuple is None:
-            try:
-                norm = os.path.normpath(path)
-                _, mtime, size, has_crop = key[0], key[1], key[2], key[3]
-                for k in list(self._preview.keys()):
-                    if len(k) >= 5 and k[0] == norm and k[1] == mtime and k[2] == size and k[3] == bool(has_crop):
-                        fallback_key = k
-                        qimg = self._preview.get(k)
-                        key = k
-                        break
-            except Exception:
-                pass
         if qimg is not None:
             try:
                 self._preview.move_to_end(key)
@@ -401,18 +547,13 @@ class PipelineCache:
         if isinstance(crop_service, bool):
             auto_crop = crop_service
             crop_service = None
-        box_tuple = _kw.get("box_tuple")
-        key = _preview_key(path, crop_service, auto_crop, box_tuple=box_tuple)
+        key = _preview_key(path, crop_service, auto_crop)
         self._preview[key] = qimage
         try:
             self._preview.move_to_end(key)
         except Exception:
             pass
-        while len(self._preview) > self._max_preview:
-            try:
-                self._preview.popitem(last=False)
-            except Exception:
-                break
+        self._ensure_preview_budget()
 
     def get_or_load_preview(self, path: str, crop_service=None, auto_crop: bool | None = None):
         """Return cached QImage or load via load_preview_image (DI crop_service)."""
@@ -445,19 +586,26 @@ class PipelineCache:
             pop_embedded_cache(path)
         except Exception:
             pass
-        # pixel eviction
-        to_drop = [k for k in list(self._pixel.keys()) if k[0] == os.path.normpath(path)]
+        # pixel eviction (uid собираем ДО close — info живёт и после, но так надёжнее)
+        to_drop = [k for k in list(self._pixel.keys()) if k and k[0] == os.path.normpath(path)]
+        evicted_uids: set = set()
         for k in to_drop:
             old = self._pixel.pop(k, None)
+            uid = _uid_of(old)
+            if uid is not None:
+                evicted_uids.add(uid)
+                self._pinned_uids.discard(uid)
+            self._pinned_pixel_keys.discard(k)
             self._close_store(old)
         # preview eviction
         try:
             norm = os.path.normpath(path)
-            to_drop_prev = [k for k in list(self._preview.keys()) if k[0] == norm]
+            to_drop_prev = [k for k in list(self._preview.keys()) if k and k[0] == norm]
             for k in to_drop_prev:
                 self._preview.pop(k, None)
         except Exception:
             pass
+        # eager-drop unify, ссылающихся на высеченные пиксели (иначе .raw висят до LRU)
         # pyramid sweep is best-effort (registry may be per-tab) — centralized here
         try:
             from shared.rendering.pyramid_registry import get_pyramid_registry
@@ -475,15 +623,15 @@ class PipelineCache:
                 pyramid_registry.sweep()
             except Exception:
                 pass
-        # unify entries that depend on this path are still keyed by uid, not path,
-        # so they naturally miss after pixel eviction; we also drop unify entries
-        # whose key contains a closed uid lazily on next get_unified hit.
+        self._drop_unify_for_uids(evicted_uids)
 
     def clear(self) -> None:
         for s in list(self._pixel.values()):
             self._close_store(s)
         self._pixel.clear()
         self._preview.clear()
+        self._pinned_pixel_keys.clear()
+        self._pinned_uids.clear()
         # unify stores are the same objects as pixel stores (unified copies) —
         # they are already closed via pixel eviction if shared; otherwise close.
         for u1, u2 in list(self._unify.values()):
@@ -555,11 +703,7 @@ class PipelineCache:
             self._unify.move_to_end(key)
         except Exception:
             pass
-        while len(self._unify) > self._max_unify:
-            try:
-                self._unify.popitem(last=False)
-            except Exception:
-                break
+        self._ensure_unify_budget()
 
     # -- embedded cache DI adapter (host -> PipelineCache) --
     # Host layers (services/io/project_io, shared/pixel_cache_loader) accept an

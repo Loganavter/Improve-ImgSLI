@@ -124,7 +124,8 @@ class PipelineCacheReducer:
     Owns the three LRU tiers; all ``put_*`` goes via ``Put*Action`` + ``transact``
     (single Store alloc). ``get_pixel`` is_open check lives here as replace +
     ``close_pixel_store`` defer. ``EvictPipelineAction`` sweeps
-    ``pyramid_registry``.
+    ``pyramid_registry`` + eager-drop unify by uid. Budgets: count AND bytes.
+    box_tuple в ключи не входит (см. pipeline/cache._pixel_key).
     """
 
     @staticmethod
@@ -167,13 +168,81 @@ class PipelineCacheReducer:
             pass
 
     @staticmethod
+    def _uid_of(store):
+        try:
+            from shared.rendering.image_identity import image_uid
+            return int(image_uid(store))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _store_bytes(store) -> int:
+        try:
+            from shared.image_processing.tiled_pixel_store import pixel_source_size
+            w, h = pixel_source_size(store)
+            if w > 0 and h > 0:
+                return int(w) * int(h) * 4
+        except Exception:
+            pass
+        return 0
+
+    @staticmethod
+    def _close_unify_pair(pixel_dict, pair) -> None:
+        if pair is None:
+            return
+        try:
+            u1, u2 = pair
+        except Exception:
+            return
+        try:
+            live_ids = {id(s) for s in list(pixel_dict.values())}
+        except Exception:
+            live_ids = set()
+        for s in (u1, u2):
+            try:
+                if s is not None and id(s) not in live_ids:
+                    PipelineCacheReducer._close_store(s)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _drop_unify_for_uids(pixel_dict, unify_dict, uids: set):
+        uids = {u for u in (uids or set()) if u is not None}
+        if not uids:
+            return unify_dict
+        for k in list(unify_dict.keys()):
+            try:
+                uid1, uid2 = k[0], k[1]
+            except Exception:
+                continue
+            if uid1 in uids or uid2 in uids:
+                pair = unify_dict.pop(k, None)
+                PipelineCacheReducer._close_unify_pair(pixel_dict, pair)
+        return unify_dict
+
+    @staticmethod
+    def _limits():
+        try:
+            from tabs.image_compare.pipeline.cache import (
+                _PIXEL_CACHE_MAX,
+                _PIXEL_CACHE_MAX_BYTES,
+                _PREVIEW_CACHE_MAX,
+                _PREVIEW_CACHE_MAX_BYTES,
+                _UNIFY_CACHE_MAX,
+                _UNIFY_CACHE_MAX_BYTES,
+            )
+            return (_PIXEL_CACHE_MAX, _PIXEL_CACHE_MAX_BYTES, _PREVIEW_CACHE_MAX,
+                    _PREVIEW_CACHE_MAX_BYTES, _UNIFY_CACHE_MAX, _UNIFY_CACHE_MAX_BYTES)
+        except Exception:
+            return (8, 1536 * 1024 * 1024, 8, 128 * 1024 * 1024, 8, 1536 * 1024 * 1024)
+
+    @staticmethod
     def _put_pixel(state: PipelineCacheState, action) -> PipelineCacheState:
         from collections import OrderedDict
         import os
         try:
-            from tabs.image_compare.pipeline.cache import _PIXEL_CACHE_MAX, _pixel_key
+            from tabs.image_compare.pipeline.cache import _pixel_key
         except Exception:
-            _PIXEL_CACHE_MAX = 8
             def _pixel_key(path, crop_service=None, auto_crop=None, box_tuple=None):
                 import os as _os
                 try:
@@ -183,8 +252,6 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                if box_tuple is not None:
-                    return (_os.path.normpath(path), mtime, size, bool(crop_service), box_tuple)
                 return (_os.path.normpath(path), mtime, size, bool(crop_service))
         store = action.store
         if store is None:
@@ -209,12 +276,7 @@ class PipelineCacheReducer:
             auto_crop = crop_service
             crop_service = None
         try:
-            # support lazy box via action.box_tuple if provided (worker-side)
-            box = getattr(action, "box_tuple", None)
-            if box is not None:
-                key = _pixel_key(path, crop_service, auto_crop, box_tuple=box)
-            else:
-                key = _pixel_key(path, crop_service, auto_crop)
+            key = _pixel_key(path, crop_service, auto_crop)
         except Exception:
             key = (os.path.normpath(path), 0, 0, bool(crop_service))
         new_pixel = OrderedDict(state.pixel)
@@ -227,12 +289,19 @@ class PipelineCacheReducer:
                 pass
             new_pixel.pop(key, None)
         new_pixel[key] = store
-        while len(new_pixel) > _PIXEL_CACHE_MAX:
+        new_unify = OrderedDict(state.unify)
+        max_pixel, max_pixel_bytes, _, _, _, _ = PipelineCacheReducer._limits()
+        while len(new_pixel) > max_pixel or sum(PipelineCacheReducer._store_bytes(s) for s in new_pixel.values()) > max_pixel_bytes:
             try:
                 _k, _old = new_pixel.popitem(last=False)
+                uid = PipelineCacheReducer._uid_of(_old)
                 PipelineCacheReducer._close_store(_old)
+                if uid is not None:
+                    PipelineCacheReducer._drop_unify_for_uids(new_pixel, new_unify, {uid})
             except Exception:
                 break
+        if len(new_unify) != len(state.unify):
+            return replace(state, pixel=new_pixel, unify=new_unify)
         return replace(state, pixel=new_pixel)
 
     @staticmethod
@@ -240,9 +309,8 @@ class PipelineCacheReducer:
         from collections import OrderedDict
         import os
         try:
-            from tabs.image_compare.pipeline.cache import _PREVIEW_CACHE_MAX, _preview_key
+            from tabs.image_compare.pipeline.cache import _preview_key
         except Exception:
-            _PREVIEW_CACHE_MAX = 8
             def _preview_key(path, crop_service=None, auto_crop=None, box_tuple=None):
                 import os as _os
                 try:
@@ -252,8 +320,6 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                if box_tuple is not None:
-                    return (_os.path.normpath(path), mtime, size, bool(crop_service), box_tuple, 1024)
                 return (_os.path.normpath(path), mtime, size, bool(crop_service), 1024)
         qimage = action.qimage
         if qimage is None:
@@ -273,18 +339,24 @@ class PipelineCacheReducer:
             auto_crop = crop_service
             crop_service = None
         try:
-            box = getattr(action, "box_tuple", None)
-            if box is not None:
-                key = _preview_key(path, crop_service, auto_crop, box_tuple=box)
-            else:
-                key = _preview_key(path, crop_service, auto_crop)
+            key = _preview_key(path, crop_service, auto_crop)
         except Exception:
             key = (os.path.normpath(path), 0, 0, bool(crop_service), 1024)
         new_preview = OrderedDict(state.preview)
         if key in new_preview:
             new_preview.pop(key, None)
         new_preview[key] = qimage
-        while len(new_preview) > _PREVIEW_CACHE_MAX:
+        _, _, max_preview, max_preview_bytes, _, _ = PipelineCacheReducer._limits()
+        def _pv_bytes(q):
+            try:
+                from shared.image_processing.tiled_pixel_store import pixel_source_size
+                w, h = pixel_source_size(q)
+                if w > 0 and h > 0:
+                    return int(w) * int(h) * 4
+            except Exception:
+                pass
+            return 0
+        while len(new_preview) > max_preview or sum(_pv_bytes(q) for q in new_preview.values()) > max_preview_bytes:
             try:
                 new_preview.popitem(last=False)
             except Exception:
@@ -295,9 +367,8 @@ class PipelineCacheReducer:
     def _put_unified(state: PipelineCacheState, action) -> PipelineCacheState:
         from collections import OrderedDict
         try:
-            from tabs.image_compare.pipeline.cache import _UNIFY_CACHE_MAX, _unify_key
+            from tabs.image_compare.pipeline.cache import _unify_key
         except Exception:
-            _UNIFY_CACHE_MAX = 8
             def _unify_key(uid1, uid2, method, w, h):
                 return (uid1, uid2, method, int(w), int(h))
         if action.pair is None:
@@ -323,9 +394,17 @@ class PipelineCacheReducer:
         if key in new_unify:
             new_unify.pop(key, None)
         new_unify[key] = action.pair
-        while len(new_unify) > _UNIFY_CACHE_MAX:
+        _, _, _, _, max_unify, max_unify_bytes = PipelineCacheReducer._limits()
+        def _pair_bytes(p):
             try:
-                new_unify.popitem(last=False)
+                a, b = p
+            except Exception:
+                return 0
+            return PipelineCacheReducer._store_bytes(a) + PipelineCacheReducer._store_bytes(b)
+        while len(new_unify) > max_unify or sum(_pair_bytes(p) for p in new_unify.values()) > max_unify_bytes:
+            try:
+                _k, _pair = new_unify.popitem(last=False)
+                PipelineCacheReducer._close_unify_pair(state.pixel, _pair)
             except Exception:
                 break
         return replace(state, unify=new_unify)
@@ -342,14 +421,20 @@ class PipelineCacheReducer:
             pass
         norm = os.path.normpath(path)
         new_pixel = OrderedDict(state.pixel)
-        to_drop = [k for k in list(new_pixel.keys()) if k[0] == norm]
+        to_drop = [k for k in list(new_pixel.keys()) if k and k[0] == norm]
+        evicted_uids: set = set()
         for k in to_drop:
             old = new_pixel.pop(k, None)
+            uid = PipelineCacheReducer._uid_of(old)
+            if uid is not None:
+                evicted_uids.add(uid)
             PipelineCacheReducer._close_store(old)
         new_preview = OrderedDict(state.preview)
-        to_drop_prev = [k for k in list(new_preview.keys()) if k[0] == norm]
+        to_drop_prev = [k for k in list(new_preview.keys()) if k and k[0] == norm]
         for k in to_drop_prev:
             new_preview.pop(k, None)
+        new_unify = OrderedDict(state.unify)
+        PipelineCacheReducer._drop_unify_for_uids(new_pixel, new_unify, evicted_uids)
         try:
             from shared.rendering.pyramid_registry import get_pyramid_registry
             reg = get_pyramid_registry()
@@ -364,7 +449,7 @@ class PipelineCacheReducer:
                 pyramid_registry.sweep()
             except Exception:
                 pass
-        return replace(state, pixel=new_pixel, preview=new_preview)
+        return replace(state, pixel=new_pixel, preview=new_preview, unify=new_unify)
 
 
 class ImageRenderConfigReducer:
