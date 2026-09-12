@@ -39,6 +39,14 @@ never imports `tabs.*`. Host `workspace` hub starts empty — tabs append under
 - Figures via `{{img:slot.id}}` → path in the owning package's `figures.json`. Never add figures outside the per-topic slot table in HELP_SYSTEM.md.
 - Cross-link with `help://slug#anchor`; no trailing `### Related` dumps — weave links into prose or use a short `### Next topics`.
 
+### Host vs tab content
+
+- Keep host generic pages to shared behavior only; put tab specifics in contributed tab pages.
+- In host leave a stub only: `###` header + stable `{#anchor}` + one line + `help://` link to the tab overview.
+- Keep anchors stable — TOC and `help://slug#anchor` links depend on them; never rename to fix duplication.
+- Anti-pattern (pre-W4): `ui.lists_flyouts#multi-compare` duplicated the MC overview instead of linking to `help://multi_compare`.
+- Positive pattern: `platform.settings` shell + tab sections via `build_settings_contribution` (`src/tabs/image_compare/use_cases/registration.py:43`).
+
 ## Figure policy (default zero)
 
 A page does not need a picture. Add `:::figure` only when a screenshot answers

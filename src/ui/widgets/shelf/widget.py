@@ -9,8 +9,8 @@ The shelf is chrome + structure; consumers only decide what goes in:
 
 Chrome (moved here from ``tabs.session_picker.recent.shelf_chrome``):
 
-- the host surface fill (``surface_token`` — ``Window`` on the Session
-  Picker page, ``dialog.background`` inside the color picker dialog) and
+- the host surface fill (``surface_token`` — ``surface.background`` on the
+  Session Picker page, ``dialog.background`` inside the color picker dialog) and
 - a rounded shelf panel derived from that surface by the same lighten/darken
   ratios the Session Picker shelf uses.
 
@@ -148,7 +148,7 @@ class ShelfWidget(QWidget):
         self,
         parent: QWidget | None = None,
         *,
-        surface_token: str = "Window",
+        surface_token: str = "surface.background",
         content_well: bool = False,
     ) -> None:
         """``content_well=True`` paints the content host opaquely with the
