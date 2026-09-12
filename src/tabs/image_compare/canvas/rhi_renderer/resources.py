@@ -372,9 +372,46 @@ class RhiResources:
 
     @staticmethod
     def restore_texture_uploads(widget) -> None:
+        from shared.image_processing.image_dims import get_image_dims
+        from tabs.image_compare.canvas.texture_parts.crop_clip import (
+            resolve_slot_boxes,
+            scaled_box_for_source,
+            slot_paths_for_widget,
+        )
+
         state = widget.runtime_state
         if state._pending_texture_uploads:
             return
+        # W3a: re-queued uncached tiers are box-clipped like the original
+        # upload (cached QImages are already clipped — re-queue as-is).
+        # TiledPixelStore roles stay lazy (no materialization).
+        try:
+            _raw_boxes = resolve_slot_boxes(widget)
+        except Exception:
+            _raw_boxes = (None, None)
+        try:
+            _restore_paths = slot_paths_for_widget(widget)
+        except Exception:
+            _restore_paths = (None, None)
+
+        def _restore_box(slot: int, image: object):
+            try:
+                _raw = _raw_boxes[slot] if slot in (0, 1) else None
+            except Exception:
+                return None
+            if _raw is None:
+                return None
+            try:
+                _path = _restore_paths[slot]
+            except Exception:
+                _path = None
+            try:
+                return scaled_box_for_source(
+                    _raw, path=_path, live_size=get_image_dims(image)
+                )
+            except Exception:
+                return None
+
         for slot, texture_key in enumerate(widget.texture_ids):
             cached = touch_texture_upload_cache(widget, texture_key)
             if cached is not None:
@@ -385,7 +422,9 @@ class RhiResources:
                 if isinstance(image, TiledPixelStore):
                     state._images_uploaded[slot] = True
                     continue
-                queue_texture_upload(widget, image, texture_key, slot)
+                queue_texture_upload(
+                    widget, image, texture_key, slot, crop_box=_restore_box(slot, image)
+                )
         for slot, texture_key in enumerate(widget._source_texture_ids):
             cached = touch_texture_upload_cache(widget, texture_key)
             if cached is not None:
@@ -394,7 +433,7 @@ class RhiResources:
                 image = state._source_pil_images[slot]
                 if isinstance(image, TiledPixelStore):
                     continue
-                queue_texture_upload(widget, image, texture_key)
+                queue_texture_upload(widget, image, texture_key, crop_box=_restore_box(slot, image))
         diff_key = widget._diff_source_texture_id
         cached_diff = touch_texture_upload_cache(widget, diff_key)
         if cached_diff is not None:

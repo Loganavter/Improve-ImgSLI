@@ -32,6 +32,13 @@ from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 from shared.rendering.tile_texture_service import TileTextureService
 
 from ..texture_parts.tile_geometry import _visible_side_image_rect
+from ..texture_parts.crop_clip import (
+    BoxCroppedStoreView,
+    path_for_texture_key,
+    resolve_slot_boxes,
+    scaled_box_for_source,
+    slot_for_texture_key,
+)
 from ..texture_parts.upload_queue import (
     cache_texture_upload,
     evict_texture_upload_cache_over_budget,
@@ -326,6 +333,8 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         capture_uv_rect: tuple[float, float, float, float] | None = None,
         extra_protect_keys: tuple[object, ...] = (),
         dirty_layers: dict[int, set[int]] | None = None,
+        crop_service: object | None = None,
+        crop_boxes: tuple[object | None, object | None] | None = None,
     ) -> bool:
         """Viewport-driven partial residency (docs/dev/
         TILED_RENDERING_DESIGN.md Phase 2): for each side whose grid is
@@ -396,11 +405,41 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         dict once at the top of each frame, before either upload path runs;
         callers of this method directly (tests, tools) that skip that reset
         get an accumulating dict across calls instead -- harmless as long as
-        they check state right after the call they care about."""
+        they check state right after the call they care about.
+
+        W3a (crop): ``crop_service`` selects the session crop service
+        (auto-resolved from the widget's Store when ``None``);
+        ``crop_boxes`` optionally overrides the resolved raw
+        ``(box1, box2)`` pair (full-source coords; ``None`` per slot). Each
+        stored/source key's grid registers on its *box-clipped* size and
+        tiles crop through a ``BoxCroppedStoreView`` (stores) or a
+        box-cropped QImage, so full-frame memmaps need no bake. A ``None``
+        box keeps today's behavior identically. The magnifier path
+        (``capture_uv_rect`` set) stays full-frame: its capture UVs are
+        full-frame fractions owned by another crew. The diff role has no
+        file path and is never clipped."""
         letterboxes = (tuple(base_image.letterbox1), tuple(base_image.letterbox2))
         pairs = list(zip(texture_keys, letterboxes))
         if diff_key is not None:
             pairs.append((diff_key, letterboxes[0]))
+        # W3a: resolve raw boxes once per call (warmed-cache lookup, no IO).
+        # Magnifier capture path stays full-frame (see docstring).
+        _crop_enabled = capture_uv_rect is None
+        if _crop_enabled and crop_boxes is None:
+            try:
+                crop_boxes = resolve_slot_boxes(widget, crop_service=crop_service)
+            except Exception:
+                crop_boxes = (None, None)
+        if not _crop_enabled:
+            crop_boxes = (None, None)
+        try:
+            _raw_box1, _raw_box2 = crop_boxes[0], crop_boxes[1]
+        except Exception:
+            _raw_box1 = _raw_box2 = None
+        # Per-key scaled boxes (live-source coords) + pre-box live sizes,
+        # filled by the first pass and read by the spec-building pass.
+        _box_by_key: dict[object, tuple[int, int, int, int]] = {}
+        _full_size_by_key: dict[object, tuple[int, int]] = {}
         # Callers that need to defer mip regeneration until after `updates`
         # is submitted (see generate_all_dirty_mips) pass their own dict in and
         # read it back; anyone else gets the old whole-array-generateMips
@@ -455,6 +494,34 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     src_uid = image_uid(pil_source)
                 except Exception:
                     continue
+                # W3a: intersect with the effective box. The grid registers
+                # on the box-clipped size and the box joins the content
+                # identity so a late box arrival re-registers like a swap.
+                # None box -> src_w/src_h/src_uid untouched (parity).
+                _scaled_box: tuple[int, int, int, int] | None = None
+                if _crop_enabled:
+                    try:
+                        _key_path = path_for_texture_key(widget, key)
+                        _slot_idx = slot_for_texture_key(widget, key)
+                        _raw = None
+                        if _slot_idx == 0:
+                            _raw = _raw_box1
+                        elif _slot_idx == 1:
+                            _raw = _raw_box2
+                        if _raw is not None:
+                            _scaled_box = scaled_box_for_source(
+                                _raw, path=_key_path, live_size=(src_w, src_h)
+                            )
+                    except Exception:
+                        _scaled_box = None
+                if _scaled_box is not None:
+                    _full_size_by_key[key] = (src_w, src_h)
+                    _box_by_key[key] = _scaled_box
+                    src_w, src_h = (
+                        int(_scaled_box[2] - _scaled_box[0]),
+                        int(_scaled_box[3] - _scaled_box[1]),
+                    )
+                    src_uid = (src_uid, _scaled_box)
                 prev_uid = self._pil_source_uid_by_key.get(key)
                 # A same-size image swap into an already-loaded slot (the
                 # common case: two photos being compared are rarely the
@@ -531,6 +598,26 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                         continue
                     full_image = qimage_from_pil(pil_source)
                     cache_texture_upload(widget, key, full_image)
+                # W3a: the cached/decoded tier is box-clipped in the same
+                # coords the grid registered on (upload clipped it, or it is
+                # the decoded tier the box was scaled against). Guard on size
+                # equality so a stale cache tier never mis-clips.
+                _spec_box = _box_by_key.get(key)
+                if _spec_box is not None and full_image is not None:
+                    try:
+                        _live = _full_size_by_key.get(key)
+                        if _live is not None and (
+                            int(full_image.width()), int(full_image.height())
+                        ) == (int(_live[0]), int(_live[1])):
+                            from shared.image_processing.tiled_pixel_store import (
+                                qimage_from_pixel_source,
+                            )
+
+                            full_image = qimage_from_pixel_source(
+                                full_image, _spec_box
+                            )
+                    except Exception:
+                        pass
             if capture_uv_rect is not None:
                 cap_left, cap_top, cap_right, cap_bottom = capture_uv_rect
                 visible_rect = (
@@ -548,6 +635,15 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     viewport_offset=viewport_offset,
                 )
             crop_source = pil_source if is_tiled_store else full_image
+            # W3a: grid and crop source share the box-clipped coordinate
+            # space. Stores stay lazy through an offset view (no bake, no
+            # materialization); QImage/PIL tiers were cropped above.
+            _tile_box = _box_by_key.get(key)
+            if _tile_box is not None and is_tiled_store and pil_source is not None:
+                try:
+                    crop_source = BoxCroppedStoreView(pil_source, _tile_box)
+                except Exception:
+                    crop_source = pil_source
             specs.append(
                 ResidencySpec(key=key, grid=grid, visible_rect=visible_rect, crop_source=crop_source)
             )
