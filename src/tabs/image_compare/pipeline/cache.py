@@ -1,13 +1,17 @@
 # Audit-Meta: pattern=state-machine reason="single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid"
 """PipelineCache — memoised pixel + unify cache with LRU eviction.
 
-Keys:
-  pixel: (path, mtime_ns, size, has_crop) -> TiledPixelStore
-  preview: (path, mtime_ns, size, has_crop, 1024) -> QImage
+Keys (W1+W2 non-destructive crop — always the boxless shape, identical to
+the former crop-disabled shape):
+  pixel: (path, mtime_ns, size, False) -> TiledPixelStore
+  preview: (path, mtime_ns, size, False, 1024) -> QImage
   unify: (uid1, uid2, method, target_w, target_h) -> (TiledPixelStore, TiledPixelStore)
 
-box_tuple НЕ входит в ключи: CropService детерминирован для того же
-контента, box уже запечён в пиксели при заливке (src_box).
+Decode tiers are FULL-FRAME: the session CropService is detection-only and
+never feeds keys or decode (``crop_service``/``auto_crop`` args are
+accepted for call-compat and ignored — same treatment ``box_tuple`` had
+before it was removed). Old entries keyed with ``True`` in the has_crop
+slot miss under the boxless shape and can never collide with it.
 
 Both memoise by identity; second slot with same path shares the same store
 via refcount (no duplicate decode). Eviction calls close_pixel_store +
@@ -163,17 +167,12 @@ def _uid_of(store) -> int | None:
         return None
 
 
-def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
-    # Ключ без box_tuple, только (path,mtime,size,has_crop).
-    # box детерминирован CropService для того же контента (compute кэширует
-    # по normpath, thr15→thr30), уже запечён в пиксели при заливке через
-    # src_box — включать его в ключ значит плодить дубли одной картинки.
-    # box_tuple принят для совместимости и игнорируется.
-    has_crop = False
-    if crop_service is not None:
-        has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
-    elif auto_crop is not None:
-        has_crop = bool(auto_crop)
+def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, **_kw) -> tuple:
+    # W1+W2: ключ всегда boxless — (path,mtime,size,False), как раньше при
+    # выключенном кропе. crop_service/auto_crop приняты для совместимости
+    # сигнатур и игнорируются: сервис — только детекция (см. crop_box.py),
+    # декод — всегда full-frame. Старые записи с True в 4-м слоте миссуют
+    # и никогда не коллизируют с boxless-записями.
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -181,23 +180,18 @@ def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, box_
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(path), mtime, size, bool(has_crop))
+    return (os.path.normpath(path), mtime, size, False)
 
 
 def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) -> tuple:
     return (uid1, uid2, method, int(w), int(h))
 
 
-def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, box_tuple=None) -> tuple:
-    """Preview tier key: (path, mtime_ns, size, has_crop, 1024), box игнирируется.
+def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, **_kw) -> tuple:
+    """Preview tier key: (path, mtime_ns, size, False, 1024) — всегда boxless.
 
-    См. _pixel_key: box детерминирован и запечён в пиксели, в ключ не входит.
+    См. _pixel_key: декод full-frame, сервис — только детекция.
     """
-    has_crop = False
-    if crop_service is not None:
-        has_crop = bool(crop_service) if not isinstance(crop_service, bool) else bool(crop_service)
-    elif auto_crop is not None:
-        has_crop = bool(auto_crop)
     try:
         st = os.stat(path)
         mtime = st.st_mtime_ns
@@ -205,7 +199,7 @@ def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, bo
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(path), mtime, size, bool(has_crop), _PREVIEW_SIZE)
+    return (os.path.normpath(path), mtime, size, False, _PREVIEW_SIZE)
 
 
 class PipelineCache:
@@ -375,7 +369,9 @@ class PipelineCache:
         if isinstance(crop_service, bool) and auto_crop is None:
             auto_crop = crop_service
             crop_service = None
-        eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
+        # W1+W2: чтение всегда boxless — сессионный CropService это детекция,
+        # не дефолт ключа (см. _pixel_key).
+        eff = None
         # если явно передан auto_crop, он приоритетнее сервиса
         key = _pixel_key(path, eff, auto_crop)
         hit = key in self._pixel
@@ -422,14 +418,15 @@ class PipelineCache:
         # Если store is None и crop_service — это на самом деле store (вызов put_pixel(path, store))
         if store is None and crop_service is not None and hasattr(crop_service, "is_open"):
             store = crop_service
-            crop_service = self.crop_service
+            # W1+W2: запись всегда boxless — без resurrection сессионного дефолта.
+            crop_service = None
         if store is None:
             return
         # Если crop_service всё ещё bool
         if isinstance(crop_service, bool):
             auto_crop = crop_service
             crop_service = None
-        eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
+        eff = None
         key = _pixel_key(path, eff, auto_crop)
         ic_preview_debug("cache put_pixel path=%s eff=%s auto_crop=%s key=%s store=%s", path, bool(eff), auto_crop, key, getattr(store, "uid", id(store)))
         self._pixel[key] = store
@@ -448,7 +445,12 @@ class PipelineCache:
             pass
 
     def get_or_load(self, path: str, crop_service=None, auto_crop: bool | None = None):
-        """Return cached or load via TiledPixelStore.from_path (DI crop_service).
+        """Return cached or load via TiledPixelStore.from_path — always full-frame.
+
+        W1+W2: декод без запекания кропа (``crop_service=None``); сессионный
+        сервис — только детекция (см. ``pipeline/crop_box.py``) и сюда не
+        попадает ни как дефолт, ни явно из IC-потоков. Явные ``crop_service``/
+        ``auto_crop`` приняты для совместимости и игнорируются.
 
         Embedded project cache (pixel_cache_registry) is checked first via
         ``lookup_embedded_cache`` → ``TiledPixelStore.from_embedded_cache``,
@@ -458,13 +460,9 @@ class PipelineCache:
         if isinstance(crop_service, bool) and auto_crop is None:
             auto_crop = crop_service
             crop_service = None
-        eff_service = crop_service if crop_service is not None else self.crop_service
-        # если явно auto_crop передан, он решает has_crop, иначе наличие eff_service
-        if auto_crop is not None:
-            eff_service = eff_service if auto_crop else None
-            has_crop_arg = auto_crop
-        else:
-            has_crop_arg = None
+        # W1+W2: no-bake — дефолта из self.crop_service больше нет.
+        eff_service = None
+        has_crop_arg = None
         cached = self.get_pixel(path, eff_service, has_crop_arg)
         if cached is not None:
             return cached
@@ -489,14 +487,8 @@ class PipelineCache:
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            if eff_service is not None and has_crop_arg is not False:
-                store = TiledPixelStore.from_path(path, crop_service=eff_service)
-            else:
-                # нет сервиса → без кропа; поддержка legacy auto_crop bool
-                if auto_crop is not None:
-                    store = TiledPixelStore.from_path(path, auto_crop=bool(auto_crop))
-                else:
-                    store = TiledPixelStore.from_path(path, crop_service=None)
+            # W1+W2: всегда full-frame, без запекания кропа.
+            store = TiledPixelStore.from_path(path, crop_service=None)
         except Exception:
             raise
         if store is not None:
@@ -510,7 +502,8 @@ class PipelineCache:
         if isinstance(crop_service, bool) and auto_crop is None:
             auto_crop = crop_service
             crop_service = None
-        eff = crop_service if crop_service is not None else (self.crop_service if auto_crop is None else None)
+        # W1+W2: чтение всегда boxless (см. get_pixel).
+        eff = None
         if auto_crop is not None:
             eff = eff if auto_crop else None
             has_crop_arg = auto_crop
@@ -541,7 +534,8 @@ class PipelineCache:
         if qimage is None and crop_service is not None and hasattr(crop_service, "isNull"):
             # called as put_preview(path, qimage)
             qimage = crop_service
-            crop_service = self.crop_service
+            # W1+W2: запись всегда boxless — без resurrection сессионного дефолта.
+            crop_service = None
         if qimage is None:
             return
         if isinstance(crop_service, bool):
@@ -556,23 +550,26 @@ class PipelineCache:
         self._ensure_preview_budget()
 
     def get_or_load_preview(self, path: str, crop_service=None, auto_crop: bool | None = None):
-        """Return cached QImage or load via load_preview_image (DI crop_service)."""
+        """Return cached QImage or load via load_preview_image — always full-frame.
+
+        W1+W2: без запекания кропа (``crop_service=None``); явные
+        ``crop_service``/``auto_crop`` приняты для совместимости и
+        игнорируются (см. ``get_or_load``).
+        """
         if isinstance(crop_service, bool) and auto_crop is None:
             auto_crop = crop_service
             crop_service = None
-        eff_service = crop_service if crop_service is not None else self.crop_service
-        if auto_crop is not None:
-            eff_service = eff_service if auto_crop else None
-            has_crop_arg = auto_crop
-        else:
-            has_crop_arg = None
+        # W1+W2: no-bake — дефолта из self.crop_service больше нет.
+        eff_service = None
+        has_crop_arg = None
         cached = self.get_preview(path, eff_service, has_crop_arg)
         if cached is not None:
             return cached
         try:
             from shared.image_processing.progressive_loader import load_preview_image as _load_preview
 
-            qimg = _load_preview(path, crop_service=eff_service if has_crop_arg is not False else None)
+            # W1+W2: всегда full-frame, без запекания кропа.
+            qimg = _load_preview(path, crop_service=None)
         except Exception:
             raise
         if qimg is not None:
