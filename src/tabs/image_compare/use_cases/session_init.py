@@ -42,6 +42,13 @@ def init_session_state(controller, store, thread_pool):
     controller._resolve_active_session_id = _resolve_active_session_id  # type: ignore
     _default_id = _resolve_active_session_id()
     _default_session = ImageSession(session_id=_default_id)
+    # Дефолт сессии должен отражать настройку сразу: иначе fallback
+    # `else self.crop_service` в PipelineCache воскресит кроп при OFF.
+    try:
+        _should = getattr(getattr(store, "settings", None), "auto_crop_black_borders", True)
+        _default_session.sync_crop_service(bool(_should))
+    except Exception:
+        pass
     controller._image_sessions[_default_id] = _default_session
     controller._pipeline_cache = _default_session.cache
     controller.pipeline = _default_session.pipeline

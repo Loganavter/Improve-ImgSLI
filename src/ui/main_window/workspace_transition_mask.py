@@ -86,7 +86,7 @@ class WorkspaceTransitionMask:
 
         tm = getattr(self._main_window, "theme_manager", None)
         if tm is not None:
-            bg = QColor(resolve_theme_color(tm, "Window"))
+            bg = QColor(resolve_theme_color(tm, "surface.background"))
         else:
             logger.warning(
                 "[workspace-transition] parent %r has no theme_manager; "

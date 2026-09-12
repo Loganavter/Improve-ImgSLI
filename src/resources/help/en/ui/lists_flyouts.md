@@ -61,4 +61,4 @@ Split-line color and magnifier option panels are separate — [Comparison](help:
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-A {{tr:workspace.session_types.multi_compare}} session has no dual-list panel — images go into grid slots. Label text settings still open a panel (without the placement radios from {{tr:workspace.session_types.image_compare}}). Details: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+A {{tr:workspace.session_types.multi_compare}} session uses grid slots instead of dual lists — see [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).
