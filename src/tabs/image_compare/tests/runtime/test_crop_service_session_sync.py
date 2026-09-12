@@ -60,16 +60,28 @@ def test_preview_tier_disabled_setting_serves_uncropped(tmp_path):
         set_sessions_crop_enabled(True)
 
 
-def test_preview_tier_enabled_setting_still_crops(tmp_path):
-    """ON behavior unchanged: session default crops bordered previews."""
+def test_preview_tier_enabled_setting_serves_fullframe_with_box_metadata(tmp_path):
+    """W1+W2 non-destructive crop: ON serves FULL-FRAME; box is side metadata.
+
+    Replaces the old bake expectation (ON cropped bordered previews):
+    decode tiers never bake crop anymore. Detection still works — the box
+    is queryable via ``effective_crop_box_for_path`` while the pixels stay
+    full-frame.
+    """
+    from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
+
     path = _bordered_png(tmp_path / "bordered.png")
     sess = ImageSession(session_id="preview-on")
     try:
         set_sessions_crop_enabled(True)
+        assert sess.crop_service is not None
         qimg = sess.cache.get_or_load_preview(path)
         assert qimg is not None
-        assert qimg.width() < 200 and qimg.height() < 160
-        assert qimg.width() >= 100 and qimg.height() >= 60
+        assert (qimg.width(), qimg.height()) == (200, 160)
+        box = effective_crop_box_for_path(path, crop_service=sess.crop_service)
+        assert box is not None
+        assert box.width < 200 and box.height < 160
+        assert box.width >= 100 and box.height >= 60
     finally:
         set_sessions_crop_enabled(True)
 
