@@ -215,7 +215,7 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # show_for_group, which samples the checkbox row's actual background
         # instead of trusting the token to resolve identically.
         background = self._background_brush or QBrush(
-            resolve_theme_color(self.theme_manager, "surface.background")
+            resolve_theme_color(self.theme_manager, "Window")
         )
         border = self._border_color_override or resolve_theme_color(
             self.theme_manager, "dialog.border"
