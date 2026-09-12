@@ -160,15 +160,15 @@ def restore_image_state_prefs(
         except Exception:
             pass
         return
-    # No store (standalone test / transient Store() builder) – mutate via setattr
-    # to keep projection without tripping the AST dogma (Assign flag).
-    try:
-        if has_psnr:
-            setattr(image_state, "auto_calculate_psnr", bool(data["auto_calculate_psnr"]))
-        if has_ssim:
-            setattr(image_state, "auto_calculate_ssim", bool(data["auto_calculate_ssim"]))
-    except Exception:
-        pass
+    # store is None: no dispatcher to project through and nothing live to
+    # defer against. The only production caller
+    # (use_cases/persistence.deserialize_session) early-returns when
+    # context.store is None, so this branch is reachable only from transient
+    # test builders — which must supply a fake dispatcher store instead.
+    # Deliberately no setattr fallback here: silent mutation of possibly
+    # Store-attached objects routed around the no-direct-mutation AST dogma
+    # (which scans Assign, not setattr) and hid stale-state bugs.
+    return
 
 
 def _serialize_magnifier(view_state: ViewState) -> dict[str, Any]:
@@ -205,6 +205,79 @@ def serialize_viewport_block(viewport: ViewportState | None) -> dict[str, Any]:
     }
 
 
+def _resolve_restore_presenter(store: Any | None) -> Any | None:
+    """Best-effort presenter lookup for post-restore toolbar sync."""
+    if store is None:
+        return None
+    for attr in ("presenter", "toolbar_presenter"):
+        try:
+            candidate = getattr(store, attr, None)
+        except Exception:
+            candidate = None
+        if candidate is not None:
+            return candidate
+    try:
+        window = getattr(store, "main_window", None)
+    except Exception:
+        window = None
+    if window is not None:
+        for attr in ("presenter", "toolbar_presenter"):
+            try:
+                candidate = getattr(window, attr, None)
+            except Exception:
+                candidate = None
+            if candidate is not None:
+                return candidate
+    return None
+
+
+def refresh_filename_overlay_toolbar(
+    store: Any | None, presenter: Any | None = None
+) -> None:
+    """Bring the filename-overlay toolbar control in sync with the Store.
+
+    Reads ``store.viewport.render_config.include_file_names_in_saved`` and
+    pushes it into the toolbar button via the EXISTING sync mechanism
+    (``presenters.toolbar.state.update_toolbar_states``, which itself fans
+    out to the canvas feature binding sync) — never a new sync path and
+    never a direct feature import (canvas-features import dogma).
+    ``presenter`` is optional and derived from ``store`` where possible.
+    Best-effort and never raising: any missing piece is a silent no-op.
+    """
+    try:
+        if presenter is None:
+            presenter = _resolve_restore_presenter(store)
+        if presenter is None:
+            return
+        try:
+            from tabs.image_compare.presenters.toolbar.state import (
+                update_toolbar_states as _update_toolbar_states,
+            )
+        except Exception:
+            return
+        try:
+            _update_toolbar_states(presenter)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _restore_render_config_and_sync(
+    viewport: ViewportState, restored: RenderConfig, store: Any | None
+) -> None:
+    """QTimer-deferred completion for ``_restore_render_config``.
+
+    Retries the dispatch restore once the dispatcher is bound, then re-syncs
+    the filename-overlay toolbar control with the landed Store value.
+    """
+    try:
+        _restore_render_config(viewport, restored, store)
+    except Exception:
+        pass
+    refresh_filename_overlay_toolbar(store)
+
+
 def _restore_render_config(
     viewport: ViewportState, restored: RenderConfig, store: Any | None
 ) -> None:
@@ -231,7 +304,40 @@ def _restore_render_config(
             cur = viewport.render_config
             if restored.interpolation_method != cur.interpolation_method:
                 actions.append(SetInterpolationMethodAction(method=restored.interpolation_method))
-            if restored.movement_interpolation_method != cur.movement_interpolation_method:
+            if (
+                restored.interactive_movement_interpolation_method
+                != cur.interactive_movement_interpolation_method
+            ):
+                # Interactive method has no core Action; project it through
+                # the magnifier feature's own settings command via the
+                # capability alias (canvas-features import dogma forbids
+                # importing the feature's Action class here). The command
+                # dispatches only when the value differs and also projects
+                # movement onto the interactive value.
+                try:
+                    _move_cmd = get_canvas_registry(
+                        "image_compare"
+                    ).get_feature_command_by_alias(
+                        "overlay.settings.set_movement_interpolation"
+                    )
+                except Exception:
+                    _move_cmd = None
+                if _move_cmd is not None:
+                    try:
+                        _move_cmd(
+                            store,
+                            restored.interactive_movement_interpolation_method,
+                        )
+                    except Exception:
+                        pass
+            try:
+                live_movement = store.viewport.render_config.movement_interpolation_method  # type: ignore[union-attr]
+            except Exception:
+                live_movement = cur.movement_interpolation_method
+            movement_changed = (
+                restored.movement_interpolation_method != live_movement
+            )
+            if movement_changed:
                 actions.append(
                     SetMovementInterpolationMethodAction(method=restored.movement_interpolation_method)
                 )
@@ -259,64 +365,44 @@ def _restore_render_config(
                 actions.append(SetTextPlacementModeAction(mode=restored.text_placement_mode))
             if restored.max_name_length != cur.max_name_length:
                 actions.append(SetMaxNameLengthAction(length=restored.max_name_length))
-            # Fields without dedicated actions — fallback via setattr (not flagged as Assign)
-            uncovered: dict[str, Any] = {}
-            if restored.jpeg_quality != cur.jpeg_quality:
-                uncovered["jpeg_quality"] = restored.jpeg_quality
-            if restored.interactive_movement_interpolation_method != cur.interactive_movement_interpolation_method:
-                uncovered["interactive_movement_interpolation_method"] = restored.interactive_movement_interpolation_method
+            # NOTE: jpeg_quality has no dedicated Action/reducer (verified: it
+            # is referenced only by RenderConfig defaults + to_dict/from_dict),
+            # so it cannot be projected through Dispatcher. It stays at the
+            # live value on attached stores — never bare setattr here — until
+            # a SetJpegQuality-style action lands. It is still serialized, so
+            # the value round-trips once such an action exists.
             batch = getattr(store, "batch_changes", None) if store is not None else None
-            if actions or uncovered:
+            if actions:
                 if callable(batch):
                     with store.batch_changes():  # type: ignore[union-attr]
                         for act in actions:
                             dispatcher.dispatch(act, scope="viewport")
-                        for k, v in uncovered.items():
-                            try:
-                                target_cfg = getattr(store, "viewport", viewport).render_config  # type: ignore[union-attr]
-                                setattr(target_cfg, k, v)
-                            except Exception:
-                                pass
-                        if uncovered:
-                            try:
-                                store.emit_state_change("viewport")  # type: ignore[union-attr]
-                            except Exception:
-                                pass
                 else:
                     for act in actions:
                         dispatcher.dispatch(act, scope="viewport")
-                    for k, v in uncovered.items():
-                        try:
-                            target_cfg = getattr(store, "viewport", viewport).render_config  # type: ignore[union-attr]
-                            setattr(target_cfg, k, v)
-                        except Exception:
-                            pass
-                    if uncovered and store is not None:
-                        try:
-                            store.emit_state_change("viewport")  # type: ignore[union-attr]
-                        except Exception:
-                            pass
+            # Sync the toolbar button with the landed Store value (no-op when
+            # no presenter is reachable from the store).
+            refresh_filename_overlay_toolbar(store)
             return
         except Exception:
             pass
     if store is not None:
+        # Dispatcher not yet bound — defer the whole restore; the deferred
+        # completion retries the dispatch above and refreshes the toolbar.
         try:
             QTimer.singleShot(
-                0, lambda: _restore_render_config(viewport, restored, store)
+                0, lambda: _restore_render_config_and_sync(viewport, restored, store)
             )
             return
         except Exception:
             pass
-        # Fallback if defer fails — use setattr to avoid Assign dogma
-        try:
-            setattr(viewport, "render_config", restored)
-        except Exception:
-            pass
+        # Deferral unavailable (no event loop): return without mutating. The
+        # old setattr(viewport, "render_config", ...) fallback is gone — bare
+        # mutation of a possibly-live viewport hid toolbar/store desyncs.
         return
-    try:
-        setattr(viewport, "render_config", restored)
-    except Exception:
-        pass
+    # store is None — see restore_image_state_prefs: transient builders only,
+    # which must supply a fake dispatcher store. No setattr fallback.
+    return
 
 
 def restore_viewport_block(

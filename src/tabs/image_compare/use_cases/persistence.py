@@ -79,12 +79,12 @@ def snapshot_into(tab, context: TabContext, session_id: str | None) -> None:
         return
     from tabs.image_compare.models import ImageCompareState
 
-    widget = tab._widget
+    # Store-first: the "file names enabled" flag lives in the Store's
+    # viewport render_config (SSOT) and caption texts come from
+    # DocumentModel display names (editor syncs via chrome_sync) — neither
+    # is snapshotted from widget state. Only the camera is captured here.
     zoom, pan_x, pan_y = read_camera_from_host(tab)
     state = ImageCompareState(
-        show_file_names=bool(getattr(getattr(widget, "btn_file_names", None), "isChecked", lambda: False)()),
-        edit_name_1=getattr(getattr(widget, "edit_name1", None), "text", lambda: "")(),
-        edit_name_2=getattr(getattr(widget, "edit_name2", None), "text", lambda: "")(),
         zoom=zoom,
         pan_x=pan_x,
         pan_y=pan_y,
@@ -113,14 +113,9 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
         return
     if state is None:
         return
-    widget = tab._widget
-    btn = getattr(widget, "btn_file_names", None)
-    if btn is not None and hasattr(btn, "setChecked"):
-        btn.setChecked(bool(state.show_file_names))
-    for attr, value in (("edit_name1", state.edit_name_1), ("edit_name2", state.edit_name_2)):
-        edit = getattr(widget, attr, None)
-        if edit is not None and hasattr(edit, "setText"):
-            edit.setText(value or "")
+    # Store-first: the toolbar button and caption editors sync from the
+    # Store (viewport render_config / DocumentModel display names) via
+    # chrome_sync / apply_initial_state — never written from this slot.
     apply_camera_to_host(
         tab,
         float(getattr(state, "zoom", 1.0) or 1.0),
@@ -159,16 +154,13 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     }
 
     return {
-        "version": 2,
+        "version": 3,
         "image_list1": _items(doc.image_list1) if doc else [],
         "image_list2": _items(doc.image_list2) if doc else [],
         "current_index1": doc.current_index1 if doc else -1,
         "current_index2": doc.current_index2 if doc else -1,
         "image1_path": doc.image1_path if doc else None,
         "image2_path": doc.image2_path if doc else None,
-        "show_file_names": bool(ui_state.show_file_names) if ui_state else False,
-        "edit_name_1": ui_state.edit_name_1 if ui_state else "",
-        "edit_name_2": ui_state.edit_name_2 if ui_state else "",
         "camera": camera,
         "viewport": serialize_viewport_block(getattr(session, "viewport", None)),
     }
@@ -192,8 +184,6 @@ def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> di
     try:
         ps = store.get_session_state_slot("pipeline")  # type: ignore[union-attr]
         if ps is not None:
-            import os
-
             from tabs.image_compare.pipeline.cache import _pixel_key
 
             for path in (doc.image1_path, doc.image2_path):
@@ -204,13 +194,6 @@ def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> di
                     img = ps.pixel.get(k)  # type: ignore[attr-defined]
                     if img is not None and isinstance(img, TiledPixelStore) and img.is_open:
                         sources[path] = img
-                        continue
-                    # fallback scan by path prefix
-                    norm = os.path.normpath(path)
-                    for kk, vv in ps.pixel.items():  # type: ignore[attr-defined]
-                        if kk[0] == norm and isinstance(vv, TiledPixelStore) and vv.is_open:
-                            sources[path] = vv
-                            break
                 except Exception:
                     continue
     except Exception:
@@ -273,10 +256,10 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
                 pass
 
     dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+    # v3: the "file names enabled" flag lives in the viewport render_config
+    # block and captions in DocumentModel display names. Legacy v2 keys
+    # (show_file_names/edit_name_1/edit_name_2) are ignored when present.
     ui_state = ImageCompareState(
-        show_file_names=bool(data.get("show_file_names", False)),
-        edit_name_1=data.get("edit_name_1", ""),
-        edit_name_2=data.get("edit_name_2", ""),
         zoom=float(camera.get("zoom", 1.0) or 1.0),
         pan_x=float(camera.get("pan_x", 0.0) or 0.0),
         pan_y=float(camera.get("pan_y", 0.0) or 0.0),
@@ -332,15 +315,34 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
             active = getter()
     except Exception:
         active = None
-    if session_id == tab._active_session_id or (
+    is_active = session_id == tab._active_session_id or (
         active is not None and getattr(active, "id", None) == session_id
-    ):
+    )
+    if is_active:
         apply_camera_to_host(
             tab,
             float(camera.get("zoom", 1.0) or 1.0),
             float(camera.get("pan_x", 0.0) or 0.0),
             float(camera.get("pan_y", 0.0) or 0.0),
         )
+        # Toolbar re-sync after deferred restore (worker C's helper).
+        # Guarded: session_persistence may not provide
+        # refresh_filename_overlay_toolbar yet in this checkout.
+        try:
+            import importlib
+
+            _mod = importlib.import_module("tabs.image_compare.session_persistence")
+            _refresh = getattr(_mod, "refresh_filename_overlay_toolbar", None)
+            if callable(_refresh):
+                presenter = getattr(
+                    getattr(context, "main_window", None), "presenter", None
+                )
+                try:
+                    _refresh(store, presenter)
+                except TypeError:
+                    _refresh(store)
+        except Exception:
+            pass
 
 
 def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
