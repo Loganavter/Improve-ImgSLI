@@ -1,17 +1,18 @@
 """ImageLoadService — single-flight loader (phase 3 bucket D).
 
-Single-flight via ``path+mtime+has_crop → AbortSignal`` (ключ без box:
-см. ``pipeline/cache._pixel_key`` — box детерминирован CropService и запечён
-в пиксели при заливке). Заменяет:
+Single-flight via ``path+mtime → AbortSignal`` (ключ всегда boxless, см.
+``pipeline/cache._pixel_key``: W1+W2 non-destructive crop — декод
+full-frame, сервис только детекция). Заменяет:
 
 * ``slot._inflight[(slot,path)]`` (slot.py:475)
 * ``image_decode._inflight[(slot,path,"full")]`` (image_decode.py:272)
 * ``unify (p1,p2)`` (unify.py:214)
 * ``pyramid single-flight`` (session.py / pyramid.py)
 
-Key ``(normpath, mtime_ns, size, has_crop)``. CropService прогревается lazy
-внутри GenericWorker (side-effect кэша сервиса), GUI не блокируется на
-sync ``crop_service.get(path)`` до ``pool.start``.
+Key ``(normpath, mtime_ns, size, False)``. CropService прогревается lazy
+внутри GenericWorker (side-effect кэша сервиса — только детекция, в декод
+и ключи не попадает), GUI не блокируется на sync ``crop_service.get(path)``
+до ``pool.start``.
 """
 
 from __future__ import annotations
@@ -28,14 +29,14 @@ from tabs.image_compare.debug import ic_preview_debug
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def _key_for_path(path: str, crop_service=None, box_tuple=None) -> tuple:
-    """Ключ без box_tuple: (normpath,mtime,size,has_crop). box_tuple игнирируется."""
-    has_crop = False
-    if crop_service is not None and not isinstance(crop_service, bool):
-        # do NOT call crop_service.get here — GUI block removed (was :47)
-        has_crop = bool(crop_service)
-    elif isinstance(crop_service, bool):
-        has_crop = bool(crop_service)
+def _key_for_path(path: str, crop_service=None, **_kw) -> tuple:
+    """Ключ всегда boxless: (normpath,mtime,size,False). Сервис игнорируется.
+
+    W1+W2: single-flight dedup обязан сходиться для всех читателей
+    (``ensure_async`` кладёт с None, ``bg_dirty.is_loading`` спрашивает с
+    живым сервисом) — поэтому has_crop всегда False, как раньше при
+    выключенном кропе. Старые True-ключи миссуют и не коллизируют.
+    """
     try:
         st = os.stat(path)
         mtime = int(getattr(st, "st_mtime_ns", 0) or 0)
@@ -43,7 +44,7 @@ def _key_for_path(path: str, crop_service=None, box_tuple=None) -> tuple:
     except OSError:
         mtime = 0
         size = 0
-    return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop))
+    return (os.path.normpath(str(path)), int(mtime), int(size), False)
 
 
 def _unify_key(path1: str, path2: str, method: str) -> tuple:
@@ -78,11 +79,9 @@ class ImageLoadService:
         self._inflight: dict[tuple, AbortSignal] = {}
 
     def key_for(self, path: str, crop_service: Any | None = None) -> tuple:
-        if crop_service is None and self._get_crop_service is not None:
-            try:
-                crop_service = self._get_crop_service()
-            except Exception:
-                crop_service = None
+        # W1+W2: single-flight ключи boxless — сессионный detection-сервис
+        # здесь не резолвится (и никогда не дёргается crop_service.get:
+        # off-GUI правило). Аргумент принят для совместимости и игнорируется.
         return _key_for_path(path, crop_service)
 
     def unify_key_for(self, path1: str, path2: str, method: str) -> tuple:
@@ -150,14 +149,18 @@ class ImageLoadService:
         index_in_list: int,
         controller: Any,
     ) -> AbortSignal | None:
-        crop_service = None
+        # W1+W2: декод и ключи — всегда boxless (crop_service=None, no-bake).
+        # Сессионный сервис остаётся только для детекции: воркер прогревает
+        # им box-кэш (svc.get вне GUI), в load/put он не попадает.
+        detect_service = None
         try:
             if self._get_crop_service is not None:
-                crop_service = self._get_crop_service()
+                detect_service = self._get_crop_service()
             else:
-                crop_service = getattr(controller, "_get_crop_service", lambda: None)()
+                detect_service = getattr(controller, "_get_crop_service", lambda: None)()
         except Exception:
-            crop_service = None
+            detect_service = None
+        crop_service = None
         cache = self._cache
         try:
             sess = None
@@ -219,9 +222,9 @@ class ImageLoadService:
         ic_preview_debug("ImageLoadService start slot=%s path=%s key=%s sig=%s", slot, path, key, sig)
 
         def _worker_body(p: str, svc, sl, idx, sig_ref):
-            # Прогрев CropService вне GUI-потока: svc.get кэширует box внутри
-            # сервиса (переиспользуется TiledPixelStore.from_path). В ключи
-            # кэша box не входит (детерминирован), put всегда без box.
+            # Прогрев detection-кэша CropService вне GUI-потока: svc.get
+            # кэширует box внутри сервиса (для crop_box.py). Декод и put —
+            # всегда boxless (no-bake, ключи без has_crop).
             try:
                 if sig_ref.is_aborted():
                     return None, p, sl, idx, False
@@ -242,11 +245,11 @@ class ImageLoadService:
                     from shared.image_processing.progressive_loader import load_preview_image
                     if sig_ref.is_aborted():
                         return None, p, sl, idx, False
-                    preview = load_preview_image(p, crop_service=svc)
+                    preview = load_preview_image(p, crop_service=None)
                     if preview is not None and not getattr(preview, "isNull", lambda: True)():
                         try:
                             if cache is not None:
-                                cache.put_preview(p, svc, preview)
+                                cache.put_preview(p, None, preview)
                         except Exception:
                             pass
                         return preview, p, sl, idx, True
@@ -266,16 +269,16 @@ class ImageLoadService:
                     _emb_svc = getattr(getattr(controller, "pipeline", None), "cache", None)
                 except Exception:
                     _emb_svc = None
-                store_obj = load_pixel_store(p, crop_service=svc, embedded_cache=_emb_svc)
+                store_obj = load_pixel_store(p, crop_service=None, embedded_cache=_emb_svc)
                 try:
                     if sig_ref.is_aborted():
                         return None, p, sl, idx, False
                 except Exception:
                     pass
-                # put без box (ключ без box — см. cache._pixel_key)
+                # put boxless (ключ без has_crop — см. cache._pixel_key)
                 try:
                     if cache is not None and store_obj is not None:
-                        cache.put_pixel(p, svc, store_obj)
+                        cache.put_pixel(p, None, store_obj)
                 except Exception:
                     pass
                 return store_obj, p, sl, idx, False
@@ -337,7 +340,9 @@ class ImageLoadService:
                 pass
             _pop_alias()
 
-        worker = GenericWorker(_worker_body, path, crop_service, int(slot), int(index_in_list), sig)
+        # svc несёт detection-сервис для прогрева box-кэша в воркере;
+        # декод/put внутри _worker_body — всегда boxless (None).
+        worker = GenericWorker(_worker_body, path, detect_service, int(slot), int(index_in_list), sig)
         worker.signals.result.connect(_on_result)
         try:
             worker.signals.finished.connect(_on_finished)

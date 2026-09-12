@@ -101,7 +101,10 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
         should_use_progressive_load,
     )
 
-    crop_service = controller._get_crop_service()
+    # W1+W2 non-destructive crop: декод всегда full-frame (no-bake).
+    # Сессионный CropService — только детекция (см. pipeline/crop_box.py),
+    # в load_preview_image / load_pixel_store не попадает.
+    crop_service = None
     ic_preview_debug("load_image_async slot=%s path=%s idx=%s crop=%s", image_number, path, index_in_list, bool(crop_service))
     try:
         # Always progressive for image_compare: even 764×576 goes via QImage
@@ -120,7 +123,7 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
         ic_preview_debug("load_image_async slot=%s use_progressive=%s", image_number, use_progressive)
         if use_progressive:
             ic_preview_debug("load_image_async slot=%s -> try preview", image_number)
-            preview = load_preview_image(path, crop_service=crop_service)
+            preview = load_preview_image(path, crop_service=None)
             ic_preview_debug("load_image_async slot=%s preview=%s", image_number, preview)
             if preview:
                 ic_preview_debug("load_image_async slot=%s -> preview hit", image_number)
@@ -137,7 +140,7 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
                 _emb = getattr(_sess, "cache", None) if _sess is not None else None
         except Exception:
             _emb = None
-        store = load_pixel_store(path, crop_service=crop_service, embedded_cache=_emb)
+        store = load_pixel_store(path, crop_service=None, embedded_cache=_emb)
         ic_preview_debug("load_image_async slot=%s store=%s uid=%s", image_number, store, getattr(store, "uid", None) if store else None)
         return store, path, image_number, index_in_list, False
     except Exception as e:
@@ -232,7 +235,8 @@ def on_image_loaded(controller, result):
                 from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
                 d = getattr(controller.store, "get_dispatcher", lambda: None)()
                 has_dispatcher = d is not None
-                crop_svc = getattr(controller, "_get_crop_service", lambda: None)()
+                # W1+W2: put всегда boxless — сервис сюда не попадает.
+                crop_svc = None
                 if isinstance(pil_img, QImage):
                     if not pil_img.isNull():
                         if has_dispatcher:
@@ -340,7 +344,8 @@ def on_image_loaded(controller, result):
 def load_full_resolution_async(controller, path, image_number, index_in_list):
     from shared.image_processing.autocrop.debug import autocrop_debug
 
-    crop_service = controller._get_crop_service()
+    # W1+W2: full-res декод всегда full-frame (no-bake, см. load_image_async).
+    crop_service = None
     autocrop_debug(
         "full-res slot=%d path=%s crop_service=%s", image_number, path, bool(crop_service)
     )
@@ -354,7 +359,7 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             _emb2 = getattr(getattr(controller, "pipeline", None), "cache", None)
         except Exception:
             _emb2 = None
-        store = load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb2)
+        store = load_pixel_store(path_str, crop_service=None, embedded_cache=_emb2)
         return (
             store,
             path_str,
