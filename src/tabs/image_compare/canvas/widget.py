@@ -158,7 +158,8 @@ class CanvasWidget(QRhiWidget):
         # committed to the GPU-rendering machinery -- see paintEvent's
         # stale-device-size self-heal below (docs/dev/investigations/
         # image-compare-first-activation-flicker-and-qrhi.md Bug 3
-        # follow-up, ported from Telegram Desktop's lib_ui gl_surface.cpp).
+        # follow-up; same guard as lib_ui's gl_surface.cpp uses, derived
+        # from local symptoms).
         self._device_size = QSize()
         ic_first_frame_debug(self, "canvas constructed")
 
@@ -442,7 +443,8 @@ class CanvasWidget(QRhiWidget):
             pass
 
     def resizeEvent(self, event):
-        # lib_ui's gl_surface.cpp guard: refuse to forward a resize into
+        # Guard as in lib_ui's gl_surface.cpp (independently derived):
+        # refuse to forward a resize into
         # GPU-rendering machinery before the top-level's native window
         # exists at all (see docs/dev/investigations/
         # image-compare-first-activation-flicker-and-qrhi.md Bug 3
@@ -463,7 +465,8 @@ class CanvasWidget(QRhiWidget):
         resize_canvas(self, size.width(), size.height())
 
     def paintEvent(self, event):
-        # lib_ui's gl_surface.cpp guard: self-heal the "stuck at old size"
+        # Guard as in lib_ui's gl_surface.cpp (independently derived):
+        # self-heal the "stuck at old size"
         # symptom directly -- if the widget's current size*DPR has drifted
         # from what resizeEvent last committed to the GPU-rendering
         # machinery (e.g. a resize was skipped above, or landed before the

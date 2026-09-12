@@ -663,8 +663,9 @@ def ensure_window_rhi(window) -> None:
     the widget's own `geometry()` is correct, only the *painted* content
     lags) until/unless promotion eventually completes.
 
-    Mirrors the fix used by Telegram Desktop's `lib_ui` toolkit
-    (`GL::EnsureWindowRhi`, `ui/rhi/rhi_surface.cpp`): create a throwaway,
+    Same technique as Telegram Desktop's `lib_ui` toolkit uses
+    (`GL::EnsureWindowRhi`, `ui/rhi/rhi_surface.cpp`), derived independently
+    from the symptoms below: create a throwaway,
     1x1, hidden `QRhiWidget` child of the top-level window as early as
     possible (before any real content, ideally before the platform window
     helper sets up CSD/native-window state), so the promotion happens once,
