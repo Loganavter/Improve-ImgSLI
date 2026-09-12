@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action
 from domain.types import Color
@@ -9,10 +9,10 @@ from domain.types import Color
 @dataclass
 class SetCaptureSizeRelativeAction(Action):
     size: float
+    type: str = field(default="SET_CAPTURE_SIZE_RELATIVE", kw_only=True)
 
-    def __init__(self, size: float):
-        super().__init__(type="SET_CAPTURE_SIZE_RELATIVE")
-        self.size = float(size)
+    def __post_init__(self):
+        self.size = float(self.size)
 
     def get_payload(self):
         return {"size": self.size}
@@ -21,10 +21,10 @@ class SetCaptureSizeRelativeAction(Action):
 @dataclass
 class SetCaptureVisibleAction(Action):
     enabled: bool
+    type: str = field(default="SET_CAPTURE_VISIBLE", kw_only=True)
 
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_CAPTURE_VISIBLE")
-        self.enabled = bool(enabled)
+    def __post_init__(self):
+        self.enabled = bool(self.enabled)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -33,10 +33,7 @@ class SetCaptureVisibleAction(Action):
 @dataclass
 class SetCaptureColorAction(Action):
     color: Color
-
-    def __init__(self, color: Color):
-        super().__init__(type="SET_CAPTURE_COLOR")
-        self.color = color
+    type: str = field(default="SET_CAPTURE_COLOR", kw_only=True)
 
     def get_payload(self):
         return {"color": self.color}

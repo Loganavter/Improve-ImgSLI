@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from core.state_management.action_base import Action, ActionType
@@ -7,54 +7,49 @@ from core.state_management.action_base import Action, ActionType
 class SetCurrentIndexAction(Action):
     slot: int
     index: int
-    def __init__(self, slot: int, index: int):
-        super().__init__(type=ActionType.SET_CURRENT_INDEX); self.slot = slot; self.index = index
+    type: str = field(default=ActionType.SET_CURRENT_INDEX.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot, "index": self.index}
 
 @dataclass
 class SetOriginalImageAction(Action):
     slot: int
     image: Any
-    def __init__(self, slot: int, image: Any):
-        super().__init__(type=ActionType.SET_ORIGINAL_IMAGE); self.slot = slot; self.image = image
+    type: str = field(default=ActionType.SET_ORIGINAL_IMAGE.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot, "image": self.image}
 
 @dataclass
 class SetFullResImageAction(Action):
     slot: int
     image: Any
-    def __init__(self, slot: int, image: Any):
-        super().__init__(type=ActionType.SET_FULL_RES_IMAGE); self.slot = slot; self.image = image
+    type: str = field(default=ActionType.SET_FULL_RES_IMAGE.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot, "image": self.image}
 
 @dataclass
 class SetPreviewImageAction(Action):
     slot: int
     image: Any
-    def __init__(self, slot: int, image: Any):
-        super().__init__(type=ActionType.SET_PREVIEW_IMAGE); self.slot = slot; self.image = image
+    type: str = field(default=ActionType.SET_PREVIEW_IMAGE.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot, "image": self.image}
 
 @dataclass
 class SetImagePathAction(Action):
     slot: int
     path: str
-    def __init__(self, slot: int, path: str):
-        super().__init__(type=ActionType.SET_IMAGE_PATH); self.slot = slot; self.path = path
+    type: str = field(default=ActionType.SET_IMAGE_PATH.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot, "path": self.path}
 
 @dataclass
 class SetImageListAction(Action):
     slot: int
     items: list
-    def __init__(self, slot: int, items: list):
-        super().__init__(type=ActionType.SET_IMAGE_LIST); self.slot = slot; self.items = list(items)
+    type: str = field(default=ActionType.SET_IMAGE_LIST.value, kw_only=True)
+    def __post_init__(self): self.items = list(self.items)
     def get_payload(self): return {"slot": self.slot, "items": len(self.items)}
 
 @dataclass
 class AppendImageItemsAction(Action):
     slot: int
     items: list
-    def __init__(self, slot: int, items: list):
-        super().__init__(type=ActionType.APPEND_IMAGE_ITEMS); self.slot = slot; self.items = list(items)
+    type: str = field(default=ActionType.APPEND_IMAGE_ITEMS.value, kw_only=True)
+    def __post_init__(self): self.items = list(self.items)
     def get_payload(self): return {"slot": self.slot, "items": len(self.items)}
