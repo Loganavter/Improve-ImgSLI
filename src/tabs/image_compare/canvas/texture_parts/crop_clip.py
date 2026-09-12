@@ -137,12 +137,18 @@ def _kick_warmup(service: Any, path: str) -> None:
 def resolve_box_for_path(
     path: Any,
     crop_service: Any | None,
+    override: bool | None = None,
 ) -> Any | None:
     """One slot's effective box via the single-owner interface.
 
-    Never raises; any failure (including an unwarmed service on the GUI
-    thread, which instead gets a background warmup kick) yields ``None``.
+    ``override`` is the per-image tristate (``None`` == Auto, ``True`` ==
+    On, ``False`` == Off → ``None`` without detection); forwarded to
+    :func:`effective_crop_box_for_path`. Never raises; any failure
+    (including an unwarmed service on the GUI thread, which instead gets a
+    background warmup kick) yields ``None``.
     """
+    if override is False:
+        return None
     if not path or crop_service is None:
         return None
     try:
@@ -160,7 +166,9 @@ def resolve_box_for_path(
     try:
         from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
 
-        return effective_crop_box_for_path(path_str, crop_service=crop_service)
+        return effective_crop_box_for_path(
+            path_str, crop_service=crop_service, override=override
+        )
     except Exception:
         return None
 
@@ -280,23 +288,56 @@ def slot_paths_for_widget(
     return (None, None)
 
 
+def _document_for_widget(widget: Any) -> Any | None:
+    """Best-effort ``document`` session slot behind a canvas widget.
+
+    Same store reach as :func:`slot_paths_for_widget` (``runtime_state._store``
+    / ``widget._store`` → ``get_session_state_slot("document")``); ``None``
+    when unreachable. Pure read — the per-image ``crop_override`` lookup
+    source for :func:`resolve_slot_boxes`.
+    """
+    try:
+        state = getattr(widget, "runtime_state", None)
+        store = getattr(state, "_store", None) or getattr(widget, "_store", None)
+        if store is None:
+            return None
+        getter = getattr(store, "get_session_state_slot", None)
+        if not callable(getter):
+            return None
+        return getter("document")
+    except Exception:
+        return None
+
+
 def resolve_slot_boxes(
     widget: Any,
     source_key: Any | None = None,
     crop_service: Any | None = None,
+    document: Any | None = None,
 ) -> tuple[Any | None, Any | None]:
     """``(box1, box2)`` effective boxes for both slots; ``None`` per slot.
 
     Single consumer of ``effective_crop_box_for_path`` for the canvas layer
-    (W3a). ``override`` is reserved for a later wave — never passed.
+    (W3a). Per-image overrides (W5b) resolve from ``document`` (explicit arg
+    wins, else the widget Store's ``document`` slot) via
+    ``crop_override_for_path``: Off → ``None`` without detection, otherwise
+    detection as today.
     """
     svc = crop_service_for_widget(widget, explicit=crop_service)
     if svc is None:
         return (None, None)
     path1, path2 = slot_paths_for_widget(widget, source_key=source_key)
+    doc = document if document is not None else _document_for_widget(widget)
+    try:
+        from tabs.image_compare.state.document import crop_override_for_path
+
+        ov1 = crop_override_for_path(doc, path1) if doc is not None else None
+        ov2 = crop_override_for_path(doc, path2) if doc is not None else None
+    except Exception:
+        ov1, ov2 = None, None
     return (
-        resolve_box_for_path(path1, svc),
-        resolve_box_for_path(path2, svc),
+        resolve_box_for_path(path1, svc, override=ov1),
+        resolve_box_for_path(path2, svc, override=ov2),
     )
 
 
@@ -306,17 +347,21 @@ def box_for_texture_key(
     *,
     source_key: Any | None = None,
     crop_service: Any | None = None,
+    document: Any | None = None,
 ) -> Any | None:
     """Effective box for one texture role key (stored/source slots).
 
     ``stored_N``/``source_N`` map to slot N's path; the diff role (and
     unknown keys) have no file path, so no box. ``None``-box parity: unknown
-    keys resolve to ``None`` (no clipping).
+    keys resolve to ``None`` (no clipping). ``document`` forwards to
+    :func:`resolve_slot_boxes` for the per-image override lookup.
     """
     slot = slot_for_texture_key(widget, texture_key)
     if slot is None:
         return None
-    boxes = resolve_slot_boxes(widget, source_key=source_key, crop_service=crop_service)
+    boxes = resolve_slot_boxes(
+        widget, source_key=source_key, crop_service=crop_service, document=document
+    )
     try:
         return boxes[slot]
     except Exception:

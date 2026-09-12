@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -29,6 +30,45 @@ class ImageItem:
     # SetCropOverrideAction + DocumentReducer (dataclasses.replace).
     # Plain bool|None stays JSON/YAML-serializable for persistence.
     crop_override: bool | None = None
+
+
+def crop_override_for_path(document: Any, path: Any) -> bool | None:
+    """Per-image autocrop override for *path*, or ``None`` (Auto).
+
+    Pure read over ``image_list1/2`` (W5b box-resolution seam): scans both
+    slot lists for the first item whose path matches *path* and returns its
+    ``crop_override`` tristate (``None`` == Auto, ``True`` == On,
+    ``False`` == Off). Unknown document/path (or an item without the field)
+    → ``None``. Never raises.
+    """
+    try:
+        path_str = str(path)
+    except Exception:
+        return None
+    if not path_str or document is None:
+        return None
+    try:
+        norm = os.path.normpath(path_str)
+    except Exception:
+        norm = path_str
+    for attr in ("image_list1", "image_list2"):
+        try:
+            items = getattr(document, attr, None) or []
+        except Exception:
+            continue
+        for item in items:
+            try:
+                item_path = getattr(item, "path", "") or ""
+                if str(item_path) != path_str and os.path.normpath(str(item_path)) != norm:
+                    continue
+            except Exception:
+                continue
+            try:
+                override = getattr(item, "crop_override", None)
+            except Exception:
+                return None
+            return override if override is None else bool(override)
+    return None
 
 
 def display_name_or_fallback(item) -> str:
