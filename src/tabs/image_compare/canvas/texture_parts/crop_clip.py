@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=canvas-presentation size=exempt reason="texture_parts/crop_clip single box seam (W3a/W3f) — box-clipped texture/geometry helpers share one resolution path"
 """Box-clipped texture/geometry helpers for image_compare (W3a).
 
 Pixel stores decode FULL-FRAME (W1+W2); the detected box is side metadata
@@ -168,9 +169,11 @@ def crop_service_for_widget(widget: Any, explicit: Any | None = None) -> Any | N
     """Best-effort session crop service for a canvas widget.
 
     Explicit arg wins, then widget/runtime_state stashes (tests), then the
-    Store's ``pipeline`` session slot (``ImageSession.crop_service`` — the
-    same object ``controller._get_crop_service()`` returns while
-    ``auto_crop_black_borders`` is ON, ``None`` when OFF).
+    live session service via the session-controller backlink
+    (``_pending_session_controller`` / ``_context_menu_provider._session_ctrl``
+    → ``_get_crop_service()`` — the same object that getter returns while
+    ``auto_crop_black_borders`` is ON, ``None`` when OFF), then the Store's
+    ``pipeline`` session slot (``ImageSession.crop_service`` in tests).
     """
     if explicit is not None:
         return None if isinstance(explicit, bool) else explicit
@@ -181,6 +184,40 @@ def crop_service_for_widget(widget: Any, explicit: Any | None = None) -> Any | N
             svc = None
         if svc is not None and not isinstance(svc, bool):
             return svc
+    # W3f: live session service via the session-controller backlink.
+    # Production canvas never carries the service on the Store pipeline
+    # slot (that slot holds the reducer-owned PipelineCacheState mirror —
+    # pixel/preview/unify dicts only), so the slot lookup below stays None
+    # while bordered images decode full-frame (W1): with autocrop ON the
+    # canvas showed full frames WITH black borders. The canvas widget does
+    # retain the sessions object: set_session_controller() stashes it as
+    # _pending_session_controller until the context-menu provider is
+    # installed, then set_context_menu_provider() forwards it to
+    # provider._session_ctrl (transient_flyouts/coordinators wire the same
+    # main_controller.sessions object). _get_crop_service() returns the
+    # session's live service while auto_crop_black_borders is ON, None
+    # when OFF — the OFF gate is respected exactly, no new logic here.
+    # (A _live_services warmed scan was considered instead, but it is
+    # session-blind and gate-blind: without path/session context it can
+    # neither pick the active session's service nor honor OFF. The
+    # backlink can, so no scan.)
+    try:
+        provider = getattr(widget, "_context_menu_provider", None)
+        for ctrl in (
+            getattr(widget, "_pending_session_controller", None),
+            getattr(provider, "_session_ctrl", None),
+        ):
+            getter = getattr(ctrl, "_get_crop_service", None)
+            if not callable(getter):
+                continue
+            try:
+                svc = getter()
+            except Exception:
+                svc = None
+            if svc is not None and not isinstance(svc, bool):
+                return svc
+    except Exception:
+        pass
     try:
         state = getattr(widget, "runtime_state", None)
         store = getattr(state, "_store", None) or getattr(widget, "_store", None)
