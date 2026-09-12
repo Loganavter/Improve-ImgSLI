@@ -65,6 +65,11 @@ def normalize_snapshot_store(store: Store) -> None:
     Called in CROP mode of the video export/preview pipeline. Without this,
     a capture rect that was edited near the image edge can extend outside the
     cropped image and the magnifier samples garbage / mis-positions.
+
+    W3b note: capture positions are authored over the displayed (crop-box)
+    image, so the [0..1] clamp domain already IS the box bounds — no box
+    lookup is needed here (the transient snapshot store carries no warmed
+    ``CropService`` anyway; an unresolvable box would mean ``None``).
     """
     for model in _iter_mutable_magnifier_models(store):
         capture_size = float(getattr(model, "capture_size_relative", 0.0) or 0.0)
