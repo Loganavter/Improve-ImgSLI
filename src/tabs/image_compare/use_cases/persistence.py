@@ -140,8 +140,15 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     ui_state = session.state_slots.get(_STATE_SLOT)
 
     def _items(items):
+        # Store-side data only (DocumentModel fields) — no widget reads;
+        # crop_override is a plain tristate (None/True/False), JSON-safe.
         return [
-            {"path": it.path, "display_name": it.display_name, "rating": it.rating}
+            {
+                "path": it.path,
+                "display_name": it.display_name,
+                "rating": it.rating,
+                "crop_override": getattr(it, "crop_override", None),
+            }
             for it in items
         ]
 
@@ -224,11 +231,15 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
             if not (isinstance(display_name, str) and display_name.strip()):
                 stem = os.path.splitext(os.path.basename(path))[0] if path else ""
                 display_name = stem if stem and stem.strip(" .") else "-----"
+            # Tristate normalize: pre-override files lack the key (→ None/Auto).
+            raw_override = e.get("crop_override", None)
+            crop_override = None if raw_override is None else bool(raw_override)
             rebuilt.append(
                 ImageItem(
                     path=path,
                     display_name=display_name,
                     rating=e.get("rating", 0),
+                    crop_override=crop_override,
                 )
             )
         return rebuilt

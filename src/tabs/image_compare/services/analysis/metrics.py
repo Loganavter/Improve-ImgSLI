@@ -12,9 +12,13 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class MetricsService:
 
-    def __init__(self, store, runtime: AnalysisRuntime):
+    def __init__(self, store, runtime: AnalysisRuntime, *, get_crop_service=None):
         self.store = store
         self.runtime = runtime
+        # Optional zero-arg callable returning the session CropService
+        # (controller._get_crop_service — None when autocrop is OFF). Unset →
+        # boxes stay None and metrics run full-frame exactly as before (W3c).
+        self._get_crop_service = get_crop_service
         self._active_ssim_toast_id: int | None = None
         # Which metrics request currently owns the active toast. A stale
         # result must not close a toast that a newer request reused.
@@ -26,7 +30,13 @@ class MetricsService:
 
     def calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
         img1, img2 = self._get_metric_source_images()
-        if not img1 or not img2 or img1.size != img2.size:
+        box1, box2 = self._resolve_metric_boxes()
+        # W3c: with crop windows present the worker crops + unifies, so the
+        # full-frame size gate only applies to the boxless path (identical to
+        # today). Boxed pairs with mismatched frames fall through to the
+        # worker, which returns None when the windows cannot be compared.
+        boxless = box1 is None and box2 is None
+        if not img1 or not img2 or (boxless and img1.size != img2.size):
             self._close_ssim_metrics_toast()
             self.on_metrics_calculated(None, request_id=None)
             return
@@ -56,6 +66,8 @@ class MetricsService:
             calc_ssim,
             cap1,
             cap2,
+            box1,
+            box2,
         )
         # Capture request_id so late results for a previous pair are ignored.
         worker.signals.result.connect(lambda r, rid=request_id: self.on_metrics_calculated(r, request_id=rid))
@@ -104,8 +116,28 @@ class MetricsService:
         image_state = self.store.viewport.session_data.image_state
         return image_state.image1, image_state.image2
 
+    def _resolve_metric_boxes(self):
+        """Crop windows for the current pair via the single box owner (W3c)."""
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path1 = getattr(doc, "image1_path", None)
+            path2 = getattr(doc, "image2_path", None)
+        except Exception:
+            return None, None
+        try:
+            from tabs.image_compare.services.analysis.analysis_pair import (
+                resolve_crop_boxes_for_paths,
+            )
+
+            return resolve_crop_boxes_for_paths(
+                path1, path2, self._get_crop_service
+            )
+        except Exception:
+            return None, None
+
     def metrics_worker_task(
-        self, img1, img2, calc_psnr: bool, calc_ssim: bool, cap1, cap2
+        self, img1, img2, calc_psnr: bool, calc_ssim: bool, cap1, cap2,
+        box1=None, box2=None,
     ) -> Optional[Tuple[Optional[float], Optional[float]]]:
         """Worker task to compute metrics."""
         try:
@@ -126,6 +158,26 @@ class MetricsService:
                             return None
                 elif hasattr(cap, "valid"):
                     if not cap.valid:  # legacy lease
+                        return None
+            # W3c: with full-frame stores, metrics run over the crop windows
+            # (black borders excluded). Boxes resolve on the GUI thread via
+            # the single owner; cropping here keeps the warmed-cache lookup
+            # off the pixel path. Both None → untouched, identical to today.
+            # Crop runs BEFORE the 4096 downscale: boxes are full-source
+            # coords and only match the undownscaled sources.
+            if box1 is not None or box2 is not None:
+                from tabs.image_compare.services.analysis.analysis_pair import (
+                    crop_pair_to_boxes,
+                )
+
+                img1, img2 = crop_pair_to_boxes(img1, img2, box1, box2)
+                if img1 is None or img2 is None:
+                    return None
+                if getattr(img1, "size", None) != getattr(img2, "size", None):
+                    from shared.image_processing.pixel_ops.unify import unify_pair
+
+                    img1, img2 = unify_pair(img1, img2)
+                    if img1 is None or img2 is None:
                         return None
             if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
                 img1, img2 = downscale_pair_to_limit(img1, img2, 4096, allow_materialize=True)

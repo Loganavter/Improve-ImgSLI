@@ -14,9 +14,13 @@ from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
 logger = logging.getLogger("ImproveImgSLI")
 
 class CachedDiffService:
-    def __init__(self, store: Any, runtime: AnalysisRuntime):
+    def __init__(self, store: Any, runtime: AnalysisRuntime, *, get_crop_service=None):
         self.store = store
         self.runtime = runtime
+        # Optional zero-arg callable returning the session CropService
+        # (controller._get_crop_service — None when autocrop is OFF). Unset →
+        # boxes stay None and diffs run full-frame exactly as before (W3c).
+        self._get_crop_service = get_crop_service
         self._pending_request_key: tuple | None = None
 
     def invalidate(self) -> None:
@@ -121,6 +125,17 @@ class CachedDiffService:
         if not image1 or image2 is None:
             return
 
+        # W3c: diff over the crop windows. Boxes resolve here (warmed cache
+        # hit — never CropService.get on the GUI thread directly, only via
+        # the single owner) and travel with the request: the key carries the
+        # box tuples so a box change recomputes, and None-box requests keep
+        # today's key shape plus two Nones (internal only).
+        box1, box2 = self._resolve_diff_boxes()
+        box_key = (
+            box1.to_tuple() if box1 is not None else None,
+            box2.to_tuple() if box2 is not None else None,
+        )
+
         # Identity must be tagged on the original (possibly lazy) object,
         # before any conversion below -- materializing a TiledPixelStore
         # returns a fresh PIL Image each call with an empty .info dict, so
@@ -133,6 +148,7 @@ class CachedDiffService:
             image_uid(image2),
             getattr(image1, "size", None),
             getattr(image2, "size", None),
+            box_key,
         )
         self._pending_request_key = request_key
 
@@ -154,6 +170,8 @@ class CachedDiffService:
             optimize_ssim,
             cap1,
             cap2,
+            box1,
+            box2,
         )
         worker.signals.result.connect(
             lambda diff_image, key=request_key: self._on_diff_map_ready(diff_image, key)
@@ -163,9 +181,29 @@ class CachedDiffService:
         )
         self.runtime.thread_pool.start(worker, priority=1)
 
+    def _resolve_diff_boxes(self):
+        """Crop windows for the current pair via the single box owner (W3c)."""
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path1 = getattr(doc, "image1_path", None)
+            path2 = getattr(doc, "image2_path", None)
+        except Exception:
+            return None, None
+        try:
+            from tabs.image_compare.services.analysis.analysis_pair import (
+                resolve_crop_boxes_for_paths,
+            )
+
+            return resolve_crop_boxes_for_paths(
+                path1, path2, self._get_crop_service
+            )
+        except Exception:
+            return None, None
+
     @staticmethod
     def _generate_diff_map_task(
-        img1, img2, mode, channel_mode, optimize_ssim, cap1, cap2
+        img1, img2, mode, channel_mode, optimize_ssim, cap1, cap2,
+        box1=None, box2=None,
     ):
         started_at = time.perf_counter()
         # inline stale check via is_open/generation
@@ -203,6 +241,8 @@ class CachedDiffService:
                 optimize_ssim=optimize_ssim,
                 lease1=cap1,
                 lease2=cap2,
+                box1=box1,
+                box2=box2,
             )
             logger.debug(
                 "[DIFF_TASK] mode=%s channel=%s size1=%s size2=%s elapsed_ms=%.1f result=%s",

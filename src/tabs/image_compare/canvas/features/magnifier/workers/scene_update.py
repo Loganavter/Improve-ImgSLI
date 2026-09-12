@@ -6,6 +6,11 @@ from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
+from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
+    image_full_size,
+    resolve_crop_boxes_for_store,
+    valid_box_for_full,
+)
 from tabs.image_compare.canvas.features.magnifier.geometry.layout_plan import build_magnifier_layout
 from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
 from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_thickness
@@ -210,6 +215,19 @@ def rebuild_magnifier_overlay(presenter):
             return
 
         diff_mode_str = getattr(vp.view_state, "diff_mode", "off")
+        # W3b: full-frame tile grids sample the capture over the crop box.
+        # Warmed-only lookup (dict hit, never GUI-thread IO); None → legacy.
+        # W3d: the same warmed boxes thread into the SSIM diff below so the
+        # diff computes over the crop windows, aligned with the remapped
+        # lens capture. Both None → bit-identical to today.
+        try:
+            _box1, _box2 = resolve_crop_boxes_for_store(presenter.store)
+            _full1 = image_full_size(tex_img1)
+            _full2 = image_full_size(tex_img2)
+            _box1 = valid_box_for_full(_box1, *(_full1 or (0, 0)))
+            _box2 = valid_box_for_full(_box2, *(_full2 or (0, 0)))
+        except Exception:
+            _box1, _box2, _full1, _full2 = None, None, None, None
         cached_diff_image = (
             ensure_cached_diff_image(
                 presenter,
@@ -217,6 +235,8 @@ def rebuild_magnifier_overlay(presenter):
                 tex_img2,
                 local_source1=tex_img1,
                 local_source2=tex_img2,
+                box1=_box1,
+                box2=_box2,
             )
             if diff_mode_str == "ssim"
             else None
@@ -241,7 +261,14 @@ def rebuild_magnifier_overlay(presenter):
                             from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import (
                                 request_cached_diff_image_async,
                             )
-                            request_cached_diff_image_async(presenter, tex_img1, tex_img2, diff_mode_str)
+                            request_cached_diff_image_async(
+                                presenter,
+                                tex_img1,
+                                tex_img2,
+                                diff_mode_str,
+                                box1=_box1,
+                                box2=_box2,
+                            )
                         except Exception:
                             pass
             except Exception:
@@ -281,6 +308,8 @@ def rebuild_magnifier_overlay(presenter):
             plan
         )
 
+        # Box resolution hoisted above the diff-cache section (W3d); the
+        # warmed boxes below are the same ones the SSIM diff already used.
         layout = build_magnifier_layout(
             vp,
             width=max(1, int(content_w)),
@@ -294,6 +323,10 @@ def rebuild_magnifier_overlay(presenter):
             ),
             interpolation_method=interpolation_method,
             diff_mode_override=diff_mode_int,
+            crop_box1=_box1,
+            crop_box2=_box2,
+            full_size1=_full1,
+            full_size2=_full2,
         )
         _mark("build_layout")
         if layout is None:

@@ -58,3 +58,20 @@ class AppendImageItemsAction(Action):
     def __init__(self, slot: int, items: list):
         super().__init__(type=ActionType.APPEND_IMAGE_ITEMS); self.slot = slot; self.items = list(items)
     def get_payload(self): return {"slot": self.slot, "items": len(self.items)}
+
+@dataclass
+class SetCropOverrideAction(Action):
+    """Per-image autocrop tristate override (W5).
+
+    ``value`` is None (Auto — follow the global setting), True (force crop
+    on) or False (force crop off). Handled by the owning tab's
+    ``DocumentReducer`` (``state/reducer.py``) via ``dataclasses.replace``
+    on the single ``ImageItem`` — never in-place. Wiring the value into the
+    effective-box helper is a later wave; this action only stores it.
+    """
+    slot: int
+    index: int
+    value: bool | None
+    def __init__(self, slot: int, index: int, value: bool | None):
+        super().__init__(type=ActionType.SET_CROP_OVERRIDE); self.slot = slot; self.index = index; self.value = None if value is None else bool(value)
+    def get_payload(self): return {"slot": self.slot, "index": self.index, "value": self.value}

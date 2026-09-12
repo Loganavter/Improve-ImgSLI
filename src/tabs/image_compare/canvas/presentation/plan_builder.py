@@ -39,6 +39,73 @@ __all__ = [
     "_get_unified_images",
 ]
 
+def _box_clipped_live_inputs(store, display_image1, display_image2):
+    """Box-clipped live display inputs, or ``None`` when no box is active.
+
+    W3e: with full-frame stores the live plan must size from the box-clipped
+    content (canvas, pads, clip rect), not the full frame — the envelope,
+    uploads and Store geometry already fit the box. Resolves through the
+    canvas layer's single box seam (``texture_parts.crop_clip``: document
+    paths + pipeline-slot ``crop_service``); any failure — no service,
+    unwarmed service (GUI-thread warmup kick instead of blocking), no box —
+    returns ``None`` and the caller keeps today's full-frame behavior
+    bit-identical. PIL/QImage inputs are clipped to views;
+    ``TiledPixelStore`` stays lazy (tile residency crops) while sizes still
+    follow the box. Slot 1 is the sizing basis (as today); without its box
+    the whole helper stays ``None``. Sources/keys/plan math untouched.
+    """
+    try:
+        from shared.image_processing.image_dims import get_image_dims
+        from tabs.image_compare.canvas.texture_parts.crop_clip import (
+            box_dims,
+            clip_image_for_upload,
+            resolve_box_for_path,
+            scaled_box_for_source,
+        )
+    except Exception:
+        return None
+    try:
+        doc = store.get_session_state_slot("document")
+        path1 = getattr(doc, "image1_path", None)
+        path2 = getattr(doc, "image2_path", None)
+        pipe = store.get_session_state_slot("pipeline")
+        svc = getattr(pipe, "crop_service", None)
+    except Exception:
+        return None
+    if svc is None:
+        return None
+    try:
+        live1 = get_image_dims(display_image1)
+        raw1 = resolve_box_for_path(path1, svc)
+        box1 = scaled_box_for_source(raw1, path=path1, live_size=live1)
+    except Exception:
+        box1 = None
+    if box1 is None:
+        return None
+    try:
+        live2 = get_image_dims(display_image2)
+        raw2 = resolve_box_for_path(path2, svc)
+        box2 = scaled_box_for_source(raw2, path=path2, live_size=live2)
+    except Exception:
+        box2 = None
+    try:
+        clipped1 = clip_image_for_upload(display_image1, box1)
+        clipped2 = (
+            clip_image_for_upload(display_image2, box2)
+            if box2 is not None
+            else display_image2
+        )
+    except Exception:
+        return None
+    w, h = box_dims(box1, live1)
+    try:
+        w, h = int(w), int(h)
+    except Exception:
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return (clipped1, clipped2, w, h)
+
 def build_canvas_plan(
     viewport_source,
     image1,
@@ -106,6 +173,11 @@ def build_canvas_plan(
         return int(img.height)
 
     w1, h1 = _w(display_image1), _h(display_image1)
+
+    if is_live_default_plan and display_image1 is not None:
+        _boxed = _box_clipped_live_inputs(store, display_image1, display_image2)
+        if _boxed is not None:
+            display_image1, display_image2, w1, h1 = _boxed
 
     if is_live_default_plan and display_image1 is not None:
         live_virtual_layout = resolve_feature_virtual_layout(

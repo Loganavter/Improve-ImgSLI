@@ -125,7 +125,7 @@ class PipelineCacheReducer:
     (single Store alloc). ``get_pixel`` is_open check lives here as replace +
     ``close_pixel_store`` defer. ``EvictPipelineAction`` sweeps
     ``pyramid_registry`` + eager-drop unify by uid. Budgets: count AND bytes.
-    box_tuple в ключи не входит (см. pipeline/cache._pixel_key).
+    box в ключи не входит (см. pipeline/cache._pixel_key — ключи всегда boxless).
     """
 
     @staticmethod
@@ -243,7 +243,7 @@ class PipelineCacheReducer:
         try:
             from tabs.image_compare.pipeline.cache import _pixel_key
         except Exception:
-            def _pixel_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+            def _pixel_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
                 try:
                     st = _os.stat(path)
@@ -252,7 +252,7 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                return (_os.path.normpath(path), mtime, size, bool(crop_service))
+                return (_os.path.normpath(path), mtime, size, False)
         store = action.store
         if store is None:
             return state
@@ -278,7 +278,7 @@ class PipelineCacheReducer:
         try:
             key = _pixel_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, bool(crop_service))
+            key = (os.path.normpath(path), 0, 0, False)
         new_pixel = OrderedDict(state.pixel)
         if key in new_pixel:
             try:
@@ -311,7 +311,7 @@ class PipelineCacheReducer:
         try:
             from tabs.image_compare.pipeline.cache import _preview_key
         except Exception:
-            def _preview_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+            def _preview_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
                 try:
                     st = _os.stat(path)
@@ -320,7 +320,7 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                return (_os.path.normpath(path), mtime, size, bool(crop_service), 1024)
+                return (_os.path.normpath(path), mtime, size, False, 1024)
         qimage = action.qimage
         if qimage is None:
             return state
@@ -341,7 +341,7 @@ class PipelineCacheReducer:
         try:
             key = _preview_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, bool(crop_service), 1024)
+            key = (os.path.normpath(path), 0, 0, False, 1024)
         new_preview = OrderedDict(state.preview)
         if key in new_preview:
             new_preview.pop(key, None)

@@ -90,9 +90,9 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 205, "geometry_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 206, "geometry_state"),
         # -- magnifier worker cache writes --
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 93, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 98, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 102, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 142, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 147, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 151, "presenter.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 29, "presenter.store.viewport.interaction_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 33, "presenter.store.viewport.interaction_state"),
         # -- presentation geometry scratch --
@@ -107,13 +107,16 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/plugins/video_editor/services/keyframing/engine/values.py", 459, "interpolated.render_config"),
         ("src/tabs/image_compare/plugins/video_editor/services/keyframing/engine/values.py", 460, "interpolated.view_state"),
         # -- analysis cache / metric writes --
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 32, "render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 37, "render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 50, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 233, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 238, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/metrics.py", 85, "self.store.viewport.session_data.image_state"),
-        ("src/tabs/image_compare/services/analysis/metrics.py", 99, "self.store.viewport.session_data.image_state"),
+        # NOTE: lines shifted by the W3c box-aware analysis wave
+        # (get_crop_service injection + box plumbing in cached_diff/metrics;
+        # same fallback sites, not new bypasses).
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 36, "render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 41, "render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 54, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 273, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 278, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/metrics.py", 97, "self.store.viewport.session_data.image_state"),
+        ("src/tabs/image_compare/services/analysis/metrics.py", 111, "self.store.viewport.session_data.image_state"),
         ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 352, "self.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 354, "self.store.viewport.session_data.render_cache"),
         # -- UI settings / transient interpolation previews --
@@ -138,9 +141,11 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
 # Delete the entry (not the scan) once the site migrates to dispatch.
 # (session_persistence.py sites were migrated by the dispatch-or-defer
 # restore; use_cases/persistence.py widget IO was removed with it.)
+# NOTE: line shifted 254 → 265 by the W5 crop_override persist fields
+# (same _write_document fallback site, not a migration).
 PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
-        ("src/tabs/image_compare/use_cases/persistence.py", 254, "session.document"),
+        ("src/tabs/image_compare/use_cases/persistence.py", 265, "session.document"),
     }
 )
 
