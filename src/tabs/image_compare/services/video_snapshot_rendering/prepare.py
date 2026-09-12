@@ -88,6 +88,7 @@ def prepare_canvas_frame(
     request: VideoRenderRequest,
     *,
     trace=None,
+    get_crop_service=None,
 ) -> PreparedCanvasFrame:
     debug = {}
     resize_method = get_effective_export_interpolation_method(snap.viewport_state)
@@ -132,7 +133,9 @@ def prepare_canvas_frame(
             )
     else:
         started = time.perf_counter()
-        img1, img2 = resolve_images(image_loader, snap, request)
+        img1, img2 = resolve_images(
+            image_loader, snap, request, get_crop_service=get_crop_service
+        )
         debug["load_ms"] = (time.perf_counter() - started) * 1000.0
 
         prescale_started = time.perf_counter()
