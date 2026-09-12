@@ -74,6 +74,8 @@ def build_cached_diff_image(
     *,
     lease1: object | None = None,
     lease2: object | None = None,
+    box1=None,
+    box2=None,
 ):
     if isinstance(image1, TiledPixelStore) or isinstance(image2, TiledPixelStore):
         return build_cached_diff_image_from_sources(
@@ -85,6 +87,8 @@ def build_cached_diff_image(
             progress_callback=progress_callback,
             lease1=lease1,
             lease2=lease2,
+            box1=box1,
+            box2=box2,
         )
     return _build_cached_diff_pil(
         image1,
@@ -93,6 +97,8 @@ def build_cached_diff_image(
         channel_mode=channel_mode,
         optimize_ssim=optimize_ssim,
         progress_callback=progress_callback,
+        box1=box1,
+        box2=box2,
     )
 
 
@@ -106,6 +112,8 @@ def build_cached_diff_image_from_sources(
     *,
     lease1: object | None = None,
     lease2: object | None = None,
+    box1=None,
+    box2=None,
 ):
     if _is_stale(image1, lease1):
         return None
@@ -113,6 +121,19 @@ def build_cached_diff_image_from_sources(
         return None
     if image1 is None or (image2 is None and diff_mode != "edges"):
         return None
+
+    # W3c: diff over the crop windows (black borders excluded), sourced from
+    # full-frame stores. Both boxes None → untouched, identical to today.
+    # Crops AFTER the staleness checks above: leases reference the original
+    # stores, and crop windows are fresh PIL views needing no lease.
+    if box1 is not None or box2 is not None:
+        from tabs.image_compare.services.analysis.analysis_pair import (
+            crop_pair_to_boxes,
+        )
+
+        image1, image2 = crop_pair_to_boxes(image1, image2, box1, box2)
+        if image1 is None or (image2 is None and diff_mode != "edges"):
+            return None
 
     if diff_mode == "ssim":
         ssim_image1 = image1
@@ -170,9 +191,22 @@ def _build_cached_diff_pil(
     channel_mode: str = "RGB",
     optimize_ssim: bool = False,
     progress_callback=None,
+    *,
+    box1=None,
+    box2=None,
 ):
     if image1 is None or (image2 is None and diff_mode != "edges"):
         return None
+
+    # W3c: same crop-window semantics as the tile-native branch above.
+    if box1 is not None or box2 is not None:
+        from tabs.image_compare.services.analysis.analysis_pair import (
+            crop_pair_to_boxes,
+        )
+
+        image1, image2 = crop_pair_to_boxes(image1, image2, box1, box2)
+        if image1 is None or (image2 is None and diff_mode != "edges"):
+            return None
 
     processed1 = image1
     processed2 = image2

@@ -27,9 +27,13 @@ from tabs.image_compare.services.video_snapshot_rendering.render import (
 
 
 class SnapshotFrameRenderer:
-    def __init__(self, image_loader, gpu_export_service=None) -> None:
+    def __init__(self, image_loader, gpu_export_service=None, *, get_crop_service=None) -> None:
         self._image_loader = image_loader
         self._gpu_export_service = gpu_export_service
+        # Optional zero-arg callable returning the session CropService
+        # (controller._get_crop_service — None when autocrop is OFF). Unset →
+        # loader outputs stay full-frame, identical to today (W3c).
+        self._get_crop_service = get_crop_service
         self._last_backend = "gpu"
         self._last_debug: dict = {}
         self._caches = FrameRenderCaches()
@@ -94,6 +98,7 @@ class SnapshotFrameRenderer:
             snap,
             request,
             trace=self._trace,
+            get_crop_service=self._get_crop_service,
         )
 
     def prepare_canvas_frame_from_images(
