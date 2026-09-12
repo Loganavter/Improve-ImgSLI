@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 import pytest
@@ -11,6 +12,45 @@ from tabs.image_compare.session_persistence import (
     restore_viewport_block,
     serialize_viewport_block,
 )
+
+
+class _FakeDispatcher:
+    """Minimal dispatcher: projects actions through the real reducers."""
+
+    def __init__(self, viewport):
+        self.viewport = viewport
+        self.actions = []
+
+    def dispatch(self, action, scope="viewport"):
+        from tabs.image_compare.state.reducers import (
+            ImageRenderConfigReducer,
+            ImageSessionReducer,
+        )
+
+        self.actions.append(action)
+        new_cfg = ImageRenderConfigReducer.reduce(self.viewport.render_config, action)
+        if new_cfg is not self.viewport.render_config:
+            self.viewport.render_config = new_cfg
+        image_state = getattr(self.viewport.session_data, "image_state", None)
+        if image_state is not None:
+            new_image_state = ImageSessionReducer.reduce(image_state, action)
+            if new_image_state is not image_state:
+                self.viewport.session_data.image_state = new_image_state
+
+
+class _FakeDispatchStore:
+    """Transient store: restores must go through dispatch, never setattr."""
+
+    def __init__(self, viewport):
+        self.viewport = viewport
+        self._dispatcher = _FakeDispatcher(viewport)
+
+    def get_dispatcher(self):
+        return self._dispatcher
+
+    @contextlib.contextmanager
+    def batch_changes(self):
+        yield
 
 
 def test_render_config_and_viewport_block_roundtrip():
@@ -42,7 +82,8 @@ def test_render_config_and_viewport_block_roundtrip():
     other = ViewportState(
         session_data=SessionData(image_state=ImageSessionState())
     )
-    restore_viewport_block(other, blob)
+    store = _FakeDispatchStore(other)
+    restore_viewport_block(other, blob, store)
     assert other.view_state.split_position == pytest.approx(0.33)
     assert other.view_state.is_horizontal is True
     assert other.view_state.diff_mode == "highlight"
