@@ -62,8 +62,7 @@
 
 ### Примеры в продукте {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — в более плотных режимах колесо по толщине разделителя или размеру лупы на одном контроле; удержание «очистить» / «поменять» на кнопках списка. Подробнее: [Списки и всплывающие панели](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — те же жесты толщины / видимости на линиях сетки (`D`).
+Привычки конкретных сессий — в их темах: [Сравнение](help://comparison), [Лупа](help://magnifier) и [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).
 
 ### Найти контрол по имени {#find-action}
 

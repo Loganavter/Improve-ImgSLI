@@ -230,5 +230,5 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         painter.end()
 
     def on_theme_changed(self) -> None:
-        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "surface.background"))
         super().on_theme_changed()

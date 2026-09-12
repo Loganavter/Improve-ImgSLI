@@ -61,4 +61,4 @@
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-В сессии {{tr:workspace.session_types.multi_compare}} нет двойного менеджера списков — изображения кладут в ячейки сетки. Настройки текста подписей по‑прежнему открывают панель (без радио размещения, как в {{tr:workspace.session_types.image_compare}}). Подробнее: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Сессия {{tr:workspace.session_types.multi_compare}} использует слоты сетки вместо двойных списков — см. [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).

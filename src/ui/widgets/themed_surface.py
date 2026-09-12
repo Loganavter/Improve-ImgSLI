@@ -53,17 +53,19 @@ class ThemedSurface(ThemedWidget, QWidget):
 
 
 class ThemedBackgroundContainer(ThemedSurface):
-    """ThemedSurface defaulting to the ``Window`` token — app chrome bars.
+    """ThemedSurface defaulting to the ``surface.background`` token — app chrome bars.
 
     Kept as a thin alias of ThemedSurface (they were duplicate classes) so
-    existing chrome call sites keep their intent spelled out.
+    existing chrome call sites keep their intent spelled out. Pre-alias
+    ``Window`` reads resolved to ``surface.background``, which is the token
+    this default now names directly.
     """
 
     def __init__(
         self,
         parent: QWidget | None = None,
         *,
-        color_token: str = "Window",
+        color_token: str = "surface.background",
     ):
         super().__init__(parent, color_token=color_token, opaque=False)
 

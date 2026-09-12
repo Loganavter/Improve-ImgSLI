@@ -61,4 +61,4 @@
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-{{tr:workspace.session_types.multi_compare}} 会话没有双列表面板——图像直接放入网格槽位。标签文字设置仍会打开一个面板（但没有 {{tr:workspace.session_types.image_compare}} 中的位置单选项）。详情见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+{{tr:workspace.session_types.multi_compare}} 会话使用网格槽位而非双列表——见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels)。

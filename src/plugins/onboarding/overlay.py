@@ -395,7 +395,7 @@ class OnboardingOverlay(QWidget):
         scale_all_slides(self, scale)
 
     def _apply_theme(self):
-        bg_window = resolve_theme_color(self.theme_manager, "Window").name()
+        bg_window = resolve_theme_color(self.theme_manager, "surface.background").name()
         text_col = resolve_theme_color(self.theme_manager, "WindowText").name()
         self.setAutoFillBackground(True)
         palette = self.palette()

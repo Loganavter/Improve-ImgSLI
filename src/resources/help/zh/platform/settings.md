@@ -34,7 +34,6 @@
 
 图像对比相关的选项位于独立分组，始终可用：
 
-- **{{tr:settings.display_cache_resolution}}** — 限制主预览的尺寸；放大镜与导出仍使用原图。
 - **插值** — 缩放 / 放大镜 / 激光重采样的质量。
 - **{{tr:settings.optimize_magnifier_movement}}** — 让镜头移动更平滑（同一页面上还可设置其插值方式）。
 - **{{tr:settings.magnifier_intersection_highlight}}** — 高亮多个镜头重叠的区域。

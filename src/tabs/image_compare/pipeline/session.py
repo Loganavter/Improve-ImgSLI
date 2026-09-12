@@ -8,6 +8,7 @@ Holds SlotSource paths + PipelineCache + AbortSignal per session.
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass, field
 
 from shared.image_processing.autocrop import CropService
@@ -15,6 +16,47 @@ from shared.image_processing.autocrop import CropService
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.pipeline.cache import PipelineCache
 from tabs.image_compare.pipeline.pipeline import ImagePipeline
+
+# Реестр живых сессий для глобальной синхронизации crop-дефолта с настройкой
+# auto_crop_black_borders (прецедент: CropService._live_services). Без этого
+# PipelineCache/ImagePipeline fallback `else self.crop_service` воскрешает кроп
+# при выключенной настройке: голый None от _get_crop_service() неотличим от
+# "дефолт сессии", и preview-tier грузился обрезанным вопреки вердикту SKIP.
+#
+# NB: ImageSession — @dataclass с eq по умолчанию, т.е. нехешируемый, поэтому
+# не WeakSet, а id-ключи со слабыми ссылками (семантику класса не трогаем).
+_live_sessions: dict[int, weakref.ReferenceType] = {}
+
+
+def _register_session(sess: "ImageSession") -> None:
+    try:
+        key = id(sess)
+        _live_sessions[key] = weakref.ref(
+            sess, lambda _r, _k=key: _live_sessions.pop(_k, None)
+        )
+    except Exception:
+        pass
+
+
+def set_sessions_crop_enabled(enabled: bool) -> None:
+    """Синхронизировать crop-дефолт всех живых сессий с настройкой.
+
+    OFF → sess.crop_service/cache.crop_service = None (голый None внизу по
+    течению значит "выключено", а не "дефолт сессии"). ON → гарантировать живой
+    сервис (старый мог быть занулён). Боксы детерминированы, закэшированные
+    записи под has_crop=True/False остаются валидны после тоггла.
+    """
+    for ref in list(_live_sessions.values()):
+        try:
+            sess = ref()
+        except Exception:
+            continue
+        if sess is None:
+            continue
+        try:
+            sess.sync_crop_service(bool(enabled))
+        except Exception:
+            pass
 
 
 @dataclass
@@ -34,6 +76,7 @@ class ImageSession:
             self.cache.crop_service = self.crop_service
         except Exception:
             pass
+        _register_session(self)
         # single-flight loader (bucket D) — shares _inflight dict with pipeline
         try:
             from tabs.image_compare.pipeline.image_load_service import ImageLoadService as _ILS
@@ -53,6 +96,26 @@ class ImageSession:
                 self.pipeline.load_service = svc  # type: ignore[attr-defined]
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    def sync_crop_service(self, enabled: bool) -> None:
+        """Привести crop-дефолт сессии в соответствие с настройкой.
+
+        Вызывать при создании сессии и при тоггле auto_crop_black_borders
+        (см. set_sessions_crop_enabled). OFF зануляет и sess.crop_service
+        (его читает ImageLoadService.get_crop_service), и cache.crop_service
+        (fallback в PipelineCache/ImagePipeline) — иначе голый None внизу
+        resurrection'ится в живой дефолт и кроп применяется вопреки настройке.
+        """
+        try:
+            if enabled:
+                if self.crop_service is None:
+                    self.crop_service = CropService()
+                self.cache.crop_service = self.crop_service
+            else:
+                self.crop_service = None
+                self.cache.crop_service = None
         except Exception:
             pass
 

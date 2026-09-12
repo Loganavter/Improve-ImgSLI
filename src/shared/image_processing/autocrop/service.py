@@ -116,7 +116,10 @@ class CropService:
             box = self._box_for_threshold(path_str, thr)
             if box is not None:
                 return CropResult(path=path_str, box=box, threshold=thr)
-        autocrop_debug("no crop box for %s (thr=%s)", path_str, self._config.thresholds())
+        autocrop_debug(
+            "probe verdict=SKIP reason=no box under thr=%s path=%s",
+            self._config.thresholds(), path_str,
+        )
         return None
 
     def _box_for_threshold(self, path_str: str, thr: int) -> CropBox | None:

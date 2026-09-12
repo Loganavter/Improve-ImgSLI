@@ -61,4 +61,4 @@ A cor da linha de divisão e os painéis da lupa ficam em outro lugar — [Compa
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-Uma sessão {{tr:workspace.session_types.multi_compare}} não tem painel de lista dupla — as imagens vão para slots na grade. As configurações de texto do rótulo ainda abrem um painel (sem os botões de posicionamento do {{tr:workspace.session_types.image_compare}}). Detalhes: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Uma sessão {{tr:workspace.session_types.multi_compare}} usa slots de grade em vez de listas duplas — veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).

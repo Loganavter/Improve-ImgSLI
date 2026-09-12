@@ -43,10 +43,35 @@ class ExportSaveFlowCoordinator:
         )
 
     # -- IC-specific ------------------------------------------------------------
+    def _resolve_actions(self):
+        """Вернуть менеджер экшенов главного окна (MainWindowActions).
+
+        `main_window_app` — это виджет MainWindow: его `.actions` — builtin
+        `QWidget.actions()` (список QAction), а не менеджер; настоящий менеджер
+        лежит в `.action_registry` (ui/main_window/window.py). Прямое
+        `main_window_app.actions.set_last_saved_path(...)` падало с
+        AttributeError на builtin-методе, тихо роняя tray/notify-книжки.
+        """
+        app = self.main_window_app
+        for attr in ("action_registry", "actions"):
+            try:
+                cand = getattr(app, attr, None)
+            except Exception:
+                continue
+            if cand is not None and hasattr(cand, "set_last_saved_path"):
+                return cand
+        return None
+
     def _on_success_notify(self, out_path: str) -> None:
         try:
-            self.main_window_app.actions.set_last_saved_path(out_path)
-            self.main_window_app.actions.update_tray_actions_visibility()
+            actions = self._resolve_actions()
+            if actions is None:
+                logger.warning(
+                    "Save notification skipped: main_window_app has no action manager"
+                )
+                return
+            actions.set_last_saved_path(out_path)
+            actions.update_tray_actions_visibility()
             notifications_enabled = getattr(
                 self.store.settings,
                 "system_notifications_enabled",
@@ -56,7 +81,7 @@ class ExportSaveFlowCoordinator:
                 image_for_icon = (
                     out_path if isinstance(out_path, str) and os.path.isfile(out_path) else None
                 )
-                self.main_window_app.actions.notify_system(
+                actions.notify_system(
                     self.tr("msg.saved"),
                     f"{self.tr('msg.saved')}: {out_path}",
                     image_path=image_for_icon,
