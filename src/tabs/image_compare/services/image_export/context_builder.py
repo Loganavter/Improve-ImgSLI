@@ -14,10 +14,14 @@ from tabs.image_compare.services.video_snapshot_rendering import SnapshotFrameRe
 
 
 class ExportContextBuilder:
-    def __init__(self, store, gpu_export_service, state_coordinator):
+    def __init__(self, store, gpu_export_service, state_coordinator, *, get_crop_service=None):
         self.store = store
         self.gpu_export_service = gpu_export_service
         self.state = state_coordinator
+        # Optional zero-arg callable returning the session CropService
+        # (controller._get_crop_service — None when autocrop is OFF). Unset →
+        # boxes stay None and export runs full-frame exactly as before (W3c).
+        self._get_crop_service = get_crop_service
         self.renderer = SnapshotFrameRenderer(
             image_loader=lambda _path, _auto_crop=False: None,
             gpu_export_service=gpu_export_service,
@@ -92,9 +96,44 @@ class ExportContextBuilder:
     def has_images(self) -> bool:
         return bool(self._peek_slot(1) and self._peek_slot(2))
 
+    def _resolve_export_boxes(self):
+        """Crop windows for the current pair via the single box owner (W3c)."""
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path1 = getattr(doc, "image1_path", None)
+            path2 = getattr(doc, "image2_path", None)
+        except Exception:
+            return None, None
+        try:
+            from tabs.image_compare.services.analysis.analysis_pair import (
+                resolve_crop_boxes_for_paths,
+            )
+
+            return resolve_crop_boxes_for_paths(
+                path1, path2, self._get_crop_service
+            )
+        except Exception:
+            return None, None
+
     def build_save_context(self, include_preview: bool = True) -> ExportSaveContext:
         original1_full = self._peek_slot(1)
         original2_full = self._peek_slot(2)
+        if not original1_full or not original2_full:
+            raise ValueError("Full resolution images are not available for saving.")
+
+        # W3c: export operates on the crop windows (black borders excluded),
+        # sourced from the full-frame stores above (never baked at decode).
+        # Both boxes None → views are the originals, identical to today.
+        # Forwarded originals are the cropped views so a later size-override
+        # rebuild unifies the same windows the plan was built from.
+        from tabs.image_compare.services.analysis.analysis_pair import (
+            crop_pair_to_boxes,
+        )
+
+        box1, box2 = self._resolve_export_boxes()
+        original1_full, original2_full = crop_pair_to_boxes(
+            original1_full, original2_full, box1, box2
+        )
         if not original1_full or not original2_full:
             raise ValueError("Full resolution images are not available for saving.")
 
