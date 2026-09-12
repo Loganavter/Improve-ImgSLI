@@ -80,13 +80,13 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
-    # PipelineCache is single source — Bucket C via Store slot (transact)
+    # PipelineCache single source — Bucket C transact, W1+W2 boxless put (no-bake).
+    # Сессионный сервис — только детекция (см. pipeline/crop_box.py).
     try:
         from tabs.image_compare.state.actions import PutPixelAction
         d = getattr(controller.store, "get_dispatcher", lambda: None)()
-        crop_svc = getattr(controller, "_get_crop_service", lambda: None)()
         if d is not None:
-            controller.store.transact([PutPixelAction(path=path, store=full_img, crop_service=crop_svc)], scope="pipeline")
+            controller.store.transact([PutPixelAction(path=path, store=full_img)], scope="pipeline")
         else:
             pl = getattr(controller, "pipeline", None)
             if pl is not None:

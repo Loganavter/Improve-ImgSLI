@@ -20,15 +20,13 @@ class PutPixelAction(Action):
     store: Any
     crop_service: Any = None
     auto_crop: bool | None = None
-    box_tuple: tuple[int, int, int, int] | None = None
 
-    def __init__(self, path: str, store: Any, crop_service: Any = None, auto_crop: bool | None = None, box_tuple: tuple[int, int, int, int] | None = None):
+    def __init__(self, path: str, store: Any, crop_service: Any = None, auto_crop: bool | None = None):
         super().__init__(type=ActionType.PIPELINE_PUT_PIXEL)
         self.path = str(path)
         self.store = store
         self.crop_service = crop_service
         self.auto_crop = auto_crop
-        self.box_tuple = box_tuple
 
     def get_payload(self) -> dict[str, Any]:
         return {"path": self.path, "store": getattr(self.store, "uid", id(self.store)), "auto_crop": self.auto_crop}
@@ -40,15 +38,13 @@ class PutPreviewAction(Action):
     qimage: Any
     crop_service: Any = None
     auto_crop: bool | None = None
-    box_tuple: tuple[int, int, int, int] | None = None
 
-    def __init__(self, path: str, qimage: Any, crop_service: Any = None, auto_crop: bool | None = None, box_tuple: tuple[int, int, int, int] | None = None):
+    def __init__(self, path: str, qimage: Any, crop_service: Any = None, auto_crop: bool | None = None):
         super().__init__(type=ActionType.PIPELINE_PUT_PREVIEW)
         self.path = str(path)
         self.qimage = qimage
         self.crop_service = crop_service
         self.auto_crop = auto_crop
-        self.box_tuple = box_tuple
 
     def get_payload(self) -> dict[str, Any]:
         return {"path": self.path, "auto_crop": self.auto_crop}
