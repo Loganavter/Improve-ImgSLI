@@ -70,3 +70,17 @@ class WorkerStoreSnapshot:
         self.viewport = viewport
         self.settings = settings
         self.document = document
+
+    def get_session_state_slot(self, slot: str):
+        """Store-compatible slot access for worker threads.
+
+        Export (`export_image`, `build_live_frame_snapshot`,
+        `_get_current_display_name`) runs on a snapshot, not the live
+        Store — without this it crashed with
+        `AttributeError: ... has no attribute 'get_session_state_slot'`
+        and the whole export failed. Only "document" exists on a snapshot;
+        anything else is a loud KeyError (never silent wrong data).
+        """
+        if slot == "document":
+            return self.document
+        raise KeyError(f"WorkerStoreSnapshot has no session slot: {slot!r}")

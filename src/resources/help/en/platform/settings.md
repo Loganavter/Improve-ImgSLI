@@ -34,7 +34,6 @@ A search field sits above the sidebar: type anything and the matching sections a
 
 Image-compare specific options live on their own section, always available:
 
-- **{{tr:settings.display_cache_resolution}}** — caps the main preview size; magnifier and export still use originals.
 - **Interpolation** — zoom / magnifier / laser resampling quality.
 - **{{tr:settings.optimize_magnifier_movement}}** — smoother lens motion (and its interpolation method on the same page).
 - **{{tr:settings.magnifier_intersection_highlight}}** — highlight where lenses overlap.

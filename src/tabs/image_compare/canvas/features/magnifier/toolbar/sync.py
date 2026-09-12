@@ -60,9 +60,47 @@ def sync_magnifier_enabled_state(presenter) -> None:
     btn_instances = getattr(ui, "btn_magnifier_instances", None)
     if btn_instances is not None:
         count = len(scene_state.iter_magnifiers())
+        try:
+            btn_before = btn_instances.magnifier_count() if hasattr(btn_instances, "magnifier_count") else -1
+        except Exception:
+            btn_before = -1
         btn_instances.set_magnifier_count(count if count > 0 else 1)
         if hasattr(btn_instances, "set_can_remove"):
             btn_instances.set_can_remove(count > 1)
+        try:
+            btn_after = btn_instances.magnifier_count() if hasattr(btn_instances, "magnifier_count") else -1
+            can_remove = getattr(btn_instances, "_can_remove", None)
+        except Exception:
+            btn_after, can_remove = -1, None
+        try:
+            from tabs.image_compare.debug import ic_magnifier_debug
+
+            ic_magnifier_debug(
+                "sync enabled: store_count=%s can_remove=%s btn_before=%s btn_after=%s",
+                count,
+                count > 1,
+                btn_before,
+                btn_after,
+            )
+        except Exception:
+            pass
+        try:
+            from core.tracing.tracer import Tracer
+
+            if Tracer.enabled():
+                Tracer.instance().record(
+                    "magnifier.toolbar.sync",
+                    f"sync instances count={count}",
+                    {
+                        "store_count": count,
+                        "can_remove": count > 1,
+                        "button_before": btn_before,
+                        "button_after": btn_after,
+                        "button_can_remove": can_remove,
+                    },
+                )
+        except Exception:
+            pass
 
     if hasattr(ui, "btn_magnifier_orientation"):
         viewport = presenter.store.viewport

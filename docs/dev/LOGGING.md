@@ -1,6 +1,6 @@
 # Logging
 
-The project uses Python's stdlib `logging` exclusively — **never `print()`** in committed code. This guarantees output goes through one configured pipeline (level filter, console + file handlers, consistent format) and can be silenced or amplified without touching source.
+Host-specific logging setup. Shared conventions (stdlib `logging` only, unique-prefix recipe, temporary-diagnostics workflow, silencing) live in the canonical doc: [sli-ui-toolkit logging conventions](https://github.com/Loganavter/sli-ui-toolkit/blob/main/docs/dev/LOGGING.md).
 
 ## Setup
 
@@ -59,7 +59,9 @@ Sub-loggers inherit handlers + level. They show up in the format as `[DEBUG]` et
 logger.error(f"Plugin {name} failed during {stage}: {err}", exc_info=True)
 ```
 
-## The unique-prefix convention (subsystem diagnostics)
+## Shared conventions (canonical)
+
+Shared recipe and rationale live in the [canonical doc](https://github.com/Loganavter/sli-ui-toolkit/blob/main/docs/dev/LOGGING.md) — host specifics and stream inventory below follow it (env-gated helper + bracketed prefix + documented var).
 
 When a subsystem has its own conditionally-enabled debug stream (RHI renderer, resize-burst tracer, etc.), the convention is:
 1. Gate it on an env var:
@@ -86,7 +88,7 @@ Existing examples:
 - `src/tabs/image_compare/debug.py:ic_dnd_debug / ic_debug` → `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` (`[ic-dnd]` drag/drop routing)
 - `src/tabs/image_compare/debug.py:ic_preview_debug` → `IMGSLI_IC_PREVIEW_DEBUG` (`[ic-preview]` preview display gate: every `apply_store_to_canvas` invocation in `render_flow.update_comparison_if_needed` with the applied display tier (preview/store/original), plus every reason the update was deferred or skipped instead — background tab, ui-not-stable/resize, hidden window, tiny label, unification-in-progress, no document, single-image mode, missing side, unchanged background/img signature. Tile-replacement markers come from `loading_pyramid.on_pyramid_level_ready` (level written into the store) and `_session_controller._invalidate_image_canvas_render_state` (signature caches dropped). Correlate: `tiles replaced: pyramid level ready` → `render state invalidated` → either `update: apply_store_to_canvas` or a `deferred`/`skip` line explaining why the preview did not re-render.)
 - `src/tabs/image_compare/debug.py:ic_gap_debug` → `IMGSLI_IC_GAP_DEBUG` (`[ic-gap]` gap diagnostics for the empty middle strip: `geometry input`/`geometry rect before→after` (state vs picked sizes, unified flag), `pick->gap` (per-slot tier/size/mixed flag + geom), `apply gap_correlation`, `gap resolve_lod` (shared_level, canvas_px, zoom, letterbox1/2, grid rows×cols), `gap draw_plan` (entries, side tiles, bbox w min/med/max, narrow<0.01 count), `gap bbox_dist`/`gap GAP_DETECTED` (covered + bbox_cov + letterbox + grid). Throttled by gap_id/sig, also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Enabled alone or via `IMGSLI_IC_PREVIEW_DEBUG=1` / `--debug`. Analyze with `python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt`.)
-- auto-crop diagnostics → `IMGSLI_AUTOCROP_DEBUG` (`[autocrop-debug]` in `shared/image_processing/tiled_pixel_store.py`, `shared/image_processing/pixel_cache_loader.py`, `tabs/image_compare/_session_controller.py`, `tabs/image_compare/canvas/presentation/live_presentation.py`): the crop flag at every load site, embedded-cache hits that bypass crop, the computed trim box / source→store dims per decode backend, and the pixel sources actually bound for canvas presentation)
+- auto-crop diagnostics → `IMGSLI_AUTOCROP_DEBUG` (`[autocrop-debug]` in `shared/image_processing/tiled_pixel_store.py`, `shared/image_processing/autocrop/service.py`, `shared/image_processing/pixel_cache_loader.py`, `tabs/image_compare/_session_controller.py`, `tabs/image_compare/canvas/presentation/live_presentation.py`): the crop flag at every load site, embedded-cache hits that bypass crop, the computed trim box / source→store dims per decode backend, and the pixel sources actually bound for canvas presentation. Every `TiledPixelStore.from_path` decode path (streaming / ndarray / PIL) ends with exactly one `verdict=APPLIED` / `verdict=SKIP reason=disabled|probe found no box` line — `grep 'verdict=' log.txt` answers "did crop actually apply?" without correlating several lines.)
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see the AI agent's own working-style memory on noise suppression).
 
@@ -109,12 +111,26 @@ The `print()` shortcut is tempting because output appears unconditionally, but i
 ## Silencing noisy subsystems temporarily
 
 If a subsystem's debug stream is drowning out something you care about, raise its level locally:
-
 ```python
 logging.getLogger("ImproveImgSLI.rhi").setLevel(logging.WARNING)
 ```
 
-Or, for env-gated streams, just unset the env var.
+Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise.
+
+## Host subsystem debug streams
+
+Env-gated streams following the canonical unique-prefix recipe:
+
+- `IMGSLI_RESIZE_DEBUG` → `[rhi-render-debug]` (`src/ui/canvas_infra/rhi/rhi_render.py`), `[resize-debug]` (`src/ui/main_window/runtime.py`); plus `IMGSLI_RESIZE_DEBUG_VISUAL` for the visual variant.
+- `IMGSLI_MC_FIRST_FRAME_DEBUG` → Multi Compare first-frame timeline (`src/tabs/multi_compare/first_frame_debug.py`).
+- `IMGSLI_IC_FIRST_FRAME_DEBUG` → Image Compare first-frame timeline (`src/tabs/image_compare/first_frame_debug.py`).
+- `IMGSLI_GALLERY_DEBUG` → `[gallery-dnd]` DnD/open routing, `[gallery-debug]` gallery lifecycle (helpers mirrored in `src/tabs/image_compare/debug.py` docstring; original `src/tabs/image_gallery/debug.py` removed with the gallery tab).
+- `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` → `[ic-dnd]` drag/drop routing (`src/tabs/image_compare/debug.py:ic_dnd_debug / ic_debug`).
+- `IMGSLI_IC_PREVIEW_DEBUG` → `[ic-preview]` preview display gate (`src/tabs/image_compare/debug.py:ic_preview_debug`): applied display tier per `apply_store_to_canvas` plus deferred/skip reasons.
+- `IMGSLI_IC_GAP_DEBUG` → `[ic-gap]` gap diagnostics (`src/tabs/image_compare/debug.py:ic_gap_debug`): geometry, pick, `gap_correlation`, `resolve_lod`, `draw_plan`, bbox coverage. Also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Analyze with `python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt`.
+- `IMGSLI_AUTOCROP_DEBUG` → `[autocrop-debug]` auto-crop diagnostics (`src/shared/image_processing/autocrop/debug.py`; consumed at load/presentation sites).
+
+## Startup trace
 
 Cold-startup phase timing (bootstrap vs deferred plugin load):
 
@@ -134,6 +150,7 @@ The log file is overwritten on every app start (`mode="w"`), so capture sessions
 
 ## See also
 
+- [Canonical logging conventions](https://github.com/Loganavter/sli-ui-toolkit/blob/main/docs/dev/LOGGING.md) — shared recipe/rationale (unique-prefix, never-print, temp-diagnostics, silencing)
 - [TRACING.md](TRACING.md) — structured tracer for Redux/EventBus/render chains (separate facility, complementary to plain logging)
 - `sli_ui_toolkit/core/logging.py:setup_logging` — full source
 - [AGENTS.md](../../AGENTS.md) — agent guide; see **Debugging Runtime Issues** and **Agent Tooling**

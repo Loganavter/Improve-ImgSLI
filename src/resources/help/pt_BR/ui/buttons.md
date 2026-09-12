@@ -62,8 +62,7 @@ Botão de lista — clique curto vs clique longo.
 
 ### Exemplos no produto {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — nos modos mais densos, role a espessura do divisor ou o tamanho da lupa em um controle; clique longo limpa / troca nas listas. Detalhes: [Listas e Painéis](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — os mesmos hábitos de espessura / visibilidade nas linhas da grade (`D`).
+Hábitos específicos da sessão estão nos seus tópicos: [Comparação](help://comparison), [Lupa](help://magnifier) e [{{tr:workspace.session_types.multi_compare}}](help://multi_compare#grid-and-labels).
 
 ### Encontrar um controle pelo nome {#find-action}
 
