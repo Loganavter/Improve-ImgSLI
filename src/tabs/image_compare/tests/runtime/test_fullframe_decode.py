@@ -7,7 +7,7 @@ box) proves:
    service attached and enabled (no-bake);
 2. the detected box stays available as side metadata via
    ``effective_crop_box_for_path`` (enabled → box, disabled/``None`` →
-   ``None``, ``override`` reserved → ``None``);
+   ``None``, per-image ``override=False`` → ``None`` without detection);
 3. cache keys are boxless (today's crop-disabled shape) no matter what crop
    args a caller passes; legacy ``True``-keyed entries miss, never collide;
 4. single-flight keys agree across ``None`` / live-service callers.
@@ -80,16 +80,16 @@ def test_box_available_as_side_metadata(tmp_path):
 
 
 def test_box_helper_none_cases(tmp_path):
-    """Disabled service → None; reserved override → None; bad path → None."""
+    """Disabled service → None; Off override → None; bad path → None."""
     path = _bordered_png(tmp_path / "bordered.png")
     sess = ImageSession(session_id="fullframe-box-none")
     assert effective_crop_box_for_path(path, crop_service=None) is None
     assert effective_crop_box_for_path(path) is None
     assert effective_crop_box_for_path(path, crop_service=False) is None
-    # override reserved for a later wave: accepted, None-guarded, not implemented
+    # per-image Off skips detection (no box, pixels stay full-frame anyway)
     assert (
         effective_crop_box_for_path(
-            path, crop_service=sess.crop_service, override=(0, 0, 10, 10)
+            path, crop_service=sess.crop_service, override=False
         )
         is None
     )
