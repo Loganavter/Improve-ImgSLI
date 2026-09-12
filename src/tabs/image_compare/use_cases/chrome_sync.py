@@ -15,6 +15,42 @@ def _document(store):
     return store.get_session_state_slot("document")
 
 
+# Original-file dimension memo: path -> (mtime, (w, h)). Pure-read cache so
+# repeated HUD refreshes don't hit disk; validated by mtime each call.
+_original_dims_cache: dict[str, tuple[float, tuple[int, int]]] = {}
+
+
+def _probe_original_dimensions(path: str | None) -> tuple[int, int] | None:
+    """File-header probe for the file's ORIGINAL dims (no full decode).
+
+    Returns None on ANY failure (missing file, unknown format, oversized
+    non-streamable, exception) so callers fall through to the existing
+    image_state → pipeline chain unchanged.
+    """
+    if not path:
+        return None
+    try:
+        import os
+
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return None
+        cached = _original_dims_cache.get(path)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        from shared.image_processing import progressive_loader as _pl
+
+        dims = _pl.get_image_dimensions(path)
+        if dims is None:
+            return None
+        result = (int(dims[0]), int(dims[1]))
+        _original_dims_cache[path] = (mtime, result)
+        return result
+    except Exception:
+        return None
+
+
 def _set_slider_value_quietly(slider, value: int) -> None:
     if slider.value() == value:
         return
@@ -114,6 +150,12 @@ def get_image_dimensions(store, image_number: int) -> tuple[int, int] | None:
     path = document.image1_path if image_number == 1 else document.image2_path
     if not path:
         return None
+    # W4: original file dims win from first paint — including after unify
+    # replaces image_state with the max-canvas pair. Falls through to the
+    # existing chain on ANY probe failure (no behavior change then).
+    probed = _probe_original_dimensions(path)
+    if probed is not None:
+        return probed
     img = None
     try:
         vp = store.viewport.session_data.image_state
