@@ -7,6 +7,7 @@ Env vars:
     IMGSLI_IMAGE_COMPARE_DEBUG=1 — official
     IMGSLI_IC_DEBUG=1            — short alias (same flag)
     IMGSLI_IC_PREVIEW_DEBUG=1    — preview display / re-render gate ([ic-preview])
+    IMGSLI_MAGNIFIER_DEBUG=1     — magnifier instances toolbar ([magnifier-debug])
 
 Tags:
     [ic-dnd]     — drag-enter / accept / handle_drop routing
@@ -151,6 +152,21 @@ def ic_thumbnail_debug(msg: str, *args, **kwargs) -> None:
             msg,
             *args,
             env_flags=("IMGSLI_THUMBNAIL_DEBUG", "IMGSLI_VIDEO_EDITOR_DEBUG", "IMGSLI_IC_VIDEO_DEBUG"),
+            **kwargs,
+        )
+
+
+def ic_magnifier_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_MAGNIFIER_DEBUG")
+
+
+def ic_magnifier_debug(msg: str, *args, **kwargs) -> None:
+    if ic_magnifier_debug_enabled():
+        _emit(
+            "[magnifier-debug]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_MAGNIFIER_DEBUG",),
             **kwargs,
         )
 

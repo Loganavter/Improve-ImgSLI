@@ -34,7 +34,6 @@ Um campo de busca fica acima da barra lateral: digite qualquer coisa e as seçõ
 
 As opções específicas de comparação de imagens ficam em sua própria seção, sempre disponível:
 
-- **{{tr:settings.display_cache_resolution}}** — limita o tamanho da pré-visualização principal; a lupa e a exportação continuam usando os originais.
 - **Interpolação** — qualidade de reamostragem do zoom / lupa / laser.
 - **{{tr:settings.optimize_magnifier_movement}}** — movimento mais suave da lente (e seu método de interpolação, na mesma página).
 - **{{tr:settings.magnifier_intersection_highlight}}** — destaca onde as lentes se sobrepõem.
