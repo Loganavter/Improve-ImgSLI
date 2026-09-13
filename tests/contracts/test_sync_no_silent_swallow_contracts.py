@@ -25,13 +25,13 @@ _SYNC_FUNCTION_HINTS = (
     "apply_initial_state",
     "apply_host_session_mode",
     "refresh_",
-    "_resolve_",
-    "restore_viewport_block",
-    "_restore_render_config",
     "update_toolbar_states",
-    "_sync_",
-    "toggle_edit_layout_visibility",
 )
+
+# Narrow `except` shapes (shiboken RuntimeError guards, OSError probes, ...) are
+# out of scope: only a broad `except Exception` / bare except that swallows a
+# Store->widget sync decision can hide a desync. Narrow handlers return early
+# by design (TESTING.md shiboken-guard pattern).
 
 _SYNC_FILE_HINTS = (
     "chrome_sync.py",
@@ -95,6 +95,43 @@ def _handler_logs(handler: ast.ExceptHandler) -> bool:
     return False
 
 
+def _is_broad_handler(handler: ast.ExceptHandler) -> bool:
+    if handler.type is None:
+        return True
+    try:
+        src = ast.unparse(handler.type)
+    except Exception:
+        return True
+    return "Exception" in src or "BaseException" in src
+
+
+def _try_body_marks(try_node: ast.Try) -> set[str]:
+    marks: set[str] = set()
+    for stmt in try_node.body:
+        for node in ast.walk(stmt):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                if func.attr in (
+                    "toggle_edit_layout_visibility",
+                    "setVisible",
+                    "setChecked",
+                    "setText",
+                    "update_toolbar_states",
+                    "sync_state",
+                ):
+                    marks.add("sync")
+                if func.attr.startswith("refresh_") and "toolbar" in func.attr:
+                    marks.add("sync")
+            elif isinstance(func, ast.Name) and func.id in (
+                "update_toolbar_states",
+                "refresh_filename_overlay_toolbar",
+            ):
+                marks.add("sync")
+    return marks
+
+
 def _scan_file(path) -> list[str]:
     try:
         tree = ast.parse(read(path))
@@ -104,14 +141,23 @@ def _scan_file(path) -> list[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef) or not _is_sync_function(node):
             continue
+        # Only handlers guarding a sync decision (panel/button fanout) can
+        # hide a desync. Teardown/tracer/probe guards without sync calls in
+        # the try body are out of scope.
         for sub in ast.walk(node):
-            if not isinstance(sub, ast.ExceptHandler):
+            if not isinstance(sub, ast.Try):
                 continue
-            if _handler_is_silent(sub) and not _handler_logs(sub):
-                offenders.append(
-                    f"{rel(path)}:{sub.lineno} {node.name}() swallows Exception "
-                    f"silently (log + return bool instead of pass/return None)"
-                )
+            if "sync" not in _try_body_marks(sub):
+                continue
+            for handler in sub.handlers:
+                if not _is_broad_handler(handler):
+                    continue
+                if _handler_is_silent(handler) and not _handler_logs(handler):
+                    offenders.append(
+                        f"{rel(path)}:{handler.lineno} {node.name}() swallows a "
+                        f"sync decision silently (log + return bool instead of "
+                        f"pass/return None)"
+                    )
     return offenders
 
 

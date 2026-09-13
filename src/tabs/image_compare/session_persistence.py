@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from PySide6.QtCore import QTimer
@@ -18,6 +19,8 @@ from ui.canvas_infra.scene.property_access import (
     write_canvas_feature_property,
 )
 from ui.canvas_infra.scene.registry import get_canvas_registry
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def serialize_view_state(view: ViewState) -> dict[str, Any]:
@@ -233,7 +236,7 @@ def _resolve_restore_presenter(store: Any | None) -> Any | None:
 
 def refresh_filename_overlay_toolbar(
     store: Any | None, presenter: Any | None = None
-) -> None:
+) -> bool:
     """Bring the filename-overlay toolbar control in sync with the Store.
 
     Reads ``store.viewport.render_config.include_file_names_in_saved`` and
@@ -242,25 +245,45 @@ def refresh_filename_overlay_toolbar(
     out to the canvas feature binding sync) — never a new sync path and
     never a direct feature import (canvas-features import dogma).
     ``presenter`` is optional and derived from ``store`` where possible.
-    Best-effort and never raising: any missing piece is a silent no-op.
+    Best-effort and never raising, but never silent either: returns True
+    when the button was driven from the Store, False on any miss (no
+    presenter reachable, sync unavailable, sync failed) with a warning log
+    so an early-bootstrap restore miss is visible instead of a stale button.
     """
     try:
         if presenter is None:
             presenter = _resolve_restore_presenter(store)
         if presenter is None:
-            return
+            logger.warning(
+                "refresh_filename_overlay_toolbar: no presenter reachable, "
+                "button not synced with the Store"
+            )
+            return False
         try:
             from tabs.image_compare.presenters.toolbar.state import (
                 update_toolbar_states as _update_toolbar_states,
             )
         except Exception:
-            return
+            logger.warning(
+                "refresh_filename_overlay_toolbar: toolbar sync unavailable",
+                exc_info=True,
+            )
+            return False
         try:
             _update_toolbar_states(presenter)
         except Exception:
-            pass
+            logger.warning(
+                "refresh_filename_overlay_toolbar: toolbar sync failed",
+                exc_info=True,
+            )
+            return False
+        return True
     except Exception:
-        pass
+        logger.warning(
+            "refresh_filename_overlay_toolbar: unexpected failure",
+            exc_info=True,
+        )
+        return False
 
 
 def _restore_render_config_and_sync(

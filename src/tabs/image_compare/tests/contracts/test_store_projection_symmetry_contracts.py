@@ -3,26 +3,27 @@
 Dogma source: docs/dev/STORE.md (all state changes go through Dispatcher,
 widgets sync from the Store) + docs/dev/CONTRACTS.md sync-boundary rules.
 
-A Store->widget sync function that moves one projection (panel visibility,
-``toggle_*_visibility``/``setVisible``) must move the sibling projections
-(toolbar/button sync via ``update_toolbar_states``/``sync_state``/
-``refresh_*toolbar``) in the SAME branch. Otherwise the Store flips, the
-panel follows, the button stays stale -- e.g. image_compare
-``handle_store_domain`` visible branch moved only the edit row while the
-deferred branch moved both (``btn_file_names`` unchecked after restart
-while ``include_file_names_in_saved`` was True).
+Tab-specific (image_compare): the projection names below
+(``toggle_edit_layout_visibility``, ``update_toolbar_states``) are this
+tab's chrome vocabulary, so per TESTING.md ownership this test lives in
+the tab folder, not in shared tests/contracts/.
+
+A Store->widget sync function that moves one projection (panel visibility)
+must move the sibling projections (toolbar/button sync) in the SAME
+branch. Otherwise the Store flips, the panel follows, the button stays
+stale -- e.g. ``handle_store_domain`` visible branch moved only the edit
+row while the deferred branch moved both (``btn_file_names`` unchecked
+after restart while ``include_file_names_in_saved`` was True).
 
 Template: tests/contracts/test_no_drag_overlay_desync.py (walk inside one
-function, per-branch offender list). Discovery: tests/contracts/
-test_no_tab_to_tab_service.py (concrete tabs = dirs with tab.py, no
-hard-coded tab names).
+function, per-branch offender list, early-return guard handling).
 """
 
 from __future__ import annotations
 
 import ast
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, read, rel
 
 _SYNC_FUNCTIONS = frozenset(
     {
@@ -54,30 +55,14 @@ _TOOLBAR_SYNC_NAMES = frozenset(
 )
 
 
-def _known_tab_roots() -> list:
-    tabs_root = SRC / "tabs"
-    if not tabs_root.is_dir():
-        return []
-    return sorted(
-        d for d in tabs_root.iterdir() if d.is_dir() and (d / "tab.py").exists()
-    )
-
-
 def _sync_files():
-    tabs = _known_tab_roots()
-    if not tabs:
-        return list(iter_py(SRC))
-    out = []
-    for tab in tabs:
-        for name in ("use_cases/chrome_sync.py", "tab.py"):
-            p = tab / name
-            if p.is_file():
-                out.append(p)
-    return out
-
-
-def _func_calls(fn: ast.FunctionDef) -> list[ast.Call]:
-    return [n for n in ast.walk(fn) if isinstance(n, ast.Call)]
+    tab = SRC / "tabs" / "image_compare"
+    return [
+        p
+        for name in ("use_cases/chrome_sync.py", "tab.py")
+        for p in [tab / name]
+        if p.is_file()
+    ]
 
 
 def _call_marks(call: ast.Call) -> set[str]:
@@ -186,7 +171,7 @@ def _scan_file(path) -> list[str]:
             # a lone panel toggle without toolbar fanout desyncs button vs panel.
             if fname == "apply_host_session_mode":
                 marks: set[str] = set()
-                for call in _func_calls(fn):
+                for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
                     marks |= _call_marks(call)
                 if "toggle" in marks and "toolbar_sync" not in marks:
                     offenders.append(

@@ -207,6 +207,17 @@ class ImageCompareTab(TabContract):
         except Exception:
             flag = False
         self._widget.toggle_edit_layout_visibility(bool(flag))
+        # Same branch must also drive the button via the shared chrome-sync
+        # fanout -- otherwise a restore that landed while no presenter was
+        # reachable leaves Store True / panel True / button stale.
+        try:
+            chrome = getattr(self._widget, "chrome_sync", None)
+            if chrome is not None and hasattr(chrome, "refresh_filename_toolbar"):
+                chrome.refresh_filename_toolbar()
+        except Exception:
+            logger.debug(
+                "apply_host_session_mode: toolbar refresh missed", exc_info=True
+            )
         return True
 
     def transition_hint(self) -> TabTransitionHint:
