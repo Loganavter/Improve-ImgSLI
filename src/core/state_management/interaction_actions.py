@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from core.state_management.action_base import Action, ActionType
@@ -9,10 +9,7 @@ if TYPE_CHECKING:
 @dataclass
 class SetInteractiveModeAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_INTERACTIVE_MODE)
-        self.enabled = enabled
+    type: str = field(default=ActionType.SET_INTERACTIVE_MODE.value, kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -20,10 +17,7 @@ class SetInteractiveModeAction(Action):
 @dataclass
 class SetDraggingSplitLineAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_IS_DRAGGING_SPLIT_LINE)
-        self.enabled = enabled
+    type: str = field(default=ActionType.SET_IS_DRAGGING_SPLIT_LINE.value, kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -31,10 +25,7 @@ class SetDraggingSplitLineAction(Action):
 @dataclass
 class SetResizeInProgressAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_RESIZE_IN_PROGRESS)
-        self.enabled = enabled
+    type: str = field(default=ActionType.SET_RESIZE_IN_PROGRESS.value, kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -42,10 +33,10 @@ class SetResizeInProgressAction(Action):
 @dataclass
 class SetPressedKeysAction(Action):
     keys: set[int]
+    type: str = field(default=ActionType.SET_PRESSED_KEYS.value, kw_only=True)
 
-    def __init__(self, keys: set[int]):
-        super().__init__(type=ActionType.SET_PRESSED_KEYS)
-        self.keys = set(keys)
+    def __post_init__(self):
+        self.keys = set(self.keys)
 
     def get_payload(self):
         return {"keys": self.keys}
@@ -53,10 +44,7 @@ class SetPressedKeysAction(Action):
 @dataclass
 class SetSpaceBarPressedAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_SPACE_BAR_PRESSED)
-        self.enabled = enabled
+    type: str = field(default=ActionType.SET_SPACE_BAR_PRESSED.value, kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -64,10 +52,7 @@ class SetSpaceBarPressedAction(Action):
 @dataclass
 class SetInteractionSessionIdAction(Action):
     session_id: int
-
-    def __init__(self, session_id: int):
-        super().__init__(type=ActionType.SET_INTERACTION_SESSION_ID)
-        self.session_id = session_id
+    type: str = field(default=ActionType.SET_INTERACTION_SESSION_ID.value, kw_only=True)
 
     def get_payload(self):
         return {"session_id": self.session_id}
@@ -75,10 +60,7 @@ class SetInteractionSessionIdAction(Action):
 @dataclass
 class SetUserInteractingAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_USER_INTERACTING)
-        self.enabled = enabled
+    type: str = field(default=ActionType.SET_USER_INTERACTING.value, kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -86,10 +68,7 @@ class SetUserInteractingAction(Action):
 @dataclass
 class SetLastHorizontalMovementKeyAction(Action):
     key: int | None
-
-    def __init__(self, key: int | None):
-        super().__init__(type=ActionType.SET_LAST_HORIZONTAL_MOVEMENT_KEY)
-        self.key = key
+    type: str = field(default=ActionType.SET_LAST_HORIZONTAL_MOVEMENT_KEY.value, kw_only=True)
 
     def get_payload(self):
         return {"key": self.key}
@@ -97,10 +76,7 @@ class SetLastHorizontalMovementKeyAction(Action):
 @dataclass
 class SetLastVerticalMovementKeyAction(Action):
     key: int | None
-
-    def __init__(self, key: int | None):
-        super().__init__(type=ActionType.SET_LAST_VERTICAL_MOVEMENT_KEY)
-        self.key = key
+    type: str = field(default=ActionType.SET_LAST_VERTICAL_MOVEMENT_KEY.value, kw_only=True)
 
     def get_payload(self):
         return {"key": self.key}
@@ -108,10 +84,7 @@ class SetLastVerticalMovementKeyAction(Action):
 @dataclass
 class SetLastSpacingMovementKeyAction(Action):
     key: int | None
-
-    def __init__(self, key: int | None):
-        super().__init__(type=ActionType.SET_LAST_SPACING_MOVEMENT_KEY)
-        self.key = key
+    type: str = field(default=ActionType.SET_LAST_SPACING_MOVEMENT_KEY.value, kw_only=True)
 
     def get_payload(self):
         return {"key": self.key}
@@ -120,11 +93,11 @@ class SetLastSpacingMovementKeyAction(Action):
 class SetInteractiveOffsetVisualAction(Action):
     """Generic interactive visual state mutation (feature-agnostic)."""
     offset: "Point"
+    type: str = field(default=ActionType.SET_INTERACTIVE_OFFSET_VISUAL.value, kw_only=True)
 
-    def __init__(self, offset):
+    def __post_init__(self):
         from domain.types import Point
-        super().__init__(type=ActionType.SET_INTERACTIVE_OFFSET_VISUAL)
-
+        offset = self.offset
         if isinstance(offset, Point):
             self.offset = offset
         elif hasattr(offset, 'x'):
@@ -139,10 +112,7 @@ class SetInteractiveOffsetVisualAction(Action):
 class SetInteractiveSpacingVisualAction(Action):
     """Generic interactive spacing visual state mutation (feature-agnostic)."""
     spacing: float
-
-    def __init__(self, spacing: float):
-        super().__init__(type=ActionType.SET_INTERACTIVE_SPACING_VISUAL)
-        self.spacing = spacing
+    type: str = field(default=ActionType.SET_INTERACTIVE_SPACING_VISUAL.value, kw_only=True)
 
     def get_payload(self):
         return {"spacing": self.spacing}
@@ -151,10 +121,7 @@ class SetInteractiveSpacingVisualAction(Action):
 class SetInteractiveInternalSplitVisualAction(Action):
     """Generic interactive split visual state mutation (feature-agnostic)."""
     split: float
-
-    def __init__(self, split: float):
-        super().__init__(type=ActionType.SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL)
-        self.split = split
+    type: str = field(default=ActionType.SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL.value, kw_only=True)
 
     def get_payload(self):
         return {"split": self.split}

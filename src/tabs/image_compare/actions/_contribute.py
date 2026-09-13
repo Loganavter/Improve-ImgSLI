@@ -202,6 +202,33 @@ def _ensure_name_edit_chrome(widget) -> None:
         ensure()
         return
     # Fallback when the transient controller is not wired yet.
+    # Store-first: flip the SSOT flag so the dispatch-driven sync moves
+    # panel+button together; the widget forcing below is last-resort only
+    # (kept for dispatcher-less bootstrap, self-heals on the next emit).
+    try:
+        store = getattr(getattr(widget, "_context", None), "store", None)
+        render = getattr(getattr(store, "viewport", None), "render_config", None)
+        if (
+            store is not None
+            and render is not None
+            and not bool(getattr(render, "include_file_names_in_saved", False))
+        ):
+            from core.state_management.appearance_actions import (
+                SetIncludeFileNamesInSavedAction,
+            )
+
+            dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+            if dispatcher is not None:
+                dispatcher.dispatch(
+                    SetIncludeFileNamesInSavedAction(True),
+                    scope="viewport",
+                )
+    except Exception:
+        import logging
+
+        logging.getLogger("ImproveImgSLI").debug(
+            "_ensure_name_edit_chrome: store dispatch missed", exc_info=True
+        )
     toggle = getattr(widget, "toggle_edit_layout_visibility", None)
     if callable(toggle):
         toggle(True)

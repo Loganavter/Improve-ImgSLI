@@ -192,9 +192,32 @@ class ImageCompareTab(TabContract):
     def apply_host_session_mode(self, ui, session_title: str | None = None) -> bool:
         if self._widget is None:
             return False
-        self._widget.toggle_edit_layout_visibility(
-            bool(self._widget.btn_file_names.isChecked())
-        )
+        # Store-first: panel visibility follows the SSOT flag in the Store's
+        # viewport render_config, never the (possibly stale) widget button.
+        flag = False
+        try:
+            store = getattr(ui, "store", None)
+            if store is None:
+                ctx = getattr(self._widget, "_context", None)
+                store = getattr(ctx, "store", None) if ctx is not None else None
+            viewport = getattr(store, "viewport", None) if store is not None else None
+            render = getattr(viewport, "render_config", None) if viewport is not None else None
+            if render is not None:
+                flag = bool(getattr(render, "include_file_names_in_saved", False))
+        except Exception:
+            flag = False
+        self._widget.toggle_edit_layout_visibility(bool(flag))
+        # Same branch must also drive the button via the shared chrome-sync
+        # fanout -- otherwise a restore that landed while no presenter was
+        # reachable leaves Store True / panel True / button stale.
+        try:
+            chrome = getattr(self._widget, "chrome_sync", None)
+            if chrome is not None and hasattr(chrome, "refresh_filename_toolbar"):
+                chrome.refresh_filename_toolbar()
+        except Exception:
+            logger.debug(
+                "apply_host_session_mode: toolbar refresh missed", exc_info=True
+            )
         return True
 
     def transition_hint(self) -> TabTransitionHint:

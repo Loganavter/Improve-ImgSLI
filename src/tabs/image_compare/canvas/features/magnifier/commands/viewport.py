@@ -248,8 +248,31 @@ def viewport_add_instance(store, position=None):
     from tabs.image_compare.canvas.features.magnifier.state.mode import MagnifierModeService
     from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
+    def _dbg(msg, *args):
+        try:
+            from tabs.image_compare.debug import ic_magnifier_debug
+
+            ic_magnifier_debug(msg, *args)
+        except Exception:
+            pass
+
+    def _trace(summary, payload):
+        try:
+            from core.tracing.tracer import Tracer
+
+            if Tracer.enabled():
+                Tracer.instance().record("magnifier.instances.added", summary, payload)
+        except Exception:
+            pass
+
     if store is None or getattr(store, "viewport", None) is None:
+        _dbg("add_instance: no store/viewport")
         return None
+    try:
+        before = len(list(MagnifierStoreService(store).iter_magnifiers()))
+    except Exception:
+        before = -1
+    _dbg("add_instance: enter count_before=%s", before)
     MagnifierModeService(store).prepare_for_add()
 
     if position is None:
@@ -265,6 +288,12 @@ def viewport_add_instance(store, position=None):
             )
 
     model = MagnifierStoreService(store).add_magnifier(position=position)
+    try:
+        after = len(list(MagnifierStoreService(store).iter_magnifiers()))
+    except Exception:
+        after = -1
+    _dbg("add_instance: exit count_before=%s count_after=%s emit=viewport", before, after)
+    _trace("instances added", {"count_before": before, "count_after": after})
     if hasattr(store, "emit_viewport_change"):
         store.emit_viewport_change()
     return model
@@ -275,16 +304,48 @@ def viewport_remove_active_instance(store) -> bool:
     from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
     from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id
 
+    def _dbg(msg, *args):
+        try:
+            from tabs.image_compare.debug import ic_magnifier_debug
+
+            ic_magnifier_debug(msg, *args)
+        except Exception:
+            pass
+
+    def _trace(summary, payload):
+        try:
+            from core.tracing.tracer import Tracer
+
+            if Tracer.enabled():
+                Tracer.instance().record("magnifier.instances.removed", summary, payload)
+        except Exception:
+            pass
+
     if store is None or getattr(store, "viewport", None) is None:
+        _dbg("remove_instance: no store/viewport -> False")
         return False
     scene_state = MagnifierStoreService(store)
+    try:
+        before = len(list(scene_state.iter_magnifiers()))
+    except Exception:
+        before = -1
     if len(scene_state.iter_magnifiers()) <= 1:
+        _dbg("remove_instance: reject count_before=%s (need >1)", before)
+        _trace("remove rejected", {"count_before": before, "reason": "single"})
         return False
     active = active_magnifier_id(store.viewport.view_state)
     if not active:
+        _dbg("remove_instance: reject count_before=%s reason=no_active", before)
+        _trace("remove rejected", {"count_before": before, "reason": "no_active"})
         return False
     scene_state.remove_object(active)
     MagnifierModeService(store).normalize_after_remove()
+    try:
+        after = len(list(scene_state.iter_magnifiers()))
+    except Exception:
+        after = -1
+    _dbg("remove_instance: exit count_before=%s count_after=%s emit=none", before, after)
+    _trace("instances removed", {"count_before": before, "count_after": after})
 
     return True
 

@@ -8,6 +8,7 @@ from core.state_management.actions import (
     SetFontSizePercentAction,
     SetFontWeightAction,
     SetIncludeFileNamesInSavedAction,
+    SetMaxNameLengthAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
 )
@@ -29,6 +30,7 @@ VIEWPORT_GETTERS = {
     "draw_text_background": lambda store: store.viewport.render_config.draw_text_background,
     "text_placement_mode": lambda store: store.viewport.render_config.text_placement_mode,
     "text_alpha_percent": lambda store: store.viewport.render_config.text_alpha_percent,
+    "max_name_length": lambda store: store.viewport.render_config.max_name_length,
 }
 
 VIEWPORT_ACTIONS = {
@@ -40,6 +42,7 @@ VIEWPORT_ACTIONS = {
     "draw_text_background": SetDrawTextBackgroundAction,
     "text_placement_mode": SetTextPlacementModeAction,
     "text_alpha_percent": SetTextAlphaPercentAction,
+    "max_name_length": SetMaxNameLengthAction,
 }
 
 class SettingsMutationService:

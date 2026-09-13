@@ -1,61 +1,53 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action, ActionType
 
 @dataclass
 class SetSplitPositionAction(Action):
     position: float
-    def __init__(self, position: float):
-        super().__init__(type=ActionType.SET_SPLIT_POSITION); self.position = position
+    type: str = field(default=ActionType.SET_SPLIT_POSITION.value, kw_only=True)
     def get_payload(self): return {"position": self.position}
 
 @dataclass
 class SetSplitPositionVisualAction(Action):
     position: float
-    def __init__(self, position: float):
-        super().__init__(type=ActionType.SET_SPLIT_POSITION_VISUAL); self.position = position
+    type: str = field(default=ActionType.SET_SPLIT_POSITION_VISUAL.value, kw_only=True)
     def get_payload(self): return {"position": self.position}
 
 @dataclass
 class ToggleOrientationAction(Action):
     is_horizontal: bool
-    def __init__(self, is_horizontal: bool):
-        super().__init__(type=ActionType.TOGGLE_ORIENTATION); self.is_horizontal = is_horizontal
+    type: str = field(default=ActionType.TOGGLE_ORIENTATION.value, kw_only=True)
     def get_payload(self): return {"is_horizontal": self.is_horizontal}
 
 @dataclass
 class SetMovementSpeedAction(Action):
     speed: float
-    def __init__(self, speed: float):
-        super().__init__(type=ActionType.SET_MOVEMENT_SPEED); self.speed = speed
+    type: str = field(default=ActionType.SET_MOVEMENT_SPEED.value, kw_only=True)
     def get_payload(self): return {"speed": self.speed}
 
 @dataclass
 class SetIsDraggingSliderAction(Action):
     is_dragging: bool
-    def __init__(self, is_dragging: bool):
-        super().__init__(type=ActionType.SET_IS_DRAGGING_SLIDER); self.is_dragging = is_dragging
+    type: str = field(default=ActionType.SET_IS_DRAGGING_SLIDER.value, kw_only=True)
     def get_payload(self): return {"is_dragging": self.is_dragging}
 
 @dataclass
 class SetShowingSingleImageModeAction(Action):
     mode: int
-    def __init__(self, mode: int):
-        super().__init__(type=ActionType.SET_SHOWING_SINGLE_IMAGE_MODE); self.mode = mode
+    type: str = field(default=ActionType.SET_SHOWING_SINGLE_IMAGE_MODE.value, kw_only=True)
     def get_payload(self): return {"mode": self.mode}
 
 @dataclass
 class SetDiffModeAction(Action):
     mode: str
-    def __init__(self, mode: str):
-        super().__init__(type=ActionType.SET_DIFF_MODE); self.mode = mode
+    type: str = field(default=ActionType.SET_DIFF_MODE.value, kw_only=True)
     def get_payload(self): return {"mode": self.mode}
 
 @dataclass
 class SetChannelViewModeAction(Action):
     mode: str
-    def __init__(self, mode: str):
-        super().__init__(type=ActionType.SET_CHANNEL_VIEW_MODE); self.mode = mode
+    type: str = field(default=ActionType.SET_CHANNEL_VIEW_MODE.value, kw_only=True)
     def get_payload(self): return {"mode": self.mode}
 
 @dataclass
@@ -64,11 +56,10 @@ class SetCanvasWidgetStateAction(Action):
 
     feature: str
     state: object
+    type: str = field(default=ActionType.SET_CANVAS_WIDGET_STATE.value, kw_only=True)
 
-    def __init__(self, feature: str, state: object):
-        super().__init__(type=ActionType.SET_CANVAS_WIDGET_STATE)
-        self.feature = str(feature)
-        self.state = state
+    def __post_init__(self):
+        self.feature = str(self.feature)
 
     def get_payload(self):
         return {"feature": self.feature, "state": self.state}
@@ -79,11 +70,10 @@ class UpdateCanvasFeatureStateAction(Action):
 
     feature: str
     state: object
+    type: str = field(default=ActionType.UPDATE_CANVAS_FEATURE_STATE.value, kw_only=True)
 
-    def __init__(self, feature: str, state: object):
-        super().__init__(type=ActionType.UPDATE_CANVAS_FEATURE_STATE)
-        self.feature = str(feature)
-        self.state = state
+    def __post_init__(self):
+        self.feature = str(self.feature)
 
     def get_payload(self):
         return {"feature": self.feature, "state": self.state}

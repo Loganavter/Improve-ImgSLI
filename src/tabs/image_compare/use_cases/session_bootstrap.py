@@ -46,5 +46,30 @@ def resync_current_image_slots(controller) -> None:
     document = controller.store.get_session_state_slot("document")
     if document is None:
         return
+    # Cross-slot DnD guard: one load into slot N emits scope=document, which
+    # re-enters here for BOTH slots. A slot whose (index, path) did not change
+    # has nothing to resync — force-refreshing it anyway treats its in-flight
+    # worker (pipeline cache-miss) as stale and wipes its live image_state.
+    # Track the last resynced signature per slot and skip unchanged slots.
+    try:
+        seen = getattr(controller, "_last_resync_slot_sig", None)
+        if not isinstance(seen, dict):
+            seen = {}
+            controller._last_resync_slot_sig = seen
+    except Exception:
+        seen = {}
     for n in (1, 2):
+        try:
+            idx = document.current_index1 if n == 1 else document.current_index2
+            path = document.image1_path if n == 1 else document.image2_path
+            sig = (idx, path)
+        except Exception:
+            sig = None
+        if sig is not None and seen.get(n) == sig:
+            continue
         ensure_current_slot(controller, n, force_refresh=True)
+        if sig is not None:
+            try:
+                seen[n] = sig
+            except Exception:
+                logger.debug("resync sig cache update failed slot=%s", n)

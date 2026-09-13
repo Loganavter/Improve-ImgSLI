@@ -1,28 +1,24 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action, ActionType
 
 @dataclass
 class InvalidateRenderCacheAction(Action):
-    def __init__(self):
-        super().__init__(type=ActionType.INVALIDATE_RENDER_CACHE)
+    type: str = field(default=ActionType.INVALIDATE_RENDER_CACHE.value, kw_only=True)
     def get_payload(self): return {}
 
 @dataclass
 class InvalidateGeometryCacheAction(Action):
-    def __init__(self):
-        super().__init__(type=ActionType.INVALIDATE_GEOMETRY_CACHE)
+    type: str = field(default=ActionType.INVALIDATE_GEOMETRY_CACHE.value, kw_only=True)
     def get_payload(self): return {}
 
 @dataclass
 class ClearAllCachesAction(Action):
-    def __init__(self):
-        super().__init__(type=ActionType.CLEAR_ALL_CACHES)
+    type: str = field(default=ActionType.CLEAR_ALL_CACHES.value, kw_only=True)
     def get_payload(self): return {}
 
 @dataclass
 class ClearImageSlotDataAction(Action):
     slot: int
-    def __init__(self, slot: int):
-        super().__init__(type=ActionType.CLEAR_IMAGE_SLOT_DATA); self.slot = slot
+    type: str = field(default=ActionType.CLEAR_IMAGE_SLOT_DATA.value, kw_only=True)
     def get_payload(self): return {"slot": self.slot}

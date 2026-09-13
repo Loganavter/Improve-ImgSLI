@@ -92,58 +92,73 @@ def build_filename_overlay_toolbar_bindings() -> (
 
 
 def build_filename_overlay_commands() -> dict[str, object]:
+    # Collapsed onto the redux path (P2): every command dispatches its
+    # Set*Action through SettingsMutationService.set_viewport_value /
+    # set_viewport_color (no-op guard + dispatch + persist + invalidate +
+    # emit) instead of writing the viewport directly. Same normalize,
+    # same flags, same return contract as the old set_canvas_feature_setting
+    # calls — only the state write moved into the reducer.
     return {
-        "settings.toggle_visibility": lambda settings, enabled: settings.mutations.set_canvas_feature_setting(
+        "settings.toggle_visibility": lambda settings, enabled: settings.mutations.set_viewport_value(
             "include_file_names_in_saved",
             bool(enabled),
+            setting_key="include_file_names_in_saved",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_font_size": lambda settings, size: settings.mutations.set_canvas_feature_setting(
+        "settings.set_font_size": lambda settings, size: settings.mutations.set_viewport_value(
             "font_size_percent",
             max(1, int(size)),
+            setting_key="font_size_percent",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_font_weight": lambda settings, weight: settings.mutations.set_canvas_feature_setting(
+        "settings.set_font_weight": lambda settings, weight: settings.mutations.set_viewport_value(
             "font_weight",
             max(0, int(weight)),
+            setting_key="font_weight",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_text_alpha": lambda settings, alpha: settings.mutations.set_canvas_feature_setting(
+        "settings.set_text_alpha": lambda settings, alpha: settings.mutations.set_viewport_value(
             "text_alpha_percent",
             max(5, min(100, int(alpha))),
+            setting_key="text_alpha_percent",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_text_color": lambda settings, color: settings.mutations.set_canvas_feature_setting(
-            "filename_color",
+        "settings.set_text_color": lambda settings, color: settings.mutations.set_viewport_color(
+            "file_name_color",
             color,
+            setting_key="filename_color",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_background_color": lambda settings, color: settings.mutations.set_canvas_feature_setting(
-            "filename_bg_color",
+        "settings.set_background_color": lambda settings, color: settings.mutations.set_viewport_color(
+            "file_name_bg_color",
             color,
+            setting_key="filename_bg_color",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_draw_background": lambda settings, enabled: settings.mutations.set_canvas_feature_setting(
+        "settings.set_draw_background": lambda settings, enabled: settings.mutations.set_viewport_value(
             "draw_text_background",
             bool(enabled),
+            setting_key="draw_text_background",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_placement_mode": lambda settings, mode: settings.mutations.set_canvas_feature_setting(
+        "settings.set_placement_mode": lambda settings, mode: settings.mutations.set_viewport_value(
             "text_placement_mode",
             str(mode),
+            setting_key="text_placement_mode",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_max_name_length": lambda settings, length: settings.mutations.set_canvas_feature_setting(
+        "settings.set_max_name_length": lambda settings, length: settings.mutations.set_viewport_value(
             "max_name_length",
             max(1, int(length)),
+            setting_key="max_name_length",
             invalidate_render_cache=True,
             request_core_update=True,
         ),
