@@ -17,6 +17,11 @@ from domain.types import Rect
 from tabs.image_compare.canvas.features.magnifier.constants import (
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD,
 )
+from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
+    remap_uv_rect,
+    valid_box_for_full,
+    valid_full_size,
+)
 from tabs.image_compare.canvas.features.magnifier.geometry.core import (
     clamp_capture_overlay_geometry as _clamp_capture_overlay_geometry_rect,
     clamp_capture_position,
@@ -76,6 +81,10 @@ def build_magnifier_layout(
     border_width: float = 2.0,
     interpolation_method: str | None = None,
     diff_mode_override: int | None = None,
+    crop_box1=None,
+    crop_box2=None,
+    full_size1=None,
+    full_size2=None,
 ):
     view = vp.view_state
     render = vp.render_config
@@ -89,6 +98,13 @@ def build_magnifier_layout(
     border_qcolor = QColor(border.r, border.g, border.b, border.a)
     if not visible_models:
         return None
+
+    # W3b: full-frame tile grids sample the capture over the crop box, not
+    # the store (boxes None → legacy uv_rect below, bit-identical).
+    _fs1 = valid_full_size(full_size1) or (0, 0)
+    _fs2 = valid_full_size(full_size2) or (0, 0)
+    _box1t = valid_box_for_full(crop_box1, _fs1[0], _fs1[1])
+    _box2t = valid_box_for_full(crop_box2, _fs2[0], _fs2[1])
 
     diff_mode = str(view.diff_mode or "off")
     diff_enabled = diff_mode in ("highlight", "grayscale", "ssim", "edges")
@@ -165,7 +181,14 @@ def build_magnifier_layout(
         _,
     ) = _capture_geometry(active_model)
 
-    def _make_slot(model, center_xy, source, radius, uv_rect, *, is_combined=False):
+    def _make_slot(model, center_xy, source, radius, uv_rect, uv_rect_other=None, *, is_combined=False):
+        # W3b: uv_rect is the slot's own-side capture window, uv_rect_other
+        # the other side's (dual-source modes need both side-correct).
+        if source == 1 and uv_rect_other is not None:
+            own_rect, other_rect = uv_rect_other, uv_rect
+        else:
+            own_rect = uv_rect
+            other_rect = uv_rect_other if uv_rect_other is not None else uv_rect
         local_x = center_xy[0] / render_scale
         local_y = center_xy[1] / render_scale
         local_radius = radius / render_scale
@@ -173,8 +196,8 @@ def build_magnifier_layout(
         return OverlaySlot(
             center=QPointF(local_x, local_y),
             radius=local_radius,
-            uv_rect=uv_rect,
-            uv_rect2=uv_rect,
+            uv_rect=own_rect,
+            uv_rect2=other_rect,
             source=source,
             is_combined=is_combined,
             internal_split=model.internal_split,
@@ -233,6 +256,14 @@ def build_magnifier_layout(
             float(_cap_x + uv_half_w),
             float(_cap_y + uv_half_h),
         )
+        # W3b: remap the capture over the crop box into full-image UV
+        # (box None → legacy uv_rect, bit-identical).
+        uv_rect_1 = remap_uv_rect(_cap_x, _cap_y, uv_half_w, uv_half_h, _box1t, _fs1[0], _fs1[1])
+        if uv_rect_1 is None:
+            uv_rect_1 = uv_rect
+        uv_rect_2 = remap_uv_rect(_cap_x, _cap_y, uv_half_w, uv_half_h, _box2t, _fs2[0], _fs2[1])
+        if uv_rect_2 is None:
+            uv_rect_2 = uv_rect
         radius = (model.size_relative * target_max) / 2.0
         mag_radius = max(mag_radius, radius)
         spacing_px = model.spacing_relative * target_max
@@ -270,7 +301,7 @@ def build_magnifier_layout(
                     diff_center = (cx - radius - 4.0, cy)
                     comb_center = (cx + radius + 4.0, cy)
                 if show_center:
-                    slots.append(_make_slot(model, diff_center, 2, radius, uv_rect))
+                    slots.append(_make_slot(model, diff_center, 2, radius, uv_rect_1, uv_rect_2))
                     magnifier_centers.append(diff_center)
                 if show_left and show_right:
                     slots.append(
@@ -280,23 +311,23 @@ def build_magnifier_layout(
                     )
                     magnifier_centers.append(comb_center)
                 elif show_left:
-                    slots.append(_make_slot(model, comb_center, 0, radius, uv_rect))
+                    slots.append(_make_slot(model, comb_center, 0, radius, uv_rect_1, uv_rect_2))
                     magnifier_centers.append(comb_center)
                 elif show_right:
-                    slots.append(_make_slot(model, comb_center, 1, radius, uv_rect))
+                    slots.append(_make_slot(model, comb_center, 1, radius, uv_rect_1, uv_rect_2))
                     magnifier_centers.append(comb_center)
             else:
                 center = (cx, cy)
                 if show_left and show_right:
                     slots.append(
-                        _make_slot(model, center, 0, radius, uv_rect, is_combined=True)
+                        _make_slot(model, center, 0, radius, uv_rect_1, uv_rect_2, is_combined=True)
                     )
                     magnifier_centers.append(center)
                 elif show_left:
-                    slots.append(_make_slot(model, center, 0, radius, uv_rect))
+                    slots.append(_make_slot(model, center, 0, radius, uv_rect_1, uv_rect_2))
                     magnifier_centers.append(center)
                 elif show_right:
-                    slots.append(_make_slot(model, center, 1, radius, uv_rect))
+                    slots.append(_make_slot(model, center, 1, radius, uv_rect_1, uv_rect_2))
                     magnifier_centers.append(center)
         elif render_visual_diff:
             offset_3 = max(radius * 2.0, radius * 2.0 + spacing_px)
@@ -307,14 +338,14 @@ def build_magnifier_layout(
                 left_center = (cx, cy - offset_3)
                 right_center = (cx, cy + offset_3)
             if show_left:
-                slots.append(_make_slot(model, left_center, 0, radius, uv_rect))
+                slots.append(_make_slot(model, left_center, 0, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.append(left_center)
             if show_right:
-                slots.append(_make_slot(model, right_center, 1, radius, uv_rect))
+                slots.append(_make_slot(model, right_center, 1, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.append(right_center)
             if show_center:
                 center = (cx, cy)
-                slots.append(_make_slot(model, center, 2, radius, uv_rect))
+                slots.append(_make_slot(model, center, 2, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.append(center)
         else:
             dist = radius + (spacing_px / 2.0)
@@ -325,14 +356,14 @@ def build_magnifier_layout(
                 left_center = (cx, cy - dist)
                 right_center = (cx, cy + dist)
             if show_left and show_right:
-                slots.append(_make_slot(model, left_center, 0, radius, uv_rect))
-                slots.append(_make_slot(model, right_center, 1, radius, uv_rect))
+                slots.append(_make_slot(model, left_center, 0, radius, uv_rect_1, uv_rect_2))
+                slots.append(_make_slot(model, right_center, 1, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.extend([left_center, right_center])
             elif show_left:
-                slots.append(_make_slot(model, (cx, cy), 0, radius, uv_rect))
+                slots.append(_make_slot(model, (cx, cy), 0, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.append((cx, cy))
             elif show_right:
-                slots.append(_make_slot(model, (cx, cy), 1, radius, uv_rect))
+                slots.append(_make_slot(model, (cx, cy), 1, radius, uv_rect_1, uv_rect_2))
                 magnifier_centers.append((cx, cy))
 
         local_target_centers = []

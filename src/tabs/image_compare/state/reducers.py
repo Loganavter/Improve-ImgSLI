@@ -174,7 +174,7 @@ class PipelineCacheReducer:
             from tabs.image_compare.pipeline.cache import _PIXEL_CACHE_MAX, _pixel_key
         except Exception:
             _PIXEL_CACHE_MAX = 8
-            def _pixel_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+            def _pixel_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
                 try:
                     st = _os.stat(path)
@@ -183,9 +183,7 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                if box_tuple is not None:
-                    return (_os.path.normpath(path), mtime, size, bool(crop_service), box_tuple)
-                return (_os.path.normpath(path), mtime, size, bool(crop_service))
+                return (_os.path.normpath(path), mtime, size, False)
         store = action.store
         if store is None:
             return state
@@ -209,14 +207,9 @@ class PipelineCacheReducer:
             auto_crop = crop_service
             crop_service = None
         try:
-            # support lazy box via action.box_tuple if provided (worker-side)
-            box = getattr(action, "box_tuple", None)
-            if box is not None:
-                key = _pixel_key(path, crop_service, auto_crop, box_tuple=box)
-            else:
-                key = _pixel_key(path, crop_service, auto_crop)
+            key = _pixel_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, bool(crop_service))
+            key = (os.path.normpath(path), 0, 0, False)
         new_pixel = OrderedDict(state.pixel)
         if key in new_pixel:
             try:
@@ -243,7 +236,7 @@ class PipelineCacheReducer:
             from tabs.image_compare.pipeline.cache import _PREVIEW_CACHE_MAX, _preview_key
         except Exception:
             _PREVIEW_CACHE_MAX = 8
-            def _preview_key(path, crop_service=None, auto_crop=None, box_tuple=None):
+            def _preview_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
                 try:
                     st = _os.stat(path)
@@ -252,9 +245,7 @@ class PipelineCacheReducer:
                 except OSError:
                     mtime = 0
                     size = 0
-                if box_tuple is not None:
-                    return (_os.path.normpath(path), mtime, size, bool(crop_service), box_tuple, 1024)
-                return (_os.path.normpath(path), mtime, size, bool(crop_service), 1024)
+                return (_os.path.normpath(path), mtime, size, False, 1024)
         qimage = action.qimage
         if qimage is None:
             return state
@@ -273,13 +264,9 @@ class PipelineCacheReducer:
             auto_crop = crop_service
             crop_service = None
         try:
-            box = getattr(action, "box_tuple", None)
-            if box is not None:
-                key = _preview_key(path, crop_service, auto_crop, box_tuple=box)
-            else:
-                key = _preview_key(path, crop_service, auto_crop)
+            key = _preview_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, bool(crop_service), 1024)
+            key = (os.path.normpath(path), 0, 0, False, 1024)
         new_preview = OrderedDict(state.preview)
         if key in new_preview:
             new_preview.pop(key, None)
