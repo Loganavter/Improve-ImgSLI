@@ -12,6 +12,12 @@ class VideoExportImageRepository:
         self._images_cache: dict[tuple[str, bool], object] = {}
 
     def clear(self) -> None:
+        """Single reset path for the image cache.
+
+        Only ``VideoExporterService._clear_frame_caches`` calls this (export
+        start/finish); nothing clears entries ad-hoc, so preview, export,
+        and thumbnail renders share one image identity per (path, auto_crop).
+        """
         self._images_cache.clear()
 
     def get_image(self, path: str, auto_crop: bool = False):

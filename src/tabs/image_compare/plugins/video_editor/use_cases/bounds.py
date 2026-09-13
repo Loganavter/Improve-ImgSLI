@@ -89,20 +89,22 @@ def on_global_bounds_calculated(coordinator, bounds, request_id: int | None = No
     if _is_stale(coordinator, request_id):
         return
     exporter = getattr(coordinator.export_controller, "video_exporter", None)
-    # Store in Service cache (single source) and keep coordinator mirror for compat
+    # Single write path: the service owns the bounds cache. The old
+    # coordinator ``_cached_global_bounds`` mirror is gone — readers use the
+    # service (peek), writers publish here.
     if exporter is not None:
         try:
-            exporter.store_cached_global_bounds(bounds, coordinator.editor_service.get_current_snapshots())  # type: ignore[attr-defined]
-        except AttributeError:
-            try:
+            snapshots = coordinator.editor_service.get_current_snapshots()
+        except Exception:
+            snapshots = None
+        try:
+            store = getattr(exporter, "store_cached_global_bounds", None)
+            if callable(store):
+                store(bounds, snapshots)
+            else:  # pragma: no cover — legacy fake exporters in tests
                 exporter._cached_global_bounds = bounds  # type: ignore[attr-defined]
-            except Exception:
-                pass
-    # Keep coordinator's own cache in sync (older preview stored locally)
-    try:
-        coordinator._cached_global_bounds = bounds  # type: ignore[attr-defined]
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     if coordinator.emit_fit_content_available is not None:
         try:
