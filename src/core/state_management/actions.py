@@ -20,6 +20,7 @@ from core.state_management.cache_actions import (
     InvalidateRenderCacheAction,
 )
 from core.state_management.document_actions import (
+    SetCropOverrideAction,
     SetCurrentIndexAction,
     SetFullResImageAction,
     SetImagePathAction,
