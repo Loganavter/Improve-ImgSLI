@@ -571,7 +571,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/unify.py",
-      "lines": 450,
+      "lines": 504,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file\"",

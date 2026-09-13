@@ -7,6 +7,8 @@ import logging
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from tabs.image_compare.debug import ic_preview_debug as _preview_log
+
 from core.state_management.actions import (
     SetCachedDiffImageAction,
     SetImageSessionImageAction,
@@ -313,11 +315,67 @@ def trigger_preview_unification(controller, image_number: int):
     ensure_unification(controller)
 
 
+def _start_builds_for_ready_sides(controller, document) -> None:
+    """Pyramid builds for full-res sides after a skipped/aborted unify.
+
+    A skipped task (preview-tier side, superseded, error) returns no pair,
+    so the normal ``_start_pyramid_builds(u1, u2)`` never runs — and the
+    loading toast waits for pyramid completions nobody builds. Start builds
+    for the sides whose full-res pixel store is already decoded; preview or
+    missing sides are skipped (their full arrival re-triggers unify via
+    ``handle_full_image_loaded``). Slot positions are preserved so the
+    coordinator maps completions to the right toast.
+    """
+    try:
+        from PySide6.QtGui import QImage as _QImage
+    except Exception:
+        _QImage = ()
+    try:
+        pl = getattr(controller, "pipeline", None)
+    except Exception:
+        pl = None
+    if document is None:
+        return
+    ready = []
+    for attr in ("image1_path", "image2_path"):
+        path = getattr(document, attr, None)
+        full = None
+        if path and pl is not None:
+            try:
+                cand = pl.peek(path)
+            except Exception:
+                cand = None
+            if cand is not None and not isinstance(cand, _QImage):
+                try:
+                    if getattr(cand, "is_open", True):
+                        full = cand
+                except Exception:
+                    pass
+        ready.append(full)
+    if any(s is not None for s in ready):
+        try:
+            _preview_log(
+                "unify skipped: starting side builds for ready slots=%s",
+                [i + 1 for i, s in enumerate(ready) if s is not None],
+            )
+            controller._start_pyramid_builds(*ready)
+        except Exception:
+            pass
+    else:
+        _preview_log("unify skipped: no full-res sides ready, no builds started")
+
+
 def on_unified_images_ready(controller, result):
     if not result:
         _clear_unification_flags(controller)
         try:
             controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
+        try:
+            _start_builds_for_ready_sides(
+                controller, controller.store.get_session_state_slot("document")
+            )
         except Exception:
             pass
         return
@@ -358,6 +416,10 @@ def on_unified_images_ready(controller, result):
             _clear_unification_flags(controller)
             try:
                 controller.metrics_service.on_metrics_calculated(None)
+            except Exception:
+                pass
+            try:
+                _start_builds_for_ready_sides(controller, document)
             except Exception:
                 pass
             return
