@@ -429,6 +429,12 @@ def _stream_pyvips_to_memmap(
             logger.debug("crop_service failed for %s: %s", path_str, e)
             src_box = None
         autocrop_debug("streaming probe box=%s (src %dx%d)", src_box, src_w, src_h)
+    else:
+        autocrop_debug(
+            "streaming verdict=SKIP reason=disabled (no crop_service; "
+            "settings auto_crop_black_borders off?) path=%s src=%dx%d",
+            path_str, src_w, src_h,
+        )
 
     out_w = src_w
     out_h = src_h
@@ -438,7 +444,13 @@ def _stream_pyvips_to_memmap(
         out_h = bottom - top
         logger.info("Auto-crop applied via pyvips: %s (Orig: %dx%d)", src_box, src_w, src_h)
         autocrop_debug(
-            "streaming crop src=%dx%d out=%dx%d box=%s", src_w, src_h, out_w, out_h, src_box
+            "streaming verdict=APPLIED src=%dx%d out=%dx%d box=%s",
+            src_w, src_h, out_w, out_h, src_box,
+        )
+    elif crop_service is not None:
+        autocrop_debug(
+            "streaming verdict=SKIP reason=probe found no box path=%s src=%dx%d",
+            path_str, src_w, src_h,
         )
 
     memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
@@ -640,15 +652,27 @@ class TiledPixelStore:
                 src_box = None
             if src_box is None:
                 out_w, out_h = src_w, src_h
+                if crop_service is None:
+                    autocrop_debug(
+                        "ndarray verdict=SKIP reason=disabled (no crop_service; "
+                        "settings auto_crop_black_borders off?) path=%s src=%dx%d",
+                        path_str, src_w, src_h,
+                    )
+                else:
+                    autocrop_debug(
+                        "ndarray verdict=SKIP reason=probe found no box path=%s src=%dx%d",
+                        path_str, src_w, src_h,
+                    )
             else:
                 left, top, right, bottom = src_box
                 out_w, out_h = right - left, bottom - top
                 logger.info(
                     "Auto-crop applied: %s (Orig: %dx%d)", src_box, src_w, src_h
                 )
-            autocrop_debug(
-                "ndarray path box=%s src=%dx%d out=%dx%d", src_box, src_w, src_h, out_w, out_h
-            )
+                autocrop_debug(
+                    "ndarray verdict=APPLIED box=%s src=%dx%d out=%dx%d",
+                    src_box, src_w, src_h, out_w, out_h,
+                )
             memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
             try:
                 _write_rgba_strips(memmap, arr, src_box=src_box)
@@ -675,13 +699,25 @@ class TiledPixelStore:
             src_box = None
         if src_box is None:
             out_w, out_h = rgba.size
+            if crop_service is None:
+                autocrop_debug(
+                    "PIL verdict=SKIP reason=disabled (no crop_service; "
+                    "settings auto_crop_black_borders off?) path=%s src=%s",
+                    path_str, rgba.size,
+                )
+            else:
+                autocrop_debug(
+                    "PIL verdict=SKIP reason=probe found no box path=%s src=%s",
+                    path_str, rgba.size,
+                )
         else:
             left, top, right, bottom = src_box
             out_w, out_h = right - left, bottom - top
             logger.info("Auto-crop applied: %s (Orig: %s)", src_box, rgba.size)
-        autocrop_debug(
-            "PIL path box=%s src=%s out=%dx%d", src_box, rgba.size, out_w, out_h
-        )
+            autocrop_debug(
+                "PIL verdict=APPLIED box=%s src=%s out=%dx%d",
+                src_box, rgba.size, out_w, out_h,
+            )
 
         memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
         try:

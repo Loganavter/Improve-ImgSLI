@@ -215,6 +215,19 @@ def magnifier_size_released_handler(presenter) -> None:
 def magnifier_instances_add_handler(presenter) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
+    try:
+        from tabs.image_compare.debug import ic_magnifier_debug
+        from core.tracing.tracer import Tracer
+
+        ic_magnifier_debug("instances add clicked")
+        if Tracer.enabled():
+            Tracer.instance().record(
+                "magnifier.instances.add",
+                "toolbar instances add clicked",
+                {},
+            )
+    except Exception:
+        pass
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "add_instance")
@@ -223,6 +236,19 @@ def magnifier_instances_add_handler(presenter) -> None:
 def magnifier_instances_remove_handler(presenter) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
+    try:
+        from tabs.image_compare.debug import ic_magnifier_debug
+        from core.tracing.tracer import Tracer
+
+        ic_magnifier_debug("instances remove clicked")
+        if Tracer.enabled():
+            Tracer.instance().record(
+                "magnifier.instances.remove",
+                "toolbar instances remove clicked",
+                {},
+            )
+    except Exception:
+        pass
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "remove_active_instance")
