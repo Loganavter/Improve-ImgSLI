@@ -42,7 +42,9 @@ class SetUIFontFamilyAction(Action):
 class SetUIScaleFactorAction(Action):
     factor: float
     type: str = field(default=ActionType.SET_UI_SCALE_FACTOR.value, kw_only=True)
-    def __post_init__(self): self.factor = float(self.factor)
+    def __post_init__(self):
+        super().__post_init__()
+        self.factor = float(self.factor)
     def get_payload(self): return {"factor": self.factor}
 
 @dataclass
@@ -88,5 +90,7 @@ class SetExportFavoriteDirAction(Action):
 class SetKeyboardOverridesAction(Action):
     overrides: dict[str, str]
     type: str = field(default=ActionType.SET_KEYBOARD_OVERRIDES.value, kw_only=True)
-    def __post_init__(self): self.overrides = dict(self.overrides)
+    def __post_init__(self):
+        super().__post_init__()
+        self.overrides = dict(self.overrides)
     def get_payload(self): return {"overrides": dict(self.overrides)}
