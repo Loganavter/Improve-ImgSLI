@@ -95,6 +95,49 @@ def _schedule_drag_restack(w) -> None:
     _QTimer.singleShot(_DND_RESTACK_DELAY_MS, lambda: _drag_restack_tick(w))
 
 
+def _keepwarm_tick_is_idle(w) -> bool:
+    """True when the renderer snapshot is healthy and idle.
+
+    A keep-warm tick is a no-op pipeline primer: it only needs to produce
+    a frame while real work is still in flight. Skip the ``update()`` when
+    there is nothing left to resolve -- no tile ``more_pending`` (see
+    ``rhi_renderer/use_cases/tile_residency.py``, which propagates it to
+    ``runtime_state._tile_more_pending``), no deferred mip-cascade layers,
+    no content-swap transition, and the committed texture keys already
+    match the last good baseline. Missing renderer state (first paint,
+    tests without a renderer) returns False so priming is preserved.
+    """
+    try:
+        renderer = getattr(w, "_rhi_renderer", None)
+        if renderer is None:
+            return False
+        state = getattr(w, "runtime_state", None)
+        if bool(getattr(state, "_tile_more_pending", False)):
+            return False
+        if bool(getattr(renderer, "_fallback_more_pending_snapshot", False)):
+            return False
+        if bool(getattr(renderer, "_content_swap_active", False)):
+            return False
+        try:
+            pending = getattr(renderer, "_pending_dirty_layers", {})
+            if pending and any(bool(layers) for layers in pending.values()):
+                return False
+        except Exception:
+            return False
+        last_good = getattr(renderer, "_last_good_texture_keys", None)
+        if last_good is None:
+            return False
+        try:
+            committed = getattr(renderer, "_lod_committed_keys", None)
+            if committed is not None and tuple(committed) != tuple(last_good):
+                return False
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def _drag_restack_tick(w) -> None:
     """One settle kick; stands down if the zone already hid."""
     try:
@@ -422,6 +465,11 @@ class CanvasWidget(QRhiWidget):
                             return  # drag pump owns frames while shown
                     except Exception:
                         pass
+                    try:
+                        if _keepwarm_tick_is_idle(self):
+                            return  # healthy idle: no pending work, skip no-op frame
+                    except Exception:
+                        pass
                     self.update()
                 except Exception:
                     pass
@@ -434,11 +482,6 @@ class CanvasWidget(QRhiWidget):
                 _icdd("dnd keep-warm started interval_ms=%s", _interval)
             except Exception:
                 pass
-        except Exception:
-            pass
-
-            _timer.timeout.connect(_on_tick)
-            _timer.start()
         except Exception:
             pass
 
