@@ -47,14 +47,21 @@ class UIUpdateBatcher:
         # Guard: singleShot(0) is not parented — presenter/window may be
         # deleted before the timer fires (tab switch, window close). Prevent
         # libshiboken "Internal C++ object already deleted" storm.
+        # Single mechanism: tabs.image_compare.canvas.live_handles (lazy
+        # import — host must not bind a concrete tab at module level, see
+        # tests/contracts/test_ui_tab_sandbox.py). Fail-open: any import or
+        # guard failure falls through to the per-update RuntimeError catches.
         try:
-            import shiboken6  # type: ignore
+            import importlib
 
+            live_handles = importlib.import_module(
+                "tabs.image_compare.canvas.live_handles"
+            )
             presenter = getattr(self, "_presenter", None)
             win = getattr(presenter, "main_window_app", None) if presenter is not None else None
-            if win is not None and not shiboken6.isValid(win):
+            if win is not None and not live_handles.is_qt_alive(win):
                 return
-            if presenter is not None and not shiboken6.isValid(presenter):
+            if presenter is not None and not live_handles.is_qt_alive(presenter):
                 return
         except Exception:
             pass

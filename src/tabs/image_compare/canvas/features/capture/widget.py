@@ -23,6 +23,7 @@ from tabs.image_compare.canvas.features.capture.input.actions import (
     SetCaptureSizeRelativeAction,
     SetCaptureVisibleAction,
 )
+from tabs.image_compare.canvas.live_handles import is_qt_alive
 from tabs.image_compare.canvas.features.capture.input.events import SettingsSetCaptureColorEvent, SettingsToggleCaptureVisibilityEvent
 from tabs.image_compare.canvas.features.capture.state.feature_state import (
     CaptureWidgetState,
@@ -214,7 +215,19 @@ def _command_set_capture_size(actions, raw_value: int | float) -> None:
 
 
 def _set_slider_value_quietly(slider, value: int) -> None:
-    if slider is None or slider.value() == value:
+    if slider is None:
+        return
+    if not is_qt_alive(slider):
+        # Wrapper outlived its C++ object (chrome rebuild between store
+        # emits): same storm class as toolbar/state.py availability loop.
+        # Skip silently — the stale widget attr refreshes on rebuild.
+        return
+    try:
+        current = slider.value()
+    except RuntimeError:
+        # Died between the check and the call — same skip, no log.
+        return
+    if current == value:
         return
     old = slider.blockSignals(True)
     try:

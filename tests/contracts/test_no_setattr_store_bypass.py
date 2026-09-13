@@ -63,8 +63,8 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         # -- canvas feature-state snapshot/projection writes (view_state param) --
         ("src/tabs/image_compare/canvas/features/capture/state/feature_state.py", 28, "view_state"),
         ("src/tabs/image_compare/canvas/features/capture/state/feature_state.py", 51, "view_state"),
-        ("src/tabs/image_compare/canvas/features/capture/widget.py", 101, "view_state"),
-        ("src/tabs/image_compare/canvas/features/capture/widget.py", 129, "snap.viewport_state.view_state"),
+        ("src/tabs/image_compare/canvas/features/capture/widget.py", 102, "view_state"),
+        ("src/tabs/image_compare/canvas/features/capture/widget.py", 130, "snap.viewport_state.view_state"),
         ("src/tabs/image_compare/canvas/features/divider/properties.py", 19, "view_state"),
         ("src/tabs/image_compare/canvas/features/divider/properties.py", 24, "view_state"),
         ("src/tabs/image_compare/canvas/features/divider/properties.py", 25, "view_state"),

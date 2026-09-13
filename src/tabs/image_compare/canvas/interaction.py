@@ -30,6 +30,10 @@ from ui.canvas_infra.viewport.state import (
     set_zoom_level,
 )
 from .rhi_renderer._debug import rhi_render_debug
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_loupe,
+)
 
 
 def _float_attr(obj, attr: str, default: float) -> float:
@@ -313,6 +317,16 @@ def set_overlay_coords(
         and same_overlay_centers
         and abs(float(overlay._radius or 0.0) - float(overlay_radius or 0.0)) <= 1e-6
     ):
+        # P3 (M1 coord-dedup point): identical coords skip the update --
+        # record with the mouse-flow time throttle (this runs per mouse
+        # move), not per call.
+        trace_loupe(
+            frame_context_from_widget(widget),
+            "loupe.coords_dedup",
+            "skipped",
+            "coords_dedup identical capture/overlay coords -> no update",
+            throttle="time",
+        )
         return
     state._capture_center = capture_center
     state._capture_radius = capture_radius

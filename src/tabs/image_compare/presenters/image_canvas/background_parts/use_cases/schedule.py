@@ -11,15 +11,38 @@ one ``armed`` log per 500ms (``time.monotonic``). All functions take
 ``render_flow.py`` keeps a thin delegator that forwards to ``schedule_update``
 so existing callers via ``presenter.schedule_update`` / ``coordinators`` /
 ``widget._flush_stale_render`` remain stable.
+
+P4 attributed invalidation: every branch records into the live
+FrameContext via ``loupe_trace.trace_invalidation`` (flag
+``IMGSLI_IC_INVALIDATE_DEBUG``; off → one env check, no record) —
+``schedule.fps_timer`` (armed + already-armed dedup-acks),
+``schedule.interactive`` (immediate path) and ``schedule.background``
+(hidden-tab stale path). Existing ``[ic-preview]`` logs are untouched.
 """
 
 from __future__ import annotations
 
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_invalidation,
+)
 
 from .background import is_background_tab, mark_render_stale
 
 _last_schedule_log_sig = None  # type: ignore
+
+
+def _invalidation_context(presenter):
+    """Best-effort live FrameContext via ``presenter.widget`` (None-safe).
+
+    Mirrors ``loupe_trace.frame_context_from_widget``: ``None`` for fakes
+    or widgets without a renderer — arm sites then stay log-only.
+    """
+    try:
+        return frame_context_from_widget(getattr(presenter, "widget", None))
+    except Exception:
+        return None
 
 
 def schedule_update(presenter):
@@ -35,6 +58,12 @@ def schedule_update(presenter):
 
     if is_background_tab(presenter):
         _preview_log("schedule_update: hidden tab - render marked stale")
+        trace_invalidation(
+            _invalidation_context(presenter),
+            "schedule.background",
+            "hidden tab -> marked stale, fps timer not armed",
+            verdict="skipped",
+        )
         mark_render_stale(presenter)
         return
 
@@ -51,6 +80,11 @@ def schedule_update(presenter):
         if _last_schedule_log_sig != "interactive":
             _last_schedule_log_sig = "interactive"
             _preview_log("schedule_update: interactive mode - immediate update")
+        trace_invalidation(
+            _invalidation_context(presenter),
+            "schedule.interactive",
+            "interactive mode -> immediate update, fps timer stopped",
+        )
         presenter._update_scheduler_timer.stop()
         result = presenter.update_comparison_if_needed()
         if result:
@@ -61,7 +95,24 @@ def schedule_update(presenter):
                 _last_schedule_log_sig = "armed"
                 schedule_update._last_armed_log = now  # type: ignore[attr-defined]
                 _preview_log("schedule_update: non-interactive - fps timer armed")
+            try:
+                interval_ms = int(presenter._update_scheduler_timer.interval())
+            except Exception:
+                interval_ms = -1
+            trace_invalidation(
+                _invalidation_context(presenter),
+                "schedule.fps_timer",
+                f"non-interactive -> fps timer armed interval_ms={interval_ms}",
+            )
             presenter._update_scheduler_timer.start()
         else:
-            # throttle: timer already armed — don't spam every 16ms
-            pass
+            # throttle: timer already armed — don't spam every 16ms.
+            # P4: the dedup-ack itself is attributed (skipped verdict,
+            # sig-throttled log) so an armed-but-never-firing timer is
+            # still answerable.
+            trace_invalidation(
+                _invalidation_context(presenter),
+                "schedule.fps_timer",
+                "fps timer already armed -> dedup, no re-arm",
+                verdict="skipped",
+            )

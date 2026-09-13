@@ -441,6 +441,22 @@ def _schedule_pil_letterbox_refresh(widget):
             shader_letterbox=False,
         )
 
+    # P4: one-shot deferred letterbox refresh (120 ms) — attributed.
+    try:
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+        from tabs.image_compare.canvas.loupe_trace import (
+            trace_invalidation as _trace_inv,
+        )
+
+        _trace_inv(
+            _fcw(widget),
+            "pil_letterbox",
+            "PIL letterbox refresh deferred 120ms",
+        )
+    except Exception:
+        pass
     QTimer.singleShot(120, _do_refresh)
 
 
@@ -506,6 +522,23 @@ def _schedule_glass_settle_frame(widget):
         state._glass_settle_pending = False
         widget.update()
 
+    # P4: one-shot glass catch-up repaint — attributed (single pending
+    # flag: bursts coalesce to one settle frame, never N).
+    try:
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+        from tabs.image_compare.canvas.loupe_trace import (
+            trace_invalidation as _trace_inv,
+        )
+
+        _trace_inv(
+            _fcw(widget),
+            "glass_settle",
+            "glass catch-up repaint deferred one event-loop turn",
+        )
+    except Exception:
+        pass
     QTimer.singleShot(0, _settle)
 
 
@@ -542,6 +575,23 @@ def schedule_source_preload(widget):
     if state._source_preload_scheduled:
         return
     state._source_preload_scheduled = True
+    # P4: one-shot source preload — attributed (dedup flag: at most one
+    # deferral outstanding, never a polling loop).
+    try:
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+        from tabs.image_compare.canvas.loupe_trace import (
+            trace_invalidation as _trace_inv,
+        )
+
+        _trace_inv(
+            _fcw(widget),
+            "source_preload",
+            "source texture preload deferred one event-loop turn",
+        )
+    except Exception:
+        pass
     QTimer.singleShot(0, lambda: preload_source_textures(widget))
 
 

@@ -83,6 +83,8 @@ Env-gated streams following the canonical unique-prefix recipe:
 - `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` → `[ic-dnd]` drag/drop routing (`src/tabs/image_compare/debug.py:ic_dnd_debug / ic_debug`).
 - `IMGSLI_IC_PREVIEW_DEBUG` → `[ic-preview]` preview display gate (`src/tabs/image_compare/debug.py:ic_preview_debug`): applied display tier per `apply_store_to_canvas` plus deferred/skip reasons.
 - `IMGSLI_IC_GAP_DEBUG` → `[ic-gap]` gap diagnostics (`src/tabs/image_compare/debug.py:ic_gap_debug`): geometry, pick, `gap_correlation`, `resolve_lod`, `draw_plan`, bbox coverage. Also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Analyze with `python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt`.
+- `IMGSLI_IC_LOUPE_DEBUG` → `[ic-loupe]` magnifier residency/LOD trace (`src/tabs/image_compare/debug.py:ic_loupe_debug`): `TileTextureService.request_level` answers, dropped-slice reasons, texture-choice and dedup verdicts; the same points also record into the per-frame `FrameContext` (see `src/tabs/image_compare/canvas/loupe_trace.py` for the sig/time/once throttle recipes).
+- `IMGSLI_IC_INVALIDATE_DEBUG` → `[ic-invalidate]` attributed invalidation bus (`src/tabs/image_compare/debug.py:ic_invalidate_debug`): every scheduler/keep-warm/timer arm and fire/skip records source+reason into `FrameContext` (`src/tabs/image_compare/canvas/frame_context.py`); flag off costs one env check per site.
 - `IMGSLI_AUTOCROP_DEBUG` → `[autocrop-debug]` auto-crop diagnostics (`src/shared/image_processing/autocrop/debug.py`; consumed at load/presentation sites).
 - `UI_NAV_DEBUG` → nav routing diagnostics (`src/events/router.py` + `src/events/app_event_handler.py`): standalone, needs neither `--debug` nor toolkit debug flags.
 

@@ -1,10 +1,22 @@
 import logging
 import time
+
+# File-Size-Exempt: single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities.
 from dataclasses import replace as _dc_replace
 
 from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_loupe,
+)
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
+
+# P1B explicit-state verdict: sig-throttle for the SSIM diff-state log below
+# (rebuild can run repeatedly while a diff is pending — same recipe as
+# ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+# emit once per distinct decision signature, not once per rebuild).
+_last_ssim_diff_state_sig: tuple | None = None
 
 from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
     image_full_size,
@@ -90,7 +102,7 @@ def _is_ssim_pending(presenter, diff_mode_str, tex_img1=None, tex_img2=None) -> 
     return False
 
 
-def rebuild_magnifier_overlay(presenter):
+def rebuild_magnifier_overlay(presenter, frame_context=None):
     vp = presenter.store.viewport
     geometry = vp.geometry_state
     image_label = get_live_image_label(presenter)
@@ -98,6 +110,10 @@ def rebuild_magnifier_overlay(presenter):
         return
     if not hasattr(image_label, "set_feature_overlay_gpu_params"):
         return
+    if frame_context is None:
+        # P3: live FrameContext read through the presenter widget -- no
+        # caller rewiring (all current callers pass presenter only).
+        frame_context = frame_context_from_widget(getattr(presenter, "widget", None))
 
     _debug_timing = tile_dump_enabled()
     _t_start = time.perf_counter() if _debug_timing else 0.0
@@ -117,6 +133,15 @@ def rebuild_magnifier_overlay(presenter):
         plan = getattr(image_label, "_active_render_plan", None)
         if plan is None:
             if _is_ssim_pending(presenter, diff_mode_early):
+                # P3 (M1 point 1): silent early return -> reason record.
+                trace_loupe(
+                    frame_context,
+                    "loupe.scene_plan_none",
+                    "skipped",
+                    "scene plan None ssim pending keep previous frame"
+                    f" diff_mode={diff_mode_early} pending_key="
+                    f"{getattr(presenter, '_pending_cached_diff_request_key', None) is not None}",
+                )
                 return
             if diff_mode_early in ("highlight", "grayscale", "edges") and not bool(
                 getattr(image_label, "_source_images_ready", False)
@@ -206,6 +231,16 @@ def rebuild_magnifier_overlay(presenter):
         if not tex_img1 or not tex_img2:
             diff_mode_check = getattr(vp.view_state, "diff_mode", "off")
             if _is_ssim_pending(presenter, diff_mode_check, tex_img1, tex_img2):
+                # P3 (M1 point 2): silent early return -> reason record.
+                trace_loupe(
+                    frame_context,
+                    "loupe.scene_no_sources",
+                    "skipped",
+                    "scene source images missing ssim pending keep previous frame"
+                    f" diff_mode={diff_mode_check} have1={tex_img1 is not None}"
+                    f" have2={tex_img2 is not None} pending_key="
+                    f"{getattr(presenter, '_pending_cached_diff_request_key', None) is not None}",
+                )
                 return
             if diff_mode_check in ("highlight", "grayscale", "edges") and not bool(
                 getattr(image_label, "_source_images_ready", False)
@@ -278,10 +313,40 @@ def rebuild_magnifier_overlay(presenter):
         if cached_diff_image is not None:
             image_label.upload_diff_source_pil_image(cached_diff_image)
         elif diff_mode_str == "ssim":
-            if _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
-                pass
-            else:
-                pass
+            # P1B explicit state (was a bare ``pass``/``pass``): the SSIM diff
+            # image is neither cached nor previously uploaded. Distinguish
+            # "still computing, keep the previous frame" from "settled with
+            # no diff, proceed without it" instead of silently falling through.
+            # Semantics unchanged — both branches still fall through to the
+            # layout build below with diff_image_for_magnifier as-is.
+            _ssim_still_pending = _is_ssim_pending(
+                presenter, diff_mode_str, tex_img1, tex_img2
+            )
+            _ssim_state_sig = (
+                bool(_ssim_still_pending),
+                cached_diff_image is None,
+                current_uploaded_diff is None,
+            )
+            global _last_ssim_diff_state_sig
+            if _ssim_state_sig != _last_ssim_diff_state_sig:
+                _last_ssim_diff_state_sig = _ssim_state_sig
+                if _ssim_still_pending:
+                    _log.debug(
+                        "magnifier ssim_diff: verdict=pending_keep_previous"
+                        " reason=ssim compute still in flight (pending request,"
+                        " unification, or image lease invalid) cached=%s"
+                        " uploaded=%s -> hold previous diff frame",
+                        cached_diff_image is None,
+                        current_uploaded_diff is None,
+                    )
+                else:
+                    _log.debug(
+                        "magnifier ssim_diff: verdict=absent_proceed_without_diff"
+                        " reason=ssim settled with no diff image available"
+                        " cached=%s uploaded=%s -> proceed without diff overlay",
+                        cached_diff_image is None,
+                        current_uploaded_diff is None,
+                    )
         else:
             if bool(getattr(image_label, "_source_images_ready", False)):
                 image_label.upload_diff_source_pil_image(None)
@@ -296,6 +361,14 @@ def rebuild_magnifier_overlay(presenter):
         )
         if diff_mode_str == "ssim":
             if diff_image_for_magnifier is None and _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
+                # P3 (M1 point 3): silent early return -> reason record.
+                trace_loupe(
+                    frame_context,
+                    "loupe.scene_ssim_pending",
+                    "skipped",
+                    "scene ssim diff pending keep previous frame"
+                    f" pending_key={getattr(presenter, '_pending_cached_diff_request_key', None) is not None}",
+                )
                 return
             diff_mode_int = 4 if diff_image_for_magnifier is not None else 0
         else:

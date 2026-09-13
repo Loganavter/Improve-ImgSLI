@@ -124,6 +124,18 @@
       }
     },
     {
+      "path": "src/shared/rendering/tile_texture_service.py",
+      "lines": 542,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
+      }
+    },
+    {
       "path": "src/shared_toolkit/ui/layout_sizing.py",
       "lines": 574,
       "limit": 500,
@@ -178,7 +190,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/input/keyboard_movement.py",
-      "lines": 491,
+      "lines": 552,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "InteractiveMovementController is one stateful QTimer-driven",
@@ -188,7 +200,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
-      "lines": 738,
+      "lines": 852,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi pass, one resource lifecycle (border-disk",
@@ -217,14 +229,46 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/workers/scene_update.py",
+      "lines": 426,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities.",
+      "parsed": {
+        "reason": "single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities."
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/frame_context.py",
+      "lines": 148,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/interaction.py",
-      "lines": 570,
+      "lines": 584,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single canvas interaction router — gesture/drag/zoom routing\"",
       "parsed": {
         "pattern": "state-machine",
         "reason": "single canvas interaction router — gesture/drag/zoom routing"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/loupe_trace.py",
+      "lines": 191,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads"
       }
     },
     {
@@ -251,7 +295,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/render_context.py",
-      "lines": 594,
+      "lines": 644,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single render runtime context builder for RHI\"",
@@ -273,7 +317,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 467,
+      "lines": 479,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -320,7 +364,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 364,
+      "lines": 380,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -392,7 +436,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 996,
+      "lines": 1125,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -492,7 +536,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/render_gate.py",
-      "lines": 188,
+      "lines": 203,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"render_gate thin orchestrator per CODE_PATTERNS — delegates to have_gate, bg_dirty, geometry, preview\"",

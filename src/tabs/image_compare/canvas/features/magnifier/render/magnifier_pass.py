@@ -23,6 +23,7 @@ but the active magnifier runtime does not use them.
 
 from __future__ import annotations
 
+import logging
 import struct
 
 from PySide6.QtCore import QSize
@@ -68,12 +69,18 @@ from ui.canvas_infra.rhi.render_common import (
 
 from tabs.image_compare.canvas.features.magnifier.render.passes_common import ensure_qcolor, pack_border_disk_uniform
 from tabs.image_compare.canvas.features.magnifier.render.shader_layout import BORDER_DISK_UNIFORM_SIZE, MAG_UNIFORM_SIZE, SHADER_DIR
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_loupe,
+)
 from shared.rendering.uniform_layout import assert_uniform_size
 
 _MAG_UNIFORM_FMT = (
     "<16f 4f 2f 2f f f f f 4f 4f f f i i i i i i i i i i i i i i 4f 4f 4f 4f 4f"
 )
 assert_uniform_size(_MAG_UNIFORM_FMT, MAG_UNIFORM_SIZE, label="MagnifierPass uniform")
+
+_log = logging.getLogger("ImproveImgSLI.magnifier.pass")
 
 
 def _content_scale(content_size) -> tuple[float, float]:
@@ -83,7 +90,7 @@ def _content_scale(content_size) -> tuple[float, float]:
     return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
 
 
-def _source_slices(renderer, source_key, uv_rect):
+def _source_slices(renderer, source_key, uv_rect, frame_context=None):
     """Tile-aware uv_rect slicing for one magnifier source (see tile_capture.py).
 
     Attaches each slice's array ``layer``/``content_scale`` (looked up via
@@ -91,6 +98,15 @@ def _source_slices(renderer, source_key, uv_rect):
     through to ``MagnifierPass``'s per-record ``tex1``/``tex2``/``texd``
     dicts -- this is the one renderer-dependent hook in the whole capture
     pipeline, everything else in ``tile_capture.py`` is pure geometry.
+
+    P3 residency priorities: the lens first registers its interest rect
+    (``uv_rect`` in source-image pixels) and asks the service for the
+    level/residency answer (``request_level``) instead of deciding itself.
+    Slicing behavior is unchanged -- a non-resident slice is still dropped
+    rather than defaulting to layer 0 -- but the drop now carries the
+    service's reason as a ``loupe.mag_dropped_slice`` FrameContext record
+    instead of staying silent. ``frame_context=None`` keeps every existing
+    call site behavior-identical.
     """
     tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
     grid = tile_service.grid_for(source_key) if tile_service is not None else None
@@ -121,6 +137,24 @@ def _source_slices(renderer, source_key, uv_rect):
     )
     if tile_service is None:
         return slices
+    residency_reason: str | None = None
+    if grid is not None:
+        try:
+            _total_w = float(grid.total_width)
+            _total_h = float(grid.total_height)
+            _interest_rect = (
+                float(uv_rect[0]) * _total_w,
+                float(uv_rect[1]) * _total_h,
+                float(uv_rect[2]) * _total_w,
+                float(uv_rect[3]) * _total_h,
+            )
+        except (TypeError, ValueError, IndexError):
+            _interest_rect = None
+        if _interest_rect is not None:
+            tile_service.register_interest_rect(source_key, _interest_rect)
+            _req_level, _req_status, residency_reason = tile_service.request_level(
+                source_key, _interest_rect, quality="high"
+            )
     resolved = []
     for sl in slices:
         slot = tile_service.slot_for(source_key, sl["tile_index"])
@@ -128,6 +162,22 @@ def _source_slices(renderer, source_key, uv_rect):
             # Not yet GPU-resident (upload still in flight) -- drop rather
             # than default to layer 0, which would sample whatever
             # unrelated tile happens to occupy that layer right now.
+            _drop_reason = (
+                "dropped_nonresident_slice tile not GPU-resident"
+                + (
+                    f" request_level={residency_reason}"
+                    if residency_reason is not None
+                    else ""
+                )
+            )
+            trace_loupe(
+                frame_context,
+                "loupe.mag_dropped_slice",
+                "skipped",
+                _drop_reason,
+                ids=(str(source_key), tuple(sl["tile_index"])),
+                sig=(str(source_key), tuple(sl["tile_index"]), residency_reason),
+            )
             if tile_dump_enabled():
                 log_tile_event(
                     "magnifier.dropped_nonresident_slice",
@@ -182,6 +232,11 @@ class MagnifierPass(CanvasRenderPass):
         self._mag_items: list[dict] = []
         self._target = None
         self._prepare_call_seq = 0
+        # P1B explicit-state verdict: sig-throttle for the gpu_sampling=0
+        # fallback log below (per-frame path — same recipe as
+        # ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+        # emit once per distinct decision signature, not once per frame).
+        self._last_no_slot_sig: tuple | None = None
 
     def initialize(self, rhi, target) -> None:
         self.release()
@@ -344,6 +399,11 @@ class MagnifierPass(CanvasRenderPass):
             )
 
         rhi_renderer = getattr(widget, "_rhi_renderer", None)
+        # P3: live FrameContext read through the widget -- no renderer
+        # rewiring (see loupe_trace.frame_context_from_widget). None for
+        # fakes/tests without a renderer: records stay silent, rendering
+        # behavior identical.
+        frame_context = frame_context_from_widget(widget)
         array_resources = getattr(rhi_renderer.resources, "array_resources", None) if rhi_renderer else None
         if array_resources is not None:
             array_resources._ensure_tile_array(0)
@@ -364,7 +424,20 @@ class MagnifierPass(CanvasRenderPass):
             if ctx.diff_source_ready and ctx.diff_source_texture_id
             else "placeholder"
         )
+        # P3: the texture choice (base vs source images, diff source) was a
+        # silent branch -- record which keys this frame samples (sig-throttled,
+        # so steady frames stay quiet while any flip gets its reason).
+        trace_loupe(
+            frame_context,
+            "loupe.mag_texture_choice",
+            "ran",
+            f"texture_choice use_source={use_source} gpu_active={bool(overlay.gpu_active)}"
+            f" keys={tex_key_1!r}/{tex_key_2!r} diff={diff_key!r}",
+            ids=(str(tex_key_1), str(tex_key_2), str(diff_key)),
+            sig=(bool(use_source), str(tex_key_1), str(tex_key_2), str(diff_key)),
+        )
 
+        _no_slot_quad_indexes: list[int] = []
         for i, quad in enumerate(overlay.quads):
             if not quad:
                 continue
@@ -444,6 +517,12 @@ class MagnifierPass(CanvasRenderPass):
                 uv_rect1 = gpu_slot.get("uv_rect", (0.0, 0.0, 1.0, 1.0))
                 uv_rect2 = gpu_slot.get("uv_rect2", uv_rect1)
             else:
+                # P1B explicit state (NOT dead — reachable in production):
+                # any raster quad without matching gpu params lands here,
+                # e.g. presenters/image_canvas/view.py set_pil_layers /
+                # set_layers -> texture_parts/layers.set_feature_overlay_content
+                # sets overlay._quads[0] with gpu_active False, and this pass
+                # still paints it via the mag.frag magTex/magTex2 path below.
                 gpu_sampling = 0
                 source_mode = 0
                 interp_mode = 1
@@ -451,6 +530,7 @@ class MagnifierPass(CanvasRenderPass):
                 diff_mode = 0
                 uv_rect1 = (0.0, 0.0, 1.0, 1.0)
                 uv_rect2 = (0.0, 0.0, 1.0, 1.0)
+                _no_slot_quad_indexes.append(i)
 
             if gpu_slot and combined:
                 internal_split = float(gpu_slot.get("internal_split", 0.5))
@@ -474,7 +554,7 @@ class MagnifierPass(CanvasRenderPass):
             if gpu_slot:
                 records = build_tile_records(
                     source_slices_fn=lambda key, rect: _source_slices(
-                        rhi_renderer, key, rect
+                        rhi_renderer, key, rect, frame_context
                     ),
                     combined=combined,
                     source_mode=source_mode,
@@ -490,7 +570,10 @@ class MagnifierPass(CanvasRenderPass):
             else:
                 # gpu_sampling=0 here (no gpu_slot): mag.frag falls back to the
                 # legacy raster ``magTex``/``magTex2`` path, so the array
-                # layer/scale bound below is never actually sampled.
+                # layer/scale bound below is never actually sampled. P1B: this
+                # fallback is reachable (raster overlay quads) and now emits
+                # an explicit sig-throttled verdict above instead of silently
+                # downgrading.
                 _no_tex = {"key": None, "layer": 0, "scale": (1.0, 1.0)}
                 records = [
                     {
@@ -636,6 +719,37 @@ class MagnifierPass(CanvasRenderPass):
                         ),
                     )
                 self._mag_items.append({"block": block})
+
+        if _no_slot_quad_indexes:
+            _no_slot_sig = (
+                tuple(_no_slot_quad_indexes),
+                bool(overlay.gpu_active),
+                len(getattr(overlay, "gpu_slots", ()) or ()),
+            )
+            if _no_slot_sig != self._last_no_slot_sig:
+                self._last_no_slot_sig = _no_slot_sig
+                _log.debug(
+                    "magnifier no_gpu_slot: verdict=legacy_raster_magtex"
+                    " reason=no gpu_slot for quad (raster overlay quad without"
+                    " gpu params -> mag.frag magTex/magTex2 fallback)"
+                    " quads=%s gpu_active=%s gpu_slots=%d",
+                    list(_no_slot_quad_indexes),
+                    bool(overlay.gpu_active),
+                    len(getattr(overlay, "gpu_slots", ()) or ()),
+                )
+            # P3: raster quads without gpu params are the legacy/dead path --
+            # once-per-quad log (live_handles recipe), record every frame.
+            for _quad_index in _no_slot_quad_indexes:
+                trace_loupe(
+                    frame_context,
+                    "loupe.mag_no_slot",
+                    "skipped",
+                    "no_gpu_slot quad without gpu params -> mag.frag magTex/magTex2"
+                    " legacy raster fallback (gpu_sampling=0)",
+                    ids=(_quad_index,),
+                    throttle="once",
+                    key=("loupe.mag_no_slot", _quad_index),
+                )
 
         self.border.ensure_items(len(self._border_items))
         if self._border_items:
