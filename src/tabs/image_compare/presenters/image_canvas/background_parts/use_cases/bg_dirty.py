@@ -95,16 +95,9 @@ def _resolve_unify_gate_cache(presenter):
     already-cached pair. Returns the controller cache when reachable,
     else a thin Store-slot wrapper, else None.
     """
-    _cache_u = None
-    _ctrl_u = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
-    if _ctrl_u is None:
-        try:
-            _mw = getattr(presenter, "main_window_app", None) or getattr(getattr(presenter, "widget", None), "main_window_app", None)
-            if _mw is not None:
-                _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
-                _ctrl_u = getattr(_tab, "session_controller", None) if _tab else None
-        except Exception:
-            _ctrl_u = None
+    from tabs.image_compare.pipeline.session import resolve_session_controller
+
+    _ctrl_u = resolve_session_controller(presenter)
     _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
     if _pl_u is None:
         try:
@@ -224,7 +217,9 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                         _s2_ready = _pyramid_complete(_s2)
                     _pending = False
                     try:
-                        _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                        from tabs.image_compare.pipeline.session import resolve_session_controller
+
+                        _ctrl = resolve_session_controller(presenter)
                         _svc = getattr(_ctrl, "_image_load_service", None) if _ctrl is not None else None
                         if _svc is None and _ctrl is not None:
                             _svc = getattr(_ctrl, "pipeline", None)
