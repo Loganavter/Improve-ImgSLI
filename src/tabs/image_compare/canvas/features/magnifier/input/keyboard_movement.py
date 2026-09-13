@@ -127,6 +127,39 @@ class InteractiveMovementController:
         if split_visual is not None:
             self._dispatch_viewport_action(SetSplitPositionVisualAction(split_visual))
 
+    def _frame_context(self):
+        """Best-effort live FrameContext for P4 attribution (None-safe).
+
+        Resolves the image-canvas widget the same way
+        ``_sync_fast_overlay_preview`` does, then reads the renderer's
+        per-frame context through it. ``None`` for fakes/headless —
+        arm sites then stay log-only.
+        """
+        try:
+            from tabs.image_compare.canvas.loupe_trace import (
+                frame_context_from_widget as _fcw,
+            )
+
+            image_canvas_presenter = get_image_canvas_presenter(self.presenter)
+            widget = getattr(image_canvas_presenter, "widget", None)
+            if widget is None:
+                widget = getattr(self.presenter, "widget", None)
+            return _fcw(widget)
+        except Exception:
+            return None
+
+    def _trace_invalidation(self, source: str, reason: str, verdict: str = "ran"):
+        try:
+            from tabs.image_compare.canvas.loupe_trace import (
+                trace_invalidation as _trace_inv,
+            )
+
+            return _trace_inv(
+                self._frame_context(), source, reason, verdict=verdict
+            )
+        except Exception:
+            return None
+
     def start(self) -> None:
         handler = _get_movement_handler(self.store)
         if handler is not None:
@@ -155,6 +188,16 @@ class InteractiveMovementController:
             self.last_update_elapsed = self.movement_elapsed_timer.elapsed()
             self.movement_timer.start()
             self._last_input_dirs = (0, 0, 0)
+            # P4: 8 ms movement-timer arm — attributed (who: keyboard/drag
+            # entry via start(); why: interactive magnifier movement).
+            # Per-tick records are deliberately NOT emitted (125 Hz would
+            # flood the per-frame context); the lifecycle arms/stops below
+            # are the attribution, and ticks stop on convergence so steady
+            # idle produces zero ticks by construction.
+            self._trace_invalidation(
+                "keyboard_movement",
+                "WASD/QE movement timer started interval_ms=8 precise",
+            )
 
     def stop(self) -> None:
         if self.store.viewport.interaction_state.is_interactive_mode:
@@ -163,6 +206,11 @@ class InteractiveMovementController:
             emit_update_request(self.presenter)
         if self.movement_timer.isActive():
             self.movement_timer.stop()
+            self._trace_invalidation(
+                "keyboard_movement",
+                "movement timer stopped via stop()",
+                verdict="skipped",
+            )
 
     def handle_timer_tick(self) -> None:
         if self.store.viewport.view_state.showing_single_image_mode != 0:
@@ -203,6 +251,11 @@ class InteractiveMovementController:
         if not self.movement_timer.isActive():
             return
         self.movement_timer.stop()
+        self._trace_invalidation(
+            "keyboard_movement",
+            "movement timer stopped: single-image mode",
+            verdict="skipped",
+        )
         self._set_interactive_mode(False)
         self.store.emit_viewport_change("interaction")
         emit_update_request(self.presenter)
@@ -383,6 +436,14 @@ class InteractiveMovementController:
 
     def _finish_interactive_cycle(self, handler=None) -> None:
         self.movement_timer.stop()
+        # P4: convergence stop — attributed. This is the steady-idle
+        # guarantee: no keys + converged visuals stop the 8 ms pump, so a
+        # merely-visible magnifier produces zero movement ticks.
+        self._trace_invalidation(
+            "keyboard_movement",
+            "movement timer stopped: visuals converged, no input",
+            verdict="skipped",
+        )
         if handler is not None:
             offset = handler.get_offset()
             spacing = handler.get_spacing()

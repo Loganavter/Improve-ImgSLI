@@ -25,7 +25,12 @@ from __future__ import annotations
 
 import time
 
-from tabs.image_compare.debug import ic_loupe_debug, ic_loupe_debug_enabled
+from tabs.image_compare.debug import (
+    ic_invalidate_debug,
+    ic_invalidate_debug_enabled,
+    ic_loupe_debug,
+    ic_loupe_debug_enabled,
+)
 
 __all__ = [
     "LOUPE_MOUSE_LOG_INTERVAL_S",
@@ -34,6 +39,7 @@ __all__ = [
     "THROTTLE_TIME",
     "frame_context_from_widget",
     "reset_loupe_trace_state",
+    "trace_invalidation",
     "trace_loupe",
 ]
 
@@ -118,4 +124,68 @@ def trace_loupe(
             emit = True
     if emit:
         ic_loupe_debug("%s verdict=%s reason=%s", pass_name, verdict, reason)
+    return decision
+
+
+def trace_invalidation(
+    frame_context,
+    source: str,
+    reason: str,
+    ids: tuple = (),
+    *,
+    verdict: str = "ran",
+    throttle: str = THROTTLE_SIG,
+    sig=None,
+    key=None,
+    interval_s: float = LOUPE_MOUSE_LOG_INTERVAL_S,
+):
+    """P4 attributed-invalidation bus: record who armed/requested a frame.
+
+    Same recipe as :func:`trace_loupe` but for timer arms, singleShot
+    deferrals and external invalidation requests instead of render
+    decisions. Gated on ``IMGSLI_IC_INVALIDATE_DEBUG`` (flag off → total
+    no-op: no record, no log — steady production pays one env check).
+    Flag on → every call appends one ``invalidate.<source>`` FrameDecision
+    (per-frame truth, unthrottled) while only the ``[ic-invalidate]`` log
+    line is throttled (hot sites: keep-warm ticks, fps-timer dedup-acks).
+
+    ``verdict`` is ``"ran"`` for arms/fires, ``"skipped"`` for dedup-acks,
+    stops and idle stand-downs. Returns the ``FrameDecision`` (or ``None``
+    when the flag is off / no context — the throttled log still fires so
+    attribution survives without a renderer, e.g. label-path presenters).
+    """
+    if not ic_invalidate_debug_enabled():
+        return None
+    from tabs.image_compare.canvas.frame_context import (
+        INVALIDATE_PREFIX,
+        VERDICT_RAN,
+    )
+
+    decision = None
+    if frame_context is not None:
+        decision = frame_context.record_invalidation(
+            source, reason, ids, verdict=verdict or VERDICT_RAN
+        )
+    pass_name = f"{INVALIDATE_PREFIX}{source}"
+    emit = False
+    stream = key if key is not None else pass_name
+    if throttle == THROTTLE_ONCE:
+        if stream not in _seen_once:
+            _seen_once.add(stream)
+            emit = True
+    elif throttle == THROTTLE_TIME:
+        now = time.monotonic()
+        last = _last_time.get(stream, _MISSING)
+        if last is _MISSING or (now - last) >= float(interval_s):
+            _last_time[stream] = now
+            emit = True
+    else:
+        observed = sig if sig is not None else (pass_name, verdict, reason)
+        if _last_sig.get(stream, _MISSING) != observed:
+            _last_sig[stream] = observed
+            emit = True
+    if emit:
+        ic_invalidate_debug(
+            "%s verdict=%s reason=%s", pass_name, verdict, reason
+        )
     return decision

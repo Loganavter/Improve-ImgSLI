@@ -155,6 +155,23 @@ def request_cached_diff_image_async(
         presenter._last_mag_signature = None
         presenter._last_bg_signature = None
         presenter._last_img_sig = None
+        # P4: origin record — who asked for this frame (the schedule_update
+        # below records its own fps-timer arm; this one names the cause).
+        try:
+            from tabs.image_compare.canvas.loupe_trace import (
+                frame_context_from_widget as _fcw,
+            )
+            from tabs.image_compare.canvas.loupe_trace import (
+                trace_invalidation as _trace_inv,
+            )
+
+            _trace_inv(
+                _fcw(getattr(presenter, "widget", None)),
+                "diff_cache",
+                "cached diff ready -> schedule_update (signatures cleared)",
+            )
+        except Exception:
+            pass
         presenter.schedule_update()
 
     def _on_error(error_tuple):

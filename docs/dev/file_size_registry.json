@@ -190,7 +190,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/input/keyboard_movement.py",
-      "lines": 491,
+      "lines": 552,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "InteractiveMovementController is one stateful QTimer-driven",
@@ -240,7 +240,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/frame_context.py",
-      "lines": 113,
+      "lines": 148,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
@@ -262,7 +262,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/loupe_trace.py",
-      "lines": 121,
+      "lines": 191,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads\"",
@@ -295,7 +295,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/render_context.py",
-      "lines": 594,
+      "lines": 644,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single render runtime context builder for RHI\"",
@@ -436,7 +436,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 996,
+      "lines": 1125,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",

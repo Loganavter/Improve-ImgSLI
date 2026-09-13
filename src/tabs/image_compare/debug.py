@@ -9,6 +9,7 @@ Env vars:
     IMGSLI_IC_PREVIEW_DEBUG=1    — preview display / re-render gate ([ic-preview])
     IMGSLI_MAGNIFIER_DEBUG=1     — magnifier instances toolbar ([magnifier-debug])
     IMGSLI_IC_LOUPE_DEBUG=1      — magnifier residency/LOD trace ([ic-loupe])
+    IMGSLI_IC_INVALIDATE_DEBUG=1 — attributed invalidation bus ([ic-invalidate])
 
 Tags:
     [ic-dnd]     — drag-enter / accept / handle_drop routing
@@ -187,6 +188,21 @@ def ic_loupe_debug(msg: str, *args, **kwargs) -> None:
             msg,
             *args,
             env_flags=("IMGSLI_IC_LOUPE_DEBUG",),
+            **kwargs,
+        )
+
+
+def ic_invalidate_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_IC_INVALIDATE_DEBUG")
+
+
+def ic_invalidate_debug(msg: str, *args, **kwargs) -> None:
+    if ic_invalidate_debug_enabled():
+        _emit(
+            "[ic-invalidate]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_IC_INVALIDATE_DEBUG",),
             **kwargs,
         )
 
