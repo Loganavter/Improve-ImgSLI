@@ -48,6 +48,12 @@ class SnapshotFrameRenderer:
         return self._last_backend
 
     def reset_backend_state(self) -> None:
+        """Single reset path for the prescale cache.
+
+        Only the owning ``VideoExporterService._clear_frame_caches`` (and
+        export start) calls this; nothing clears ``_prescaled_cache`` ad-hoc,
+        so preview and export share one prescaled identity per key.
+        """
         self._last_backend = "gpu"
         self._prescaled_cache = None
 

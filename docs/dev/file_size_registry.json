@@ -480,7 +480,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
-      "lines": 743,
+      "lines": 811,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
@@ -514,7 +514,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
-      "lines": 504,
+      "lines": 532,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",
