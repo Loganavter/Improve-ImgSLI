@@ -59,6 +59,75 @@ def set_sessions_crop_enabled(enabled: bool) -> None:
             pass
 
 
+def resolve_session_controller(presenter):
+    """Writer-side session controller for a presenter that does not own one.
+
+    Unify puts and the load pipeline live on the tab ``SessionController``
+    (``controller.pipeline``, see ``_session_controller.py``), but bg
+    presenters (canvas, toolbar) only carry ``store/widget/view``. Every
+    inline hop invented so far missed at least one shape
+    (``tab.session_controller`` does not exist — the plugin attr is
+    ``session_ctrl``; ``sessions._session_controller`` overshoots by one:
+    ``main_controller.sessions`` already IS the tab SessionController).
+    Single choke point, best-effort, never raises — returns the controller
+    or None. Chain (first hit wins):
+    1. ``presenter.session_controller`` / ``presenter.controller``;
+    2. ``presenter.main_controller.sessions`` — property already resolving
+       to the comparison plugin's ``session_ctrl``;
+    3. ``presenter.main_window_app.tab_registry.get_tab("image_compare")``
+       ``.session_controller`` (future-proof; absent today);
+    4. ``presenter.widget`` → ``_context.main_window`` / ``window()`` →
+       ``.presenter`` → step 2 from there.
+    Callers take what they need: ``.pipeline`` (unify memo/peek),
+    ``._image_load_service`` (is_loading), ``._get_crop_service``.
+    """
+    try:
+        ctrl = getattr(presenter, "session_controller", None) or getattr(
+            presenter, "controller", None
+        )
+        if ctrl is not None:
+            return ctrl
+    except Exception:
+        pass
+    try:
+        mc = getattr(presenter, "main_controller", None)
+        sessions = getattr(mc, "sessions", None) if mc is not None else None
+        if sessions is not None:
+            return sessions
+    except Exception:
+        pass
+    try:
+        mw = getattr(presenter, "main_window_app", None)
+        if mw is not None:
+            tab = getattr(getattr(mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)(
+                "image_compare"
+            )
+            sc = getattr(tab, "session_controller", None) if tab is not None else None
+            if sc is not None:
+                return sc
+    except Exception:
+        pass
+    try:
+        widget = getattr(presenter, "widget", None)
+        win = None
+        if widget is not None:
+            ctx = getattr(widget, "_context", None)
+            win = getattr(ctx, "main_window", None) if ctx is not None else None
+            if win is None:
+                try:
+                    win = widget.window()
+                except Exception:
+                    win = None
+        win_presenter = getattr(win, "presenter", None) if win is not None else None
+        mc = getattr(win_presenter, "main_controller", None) if win_presenter is not None else None
+        sessions = getattr(mc, "sessions", None) if mc is not None else None
+        if sessions is not None:
+            return sessions
+    except Exception:
+        pass
+    return None
+
+
 @dataclass
 class ImageSession:
     session_id: str

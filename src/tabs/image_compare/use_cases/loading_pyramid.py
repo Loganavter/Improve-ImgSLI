@@ -65,6 +65,12 @@ def start_pyramid_builds(controller, *stores) -> None:
         except Exception:
             abort_sig = None
         for slot_offset, store in enumerate(stores):
+            if store is None:
+                _preview_log(
+                    "start_pyramid_builds: slot %s has no store yet, skipped",
+                    slot_offset + 1,
+                )
+                continue
             image_number = slot_offset + 1
             # toast liveness via single-flight: no pending full decode for slot
             pl = getattr(controller, "pipeline", None)

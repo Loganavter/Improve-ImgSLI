@@ -297,6 +297,35 @@ class ImageCompareChromeSync(QObject):
             return window_presenter.get_feature("toolbar")
         return None
 
+    def refresh_filename_toolbar(self, window_presenter=None) -> bool:
+        """Drive the filename toolbar button from the Store flag.
+
+        Single fanout entry for every branch that moves the bottom edit
+        panel (visible/deferred/tab-switch/restore): resolves the toolbar
+        presenter, runs the EXISTING ``update_toolbar_states`` fanout, and
+        reports False (with a warning log) when there is nobody to sync
+        through instead of a silent no-op. Never raises.
+        """
+        import logging
+
+        _logger = logging.getLogger("ImproveImgSLI")
+        try:
+            wp = window_presenter if window_presenter is not None else self._window_presenter()
+            toolbar = self._toolbar_presenter(wp)
+            if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
+                toolbar.update_toolbar_states()
+                return True
+            _logger.warning(
+                "refresh_filename_toolbar: no toolbar presenter reachable, "
+                "button not synced with the Store"
+            )
+            return False
+        except Exception:
+            _logger.warning(
+                "refresh_filename_toolbar: toolbar sync failed", exc_info=True
+            )
+            return False
+
     def _settings_presenter(self, window_presenter):
         if window_presenter is not None and hasattr(window_presenter, "get_feature"):
             return window_presenter.get_feature("settings")
@@ -341,16 +370,15 @@ class ImageCompareChromeSync(QObject):
                     Tracer.instance().record("render.ic.chrome_deferred", "IC chrome deferred - background tab", {"domain": domain})
             except Exception:
                 pass
-            toolbar = self._toolbar_presenter(window_presenter)
-            if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
-                toolbar.update_toolbar_states()
+            self.refresh_filename_toolbar(window_presenter)
             self.widget.toggle_edit_layout_visibility(
             self.store.viewport.render_config.include_file_names_in_saved
             )
             return
-        # Видимая ветка тоже обязана двигать нижнюю edit-панель за флагом
-        # (как deferred-ветка выше): иначе клик btn_file_names меняет только
-        # стор, а панель не появляется — batch file_names правит лишь лейблы.
+        # Видимая ветка двигает нижнюю edit-панель за флагом вместе с кнопкой
+        # через общий refresh_filename_toolbar: иначе клик btn_file_names
+        # меняет стор и панель, а кнопка после рестарта остаётся stale.
+        self.refresh_filename_toolbar(window_presenter)
         try:
             widget = self.widget
             if widget is not None:
@@ -358,7 +386,11 @@ class ImageCompareChromeSync(QObject):
                     self.store.viewport.render_config.include_file_names_in_saved
                 )
         except Exception:
-            pass
+            import logging
+
+            logging.getLogger("ImproveImgSLI").debug(
+                "handle_store_domain: edit panel toggle missed", exc_info=True
+            )
         # Lazy: resolution/psnr/zoom not needed until full_res images are present
         batch = ["file_names", "combobox", "ratings", "window_schedule"]
         if self._has_full_res():

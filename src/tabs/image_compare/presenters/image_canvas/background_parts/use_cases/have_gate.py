@@ -28,17 +28,9 @@ def _peek_sources(presenter, document):
     _path1 = getattr(document, "image1_path", None)
     _path2 = getattr(document, "image2_path", None)
     try:
-        _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
-        if _ctrl is None:
-            try:
-                from tabs.image_compare.pipeline.cache import PipelineCache as _PC  # noqa: F401
+        from tabs.image_compare.pipeline.session import resolve_session_controller
 
-                _mw = getattr(presenter, "main_window_app", None)
-                if _mw is not None:
-                    _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
-                    _ctrl = getattr(_tab, "session_controller", None) if _tab else None
-            except Exception:
-                _ctrl = None
+        _ctrl = resolve_session_controller(presenter)
         _pl = getattr(_ctrl, "pipeline", None) if _ctrl is not None else None
     except Exception:
         _pl = None

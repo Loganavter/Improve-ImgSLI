@@ -355,6 +355,49 @@ saving side must clamp to the same range so save->load is a fixpoint;
 `tests/runtime/test_settings_full_pass.py` keeps an explicit
 `_RANGE_SAFE_VALUES` manifest for such fields.
 
+## Store→Widget Sync Contract (The Restart Problem)
+
+Every Store flag a user can flip (toolbar toggles, label switches, …) must
+reach **every** widget projection (panel visibility, button state, …) on
+**every** sync path: live dispatch, deferred/background-tab branch, tab
+switch, and post-restore. A Store flip that moves the panel but not the
+button (observed: labels on after restart while the toolbar button stayed
+off) is a desync, not a cosmetic lag.
+
+Sync vocabulary convention (what the dogmas scan — use these names so any
+tab is covered automatically, no per-tab special cases):
+
+- entry points: `handle_store_domain` / `apply_initial_state` /
+  `apply_host_session_mode`;
+- visibility moves: `setVisible` or `toggle_*_visibility`;
+- toolbar fanout: `update_toolbar_states` (toolbar-presenter fanout entry),
+  `sync_state` / `get_feature_toolbar_bindings` (shared binding API),
+  `refresh_*toolbar` (post-restore re-sync, must return `bool`).
+
+Rules:
+
+1. **Fanout symmetry** — a branch that moves one projection moves all of
+   them. No visible-branch-moves-panel / deferred-branch-moves-both splits.
+2. **No silent swallow** — sync helpers never `except Exception: pass` /
+   `return None` around a sync decision. A missed sync (no presenter
+   reachable during early-bootstrap restore, dispatch failure) logs a
+   warning and reports `False`; narrow guards (`except RuntimeError` for
+   torn-down widgets, probes) are out of scope.
+3. **Store-first reveal** — code that reveals chrome (Find Action, flyouts)
+   flips the SSOT flag via `dispatch(Set*Action)` first; direct widget
+   forcing is last-resort only and self-heals on the next emit.
+
+Enforced by:
+
+- `tests/contracts/test_store_projection_symmetry_contracts.py` — static AST.
+- `tests/contracts/test_sync_no_silent_swallow_contracts.py` — static AST.
+- `tests/contracts/test_render_config_roundtrip_contracts.py` — every
+  `RenderConfig` field has a reducer branch and a persistence roundtrip.
+- `tests/contracts/test_deferred_restore_close_loop_contracts.py` — every
+  deferred restore callback carries retry/re-sync.
+- `src/tabs/image_compare/tests/runtime/test_store_projection_roundtrip.py` —
+  behavioral roundtrip (dispatch → both branches → post-restore).
+
 ## Design Principles Behind These Contracts
 
 These are the **architectural** sense of contract — isolation rules that
