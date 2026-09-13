@@ -144,7 +144,15 @@ def update_toolbar_states(presenter):
             _note_dead_control("slider_speed")
     for binding in registry().get_feature_toolbar_bindings():
         if binding.sync_state is not None:
-            binding.sync_state(presenter)
+            try:
+                binding.sync_state(presenter)
+            except RuntimeError:
+                # One feature's stale widget refs must not take down the
+                # whole fanout (capture/widget.py ValueSlider storm).
+                logger.debug(
+                    "toolbar sync_state skipped (deleted): %s",
+                    getattr(binding, "control_id", "?"),
+                )
 
 def on_color_option_clicked(presenter, option: str):
     settings_presenter = _get_settings_presenter_from_window(presenter)

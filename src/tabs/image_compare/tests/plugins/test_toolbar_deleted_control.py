@@ -49,3 +49,67 @@ def test_availability_syncs_all_live_controls(qtbot, presenter):
     toolbar_state._update_canvas_feature_control_availability(stub)
     assert live.isEnabled() is True
     assert dead.isEnabled() is True
+
+
+def test_capture_sync_skips_deleted_slider(qtbot, monkeypatch):
+    """Same storm one level down: capture's own quiet-setter must survive
+    a shiboken-deleted slider (production: binding.sync_state ->
+    _sync_capture_toolbar_state -> slider.value() RuntimeError per emit)."""
+    from PySide6.QtWidgets import QSlider
+
+    from tabs.image_compare.canvas.features.capture import widget as capture_widget
+
+    monkeypatch.setattr(capture_widget, "_capture_size_from_view_state", lambda vs: 0.5)
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    slider = QSlider(parent)
+    store = SimpleNamespace(viewport=SimpleNamespace(view_state=object()))
+    stub = SimpleNamespace(widget=SimpleNamespace(slider_capture=slider), store=store)
+    capture_widget._sync_capture_toolbar_state(stub)  # live: must not raise
+    slider.deleteLater()  # C++ gone, Python wrapper alive
+    qtbot.wait(20)
+    capture_widget._sync_capture_toolbar_state(stub)  # dead: must not raise
+
+
+def test_bindings_fanout_survives_one_bad_feature(qtbot, monkeypatch, caplog):
+    """One feature's stale refs must not take down the whole bindings loop."""
+    from PySide6.QtWidgets import QPushButton
+
+    calls = []
+    bad = SimpleNamespace(
+        control_id="bad.feature",
+        sync_state=lambda presenter: (_ for _ in ()).throw(
+            RuntimeError("libshiboken: Internal C++ object already deleted.")
+        ),
+    )
+    good = SimpleNamespace(
+        control_id="good.feature",
+        sync_state=lambda presenter: calls.append(1),
+    )
+    monkeypatch.setattr(
+        toolbar_state,
+        "registry",
+        lambda: SimpleNamespace(
+            get_feature_toolbar_binding=lambda cid: None,
+            get_feature_toolbar_bindings=lambda: (bad, good),
+        ),
+    )
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    widget = SimpleNamespace(
+        btn_file_names=None,
+        slider_speed=None,
+        image_label=None,
+    )
+    store = SimpleNamespace(
+        viewport=SimpleNamespace(
+            render_config=SimpleNamespace(include_file_names_in_saved=False),
+            view_state=SimpleNamespace(movement_speed_per_sec=1.0),
+        ),
+        settings=SimpleNamespace(current_language="en"),
+    )
+    stub = SimpleNamespace(widget=widget, store=store)
+    with caplog.at_level("DEBUG", logger="ImproveImgSLI"):
+        toolbar_state.update_toolbar_states(stub)  # must not raise
+    assert calls == [1]
+    assert "bad.feature" in caplog.text
