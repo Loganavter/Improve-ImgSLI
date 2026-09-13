@@ -136,7 +136,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 254,
+      "lines": 261,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -262,7 +262,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 626,
+      "lines": 648,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -392,7 +392,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 956,
+      "lines": 999,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -560,7 +560,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 802,
+      "lines": 859,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
@@ -571,7 +571,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/unify.py",
-      "lines": 504,
+      "lines": 568,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file\"",
