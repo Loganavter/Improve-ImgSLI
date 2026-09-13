@@ -53,6 +53,33 @@ _last_gap_geometry_sig = None  # type: ignore
 _last_gap_geometry_input_sig = None  # type: ignore
 
 
+def _is_unified_pair(src1, src2) -> bool:
+    """Honest ``unified``: both sides full-res stores of equal size.
+
+    ``image_state`` presence alone (either side set) is NOT unification —
+    a mixed preview/full pair must keep ``unified=False`` so diagnostics
+    (envelope size, gap logs) do not claim a 5760 envelope while pick
+    serves preview/preview via the joint hold. A real unified pair is two
+    open ``TiledPixelStore`` of equal nonzero size (what ``unify_pair``
+    produces and the unify memo holds).
+    """
+    if not (isinstance(src1, TiledPixelStore) and isinstance(src2, TiledPixelStore)):
+        return False
+    try:
+        if not (src1.is_open and src2.is_open):
+            return False
+    except Exception:
+        return False
+    s1 = _size_or_none(src1)
+    s2 = _size_or_none(src2)
+    if not s1 or not s2:
+        return False
+    try:
+        return int(s1[0]) == int(s2[0]) and int(s1[1]) == int(s2[1]) and s1[0] > 0 and s1[1] > 0
+    except Exception:
+        return False
+
+
 def update_comparison_geometry(presenter, source1, source2, label_w, label_h) -> None:
     """Letterbox the comparison to the best sizes available right now.
 
@@ -93,9 +120,9 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
             _doc = None
         _p1 = getattr(_doc, "image1_path", None) if _doc is not None else None
         _p2 = getattr(_doc, "image2_path", None) if _doc is not None else None
-        _ctrl = getattr(presenter, "session_controller", None) or getattr(
-            presenter, "controller", None
-        )
+        from tabs.image_compare.pipeline.session import resolve_session_controller
+
+        _ctrl = resolve_session_controller(presenter)
         try:
             _svc = _ctrl._get_crop_service() if _ctrl is not None else None
         except Exception:
@@ -137,7 +164,7 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
     # [ic-gap] input snapshot before guard — throttled: same (state, src, label, unified, size) at 60Hz
     if _gap_enabled():
         try:
-            _unified = bool(src_resize1 is not None or src_resize2 is not None)
+            _unified = _is_unified_pair(src_resize1, src_resize2)
             _gap_input_sig = (
                 image_uid(src_resize1) if src_resize1 is not None else None,
                 image_uid(src_resize2) if src_resize2 is not None else None,
@@ -187,7 +214,7 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
             _prev_rect = getattr(geometry, "image_display_rect_on_label", None)
             _prev_w = getattr(geometry, "pixmap_width", None)
             _prev_h = getattr(geometry, "pixmap_height", None)
-            _sig = (scaled_w, scaled_h, new_rect, bool(src_resize1 or src_resize2))
+            _sig = (scaled_w, scaled_h, new_rect, _is_unified_pair(src_resize1, src_resize2))
             if _sig != _last_gap_geometry_sig:
                 _last_gap_geometry_sig = _sig
                 _gap_log(
@@ -201,7 +228,7 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
                     label_w,
                     label_h,
                     scale if 'scale' in locals() else 0.0,
-                    bool(src_resize1 is not None or src_resize2 is not None),
+                    _is_unified_pair(src_resize1, src_resize2),
                     _size_or_none(src_resize1) or _size_or_none(source1),
                     _size_or_none(src_resize2) or _size_or_none(source2),
                 )

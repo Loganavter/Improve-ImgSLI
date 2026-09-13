@@ -7,6 +7,8 @@ import logging
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from tabs.image_compare.debug import ic_preview_debug as _preview_log
+
 from core.state_management.actions import (
     SetCachedDiffImageAction,
     SetImageSessionImageAction,
@@ -108,6 +110,30 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
         return
     s1, s2 = _slot_sources(controller, document)
     if not (s1 and s2):
+        try:
+            controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
+        return
+    try:
+        from shared.image_processing.pixel_ops.unify import is_preview_tier as _is_preview_tier
+    except Exception:
+        _is_preview_tier = lambda _s: False  # type: ignore
+    if _is_preview_tier(s1) or _is_preview_tier(s2):
+        # Mixed-tier pair (preview QImage + full store): unify_pair would
+        # skip inside the worker — an empty task that sets the
+        # unification_in_progress flag + path-only _inflight entry and eats
+        # the post-full-load retry. Serve ready sides without a worker and
+        # leave no flag behind; the full-res arrival re-triggers unify via
+        # handle_full_image_loaded.
+        try:
+            _start_builds_for_ready_sides(controller, document)
+        except Exception:
+            pass
+        try:
+            _clear_unification_flags(controller)
+        except Exception:
+            pass
         try:
             controller.metrics_service.on_metrics_calculated(None)
         except Exception:
@@ -221,7 +247,19 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
         unify_key = None
         if pl is not None and hasattr(pl, "_inflight"):
             try:
-                unify_key = (document.image1_path, document.image2_path, method)
+                # Dedup carries source identity (uid/tier), not just paths:
+                # a skipped mixed-tier pass must never suppress the retry
+                # after both sides go full (same paths, new stores).
+                try:
+                    from shared.rendering.image_identity import image_uid as _uid
+                except Exception:
+                    _uid = None  # type: ignore
+                try:
+                    _k1 = _uid(s1) if _uid is not None else ("preview" if _is_preview_tier(s1) else "full")
+                    _k2 = _uid(s2) if _uid is not None else ("preview" if _is_preview_tier(s2) else "full")
+                except Exception:
+                    _k1, _k2 = ("preview" if _is_preview_tier(s1) else "full"), ("preview" if _is_preview_tier(s2) else "full")
+                unify_key = (document.image1_path, document.image2_path, method, _k1, _k2)
                 existing = pl._inflight.get(unify_key)  # type: ignore[arg-type]
                 if existing is not None:
                     try:
@@ -313,11 +351,67 @@ def trigger_preview_unification(controller, image_number: int):
     ensure_unification(controller)
 
 
+def _start_builds_for_ready_sides(controller, document) -> None:
+    """Pyramid builds for full-res sides after a skipped/aborted unify.
+
+    A skipped task (preview-tier side, superseded, error) returns no pair,
+    so the normal ``_start_pyramid_builds(u1, u2)`` never runs — and the
+    loading toast waits for pyramid completions nobody builds. Start builds
+    for the sides whose full-res pixel store is already decoded; preview or
+    missing sides are skipped (their full arrival re-triggers unify via
+    ``handle_full_image_loaded``). Slot positions are preserved so the
+    coordinator maps completions to the right toast.
+    """
+    try:
+        from PySide6.QtGui import QImage as _QImage
+    except Exception:
+        _QImage = ()
+    try:
+        pl = getattr(controller, "pipeline", None)
+    except Exception:
+        pl = None
+    if document is None:
+        return
+    ready = []
+    for attr in ("image1_path", "image2_path"):
+        path = getattr(document, attr, None)
+        full = None
+        if path and pl is not None:
+            try:
+                cand = pl.peek(path)
+            except Exception:
+                cand = None
+            if cand is not None and not isinstance(cand, _QImage):
+                try:
+                    if getattr(cand, "is_open", True):
+                        full = cand
+                except Exception:
+                    pass
+        ready.append(full)
+    if any(s is not None for s in ready):
+        try:
+            _preview_log(
+                "unify skipped: starting side builds for ready slots=%s",
+                [i + 1 for i, s in enumerate(ready) if s is not None],
+            )
+            controller._start_pyramid_builds(*ready)
+        except Exception:
+            pass
+    else:
+        _preview_log("unify skipped: no full-res sides ready, no builds started")
+
+
 def on_unified_images_ready(controller, result):
     if not result:
         _clear_unification_flags(controller)
         try:
             controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass
+        try:
+            _start_builds_for_ready_sides(
+                controller, controller.store.get_session_state_slot("document")
+            )
         except Exception:
             pass
         return
@@ -336,9 +430,29 @@ def on_unified_images_ready(controller, result):
 
             if isinstance(task_or_signal, _AbortSignal):
                 if task_or_signal.is_aborted():
+                    # Skipped/superseded worker: must not leave the
+                    # unification_in_progress flag set — the post-full-load
+                    # ensure_unification would see the flag + stale dedup
+                    # entry and fire no retry task.
+                    _clear_unification_flags(controller)
+                    try:
+                        controller.metrics_service.on_metrics_calculated(None)
+                    except Exception:
+                        pass
+                    try:
+                        _start_builds_for_ready_sides(
+                            controller, controller.store.get_session_state_slot("document")
+                        )
+                    except Exception:
+                        pass
                     return
             else:
                 # legacy int signal no longer used — treat as aborted if not AbortSignal
+                _clear_unification_flags(controller)
+                try:
+                    controller.metrics_service.on_metrics_calculated(None)
+                except Exception:
+                    pass
                 return
         except Exception:
             return
@@ -358,6 +472,10 @@ def on_unified_images_ready(controller, result):
             _clear_unification_flags(controller)
             try:
                 controller.metrics_service.on_metrics_calculated(None)
+            except Exception:
+                pass
+            try:
+                _start_builds_for_ready_sides(controller, document)
             except Exception:
                 pass
             return

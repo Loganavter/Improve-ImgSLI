@@ -237,8 +237,11 @@ class PipelineCache:
         self._max_preview_bytes = int(max_preview_bytes)
         # Pin: pixel-ключи и unify-uid которые сейчас на canvas.
         # Eviction пропускает их (см. tile/texture evict_over_budget с protected).
+        # Preview-ключи показанных путей — тоже (иначе показанный QImage
+        # выселяется раньше замены на тайлы и backing рвётся).
         self._pinned_pixel_keys: set[tuple] = set()
         self._pinned_uids: set[int] = set()
+        self._pinned_preview_keys: set[tuple] = set()
         self.crop_service = crop_service
 
     # -- pin (защита видимого от eviction) --
@@ -253,6 +256,9 @@ class PipelineCache:
                 for k in list(self._pixel.keys()):
                     if k and k[0] == norm:
                         self._pinned_pixel_keys.add(k)
+                for k in list(self._preview.keys()):
+                    if k and k[0] == norm:
+                        self._pinned_preview_keys.add(k)
                 for s in list(self._pixel.values()):
                     uid = _uid_of(s)
                     # пиним только uid показанных путей
@@ -271,6 +277,7 @@ class PipelineCache:
         except Exception:
             return
         self._pinned_pixel_keys = {k for k in self._pinned_pixel_keys if not (k and k[0] in norms)}
+        self._pinned_preview_keys = {k for k in self._pinned_preview_keys if not (k and k[0] in norms)}
         # uids чистим лениво: дропаем те, чьих путей больше нет в пикселях
         try:
             live_uids = {_uid_of(s) for s in self._pixel.values()}
@@ -281,6 +288,7 @@ class PipelineCache:
     def set_pinned_paths(self, paths) -> None:
         self._pinned_pixel_keys.clear()
         self._pinned_uids.clear()
+        self._pinned_preview_keys.clear()
         self.pin_paths(paths)
 
     # -- budget helpers --
@@ -313,10 +321,15 @@ class PipelineCache:
 
     def _ensure_preview_budget(self) -> None:
         while (len(self._preview) > self._max_preview or self._preview_bytes() > self._max_preview_bytes) and self._preview:
-            try:
-                self._preview.popitem(last=False)
-            except Exception:
+            evicted = False
+            for k in list(self._preview.keys()):
+                if k in self._pinned_preview_keys:
+                    continue
+                self._preview.pop(k, None)
+                evicted = True
                 break
+            if not evicted:
+                break  # всё запинено — терпим over-budget, не выселяем показанное
 
     def _ensure_unify_budget(self) -> None:
         while (len(self._unify) > self._max_unify or self._unify_bytes() > self._max_unify_bytes) and self._unify:
@@ -585,14 +598,20 @@ class PipelineCache:
         return qimg
 
     def evict(self, path: str) -> None:
-        """Evict all pixel+preview entries for path (all auto_crop variants) + sweep pyramid."""
+        """Evict all pixel+preview entries for path (all auto_crop variants) + sweep pyramid.
+
+        Pinned (currently displayed) entries survive an explicit evict — they
+        are dropped lazily via unpin (path switch calls set_pinned_paths).
+        Evicting a displayed preview out from under the canvas breaks the
+        preview backing before tiles replace it.
+        """
         # embedded project cache — central invalidation (was pixel_cache_registry._cache.pop)
         try:
             pop_embedded_cache(path)
         except Exception:
             pass
         # pixel eviction (uid собираем ДО close — info живёт и после, но так надёжнее)
-        to_drop = [k for k in list(self._pixel.keys()) if k and k[0] == os.path.normpath(path)]
+        to_drop = [k for k in list(self._pixel.keys()) if k and k[0] == os.path.normpath(path) and k not in self._pinned_pixel_keys]
         evicted_uids: set = set()
         for k in to_drop:
             old = self._pixel.pop(k, None)
@@ -602,10 +621,10 @@ class PipelineCache:
                 self._pinned_uids.discard(uid)
             self._pinned_pixel_keys.discard(k)
             self._close_store(old)
-        # preview eviction
+        # preview eviction (pinned/shown previews survive — see docstring)
         try:
             norm = os.path.normpath(path)
-            to_drop_prev = [k for k in list(self._preview.keys()) if k and k[0] == norm]
+            to_drop_prev = [k for k in list(self._preview.keys()) if k and k[0] == norm and k not in self._pinned_preview_keys]
             for k in to_drop_prev:
                 self._preview.pop(k, None)
         except Exception:

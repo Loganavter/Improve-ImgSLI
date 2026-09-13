@@ -32,6 +32,14 @@ except Exception:  # pragma: no cover
         return False
 
 
+# Sig-throttle for the per-frame gap draw_plan log: build_array_draw_plan
+# runs on every frame (including keep-warm no-op ticks), so an unconditional
+# log spams identical lines while the sig is unchanged. Same pattern as
+# renderer.py's _last_renderer_draw_plan_sig (texture keys + items length +
+# layers + bbox sample). Fallback promotion logging is untouched.
+_last_gap_draw_plan_sig: tuple | None = None
+
+
 def resolve_lod_texture_keys(
     texture_keys: tuple[object, object],
     sources: tuple[object, object],
@@ -583,6 +591,20 @@ def build_array_draw_plan(
             distinct_diff_layers=len({item.layer_diff for item in items}),
         )
     if _gap_enabled() and items:
+        try:
+            global _last_gap_draw_plan_sig
+            _gap_sig = (
+                tuple(str(k) for k in texture_keys),
+                len(items),
+                tuple(getattr(it, "layer1", None) for it in items[:3]),
+                tuple(getattr(it, "layer2", None) for it in items[:3]),
+                tuple(getattr(it, "bbox", None) for it in items[:2]),
+            )
+            if _gap_sig == _last_gap_draw_plan_sig:
+                return items
+            _last_gap_draw_plan_sig = _gap_sig
+        except Exception:
+            pass
         try:
             widths = [b[2] for b in (it.bbox for it in items)]
             heights = [b[3] for b in (it.bbox for it in items)]

@@ -22,6 +22,21 @@ logger = logging.getLogger("ImproveImgSLI")
 _ACCURATE_UNIFY_MAX_PIXELS = 4096 * 4096
 
 
+def is_preview_tier(source) -> bool:
+    """True when ``source`` is a preview-tier QImage (never unify input).
+
+    Single source of truth for the preview-tier predicate: the tile-native
+    path must never upscale a 1024px preview into a full-size store, and
+    tab-side callers gate on this before spawning a worker so mixed-tier
+    pairs serve ready sides without an empty task.
+    """
+    try:
+        from PySide6.QtGui import QImage
+    except Exception:
+        return False
+    return isinstance(source, QImage)
+
+
 def unify_pair(
     source1,
     source2,
@@ -41,6 +56,20 @@ def unify_pair(
     if lease1 is not None and not lease1.valid:
         return None, None
     if lease2 is not None and not lease2.valid:
+        return None, None
+
+    if is_preview_tier(source1) or is_preview_tier(source2):
+        # Preview tier must never enter unify: the tile-native path would
+        # silently upscale a 1024px preview into a full-size store (burning
+        # a full resample) and the result would poison the unify memo as a
+        # full-res pair. The full-res arrival re-triggers unify via
+        # handle_full_image_loaded -> ensure_unification; until then the
+        # preview-backing display path holds the preview.
+        logger.debug(
+            "Unify skipped (preview-tier QImage side): %s + %s",
+            type(source1).__name__,
+            type(source2).__name__,
+        )
         return None, None
 
     if source1 is None and source2 is None:
