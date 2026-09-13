@@ -319,6 +319,60 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
 
         return tile_service.register_source(key, (src_w, src_h))
 
+    def _release_and_protect_preview_holds(
+        self, tile_service, pairs, texture_keys, result
+    ) -> set:
+        """Joint preview-hold maintenance + host-cache protected set.
+
+        The preview baseline stashed in ``_preview_stash`` is a *joint* hold
+        ("until BOTH halves have complete tile replacement"): its GPU tiles
+        are protected via ``extra_protect_keys`` inside ``realize_specs``,
+        but the host-side QImage behind the fallback is evicted by a
+        separate ``evict_texture_upload_cache_over_budget`` pass whose
+        protected set used to be only this call's own pairs. A call made
+        for a different role pair (the magnifier's ``source_*`` residency
+        call shares this realizer and this host cache with the main
+        ``stored_*`` call) could therefore drop the held baseline while its
+        GPU hold was still active -- and neither progressive re-crop nor
+        post-context-loss ``restore_texture_uploads`` (which re-queues from
+        the host cache) could bring it back.
+
+        So: drop holds whose stash key lost all residency (dead fallback --
+        protecting nothing), release this call's pair holds once both
+        halves' new content is fully resident (per
+        ``result.key_incomplete_by_key``), and return this call's pairs plus
+        the role keys backing the surviving holds as the host protected set.
+        Stash/tuple keys never live in the host cache (whole-image QImages
+        keyed by texture role), so only the role key is added per hold.
+        """
+        for held_role in list(self._preview_stash):
+            try:
+                alive = bool(
+                    tile_service.resident_tiles(self._preview_stash[held_role])
+                )
+            except Exception:
+                alive = False
+            if not alive:
+                self._preview_stash.pop(held_role, None)
+        try:
+            pair_complete = bool(texture_keys) and all(
+                result.key_incomplete_by_key.get(key) is False
+                for key in texture_keys
+            )
+        except Exception:
+            pair_complete = False
+        if pair_complete:
+            for key in texture_keys:
+                self._preview_stash.pop(key, None)
+        host_protected = {key for key, _ in pairs}
+        for held_role, stash_key in self._preview_stash.items():
+            try:
+                if tile_service.resident_tiles(stash_key):
+                    host_protected.add(held_role)
+            except Exception:
+                pass
+        return host_protected
+
     def realize_tile_plan(
         self,
         tile_service: TileTextureService,
@@ -690,8 +744,11 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             for array_index in dirty_layers:
                 updates.generateMips(self._array_resources.tile_arrays[array_index])
 
+        host_protected = self._release_and_protect_preview_holds(
+            tile_service, pairs, texture_keys, result
+        )
         evict_texture_upload_cache_over_budget(
-            widget, {key for key, _ in pairs}, _HOST_TEXTURE_CACHE_BUDGET_BYTES
+            widget, host_protected, _HOST_TEXTURE_CACHE_BUDGET_BYTES
         )
 
         if result.more_tiles_pending:
