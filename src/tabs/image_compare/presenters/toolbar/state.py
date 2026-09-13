@@ -36,6 +36,37 @@ def _set_slider_value_quietly(slider, value: int) -> None:
     finally:
         del blocker
 
+# Last logged deleted-control attr (throttle: one debug line per attr, not
+# per store emit — the sync fanout runs on every emit and a dead wrapper
+# would otherwise spam once per emit until the next widget rebuild).
+_last_dead_control_log_sig = None  # type: ignore
+
+
+def _is_qt_alive(control) -> bool:
+    """False when a PySide6 wrapper outlived its C++ object.
+
+    Same guard as ui_update_batcher._flush_updates: chrome rebuilds between
+    store emits can delete the C++ side while the Python attr on the widget
+    still references the wrapper (hasattr passes, any C++ call raises
+    RuntimeError). Fail-open True when shiboken is unavailable or undecided —
+    the per-control try/except RuntimeError below still catches it.
+    """
+    try:
+        import shiboken6  # type: ignore
+    except Exception:
+        return True
+    try:
+        return bool(shiboken6.isValid(control))
+    except Exception:
+        return True
+
+
+def _note_dead_control(attr_name: str) -> None:
+    global _last_dead_control_log_sig
+    if _last_dead_control_log_sig != attr_name:
+        _last_dead_control_log_sig = attr_name
+        logger.debug("toolbar availability: skip deleted control %s", attr_name)
+
 def check_name_lengths(presenter):
     len1 = len(presenter.widget.edit_name1.text().strip())
     len2 = len(presenter.widget.edit_name2.text().strip())
@@ -60,34 +91,57 @@ def _update_canvas_feature_control_availability(presenter) -> None:
         control = getattr(widget, attr_name, None)
         if control is None or not hasattr(control, "setEnabled"):
             continue
-        control.setEnabled(
-            any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
-        )
+        if not _is_qt_alive(control):
+            _note_dead_control(attr_name)
+            continue
+        try:
+            control.setEnabled(
+                any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
+            )
+        except RuntimeError:
+            # Wrapper outlived its C++ object (chrome rebuild between emits):
+            # skip this control, keep syncing the rest. The stale attr
+            # refreshes on the next widget rebuild.
+            _note_dead_control(attr_name)
+            continue
 
 def update_toolbar_states(presenter):
-    presenter.widget.btn_file_names.setChecked(
-        presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
-    )
-    image_label = getattr(presenter.widget, "image_label", None)
-    zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
-    file_names_temporarily_hidden = (
-        presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
-    )
-    if hasattr(presenter.widget.btn_file_names, "setVisualIconOverride"):
-        presenter.widget.btn_file_names.setVisualIconOverride(
-            Icon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
+    file_names_btn = getattr(presenter.widget, "btn_file_names", None)
+    if file_names_btn is None or not _is_qt_alive(file_names_btn):
+        if file_names_btn is not None:
+            _note_dead_control("btn_file_names")
+    else:
+        file_names_btn.setChecked(
+            presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
         )
-    lang = presenter.store.settings.current_language
-    presenter.widget.btn_file_names.setToolTip(
-        tr("tooltip.file_names_hidden_on_zoom", lang)
-        if file_names_temporarily_hidden
-        else tr("image_compare.ui.include_file_names_in_saved_image", lang)
-    )
+        image_label = getattr(presenter.widget, "image_label", None)
+        zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
+        file_names_temporarily_hidden = (
+            presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
+        )
+        if hasattr(file_names_btn, "setVisualIconOverride"):
+            file_names_btn.setVisualIconOverride(
+                Icon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
+            )
+        lang = presenter.store.settings.current_language
+        file_names_btn.setToolTip(
+            tr("tooltip.file_names_hidden_on_zoom", lang)
+            if file_names_temporarily_hidden
+            else tr("image_compare.ui.include_file_names_in_saved_image", lang)
+        )
     _update_canvas_feature_control_availability(presenter)
-    _set_slider_value_quietly(
-        presenter.widget.slider_speed,
-        int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
-    )
+    speed_slider = getattr(presenter.widget, "slider_speed", None)
+    if speed_slider is None or not _is_qt_alive(speed_slider):
+        if speed_slider is not None:
+            _note_dead_control("slider_speed")
+    else:
+        try:
+            _set_slider_value_quietly(
+                speed_slider,
+                int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
+            )
+        except RuntimeError:
+            _note_dead_control("slider_speed")
     for binding in registry().get_feature_toolbar_bindings():
         if binding.sync_state is not None:
             binding.sync_state(presenter)
