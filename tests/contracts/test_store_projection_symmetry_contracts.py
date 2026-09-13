@@ -3,25 +3,33 @@
 Dogma source: docs/dev/STORE.md (all state changes go through Dispatcher,
 widgets sync from the Store) + docs/dev/CONTRACTS.md sync-boundary rules.
 
-Tab-specific (image_compare): the projection names below
-(``toggle_edit_layout_visibility``, ``update_toolbar_states``) are this
-tab's chrome vocabulary, so per TESTING.md ownership this test lives in
-the tab folder, not in shared tests/contracts/.
-
 A Store->widget sync function that moves one projection (panel visibility)
-must move the sibling projections (toolbar/button sync) in the SAME
-branch. Otherwise the Store flips, the panel follows, the button stays
-stale -- e.g. ``handle_store_domain`` visible branch moved only the edit
-row while the deferred branch moved both (``btn_file_names`` unchecked
-after restart while ``include_file_names_in_saved`` was True).
+must move the sibling projections (toolbar/button sync via the toolbar
+fanout) in the SAME branch. Otherwise the Store flips, the panel follows,
+the button stays stale -- e.g. image_compare's ``handle_store_domain``
+visible branch once moved only the edit row while the deferred branch
+moved both (button unchecked after restart while the flag was True).
 
-Template: tests/contracts/test_no_drag_overlay_desync.py (walk inside one
-function, per-branch offender list, early-return guard handling).
+Keys are sync-vocabulary CONVENTIONS, not tab names (template:
+tests/contracts/test_no_tab_to_tab_service.py discovery +
+test_no_direct_store_mutation.py live-shape thinking):
+- entry points: ``handle_store_domain`` / ``apply_initial_state`` /
+  ``apply_host_session_mode`` (chrome-sync / TabContract surface);
+- visibility moves: ``setVisible`` or ``toggle_*_visibility``;
+- toolbar fanout: ``update_toolbar_states`` (toolbar-presenter fanout
+  entry convention), ``sync_state`` / ``get_feature_toolbar_bindings``
+  (shared CanvasFeatureToolbarBinding API), ``refresh_*toolbar``.
+Tabs without this sync shape (stubs) pass vacuously; any tab that grows
+it is covered automatically. One owner per invariant (TESTING.md).
+
+Template for branch walking: test_no_drag_overlay_desync.py (per-branch
+offenders, early-return guard handling).
 """
 
 from __future__ import annotations
 
 import ast
+import re
 
 from ._framework import SRC, read, rel
 
@@ -33,50 +41,66 @@ _SYNC_FUNCTIONS = frozenset(
     }
 )
 
-_TOGGLE_ATTRS = frozenset(
-    {
-        "toggle_edit_layout_visibility",
-        "setVisible",
-    }
-)
+_TOGGLE_ATTRS = frozenset({"setVisible"})
+_TOGGLE_RE = re.compile(r"^toggle_.*_visibility$")
 
-_TOOLBAR_SYNC_ATTRS = frozenset(
+_FANOUT_ATTRS = frozenset(
     {
         "update_toolbar_states",
         "sync_state",
+        "get_feature_toolbar_bindings",
     }
 )
-
-_TOOLBAR_SYNC_NAMES = frozenset(
+_FANOUT_NAMES = frozenset(
     {
         "update_toolbar_states",
         "refresh_filename_overlay_toolbar",
     }
 )
+_FANOUT_REFRESH_RE = re.compile(r"^refresh_.*toolbar$")
+
+
+def _known_tab_roots() -> list:
+    tabs_root = SRC / "tabs"
+    if not tabs_root.is_dir():
+        return []
+    return sorted(
+        d for d in tabs_root.iterdir() if d.is_dir() and (d / "tab.py").exists()
+    )
 
 
 def _sync_files():
-    tab = SRC / "tabs" / "image_compare"
-    return [
-        p
-        for name in ("use_cases/chrome_sync.py", "tab.py")
-        for p in [tab / name]
-        if p.is_file()
-    ]
+    out = []
+    for tab in _known_tab_roots():
+        for name in ("use_cases/chrome_sync.py", "tab.py"):
+            p = tab / name
+            if p.is_file():
+                out.append(p)
+    return out
+
+
+def _is_toggle(attr: str) -> bool:
+    return attr in _TOGGLE_ATTRS or bool(_TOGGLE_RE.match(attr))
+
+
+def _is_fanout_attr(attr: str) -> bool:
+    return attr in _FANOUT_ATTRS or bool(_FANOUT_REFRESH_RE.match(attr))
+
+
+def _is_fanout_name(name: str) -> bool:
+    return name in _FANOUT_NAMES or bool(_FANOUT_REFRESH_RE.match(name))
 
 
 def _call_marks(call: ast.Call) -> set[str]:
     marks: set[str] = set()
     func = call.func
     if isinstance(func, ast.Attribute):
-        if func.attr in _TOGGLE_ATTRS:
+        if _is_toggle(func.attr):
             marks.add("toggle")
-        if func.attr in _TOOLBAR_SYNC_ATTRS:
-            marks.add("toolbar_sync")
-        if func.attr.startswith("refresh_") and "toolbar" in func.attr:
+        if _is_fanout_attr(func.attr):
             marks.add("toolbar_sync")
     elif isinstance(func, ast.Name):
-        if func.id in _TOOLBAR_SYNC_NAMES:
+        if _is_fanout_name(func.id):
             marks.add("toolbar_sync")
     return marks
 
@@ -119,6 +143,17 @@ def _find_functions(tree: ast.Module, name: str) -> list[ast.FunctionDef]:
     ]
 
 
+def _check_branch(path, fname: str, lineno: int, label: str, branch) -> list[str]:
+    marks = _block_marks(branch)
+    if "toggle" in marks and "toolbar_sync" not in marks:
+        return [
+            f"{rel(path)}:{lineno} {fname}() {label} branch moves panel "
+            f"visibility without toolbar fanout (add the toolbar sync entry "
+            f"next to the visibility toggle)"
+        ]
+    return []
+
+
 def _scan_file(path) -> list[str]:
     try:
         tree = ast.parse(read(path))
@@ -131,54 +166,36 @@ def _scan_file(path) -> list[str]:
             for if_node in [
                 n for n in ast.walk(fn) if isinstance(n, ast.If) and _is_visibility_branch(n)
             ]:
-                # Classic if/else: compare both branches.
                 if if_node.orelse:
                     for label, branch in (
                         ("visible", if_node.body),
                         ("deferred", if_node.orelse),
                     ):
-                        marks = _block_marks(branch)
-                        if "toggle" in marks and "toolbar_sync" not in marks:
-                            offenders.append(
-                                f"{rel(path)}:{if_node.lineno} {fname}() {label} branch "
-                                f"moves panel visibility without toolbar sync "
-                                f"(add update_toolbar_states/sync_state next to "
-                                f"toggle_edit_layout_visibility)"
-                            )
+                        offenders.extend(
+                            _check_branch(path, fname, if_node.lineno, label, branch)
+                        )
                     handled_guard = True
                     continue
                 # Early-return guard (if not visible: ...; return): the code
-                # AFTER the guard is the visible branch. Compare guard body
-                # (deferred) vs tail (visible).
+                # AFTER the guard is the visible branch.
                 if _block_has_return(if_node.body):
                     tail = _statements_after(fn.body, if_node)
                     for label, branch in (
                         ("deferred", if_node.body),
                         ("visible", tail),
                     ):
-                        marks = _block_marks(branch)
-                        if "toggle" in marks and "toolbar_sync" not in marks:
-                            offenders.append(
-                                f"{rel(path)}:{if_node.lineno} {fname}() {label} branch "
-                                f"moves panel visibility without toolbar sync "
-                                f"(add update_toolbar_states/sync_state next to "
-                                f"toggle_edit_layout_visibility)"
-                            )
+                        offenders.extend(
+                            _check_branch(path, fname, if_node.lineno, label, branch)
+                        )
                     handled_guard = True
             if handled_guard:
                 continue
             # Straight-line sync entry point (e.g. apply_host_session_mode):
-            # a lone panel toggle without toolbar fanout desyncs button vs panel.
+            # a lone visibility toggle without toolbar fanout desyncs.
             if fname == "apply_host_session_mode":
-                marks: set[str] = set()
-                for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
-                    marks |= _call_marks(call)
-                if "toggle" in marks and "toolbar_sync" not in marks:
-                    offenders.append(
-                        f"{rel(path)}:{fn.lineno} {fname}() moves panel visibility "
-                        f"without toolbar sync (button stays stale while the Store "
-                        f"flag is True)"
-                    )
+                offenders.extend(
+                    _check_branch(path, fname, fn.lineno, "straight-line", [fn])
+                )
     return offenders
 
 
@@ -193,7 +210,7 @@ def test_store_projection_fanout_is_symmetric():
     offenders = _scan_all()
     assert not offenders, (
         "Store->widget fanout asymmetry: panel visibility moves without the "
-        "sibling toolbar/button sync in the same branch. The Store flips, "
+        "sibling toolbar/button fanout in the same branch. The Store flips, "
         "one projection follows, the other stays stale:\n  - "
         + "\n  - ".join(offenders)
     )

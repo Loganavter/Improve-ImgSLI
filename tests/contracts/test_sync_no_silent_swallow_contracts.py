@@ -26,6 +26,9 @@ _SYNC_FUNCTION_HINTS = (
     "apply_host_session_mode",
     "refresh_",
     "update_toolbar_states",
+    "restore_viewport_block",
+    "_restore_render_config",
+    "restore_image_state_prefs",
 )
 
 # Narrow `except` shapes (shiboken RuntimeError guards, OSError probes, ...) are

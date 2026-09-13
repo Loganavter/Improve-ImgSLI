@@ -408,7 +408,11 @@ def _restore_render_config(
             refresh_filename_overlay_toolbar(store)
             return
         except Exception:
-            pass
+            logger.warning(
+                "_restore_render_config: dispatch restore failed, Store keeps "
+                "live values",
+                exc_info=True,
+            )
     if store is not None:
         # Dispatcher not yet bound — defer the whole restore; the deferred
         # completion retries the dispatch above and refreshes the toolbar.
