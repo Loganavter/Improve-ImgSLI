@@ -80,13 +80,13 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
-    # PipelineCache is single source — Bucket C via Store slot (transact)
+    # PipelineCache single source — Bucket C transact, W1+W2 boxless put (no-bake).
+    # Сессионный сервис — только детекция (см. pipeline/crop_box.py).
     try:
         from tabs.image_compare.state.actions import PutPixelAction
         d = getattr(controller.store, "get_dispatcher", lambda: None)()
-        crop_svc = getattr(controller, "_get_crop_service", lambda: None)()
         if d is not None:
-            controller.store.transact([PutPixelAction(path=path, store=full_img, crop_service=crop_svc)], scope="pipeline")
+            controller.store.transact([PutPixelAction(path=path, store=full_img)], scope="pipeline")
         else:
             pl = getattr(controller, "pipeline", None)
             if pl is not None:
@@ -655,6 +655,14 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
             if _should_log_set:
                 ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
             pass
+    try:
+        _sess = controller._get_image_session() if hasattr(controller, "_get_image_session") else None
+        _cache = getattr(_sess, "cache", None) if _sess is not None else getattr(pl, "cache", None)
+        _pin = getattr(_cache, "set_pinned_paths", None)
+        if callable(_pin):
+            _pin([document.image1_path, document.image2_path])
+    except Exception:
+        pass
     if _should_log_set:
         ic_preview_debug("set_current_image slot=%s -> invalidate_render + schedule_update", image_number)
     controller.store.invalidate_render_cache()

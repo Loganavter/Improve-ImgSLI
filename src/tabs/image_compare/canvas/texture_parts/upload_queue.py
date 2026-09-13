@@ -59,9 +59,52 @@ def queue_texture_upload(
     pil_image,
     texture_key,
     slot_index: int | None = None,
+    *,
+    crop_box=None,
 ) -> None:
+    """Queue a whole-image upload, optionally clipped to *crop_box* (W3a).
+
+    *crop_box* is already in the image's own coords (callers scale via
+    ``crop_clip.clip_box_for_image``); ``None`` (default) uploads unchanged,
+    exactly as before.
+    """
     if pil_image is None or not texture_key:
         return
+    if crop_box is not None:
+        try:
+            box_tuple = (
+                int(crop_box[0]),
+                int(crop_box[1]),
+                int(crop_box[2]),
+                int(crop_box[3]),
+            )
+        except Exception:
+            box_tuple = None
+        if box_tuple is not None:
+            try:
+                from shared.image_processing.tiled_pixel_store import (
+                    TiledPixelStore,
+                    qimage_from_pixel_source,
+                )
+
+                if isinstance(pil_image, TiledPixelStore):
+                    # Existing sub-rect util: box region straight from the
+                    # memmap, never a full-frame materialization.
+                    queue_prepared_texture_upload(
+                        widget,
+                        texture_key,
+                        qimage_from_pixel_source(pil_image, box_tuple),
+                        slot_index,
+                    )
+                    return
+            except Exception:
+                pass
+            try:
+                from .crop_clip import clip_image_for_upload
+
+                pil_image = clip_image_for_upload(pil_image, box_tuple)
+            except Exception:
+                pass
     uid = image_uid(pil_image)
     uid_cache = _qimage_by_uid_cache(widget)
     image = uid_cache.get(uid)
