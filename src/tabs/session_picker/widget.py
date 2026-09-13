@@ -65,8 +65,9 @@ def _get_theme_manager_or_none():
 
 def _fallback_window_color(manager=None) -> QColor:
     tm = manager if manager is not None else _get_theme_manager_or_none()
-    # Window token is the page background; fallback preserves light visual #ffffff
-    return _themed_or_fallback(tm, _TOKEN_WINDOW, "#ffffff")
+    # surface.background is the page background (pre-alias "Window" reads
+    # resolved to it); fallback preserves light visual #ffffff
+    return _themed_or_fallback(tm, _TOKEN_SURFACE_BG, "#ffffff")
 
 
 def _fallback_surface_color(manager=None) -> QColor:
@@ -160,7 +161,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         painter.end()
 
     def on_theme_changed(self) -> None:
-        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "surface.background"))
         if not self._bg_color.isValid():
             self._bg_color = QColor(_fallback_window_color(self._theme_manager))
         self._bg_color.setAlpha(255)
@@ -190,7 +191,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         widget.update()
 
     def _sync_opaque_page_fills(self) -> None:
-        fallback = _fallback_window_color(getattr(self, "_theme_manager", None))
+        fallback = _fallback_surface_color(getattr(self, "_theme_manager", None))
         bg = QColor(getattr(self, "_bg_color", fallback))
         bg.setAlpha(255)
         self._apply_opaque_fill(self, bg)

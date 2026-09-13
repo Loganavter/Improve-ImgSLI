@@ -28,6 +28,10 @@ def load_themes():
 def scan_usages():
     pat = re.compile(r"""(?:resolve_theme_color|get_color|try_get_color|color_token)\s*\(\s*[^,]*,\s*["']([^"']+)["']""")
     pat2 = re.compile(r"""color_token\s*=\s*["']([^"']+)["']""")
+    # One-arg manager calls: theme_manager.get_color("dialog.background") has
+    # no comma, so `pat` never matches it — without this, live keys look
+    # 0-usage and the <75 ratchet eats them (5 wipe/restore cycles).
+    pat3 = re.compile(r"""(?:get_color|try_get_color)\s*\(\s*["']([a-zA-Z0-9_.]+)["']\s*\)""")
     key_to_cnt = defaultdict(int)
     for src_dir in SRC_DIRS:
         for p in src_dir.rglob("*.py"):
@@ -38,6 +42,8 @@ def scan_usages():
             for m in pat.finditer(txt):
                 key_to_cnt[m.group(1)] += 1
             for m in pat2.finditer(txt):
+                key_to_cnt[m.group(1)] += 1
+            for m in pat3.finditer(txt):
                 key_to_cnt[m.group(1)] += 1
     return key_to_cnt
 
