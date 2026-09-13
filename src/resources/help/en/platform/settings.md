@@ -1,6 +1,6 @@
 ## Settings
 
-Settings are grouped by job — general, appearance, performance, and keyboard — plus one section per workspace tab that contributes settings ({{tr:workspace.session_types.image_compare}}, …). Tab sections are always visible, no matter which session is active, so tab options have a permanent home.
+Settings are grouped by job — general, appearance, performance, and keyboard — plus {{tr:workspace.session_types.image_compare}}, the only workspace tab contributing a settings section today. Tab sections are always visible, no matter which session is active, so tab options have a permanent home.
 
 ### Open Settings {#open-settings}
 

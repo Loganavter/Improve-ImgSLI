@@ -25,8 +25,6 @@ def _store_with_lists():
         ],
         current_index1=0,
         current_index2=0,
-        image1_path="/tmp/a.png",
-        image2_path="/tmp/c.png",
     )
     return SimpleNamespace(
         get_session_state_slot=lambda _name: document,
@@ -63,6 +61,7 @@ def test_list_item_menu_exposes_copy_properties_remove(qapp):
         "image_compare.copy_path",
         "image_compare.show_properties",
         "image_compare.carry_list_item",
+        "image_compare.crop_override_list_item",
         "image_compare.remove_list_item",
     ]
 

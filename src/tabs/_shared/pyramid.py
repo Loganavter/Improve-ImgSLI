@@ -150,22 +150,28 @@ class PyramidBuildCoordinator:
         store,
         *,
         slot_id: int | None = None,
+        toast_live: bool = True,
         should_abort: Callable[[], bool] | None = None,
         on_level_ready: Callable[[Any], None] | None = None,
     ) -> bool:
         """Start a pyramid build for *store*; returns True iff a worker was started.
 
-        Skipped cases (no pyramid, already complete, already in flight,
-        no thread pool) finish the toast for *slot_id* via the toast coordinator
-        instead of leaving it stuck at "pyramid started".
+        The uid->slot mapping is recorded whenever *slot_id* is given, so a
+        later ``complete`` always finds its toast — even if the decode was
+        still in flight at start time (``toast_live=False``) and lands after
+        the pyramid. Progress bumps and skip-path finishes honor *toast_live*
+        (a preview-tier race must not finish a toast whose real decode is
+        still pending). Skipped cases with a live toast finish it via the
+        toast coordinator instead of leaving it stuck at "pyramid started".
         """
         from shared.rendering.image_identity import image_uid
 
         get_pyramid = self._resolve_get_pyramid()
 
-        # early toast finish helper
+        # early toast finish helper (live toasts only — a preview-tier race
+        # must not finish a toast whose real decode is still pending)
         def _finish_toast_if_needed():
-            if slot_id is not None and self._toast is not None:
+            if slot_id is not None and toast_live and self._toast is not None:
                 try:
                     self._toast.finish(slot_id)
                 except Exception:
@@ -193,6 +199,7 @@ class PyramidBuildCoordinator:
         uid = image_uid(store)
         if uid in self._pyramid_builds:
             logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
+            _finish_toast_if_needed()
             return False
 
         thread_pool = self._get_thread_pool()
@@ -207,14 +214,17 @@ class PyramidBuildCoordinator:
             total_levels = 1
 
         self._pyramid_builds.add(uid)
-        if slot_id is not None and self._toast is not None:
-            self._pyramid_toast_slot[uid] = slot_id
-            try:
-                self._toast.bump_pyramid_started(slot_id)
-            except Exception:
-                pass
-        elif slot_id is not None:
-            self._pyramid_toast_slot[uid] = slot_id
+        if slot_id is not None:
+            # Always map (keep-first): a later complete must find its toast
+            # even when the decode was still in flight at start time. Two
+            # slots sharing one store keep the first mapping (same as before
+            # for the second slot — rare, documented).
+            self._pyramid_toast_slot.setdefault(uid, slot_id)
+            if toast_live and self._toast is not None:
+                try:
+                    self._toast.bump_pyramid_started(slot_id)
+                except Exception:
+                    pass
 
         logger.info(
             "[Pyramid] build started for store %sx%s (uid=%s)",
@@ -233,9 +243,28 @@ class PyramidBuildCoordinator:
         # level progress
         target = on_level_ready if on_level_ready is not None else self.on_level_ready
         worker.signals.partial_result.connect(target)
-        worker.signals.finished.connect(lambda uid=uid: self._pyramid_builds.discard(uid))
+        worker.signals.finished.connect(lambda uid=uid: self._on_build_finished(uid))
         thread_pool.start(worker)
         return True
+
+    def _on_build_finished(self, uid: int) -> None:
+        """Worker done: drop the in-flight mark; dismiss a stuck toast mapping.
+
+        If the uid→slot mapping is still present here, no complete payload
+        ever arrived (abort / stalled loop) — dismiss the slot's toast so it
+        cannot hang forever.
+        """
+        self._pyramid_builds.discard(uid)
+        slot_id = self._pyramid_toast_slot.pop(uid, None)
+        if slot_id is not None and self._toast is not None:
+            try:
+                dismiss = getattr(self._toast, "dismiss", None)
+                if callable(dismiss):
+                    dismiss(slot_id)
+                else:
+                    self._toast.finish(slot_id)
+            except Exception:
+                pass
 
     def on_level_ready(self, payload) -> None:
         # Phase 5: publish lod_available per level instead of invalidate_render

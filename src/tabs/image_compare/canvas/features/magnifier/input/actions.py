@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from core.state_management.action_base import Action
@@ -12,10 +12,7 @@ from domain.types import Point
 @dataclass
 class SetMagnifierSizeRelativeAction(Action):
     size: float
-
-    def __init__(self, size: float):
-        super().__init__(type="SET_MAGNIFIER_SIZE_RELATIVE")
-        self.size = size
+    type: str = field(default="SET_MAGNIFIER_SIZE_RELATIVE", kw_only=True)
 
     def get_payload(self):
         return {"size": self.size}
@@ -24,10 +21,7 @@ class SetMagnifierSizeRelativeAction(Action):
 @dataclass
 class SetCaptureSizeRelativeAction(Action):
     size: float
-
-    def __init__(self, size: float):
-        super().__init__(type="SET_CAPTURE_SIZE_RELATIVE")
-        self.size = size
+    type: str = field(default="SET_CAPTURE_SIZE_RELATIVE", kw_only=True)
 
     def get_payload(self):
         return {"size": self.size}
@@ -36,10 +30,7 @@ class SetCaptureSizeRelativeAction(Action):
 @dataclass
 class ToggleMagnifierAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type="TOGGLE_MAGNIFIER")
-        self.enabled = enabled
+    type: str = field(default="TOGGLE_MAGNIFIER", kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -50,17 +41,7 @@ class SetMagnifierVisibilityAction(Action):
     left: Optional[bool] = None
     center: Optional[bool] = None
     right: Optional[bool] = None
-
-    def __init__(
-        self,
-        left: Optional[bool] = None,
-        center: Optional[bool] = None,
-        right: Optional[bool] = None,
-    ):
-        super().__init__(type="SET_MAGNIFIER_VISIBILITY")
-        self.left = left
-        self.center = center
-        self.right = right
+    type: str = field(default="SET_MAGNIFIER_VISIBILITY", kw_only=True)
 
     def get_payload(self):
         return {"left": self.left, "center": self.center, "right": self.right}
@@ -69,10 +50,7 @@ class SetMagnifierVisibilityAction(Action):
 @dataclass
 class ToggleMagnifierOrientationAction(Action):
     is_horizontal: bool
-
-    def __init__(self, is_horizontal: bool):
-        super().__init__(type="TOGGLE_MAGNIFIER_ORIENTATION")
-        self.is_horizontal = is_horizontal
+    type: str = field(default="TOGGLE_MAGNIFIER_ORIENTATION", kw_only=True)
 
     def get_payload(self):
         return {"is_horizontal": self.is_horizontal}
@@ -83,17 +61,7 @@ class ToggleFreezeMagnifierAction(Action):
     freeze: bool
     frozen_position: Optional[Point] = None
     new_offset: Optional[Point] = None
-
-    def __init__(
-        self,
-        freeze: bool,
-        frozen_position: Optional[Point] = None,
-        new_offset: Optional[Point] = None,
-    ):
-        super().__init__(type="TOGGLE_FREEZE_MAGNIFIER")
-        self.freeze = freeze
-        self.frozen_position = frozen_position
-        self.new_offset = new_offset
+    type: str = field(default="TOGGLE_FREEZE_MAGNIFIER", kw_only=True)
 
     def get_payload(self):
         return {
@@ -106,10 +74,7 @@ class ToggleFreezeMagnifierAction(Action):
 @dataclass
 class SetMagnifierPositionAction(Action):
     position: Point
-
-    def __init__(self, position: Point):
-        super().__init__(type="SET_MAGNIFIER_POSITION")
-        self.position = position
+    type: str = field(default="SET_MAGNIFIER_POSITION", kw_only=True)
 
     def get_payload(self):
         return {"position": self.position}
@@ -118,10 +83,7 @@ class SetMagnifierPositionAction(Action):
 @dataclass
 class SetMagnifierInternalSplitAction(Action):
     split: float
-
-    def __init__(self, split: float):
-        super().__init__(type="SET_MAGNIFIER_INTERNAL_SPLIT")
-        self.split = split
+    type: str = field(default="SET_MAGNIFIER_INTERNAL_SPLIT", kw_only=True)
 
     def get_payload(self):
         return {"split": self.split}
@@ -130,10 +92,7 @@ class SetMagnifierInternalSplitAction(Action):
 @dataclass
 class UpdateMagnifierCombinedStateAction(Action):
     is_combined: bool
-
-    def __init__(self, is_combined: bool):
-        super().__init__(type="UPDATE_MAGNIFIER_COMBINED_STATE")
-        self.is_combined = is_combined
+    type: str = field(default="UPDATE_MAGNIFIER_COMBINED_STATE", kw_only=True)
 
     def get_payload(self):
         return {"is_combined": self.is_combined}
@@ -142,10 +101,7 @@ class UpdateMagnifierCombinedStateAction(Action):
 @dataclass
 class SetActiveMagnifierIdAction(Action):
     magnifier_id: str
-
-    def __init__(self, magnifier_id: str):
-        super().__init__(type="SET_ACTIVE_MAGNIFIER_ID")
-        self.magnifier_id = magnifier_id
+    type: str = field(default="SET_ACTIVE_MAGNIFIER_ID", kw_only=True)
 
     def get_payload(self):
         return {"magnifier_id": self.magnifier_id}
@@ -154,10 +110,7 @@ class SetActiveMagnifierIdAction(Action):
 @dataclass
 class SetMagnifierOffsetRelativeAction(Action):
     offset: Point
-
-    def __init__(self, offset: Point):
-        super().__init__(type="SET_MAGNIFIER_OFFSET_RELATIVE")
-        self.offset = offset
+    type: str = field(default="SET_MAGNIFIER_OFFSET_RELATIVE", kw_only=True)
 
     def get_payload(self):
         return {"offset": self.offset}
@@ -166,10 +119,7 @@ class SetMagnifierOffsetRelativeAction(Action):
 @dataclass
 class SetMagnifierSpacingRelativeAction(Action):
     spacing: float
-
-    def __init__(self, spacing: float):
-        super().__init__(type="SET_MAGNIFIER_SPACING_RELATIVE")
-        self.spacing = spacing
+    type: str = field(default="SET_MAGNIFIER_SPACING_RELATIVE", kw_only=True)
 
     def get_payload(self):
         return {"spacing": self.spacing}
@@ -178,10 +128,7 @@ class SetMagnifierSpacingRelativeAction(Action):
 @dataclass
 class SetMagnifierOffsetRelativeVisualAction(Action):
     offset: Point
-
-    def __init__(self, offset: Point):
-        super().__init__(type="SET_MAGNIFIER_OFFSET_RELATIVE_VISUAL")
-        self.offset = offset
+    type: str = field(default="SET_MAGNIFIER_OFFSET_RELATIVE_VISUAL", kw_only=True)
 
     def get_payload(self):
         return {"offset": self.offset}
@@ -190,10 +137,7 @@ class SetMagnifierOffsetRelativeVisualAction(Action):
 @dataclass
 class SetMagnifierSpacingRelativeVisualAction(Action):
     spacing: float
-
-    def __init__(self, spacing: float):
-        super().__init__(type="SET_MAGNIFIER_SPACING_RELATIVE_VISUAL")
-        self.spacing = spacing
+    type: str = field(default="SET_MAGNIFIER_SPACING_RELATIVE_VISUAL", kw_only=True)
 
     def get_payload(self):
         return {"spacing": self.spacing}
@@ -202,10 +146,7 @@ class SetMagnifierSpacingRelativeVisualAction(Action):
 @dataclass
 class SetOptimizeMagnifierMovementAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_OPTIMIZE_MAGNIFIER_MOVEMENT")
-        self.enabled = enabled
+    type: str = field(default="SET_OPTIMIZE_MAGNIFIER_MOVEMENT", kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -214,10 +155,7 @@ class SetOptimizeMagnifierMovementAction(Action):
 @dataclass
 class SetHighlightedMagnifierElementAction(Action):
     element: Optional[str]
-
-    def __init__(self, element: Optional[str]):
-        super().__init__(type="SET_HIGHLIGHTED_MAGNIFIER_ELEMENT")
-        self.element = element
+    type: str = field(default="SET_HIGHLIGHTED_MAGNIFIER_ELEMENT", kw_only=True)
 
     def get_payload(self):
         return {"element": self.element}
@@ -226,10 +164,7 @@ class SetHighlightedMagnifierElementAction(Action):
 @dataclass
 class SetMagnifierLaserEnabledAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_MAGNIFIER_LASER_ENABLED")
-        self.enabled = enabled
+    type: str = field(default="SET_MAGNIFIER_LASER_ENABLED", kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -238,10 +173,7 @@ class SetMagnifierLaserEnabledAction(Action):
 @dataclass
 class SetMagnifierMovementInterpolationMethodAction(Action):
     method: str
-
-    def __init__(self, method: str):
-        super().__init__(type="SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD")
-        self.method = method
+    type: str = field(default="SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD", kw_only=True)
 
     def get_payload(self):
         return {"method": self.method}
@@ -250,10 +182,7 @@ class SetMagnifierMovementInterpolationMethodAction(Action):
 @dataclass
 class SetMagnifierScreenCenterAction(Action):
     center: Point
-
-    def __init__(self, center: Point):
-        super().__init__(type="SET_MAGNIFIER_SCREEN_CENTER")
-        self.center = center
+    type: str = field(default="SET_MAGNIFIER_SCREEN_CENTER", kw_only=True)
 
     def get_payload(self):
         return {"center": self.center}
@@ -262,10 +191,7 @@ class SetMagnifierScreenCenterAction(Action):
 @dataclass
 class SetMagnifierScreenSizeAction(Action):
     size: int
-
-    def __init__(self, size: int):
-        super().__init__(type="SET_MAGNIFIER_SCREEN_SIZE")
-        self.size = size
+    type: str = field(default="SET_MAGNIFIER_SCREEN_SIZE", kw_only=True)
 
     def get_payload(self):
         return {"size": self.size}
@@ -274,10 +200,7 @@ class SetMagnifierScreenSizeAction(Action):
 @dataclass
 class SetDraggingCapturePointAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_IS_DRAGGING_CAPTURE_POINT")
-        self.enabled = enabled
+    type: str = field(default="SET_IS_DRAGGING_CAPTURE_POINT", kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -286,10 +209,7 @@ class SetDraggingCapturePointAction(Action):
 @dataclass
 class SetDraggingSplitInMagnifierAction(Action):
     enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_IS_DRAGGING_SPLIT_IN_MAGNIFIER")
-        self.enabled = enabled
+    type: str = field(default="SET_IS_DRAGGING_SPLIT_IN_MAGNIFIER", kw_only=True)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -298,10 +218,7 @@ class SetDraggingSplitInMagnifierAction(Action):
 @dataclass
 class SetInteractiveOffsetVisualAction(Action):
     offset: Point
-
-    def __init__(self, offset: Point):
-        super().__init__(type="SET_INTERACTIVE_OFFSET_VISUAL")
-        self.offset = offset
+    type: str = field(default="SET_INTERACTIVE_OFFSET_VISUAL", kw_only=True)
 
     def get_payload(self):
         return {"offset": self.offset}
@@ -310,10 +227,7 @@ class SetInteractiveOffsetVisualAction(Action):
 @dataclass
 class SetInteractiveSpacingVisualAction(Action):
     spacing: float
-
-    def __init__(self, spacing: float):
-        super().__init__(type="SET_INTERACTIVE_SPACING_VISUAL")
-        self.spacing = spacing
+    type: str = field(default="SET_INTERACTIVE_SPACING_VISUAL", kw_only=True)
 
     def get_payload(self):
         return {"spacing": self.spacing}
@@ -322,10 +236,7 @@ class SetInteractiveSpacingVisualAction(Action):
 @dataclass
 class SetInteractiveInternalSplitVisualAction(Action):
     split: float
-
-    def __init__(self, split: float):
-        super().__init__(type="SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL")
-        self.split = split
+    type: str = field(default="SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL", kw_only=True)
 
     def get_payload(self):
         return {"split": self.split}

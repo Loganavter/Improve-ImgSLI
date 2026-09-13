@@ -45,3 +45,11 @@ Veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 ### Janela do editor de vídeo {#video-editor}
 
 Enquanto o editor está aberto: `Space` reproduz/pausa, `Ctrl+Z` / `Ctrl+Y` desfazer/refazer, `Delete` / `Backspace` remove a seleção. Fluxo completo de codificação: [Editor de Vídeo](help://video).
+
+### Navegação pelo teclado {#keyboard-navigation}
+
+- `F1` — ajuda contextual para o controle em foco. Quando o foco está vinculado a uma ação, o resultado correspondente pulsa em {{tr:menu.find_action}}; caso contrário, a paleta abre pré-filtrada por tópico.
+- Em {{tr:menu.find_action}} (`Ctrl+Shift+P`): `↑` / `↓` movem a seleção, `Enter` executa, `Ctrl+Enter` abre {{tr:action.palette.learn_more}}, `Esc` fecha a paleta.
+- Na visão geral de {{tr:workspace.session_types.multi_compare}}, o foco do slot segue o ponteiro: um clique alterna o foco em uma única imagem, `Esc` sai dele. As setas deslocam o canvas em vez de mover o foco entre slots.
+- No seletor de sessão, as setas movem o foco entre cartões e `Enter` abre o cartão em foco, como clicar nele.
+- Não há travessia `Tab` entre slots do canvas: o foco segue o ponteiro, e o teclado aciona ações pela paleta.

@@ -273,6 +273,20 @@ class ApplicationContext:
         started = self.plugin_coordinator.register_and_start(discovered, self)
         self._deferred_plugins_loaded = True
 
+        # Deferred plugins may register theme assets (QSS paths/palette
+        # contributions); push the composed theme live so deferred styles
+        # are not stuck on the pre-defer look. Best-effort: never break
+        # startup when no QApplication exists (headless) or theming fails.
+        if started:
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                app = QApplication.instance()
+                if app is not None:
+                    self.theme_manager.apply_theme_to_app(app)
+            except Exception:
+                logger.exception("Deferred theme reapply failed")
+
         startup_mark("ctx.plugins.deferred")
         return started
 

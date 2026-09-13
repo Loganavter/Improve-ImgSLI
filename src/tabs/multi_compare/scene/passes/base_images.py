@@ -217,7 +217,7 @@ class BaseImagesPass(CanvasRenderPass):
     QImage uploads — never an uncapped full-res QImage dict.
 
     A slot's source may also be a bounded ``QImage`` progressive preview
-    (``CompareSlot.is_preview_only``) while the real ``TiledPixelStore`` is
+    (cached preview tier) while the real ``TiledPixelStore`` is
     still decoding in the background — previews are capped at 1024px, always
     land in a 1x1 tile grid, and upload through the same single-tile branch
     below (``host_cache.qimage_from_source`` already round-trips a QImage as
@@ -261,6 +261,15 @@ class BaseImagesPass(CanvasRenderPass):
         # ``_last_good_key``) or still mid-transition (needs the fallback
         # drawn underneath it).
         self._key_more_pending: dict[object, bool] = {}
+        # Slots whose pre-swap plain (1x1) preview texture is still alive
+        # underneath the new array-path content -- added in ``_upload_slot``
+        # when a swap keeps the old preview drawable instead of destroying
+        # it up front, consumed in ``_prepare_array_plan`` once the new
+        # key promotes (fully uploaded = array covers the slot, the stale
+        # plain texture can go). Only swapped slots are ever in here, so
+        # the consumption never touches a steady-state 1x1 slot's own
+        # plain texture (which a later plain-path frame may still need).
+        self._pending_plain_cleanup: set[int] = set()
 
         # Plain per-slot pipeline/textures/uniforms/SRBs -- the non-array
         # draw path used while every slot stays a single (1x1) tile.
@@ -594,6 +603,11 @@ class BaseImagesPass(CanvasRenderPass):
                 drop_covered=_drop_covered,
             )
             self._last_good_key[sid] = new_last_good_key
+            # A4 swap hardening: a promoted (fully uploaded) new key covers
+            # the slot on the array path, so a pre-swap plain preview kept
+            # alive by _upload_slot can finally be released (no-op unless
+            # this slot actually swapped -- see _pending_plain_cleanup).
+            self._release_promoted_plain_preview(sid, new_last_good_key, key)
 
             rhi_render_debug(
                 "mc-array-plan sid=%s key=%s current_tiles=%s fallback_used=%s "
@@ -721,6 +735,7 @@ class BaseImagesPass(CanvasRenderPass):
 
     def _release_slot(self, tile_service, sid: int) -> None:
         self.slot_pixel_sources.pop(sid, None)
+        self._pending_plain_cleanup.discard(sid)
         tile_service.invalidate_source(sid)
         residency.forget_slot(
             tile_service,
@@ -775,24 +790,23 @@ class BaseImagesPass(CanvasRenderPass):
             slot_lod_keys=self._slot_lod_keys,
         )
         size = pixel_source_size(source)
+        old_source = self.slot_pixel_sources.get(sid)
         old_grid = tile_service.grid_for(sid)
-        if old_grid is not None and (old_grid.rows > 1 or old_grid.columns > 1):
-            # The sid-keyed grid about to be replaced (typically a small
-            # preview QImage already past LIVE_TILE_EXTENT, so already on
-            # the array path -- see module comment on _ARRAY_LAYER_PX) is
-            # otherwise wiped instantly by register_source's reset_source
-            # below, with nothing shown while the replacement source's own
-            # tiles trickle in over several budgeted _realize_tile_residency
-            # calls (the [slot-swap] log further down used to flag exactly
-            # this gap). forget_stale_lod_keys above only protects genuine
-            # LevelKey transitions -- it's blind to this same-key ``sid``
-            # content swap, since last_good_key[sid] stays literally equal
-            # to sid before and after, so _prepare_array_plan's `old_key !=
-            # key` fallback check never fires for it. Rekey the still-good
-            # old content under a distinct key first so the existing
-            # fallback-LOD machinery (_last_good_key / _prepare_array_plan)
-            # draws it underneath the new grid until covered, exactly like
-            # a pyramid level transition.
+        old_is_multi = old_grid is not None and (
+            old_grid.rows > 1 or old_grid.columns > 1
+        )
+        if old_grid is not None:
+            # Any same-``sid`` content swap (multi->multi, 1x1->multi,
+            # multi->1x1, 1x1->1x1) rekeys the still-good old content
+            # under a distinct fallback key first, so the existing
+            # fallback-LOD machinery (``_last_good_key`` /
+            # ``_prepare_array_plan``) can draw it underneath the new grid
+            # until covered -- exactly like a pyramid level transition.
+            # (Previously only the multi->multi case rekeyed, and the
+            # 1x1->multi case additionally destroyed the only visible
+            # content up front -- see below.) For 1x1->1x1 the rekey only
+            # moves near-empty bookkeeping: the eager plain upload below
+            # redraws the same frame, so there is no blank either way.
             #
             # ``_key_more_pending`` is keyed by the *value* of the resolved
             # LOD key, not by content generation -- and while no pyramid
@@ -822,19 +836,96 @@ class BaseImagesPass(CanvasRenderPass):
             self.slot_resources.destroy_slot_textures(sid, keep={tile_key})
             qimage = host_cache.qimage_from_source(source, _slot_host_key(sid))
             self.slot_resources.upload_tile(renderer, tile_key, qimage, updates)
+            # A same-frame plain overwrite subsumes any deferred cleanup
+            # from an earlier swap -- the texture now holds new content.
+            self._pending_plain_cleanup.discard(sid)
             return
-        textures_before = len(self.slot_resources.slot_textures)
-        self.slot_resources.destroy_slot_textures(sid, keep=frozenset())
-        textures_after = len(self.slot_resources.slot_textures)
-        logger.debug(
-            "[slot-swap] sid=%s new %dx%d grid: destroyed %d pre-existing plain "
-            "texture(s) (slot_textures %d -> %d) before this frame's array-path "
-            "content has any tile uploaded -- slot renders blank until "
-            "_realize_tile_residency's budgeted upload (this same call) lands "
-            "the first tile(s)",
-            sid, grid.rows, grid.columns, textures_before - textures_after,
-            textures_before, textures_after,
-        )
+        if (
+            not old_is_multi
+            and old_grid is not None
+            and old_source is not None
+        ):
+            # 1x1-preview -> multi-full: the old content was plain-only
+            # (never array-resident), so the rekey above preserved
+            # bookkeeping but nothing drawable on the array path -- and the
+            # new grid's own tiles still trickle in over several budgeted
+            # residency passes. Backfill the preview's single tile into the
+            # array under the fallback key so the slot keeps showing the
+            # preview underneath until the new grid covers it. The stale
+            # plain texture itself is deliberately NOT destroyed here
+            # (destroy-before-upload was the blank window); it is released
+            # once the new key promotes -- see ``_prepare_array_plan``.
+            self._backfill_plain_preview_to_array(
+                renderer, tile_service, host_cache, updates,
+                sid, self._last_good_key[sid], old_source,
+            )
+            self._pending_plain_cleanup.add(sid)
+
+    def _backfill_plain_preview_to_array(
+        self,
+        renderer,
+        tile_service,
+        host_cache,
+        updates,
+        sid: int,
+        fallback_key: object,
+        old_source,
+    ) -> None:
+        """Upload a plain-only 1x1 preview into the array under ``fallback_key``.
+
+        Called from ``_upload_slot`` on a 1x1-preview -> multi-full swap:
+        the rekey preserved the old grid's bookkeeping, but a preview that
+        only ever lived as a plain ``slot_textures`` entry has no array
+        slot, so the fallback-LOD draw in ``_prepare_array_plan`` would
+        filter it out and the slot would still go blank. Uploading its
+        single tile here makes the preview drawable underneath the new
+        grid until covered. Best-effort by design: any failure (headless
+        fakes, degenerate image) just skips the backfill and degrades to
+        the pre-A4 progressive fill-in -- never breaks the swap itself.
+        """
+        try:
+            if tile_service.slot_for(fallback_key, (0, 0)) is not None:
+                # Already array-resident (promoted 1x1 from an array-path
+                # frame) -- the rekeyed content draws as-is, nothing to do.
+                return
+            self._ensure_array_resources(renderer)
+            assert self.array_resources is not None
+            image = host_cache.qimage_from_source(
+                old_source, _slot_host_key(fallback_key)
+            )
+            if image is None or image.isNull():
+                return
+            host_cache.store(residency._slot_tile_host_key(fallback_key, 0, 0), image)
+            self.array_resources.upload_tile_to_array(
+                tile_service,
+                fallback_key,
+                (0, 0),
+                image,
+                updates,
+                dirty_layers=self._dirty_layers_this_frame,
+            )
+        except Exception:
+            logger.debug(
+                "mc swap: preview backfill skipped for sid=%s", sid,
+                exc_info=True,
+            )
+
+    def _release_promoted_plain_preview(
+        self, sid: int, promoted_key: object, current_key: object
+    ) -> None:
+        """Drop a swapped slot's stale plain preview once the array covers it.
+
+        Called from ``_prepare_array_plan`` on promotion
+        (``new_last_good_key == key`` = this frame's plan is a stable end
+        state): the new content is fully uploaded, so the pre-swap plain
+        texture kept alive by ``_upload_slot`` is dead weight. Only slots
+        recorded in ``_pending_plain_cleanup`` are touched -- a
+        steady-state 1x1 slot's own plain texture (still needed by future
+        plain-path frames) is never in that set.
+        """
+        if promoted_key == current_key and sid in self._pending_plain_cleanup:
+            self.slot_resources.destroy_slot_textures(sid, keep=frozenset())
+            self._pending_plain_cleanup.discard(sid)
 
     def generate_all_dirty_mips(
         self,

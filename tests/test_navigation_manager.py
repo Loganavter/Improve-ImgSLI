@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtWidgets import QApplication, QWidget
 
 
@@ -259,7 +259,7 @@ class TestCrossSectionRouting:
 
 class _FakeMouseEvent:
     def __init__(self, x=10, y=10) -> None:
-        self._pos = SimpleNamespace(toPoint=lambda: SimpleNamespace(x=lambda: x, y=lambda: y))
+        self._pos = SimpleNamespace(toPoint=lambda: QPoint(x, y))
 
     def type(self):
         return QEvent.Type.MouseButtonPress
@@ -275,7 +275,10 @@ class TestClickToArrowRealign:
         self.manager = NavigationManager()
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_on_focusable_widget_realigns_directly(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_click_on_focusable_widget_realigns_directly(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """A click that lands on an owned, focusable widget re-anchors the
         ring on that exact widget on the next arrow press, instead of
         resuming from whatever Qt's stale focusWidget() still points at.
@@ -293,17 +296,22 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = clicked
         mock_qapp.focusWidget.return_value = stale
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = stale
 
         self.manager.eventFilter(None, _FakeMouseEvent())
-        assert self.manager._realign_pending is True
+        assert self.manager._realign.realign_pending is True
 
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
         assert result is True
         clicked.setFocus.assert_called_once()
-        assert self.manager._realign_pending is False
+        assert self.manager._realign.realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_on_non_focusable_area_does_not_realign(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_click_on_non_focusable_area_does_not_realign(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """Clicking a non-focusable spot inside a section (e.g. empty row
         background) where _nearest_focusable finds nothing leaves focus on
         the stale widget — realign does not happen.
@@ -323,6 +331,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = clicked
         mock_qapp.focusWidget.return_value = stale
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = stale
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=42))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
@@ -331,7 +341,10 @@ class TestClickToArrowRealign:
         assert result is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_outside_any_section_falls_through_to_normal_routing(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_click_outside_any_section_falls_through_to_normal_routing(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """A click that lands nowhere any section owns leaves the stale
         focusWidget() in place -- next arrow press behaves exactly as
         before this feature existed.
@@ -349,6 +362,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = unrelated
         mock_qapp.focusWidget.return_value = widget
+        mock_realign_qapp.widgetAt.return_value = unrelated
+        mock_realign_qapp.focusWidget.return_value = widget
 
         self.manager.eventFilter(None, _FakeMouseEvent())
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
@@ -356,24 +371,30 @@ class TestClickToArrowRealign:
         assert handled == [Qt.Key.Key_Down]
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_keyboard_focus_change_clears_realign_pending(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_keyboard_focus_change_clears_realign_pending(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """Legitimate keyboard-driven focus movement between a click and
         the next arrow press supersedes the click -- the arrow should
         navigate from the new focus, not jump back to the click point.
         """
         widget = MagicMock(spec=QWidget)
         self.manager.eventFilter(None, _FakeMouseEvent())
-        assert self.manager._realign_pending is True
+        assert self.manager._realign.realign_pending is True
 
         focus_event = SimpleNamespace(
             type=lambda: QEvent.Type.FocusIn,
             reason=lambda: Qt.FocusReason.TabFocusReason,
         )
         self.manager.eventFilter(widget, focus_event)
-        assert self.manager._realign_pending is False
+        assert self.manager._realign.realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_left_right_after_click_with_no_realign_goes_to_normal_routing(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_left_right_after_click_with_no_realign_goes_to_normal_routing(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """Clicking a section's bare owner widget where _nearest_focusable
         finds nothing means realign doesn't happen. Left/Right goes to
         normal routing from the stale pre-click focus widget.
@@ -394,16 +415,21 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = owner
         mock_qapp.focusWidget.return_value = owner
+        mock_realign_qapp.widgetAt.return_value = owner
+        mock_realign_qapp.focusWidget.return_value = owner
 
         self.manager.eventFilter(None, _FakeMouseEvent())
-        assert self.manager._realign_pending is True
+        assert self.manager._realign.realign_pending is True
 
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
         assert result is False
         owner.setFocus.assert_not_called()
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_first_press_after_click_reveals_without_stepping(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_first_press_after_click_reveals_without_stepping(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """The ring is invisible right after a mouse click (MouseButtonPress
         suppresses it) -- if the very first arrow press both silently
         realigned focus to the nearest widget *and* stepped navigate() one
@@ -431,6 +457,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = clicked
         mock_qapp.focusWidget.return_value = clicked
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = clicked
 
         self.manager.eventFilter(None, _FakeMouseEvent())
         first = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
@@ -443,7 +471,10 @@ class TestClickToArrowRealign:
         assert navigate_calls == [(Qt.Key.Key_Left, clicked)], "second press should step normally"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_reclicking_the_already_focused_widget_still_restores_the_ring(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_reclicking_the_already_focused_widget_still_restores_the_ring(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """Regression: clicking the exact widget that's already keyboard-
         focused makes setFocus() a real Qt no-op -- no FocusIn fires, so
         the ring-reveal that normally rides on FocusIn never runs, and the
@@ -469,6 +500,8 @@ class TestClickToArrowRealign:
         # Already the focused widget *before* this click -- setFocus()
         # below will be a no-op from Qt's perspective.
         mock_qapp.focusWidget.return_value = clicked
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = clicked
 
         self.manager.eventFilter(None, _FakeMouseEvent())
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
@@ -479,7 +512,10 @@ class TestClickToArrowRealign:
         assert clicked.update.call_count >= 1
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_realign_prefers_focus_nearest_over_focus_first(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_realign_prefers_focus_nearest_over_focus_first(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """When a section provides focus_nearest(pos), realign must call it
         instead of focus_first(ref_x) -- a click can land next to any row,
         not just the topmost/bottommost one."""
@@ -503,6 +539,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = clicked
         mock_qapp.focusWidget.return_value = stale
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = stale
 
         pos = SimpleNamespace(y=lambda: 42)
         self.manager.eventFilter(None, _FakeMouseEvent(x=7, y=42))
@@ -512,7 +550,10 @@ class TestClickToArrowRealign:
         assert focus_first_calls == [], "focus_first must NOT be called when focus_nearest exists"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_realign_does_not_fall_back_to_focus_first(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_realign_does_not_fall_back_to_focus_first(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """Without focus_nearest on the section and no focusable children,
         realign returns False — focus_first is not called as a fallback.
         """
@@ -535,6 +576,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = clicked
         mock_qapp.focusWidget.return_value = stale
+        mock_realign_qapp.widgetAt.return_value = clicked
+        mock_realign_qapp.focusWidget.return_value = stale
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=7))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
@@ -542,7 +585,10 @@ class TestClickToArrowRealign:
         assert focus_first_calls == [], "focus_first must not be called as fallback"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_on_bare_owner_does_not_realign(self, mock_qapp):
+    @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
+    def test_click_on_bare_owner_does_not_realign(
+        self, mock_realign_qapp, mock_qapp
+    ):
         """A click that only resolves to a section's bare owner widget
         (e.g. row padding, or an owner container with no matching content
         under the cursor) where _nearest_focusable finds nothing does not
@@ -561,6 +607,8 @@ class TestClickToArrowRealign:
 
         mock_qapp.widgetAt.return_value = owner
         mock_qapp.focusWidget.return_value = owner
+        mock_realign_qapp.widgetAt.return_value = owner
+        mock_realign_qapp.focusWidget.return_value = owner
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=7))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))

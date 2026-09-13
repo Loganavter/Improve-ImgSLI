@@ -30,13 +30,81 @@ def _format_worker_error(err) -> str:
     return str(err)
 
 
+def _dismiss_ic_loading_toast(controller, image_number) -> None:
+    """Close a slot's loading toast on decode failure (MC parity: dismiss+emit).
+
+    Prefers the coordinator's dismiss (no success banner); falls back to a
+    legacy dict pop + close for controllers without a coordinator.
+    """
+    try:
+        coord = getattr(controller, "_loading_toast_coordinator", None)
+        if coord is not None:
+            dismiss = getattr(coord, "dismiss", None)
+            if callable(dismiss):
+                dismiss(image_number)
+                return
+            finish = getattr(coord, "finish", None)
+            if callable(finish):
+                finish(image_number)
+                return
+    except Exception:
+        pass
+    try:
+        toasts = getattr(controller, "_loading_toasts", None)
+        toast_id = toasts.pop(image_number, None) if isinstance(toasts, dict) else None
+        if toast_id is None:
+            return
+        manager = None
+        try:
+            getter = getattr(controller, "_get_toast_manager", None)
+            if callable(getter):
+                manager = getter()
+        except Exception:
+            manager = None
+        if manager is None:
+            try:
+                presenter = getattr(controller, "presenter", None)
+                manager = getattr(
+                    getattr(presenter, "main_window_app", None), "toast_manager", None
+                )
+            except Exception:
+                manager = None
+        if manager is not None:
+            try:
+                closer = getattr(manager, "close_toast", None)
+                if callable(closer):
+                    closer(toast_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _resolve_ic_slot_for_path(controller, path: str) -> int | None:
+    try:
+        document = controller.store.get_session_state_slot("document")
+    except Exception:
+        return None
+    try:
+        if getattr(document, "image1_path", None) == path:
+            return 1
+        if getattr(document, "image2_path", None) == path:
+            return 2
+    except Exception:
+        pass
+    return None
+
+
 def load_image_async(controller, path, image_number, index_in_list, target_size=None):
     from shared.image_processing.progressive_loader import (
         load_preview_image,
         should_use_progressive_load,
     )
 
-    crop_service = controller._get_crop_service()
+    # W1+W2 non-destructive crop: декод всегда full-frame (no-bake).
+    # Сессионный CropService — только детекция (см. pipeline/crop_box.py),
+    # в load_preview_image / load_pixel_store не попадает.
+    crop_service = None
     ic_preview_debug("load_image_async slot=%s path=%s idx=%s crop=%s", image_number, path, index_in_list, bool(crop_service))
     try:
         # Always progressive for image_compare: even 764×576 goes via QImage
@@ -55,7 +123,7 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
         ic_preview_debug("load_image_async slot=%s use_progressive=%s", image_number, use_progressive)
         if use_progressive:
             ic_preview_debug("load_image_async slot=%s -> try preview", image_number)
-            preview = load_preview_image(path, crop_service=crop_service)
+            preview = load_preview_image(path, crop_service=None)
             ic_preview_debug("load_image_async slot=%s preview=%s", image_number, preview)
             if preview:
                 ic_preview_debug("load_image_async slot=%s -> preview hit", image_number)
@@ -72,11 +140,15 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
                 _emb = getattr(_sess, "cache", None) if _sess is not None else None
         except Exception:
             _emb = None
-        store = load_pixel_store(path, crop_service=crop_service, embedded_cache=_emb)
+        store = load_pixel_store(path, crop_service=None, embedded_cache=_emb)
         ic_preview_debug("load_image_async slot=%s store=%s uid=%s", image_number, store, getattr(store, "uid", None) if store else None)
         return store, path, image_number, index_in_list, False
     except Exception as e:
         ic_preview_debug("load_image_async slot=%s failed %s", image_number, e)
+        try:
+            _dismiss_ic_loading_toast(controller, image_number)
+        except Exception:
+            pass
         if controller.event_bus:
             controller.event_bus.emit(
                 CoreErrorOccurredEvent(
@@ -163,7 +235,8 @@ def on_image_loaded(controller, result):
                 from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
                 d = getattr(controller.store, "get_dispatcher", lambda: None)()
                 has_dispatcher = d is not None
-                crop_svc = getattr(controller, "_get_crop_service", lambda: None)()
+                # W1+W2: put всегда boxless — сервис сюда не попадает.
+                crop_svc = None
                 if isinstance(pil_img, QImage):
                     if not pil_img.isNull():
                         if has_dispatcher:
@@ -271,7 +344,8 @@ def on_image_loaded(controller, result):
 def load_full_resolution_async(controller, path, image_number, index_in_list):
     from shared.image_processing.autocrop.debug import autocrop_debug
 
-    crop_service = controller._get_crop_service()
+    # W1+W2: full-res декод всегда full-frame (no-bake, см. load_image_async).
+    crop_service = None
     autocrop_debug(
         "full-res slot=%d path=%s crop_service=%s", image_number, path, bool(crop_service)
     )
@@ -285,7 +359,7 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
             _emb2 = getattr(getattr(controller, "pipeline", None), "cache", None)
         except Exception:
             _emb2 = None
-        store = load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb2)
+        store = load_pixel_store(path_str, crop_service=None, embedded_cache=_emb2)
         return (
             store,
             path_str,
@@ -520,6 +594,18 @@ def on_full_resolution_loaded_result(controller, result) -> None:
 
 def on_full_resolution_error(controller, path: str, err) -> None:
     logger.error(f"Failed to load full resolution: {err}", exc_info=True)
+    try:
+        slot = _resolve_ic_slot_for_path(controller, path)
+        if slot is not None:
+            _dismiss_ic_loading_toast(controller, slot)
+        else:
+            for candidate in (1, 2):
+                try:
+                    _dismiss_ic_loading_toast(controller, candidate)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     message = (
         f"{tr('msg.failed_to_load_image', controller.store.settings.current_language)}:\n"
         f"{path}\n\n{_format_worker_error(err)}"
@@ -551,14 +637,25 @@ def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signa
     try:
         import time
 
+        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+        try:
+            _sw1, _sh1 = pixel_source_size(img1)
+        except Exception:
+            _sw1, _sh1 = "?", "?"
+        try:
+            _sw2, _sh2 = pixel_source_size(img2)
+        except Exception:
+            _sw2, _sh2 = "?", "?"
+
         t0 = time.perf_counter()
         logger.info(
             "[Unify] task %s started (%sx%s + %sx%s)",
             log_id,
-            getattr(img1, "width", "?"),
-            getattr(img1, "height", "?"),
-            getattr(img2, "width", "?"),
-            getattr(img2, "height", "?"),
+            _sw1,
+            _sh1,
+            _sw2,
+            _sh2,
         )
         u1, u2 = unify_pair(
             img1,

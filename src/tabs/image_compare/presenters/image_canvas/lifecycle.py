@@ -95,15 +95,20 @@ def invalidate_render_state(presenter):
     presenter.current_displayed_pixmap = None
     presenter._pending_interactive_mode = None
     presenter._pending_cached_diff_request_key = None
-    presenter._active_diff_toast_key = None
     toast_manager = getattr(presenter.main_window_app, "toast_manager", None)
     active_toast_id = getattr(presenter, "_active_diff_toast_id", None)
-    if toast_manager is not None and active_toast_id is not None:
-        try:
-            toast_manager.close_toast(active_toast_id)
-        except Exception:
-            pass
+    if active_toast_id is None:
+        presenter._active_diff_toast_key = None
+        return
+    if toast_manager is None:
+        # No manager to close with — keep the id so a later manager can close it.
+        return
+    try:
+        toast_manager.close_toast(active_toast_id)
+    except Exception:
+        pass
     presenter._active_diff_toast_id = None
+    presenter._active_diff_toast_key = None
     # Deliberately not clear_canvas_diff_source(image_label) here anymore:
     # this runs on every image swap (loading.py's post-load
     # _invalidate_image_canvas_render_state calls), and unconditionally

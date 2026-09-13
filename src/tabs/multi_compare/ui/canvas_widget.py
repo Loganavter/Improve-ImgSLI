@@ -127,6 +127,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         self.state = MultiCompareState()
 
+        # B1: session pixel cache (owned by the controller, shared across
+        # this page's MC sessions — keys are content-addressed). ``None``
+        # until the controller wires it (headless canvases read imageless).
+        self.pixel_cache = None
+
         self._dispatch: Callable | None = None
 
         self._active_composition = None
@@ -297,6 +302,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
             mc_first_frame_debug(
                 self, "render() returned NOT-painted (engine not ready yet)"
             )
+            # Cold canvas would otherwise sit at presents==0 until the first
+            # DnD drives a frame — and that frame then pays the full cold-init
+            # cost as visible lag. Keep nudging until frames flow (bounded;
+            # the drag path still initializes as fallback).
+            self._nudge_init_retry()
             return
 
         self._rhi_presents_completed += 1
@@ -305,10 +315,48 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self._rhi_presents_completed, mc_first_frame_readiness_repr(self),
         )
         if self._rhi_presents_completed <= _FIRST_PRESENT_SETTLE_COUNT:
-            self._settle_first_presents()
+            # P4 settle-pump collapse (plan-mc-pipeline-refactor A4): the
+            # count invariant is untouched -- every painted present still
+            # counts toward the ``presents >= 10`` visual gate -- but only
+            # the boundary presents pay the full compositor restack. The
+            # first present needs it (makes the frame compositor-visible on
+            # Wayland/Vulkan) and the tenth needs it (pre-emit restack, so
+            # firstFrameRendered fires onto a genuinely visible frame);
+            # intermediate presents just pump one canvas repaint to keep the
+            # chain alive until the gate, without the raise_/activate +
+            # win/parent/overlay update churn of flush_qrhi_compositor.
+            if (
+                self._rhi_presents_completed == 1
+                or self._rhi_presents_completed >= _FIRST_PRESENT_SETTLE_COUNT
+            ):
+                self._settle_first_presents()
+            else:
+                self._pump_intermediate_present()
+
+    def _pump_intermediate_present(self) -> None:
+        """Keep the settle chain alive with a single canvas repaint.
+
+        A direct ``update()`` only marks the widget dirty for the next
+        frame (safe to call from inside ``render()``'s own paint), so the
+        next present still happens without the raise_/activate +
+        win/parent/overlay update churn of ``flush_qrhi_compositor``.
+        Guarded: the pump must never break a frame on a half-torn-down
+        widget (teardown races, ``__new__``-only unit fakes). Full
+        ``flush_qrhi_compositor`` stays reserved for the first/tenth
+        present (see ``render()``).
+        """
+        try:
+            self.update()
+        except (RuntimeError, AttributeError):
+            pass
 
     def _settle_first_presents(self) -> None:
-        """Second present + window restack so D3D does not show a see-through hole."""
+        """Boundary-present restack (first + tenth) + pre-emit gate check.
+
+        Runs only where restack matters (see ``render()``'s P4 split):
+        intermediate presents pump via ``_pump_intermediate_present``
+        instead, so D3D still never shows a see-through hole while the
+        per-present flush churn collapses to two full flushes total."""
 
         def _flush() -> None:
             try:
@@ -367,6 +415,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.request_view_update()
         if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
             QTimer.singleShot(0, self._settle_first_presents)
+        if self._rhi_presents_completed == 0:
+            # Cold canvas: this single update() can vanish pre-exposure
+            # without ever reaching render()/initialize(). Nudge until
+            # frames flow so the first DnD doesn't pay cold-init as lag.
+            self._nudge_init_retry()
 
     def _start_first_frame_sampler(self) -> None:
         """Periodically log what the canvas region actually shows on screen.
@@ -484,6 +537,22 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if self._dispatch is not None:
             self._dispatch(action)
 
+    def _slot_sources(self) -> dict[int, object]:
+        """Resolved pixel sources for the current state (B1).
+
+        One ``cache.resolve`` per slot with a path — pixel tier first, then
+        preview, imageless slots omitted. Closed/evicted stores never
+        surface here (the cache validates before returning).
+        """
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        sources: dict[int, object] = {}
+        for slot in self.state.slots:
+            source = resolve_slot_source(self.pixel_cache, slot)
+            if source is not None:
+                sources[int(slot.id)] = source
+        return sources
+
     def _rebuild_composition(self) -> None:
         """Build the CompositionPlan from state and apply it to ``self``.
 
@@ -498,7 +567,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         )
         from ui.canvas_presentation.composition import resolve_composition
 
-        plan = build_composition_plan(self.state)
+        plan = build_composition_plan(self.state, sources=self._slot_sources())
         if plan is None:
             self._active_composition = None
             return
@@ -544,9 +613,12 @@ class MultiCompareCanvasWidget(QRhiWidget):
     # --- textures / RHI ---
 
     def upload_image(self, slot: CompareSlot) -> None:
-        if slot.image is None:
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+
+        source = resolve_slot_source(self.pixel_cache, slot)
+        if source is None:
             return
-        self.upload_pixel_source(slot.id, slot.image)
+        self.upload_pixel_source(slot.id, source)
 
     def upload_pixel_source(self, slot_id: int, source) -> None:
         self._renderer.queue_upload(slot_id, source)
@@ -561,13 +633,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         Union of ``state.slots`` (live data ownership — includes hidden slots
         during focused mode) and ``_active_composition.layers`` (export path
-        when ``state`` is empty). Texture eviction tracks the union so toggling
+        when ``state`` is empty). Slot pixels resolve from the session cache
+        (B1); texture eviction tracks the union so toggling
         focus never evicts a still-loaded slot.
         """
-        sources: dict[int, object] = {}
-        for slot in self.state.slots:
-            if slot.image is not None:
-                sources.setdefault(int(slot.id), slot.image)
+        sources: dict[int, object] = self._slot_sources()
         if self._active_composition is not None:
             for layer in self._active_composition.layers:
                 if layer.image is not None:
@@ -586,7 +656,42 @@ class MultiCompareCanvasWidget(QRhiWidget):
     def initialize(self, command_buffer) -> None:
         mc_first_frame_debug(self, "initialize() renderer init starts")
         self._renderer.initialize(command_buffer)
-        mc_first_frame_debug(self, "initialize() renderer ready")
+        if getattr(self._renderer, "initialized", False):
+            self._init_retry_count = 0
+            mc_first_frame_debug(self, "initialize() renderer ready")
+            return
+        # Init aborted (rhi/renderTarget not realized yet) — retry shortly.
+        # Otherwise a cold canvas sits at presents==0 until the first DnD
+        # drives a frame, and that first drag-driven frame pays the full
+        # cold-init cost (~160ms GUI stall → visible lag + frozen DnD cursor
+        # while the event loop is stuck compiling pipelines). Bounded: gives
+        # up after ~5s; the drag path still initializes as fallback.
+        # (image_compare never hits this: continuous repaints init at startup.)
+        mc_first_frame_debug(self, "initialize() deferred (not realized), retry scheduled")
+        self._nudge_init_retry()
+
+    def _nudge_init_retry(self) -> None:
+        """Schedule one more paint attempt while the renderer is cold.
+
+        Shared budget with ``initialize()`` (~5s): gives up on persistently
+        broken surfaces instead of update-spamming forever. Hidden widgets
+        never reach ``render()``/``initialize()``, so the chain self-stops
+        off-screen by construction.
+        """
+        if getattr(self._renderer, "initialized", False):
+            self._init_retry_count = 0
+            return
+        retries = getattr(self, "_init_retry_count", 0)
+        if retries < 50:
+            self._init_retry_count = retries + 1
+            QTimer.singleShot(100, self._schedule_init_retry)
+
+    def _schedule_init_retry(self) -> None:
+        try:
+            if not getattr(self._renderer, "initialized", False):
+                self.update()
+        except Exception:
+            pass
 
     def releaseResources(self) -> None:
         self._renderer.release()
@@ -627,9 +732,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
     ) -> tuple[float, float]:
         return canvas_interaction.clamp_pan_values(pan_x, pan_y, zoom)
 
-    @staticmethod
-    def _fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-        return canvas_interaction.fit_scale_for(slot, rect)
+    def _fit_scale_for(self, slot: CompareSlot, rect: QRect) -> tuple[float, float]:
+        return canvas_interaction.fit_scale_for(
+            slot, rect, canvas_interaction._source_for(self, slot)
+        )
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         canvas_interaction.handle_wheel_event(self, event)

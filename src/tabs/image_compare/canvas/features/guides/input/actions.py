@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action
 from domain.types import Color
@@ -9,10 +9,10 @@ from domain.types import Color
 @dataclass
 class SetGuidesEnabledAction(Action):
     enabled: bool
+    type: str = field(default="SET_GUIDES_ENABLED", kw_only=True)
 
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_GUIDES_ENABLED")
-        self.enabled = bool(enabled)
+    def __post_init__(self):
+        self.enabled = bool(self.enabled)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -21,10 +21,10 @@ class SetGuidesEnabledAction(Action):
 @dataclass
 class SetGuidesThicknessAction(Action):
     thickness: int
+    type: str = field(default="SET_GUIDES_THICKNESS", kw_only=True)
 
-    def __init__(self, thickness: int):
-        super().__init__(type="SET_GUIDES_THICKNESS")
-        self.thickness = int(thickness)
+    def __post_init__(self):
+        self.thickness = int(self.thickness)
 
     def get_payload(self):
         return {"thickness": self.thickness}
@@ -33,10 +33,7 @@ class SetGuidesThicknessAction(Action):
 @dataclass
 class SetGuidesColorAction(Action):
     color: Color
-
-    def __init__(self, color: Color):
-        super().__init__(type="SET_GUIDES_COLOR")
-        self.color = color
+    type: str = field(default="SET_GUIDES_COLOR", kw_only=True)
 
     def get_payload(self):
         return {"color": self.color}
@@ -45,10 +42,10 @@ class SetGuidesColorAction(Action):
 @dataclass
 class SetGuidesSmoothingEnabledAction(Action):
     enabled: bool
+    type: str = field(default="SET_GUIDES_SMOOTHING_ENABLED", kw_only=True)
 
-    def __init__(self, enabled: bool):
-        super().__init__(type="SET_GUIDES_SMOOTHING_ENABLED")
-        self.enabled = bool(enabled)
+    def __post_init__(self):
+        self.enabled = bool(self.enabled)
 
     def get_payload(self):
         return {"enabled": self.enabled}
@@ -57,10 +54,10 @@ class SetGuidesSmoothingEnabledAction(Action):
 @dataclass
 class SetGuidesSmoothingInterpolationMethodAction(Action):
     method: str
+    type: str = field(default="SET_GUIDES_SMOOTHING_INTERPOLATION_METHOD", kw_only=True)
 
-    def __init__(self, method: str):
-        super().__init__(type="SET_GUIDES_SMOOTHING_INTERPOLATION_METHOD")
-        self.method = str(method)
+    def __post_init__(self):
+        self.method = str(self.method)
 
     def get_payload(self):
         return {"method": self.method}

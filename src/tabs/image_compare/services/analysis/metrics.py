@@ -12,10 +12,17 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class MetricsService:
 
-    def __init__(self, store, runtime: AnalysisRuntime):
+    def __init__(self, store, runtime: AnalysisRuntime, *, get_crop_service=None):
         self.store = store
         self.runtime = runtime
+        # Optional zero-arg callable returning the session CropService
+        # (controller._get_crop_service — None when autocrop is OFF). Unset →
+        # boxes stay None and metrics run full-frame exactly as before (W3c).
+        self._get_crop_service = get_crop_service
         self._active_ssim_toast_id: int | None = None
+        # Which metrics request currently owns the active toast. A stale
+        # result must not close a toast that a newer request reused.
+        self._ssim_toast_request_id: int | None = None
         # Staleness token: every async calculation bumps this; stale results
         # landing after a pair switch are dropped (same pattern as unify's
         # _unification_task_id and cached-diff request_key).
@@ -23,7 +30,13 @@ class MetricsService:
 
     def calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
         img1, img2 = self._get_metric_source_images()
-        if not img1 or not img2 or img1.size != img2.size:
+        box1, box2 = self._resolve_metric_boxes()
+        # W3c: with crop windows present the worker crops + unifies, so the
+        # full-frame size gate only applies to the boxless path (identical to
+        # today). Boxed pairs with mismatched frames fall through to the
+        # worker, which returns None when the windows cannot be compared.
+        boxless = box1 is None and box2 is None
+        if not img1 or not img2 or (boxless and img1.size != img2.size):
             self._close_ssim_metrics_toast()
             self.on_metrics_calculated(None, request_id=None)
             return
@@ -42,6 +55,8 @@ class MetricsService:
 
         self._metrics_request_id += 1
         request_id = self._metrics_request_id
+        if self._active_ssim_toast_id is not None:
+            self._ssim_toast_request_id = request_id
 
         worker = GenericWorker(
             self.metrics_worker_task,
@@ -51,6 +66,8 @@ class MetricsService:
             calc_ssim,
             cap1,
             cap2,
+            box1,
+            box2,
         )
         # Capture request_id so late results for a previous pair are ignored.
         worker.signals.result.connect(lambda r, rid=request_id: self.on_metrics_calculated(r, request_id=rid))
@@ -59,6 +76,8 @@ class MetricsService:
         )
         if self.runtime.thread_pool:
             self.runtime.thread_pool.start(worker)
+        else:
+            self._close_ssim_metrics_toast()
 
     def _on_metrics_error(self, request_id: int) -> None:
         if request_id != self._metrics_request_id:
@@ -97,8 +116,28 @@ class MetricsService:
         image_state = self.store.viewport.session_data.image_state
         return image_state.image1, image_state.image2
 
+    def _resolve_metric_boxes(self):
+        """Crop windows for the current pair via the single box owner (W3c)."""
+        try:
+            doc = self.store.get_session_state_slot("document")
+            path1 = getattr(doc, "image1_path", None)
+            path2 = getattr(doc, "image2_path", None)
+        except Exception:
+            return None, None
+        try:
+            from tabs.image_compare.services.analysis.analysis_pair import (
+                resolve_crop_boxes_for_paths,
+            )
+
+            return resolve_crop_boxes_for_paths(
+                path1, path2, self._get_crop_service
+            )
+        except Exception:
+            return None, None
+
     def metrics_worker_task(
-        self, img1, img2, calc_psnr: bool, calc_ssim: bool, cap1, cap2
+        self, img1, img2, calc_psnr: bool, calc_ssim: bool, cap1, cap2,
+        box1=None, box2=None,
     ) -> Optional[Tuple[Optional[float], Optional[float]]]:
         """Worker task to compute metrics."""
         try:
@@ -119,6 +158,26 @@ class MetricsService:
                             return None
                 elif hasattr(cap, "valid"):
                     if not cap.valid:  # legacy lease
+                        return None
+            # W3c: with full-frame stores, metrics run over the crop windows
+            # (black borders excluded). Boxes resolve on the GUI thread via
+            # the single owner; cropping here keeps the warmed-cache lookup
+            # off the pixel path. Both None → untouched, identical to today.
+            # Crop runs BEFORE the 4096 downscale: boxes are full-source
+            # coords and only match the undownscaled sources.
+            if box1 is not None or box2 is not None:
+                from tabs.image_compare.services.analysis.analysis_pair import (
+                    crop_pair_to_boxes,
+                )
+
+                img1, img2 = crop_pair_to_boxes(img1, img2, box1, box2)
+                if img1 is None or img2 is None:
+                    return None
+                if getattr(img1, "size", None) != getattr(img2, "size", None):
+                    from shared.image_processing.pixel_ops.unify import unify_pair
+
+                    img1, img2 = unify_pair(img1, img2)
+                    if img1 is None or img2 is None:
                         return None
             if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
                 img1, img2 = downscale_pair_to_limit(img1, img2, 4096, allow_materialize=True)
@@ -142,8 +201,14 @@ class MetricsService:
     ):
         # Stale result from a previous pair: ignore (metrics worker has no
         # ordering guarantee; the last finish must not overwrite the current
-        # pair's numbers).
+        # pair's numbers). Close the toast only if it still belongs to the
+        # stale request (no newer request reused it for its own run).
         if request_id is not None and request_id != self._metrics_request_id:
+            if (
+                self._active_ssim_toast_id is not None
+                and self._ssim_toast_request_id == request_id
+            ):
+                self._close_ssim_metrics_toast()
             return
         if result:
             psnr_val, ssim_val = result
@@ -184,6 +249,7 @@ class MetricsService:
         if not calc_ssim:
             return
         if self.store.viewport.view_state.diff_mode == "ssim":
+            self._close_ssim_metrics_toast()
             return
 
         toast_manager = self.runtime.get_toast_manager()
@@ -208,6 +274,7 @@ class MetricsService:
             except Exception:
                 logger.exception("Failed to refresh SSIM metrics toast")
                 self._active_ssim_toast_id = None
+                self._ssim_toast_request_id = None
 
         try:
             self._active_ssim_toast_id = toast_manager.show_toast(
@@ -215,15 +282,18 @@ class MetricsService:
                 duration=0,
                 progress=0,
             )
+            self._ssim_toast_request_id = self._metrics_request_id
         except Exception:
             logger.exception("Failed to show SSIM metrics toast")
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
 
     def _complete_ssim_metrics_toast(self, *, success: bool) -> None:
         toast_manager = self.runtime.get_toast_manager()
         toast_id = self._active_ssim_toast_id
         if toast_manager is None or toast_id is None:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
             return
 
         current_language = getattr(self.store.settings, "current_language", "en")
@@ -248,12 +318,14 @@ class MetricsService:
             logger.exception("Failed to complete SSIM metrics toast")
         finally:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
 
     def _close_ssim_metrics_toast(self) -> None:
         toast_manager = self.runtime.get_toast_manager()
         toast_id = self._active_ssim_toast_id
         if toast_manager is None or toast_id is None:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None
             return
         try:
             toast_manager.close_toast(toast_id)
@@ -261,3 +333,4 @@ class MetricsService:
             logger.exception("Failed to close SSIM metrics toast")
         finally:
             self._active_ssim_toast_id = None
+            self._ssim_toast_request_id = None

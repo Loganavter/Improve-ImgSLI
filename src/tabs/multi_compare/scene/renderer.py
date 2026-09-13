@@ -278,16 +278,15 @@ class MultiCompareRhiRenderer:
                 self, command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
             )
         if self._pending_dirty_layers:
-            # Unlike image_compare's canvas (which repaints continuously),
-            # multi_compare's canvas only repaints on an explicit trigger
-            # (request_view_update()) -- a mip cascade group left deferred
-            # here by the time budget would otherwise never get a further
-            # render() call to finish it in, leaving that array layer's
-            # upper mip levels permanently stale (still whatever a
-            # previously-evicted, unrelated tile last wrote there). Under
-            # the widget's Linear mipmap filter, sampling that layer at
-            # anything below 1:1 then trilinear-blends fresh level-0 content
-            # against that stale upper-level content -- visible as a
+            # Both canvases are on-demand (image_compare's own render_context
+            # says so explicitly: "this canvas is purely on-demand"), so a
+            # mip cascade group left deferred here by the time budget would
+            # otherwise never get a further render() call to finish it in,
+            # leaving that array layer's upper mip levels permanently stale
+            # (still whatever a previously-evicted, unrelated tile last wrote
+            # there). Under the widget's Linear mipmap filter, sampling that
+            # layer at anything below 1:1 then trilinear-blends fresh level-0
+            # content against that stale upper-level content -- visible as a
             # moire/seam grid at tile boundaries on high-frequency content.
             self.host.update()
 

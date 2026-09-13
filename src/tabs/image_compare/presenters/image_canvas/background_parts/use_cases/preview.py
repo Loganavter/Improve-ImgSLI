@@ -107,7 +107,9 @@ def _update_preview_tracking(presenter, picked_by_slot: dict) -> None:
             if doc is not None:
                 path = getattr(doc, f"image{slot}_path", None)
                 # Phase 3: preview via PipelineCache, not document field
-                _ctrl2 = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                from tabs.image_compare.pipeline.session import resolve_session_controller
+
+                _ctrl2 = resolve_session_controller(presenter)
                 _pl2 = getattr(_ctrl2, "pipeline", None) if _ctrl2 is not None else None
                 if _pl2 is not None and path:
                     try:

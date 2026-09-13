@@ -5,6 +5,7 @@ state; the actual loading/pyramid/toast and export/save logic live in
 ``use_cases/loading.py`` and ``use_cases/export.py`` (mirrors image_compare's
 ``_session_controller.py`` + ``use_cases/`` split) — this class stays a thin
 set of delegators plus the state those modules read and write.
+Audit-Meta: pattern=thin-owner reason="B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)"
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
 from tabs.multi_compare.use_cases import export as export_use_cases
 from tabs.multi_compare.use_cases import loading as loading_use_cases
+from tabs.multi_compare.use_cases import preview_decode as preview_decode_use_cases
 from tabs.multi_compare.widget import MultiCompareWidget
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -62,6 +64,26 @@ class MultiCompareController:
         self.dialog_parent = dialog_parent or widget
         self.open_export_dialog = open_export_dialog
         self.context = context
+        # B1: the session pixel cache lives here (tab-page lifetime, shared
+        # across this page's MC sessions — keys are content-addressed).
+        # Redux state holds paths only; every tier arrival does
+        # cache.put_* + NoteSlotPixels dispatch (STORE replace-only).
+        from tabs.multi_compare.pipeline.cache import MultiComparePixelCache
+
+        self.pixel_cache = MultiComparePixelCache()
+        try:
+            canvas = getattr(widget, "canvas", None)
+            if canvas is not None:
+                canvas.pixel_cache = self.pixel_cache
+        except Exception:
+            pass
+        # Backref for use_cases that only receive the widget (duplicate
+        # finalize demand-fill kick). Cycles are GC-safe; fakes without a
+        # controller read None via getattr.
+        try:
+            widget._controller = self
+        except Exception:
+            pass
         self._gpu_exporter: MultiCompareGpuExporter | None = None
         self._save_flow: MultiCompareSaveFlowCoordinator | None = None
         self._last_applied_ui_mode: str | None = None
@@ -236,46 +258,161 @@ class MultiCompareController:
 
     def shutdown(self) -> None:
         if self._save_flow is not None:
-            self._save_flow.cancel_all_exports()
+            self._save_flow._flow.cancel_all_exports()
         if self._gpu_exporter is not None:
             self._gpu_exporter.shutdown()
             self._gpu_exporter = None
 
-    def load_images(self, paths: list[Path]) -> None:
-        for path in paths:
-            self._load_single_auto(path)
+    def load_images(self, paths: list[Path]) -> int:
+        """Toolbar "Add images" dialog entry — thin delegate (P8).
+
+        Returns slots created synchronously; dialog confirm with ≥1
+        valid file always yields a slot + preview/error-toast, never a
+        silent 0 slots (see ``use_cases.dialog_add.load_images``).
+        """
+        from tabs.multi_compare.use_cases import dialog_add as dialog_add_use_cases
+
+        return dialog_add_use_cases.load_images(self, paths)
+
+    def load_external_paths(self, paths) -> int:
+        """Direct-load for chrome/carry/paste drops (P3A) — thin delegate."""
+        return loading_use_cases.load_external_paths(self, paths)
 
     def begin_paste_placement(self, paths: list[Path]) -> None:
-        """Start cursor-tracked DnD highlight, same cycle as external file drop."""
-        self.widget.begin_pending_paste(paths)
+        """Paste entry — direct-loads like IC (P3A), no pending-paste arming.
+
+        Previously armed ``widget.begin_pending_paste`` (highlight + click
+        to place, ``Esc`` to cancel); now auto-places through the P2 async
+        path (``load_external_paths``) so clipboard/carry content appears
+        with a loading toast immediately.
+        """
+        self.load_external_paths(paths)
 
     def rehydrate_slots(self, state) -> bool:
-        """Decode ``path`` into ``slot.image`` for persisted slots (project load).
+        """Lazy rehydrate — paths only, zero sync decodes (B1, IC parity).
 
-        Uses the same ``_read_image`` path as drag-open / file dialog loading.
+        ``deserialize_session`` already restored the path-only slots; this
+        only kicks async demand fill for the *visible* (active-session)
+        slots that have no cached tier yet. Project reopen therefore calls
+        ``load_pixel_store`` 0 times — history stays path-only until demand
+        (same posture as image_compare's lazy ``rehydrate_session``).
+
+        Returns True when at least one fill was kicked (callers refresh the
+        widget unconditionally — ordering, not payload: the old
+        ``if not changed: return`` gate skipped the refresh exactly when
+        nothing was decoded, leaving restored sessions blank after tab
+        switch — P6).
+
+        Dormant sessions (``state`` is not the visible one) record paths
+        only — their fill is kicked on activation
+        (``ensure_visible_slots_loading`` with no args), so a project load
+        never shows another session's toasts on the active grid.
         """
-        changed = False
-        for slot in state.slots:
-            if slot.path is None or slot.image is not None:
+        try:
+            visible = self.widget.state
+        except Exception:
+            visible = None
+        if state is not None and visible is not None and state is not visible:
+            return False
+        return self.ensure_visible_slots_loading(state)
+
+    def ensure_visible_slots_loading(self, state=None) -> bool:
+        """Kick async preview fill for imageless slots with files on disk.
+
+        Activation/restore entry (P6 ordering fix): fill is tied to the
+        session becoming visible, not to load-time conditionals. Slots
+        whose file is gone are left imageless (no toast, no removal — a
+        reopened project must keep its layout); slots already cached or
+        already inflight are skipped. Restore fills pass
+        ``keep_slot_on_error`` so a corrupt-at-restore file surfaces an
+        error toast instead of deleting the restored slot.
+        """
+        from pathlib import Path as _Path
+
+        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.use_cases import preview_decode as _preview
+
+        try:
+            live = self.widget.state if state is None else state
+            slots = list(live.slots)
+        except Exception:
+            return False
+        kicked = False
+        for slot in slots:
+            path = slot.path if isinstance(slot.path, _Path) else None
+            if slot.path is not None and not isinstance(slot.path, _Path):
+                try:
+                    path = _Path(slot.path)
+                except Exception:
+                    path = None
+            if path is None:
                 continue
-            path = slot.path if isinstance(slot.path, Path) else Path(slot.path)
-            arr = self._read_image(path)
-            if arr is not None:
-                slot.image = arr
-                changed = True
-        return changed
+            try:
+                if resolve_slot_source(self.pixel_cache, slot) is not None:
+                    continue
+            except Exception:
+                pass
+            try:
+                if not path.is_file():
+                    continue
+            except Exception:
+                continue
+            try:
+                if _preview.has_pending_load(self, slot.id, path):
+                    continue
+            except Exception:
+                pass
+            try:
+                self._show_loading_toast(slot.id)
+                _preview.load_preview_async(
+                    self, path, slot.id, keep_slot_on_error=True
+                )
+                kicked = True
+            except Exception:
+                logger.exception(
+                    "mc: demand fill kick failed for slot %s", slot.id
+                )
+        return kicked
 
     def clear(self) -> None:
         self.widget.store.dispatch(mc_actions.clear())
 
+    def remove_slot(self, slot_id: int) -> None:
+        """Remove a slot, aborting its inflight preview/full decodes first (A2).
+
+        Thin delegate over ``preview_decode.remove_slot_with_cancel`` —
+        the AbortSignal-style cancel-on-remove entry point (the widget's
+        direct ``placement.remove_slot`` path stays safe via stale guards).
+        """
+        preview_decode_use_cases.remove_slot_with_cancel(self, slot_id)
+
+    def cancel_slot_loads(self, slot_id: int) -> None:
+        """Abort inflight decodes for ``slot_id`` without removing the slot."""
+        preview_decode_use_cases.cancel_slot_loads(self, slot_id)
+
     def _on_images_dropped(self, paths: list, target, side) -> None:
-        loading_use_cases.on_images_dropped(self, paths, target, side)
+        # P7: kept (not collapsed into drop_event's defer) on purpose. The
+        # canvas dropEvent already returns past accept before emitting, but
+        # other emitters (tab.handle_drop's no-controller fallback,
+        # finalize_pending_paste) can fire inside a window-accept window, so
+        # this singleShot(0) is the load-past-finish guarantee for ALL of
+        # them. Cost is one extra event-loop hop (~0ms), not cursor-relevant:
+        # decoding already happens in GenericWorkers (P2), and the pre-accept
+        # sync segment (resolve/dispatch/stat) moved to _finish_external_drop.
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(
+            0,
+            lambda p=list(paths), t=target, s=side: loading_use_cases.on_images_dropped(
+                self, p, t, s
+            ),
+        )
 
     def _on_add_requested(self) -> None:
         start_dir = export_use_cases.default_dir(self)
-        from shared.image_extensions import IMAGE_FILTER_GLOB
+        from shared.image_extensions import build_image_dialog_filter
 
-        filters = f"Images ({IMAGE_FILTER_GLOB});;All files (*)"
+        filters = build_image_dialog_filter()
         paths, _ = QFileDialog.getOpenFileNames(
             self.widget, "Add images to compare", start_dir, filters
         )
@@ -291,72 +428,68 @@ class MultiCompareController:
         )
 
     def _start_pyramid_build(self, store, *, slot_id: int | None = None) -> None:
-        # Prefer coordinator when present (covers thread_pool + toast routing)
-        coord = getattr(self, "_pyramid_coordinator", None)
-        if coord is not None:
-            # MC abort predicate: not pyramid.valid
-            # need pyramid reference for predicate; capture via closure after ensure
-            # coordinator's start_build will create predicate if None, but we want
-            # correct MC semantics (pyramid.valid). Provide explicit predicate
-            # that closes over the resolved pyramid.
-            from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+        # Coordinator owns thread_pool + toast routing.
+        # MC abort predicate: not pyramid.valid (capture resolved pyramid).
+        from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
 
-            _pyr = _ensure(store)
+        _pyr = _ensure(store)
 
-            def _should_abort(_p=_pyr):
-                return not getattr(_p, "valid", True) if _p is not None else False
+        def _should_abort(_p=_pyr):
+            return not getattr(_p, "valid", True) if _p is not None else False
 
-            # If pyramid is None, coordinator will handle finishing toast itself.
-            coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
-            return
-        loading_use_cases.start_pyramid_build(self, store, slot_id=slot_id)
+        # If pyramid is None, coordinator will handle finishing toast itself.
+        self._pyramid_coordinator.start_build(store, slot_id=slot_id, should_abort=_should_abort)
 
     def _on_pyramid_level_ready(self, payload=None) -> None:
-        coord = getattr(self, "_pyramid_coordinator", None)
-        if coord is not None:
-            coord.on_level_ready(payload)
-            return
-        loading_use_cases.on_pyramid_level_ready(self, payload)
+        self._pyramid_coordinator.on_level_ready(payload)
 
     def _show_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.show(slot_id)
-            return
-        loading_use_cases.show_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.show(slot_id)
 
     def _mark_full_res_ready(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.mark_full_res_ready(slot_id)
-            return
-        loading_use_cases.mark_full_res_ready(self, slot_id)
+        self._loading_toast_coordinator.mark_full_res_ready(slot_id)
 
     def _finish_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.finish(slot_id)
-            return
-        loading_use_cases.finish_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.finish(slot_id)
 
     def _dismiss_loading_toast(self, slot_id: int) -> None:
-        coord = getattr(self, "_loading_toast_coordinator", None)
-        if coord is not None:
-            coord.dismiss(slot_id)
-            return
-        loading_use_cases.dismiss_loading_toast(self, slot_id)
+        self._loading_toast_coordinator.dismiss(slot_id)
 
-    def _load_full_resolution_async(self, path: Path, slot_id: int) -> None:
-        loading_use_cases.load_full_resolution_async(self, path, slot_id)
+    def _load_full_resolution_async(
+        self, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
+    ) -> None:
+        loading_use_cases.load_full_resolution_async(
+            self, path, slot_id, keep_slot_on_error=keep_slot_on_error
+        )
 
-    def _on_full_resolution_error(self, path: Path, slot_id: int, err) -> None:
-        loading_use_cases.on_full_resolution_error(self, path, slot_id, err)
+    def _on_full_resolution_error(
+        self, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
+    ) -> None:
+        loading_use_cases.on_full_resolution_error(
+            self, path, slot_id, err, keep_slot_on_error=keep_slot_on_error
+        )
 
-    def _apply_full_resolution(self, slot_id: int, path: Path, store) -> None:
-        loading_use_cases.apply_full_resolution(self, slot_id, path, store)
+    def _apply_full_resolution(
+        self, slot_id: int, path: Path, store, *, keep_slot_on_error: bool = False
+    ) -> None:
+        loading_use_cases.apply_full_resolution(
+            self, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
+        )
 
-    def _load_single_auto(self, path: Path) -> None:
-        loading_use_cases.load_single_auto(self, path)
+    def _on_preview_ready(self, slot_id: int, path: Path, result) -> None:
+        preview_decode_use_cases.on_preview_ready(self, slot_id, path, result)
+
+    def _on_preview_error(
+        self, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
+    ) -> None:
+        preview_decode_use_cases.on_preview_error(
+            self, path, slot_id, err, keep_slot_on_error=keep_slot_on_error
+        )
+
+    def _load_single_auto(self, path: Path) -> int | None:
+        from tabs.multi_compare.use_cases import dialog_add as dialog_add_use_cases
+
+        return dialog_add_use_cases.load_single_auto(self, path)
 
     def _native_canvas_size(self) -> tuple[int, int] | None:
         return export_use_cases.native_canvas_size(self)

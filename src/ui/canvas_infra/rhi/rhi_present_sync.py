@@ -23,6 +23,23 @@ _DEBOUNCE_MS = 100
 _TIMER_ATTR = "_qrhi_compositor_sync_timer"
 _REASON_ATTR = "_qrhi_compositor_sync_reason"
 
+# Minimum gap between real window raise/activate kicks (ms, monotonic).
+# Wheel-zoom ticks arrive far faster than this while Qt still reports
+# ApplicationInactive (the common Wayland scroll state), and every kick is
+# an xdg-activation request — a per-tick storm of them is what the
+# compositor answers with busy/loading cursor feedback (MC zoom showed it,
+# IC zoom never calls this helper and stays quiet). The QRhi present fix
+# only needs an occasional kick, not one per tick, so repeats inside the
+# window are skipped. Tests reset ``_LAST_ACTIVE_KICK_MS`` directly.
+_ACTIVE_KICK_COOLDOWN_MS = 500.0
+_LAST_ACTIVE_KICK_MS: float | None = None
+
+
+def _active_kick_now_ms() -> float:
+    import time
+
+    return time.monotonic() * 1000.0
+
 
 def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
     """Re-activate our window when Qt reports Inactive during canvas input.
@@ -41,13 +58,46 @@ def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
         return False
     if app.applicationState() == Qt.ApplicationState.ApplicationActive:
         return False
+    global _LAST_ACTIVE_KICK_MS
+    now_ms = _active_kick_now_ms()
+    if (
+        _LAST_ACTIVE_KICK_MS is not None
+        and now_ms - _LAST_ACTIVE_KICK_MS < _ACTIVE_KICK_COOLDOWN_MS
+    ):
+        # A kick landed very recently (e.g. the previous wheel tick of the
+        # same gesture) — the window is already as active as one kick can
+        # make it; another raise/activate would only feed the compositor's
+        # busy feedback without making presents any more visible.
+        return False
     win.raise_()
     win.activateWindow()
+    _LAST_ACTIVE_KICK_MS = now_ms
     return True
 
 
-def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
-    """One-shot present + window update mirroring the first-flyout restack."""
+def flush_qrhi_compositor(
+    widget: QWidget | None, *, reason: str = "", activate: bool = True,
+    chrome: bool = True,
+) -> None:
+    """One-shot present + window update mirroring the first-flyout restack.
+
+    ``activate=False`` skips the ``ensure_window_active_for_qrhi`` kick
+    (``raise_`` + ``activateWindow``) — mandatory on reactive paths where
+    the user is interacting with *another* app, e.g. an external drag
+    whose pointer/keyboard focus belongs to the file manager. On Wayland
+    such a kick is a guaranteed-denied xdg-activation request: Mutter
+    marks our (obscured) window demanding-attention and pops the
+    «Окно "Improve-ImgSLI" ожидает» banner instead of activating
+    (see internal-docs ``inv-flyout-wayland`` rule: never restore focus
+    outside a genuine user interaction with our own window).
+
+    ``chrome=False`` skips the full-window/parent/overlay repaints and
+    keeps only the window-handle ``requestUpdate`` + widget update — the
+    light variant for high-frequency drag settle kicks, where the full
+    repaint churn risks starving the RHI presents it is meant to unblock
+    (internal-docs DnD §10: full-window ``update()`` storms drove
+    ``presents_during_show`` to zero).
+    """
     _ = reason
     try:
         is_vis = getattr(widget, "isVisible", None)
@@ -56,7 +106,8 @@ def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
     except (RuntimeError, AttributeError):
         return
 
-    ensure_window_active_for_qrhi(widget)
+    if activate:
+        ensure_window_active_for_qrhi(widget)
     if widget is None:
         return
     win = widget.window()
@@ -64,8 +115,11 @@ def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
         handle = win.windowHandle()
         if handle is not None:
             handle.requestUpdate()
-        win.update()
+        if chrome:
+            win.update()
     widget.update()
+    if not chrome:
+        return
     parent = widget.parentWidget()
     if parent is not None:
         parent.update()

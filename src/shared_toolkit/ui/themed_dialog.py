@@ -62,7 +62,7 @@ class ThemedDialog(ThemedWidget, QDialog):
         resort.
         """
         try:
-            color = try_resolve_theme_color(self._theme_manager, "dialog.background")
+            color = try_resolve_theme_color(self._theme_manager, "surface.background")
         except Exception:
             color = None
         if color is None or not color.isValid():

@@ -115,7 +115,7 @@ def update_comparison_if_needed(presenter):
     if _doc_sig != _last_document_log_sig:
         _last_document_log_sig = _doc_sig
         _preview_log(
-            "document state: pixel uid1=%s uid2=%s preview uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%s/%s",
+            "document state: pixel uid1=%s uid2=%s preview uid1=%s uid2=%s image_state uid1=%s uid2=%s paths=%r | %r",
             _doc_sig[0], _doc_sig[1], _doc_sig[2], _doc_sig[3], _doc_sig[4], _doc_sig[5], _doc_sig[6], _doc_sig[7],
         )
 

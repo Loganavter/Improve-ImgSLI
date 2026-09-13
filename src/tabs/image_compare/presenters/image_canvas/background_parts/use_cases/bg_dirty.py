@@ -86,6 +86,61 @@ def is_background_dirty(presenter, current_bg_sig, current_label_dims):
     return (current_bg_sig != last_bg_sig) or label_dims_changed or (presenter._cached_base_pixmap is None)
 
 
+def _resolve_unify_gate_cache(presenter):
+    """Unify-memo cache for the size-mismatch gate, writer-side first.
+
+    Unify puts land in the controller ``PipelineCache`` (``use_cases/unify.py``),
+    never in the Store slot — probing the slot first always misses
+    (dual-cache hole) and forces a spurious preview hold over an
+    already-cached pair. Returns the controller cache when reachable,
+    else a thin Store-slot wrapper, else None.
+    """
+    from tabs.image_compare.pipeline.session import resolve_session_controller
+
+    _ctrl_u = resolve_session_controller(presenter)
+    _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
+    if _pl_u is None:
+        try:
+            _pl_u = getattr(presenter, "pipeline", None)
+        except Exception:
+            _pl_u = None
+    _cache_u = getattr(_pl_u, "cache", None) if _pl_u is not None else None
+    _preview_log("unify gate: controller pipeline %s cache %s ctrl=%s", _pl_u is not None, _cache_u is not None, type(_ctrl_u).__name__ if _ctrl_u else None)
+    if _cache_u is not None:
+        return _cache_u
+    _ps = None
+    try:
+        _ps = presenter.store.get_session_state_slot("pipeline")
+    except Exception:
+        _ps = None
+    if _ps is not None:
+        try:
+            from tabs.image_compare.pipeline.cache import _unify_key as _ukey_store
+            class _StoreCacheWrapper:
+                def get_unified(self, u1, u2, m, w, h):
+                    k = _ukey_store(u1, u2, m, w, h)
+                    v = _ps.unify.get(k) if isinstance(_ps.unify, dict) else None
+                    if v is None:
+                        return None
+                    try:
+                        for s in v:
+                            if hasattr(s, "is_open") and not s.is_open:
+                                return None
+                            if hasattr(s, "isNull") and s.isNull():
+                                return None
+                    except Exception:
+                        pass
+                    return v
+                @property
+                def _preview(self):
+                    return getattr(_ps, "preview", {})
+            _cache_u = _StoreCacheWrapper()
+        except Exception:
+            _cache_u = None
+        _preview_log("unify gate: Store pipeline %s cache %s", _ps is not None, _cache_u is not None)
+    return _cache_u
+
+
 def handle_background(presenter, source1, source2, peeked, current_label_dims, label_width, label_height) -> bool:
     """Bg signature + dirty + ssim diff + pick/gap/apply.
 
@@ -162,7 +217,9 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                         _s2_ready = _pyramid_complete(_s2)
                     _pending = False
                     try:
-                        _ctrl = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
+                        from tabs.image_compare.pipeline.session import resolve_session_controller
+
+                        _ctrl = resolve_session_controller(presenter)
                         _svc = getattr(_ctrl, "_image_load_service", None) if _ctrl is not None else None
                         if _svc is None and _ctrl is not None:
                             _svc = getattr(_ctrl, "pipeline", None)
@@ -223,56 +280,7 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                         _w2, _h2 = int(getattr(_s2u, "width", 0) or 0), int(getattr(_s2u, "height", 0) or 0)
                     if (_w1 != _w2 or _h1 != _h2) and _w1 > 0 and _w2 > 0:
                         _preview_log("unify gate check: size mismatch %sx%s vs %sx%s", _w1, _h1, _w2, _h2)
-                        _ps = None
-                        try:
-                            _ps = presenter.store.get_session_state_slot("pipeline")
-                        except Exception:
-                            _ps = None
-                        _cache_u = None
-                        _ctrl_u = None
-                        if _ps is not None:
-                            try:
-                                from tabs.image_compare.pipeline.cache import _unify_key as _ukey_store
-                                class _StoreCacheWrapper:
-                                    def get_unified(self, u1, u2, m, w, h):
-                                        k = _ukey_store(u1, u2, m, w, h)
-                                        v = _ps.unify.get(k) if isinstance(_ps.unify, dict) else None
-                                        if v is None:
-                                            return None
-                                        try:
-                                            for s in v:
-                                                if hasattr(s, "is_open") and not s.is_open:
-                                                    return None
-                                                if hasattr(s, "isNull") and s.isNull():
-                                                    return None
-                                        except Exception:
-                                            pass
-                                        return v
-                                    @property
-                                    def _preview(self):
-                                        return getattr(_ps, "preview", {})
-                                _cache_u = _StoreCacheWrapper()
-                            except Exception:
-                                _cache_u = None
-                            _preview_log("unify gate: Store pipeline %s cache %s", _ps is not None, _cache_u is not None)
-                        else:
-                            _ctrl_u = getattr(presenter, "session_controller", None) or getattr(presenter, "controller", None)
-                            if _ctrl_u is None:
-                                try:
-                                    _mw = getattr(presenter, "main_window_app", None) or getattr(getattr(presenter, "widget", None), "main_window_app", None)
-                                    if _mw is not None:
-                                        _tab = getattr(getattr(_mw, "tab_registry", None), "get_tab", lambda *_a, **_kw: None)("image_compare")
-                                        _ctrl_u = getattr(_tab, "session_controller", None) if _tab else None
-                                except Exception:
-                                    _ctrl_u = None
-                            _pl_u = getattr(_ctrl_u, "pipeline", None) if _ctrl_u is not None else None
-                            if _pl_u is None:
-                                try:
-                                    _pl_u = getattr(presenter, "pipeline", None)
-                                except Exception:
-                                    _pl_u = None
-                            _cache_u = getattr(_pl_u, "cache", None) if _pl_u is not None else None
-                            _preview_log("unify gate: legacy pipeline %s cache %s ctrl=%s", _pl_u is not None, _cache_u is not None, type(_ctrl_u).__name__ if _ctrl_u else None)
+                        _cache_u = _resolve_unify_gate_cache(presenter)
                         if _cache_u is not None:
                             try:
                                 from shared.rendering.image_identity import image_uid as _uid2

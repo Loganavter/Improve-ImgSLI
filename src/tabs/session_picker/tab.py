@@ -52,6 +52,16 @@ class SessionPickerTab(TabContract):
         return SessionPickerWidget(parent, context=context)
 
     def create_service(self, service_id: str, *args, **kwargs):
+        if service_id == "contribute_help":
+            legacy_registry = args[0] if args else kwargs.get("registry")
+            if legacy_registry is not None:
+                from tabs.session_picker.help import contribute_help
+
+                contribute_help(legacy_registry)
+                return True
+            from tabs.session_picker.help import build_help_contribution
+
+            return build_help_contribution()
         if service_id == "session_picker.host_chrome":
             from tabs.registry import TabRegistry
             from tabs.session_picker.host_chrome import SessionPickerHostChromeAdapter
