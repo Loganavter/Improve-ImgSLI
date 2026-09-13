@@ -8,10 +8,15 @@ Env vars:
     IMGSLI_IC_DEBUG=1            — short alias (same flag)
     IMGSLI_IC_PREVIEW_DEBUG=1    — preview display / re-render gate ([ic-preview])
     IMGSLI_MAGNIFIER_DEBUG=1     — magnifier instances toolbar ([magnifier-debug])
+    IMGSLI_IC_LOUPE_DEBUG=1      — magnifier residency/LOD trace ([ic-loupe])
 
 Tags:
     [ic-dnd]     — drag-enter / accept / handle_drop routing
     [ic-debug]   — generic lifecycle
+    [ic-loupe]   — magnifier residency/LOD trace: requestLevel answers,
+                   dropped-slice reasons, texture-choice and dedup verdicts
+                   (magnifier_pass, scene_update, feature_overlay_gpu,
+                   interaction — records also land in FrameContext)
     [ic-preview] — preview display gate: when the canvas apply runs, and
                    every reason it is deferred/skipped instead (render_flow.py,
                    loading_pyramid.py, _session_controller.py); since
@@ -167,6 +172,21 @@ def ic_magnifier_debug(msg: str, *args, **kwargs) -> None:
             msg,
             *args,
             env_flags=("IMGSLI_MAGNIFIER_DEBUG",),
+            **kwargs,
+        )
+
+
+def ic_loupe_debug_enabled() -> bool:
+    return _env_flag("IMGSLI_IC_LOUPE_DEBUG")
+
+
+def ic_loupe_debug(msg: str, *args, **kwargs) -> None:
+    if ic_loupe_debug_enabled():
+        _emit(
+            "[ic-loupe]",
+            msg,
+            *args,
+            env_flags=("IMGSLI_IC_LOUPE_DEBUG",),
             **kwargs,
         )
 

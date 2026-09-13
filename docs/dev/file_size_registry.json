@@ -124,6 +124,18 @@
       }
     },
     {
+      "path": "src/shared/rendering/tile_texture_service.py",
+      "lines": 542,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
+      }
+    },
+    {
       "path": "src/shared_toolkit/ui/layout_sizing.py",
       "lines": 574,
       "limit": 500,
@@ -188,7 +200,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
-      "lines": 775,
+      "lines": 852,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi pass, one resource lifecycle (border-disk",
@@ -217,6 +229,16 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/workers/scene_update.py",
+      "lines": 426,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities.",
+      "parsed": {
+        "reason": "single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities."
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/frame_context.py",
       "lines": 113,
       "limit": 500,
@@ -229,13 +251,24 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/interaction.py",
-      "lines": 570,
+      "lines": 584,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single canvas interaction router — gesture/drag/zoom routing\"",
       "parsed": {
         "pattern": "state-machine",
         "reason": "single canvas interaction router — gesture/drag/zoom routing"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/loupe_trace.py",
+      "lines": 121,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads"
       }
     },
     {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Audit-Meta: pattern=state-machine size=exempt reason="one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
+
 from shared.image_processing.regions import UniformTileGrid, build_uniform_tile_grid
 from shared.rendering.tile_constants import DEFAULT_TILE_EXTENT
 from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
@@ -17,6 +19,22 @@ TileSlot = tuple[int, int]  # (array_index, layer)
 # the real backend limit (via `rhi.resourceLimit(QRhi.ResourceLimit
 # .TextureArraySizeMax)`) should pass it explicitly.
 DEFAULT_MAX_ARRAY_SIZE = 2048
+
+# P3 residency priorities (plan-render-core-consolidation-2026-09-13): the
+# magnifier never chose its pyramid level — it sampled whatever slice was
+# resident and silently dropped the rest — while ``lod.select_level`` decided
+# without magnifier context. ``request_level`` inverts this: consumers
+# request, the service answers resident-or-pending-with-reason. Purely
+# additive: no existing signature changes.
+_REQUEST_QUALITY_SCALES = {
+    "high": 1.0,
+    "balanced": 0.5,
+    "preview": 0.25,
+}
+
+#: ``request_level`` status vocabulary (plain strings, no new exports).
+REQUEST_STATUS_RESIDENT = "resident"
+REQUEST_STATUS_PENDING = "pending"
 
 
 class _TileSlotAllocator:
@@ -125,6 +143,11 @@ class TileTextureService:
         # tile-array-atlas-plan.md Phase 1). Keyed the same as
         # `_tile_byte_sizes`/`_tile_last_used` -- (source_id, index).
         self._slot_allocator = _TileSlotAllocator(max_array_size)
+        # Consumer interest rects (P3 residency priorities): a lens registers
+        # the image-space rect it is about to sample via
+        # ``register_interest_rect`` so future upload-batch ordering can
+        # prioritize it. Advisory only -- never affects residency answers.
+        self._interest_rects: dict[object, tuple[float, float, float, float]] = {}
 
     def register_source(
         self, source_id: object, image_size: tuple[int, int]
@@ -144,6 +167,7 @@ class TileTextureService:
         stale residency/byte-size entries from the old image don't leak into
         eviction decisions for the new one."""
         self._resident[source_id] = set()
+        self._interest_rects.pop(source_id, None)
         for cache_key in [
             cache_key for cache_key in self._tile_byte_sizes if cache_key[0] == source_id
         ]:
@@ -174,6 +198,9 @@ class TileTextureService:
         grid = self._grids.pop(old_source_id, None)
         if grid is not None:
             self._grids[new_source_id] = grid
+        interest = self._interest_rects.pop(old_source_id, None)
+        if interest is not None:
+            self._interest_rects[new_source_id] = interest
         resident = self._resident.pop(old_source_id, None)
         if resident is not None:
             self._resident[new_source_id] = resident
@@ -330,6 +357,111 @@ class TileTextureService:
         array tile."""
         return self._tile_content_size.get((source_id, index))
 
+    def register_interest_rect(
+        self,
+        source_id: object,
+        rect: tuple[float, float, float, float] | None,
+    ) -> None:
+        """Registers the image-space pixel rect (left, top, right, bottom)
+        ``source_id``'s consumer is about to sample (e.g. the magnifier
+        lens's capture window). Advisory only: recorded for future
+        upload-batch prioritization, never consulted by any residency
+        answer. ``None`` clears the registration. Dropped by
+        ``reset_source``/``invalidate_source``, moved by ``rekey_source``."""
+        if rect is None:
+            self._interest_rects.pop(source_id, None)
+        else:
+            left, top, right, bottom = rect
+            self._interest_rects[source_id] = (
+                float(left),
+                float(top),
+                float(right),
+                float(bottom),
+            )
+
+    def interest_rect_for(
+        self, source_id: object
+    ) -> tuple[float, float, float, float] | None:
+        """Last rect passed to ``register_interest_rect`` (``None`` if the
+        consumer never registered or cleared it)."""
+        return self._interest_rects.get(source_id)
+
+    def request_level(
+        self,
+        source_id: object,
+        rect: tuple[float, float, float, float] | None = None,
+        quality: str = "high",
+        dest_scale: float | None = None,
+        level_count: int = 1,
+    ) -> tuple[int, str, str]:
+        """Consumer-first residency query (P3): pick the pyramid level for
+        ``rect`` and answer resident-or-pending-with-reason.
+
+        ``rect`` is in level-0 source-image pixels (same space as
+        ``visible_tiles``), or ``None`` for the whole grid. ``quality``
+        (``high``/``balanced``/``preview`` → dest_scale 1.0/0.5/0.25,
+        unknown → ``high``) maps to a destination scale unless ``dest_scale``
+        is given explicitly; ``level_count`` is how many pyramid levels the
+        caller has built (``1`` = base only). Level choice is
+        ``lod.select_level`` — identical inputs pick identical levels in
+        live, preview and export paths.
+
+        Returns ``(level, status, reason)`` where ``status`` is
+        ``"resident"`` (every intersecting tile uploaded) or ``"pending"``
+        with a grep-friendly ``reason`` (``source-unknown``,
+        ``level-not-registered``, ``N-of-M-tiles-missing``). Level ``k >= 1``
+        looks up the grid registered under ``LevelKey(source_id, k)`` (the
+        multi_compare convention); the rect is scaled by ``1/2**k`` under
+        the assumption each level halves its parent (see
+        ``PyramidPixelStore.build_next_level``).
+
+        Pure query: marks nothing resident, touches no GPU state, never
+        raises on unknown sources.
+        """
+        from shared.rendering.lod import LevelKey, select_level
+
+        if dest_scale is None:
+            dest_scale = _REQUEST_QUALITY_SCALES.get(str(quality or "high").lower(), 1.0)
+        try:
+            level_count = max(1, int(level_count))
+        except (TypeError, ValueError):
+            level_count = 1
+        level = select_level(float(dest_scale), level_count)
+        level_key: object = source_id if level == 0 else LevelKey(source_id, level)
+        grid = self._grids.get(level_key)
+        if grid is None:
+            if level == 0:
+                return (level, REQUEST_STATUS_PENDING, "source-unknown")
+            return (level, REQUEST_STATUS_PENDING, "level-not-registered")
+        if rect is None:
+            tiles = {(row, col) for row, col, _ in grid.iter_regions()}
+        else:
+            left, top, right, bottom = rect
+            if level > 0:
+                inv = 1.0 / float(1 << level)
+                left, top, right, bottom = (
+                    left * inv,
+                    top * inv,
+                    right * inv,
+                    bottom * inv,
+                )
+            tiles = self.visible_tiles(level_key, (left, top, right, bottom))
+        if not tiles:
+            return (level, REQUEST_STATUS_RESIDENT, "no-tiles-in-rect")
+        resident = self._resident.get(level_key, set())
+        missing = sum(1 for index in tiles if index not in resident)
+        if missing == 0:
+            return (
+                level,
+                REQUEST_STATUS_RESIDENT,
+                f"all-{len(tiles)}-tiles-resident",
+            )
+        return (
+            level,
+            REQUEST_STATUS_PENDING,
+            f"{missing}-of-{len(tiles)}-tiles-missing",
+        )
+
     def touch(self, source_id: object, index: TileIndex) -> None:
         """Bumps LRU timestamp for an index that was already resident and
         stayed in this frame's visible+margin ring."""
@@ -389,6 +521,7 @@ class TileTextureService:
     def invalidate_source(self, source_id: object) -> None:
         self._grids.pop(source_id, None)
         self._resident.pop(source_id, None)
+        self._interest_rects.pop(source_id, None)
         for cache_key in [
             cache_key for cache_key in self._tile_byte_sizes if cache_key[0] == source_id
         ]:
