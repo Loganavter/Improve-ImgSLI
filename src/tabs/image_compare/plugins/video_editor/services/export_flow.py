@@ -197,10 +197,22 @@ class VideoExportFlow:
         worker.signals.finished.connect(on_finished)
         controller.thread_pool.start(worker)
 
-    def cancel_video_export(self):
+    def cancel_video_export(self) -> None:
+        """Single export cancel path (ve-p3, X5): forward to the exporter's
+        lock-guarded request_cancel() (which also runs cleanup); the render
+        loop polls is_cancel_requested(). Thread-safe in the service."""
         controller = self.controller
         if controller.video_exporter is not None:
             controller.video_exporter.request_cancel()
+
+    def is_cancel_requested(self) -> bool:
+        """Single export cancel query (ve-p3, X5): read-through to the
+        exporter's lock-guarded flag; False when no exporter is attached."""
+        controller = self.controller
+        exporter = getattr(controller, "video_exporter", None)
+        if exporter is None:
+            return False
+        return bool(exporter.is_cancel_requested())
 
     def _emit_export_finished(self, success: bool) -> None:
         controller = self.controller

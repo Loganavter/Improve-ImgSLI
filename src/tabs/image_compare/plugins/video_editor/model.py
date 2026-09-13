@@ -15,6 +15,9 @@ class VideoProjectModel:
     width: int = 1920
     height: int = 1080
 
+    # Fps mirror (ve-p3): owner is PlaybackEngine; this field is written by
+    # the fps controls and seeded at dialog init. Export reads the editor
+    # mirror (frame-math truth); keep all three in sync via the engine.
     fps: int = 60
     preview_render_scale: float = 1.0
 
