@@ -188,7 +188,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
-      "lines": 738,
+      "lines": 775,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi pass, one resource lifecycle (border-disk",

@@ -23,6 +23,7 @@ but the active magnifier runtime does not use them.
 
 from __future__ import annotations
 
+import logging
 import struct
 
 from PySide6.QtCore import QSize
@@ -74,6 +75,8 @@ _MAG_UNIFORM_FMT = (
     "<16f 4f 2f 2f f f f f 4f 4f f f i i i i i i i i i i i i i i 4f 4f 4f 4f 4f"
 )
 assert_uniform_size(_MAG_UNIFORM_FMT, MAG_UNIFORM_SIZE, label="MagnifierPass uniform")
+
+_log = logging.getLogger("ImproveImgSLI.magnifier.pass")
 
 
 def _content_scale(content_size) -> tuple[float, float]:
@@ -182,6 +185,11 @@ class MagnifierPass(CanvasRenderPass):
         self._mag_items: list[dict] = []
         self._target = None
         self._prepare_call_seq = 0
+        # P1B explicit-state verdict: sig-throttle for the gpu_sampling=0
+        # fallback log below (per-frame path — same recipe as
+        # ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+        # emit once per distinct decision signature, not once per frame).
+        self._last_no_slot_sig: tuple | None = None
 
     def initialize(self, rhi, target) -> None:
         self.release()
@@ -365,6 +373,7 @@ class MagnifierPass(CanvasRenderPass):
             else "placeholder"
         )
 
+        _no_slot_quad_indexes: list[int] = []
         for i, quad in enumerate(overlay.quads):
             if not quad:
                 continue
@@ -444,6 +453,12 @@ class MagnifierPass(CanvasRenderPass):
                 uv_rect1 = gpu_slot.get("uv_rect", (0.0, 0.0, 1.0, 1.0))
                 uv_rect2 = gpu_slot.get("uv_rect2", uv_rect1)
             else:
+                # P1B explicit state (NOT dead — reachable in production):
+                # any raster quad without matching gpu params lands here,
+                # e.g. presenters/image_canvas/view.py set_pil_layers /
+                # set_layers -> texture_parts/layers.set_feature_overlay_content
+                # sets overlay._quads[0] with gpu_active False, and this pass
+                # still paints it via the mag.frag magTex/magTex2 path below.
                 gpu_sampling = 0
                 source_mode = 0
                 interp_mode = 1
@@ -451,6 +466,7 @@ class MagnifierPass(CanvasRenderPass):
                 diff_mode = 0
                 uv_rect1 = (0.0, 0.0, 1.0, 1.0)
                 uv_rect2 = (0.0, 0.0, 1.0, 1.0)
+                _no_slot_quad_indexes.append(i)
 
             if gpu_slot and combined:
                 internal_split = float(gpu_slot.get("internal_split", 0.5))
@@ -490,7 +506,10 @@ class MagnifierPass(CanvasRenderPass):
             else:
                 # gpu_sampling=0 here (no gpu_slot): mag.frag falls back to the
                 # legacy raster ``magTex``/``magTex2`` path, so the array
-                # layer/scale bound below is never actually sampled.
+                # layer/scale bound below is never actually sampled. P1B: this
+                # fallback is reachable (raster overlay quads) and now emits
+                # an explicit sig-throttled verdict above instead of silently
+                # downgrading.
                 _no_tex = {"key": None, "layer": 0, "scale": (1.0, 1.0)}
                 records = [
                     {
@@ -636,6 +655,24 @@ class MagnifierPass(CanvasRenderPass):
                         ),
                     )
                 self._mag_items.append({"block": block})
+
+        if _no_slot_quad_indexes:
+            _no_slot_sig = (
+                tuple(_no_slot_quad_indexes),
+                bool(overlay.gpu_active),
+                len(getattr(overlay, "gpu_slots", ()) or ()),
+            )
+            if _no_slot_sig != self._last_no_slot_sig:
+                self._last_no_slot_sig = _no_slot_sig
+                _log.debug(
+                    "magnifier no_gpu_slot: verdict=legacy_raster_magtex"
+                    " reason=no gpu_slot for quad (raster overlay quad without"
+                    " gpu params -> mag.frag magTex/magTex2 fallback)"
+                    " quads=%s gpu_active=%s gpu_slots=%d",
+                    list(_no_slot_quad_indexes),
+                    bool(overlay.gpu_active),
+                    len(getattr(overlay, "gpu_slots", ()) or ()),
+                )
 
         self.border.ensure_items(len(self._border_items))
         if self._border_items:
