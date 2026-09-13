@@ -10,6 +10,10 @@ _DEFAULT_FILTER = 9729
 from tabs.image_compare.canvas.texture_parts.common import (
     ensure_feature_overlay_slot_capacity,
 )
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_loupe,
+)
 
 _log = logging.getLogger("ImproveImgSLI.feature_overlay.gpu")
 
@@ -138,6 +142,23 @@ def set_feature_overlay_gpu_params(
         )
         <= 1e-6
     ):
+        # P3 (M1 slot-dedup point): identical params keep the previous
+        # upload -- record the skip with its reason (sig-throttled) instead
+        # of returning silently.
+        trace_loupe(
+            frame_context_from_widget(widget),
+            "loupe.slot_dedup",
+            "skipped",
+            f"slot_dedup identical gpu params slots={len(slots)}"
+            f" channel={int(channel_mode or 0)} diff={int(diff_mode or 0)}"
+            f" interp={int(interp_mode or 0)} -> keep previous upload",
+            sig=(
+                target_count,
+                int(channel_mode or 0),
+                int(diff_mode or 0),
+                int(interp_mode or 0),
+            ),
+        )
         return
     ensure_feature_overlay_slot_capacity(widget, len(slots))
     overlay._gpu_active = True
