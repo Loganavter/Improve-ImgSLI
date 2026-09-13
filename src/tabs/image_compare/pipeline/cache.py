@@ -15,7 +15,6 @@ never feeds keys or decode (``crop_service``/``auto_crop`` args are
 accepted for call-compat and ignored). Old entries keyed with ``True`` in
 the has_crop slot miss under the boxless shape and can never collide
 with it.
->>>>>>> agent/int-31/work
 
 Both memoise by identity; second slot with same path shares the same store
 via refcount (no duplicate decode). Eviction calls close_pixel_store +

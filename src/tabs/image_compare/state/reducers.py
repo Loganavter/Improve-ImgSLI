@@ -323,7 +323,6 @@ class PipelineCacheReducer:
                     mtime = 0
                     size = 0
                 return (_os.path.normpath(path), mtime, size, False, 1024)
->>>>>>> agent/int-31/work
         qimage = action.qimage
         if qimage is None:
             return state
