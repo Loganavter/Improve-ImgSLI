@@ -58,6 +58,13 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter._update_scheduler_timer.timeout.connect(
         presenter.update_comparison_if_needed
     )
+    # P4 timer audit: this singleShot fps scheduler is CREATED here but
+    # ARMED only in background_parts/use_cases/schedule.py::schedule_update,
+    # which records every arm (``invalidate.schedule.fps_timer``) and every
+    # already-armed dedup-ack under IMGSLI_IC_INVALIDATE_DEBUG. No record
+    # here — creation is not an invalidation. The timer fires only while
+    # armed (singleShot: one fire per start()), so steady healthy idle with
+    # no schedule_update calls produces zero ticks by construction.
 
 
 def debug_log_gate():

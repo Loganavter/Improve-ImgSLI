@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 __all__ = [
+    "INVALIDATE_PREFIX",
     "VERDICT_RAN",
     "VERDICT_SKIPPED",
     "FrameDecision",
@@ -38,6 +39,14 @@ __all__ = [
 
 VERDICT_RAN = "ran"
 VERDICT_SKIPPED = "skipped"
+
+#: Pass-name prefix for the P4 attributed-invalidation bus: every timer arm,
+#: singleShot deferral and external invalidation request records here as
+#: ``invalidate.<source>`` (e.g. ``invalidate.schedule.fps_timer``) with the
+#: arming reason. Render-decision passes (``mag_gate``, ``fallback``,
+#: ``loupe.*``) keep their own names; ``invalidations()`` selects this
+#: namespace back out.
+INVALIDATE_PREFIX = "invalidate."
 
 _VERDICTS = (VERDICT_RAN, VERDICT_SKIPPED)
 
@@ -78,6 +87,32 @@ class FrameContext:
         )
         self._decisions.append(decision)
         return decision
+
+    def record_invalidation(
+        self,
+        source: str,
+        reason: str,
+        ids: tuple = (),
+        verdict: str = VERDICT_RAN,
+    ) -> FrameDecision:
+        """Append one attributed-invalidation record (P4 bus, additive).
+
+        ``source`` is the arming site (``schedule.fps_timer``,
+        ``keepwarm.tick`` …); the stored pass is
+        ``f"{INVALIDATE_PREFIX}{source}"`` so ``invalidations()`` can
+        select the bus back out. ``verdict`` is ``ran`` for arms/fires and
+        ``skipped`` for dedup-acks, stops and idle stand-downs. Same cost
+        as ``record()`` — one frozen dataclass; callers gate on
+        ``ic_invalidate_debug_enabled()`` (see ``trace_invalidation``) so
+        steady production pays nothing.
+        """
+        return self.record(
+            f"{INVALIDATE_PREFIX}{source}", verdict, reason, ids
+        )
+
+    def invalidations(self) -> list[FrameDecision]:
+        """All bus records in insertion order (``invalidate.*`` passes)."""
+        return [d for d in self._decisions if d.pass_name.startswith(INVALIDATE_PREFIX)]
 
     def reset(self) -> None:
         """Clear in place for the next frame (keeps the list allocation)."""

@@ -92,7 +92,62 @@ def _schedule_drag_restack(w) -> None:
     """Fire the delayed settle kick; no-op if the zone already hid."""
     from PySide6.QtCore import QTimer as _QTimer
 
+    from tabs.image_compare.canvas.loupe_trace import trace_invalidation
+
+    try:
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+
+        trace_invalidation(
+            _fcw(w),
+            "dnd_restack",
+            f"drag restack settle kick armed delay_ms={_DND_RESTACK_DELAY_MS}",
+        )
+    except Exception:
+        pass
     _QTimer.singleShot(_DND_RESTACK_DELAY_MS, lambda: _drag_restack_tick(w))
+
+
+def _keepwarm_pending_reason(w) -> str | None:
+    """Why a keep-warm tick must still prime a frame; None when idle.
+
+    P4 attribution companion to :func:`_keepwarm_tick_is_idle`: the same
+    checks, but naming the pending cause so the firing tick can record
+    *why* it could not stand down (``tile_more_pending``,
+    ``fallback_more_pending``, ``content_swap``, ``mip_layers``,
+    ``texture_key_mismatch``) or ``priming`` when renderer state is still
+    missing (first paint — priming preserved by construction).
+    """
+    try:
+        renderer = getattr(w, "_rhi_renderer", None)
+        if renderer is None:
+            return "priming"
+        state = getattr(w, "runtime_state", None)
+        if bool(getattr(state, "_tile_more_pending", False)):
+            return "tile_more_pending"
+        if bool(getattr(renderer, "_fallback_more_pending_snapshot", False)):
+            return "fallback_more_pending"
+        if bool(getattr(renderer, "_content_swap_active", False)):
+            return "content_swap"
+        try:
+            pending = getattr(renderer, "_pending_dirty_layers", {})
+            if pending and any(bool(layers) for layers in pending.values()):
+                return "mip_layers"
+        except Exception:
+            return "priming"
+        last_good = getattr(renderer, "_last_good_texture_keys", None)
+        if last_good is None:
+            return "priming"
+        try:
+            committed = getattr(renderer, "_lod_committed_keys", None)
+            if committed is not None and tuple(committed) != tuple(last_good):
+                return "texture_key_mismatch"
+        except Exception:
+            pass
+        return None
+    except Exception:
+        return "priming"
 
 
 def _keepwarm_tick_is_idle(w) -> bool:
@@ -106,36 +161,10 @@ def _keepwarm_tick_is_idle(w) -> bool:
     no content-swap transition, and the committed texture keys already
     match the last good baseline. Missing renderer state (first paint,
     tests without a renderer) returns False so priming is preserved.
+    Implemented via :func:`_keepwarm_pending_reason` (None ⇔ idle) so the
+    predicate and the P4 attribution reason cannot drift apart.
     """
-    try:
-        renderer = getattr(w, "_rhi_renderer", None)
-        if renderer is None:
-            return False
-        state = getattr(w, "runtime_state", None)
-        if bool(getattr(state, "_tile_more_pending", False)):
-            return False
-        if bool(getattr(renderer, "_fallback_more_pending_snapshot", False)):
-            return False
-        if bool(getattr(renderer, "_content_swap_active", False)):
-            return False
-        try:
-            pending = getattr(renderer, "_pending_dirty_layers", {})
-            if pending and any(bool(layers) for layers in pending.values()):
-                return False
-        except Exception:
-            return False
-        last_good = getattr(renderer, "_last_good_texture_keys", None)
-        if last_good is None:
-            return False
-        try:
-            committed = getattr(renderer, "_lod_committed_keys", None)
-            if committed is not None and tuple(committed) != tuple(last_good):
-                return False
-        except Exception:
-            pass
-        return True
-    except Exception:
-        return False
+    return _keepwarm_pending_reason(w) is None
 
 
 def _drag_restack_tick(w) -> None:
@@ -385,6 +414,23 @@ class CanvasWidget(QRhiWidget):
         # lands on an uninitialized swapchain buffer (see-through CSD shell).
         self._request_update()
         if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
+            # P4: one-shot compositor settle — attributed, fires once per
+            # show until the present gate passes (bounded, not polling).
+            try:
+                from tabs.image_compare.canvas.loupe_trace import (
+                    frame_context_from_widget as _fcw0,
+                )
+                from tabs.image_compare.canvas.loupe_trace import (
+                    trace_invalidation as _trace_inv0,
+                )
+
+                _trace_inv0(
+                    _fcw0(self),
+                    "first_present.settle",
+                    "first-present settle flush deferred one event-loop turn",
+                )
+            except Exception:
+                pass
             QTimer.singleShot(0, self._settle_first_presents)
 
     def _start_first_frame_sampler(self) -> None:
@@ -395,6 +441,11 @@ class CanvasWidget(QRhiWidget):
         even while RHI presents are being recorded. Samples every ~50 ms for
         the first ~1.5 s after show, reporting Qt-side visibility/exposure and
         the opaque fraction of a corner grab.
+
+        P4 timer audit: this sampler is debug-gated
+        (``ic_first_frame_debug_enabled``), bounded (≤30 ticks × 50 ms
+        after show) and NEVER calls ``update()`` — it only logs. No
+        invalidation record: no frame can come from here by construction.
         """
         if not ic_first_frame_debug_enabled():
             return
@@ -430,6 +481,12 @@ class CanvasWidget(QRhiWidget):
         drag frame displays immediately. Default 250 ms (proven value);
         opt out with ``IMGSLI_DND_KEEPWARM_MS=0``. Ticks stand down while
         the canvas is hidden/minimized or while the drag pump owns frames.
+        P4 attributed invalidation: the arm records once as
+        ``invalidate.keepwarm.armed`` and every tick records its outcome as
+        ``invalidate.keepwarm.tick`` (fired with the pending cause, or
+        skipped with the stand-down reason) under
+        ``IMGSLI_IC_INVALIDATE_DEBUG`` — flag off costs one env check per
+        tick and the healthy-idle skip path is byte-identical.
         """
         try:
             import os as _os
@@ -450,31 +507,86 @@ class CanvasWidget(QRhiWidget):
 
             def _on_tick() -> None:
                 try:
+                    from tabs.image_compare.canvas.loupe_trace import (
+                        frame_context_from_widget as _fcw,
+                    )
+                    from tabs.image_compare.canvas.loupe_trace import (
+                        trace_invalidation as _trace_inv,
+                    )
+
                     if not self.isVisible():
+                        _trace_inv(
+                            _fcw(self),
+                            "keepwarm.tick",
+                            "keep-warm tick skipped: canvas hidden",
+                            verdict="skipped",
+                        )
                         return
                     _win = self.window()
                     if _win is not None:
                         try:
                             if _win.isMinimized():
+                                _trace_inv(
+                                    _fcw(self),
+                                    "keepwarm.tick",
+                                    "keep-warm tick skipped: window minimized",
+                                    verdict="skipped",
+                                )
                                 return
                         except Exception:
                             pass
                     try:
                         if bool(self.runtime_state._drag_overlay_visible):
+                            _trace_inv(
+                                _fcw(self),
+                                "keepwarm.tick",
+                                "keep-warm tick skipped: drag pump owns frames",
+                                verdict="skipped",
+                            )
                             return  # drag pump owns frames while shown
                     except Exception:
                         pass
                     try:
-                        if _keepwarm_tick_is_idle(self):
+                        _pending = _keepwarm_pending_reason(self)
+                        if _pending is None:
+                            _trace_inv(
+                                _fcw(self),
+                                "keepwarm.tick",
+                                "keep-warm tick skipped: healthy idle, no pending"
+                                " work",
+                                verdict="skipped",
+                            )
                             return  # healthy idle: no pending work, skip no-op frame
                     except Exception:
-                        pass
+                        _pending = "priming"
+                    _trace_inv(
+                        _fcw(self),
+                        "keepwarm.tick",
+                        f"keep-warm tick fired: pipeline priming pending={_pending}",
+                    )
                     self.update()
                 except Exception:
                     pass
 
             _timer.timeout.connect(_on_tick)
             _timer.start()
+            try:
+                from tabs.image_compare.canvas.loupe_trace import (
+                    frame_context_from_widget as _fcw2,
+                )
+                from tabs.image_compare.canvas.loupe_trace import (
+                    trace_invalidation as _trace_inv2,
+                )
+
+                _trace_inv2(
+                    _fcw2(self),
+                    "keepwarm.armed",
+                    f"DnD keep-warm primer armed interval_ms={_interval}"
+                    " (stands down when hidden/minimized, while the drag"
+                    " pump owns frames, and on healthy idle)",
+                )
+            except Exception:
+                pass
             try:
                 from tabs.image_compare.debug import ic_dnd_debug as _icdd
 
@@ -667,6 +779,23 @@ class CanvasWidget(QRhiWidget):
                     self._request_update()
             self._emit_first_frame_if_ready()
 
+        # P4: one-shot settle flush — attributed, bounded (one deferral per
+        # settle call, itself gated on the present count / show edge).
+        try:
+            from tabs.image_compare.canvas.loupe_trace import (
+                frame_context_from_widget as _fcw1,
+            )
+            from tabs.image_compare.canvas.loupe_trace import (
+                trace_invalidation as _trace_inv1,
+            )
+
+            _trace_inv1(
+                _fcw1(self),
+                "first_present.flush",
+                "settle flush deferred one event-loop turn",
+            )
+        except Exception:
+            pass
         QTimer.singleShot(0, _flush)
 
     def _emit_first_frame_if_ready(self) -> None:

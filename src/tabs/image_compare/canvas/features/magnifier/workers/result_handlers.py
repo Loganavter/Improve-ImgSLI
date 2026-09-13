@@ -45,6 +45,23 @@ def stop_interactive_movement(presenter, log_gate):
             presenter.overlay.rebuild_overlay()
     else:
         presenter.overlay.rebuild_overlay()
+    # P4: origin record — who asked for this frame (interactive movement
+    # stopped → overlays reset → schedule_update arms/takes the fps timer).
+    try:
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+        from tabs.image_compare.canvas.loupe_trace import (
+            trace_invalidation as _trace_inv,
+        )
+
+        _trace_inv(
+            _fcw(getattr(presenter, "widget", None)),
+            "interaction",
+            "interactive movement stopped -> overlays reset + schedule_update",
+        )
+    except Exception:
+        pass
     presenter.schedule_update()
 
 
