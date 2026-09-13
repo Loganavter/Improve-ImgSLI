@@ -24,6 +24,9 @@ def initialize_editor_from_snapshots(view, editor_service, playback_engine, mode
     )
 
     total_frames = editor_service.get_frame_count()
+    # Fps single-owner priming (ve-p3): the engine owns fps; seed it here so
+    # it is correct from bootstrap instead of going stale until start_playback.
+    playback_engine.set_fps(editor_service.get_fps())
     playback_engine.set_total_frames(total_frames)
     playback_engine.set_range(0, total_frames - 1)
 

@@ -10,6 +10,15 @@ from tabs.image_compare.plugins.video_editor.services.keyframing import FrameSna
 logger = logging.getLogger("ImproveImgSLI")
 
 class VideoEditorService:
+    """Frame-math service over the current recording.
+
+    Fps ownership (ve-p3): the live fps owner is ``PlaybackEngine``; ``_fps``
+    here is a read-through mirror used for frame<->time math and cache keys.
+    ``set_fps`` is the single write path (mirrors + invalidates caches);
+    bootstrap (``use_cases/initialization.py``) re-syncs the engine from
+    ``get_fps`` so all three agree before first playback.
+    """
+
     def __init__(self, initial_snapshots: list[Any], fps: int = 60):
         self._source_recording = None
         self._extra_adapters = tuple(

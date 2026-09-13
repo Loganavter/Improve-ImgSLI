@@ -11,6 +11,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class VideoTimelineState:
+    """Legacy (unused): live position is PlaybackEngine._current_frame/_range.
+
+    Kept intentionally (ve-p3): repo-wide grep shows zero instantiations,
+    zero from_mapping/advance callers and zero test refs — only an unused
+    import in plugin.py (out of scope to clean). Delete together with that
+    import when plugin.py is next touched.
+    """
+
     position: int = 0
 
     @classmethod
@@ -27,6 +35,12 @@ class VideoTimelineState:
 
 @dataclass(frozen=True)
 class VideoSelectionState:
+    """Legacy (unused): live selection is view.get_selection_range().
+
+    Kept intentionally (ve-p3): same grep proof as VideoTimelineState —
+    no uses beyond the unused plugin.py import. Delete together.
+    """
+
     start: int | None = None
     end: int | None = None
 
@@ -58,6 +72,9 @@ class VideoProjectModel:
     width: int = 1920
     height: int = 1080
 
+    # Fps mirror (ve-p3): owner is PlaybackEngine; this field is written by
+    # the fps controls and seeded at dialog init. Export reads the editor
+    # mirror (frame-math truth); keep all three in sync via the engine.
     fps: int = 60
     preview_render_scale: float = 1.0
 
