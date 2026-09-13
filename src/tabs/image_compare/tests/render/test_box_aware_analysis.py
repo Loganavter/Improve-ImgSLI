@@ -13,8 +13,8 @@ window (black borders excluded), sourced from full-frame stores:
 * video ``resolve_images`` — loader outputs cropped to the box window.
 
 Resolution goes only through ``effective_crop_box_for_path`` (single owner
-in ``pipeline/crop_box.py``); ``override`` stays reserved (accepted,
-yields None).
+in ``pipeline/crop_box.py``); per-image ``override`` steers it (Off skips
+detection, Auto/On detect — see ``test_crop_override_wiring.py``).
 """
 
 from __future__ import annotations
@@ -105,13 +105,14 @@ def test_resolve_survives_failing_service(tmp_path):
     assert resolve_crop_boxes_for_paths(p, p, object()) == (None, None)
 
 
-def test_override_reserved_yields_none(tmp_path):
+def test_override_false_skips_detection(tmp_path):
     p = _frame_a(tmp_path)
     svc = _FakeCropService([p])
     assert (
-        effective_crop_box_for_path(p, crop_service=svc, override=(0, 0, 10, 10))
+        effective_crop_box_for_path(p, crop_service=svc, override=False)
         is None
     )
+    assert svc.calls == 0  # Off never consults detection
 
 
 def test_real_service_detects_fixture_box(tmp_path):
