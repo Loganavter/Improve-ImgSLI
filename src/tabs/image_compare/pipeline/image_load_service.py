@@ -1,17 +1,17 @@
 """ImageLoadService — single-flight loader (phase 3 bucket D).
 
-Single-flight via ``path+mtime+has_crop → AbortSignal`` (long-term fix:
-без box_tuple, только has_crop). Заменяет:
+Single-flight via ``path+mtime+has_crop → AbortSignal`` (ключ без box:
+см. ``pipeline/cache._pixel_key`` — box детерминирован CropService и запечён
+в пиксели при заливке). Заменяет:
 
 * ``slot._inflight[(slot,path)]`` (slot.py:475)
 * ``image_decode._inflight[(slot,path,"full")]`` (image_decode.py:272)
 * ``unify (p1,p2)`` (unify.py:214)
 * ``pyramid single-flight`` (session.py / pyramid.py)
 
-Key теперь ``(normpath, mtime_ns, size, has_crop)`` — как
-``_pixel_key`` без box; box вычисляется lazy внутри GenericWorker и
-включается в put_pixel ключ отдельно, чтобы GUI не блокировался
-sync crop_service.get(path) до pool.start.
+Key ``(normpath, mtime_ns, size, has_crop)``. CropService прогревается lazy
+внутри GenericWorker (side-effect кэша сервиса), GUI не блокируется на
+sync ``crop_service.get(path)`` до ``pool.start``.
 """
 
 from __future__ import annotations
@@ -29,11 +29,7 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _key_for_path(path: str, crop_service=None, box_tuple=None) -> tuple:
-    """Long-term fix: key без box_tuple, только (normpath,mtime,size,has_crop).
-
-    box вычисляется lazy внутри GenericWorker и включается в put_pixel ключ
-    отдельно, чтобы GUI не делал sync crop_service.get(path) до pool.start.
-    """
+    """Ключ без box_tuple: (normpath,mtime,size,has_crop). box_tuple игнирируется."""
     has_crop = False
     if crop_service is not None and not isinstance(crop_service, bool):
         # do NOT call crop_service.get here — GUI block removed (was :47)
@@ -47,9 +43,6 @@ def _key_for_path(path: str, crop_service=None, box_tuple=None) -> tuple:
     except OSError:
         mtime = 0
         size = 0
-    # if box provided explicitly (worker-side lazy), include it for precise dedup
-    if box_tuple is not None:
-        return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop), box_tuple)
     return (os.path.normpath(str(path)), int(mtime), int(size), bool(has_crop))
 
 
@@ -226,18 +219,17 @@ class ImageLoadService:
         ic_preview_debug("ImageLoadService start slot=%s path=%s key=%s sig=%s", slot, path, key, sig)
 
         def _worker_body(p: str, svc, sl, idx, sig_ref):
-            # Long-term fix: lazy box compute off GUI thread before pool load.
-            # Warm CropService cache inside worker, not on GUI before start.
-            box_tuple = None
+            # Прогрев CropService вне GUI-потока: svc.get кэширует box внутри
+            # сервиса (переиспользуется TiledPixelStore.from_path). В ключи
+            # кэша box не входит (детерминирован), put всегда без box.
             try:
                 if sig_ref.is_aborted():
                     return None, p, sl, idx, False
                 if svc is not None and not isinstance(svc, bool):
                     try:
-                        b = svc.get(p)  # type: ignore[union-attr]
-                        box_tuple = b.to_tuple() if b is not None else None
+                        svc.get(p)  # type: ignore[union-attr]
                     except Exception:
-                        box_tuple = None
+                        pass
             except Exception:
                 pass
             try:
@@ -252,10 +244,9 @@ class ImageLoadService:
                         return None, p, sl, idx, False
                     preview = load_preview_image(p, crop_service=svc)
                     if preview is not None and not getattr(preview, "isNull", lambda: True)():
-                        # put preview with lazy box included for precise key
                         try:
-                            if cache is not None and box_tuple is not None:
-                                cache.put_preview(p, svc, preview, box_tuple=box_tuple)  # type: ignore
+                            if cache is not None:
+                                cache.put_preview(p, svc, preview)
                         except Exception:
                             pass
                         return preview, p, sl, idx, True
@@ -281,10 +272,10 @@ class ImageLoadService:
                         return None, p, sl, idx, False
                 except Exception:
                     pass
-                # lazy put with box_tuple for precise key (GUI will fallback scan if needed)
+                # put без box (ключ без box — см. cache._pixel_key)
                 try:
-                    if cache is not None and store_obj is not None and box_tuple is not None:
-                        cache.put_pixel(p, svc, store_obj, box_tuple=box_tuple)  # type: ignore
+                    if cache is not None and store_obj is not None:
+                        cache.put_pixel(p, svc, store_obj)
                 except Exception:
                     pass
                 return store_obj, p, sl, idx, False
