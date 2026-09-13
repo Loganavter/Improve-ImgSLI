@@ -1,6 +1,11 @@
 import logging
 from PySide6.QtCore import QSignalBlocker
 from sli_ui_toolkit.i18n import tr
+from tabs.image_compare.canvas.live_handles import (
+    LiveHandle,
+    is_qt_alive,
+    note_skipped_once,
+)
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import get_zoom_level
 from tabs.image_compare.icons import Icon
@@ -52,6 +57,14 @@ def check_name_lengths(presenter):
     else:
         presenter.widget.update_name_length_warning("", "", False)
 
+def _note_dead_control(attr_name: str) -> None:
+    # Throttle: one debug line per attr, not per store emit — the sync
+    # fanout runs on every emit and a dead wrapper would otherwise spam
+    # once per emit until the next widget rebuild. Single mechanism in
+    # tabs.image_compare.canvas.live_handles.
+    note_skipped_once(attr_name, "toolbar availability: skip deleted control %s", attr_name)
+
+
 def _update_canvas_feature_control_availability(presenter) -> None:
     widget = getattr(presenter, "widget", None)
     if widget is None:
@@ -60,37 +73,75 @@ def _update_canvas_feature_control_availability(presenter) -> None:
         control = getattr(widget, attr_name, None)
         if control is None or not hasattr(control, "setEnabled"):
             continue
-        control.setEnabled(
-            any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
-        )
+        handle = LiveHandle(control, key=attr_name)
+        if not handle.is_alive():
+            # PySide6 wrapper outlived its C++ object (chrome rebuild
+            # between store emits): skip this control, keep syncing the rest.
+            handle.note_skipped(
+                "toolbar availability: skip deleted control %s", attr_name
+            )
+            continue
+        try:
+            control.setEnabled(
+                any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
+            )
+        except RuntimeError:
+            # Wrapper died between the check and the call: skip this
+            # control, keep syncing the rest. The stale attr refreshes on
+            # the next widget rebuild.
+            handle.note_skipped(
+                "toolbar availability: skip deleted control %s", attr_name
+            )
+            continue
 
 def update_toolbar_states(presenter):
-    presenter.widget.btn_file_names.setChecked(
-        presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
-    )
-    image_label = getattr(presenter.widget, "image_label", None)
-    zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
-    file_names_temporarily_hidden = (
-        presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
-    )
-    if hasattr(presenter.widget.btn_file_names, "setVisualIconOverride"):
-        presenter.widget.btn_file_names.setVisualIconOverride(
-            Icon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
+    file_names_btn = getattr(presenter.widget, "btn_file_names", None)
+    if file_names_btn is None or not is_qt_alive(file_names_btn):
+        if file_names_btn is not None:
+            _note_dead_control("btn_file_names")
+    else:
+        file_names_btn.setChecked(
+            presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
         )
-    lang = presenter.store.settings.current_language
-    presenter.widget.btn_file_names.setToolTip(
-        tr("tooltip.file_names_hidden_on_zoom", lang)
-        if file_names_temporarily_hidden
-        else tr("image_compare.ui.include_file_names_in_saved_image", lang)
-    )
+        image_label = getattr(presenter.widget, "image_label", None)
+        zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
+        file_names_temporarily_hidden = (
+            presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
+        )
+        if hasattr(file_names_btn, "setVisualIconOverride"):
+            file_names_btn.setVisualIconOverride(
+                Icon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
+            )
+        lang = presenter.store.settings.current_language
+        file_names_btn.setToolTip(
+            tr("tooltip.file_names_hidden_on_zoom", lang)
+            if file_names_temporarily_hidden
+            else tr("image_compare.ui.include_file_names_in_saved_image", lang)
+        )
     _update_canvas_feature_control_availability(presenter)
-    _set_slider_value_quietly(
-        presenter.widget.slider_speed,
-        int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
-    )
+    speed_slider = getattr(presenter.widget, "slider_speed", None)
+    if speed_slider is None or not is_qt_alive(speed_slider):
+        if speed_slider is not None:
+            _note_dead_control("slider_speed")
+    else:
+        try:
+            _set_slider_value_quietly(
+                speed_slider,
+                int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
+            )
+        except RuntimeError:
+            _note_dead_control("slider_speed")
     for binding in registry().get_feature_toolbar_bindings():
         if binding.sync_state is not None:
-            binding.sync_state(presenter)
+            try:
+                binding.sync_state(presenter)
+            except RuntimeError:
+                # One feature's stale widget refs must not take down the
+                # whole fanout (capture/widget.py ValueSlider storm).
+                logger.debug(
+                    "toolbar sync_state skipped (deleted): %s",
+                    getattr(binding, "control_id", "?"),
+                )
 
 def on_color_option_clicked(presenter, option: str):
     settings_presenter = _get_settings_presenter_from_window(presenter)
