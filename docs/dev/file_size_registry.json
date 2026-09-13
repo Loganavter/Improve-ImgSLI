@@ -502,14 +502,14 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
-      "lines": 541,
+      "lines": 544,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard\"",
+      "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard\"",
       "parsed": {
         "pattern": "state-machine",
         "size": "exempt",
-        "reason": "one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
+        "reason": "one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard"
       }
     },
     {
