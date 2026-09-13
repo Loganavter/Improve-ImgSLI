@@ -42,6 +42,7 @@ except Exception:  # pragma: no cover
         return False
 
 from .._debug import rhi_render_debug
+from ...frame_context import FrameContext
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -79,6 +80,7 @@ def resolve_fallback_plan(
     source_changed: bool,
     rekeyed: dict[object, object],
     current_sources_is_same: bool | None = None,
+    frame_context: FrameContext | None = None,
 ) -> tuple[object | None, list]:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer._resolve_fallback_plan``
     in ``renderer.py:291`` — see its docstring for contract. Takes ``renderer``
@@ -360,5 +362,19 @@ def resolve_fallback_plan(
             content_swap_active=decision_is_content_swap,
             decision_atomic=decision_is_content_swap,
             decision_flag=decision_content_swap_flag,
+        )
+    # P1A frame-context pilot: record the final decision IN ADDITION to the
+    # logs above (never instead of them). Unthrottled — the context keeps
+    # every frame's verdict even when the sig-throttled logs stay quiet.
+    if frame_context is not None:
+        _promoted = new_last_good_key == key
+        frame_context.record(
+            "fallback",
+            "ran" if fallback_diag else "skipped",
+            f"fallback atomic={decision_is_content_swap}"
+            f" more_pending={main_more_pending} promoted={_promoted}"
+            f" current={len(current_array_plan)}"
+            f" kept={fallback_diag.get('kept')} raw={fallback_diag.get('raw')}",
+            ids=(texture_keys, diff_source_key),
         )
     return new_last_good_key, array_draw_plan

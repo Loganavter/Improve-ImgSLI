@@ -25,6 +25,7 @@ from ..texture_parts.tile_geometry import (
 )
 from shared.rendering.glass_panel import GlassPanelRenderer
 from ._debug import rhi_render_debug, rhi_render_debug_enabled
+from ..frame_context import FrameContext, snapshot_last_frame
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on
@@ -170,6 +171,9 @@ class RhiCanvasRenderer:
         # Snapshots for consistent [ic-preview] logging across SET/CLEAR/result/tile_dump/gap
         self._fallback_atomic_snapshot: bool | None = None
         self._fallback_more_pending_snapshot: bool | None = None
+        # P1A frame-context: per-frame decision collector, reused across
+        # frames (reset in render()). Pilot writers record additively.
+        self.frame_context = FrameContext()
 
     # -- backward-compatible views onto RhiResources' GPU state, used by
     # feature passes (e.g. magnifier) that read tile textures directly. --
@@ -250,6 +254,7 @@ class RhiCanvasRenderer:
         source_changed: bool,
         rekeyed: dict[object, object],
         current_sources_is_same: bool | None = None,
+        frame_context: FrameContext | None = None,
     ) -> tuple[object | None, list]:
         """Thin delegator — body lives in use_cases/fallback.py (CODE_PATTERNS)."""
         return _resolve_fallback_plan_impl(
@@ -266,6 +271,7 @@ class RhiCanvasRenderer:
             source_changed=source_changed,
             rekeyed=rekeyed,
             current_sources_is_same=current_sources_is_same,
+            frame_context=frame_context,
         )
 
     def render(self, widget, command_buffer, clear_color) -> bool:
@@ -275,8 +281,12 @@ class RhiCanvasRenderer:
         treat the frame as presented — Image Compare startup gates and the
         Windows D3D first-present path depend on this.
         """
+        # P1A frame-context is born here: reset the reused collector so every
+        # frame starts empty; pilot points below record into it additively.
+        self.frame_context.reset()
         _frame = _prepare_frame_impl(self, widget, command_buffer, clear_color)
         if _frame is None:
+            snapshot_last_frame(self.frame_context)
             return False
         (
             ctx,
@@ -346,6 +356,7 @@ class RhiCanvasRenderer:
                 source_changed=source_changed,
                 rekeyed=self.resources.residency.last_rekeyed_keys,
                 current_sources_is_same=_cur_is_same,
+                frame_context=self.frame_context,
             )
             # Remember for next frame's duplicate-baseline guard
             self._prev_sources_is_same = _cur_is_same
@@ -464,4 +475,5 @@ class RhiCanvasRenderer:
             widget._glass_panel_sprites = self.glass_panel_renderer.ready_sprites
             widget._glass_panel_images = self.glass_panel_renderer.ready_images
 
+        snapshot_last_frame(self.frame_context)
         return True
