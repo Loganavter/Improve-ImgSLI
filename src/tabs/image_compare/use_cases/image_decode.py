@@ -637,14 +637,25 @@ def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signa
     try:
         import time
 
+        from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+        try:
+            _sw1, _sh1 = pixel_source_size(img1)
+        except Exception:
+            _sw1, _sh1 = "?", "?"
+        try:
+            _sw2, _sh2 = pixel_source_size(img2)
+        except Exception:
+            _sw2, _sh2 = "?", "?"
+
         t0 = time.perf_counter()
         logger.info(
             "[Unify] task %s started (%sx%s + %sx%s)",
             log_id,
-            getattr(img1, "width", "?"),
-            getattr(img1, "height", "?"),
-            getattr(img2, "width", "?"),
-            getattr(img2, "height", "?"),
+            _sw1,
+            _sh1,
+            _sw2,
+            _sh2,
         )
         u1, u2 = unify_pair(
             img1,

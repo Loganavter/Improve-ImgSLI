@@ -93,9 +93,9 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
             _doc = None
         _p1 = getattr(_doc, "image1_path", None) if _doc is not None else None
         _p2 = getattr(_doc, "image2_path", None) if _doc is not None else None
-        _ctrl = getattr(presenter, "session_controller", None) or getattr(
-            presenter, "controller", None
-        )
+        from tabs.image_compare.pipeline.session import resolve_session_controller
+
+        _ctrl = resolve_session_controller(presenter)
         try:
             _svc = _ctrl._get_crop_service() if _ctrl is not None else None
         except Exception:
