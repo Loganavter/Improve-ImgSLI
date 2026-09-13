@@ -58,11 +58,10 @@ def test_first_activate_builds_once(qtbot):
     # still pending — it must skip uncreated pages, not build them.
     registry.assemble_host_pages(SimpleNamespace())
     assert built == {"created": 0, "assembled": 0, "finalized": 0}
-    from tabs.use_cases import session_lifecycle
 
-    session_lifecycle.activate(registry, "fake")
+    registry.activate("fake")
     assert built["created"] == 1
     assert built["assembled"] == 1
     assert registry.get_page("fake") is not None
-    session_lifecycle.activate(registry, "fake")
+    registry.activate("fake")
     assert built["created"] == 1, "second show must not rebuild the page"
