@@ -615,9 +615,16 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
     if _should_log_set:
         ic_preview_debug("set_current_image slot=%s pil_img=%s path=%s", image_number, pil_img, path)
     if pil_img is None and path:
-        if _should_log_set:
-            ic_preview_debug("set_current_image slot=%s -> clear slot data (cache miss)", image_number)
-        document_store_ops.clear_image_slot_data(controller.store, image_number)
+        if _is_path_loading(controller, path):
+            # Worker still in flight for this path (e.g. other slot's DnD
+            # resync while this slot's TileStore load runs): skip the
+            # destructive clear — the worker owns the result transact.
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s -> skip clear, worker in flight path=%s", image_number, path)
+        else:
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s -> clear slot data (cache miss)", image_number)
+            document_store_ops.clear_image_slot_data(controller.store, image_number)
     # publish PipelineView via single Transaction (1 emit)
     if pil_img is not None:
         if _should_log_set:
@@ -639,22 +646,29 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
             except Exception:
                 pass
     else:
-        # still publish clear via transaction if needed
-        if _should_log_set:
-            ic_preview_debug("set_current_image slot=%s -> transact clear image_state", image_number)
-        try:
-            from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
+        # still publish clear via transaction if needed — unless the path's
+        # worker is still in flight (see cache-miss guard above): clearing
+        # image_state here would wipe the live image a pending worker is
+        # about to replace via its own single transact.
+        if path and _is_path_loading(controller, path):
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s -> skip clear transact, worker in flight path=%s", image_number, path)
+        else:
+            if _should_log_set:
+                ic_preview_debug("set_current_image slot=%s -> transact clear image_state", image_number)
+            try:
+                from core.state_management.actions import InvalidateGeometryCacheAction, SetImageSessionImageAction
 
-            controller.store.transact(
-                [SetImageSessionImageAction(slot=image_number, image=None), InvalidateGeometryCacheAction()],
-                scope="viewport",
-            )
-            if _should_log_set:
-                ic_preview_debug("set_current_image slot=%s clear transact done", image_number)
-        except Exception as e:
-            if _should_log_set:
-                ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
-            pass
+                controller.store.transact(
+                    [SetImageSessionImageAction(slot=image_number, image=None), InvalidateGeometryCacheAction()],
+                    scope="viewport",
+                )
+                if _should_log_set:
+                    ic_preview_debug("set_current_image slot=%s clear transact done", image_number)
+            except Exception as e:
+                if _should_log_set:
+                    ic_preview_debug("set_current_image slot=%s clear transact failed %s", image_number, e)
+                pass
     try:
         _sess = controller._get_image_session() if hasattr(controller, "_get_image_session") else None
         _cache = getattr(_sess, "cache", None) if _sess is not None else getattr(pl, "cache", None)
@@ -800,3 +814,46 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
             pass
     if emit_signal:
         controller.store.emit_state_change("document")
+
+
+def _is_path_loading(controller, path) -> bool:
+    """True when an ImageLoadService worker is still in flight for *path*.
+
+    Cross-slot DnD guard: a resync-triggered ``set_current_image`` for a slot
+    whose worker has not finished sees a pipeline cache-miss and would
+    dispatch the destructive clear. When the single-flight worker still owns
+    the path, the clear must be skipped — the worker's result transact is the
+    only writer. Resolution mirrors the ``_svc`` lookup in
+    ``set_current_image``; any failure degrades to False (legacy behavior).
+
+    Kept at end of file so the ``setattr`` contract allowlist line numbers
+    above (duplicate fallbacks) do not shift.
+    """
+    if not path:
+        return False
+    try:
+        svc = None
+        sess = None
+        if hasattr(controller, "_get_image_session"):
+            try:
+                sess = controller._get_image_session()
+            except Exception:
+                sess = None
+        if sess is not None:
+            svc = getattr(sess, "load_service", None)
+        if svc is None:
+            pl = getattr(controller, "pipeline", None)
+            svc = getattr(pl, "load_service", None) if pl is not None else None
+        if svc is None:
+            svc = getattr(controller, "load_service", None)
+        if svc is None:
+            return False
+        is_loading = getattr(svc, "is_loading", None)
+        if not callable(is_loading):
+            return False
+        try:
+            return bool(is_loading(path))
+        except TypeError:
+            return bool(is_loading(path, None))
+    except Exception:
+        return False
