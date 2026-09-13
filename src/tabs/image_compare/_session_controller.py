@@ -45,6 +45,13 @@ class SessionController(SessionApiMixin, QObject):
 
         from tabs.image_compare.use_cases.session_init import init_session_state
         init_session_state(self, self.store, self.thread_pool)
+        # Last resynced (index, path) per slot — owned by
+        # use_cases/session_bootstrap.resync_current_image_slots, which skips
+        # slots whose signature did not change so a DnD load into one slot
+        # cannot wipe the other slot's live image via the document-emit
+        # resync. Initialized here (thin owner); bootstrap lazily repairs it
+        # for foreign-constructed controllers (tests).
+        self._last_resync_slot_sig: dict[int, tuple] = {}
         # Последний виденный флаг автокропа — для синхронизации сессионных
         # crop-дефолтов при тоггле (см. _on_store_scoped_change).
         self._last_crop_enabled: bool | None = None
