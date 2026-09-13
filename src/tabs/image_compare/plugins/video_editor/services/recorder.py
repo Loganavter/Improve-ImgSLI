@@ -68,6 +68,9 @@ class Recorder(QObject):
         self.total_paused_time = 0.0
         self.start_time = time.time()
 
+        # Capture-time fps truth (ve-p3): sampling cadence comes from store
+        # settings and is carried by the KeyframedRecording; playback/export
+        # fps ownership lives in PlaybackEngine (services/playback.py).
         target_fps = getattr(self.store.settings, "video_recording_fps", 60)
         target_fps = max(10, min(144, target_fps))
         self._recording = KeyframedRecording(

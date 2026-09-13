@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from core.events import CoreErrorOccurredEvent
 from sli_ui_toolkit.workers import GenericWorker
@@ -32,18 +33,55 @@ def _video_enabled() -> bool:
 class RecordingFlow:
     def __init__(self, controller):
         self.controller = controller
+        # Single guard path (ve-p3, X6): every _toggle/_finalize flag
+        # transition goes through the helpers below under one lock, so the
+        # check-then-set in toggle/finalize is atomic. Flag STORAGE stays on
+        # the host controller (plugins/export/controller.py owns it — out of
+        # scope); semantics are unchanged, only the access path is unified.
+        self._guard_lock = threading.Lock()
+
+    def _begin_toggle(self) -> bool:
+        """Atomic check-then-set of the toggle guard. False = busy, reject."""
+        with self._guard_lock:
+            if (
+                self.controller._toggle_recording_in_progress
+                or self.controller._recording_finalize_in_progress
+            ):
+                return False
+            self.controller._toggle_recording_in_progress = True
+            return True
+
+    def _release_toggle(self) -> None:
+        with self._guard_lock:
+            self.controller._toggle_recording_in_progress = False
+
+    def _release_toggle_unless_finalizing(self) -> None:
+        # Toggle stays held while a finalize worker is in flight; the
+        # finalize-finished handler releases it (same as before).
+        with self._guard_lock:
+            if not self.controller._recording_finalize_in_progress:
+                self.controller._toggle_recording_in_progress = False
+
+    def _begin_finalize(self) -> bool:
+        """Atomic check-then-set of the finalize guard. False = busy, skip."""
+        with self._guard_lock:
+            if self.controller._recording_finalize_in_progress:
+                return False
+            self.controller._recording_finalize_in_progress = True
+            return True
+
+    def _finish_finalize(self) -> None:
+        with self._guard_lock:
+            self.controller._recording_finalize_in_progress = False
+            self.controller._toggle_recording_in_progress = False
 
     def toggle_recording(self, checked: bool | None = None):
         del checked
         controller = self.controller
         _video_debug("toggle_recording called has_data=%s is_recording=%s finalize=%s recorder=%s store=%s", controller.recorder.has_recording_data() if controller.recorder else None, getattr(controller.recorder, "is_recording", None), controller._recording_finalize_in_progress, controller.recorder, getattr(controller.recorder, "store", None) if controller.recorder else None)
-        if (
-            controller._toggle_recording_in_progress
-            or controller._recording_finalize_in_progress
-        ):
+        if not self._begin_toggle():
             _video_debug("toggle_recording REJECT in_progress toggle=%s finalize=%s", controller._toggle_recording_in_progress, controller._recording_finalize_in_progress)
             return
-        controller._toggle_recording_in_progress = True
 
         try:
             if controller.recorder.is_recording:
@@ -68,11 +106,10 @@ class RecordingFlow:
             logger.error("Recorder toggle failed: %s", exc, exc_info=True)
             _video_debug("toggle_recording EXCEPTION %s", exc)
             self._emit_error(f"Recording toggle failed: {exc}")
-            controller._toggle_recording_in_progress = False
+            self._release_toggle()
             return
         finally:
-            if not controller._recording_finalize_in_progress:
-                controller._toggle_recording_in_progress = False
+            self._release_toggle_unless_finalizing()
             _video_debug("toggle_recording DONE is_recording=%s has_data=%s", getattr(controller.recorder, "is_recording", None), controller.recorder.has_recording_data() if controller.recorder else None)
 
     def toggle_pause_recording(self, checked: bool | None = None):
@@ -202,15 +239,12 @@ class RecordingFlow:
         self.controller._pending_open_editor = False
 
     def on_recording_finalize_finished(self) -> None:
-        controller = self.controller
-        controller._recording_finalize_in_progress = False
-        controller._toggle_recording_in_progress = False
+        self._finish_finalize()
 
     def _finalize_recording_async(self) -> None:
         controller = self.controller
-        if controller._recording_finalize_in_progress:
+        if not self._begin_finalize():
             return
-        controller._recording_finalize_in_progress = True
 
         worker = GenericWorker(controller.recorder.finalize_recording)
         worker.signals.result.connect(self.on_recording_finalized)

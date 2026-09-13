@@ -29,7 +29,10 @@ class ExportCoordinator:
         if self.export_controller is not None:
             self.export_controller.export_video_from_editor(
                 self.editor_service.get_current_recording(),
-                self.model.fps,
+                # Fps read-through (ve-p3): owner is PlaybackEngine; the
+                # editor mirror carries the frame math the recording was
+                # built with, so export stays self-consistent with it.
+                self.editor_service.get_fps(),
                 self.model.get_resolution(),
                 export_options,
             )

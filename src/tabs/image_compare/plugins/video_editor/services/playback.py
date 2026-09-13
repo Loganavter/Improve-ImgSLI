@@ -6,6 +6,16 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 logger = logging.getLogger("ImproveImgSLI")
 
 class PlaybackEngine(QObject):
+    """Live-playback clock: SINGLE OWNER of fps and frame position.
+
+    Ownership (ve-p3): fps lives here. ``VideoProjectModel.fps`` and
+    ``VideoEditorService._fps`` are read-through mirrors seeded from the same
+    initial value and re-synced at bootstrap
+    (``use_cases/initialization.py``) and at playback start; the frame
+    position lives in ``_current_frame``/``_range`` (the unused
+    ``VideoTimelineState``/``VideoSelectionState`` dataclasses in model.py
+    carry no live state — selection comes from the view).
+    """
 
     frameChanged = Signal(int)
     playbackStateChanged = Signal(bool)
@@ -19,7 +29,7 @@ class PlaybackEngine(QObject):
         self._current_frame = 0
         self._total_frames = 0
         self._range = (0, 0)
-        self._fps = max(1, fps)
+        self._fps = max(1, int(fps))
         self._playback_speed = 1.0
         self._is_playing = False
         self._play_started_at = 0.0
@@ -28,13 +38,22 @@ class PlaybackEngine(QObject):
         self._update_timer_interval()
 
     def set_fps(self, fps):
-        self._fps = max(1, fps)
+        self._fps = max(1, int(fps))
         self._update_timer_interval()
         if self._is_playing:
             self._restart_playback_clock()
 
     def get_fps(self):
         return self._fps
+
+    @property
+    def fps(self) -> int:
+        """Read-through accessor for the owned fps (mirrors get_fps)."""
+        return self._fps
+
+    @fps.setter
+    def fps(self, value) -> None:
+        self.set_fps(value)
 
     def set_playback_speed(self, speed: float):
         self._playback_speed = max(0.01, float(speed))
