@@ -27,6 +27,7 @@ Verification: ``QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests/re
 from __future__ import annotations
 
 from shared.rendering.image_identity import image_uid
+from tabs.image_compare.canvas.frame_context import FrameContext
 from tabs.image_compare.canvas.helpers import reset_canvas_overlays as _orig_reset_canvas_overlays
 from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
@@ -74,8 +75,13 @@ def _pick_and_apply(presenter, peeked, current_label_dims, source_key=None):  # 
     raise NotImplementedError("pick_and_apply moved to bg_dirty.handle_background")
 
 
-def update_comparison_if_needed(presenter):
-    """Thin orchestrator — sequencing only, bodies in ``use_cases/*``."""
+def update_comparison_if_needed(presenter, frame_context: FrameContext | None = None):
+    """Thin orchestrator — sequencing only, bodies in ``use_cases/*``.
+
+    ``frame_context`` is the P1A pilot hook: when provided, the mag-gate
+    below records its verdict into it IN ADDITION to existing behavior.
+    ``None`` (all current callers) keeps behavior identical.
+    """
     from .background import is_background_tab as _is_background_tab, mark_render_stale as _mark_render_stale
 
     if _is_background_tab(presenter):
@@ -178,6 +184,15 @@ def update_comparison_if_needed(presenter):
             _pending_diff_key = None
         current_mag_state = (current_mag_sig, getattr(image_label, "_source_images_ready", False), tuple(getattr(image_label, "_source_image_ids", []) or []), _cached_diff_uid, _cached_diff_source_key, _pending_diff_key)
         mag_is_dirty = current_mag_state != last_mag_sig
+        # P1A frame-context pilot: record the mag-gate verdict IN ADDITION
+        # to the rebuild below (never instead of it). No log is removed.
+        if frame_context is not None:
+            frame_context.record(
+                "mag_gate",
+                "ran" if mag_is_dirty else "skipped",
+                f"mag_gate dirty={mag_is_dirty} visible_overlays={len(visible_models)}",
+                ids=current_mag_state[2],
+            )
         if mag_is_dirty:
             presenter.overlay.rebuild_overlay()
             presenter._last_mag_signature = current_mag_state

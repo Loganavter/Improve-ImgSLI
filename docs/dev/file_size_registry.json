@@ -217,6 +217,17 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/frame_context.py",
+      "lines": 113,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/interaction.py",
       "lines": 570,
       "limit": 500,
@@ -273,7 +284,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 467,
+      "lines": 479,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -320,7 +331,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 364,
+      "lines": 380,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -492,7 +503,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/render_gate.py",
-      "lines": 188,
+      "lines": 203,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"render_gate thin orchestrator per CODE_PATTERNS — delegates to have_gate, bg_dirty, geometry, preview\"",
