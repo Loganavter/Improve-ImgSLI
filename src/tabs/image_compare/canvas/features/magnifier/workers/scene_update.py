@@ -6,6 +6,12 @@ from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
+# P1B explicit-state verdict: sig-throttle for the SSIM diff-state log below
+# (rebuild can run repeatedly while a diff is pending — same recipe as
+# ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+# emit once per distinct decision signature, not once per rebuild).
+_last_ssim_diff_state_sig: tuple | None = None
+
 from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
     image_full_size,
     resolve_crop_boxes_for_store,
@@ -278,10 +284,40 @@ def rebuild_magnifier_overlay(presenter):
         if cached_diff_image is not None:
             image_label.upload_diff_source_pil_image(cached_diff_image)
         elif diff_mode_str == "ssim":
-            if _is_ssim_pending(presenter, diff_mode_str, tex_img1, tex_img2):
-                pass
-            else:
-                pass
+            # P1B explicit state (was a bare ``pass``/``pass``): the SSIM diff
+            # image is neither cached nor previously uploaded. Distinguish
+            # "still computing, keep the previous frame" from "settled with
+            # no diff, proceed without it" instead of silently falling through.
+            # Semantics unchanged — both branches still fall through to the
+            # layout build below with diff_image_for_magnifier as-is.
+            _ssim_still_pending = _is_ssim_pending(
+                presenter, diff_mode_str, tex_img1, tex_img2
+            )
+            _ssim_state_sig = (
+                bool(_ssim_still_pending),
+                cached_diff_image is None,
+                current_uploaded_diff is None,
+            )
+            global _last_ssim_diff_state_sig
+            if _ssim_state_sig != _last_ssim_diff_state_sig:
+                _last_ssim_diff_state_sig = _ssim_state_sig
+                if _ssim_still_pending:
+                    _log.debug(
+                        "magnifier ssim_diff: verdict=pending_keep_previous"
+                        " reason=ssim compute still in flight (pending request,"
+                        " unification, or image lease invalid) cached=%s"
+                        " uploaded=%s -> hold previous diff frame",
+                        cached_diff_image is None,
+                        current_uploaded_diff is None,
+                    )
+                else:
+                    _log.debug(
+                        "magnifier ssim_diff: verdict=absent_proceed_without_diff"
+                        " reason=ssim settled with no diff image available"
+                        " cached=%s uploaded=%s -> proceed without diff overlay",
+                        cached_diff_image is None,
+                        current_uploaded_diff is None,
+                    )
         else:
             if bool(getattr(image_label, "_source_images_ready", False)):
                 image_label.upload_diff_source_pil_image(None)

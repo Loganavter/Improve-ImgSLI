@@ -13,6 +13,16 @@ from tabs.image_compare.canvas.texture_parts.common import (
 
 _log = logging.getLogger("ImproveImgSLI.feature_overlay.gpu")
 
+# P1B verdict: ``upload_feature_overlay_crop`` below has zero live call
+# chains (repo-wide grep: only its own def + the ``CanvasWidget`` forwarder
+# in ``canvas/widget.py``, which itself has no callers). It is NOT deleted
+# here because ``canvas/widget.py`` hard-imports the symbol by name and is
+# owned by a sibling crew — removing the def would break that import and
+# turn a dead path into a red suite. Removal handoff: delete the def here
+# together with the ``widget.py`` import + forwarder method in one change.
+# Until then the legacy entry stays callable but announces itself once.
+_legacy_crop_path_warned = False
+
 
 def _slot_signature(slot):
     if not slot:
@@ -189,6 +199,23 @@ def upload_feature_overlay_crop(
     index: int = 0,
     canvas_filter: int | None = None,
 ):
+    """Legacy raster crop upload — superseded by ``set_feature_overlay_gpu_params``.
+
+    P1B explicit-state verdict: the active magnifier runtime never calls
+    this (zero live call chains; see module note). Kept only because
+    ``canvas/widget.py`` hard-imports it. If this warning ever fires, a
+    new caller appeared and the removal handoff must be revisited.
+    """
+    global _legacy_crop_path_warned
+    if not _legacy_crop_path_warned:
+        _legacy_crop_path_warned = True
+        _log.warning(
+            "feature_overlay legacy_raster_crop_upload:"
+            " verdict=deprecated_path_used reason=upload_feature_overlay_crop"
+            " called despite zero live callers (expected only via"
+            " CanvasWidget forwarder) index=%s",
+            index,
+        )
     state = widget.runtime_state
     overlay = state._feature_overlay_gpu
     if index < 0:
