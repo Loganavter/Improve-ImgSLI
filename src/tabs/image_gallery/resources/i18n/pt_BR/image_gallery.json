@@ -1,0 +1,42 @@
+{
+  "image_gallery": {
+    "tab_name": "Galeria",
+    "pick_folder": "Escolher pasta…",
+    "filter_placeholder": "Filtrar por tag/descrição…",
+    "empty_state": "Escolha uma pasta para ver as imagens aqui.",
+    "analyze": "Analisar",
+    "analyzing": "Analisando…",
+    "settings": {
+      "ai_title": "Galeria — IA",
+      "enable_ai": "Ativar análise de imagem por IA",
+      "base_url": "URL base da API",
+      "api_key": "Chave de API",
+      "model_name": "Nome do modelo",
+      "api_key_warning": "Armazenada sem criptografia neste dispositivo."
+    },
+    "errors": {
+      "not_configured": "Configure a chave de API de IA nas Configurações primeiro.",
+      "auth": "Falha na autenticação — verifique sua chave de API.",
+      "rate_limit": "Limite de requisições atingido — tente novamente mais tarde.",
+      "network": "Erro de rede ao contatar a API de IA.",
+      "parse": "Não foi possível interpretar a resposta da IA."
+    },
+    "action": {
+      "keep_best": "Manter o melhor",
+      "keep_best_desc": "Manter o melhor de cada série",
+      "clean_rejected": "Limpar rejeitados",
+      "clean_rejected_desc": "Mover rejeitados para _rejected",
+      "run_triage": "Executar triagem",
+      "set_as_source": "Definir como origem",
+      "breadcrumb": {
+        "triage": "Triagem"
+      }
+    },
+    "card": {
+      "set_as_source": "Definir como origem",
+      "make_best": "★ Tornar melhor",
+      "reject": "✕ Rejeitar",
+      "compare": "⇄ Comparar"
+    }
+  }
+}

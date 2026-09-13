@@ -1,0 +1,294 @@
+"""Hover helpers — underline + flyout capsule (painter pipeline only)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtWidgets import QWidget
+
+from sli_ui_toolkit.managers import scaled_px
+
+# Stage 2 flyout group for hover capsule (FLYOUT_SYSTEM.md).
+GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
+
+
+class _CardHoverFilter(QObject):
+    """Shows gallery_card IconActionFlyout on hover; hides on leave.
+
+    S2-2: also toggles the 3px accent underline at the card bottom
+    (mockup c4) via the toolkit whole-button underline API. Hover
+    background lightening is the built-in variant hover overlay.
+    """
+
+    def __init__(self, card, owner=None) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(card)
+        self._card = card
+        self._owner = owner
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._card:
+            if event.type() == QEvent.Type.Enter:
+                try:
+                    # Hovered card bg #424242 per svg c4 (vs #383838 idle)
+                    from PySide6.QtGui import QColor
+
+                    try:
+                        self._card.set_override_bg_color(QColor("#424242"))
+                    except Exception:
+                        pass
+                    try:
+                        # Bg region also
+                        for r in self._card.regions():
+                            if r.id in ("bg", "text"):
+                                self._card.update_region(r.id, override_bg_color=QColor("#424242"))
+                    except Exception:
+                        pass
+                    _show_card_hover_underline(self._card)
+                except Exception:
+                    pass
+                try:
+                    show_gallery_card_flyout(self._card, self._owner)
+                except Exception:
+                    pass
+            elif event.type() == QEvent.Type.Leave:
+                try:
+                    from PySide6.QtGui import QColor
+
+                    try:
+                        self._card.set_override_bg_color(QColor("#383838"))
+                    except Exception:
+                        pass
+                    try:
+                        for r in self._card.regions():
+                            if r.id in ("bg", "text"):
+                                self._card.update_region(r.id, override_bg_color=QColor("#383838"))
+                    except Exception:
+                        pass
+                    _hide_card_hover_underline(self._card)
+                except Exception:
+                    pass
+                try:
+                    hide_gallery_card_flyout(self._card)
+                except Exception:
+                    pass
+        return False
+
+
+def _show_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
+    """S2-2: hovered card — 3px accent bar 234×3 r1.5 at 8,159 inside card per svg x874 y359."""
+    try:
+        # Use overlay flag instead of whole-button underline (which is full width at edge)
+        card._hover_blue_bar = True  # type: ignore[attr-defined]
+        card.update()
+    except Exception:
+        pass
+    # Keep legacy underline as fallback for non-overlay path
+    try:
+        from tabs.image_gallery.ui.card.dots import _ACCENT_TOKEN_FALLBACK, _token_color
+
+        card.setUnderlineThickness(float(scaled_px(3)))
+        card.setUnderlineTongueReach(float(scaled_px(2)))
+        card.setUnderlineColor(_token_color(*_ACCENT_TOKEN_FALLBACK))
+        # Do not show whole-button underline — overlay draws inset bar
+        card.setShowUnderline(False)
+    except Exception:
+        pass
+
+
+def _hide_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
+    try:
+        card._hover_blue_bar = False  # type: ignore[attr-defined]
+        card.update()
+    except Exception:
+        pass
+    try:
+        card.setShowUnderline(False)
+    except Exception:
+        pass
+
+
+# -- Hover mini-capsule: IconActionFlyout pattern --------------------
+
+def _gallery_card_actions_spec(include_source: bool = False) -> list:
+    """Specs for hover capsule: ★ make best · ✕ reject · ⇄ compare (+ Set as source for fidelity)."""
+    try:
+        from sli_ui_toolkit.widgets import IconAction
+
+        actions = [
+            IconAction(action_id="make_best", icon="star", tooltip="★ Make best"),
+            IconAction(action_id="reject", icon="close", tooltip="✕ Reject"),
+            IconAction(action_id="compare", icon="compare", tooltip="⇄ Compare"),
+        ]
+        if include_source:
+            # Fidelity only — icon "photo" exists in toolkit; tooltip uses i18n fallback.
+            actions.append(IconAction(action_id="set_source", icon="photo", tooltip="Set as source"))
+        return actions
+    except Exception:
+        return []
+
+
+def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
+    """Get or create gallery_card IconActionFlyout for *parent* window.
+
+    Group ``gallery_card`` ensures exclusive show policy via FlyoutManager.
+    Pill 88×30 r15 #2b2b2b 0.92 + white 0.25 border per svg x1022 y198.
+    """
+    try:
+        from sli_ui_toolkit.widgets import IconActionFlyout
+
+        # For inside positioning the flyout must be a child of the card itself, not the window.
+        # Keep per-card instance to avoid cross-card leaks.
+        existing = getattr(parent, "_gallery_card_flyout", None)
+        if existing is not None:
+            try:
+                import shiboken6
+
+                if shiboken6.isValid(existing):
+                    return existing
+            except Exception:
+                return existing
+        flyout = IconActionFlyout(parent)
+        # Pill per svg 88×30 r15 — size via fixed, background/border via flyout tokens (flyout.background/border), not setStyleSheet
+        try:
+            flyout.setFixedSize(88, 30)
+        except Exception:
+            pass
+        # Identity for GroupShowPolicy.
+        try:
+            flyout.flyout_group = GALLERY_CARD_FLYOUT_GROUP  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        flyout.set_actions(_gallery_card_actions_spec())
+        try:
+            parent._gallery_card_flyout = flyout  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return flyout
+    except Exception:
+        return None
+
+
+def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyped-def]
+    """Show hover mini-capsule anchored to *card* (IconActionFlyout, group gallery_card)."""
+    try:
+        flyout = ensure_gallery_card_flyout(card)
+        if flyout is None:
+            return
+
+        # Fidelity mode adds "Set as source" to the capsule (A2 spec).
+        try:
+            _mode = getattr(card, "_gallery_mode", None)
+            if _mode is None:
+                _owner_tmp = owner if owner is not None else getattr(card, "_gallery_owner", None)
+                if _owner_tmp is not None:
+                    st = getattr(_owner_tmp, "state", None)
+                    _mode = getattr(st, "mode", None) if st is not None else getattr(_owner_tmp, "_mode", None)
+            _include = False
+            try:
+                ms = str(_mode.value).lower() if hasattr(_mode, "value") else str(_mode).lower() if _mode is not None else ""
+                _include = ms == "fidelity"
+            except Exception:
+                _include = False
+            flyout.set_actions(_gallery_card_actions_spec(include_source=_include))
+        except Exception:
+            pass
+
+        # Wire actionTriggered to triage helpers.
+        def _on_trigger(action_id: str, c=card, o=owner) -> None:
+            # Resolve owner: explicit or stored on card/window.
+            actual_owner = o
+            if actual_owner is None:
+                actual_owner = getattr(c, "_gallery_owner", None)
+            if actual_owner is None:
+                # Try to find controller via window.
+                try:
+                    win = c.window()
+                    actual_owner = getattr(win, "_gallery_controller", None) or getattr(win, "_gallery_owner", None)
+                except Exception:
+                    actual_owner = None
+            item = getattr(c, "_gallery_item", None)
+            path = getattr(item, "path", None) if item is not None else None
+            if path is None:
+                try:
+                    path = Path(str(c.property("gallery_path") or ""))
+                except Exception:
+                    return
+            try:
+                if action_id == "make_best":
+                    from tabs.image_gallery.use_cases import triage as _triage
+
+                    _triage.make_best(actual_owner, path)
+                elif action_id == "reject":
+                    from tabs.image_gallery.use_cases import triage as _triage
+
+                    _triage.toggle_reject(actual_owner, path)
+                elif action_id == "compare":
+                    # Dispatch to carry/compare — reuse selection/carry flow.
+                    from tabs.image_gallery.use_cases import carry as _carry
+
+                    # Ensure selection contains this path then carry.
+                    try:
+                        if actual_owner is not None and hasattr(actual_owner, "state"):
+                            sel = getattr(actual_owner.state, "selected_paths", set())
+                            if path not in sel:
+                                sel.add(path)
+                    except Exception:
+                        pass
+                    try:
+                        _carry.carry_selected(actual_owner)
+                    except Exception:
+                        pass
+                elif action_id == "set_source":
+                    # Lazy to avoid cycle.
+                    from tabs.image_gallery.ui.card.context_menu import _ctx_set_source
+
+                    _ctx_set_source(actual_owner, path)
+            except Exception:
+                pass
+
+        # Connect once.
+        try:
+            flyout.actionTriggered.disconnect()
+        except Exception:
+            pass
+        flyout.actionTriggered.connect(_on_trigger)
+        # Show inside card top-right per svg x1022 y198 (6px from preview top, 8px from right) — 88×30 pill
+        try:
+            # Position as child of card, inside preview at 8,14 from card top (preview 8,8 +6)
+            # Use global positioning via show_aligned with top-right inside
+            # Card width 250, flyout 88, right offset 8 => x = 250-88-8=154, y=14
+            flyout.setParent(card)
+            try:
+                flyout.move(card.width() - 88 - 8, 14)
+            except Exception:
+                pass
+            # Ensure pill style
+            try:
+                flyout.setFixedSize(88, 30)
+            except Exception:
+                pass
+            flyout.show()
+            try:
+                flyout.raise_()
+            except Exception:
+                pass
+        except Exception:
+            try:
+                flyout.show_above(card)
+            except Exception:
+                try:
+                    flyout.show_for_button(card)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def hide_gallery_card_flyout(card) -> None:  # type: ignore[no-untyped-def]
+    try:
+        flyout = ensure_gallery_card_flyout(card)
+        if flyout is not None and flyout.isVisible():
+            flyout.hide()
+    except Exception:
+        pass

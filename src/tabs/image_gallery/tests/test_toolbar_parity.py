@@ -1,0 +1,131 @@
+"""S2-5..S2-11 design-parity regression tests for toolbar + stats strip.
+
+Covers the mockup divergences tracked in
+``docs/design_parity_audit.md`` (S2-5, S2-6, S2-7, S2-8, S2-10, S2-11).
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from tabs.image_gallery.ui.stats_strip import StatsStrip
+from tabs.image_gallery.ui.toolbar import GalleryToolbar
+
+
+@pytest.fixture
+def toolbar(qtbot):
+    widget = GalleryToolbar()
+    qtbot.addWidget(widget)
+    return widget
+
+
+@pytest.fixture
+def strip(qtbot):
+    widget = StatsStrip()
+    qtbot.addWidget(widget)
+    return widget
+
+
+def _layout_widgets(toolbar: GalleryToolbar) -> list[object]:
+    layout = toolbar.layout()
+    out: list[object] = []
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        widget = item.widget()
+        if widget is not None:
+            out.append(widget)
+            # also expose children of segmented view-switch container for parity
+            try:
+                if widget.objectName() == "gallery_toolbar_view_switch_container":
+                    # add inner buttons for index checks
+                    for ch in widget.findChildren(object):
+                        if hasattr(ch, "objectName") and "view_switch" in ch.objectName():
+                            out.append(ch)
+            except Exception:
+                pass
+    return out
+
+
+def test_s2_11_toolbar_layout_order(toolbar: GalleryToolbar) -> None:
+    """pick, filter, sort, [indicator group], view_switch — switch rightmost."""
+    widgets = _layout_widgets(toolbar)
+    assert widgets.index(toolbar.pick_button) < widgets.index(toolbar.filter_edit)
+    assert widgets.index(toolbar.filter_edit) < widgets.index(toolbar.sort_combo)
+    assert widgets.index(toolbar.sort_combo) < widgets.index(toolbar.spinner)
+    assert widgets.index(toolbar.spinner) < widgets.index(toolbar.scanning_label)
+    assert widgets.index(toolbar.scanning_label) < widgets.index(toolbar.triage_indicator)
+    # view_switch may be inside segmented container
+    try:
+        idx_view = widgets.index(toolbar.view_switch)
+    except ValueError:
+        # fallback: container is last
+        idx_view = widgets.index(toolbar.findChild(object, "gallery_toolbar_view_switch_container"))
+    assert widgets.index(toolbar.triage_indicator) < idx_view
+    # View switch (or its container) is the last widget in the row (right-aligned via stretch).
+    assert widgets[-1] is toolbar.view_switch or widgets[-1].objectName() == "gallery_toolbar_view_switch_container" or widgets[-1] is toolbar.view_switch_list
+
+
+def test_s2_10_pick_button_folder_icon(toolbar: GalleryToolbar) -> None:
+    # Toolkit icon name (toolkit assets ship folder_open for light/dark).
+    assert toolbar.pick_button._icon_unchecked == "folder_open"
+    assert toolbar.pick_button._text == "Open Folder…"
+
+
+def test_s2_8_view_switch_icon_pair(toolbar: GalleryToolbar) -> None:
+    # Segmented switcher: two exclusive Buttons grid/list inside 106×32 container, SVG x1130 y74 r8
+    grid_btn = toolbar.view_switch
+    list_btn = toolbar.view_switch_list
+
+    def _icon_name(v):
+        try:
+            return v.value if hasattr(v, "value") else str(v)
+        except Exception:
+            return str(v)
+
+    assert "view_grid" in _icon_name(grid_btn._icon_unchecked)
+    assert "view_list" in _icon_name(list_btn._icon_unchecked)
+    assert grid_btn._has_toggle is True
+    assert list_btn._has_toggle is True
+    # Initial: grid active
+    assert grid_btn.isChecked() is True
+    assert list_btn.isChecked() is False
+
+    checked: list[bool] = []
+    toolbar.viewToggled.connect(checked.append)
+    # Switch to list via helper (right segment)
+    toolbar._apply_view(True)  # type: ignore[attr-defined]
+    assert checked == [True]
+    assert grid_btn.isChecked() is False
+    assert list_btn.isChecked() is True
+    checked.clear()
+    toolbar._apply_view(False)
+    assert checked == [False]
+    assert grid_btn.isChecked() is True
+
+
+def test_s2_7_triage_indicator_green(toolbar: GalleryToolbar) -> None:
+    # No "success" token in the toolkit palettes → mockup hex via Label color=.
+    color = toolbar.triage_indicator._color_override
+    assert color is not None
+    assert color.name().lower() == "#3fbf5f"
+
+
+def test_s2_6_stats_segments(strip: StatsStrip) -> None:
+    strip.set_stats(40, 7, 33)
+    assert strip.stats_prefix_label.text() == "40 images · 7 series · "
+    assert strip.stats_redundant_label.text() == "33 redundant"
+    # Accent via theme token, not hex / QSS.
+    assert strip.stats_redundant_label._color_token_override == "accent"
+    # stats_label stays reachable as the container widget.
+    assert strip.stats_prefix_label.parent() is strip.stats_label
+
+
+def test_s2_5_clean_rejected_accent(strip: StatsStrip) -> None:
+    region = strip.clean_button.region("_main")
+    assert region.override_border_color is not None
+    strip.set_rejected_count(5)
+    rows = strip.clean_button._rows
+    assert rows and rows[0].text == "Clean rejected (5)"
+    assert rows[0].color is not None
+    assert not strip.clean_button.isEnabled() or True  # enabled with n>0
+    assert strip.clean_button.isEnabled() is True

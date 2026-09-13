@@ -1,0 +1,42 @@
+{
+  "image_gallery": {
+    "tab_name": "Image Gallery",
+    "pick_folder": "Pick folder…",
+    "filter_placeholder": "Filter by tag/description…",
+    "empty_state": "Pick a folder to see images here.",
+    "analyze": "Analyze",
+    "analyzing": "Analyzing…",
+    "settings": {
+      "ai_title": "Image Gallery — AI",
+      "enable_ai": "Enable AI image analysis",
+      "base_url": "API base URL",
+      "api_key": "API key",
+      "model_name": "Model name",
+      "api_key_warning": "Stored unencrypted on this device."
+    },
+    "errors": {
+      "not_configured": "Configure the AI API key in Settings first.",
+      "auth": "Authentication failed — check your API key.",
+      "rate_limit": "Rate limited — try again later.",
+      "network": "Network error while contacting the AI API.",
+      "parse": "Could not parse the AI response."
+    },
+    "action": {
+      "keep_best": "Keep best",
+      "keep_best_desc": "Keep the best of each series",
+      "clean_rejected": "Clean rejected",
+      "clean_rejected_desc": "Move rejected images to _rejected",
+      "run_triage": "Run triage",
+      "set_as_source": "Set as source",
+      "breadcrumb": {
+        "triage": "Triage"
+      }
+    },
+    "card": {
+      "set_as_source": "Set as source",
+      "make_best": "★ Make best",
+      "reject": "✕ Reject",
+      "compare": "⇄ Compare"
+    }
+  }
+}
