@@ -43,6 +43,22 @@ def unify_pair(
     if lease2 is not None and not lease2.valid:
         return None, None
 
+    from PySide6.QtGui import QImage
+
+    if isinstance(source1, QImage) or isinstance(source2, QImage):
+        # Preview tier must never enter unify: the tile-native path would
+        # silently upscale a 1024px preview into a full-size store (burning
+        # a full resample) and the result would poison the unify memo as a
+        # full-res pair. The full-res arrival re-triggers unify via
+        # handle_full_image_loaded -> ensure_unification; until then the
+        # preview-backing display path holds the preview.
+        logger.debug(
+            "Unify skipped (preview-tier QImage side): %s + %s",
+            type(source1).__name__,
+            type(source2).__name__,
+        )
+        return None, None
+
     if source1 is None and source2 is None:
         return None, None
 
