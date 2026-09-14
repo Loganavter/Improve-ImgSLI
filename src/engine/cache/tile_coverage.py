@@ -9,6 +9,8 @@ dropped instead of drawn on every frame of the transition.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 # A fallback-LOD tile's grid doesn't align with the current level's (they're
 # different pyramid levels, so different row/column counts) -- one coarse
 # old tile's footprint typically spans several fine new tiles. Requiring
@@ -116,3 +118,53 @@ def covered_fraction(
                 covered += 1
                 break
     return covered / len(points)
+
+
+def drop_covered_fallback_items(
+    fallback_pairs: Sequence[tuple[tuple[float, float, float, float], tuple[float, float, float, float]]],
+    current_pairs: Sequence[tuple[tuple[float, float, float, float], tuple[float, float, float, float]]],
+    letterbox1: tuple[float, float, float, float],
+    letterbox2: tuple[float, float, float, float],
+    *,
+    threshold: float = FALLBACK_COVERAGE_THRESHOLD,
+) -> list[int]:
+    """Indices of ``fallback_pairs`` to keep: drops every fallback entry
+    whose on-screen footprint is already fully covered by the current
+    level's (possibly partial) pairs, leaving only the still-missing
+    regions of the old level to draw underneath.
+
+    Operates purely on engine-level types -- each pair is two
+    own-image-fraction ``(x, y, w, h)`` rects (side 1, side 2) plus the two
+    side letterboxes that map them into shared on-screen space. Tab-side
+    item classes never reach this function; callers adapt their own items
+    to rect pairs before calling and map the returned indices back.
+
+    A region only counts as covered if *both* sides have a current-level
+    pair there, not just side 1 -- the two sides upload independently, so
+    one side can finish a level's full tile set several frames before the
+    other. Coverage is the ``covered_fraction`` point-sampled area
+    fraction at ``threshold`` (default ``FALLBACK_COVERAGE_THRESHOLD``),
+    not a boolean any-overlap test: the fallback and current levels are
+    different pyramid levels with different grid dimensions, so one coarse
+    old tile's footprint typically spans several fine new tiles and must
+    survive until *all* of them are actually ready.
+
+    Pure over caller-supplied lists: no residency lookup of its own, so
+    the caller must hand in the actually-resident subset (never a
+    draw-plan/geometry target list) as ``current_pairs``. Empty
+    ``current_pairs`` keeps every fallback entry.
+    """
+    if not current_pairs:
+        return list(range(len(fallback_pairs)))
+    current_common1 = [to_common_space(r1, letterbox1) for r1, _ in current_pairs]
+    current_common2 = [to_common_space(r2, letterbox2) for _, r2 in current_pairs]
+    kept = []
+    for index, (rect1, rect2) in enumerate(fallback_pairs):
+        common1 = to_common_space(rect1, letterbox1)
+        common2 = to_common_space(rect2, letterbox2)
+        covered1 = covered_fraction(common1, current_common1)
+        covered2 = covered_fraction(common2, current_common2)
+        if covered1 >= threshold and covered2 >= threshold:
+            continue
+        kept.append(index)
+    return kept

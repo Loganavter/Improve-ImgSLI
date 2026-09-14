@@ -3,17 +3,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.cache import tile_coverage
 from engine.cache.tile_coverage import (
-    FALLBACK_COVERAGE_THRESHOLD as _FALLBACK_COVERAGE_THRESHOLD,
-    covered_fraction as _covered_fraction,
-    intersection_rect as _intersection_rect,
-    rects_overlap as _rects_overlap,
-    to_common_space as _to_common_space,
+    intersection_rect,
+    rects_overlap,
+    to_common_space,
 )
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
 from engine.frame.context import FrameContext, make_ids
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
+
+# Backward-compat re-exports: ``renderer.py`` and the IC render tests
+# import these underscore names from this module and are outside C1's
+# scope, so the names must keep resolving here. They are plain aliases of
+# the engine functions -- no local math. New code imports the engine
+# names directly from ``engine.cache.tile_coverage``.
+_covered_fraction = tile_coverage.covered_fraction
+_to_common_space = tile_coverage.to_common_space
 
 from ..texture_parts.tile_geometry import (
     best_tile_overlap_index,
@@ -150,69 +157,32 @@ def drop_covered_fallback_items(
     current_items: list[ArrayDrawItem],
     base_image,
 ) -> list[ArrayDrawItem]:
-    """Drops fallback-LOD items whose on-screen footprint is already fully
-    covered by the current level's (possibly partial) draw plan, leaving
-    only the still-missing regions of the old level to draw underneath.
+    """Tab-side adapter over the engine coverage filter.
 
-    Before this filter, ``render()``'s ``has_fallback`` branch drew the
-    *entire* previous level's tile set plus the current level's every frame
-    for the whole duration of a transition (bounded by
-    ``TILE_UPLOAD_TIME_BUDGET_MS``, which can span many frames for a large
-    pyramid). RenderDoc profiling of a 20k-source LOD transition showed this
-    summing to a 133-instance ``glDrawArraysInstanced`` costing ~36ms/frame
-    on GPU -- roughly double the steady-state instance count -- which
-    scales with how many tiles are visible on screen at once, i.e. worse for
-    large sources than small ones (docs/dev/rendering/
-    tile-array-atlas-plan.md Phase 8).
+    Extracts each item's side-1/side-2 own-image-fraction rects plus the
+    two side letterboxes and delegates the keep/drop decision to
+    ``engine.cache.tile_coverage`` (shared on-screen mapping with
+    ``to_common_space``, per-side ``covered_fraction`` point sampling at
+    the engine threshold, both-sides-must-cover rule), then maps the kept
+    indices back to items. No coverage math of its own remains here --
+    behavior is bit-for-bit the previous inline body, only the home of
+    the algorithm changed.
 
-    A region only counts as covered if *both* sides have a current-level
-    item there, not just image1 -- side1 and side2 upload independently
-    (their own budget/time-deadline accounting in ``realize_tile_plan`` is
-    entirely separate), so it's common for one side to finish uploading a
-    LOD level's full tile set several frames before the other. Checking
-    ``rect1`` alone (as this used to) meant a screen region got dropped from
-    the fallback the moment image1's new-level tile arrived there, even
-    though image2 in that same region might still be many tiles away from
-    ready -- image2 then had no fallback tile to fall through to and no
-    current one either, i.e. a real blank/missing-image gap on every
-    single-step LOD transition where the two sides don't finish in
-    lockstep (docs/dev/rendering/tile-array-atlas-plan.md Phase 9 "clear/
-    fill/draw cycle visible on one zoom step" finding).
-
-    Coverage is an area fraction (``_covered_fraction``/
-    ``_FALLBACK_COVERAGE_THRESHOLD``), not a boolean any-overlap test: the
-    fallback level and the current level are different pyramid levels with
-    different grid dimensions, so one coarse old tile's footprint typically
-    spans *several* fine new tiles. A plain "do these two rects overlap at
-    all" check (this function's original form) dropped the whole coarse
-    tile the instant the very first of those several new tiles arrived,
-    even though most of its footprint was still unreplaced -- exactly the
-    fallback_raw=49/fallback_entries=0 case from the finding above, where
-    image1 alone reaching 100% residency was enough to zero out the entire
-    fallback plan although image2 was nowhere near done."""
+    Kept under this name/signature (rather than calling the engine
+    function directly at every use) because ``use_cases/fallback.py``,
+    ``renderer.py``, and the IC render tests import it from this module.
+    """
     if not current_items:
         return fallback_items
     letterbox1 = tuple(base_image.letterbox1)
     letterbox2 = tuple(base_image.letterbox2)
-    current_common1 = [
-        _to_common_space(item.rect1, letterbox1) for item in current_items
-    ]
-    current_common2 = [
-        _to_common_space(item.rect2, letterbox2) for item in current_items
-    ]
-    kept = []
-    for item in fallback_items:
-        common1 = _to_common_space(item.rect1, letterbox1)
-        common2 = _to_common_space(item.rect2, letterbox2)
-        covered1 = _covered_fraction(common1, current_common1)
-        covered2 = _covered_fraction(common2, current_common2)
-        if (
-            covered1 >= _FALLBACK_COVERAGE_THRESHOLD
-            and covered2 >= _FALLBACK_COVERAGE_THRESHOLD
-        ):
-            continue
-        kept.append(item)
-    return kept
+    kept_indices = tile_coverage.drop_covered_fallback_items(
+        [(item.rect1, item.rect2) for item in fallback_items],
+        [(item.rect1, item.rect2) for item in current_items],
+        letterbox1,
+        letterbox2,
+    )
+    return [fallback_items[index] for index in kept_indices]
 
 
 def build_array_draw_plan(
@@ -282,7 +252,7 @@ def build_array_draw_plan(
         _record_draw_plan_fact([])
         return []
     side2_common = [
-        (src2, rect2, idx2, _to_common_space(rect2, letterboxes[1]))
+        (src2, rect2, idx2, to_common_space(rect2, letterboxes[1]))
         for src2, rect2, idx2 in side2
     ]
     # diff (e.g. the SSIM map) is generated at image1's resolution and
@@ -327,7 +297,7 @@ def build_array_draw_plan(
                     diff_src,
                     diff_idx,
                     diff_rect,
-                    _to_common_space(diff_rect, letterboxes[0]),
+                    to_common_space(diff_rect, letterboxes[0]),
                 )
                 for diff_src, diff_rect, diff_idx in _array_side_tiles(
                     tile_service,
@@ -381,9 +351,9 @@ def build_array_draw_plan(
                 fallback_diff_scale = _content_scale(
                     tile_service.content_size_for(diff_src, diff_idx)
                 )
-        common1 = _to_common_space(rect1, letterboxes[0])
+        common1 = to_common_space(rect1, letterboxes[0])
         for src2, rect2, idx2, common2 in side2_common:
-            if not _rects_overlap(common1, common2):
+            if not rects_overlap(common1, common2):
                 continue
             slot2 = tile_service.slot_for(src2, idx2)
             if slot2 is None:
@@ -392,7 +362,7 @@ def build_array_draw_plan(
             if array_index2 != array_index1:
                 continue
             scale2 = _content_scale(tile_service.content_size_for(src2, idx2))
-            pair_bbox = _intersection_rect(common1, common2)
+            pair_bbox = intersection_rect(common1, common2)
             # Filter floating-point seam slivers: intersection <2px (0.0012*1654)
             # is not real coverage — otherwise 28/49 entries are 0.0007 wide
             # and produce blank middle strip even though covered=1.0. Apron
@@ -434,12 +404,12 @@ def build_array_draw_plan(
                 continue
             emitted_for_pair = False
             for diff_src, diff_idx, diff_rect_raw, diff_common in diff_tiles_common:
-                if not _rects_overlap(pair_bbox, diff_common):
+                if not rects_overlap(pair_bbox, diff_common):
                     continue
                 diff_slot = tile_service.slot_for(diff_src, diff_idx)
                 if diff_slot is None or diff_slot[0] != array_index1:
                     continue
-                _diff_bbox = _intersection_rect(pair_bbox, diff_common)
+                _diff_bbox = intersection_rect(pair_bbox, diff_common)
                 if _diff_bbox[2] < 0.002 or _diff_bbox[3] < 0.002:
                     continue
                 _diff_bbox = (
