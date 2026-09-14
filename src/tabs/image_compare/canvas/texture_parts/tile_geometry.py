@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from engine.cache.tile_coverage import intersection_rect, rects_overlap
 from engine.cache.tile_geometry import (
     _TILE_APRON_PX,
     _TILE_RESIDENCY_MARGIN,
@@ -191,12 +192,24 @@ def best_tile_overlap_index(grid, rect: tuple[float, float, float, float]) -> tu
     top = top_f * grid.total_height
     right = (left_f + width_f) * grid.total_width
     bottom = (top_f + height_f) * grid.total_height
+    query = (left, top, right - left, bottom - top)
     best_index = None
     best_overlap = -1.0
     for row, col, region in grid.iter_regions():
-        overlap_w = max(0.0, min(right, region.right) - max(left, region.left))
-        overlap_h = max(0.0, min(bottom, region.bottom) - max(top, region.top))
-        overlap = overlap_w * overlap_h
+        candidate = (
+            region.left,
+            region.top,
+            region.right - region.left,
+            region.bottom - region.top,
+        )
+        if rects_overlap(query, candidate):
+            _, _, overlap_w, overlap_h = intersection_rect(query, candidate)
+            overlap = overlap_w * overlap_h
+        else:
+            # Zero-area touch (or no touch at all): same 0.0 the inline
+            # max(0, ...) form produced, so degenerate rects keep picking
+            # the first iterated region instead of returning None.
+            overlap = 0.0
         if overlap > best_overlap:
             best_overlap = overlap
             best_index = (row, col)

@@ -306,7 +306,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 550,
+      "lines": 520,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
