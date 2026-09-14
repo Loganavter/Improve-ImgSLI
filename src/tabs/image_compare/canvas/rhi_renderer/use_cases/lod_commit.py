@@ -20,7 +20,10 @@ from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import resolve_lod_texture_keys
 
-from ...frame_context import BudgetStats, FrameContext, make_ids
+try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
+    from engine.frame.context import BudgetStats, FrameContext, make_ids
+except ImportError:  # fallback until engine.frame lands; then this branch goes away
+    from ...frame_context import BudgetStats, FrameContext, make_ids
 
 try:
     from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore

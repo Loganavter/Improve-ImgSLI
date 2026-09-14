@@ -42,7 +42,10 @@ except Exception:  # pragma: no cover
         return False
 
 from .._debug import rhi_render_debug
-from ...frame_context import FrameContext, make_ids
+try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
+    from engine.frame.context import FrameContext, make_ids
+except ImportError:  # fallback until engine.frame lands; then this branch goes away
+    from ...frame_context import FrameContext, make_ids
 
 logger = logging.getLogger("ImproveImgSLI")
 

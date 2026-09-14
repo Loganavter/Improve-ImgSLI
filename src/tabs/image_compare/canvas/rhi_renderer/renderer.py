@@ -25,7 +25,10 @@ from ..texture_parts.tile_geometry import (
 )
 from engine.gpu.glass_panel import GlassPanelRenderer
 from ._debug import rhi_render_debug, rhi_render_debug_enabled
-from ..frame_context import FrameContext, snapshot_last_frame
+try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
+    from engine.frame.context import FrameContext, snapshot_last_frame
+except ImportError:  # fallback until engine.frame lands; then this branch goes away
+    from ..frame_context import FrameContext, snapshot_last_frame
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on

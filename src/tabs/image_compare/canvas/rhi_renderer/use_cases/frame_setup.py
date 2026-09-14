@@ -17,7 +17,10 @@ from engine.cache.image_identity import image_uid
 
 from .._debug import rhi_render_debug
 from ...render_context import build_render_runtime_context
-from ...frame_context import FrameContext, make_ids, viewport_hash
+try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
+    from engine.frame.context import FrameContext, make_ids, viewport_hash
+except ImportError:  # fallback until engine.frame lands; then this branch goes away
+    from ...frame_context import FrameContext, make_ids, viewport_hash
 from ...texture_parts.tile_geometry import _viewport_zoom_offset_for_tile
 from .lod_commit import commit_lod_keys
 
@@ -213,9 +216,14 @@ def prepare_frame(
                     if o is None:
                         return None
                     try:
-                        from shared.image_processing.tiled_pixel_store import (
-                            pixel_source_size,
-                        )
+                        try:  # Phase-A: engine.store root (A1); fallback until it lands
+                            from engine.store.tiled_pixel_store import (
+                                pixel_source_size,
+                            )
+                        except ImportError:
+                            from shared.image_processing.tiled_pixel_store import (
+                                pixel_source_size,
+                            )
 
                         w, h = pixel_source_size(o)
                         if w == 0 and h == 0:
@@ -245,9 +253,14 @@ def prepare_frame(
                 if o is None:
                     return None
                 try:
-                    from shared.image_processing.tiled_pixel_store import (
-                        pixel_source_size,
-                    )
+                    try:  # Phase-A: engine.store root (A1); fallback until it lands
+                        from engine.store.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
+                    except ImportError:
+                        from shared.image_processing.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
 
                     w, h = pixel_source_size(o)
                     if w == 0 and h == 0:

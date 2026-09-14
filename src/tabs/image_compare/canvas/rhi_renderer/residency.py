@@ -23,8 +23,12 @@ from __future__ import annotations
 
 import itertools
 
-from shared.image_processing.pyramid_registry import pyramid_for
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+try:  # Phase-A engine migration: store units move to engine.store.* (A1)
+    from engine.store.pyramid_registry import pyramid_for
+    from engine.store.tiled_pixel_store import TiledPixelStore
+except ImportError:  # fallback until engine.store lands; then this branch goes away
+    from shared.image_processing.pyramid_registry import pyramid_for
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from engine.cache.lod import LevelKey, select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
@@ -648,9 +652,14 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             # stash/restore path.
             if pil_source is not None:
                 try:
-                    from shared.image_processing.tiled_pixel_store import (
-                        pixel_source_size,
-                    )
+                    try:  # Phase-A: engine.store root (A1); fallback until it lands
+                        from engine.store.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
+                    except ImportError:
+                        from shared.image_processing.tiled_pixel_store import (
+                            pixel_source_size,
+                        )
 
                     src_w, src_h = pixel_source_size(pil_source)
                     if src_w == 0 or src_h == 0:
@@ -780,9 +789,14 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                         if _live is not None and (
                             int(full_image.width()), int(full_image.height())
                         ) == (int(_live[0]), int(_live[1])):
-                            from shared.image_processing.tiled_pixel_store import (
-                                qimage_from_pixel_source,
-                            )
+                            try:  # Phase-A: engine.store root (A1); fallback until it lands
+                                from engine.store.tiled_pixel_store import (
+                                    qimage_from_pixel_source,
+                                )
+                            except ImportError:
+                                from shared.image_processing.tiled_pixel_store import (
+                                    qimage_from_pixel_source,
+                                )
 
                             full_image = qimage_from_pixel_source(
                                 full_image, _spec_box

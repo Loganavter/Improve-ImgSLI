@@ -21,7 +21,10 @@ from PySide6.QtGui import QRhiDepthStencilClearValue, QRhiViewport
 
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
 
-from ...frame_context import FrameContext, make_ids
+try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
+    from engine.frame.context import FrameContext, make_ids
+except ImportError:  # fallback until engine.frame lands; then this branch goes away
+    from ...frame_context import FrameContext, make_ids
 from ..resources import pack_array_instance
 from ..uniforms import pack_array_uniforms
 
