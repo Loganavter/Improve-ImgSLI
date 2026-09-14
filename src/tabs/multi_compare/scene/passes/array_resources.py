@@ -5,14 +5,14 @@ Split out of ``BaseImagesPass`` -- owns the shared tile-array texture(s),
 the array pipeline/SRB, and the per-instance/uniform buffers used to draw
 every visible slot's tiles in one instanced draw call. Mirrors
 image_compare's ``rhi_renderer/array_resources.py`` -- both are now thin
-subclasses of ``shared.rendering.array_resources.TileArrayResourcesBase``
+subclasses of ``engine.gpu.array_resources.TileArrayResourcesBase``
 (docs/dev/rendering/renderer-unification-plan.md Phase 2), supplying only
 this tab's own per-instance vertex layout/shaders/uniform size (no
 cross-image pairing here, so one instance is a single (layer, tile) pair
 instead of an image1/image2/diff triple). Tile *residency decisions*
 (which tiles should be resident, cropping, marking resident) stay in
 ``passes/residency.py::realize`` (spec resolution) plus
-``shared.rendering.residency.TileResidencyRealizerBase.realize_specs``
+``engine.cache.residency.TileResidencyRealizerBase.realize_specs``
 (the per-key target/protect/budget/upload loop) -- ``BaseImagesPass``
 only forwards its own state into ``realize()``; this class only owns the
 GPU resources those decisions get realized against.

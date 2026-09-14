@@ -14,7 +14,7 @@ below, while ``BaseImagesPass`` owns ``_last_good_key``/``_key_more_pending``/
 explicitly.
 
 The per-key target/protect/budget/upload loop lives in
-``shared.rendering.residency.TileResidencyRealizerBase.realize_specs``
+``engine.cache.residency.TileResidencyRealizerBase.realize_specs``
 (docs/dev/rendering/renderer-unification-plan.md Phase 3 step 3) -- this
 module only resolves *this call's* list of specs (N-way per-slot pan/fit/zoom,
 with its own inline per-slot LOD resolution and array-vs-plain draw-path
