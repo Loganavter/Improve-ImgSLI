@@ -240,7 +240,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/frame_context.py",
-      "lines": 148,
+      "lines": 289,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
@@ -340,7 +340,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
-      "lines": 448,
+      "lines": 518,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -352,7 +352,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
-      "lines": 252,
+      "lines": 280,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -364,7 +364,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 380,
+      "lines": 383,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -376,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
-      "lines": 272,
+      "lines": 305,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
@@ -388,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py",
-      "lines": 157,
+      "lines": 194,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
