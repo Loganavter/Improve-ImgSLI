@@ -568,6 +568,18 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/services/snapshot_render_plan_builder.py",
+      "lines": 605,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/ui/context_menu.py",
       "lines": 605,
       "limit": 500,
