@@ -25,7 +25,13 @@ from ..texture_parts.tile_geometry import (
 )
 from engine.gpu.glass_panel import GlassPanelRenderer
 from ._debug import rhi_render_debug, rhi_render_debug_enabled
-from engine.frame.context import FrameContext, snapshot_last_frame
+from engine.frame.context import (
+    BudgetStats,
+    FrameContext,
+    make_ids,
+    snapshot_last_frame,
+)
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on
@@ -104,8 +110,9 @@ __all__ = [
 
 
 # Throttle per-frame draw_plan log: render() at 60Hz would otherwise
-# spam. Emit only when sig changes. Other throttles live in use_cases/* (thin owner).
-_last_renderer_draw_plan_sig: tuple | None = None
+# spam. Emit only when sig changes. State lives in loupe_trace's
+# centralized throttle store (stream "renderer.draw_plan"); other
+# throttles live in use_cases/* (thin owner).
 
 
 class RhiCanvasRenderer:
@@ -339,6 +346,7 @@ class RhiCanvasRenderer:
                 sampler_name=sampler_name,
                 viewport_zoom=viewport_zoom,
                 viewport_offset=viewport_offset,
+                frame_context=self.frame_context,
             )
             # fallback LOD: previous level then current (atomic for content swap)
             _cur_is_same = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
@@ -372,10 +380,8 @@ class RhiCanvasRenderer:
             if array_draw_plan and _ic_preview_enabled():
                 # throttle: draw_plan at 60Hz — same plan every steady frame
                 try:
-                    global _last_renderer_draw_plan_sig  # type: ignore[used-before-def]
                     _dp_sig = (tuple(str(k) for k in texture_keys), len(array_draw_plan), tuple(getattr(it, "layer1", None) for it in array_draw_plan[:2]), tuple(getattr(it, "layer2", None) for it in array_draw_plan[:2]))  # type: ignore[has-type]
-                    if _dp_sig != _last_renderer_draw_plan_sig:  # type: ignore[has-type]
-                        _last_renderer_draw_plan_sig = _dp_sig  # type: ignore[has-type]
+                    if _throttle_emit("renderer.draw_plan", _dp_sig):
                         _ic_preview_log(
                             "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s",
                             list(texture_keys),
@@ -404,6 +410,7 @@ class RhiCanvasRenderer:
                 viewport_offset,
                 array_draw_plan,
                 main_more_pending,
+                frame_context=self.frame_context,
             )
             array_draw_plan = _apply_first_paint_hold_impl(
                 self,
@@ -417,10 +424,19 @@ class RhiCanvasRenderer:
                 covered1=_covered1,
                 covered2=_covered2,
                 bbox_cov=_bbox_cov,
+                frame_context=self.frame_context,
             )
 
         # submit uploads before mips cascade (Phase 9)
         command_buffer.resourceUpdate(updates)
+        # Phase-2 frame bus: resourceUpdate fact (record only, never instead).
+        self.frame_context.record(
+            "resourceUpdate",
+            "ran",
+            "resourceUpdate submitted upload batch"
+            f" array_index_batches={len(dirty_layers)}",
+            ids=make_ids(self.frame_context.frame_id, len(dirty_layers)),
+        )
         for array_index, layers in self._pending_dirty_layers.items():
             dirty_layers.setdefault(array_index, set()).update(layers)
         dirty_layer_count = sum(len(layers) for layers in dirty_layers.values())
@@ -439,6 +455,28 @@ class RhiCanvasRenderer:
                 deferred_count,
                 mips_cascade_ms,
             )
+        else:
+            deferred_count = 0
+        # Phase-2 frame bus: mips cascade fact (record only, never instead).
+        _mips_stats = BudgetStats(
+            budget=dirty_layer_count,
+            uploaded=dirty_layer_count - deferred_count,
+            skipped=deferred_count,
+            time_ms=mips_cascade_ms,
+            budget_ms=float(MIPS_CASCADE_TIME_BUDGET_MS),
+            more_pending=bool(self._pending_dirty_layers),
+        )
+        self.frame_context.record(
+            "mips",
+            "ran" if dirty_layer_count else "skipped",
+            f"mips dirty_layers={dirty_layer_count}"
+            f" deferred={deferred_count} {_mips_stats.describe()}",
+            ids=make_ids(
+                self.frame_context.frame_id,
+                dirty_layer_count,
+                _mips_stats.as_tuple(),
+            ),
+        )
         updates = self.rhi.nextResourceUpdateBatch()
 
         # Draw submit — thin owner (CODE_PATTERNS). Body lives in use_cases/draw.py
@@ -457,6 +495,7 @@ class RhiCanvasRenderer:
             clear_color=clear_color,
             base_image=base_image,
             diff_ready=ctx.diff_source_ready if ctx is not None else None,
+            frame_context=self.frame_context,
         )
         rhi_render_debug(
             "render end widget=%s target_px=%dx%d should_draw=%s",

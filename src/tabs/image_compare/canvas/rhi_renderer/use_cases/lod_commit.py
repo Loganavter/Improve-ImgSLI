@@ -21,6 +21,7 @@ from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from ..draw_plan import resolve_lod_texture_keys
 
 from engine.frame.context import BudgetStats, FrameContext, make_ids
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 try:
     from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
@@ -34,8 +35,8 @@ except Exception:  # pragma: no cover
         return False
 
 
-# Throttle per-frame committed-sources log — moved from renderer.py.
-_last_renderer_sources_committed_sig: tuple | None = None
+# Throttle per-frame committed-sources log — state lives in loupe_trace's
+# centralized throttle store (stream "lod_commit.sources_committed").
 
 
 def commit_lod_keys(
@@ -112,11 +113,9 @@ def commit_lod_keys(
     if _ic_preview_enabled():
         # throttle committed sources — 60Hz spam
         try:
-            global _last_renderer_sources_committed_sig  # type: ignore[used-before-def]
             _is_same_committed = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
             _comm_sig = (base_image.use_hires, tuple(str(k) for k in raw_texture_keys), tuple(str(k) for k in texture_keys), _is_same_committed, tuple(image_uid(s) if s is not None else None for s in sources))  # type: ignore[has-type]
-            if _comm_sig != _last_renderer_sources_committed_sig:  # type: ignore[has-type]
-                _last_renderer_sources_committed_sig = _comm_sig  # type: ignore[has-type]
+            if _throttle_emit("lod_commit.sources_committed", _comm_sig):  # type: ignore[has-type]
                 _ic_preview_log(
                     "sources committed use_hires=%s tex_keys_raw=%s tex_keys_committed=%s is_same_object_committed=%s src_uids=%s committed_uids_src=%s",
                     base_image.use_hires,

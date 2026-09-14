@@ -12,6 +12,8 @@ from engine.cache.tile_coverage import (
 )
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
+from engine.frame.context import FrameContext, make_ids
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 from ..texture_parts.tile_geometry import (
     best_tile_overlap_index,
@@ -34,10 +36,10 @@ except Exception:  # pragma: no cover
 
 # Sig-throttle for the per-frame gap draw_plan log: build_array_draw_plan
 # runs on every frame (including keep-warm no-op ticks), so an unconditional
-# log spams identical lines while the sig is unchanged. Same pattern as
-# renderer.py's _last_renderer_draw_plan_sig (texture keys + items length +
-# layers + bbox sample). Fallback promotion logging is untouched.
-_last_gap_draw_plan_sig: tuple | None = None
+# log spams identical lines while the sig is unchanged. State lives in
+# loupe_trace's centralized throttle store (stream "draw_plan.gap") — same
+# pattern as renderer.py's "renderer.draw_plan" stream (texture keys + items
+# length + layers + bbox sample). Fallback promotion logging is untouched.
 
 
 # LOD-key resolution lives in ``residency.py`` (next to the grid
@@ -222,6 +224,7 @@ def build_array_draw_plan(
     sampler_name: str,
     viewport_zoom: tuple[float, float] | None = None,
     viewport_offset: tuple[float, float] | None = None,
+    frame_context: FrameContext | None = None,
 ) -> list[ArrayDrawItem]:
     """Builds the texture-array pipeline's per-instance draw plan: every
     visible (image1 tile, image2 tile) combination whose on-screen
@@ -239,6 +242,25 @@ def build_array_draw_plan(
     _ARRAY_CAPACITY is ever exceeded -- see resources.py) rather than draw
     mismatched content; the dropped pair is retried next frame once
     eviction/upload catches up."""
+
+    # ``frame_context`` is the Phase-2 frame-bus hook: when provided, the
+    # built plan records its LOD keys + entry count IN ADDITION to existing
+    # behavior (``None`` keeps every existing call site behavior-identical).
+    def _record_draw_plan_fact(_items: list) -> None:
+        """Phase-2 frame-bus write for the draw-plan phase (record only)."""
+        if frame_context is not None:
+            frame_context.record(
+                "build_array_draw_plan",
+                "ran" if _items else "skipped",
+                "build_array_draw_plan"
+                f" entries={len(_items)} sampler={sampler_name}",
+                ids=make_ids(
+                    frame_context.frame_id,
+                    tuple(str(k) for k in texture_keys),
+                    len(_items),
+                ),
+            )
+
     letterboxes = (tuple(base_image.letterbox1), tuple(base_image.letterbox2))
     side1 = _array_side_tiles(
         tile_service,
@@ -257,6 +279,7 @@ def build_array_draw_plan(
         viewport_offset=viewport_offset,
     )
     if not side1 or not side2:
+        _record_draw_plan_fact([])
         return []
     side2_common = [
         (src2, rect2, idx2, _to_common_space(rect2, letterboxes[1]))
@@ -471,7 +494,6 @@ def build_array_draw_plan(
         )
     if _gap_enabled() and items:
         try:
-            global _last_gap_draw_plan_sig
             _gap_sig = (
                 tuple(str(k) for k in texture_keys),
                 len(items),
@@ -479,9 +501,9 @@ def build_array_draw_plan(
                 tuple(getattr(it, "layer2", None) for it in items[:3]),
                 tuple(getattr(it, "bbox", None) for it in items[:2]),
             )
-            if _gap_sig == _last_gap_draw_plan_sig:
+            if not _throttle_emit("draw_plan.gap", _gap_sig):
+                _record_draw_plan_fact(items)
                 return items
-            _last_gap_draw_plan_sig = _gap_sig
         except Exception:
             pass
         try:
@@ -524,4 +546,5 @@ def build_array_draw_plan(
                     pass
         except Exception:
             pass
+    _record_draw_plan_fact(items)
     return items

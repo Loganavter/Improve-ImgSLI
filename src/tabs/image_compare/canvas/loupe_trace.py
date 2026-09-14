@@ -52,6 +52,7 @@ __all__ = [
     "THROTTLE_TIME",
     "frame_context_from_widget",
     "reset_loupe_trace_state",
+    "throttle_emit",
     "trace_invalidation",
     "trace_loupe",
 ]
@@ -80,6 +81,17 @@ _seen_once: set = set()
 # sig IS the triple, so a change in one is a change in the other.
 _last_emitted_base: dict = {}
 
+# Centralized sig-throttle store (Phase B1 ic-render-bus): the former
+# per-module ``_last_*_sig`` globals of ``rhi_renderer/`` (renderer,
+# draw_plan, use_cases/coverage, fallback, frame_setup, lod_commit — 9
+# streams) live here behind :func:`throttle_emit` instead. Kept as a
+# SEPARATE dict from ``_last_sig`` above on purpose: ``trace_loupe`` keys
+# its streams by loupe pass_name, while render-throttle streams are keyed
+# by dotted site names (``"renderer.draw_plan"``, ``"fallback.decision"``
+# …) — sharing one dict would risk a pass_name colliding with a site key
+# and two unrelated throttles suppressing each other.
+_throttle_sig: dict = {}
+
 
 def frame_context_from_widget(widget):
     """Best-effort live FrameContext via ``widget._rhi_renderer``.
@@ -100,6 +112,29 @@ def reset_loupe_trace_state() -> None:
     _last_time.clear()
     _seen_once.clear()
     _last_emitted_base.clear()
+    _throttle_sig.clear()
+
+
+def throttle_emit(stream: str, sig: object) -> bool:
+    """Centralized sig-throttle choke point (Phase B1 ic-render-bus).
+
+    Bit-identical replacement for the old per-module recipe
+    ``if sig != _last_X_sig: _last_X_sig = sig; emit``: returns ``True``
+    exactly when ``sig`` differs from the stream's last seen sig (caller
+    should emit its log line), then stores it; ``False`` means unchanged
+    (caller stays silent). Each former ``_last_*_sig`` global owns one
+    ``stream`` key (e.g. ``"renderer.draw_plan"``), so streams never share
+    state — same skip outcomes as before, only the state home changed.
+
+    Flag-agnostic on purpose: unlike :func:`trace_loupe` this never checks
+    ``ic_loupe_debug_enabled()`` — render-throttle call sites keep their
+    own gates (``_ic_preview_enabled()``/``_gap_enabled()``/…) and only
+    route the sig comparison here.
+    """
+    if _throttle_sig.get(stream, _MISSING) != sig:
+        _throttle_sig[stream] = sig
+        return True
+    return False
 
 
 def trace_loupe(
