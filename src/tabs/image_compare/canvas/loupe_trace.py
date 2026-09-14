@@ -196,7 +196,7 @@ def trace_invalidation(
     """
     if not ic_invalidate_debug_enabled():
         return None
-    from tabs.image_compare.canvas.frame_context import (
+    from engine.frame.context import (
         INVALIDATE_PREFIX,
         VERDICT_RAN,
     )

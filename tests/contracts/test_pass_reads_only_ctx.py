@@ -37,7 +37,7 @@ TABS = ROOT / "src" / "tabs"
 #: The bus itself defines ``record()`` — it is not a pass.
 _EXCLUDED_FILES = frozenset(
     {
-        "src/tabs/image_compare/canvas/frame_context.py",
+        "src/engine/frame/context.py",
     }
 )
 
@@ -250,7 +250,7 @@ def test_pinned_widget_reads_are_current():
 def _bus():
     """Load the frame-bus module without importing the tab package.
 
-    ``frame_context.py`` is a stdlib-only leaf (``dataclasses`` +
+    ``engine/frame/context.py`` is a stdlib-only leaf (``dataclasses`` +
     ``hashlib``); loading it by file location keeps this host-level
     contract decoupled from ``tabs.*`` package imports (see
     ``test_root_tests_no_tab_internals_leak``) and immune to tab
@@ -263,10 +263,9 @@ def _bus():
     path = (
         ROOT
         / "src"
-        / "tabs"
-        / "image_compare"
-        / "canvas"
-        / "frame_context.py"
+        / "engine"
+        / "frame"
+        / "context.py"
     )
     spec = importlib.util.spec_from_file_location(
         "frame_context_bus_contract", path
