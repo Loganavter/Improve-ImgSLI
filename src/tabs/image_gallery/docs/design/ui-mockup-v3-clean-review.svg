@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" font-family="Segoe UI, DejaVu Sans, sans-serif">
+  <!-- STATE S3: clean-rejected review overlay over dimmed grid -->
+
+  <!-- window shell -->
+  <rect x="20" y="16" width="1240" height="812" rx="12" fill="#2b2b2b" stroke="#4a4a4a"/>
+  <rect x="21" y="17" width="1238" height="40" rx="11" fill="#333333"/>
+  <text x="44" y="42" font-size="13" fill="#dfdfdf">Improve ImgSLI — Image Gallery</text>
+  <circle cx="1196" cy="37" r="7" fill="#3a3a3a" stroke="#5a5a5a"/>
+  <circle cx="1170" cy="37" r="7" fill="#3a3a3a" stroke="#5a5a5a"/>
+  <circle cx="1144" cy="37" r="7" fill="#c0392b"/>
+
+  <!-- dimmed background grid (simplified) -->
+  <g opacity="0.35">
+    <rect x="44" y="72" width="132" height="34" rx="8" fill="#3a3a3a"/>
+    <rect x="196" y="74" width="280" height="30" rx="8" fill="#242424"/>
+    <rect x="44" y="114" width="1192" height="34" rx="8" fill="#333333"/>
+    <g fill="#333333" stroke="#FFFFFF" stroke-opacity="0.06">
+      <rect x="44" y="192" width="250" height="170" rx="10"/>
+      <rect x="318" y="192" width="250" height="170" rx="10"/>
+      <rect x="592" y="192" width="250" height="170" rx="10"/>
+      <rect x="866" y="192" width="250" height="170" rx="10"/>
+      <rect x="44" y="408" width="250" height="170" rx="10"/>
+      <rect x="318" y="408" width="250" height="170" rx="10"/>
+      <rect x="592" y="408" width="250" height="170" rx="10"/>
+      <rect x="44" y="634" width="250" height="170" rx="10"/>
+    </g>
+  </g>
+  <!-- modal veil -->
+  <rect x="21" y="58" width="1238" height="768" rx="11" fill="#000000" fill-opacity="0.45"/>
+
+  <!-- post-move toast preview (top-right): ToastManager + ToastAction("Undo") -->
+  <g>
+    <rect x="940" y="66" width="308" height="46" rx="10" fill="#333333" stroke="#FFFFFF" stroke-opacity="0.19"/>
+    <path d="M958 89 l6 6 10 -12" stroke="#3fbf5f" stroke-width="2.5" fill="none"/>
+    <text x="982" y="94" font-size="12" fill="#ffffff">Moved 33 files to _rejected/</text>
+    <text x="1204" y="94" font-size="12" font-weight="bold" fill="#0096FF">Undo</text>
+  </g>
+
+  <!-- review overlay: TopLevelInWindowOverlay -->
+  <g>
+    <rect x="190" y="140" width="900" height="440" rx="12" fill="#303030" stroke="#555555" stroke-width="1.5"/>
+    <text x="214" y="176" font-size="16" font-weight="bold" fill="#ffffff">Review rejected files</text>
+    <text x="214" y="200" font-size="12" fill="#9a9a9a">33 files will be moved to &lt;folder&gt;/_rejected/ — nothing is deleted, Undo available for 10 s.</text>
+    <line x1="190" y1="216" x2="1090" y2="216" stroke="#4f4f4f"/>
+
+    <!-- filmstrip thumbs -->
+    <g>
+      <clipPath id="t1"><rect x="210" y="240" width="150" height="100" rx="8"/></clipPath>
+      <g clip-path="url(#t1)">
+        <rect x="210" y="240" width="150" height="100" fill="#5c4630"/>
+        <circle cx="285" cy="288" r="18" fill="#c09448"/>
+      </g>
+      <text x="210" y="356" font-size="10.5" fill="#dfdfdf">sunset_042_x2.jpg</text>
+      <rect x="210" y="364" width="70" height="22" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="220" y="379" font-size="10.5" fill="#dfdfdf">↩ Restore</text>
+    </g>
+    <g>
+      <clipPath id="t2"><rect x="376" y="240" width="150" height="100" rx="8"/></clipPath>
+      <g clip-path="url(#t2)">
+        <rect x="376" y="240" width="150" height="100" fill="#423728"/>
+        <circle cx="451" cy="288" r="18" fill="#a8863e"/>
+      </g>
+      <text x="376" y="356" font-size="10.5" fill="#dfdfdf">sunset_042_x3.jpg</text>
+      <rect x="376" y="364" width="70" height="22" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="386" y="379" font-size="10.5" fill="#dfdfdf">↩ Restore</text>
+    </g>
+    <g>
+      <clipPath id="t3"><rect x="542" y="240" width="150" height="100" rx="8"/></clipPath>
+      <g clip-path="url(#t3)">
+        <rect x="542" y="240" width="150" height="100" fill="#22304a"/>
+        <rect x="564" y="262" width="22" height="34" fill="#d4d0c8"/>
+        <rect x="594" y="270" width="22" height="26" fill="#c6c2ba"/>
+        <rect x="624" y="256" width="22" height="40" fill="#ddd9d2"/>
+      </g>
+      <text x="542" y="356" font-size="10.5" fill="#dfdfdf">city_walk_07_x2.png</text>
+      <rect x="542" y="364" width="70" height="22" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="552" y="379" font-size="10.5" fill="#dfdfdf">↩ Restore</text>
+    </g>
+    <g>
+      <clipPath id="t4"><rect x="708" y="240" width="150" height="100" rx="8"/></clipPath>
+      <g clip-path="url(#t4)">
+        <rect x="708" y="240" width="150" height="100" fill="#1f2c42"/>
+        <rect x="730" y="262" width="22" height="34" fill="#c9c5bd"/>
+        <rect x="760" y="270" width="22" height="26" fill="#bbb7af"/>
+        <rect x="790" y="256" width="22" height="40" fill="#d2cec6"/>
+      </g>
+      <text x="708" y="356" font-size="10.5" fill="#dfdfdf">city_walk_07_x3.png</text>
+      <rect x="708" y="364" width="70" height="22" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="718" y="379" font-size="10.5" fill="#dfdfdf">↩ Restore</text>
+    </g>
+    <!-- more tile -->
+    <g>
+      <rect x="874" y="240" width="150" height="100" rx="8" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-dasharray="6 4"/>
+      <text x="949" y="294" font-size="14" fill="#9a9a9a" text-anchor="middle">+29 more</text>
+      <text x="949" y="310" font-size="10" font-style="italic" fill="#777" text-anchor="middle">scrollable strip</text>
+    </g>
+
+    <!-- series provenance line -->
+    <text x="214" y="420" font-size="11" fill="#8f8f8f">from: SERIES 1 · sunset_042 (14)   ·   SERIES 2 · city_walk_07 (9)   ·   SERIES 4 · harbor_11 (6)   ·   …</text>
+    <text x="214" y="438" font-size="10" font-style="italic" fill="#777">grouped provenance so the user can restore a whole series at once if triage was wrong</text>
+
+    <!-- bottom action bar -->
+    <line x1="190" y1="508" x2="1090" y2="508" stroke="#4f4f4f"/>
+    <g>
+      <rect x="214" y="524" width="110" height="36" rx="8" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="232" y="547" font-size="12.5" fill="#dfdfdf">Restore all</text>
+    </g>
+    <text x="600" y="547" font-size="12.5" fill="#9a9a9a" text-anchor="middle">33 files · 214 MB</text>
+    <g>
+      <rect x="724" y="524" width="86" height="36" rx="8" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+      <text x="742" y="547" font-size="12.5" fill="#dfdfdf">Cancel</text>
+    </g>
+    <g>
+      <rect x="820" y="524" width="246" height="36" rx="8" fill="#0096FF"/>
+      <text x="852" y="547" font-size="12.5" font-weight="bold" fill="#ffffff">Move 33 to _rejected/</text>
+    </g>
+  </g>
+
+  <text x="24" y="852" font-size="11" font-style="italic" fill="#8a8a8a">overlay: TopLevelInWindowOverlay(close_on_escape=True) · move is reversible: fs move + ToastAction Undo · Escape/Cancel returns to S2 with rejections intact</text>
+</svg>

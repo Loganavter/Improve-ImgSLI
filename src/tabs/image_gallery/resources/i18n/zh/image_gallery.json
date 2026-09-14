@@ -1,0 +1,42 @@
+{
+  "image_gallery": {
+    "tab_name": "图库",
+    "pick_folder": "选择文件夹…",
+    "filter_placeholder": "按标签/描述筛选…",
+    "empty_state": "选择一个文件夹以查看图片。",
+    "analyze": "分析",
+    "analyzing": "分析中…",
+    "settings": {
+      "ai_title": "图库 — AI",
+      "enable_ai": "启用 AI 图像分析",
+      "base_url": "API 基础地址",
+      "api_key": "API 密钥",
+      "model_name": "模型名称",
+      "api_key_warning": "以明文形式存储在本设备上。"
+    },
+    "errors": {
+      "not_configured": "请先在设置中配置 AI API 密钥。",
+      "auth": "身份验证失败 — 请检查您的 API 密钥。",
+      "rate_limit": "已达到速率限制 — 请稍后重试。",
+      "network": "连接 AI API 时发生网络错误。",
+      "parse": "无法解析 AI 响应。"
+    },
+    "action": {
+      "keep_best": "保留最佳",
+      "keep_best_desc": "保留每个系列的最佳",
+      "clean_rejected": "清理已拒绝",
+      "clean_rejected_desc": "将已拒绝的移到 _rejected",
+      "run_triage": "运行分拣",
+      "set_as_source": "设为源",
+      "breadcrumb": {
+        "triage": "分拣"
+      }
+    },
+    "card": {
+      "set_as_source": "设为源",
+      "make_best": "★ 设为最佳",
+      "reject": "✕ 拒绝",
+      "compare": "⇄ 对比"
+    }
+  }
+}

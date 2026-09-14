@@ -105,9 +105,9 @@ MIPS_CASCADE_TIME_BUDGET_MS = 8.0
 # spends upload/mip budget on.
 LOD_FETCH_SETTLE_MS = 100.0
 
-# Union letterbox hold after put_unified (src/tabs/image_compare/canvas/texture_parts/base_images.py): ALLOWED - platform constant used by tab
-# keep prev union letterbox for 300-400ms after put_unified or until more_pending False,
-# not instant 0.571->0.523 jump. Use 350ms (within 300-400) derived from LOD_SETTLE.
+# Union letterbox hold after a unified content put: keep the previous union
+# letterbox for 300-400ms (or until more_pending is False) instead of an
+# instant aspect jump. 350ms sits within that window, derived from LOD_SETTLE.
 UNION_LETTERBOX_HOLD_MS = 350.0
 
 # Extra ring of tiles kept GPU-resident beyond what's strictly visible.

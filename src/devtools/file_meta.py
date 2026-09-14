@@ -38,9 +38,41 @@ _CANVAS_RE = re.compile(r"^\s*#?\s*File-Size-Exempt:\s*(.*)", re.MULTILINE)
 
 EXCLUDE_PARTS = {"__pycache__", ".git", "tests", "venv", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
 
+# Git-ignored paths (e.g. src/tabs/image_gallery/, deliberately untracked
+# WIP): the worktree scanner must agree with git, otherwise the registry
+# test goes red in dev checkouts that carry ignored leftovers while staying
+# green on clean trees. Resolved once per process via `git ls-files`.
+_IGNORED_CACHE: set[str] | None = None
+
+
+def _ignored_paths() -> set[str]:
+    global _IGNORED_CACHE
+    if _IGNORED_CACHE is None:
+        try:
+            import subprocess
+
+            out = subprocess.run(
+                ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                timeout=30,
+                text=True,
+            )
+            _IGNORED_CACHE = set(out.stdout.split("\x00")) if out.returncode == 0 else set()
+        except Exception:
+            _IGNORED_CACHE = set()
+    return _IGNORED_CACHE
+
 
 def _is_excluded(path: Path) -> bool:
-    return any(part in EXCLUDE_PARTS for part in path.parts)
+    if any(part in EXCLUDE_PARTS for part in path.parts):
+        return True
+    rel = path.as_posix()
+    return rel in _ignored_paths() or any(
+        rel == ignored or rel.startswith(ignored.rstrip("/") + "/")
+        for ignored in _ignored_paths()
+        if ignored.endswith("/")
+    )
 
 
 def _line_count(path: Path) -> int:

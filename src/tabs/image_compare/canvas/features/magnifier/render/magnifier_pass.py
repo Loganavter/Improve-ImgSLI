@@ -90,7 +90,178 @@ def _content_scale(content_size) -> tuple[float, float]:
     return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
 
 
-def _source_slices(renderer, source_key, uv_rect, frame_context=None):
+def _lens_union_uv(overlay) -> tuple[float, float, float, float] | None:
+    """Union of every active magnifier slot's capture window (``uv_rect``/
+    ``uv_rect2``, zoom/pan-invariant fractions of the full source image).
+
+    Local mirror of ``rhi_renderer/use_cases/tile_residency
+    ._union_capture_uv_rect`` (kept local: this feature already owns its
+    capture-window geometry via ``tile_capture.py``, and a private
+    cross-module import would couple the pass to the renderer's use-case
+    layout). Returns ``None`` when no slot carries a capture window."""
+    left = top = 1.0
+    right = bottom = 0.0
+    found = False
+    for slot in getattr(overlay, "gpu_slots", ()) or ():
+        if not slot:
+            continue
+        for uv_rect in (slot.get("uv_rect"), slot.get("uv_rect2")):
+            if uv_rect is None:
+                continue
+            l, t, r, b = uv_rect
+            left = min(left, l)
+            top = min(top, t)
+            right = max(right, r)
+            bottom = max(bottom, b)
+            found = True
+    if not found:
+        return None
+    return (max(0.0, left), max(0.0, top), min(1.0, right), min(1.0, bottom))
+
+
+def _low_res_fallback_slice(
+    tile_service, fallback_key, capture_uv_rect, tc_x, tc_y, core_tc_x, core_tc_y
+) -> dict | None:
+    """One fallback slice sampling ``fallback_key`` (the stored/low-res
+    role) over exactly the screen footprint a missing source slice would
+    have covered (same ``tc``/``core_tc`` -- scissor unchanged, no hole).
+
+    The capture-uv sub-rect at this slice's ``tc`` range is an absolute
+    image fraction, so it maps onto the fallback grid -- which shows the
+    same image at a different scale -- by plain fraction arithmetic
+    (mirrors ``tile_capture.tile_uv_slices``' own sub-rect/local-uv math,
+    including the apron-padded tile-local convention). A multi-tile
+    fallback only serves tiles whose exact (apron-free) region fully
+    contains the sub-rect, so the kept ``tc`` never samples across a tile
+    boundary; otherwise ``None`` (caller keeps the old drop path).
+    Returns ``None`` when the fallback grid is unknown or its tile is not
+    GPU-resident either."""
+    grid = tile_service.grid_for(fallback_key)
+    if grid is None:
+        return None
+    left, top, right, bottom = capture_uv_rect
+    total_w, total_h = float(grid.total_width), float(grid.total_height)
+    if total_w <= 0 or total_h <= 0:
+        return None
+    sub_left = left + tc_x[0] * (right - left)
+    sub_right = left + tc_x[1] * (right - left)
+    sub_top = top + tc_y[0] * (bottom - top)
+    sub_bottom = top + tc_y[1] * (bottom - top)
+    px_left, px_right = sorted((sub_left * total_w, sub_right * total_w))
+    px_top, px_bottom = sorted((sub_top * total_h, sub_bottom * total_h))
+    if grid.rows == 1 and grid.columns == 1:
+        index = (0, 0)
+        region = grid.region_for(0, 0)
+    else:
+        indices = tile_service.visible_tiles(
+            fallback_key, (px_left, px_top, px_right, px_bottom)
+        )
+        index = None
+        region = None
+        best_overlap = -1.0
+        for row, col in indices:
+            candidate = grid.region_for(row, col)
+            if (
+                candidate.left <= px_left
+                and candidate.top <= px_top
+                and candidate.right >= px_right
+                and candidate.bottom >= px_bottom
+            ):
+                overlap = (px_right - px_left) * (px_bottom - px_top)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    index = (row, col)
+                    region = candidate
+        if index is None or region is None:
+            return None
+    slot = tile_service.slot_for(fallback_key, index)
+    if slot is None:
+        return None
+    tile_left, tile_top, tile_right, tile_bottom = _apron_rect(
+        grid.total_width, grid.total_height, region, _TILE_APRON_PX
+    )
+    tile_w_px = tile_right - tile_left
+    tile_h_px = tile_bottom - tile_top
+    if tile_w_px <= 0 or tile_h_px <= 0:
+        return None
+    return {
+        "tile_key": tile_service.tile_key(fallback_key, index[0], index[1]),
+        "tile_index": index,
+        "uv_rect": (
+            (sub_left * total_w - tile_left) / tile_w_px,
+            (sub_top * total_h - tile_top) / tile_h_px,
+            (sub_right * total_w - tile_left) / tile_w_px,
+            (sub_bottom * total_h - tile_top) / tile_h_px,
+        ),
+        "tc_x": tc_x,
+        "tc_y": tc_y,
+        "core_tc_x": core_tc_x,
+        "core_tc_y": core_tc_y,
+        "layer": slot[1],
+        "content_scale": _content_scale(
+            tile_service.content_size_for(fallback_key, index)
+        ),
+        "fallback_for": tuple(index),
+    }
+
+
+def _lens_residency_hold(renderer, source_keys, overlay, frame_context=None) -> str | None:
+    """Stored-hold gate for the lens source flip (loupe residency gate).
+
+    Returns ``None`` when every ``source_keys`` entry reports
+    ``request_level == "resident"`` on the lens's own interest rect (the
+    capture-window union in that source's image pixels) -- the caller may
+    sample source tiles. Otherwise returns a grep-friendly hold reason and
+    the caller keeps sampling ``stored`` (atomic swap instead of
+    progressive fill: the lens never shows a half-uploaded source grid).
+    ``renderer`` without a tile service (fakes/tests) never holds."""
+    tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
+    if tile_service is None:
+        return None
+    union_uv = _lens_union_uv(overlay)
+    if union_uv is None:
+        return None
+    pending: list[str] = []
+    for source_key in source_keys:
+        grid = tile_service.grid_for(source_key)
+        if grid is None:
+            pending.append(f"{source_key}:grid-unregistered")
+            continue
+        interest_rect = (
+            union_uv[0] * grid.total_width,
+            union_uv[1] * grid.total_height,
+            union_uv[2] * grid.total_width,
+            union_uv[3] * grid.total_height,
+        )
+        tile_service.register_interest_rect(source_key, interest_rect)
+        _level, status, reason = tile_service.request_level(
+            source_key, interest_rect, quality="high"
+        )
+        if status != "resident":
+            pending.append(f"{source_key}:{reason}")
+    if pending:
+        hold_reason = f"hold_stored_until_resident {'; '.join(pending)}"
+        trace_loupe(
+            frame_context,
+            "loupe.mag_residency_hold",
+            "skipped",
+            hold_reason,
+            ids=tuple(str(k) for k in source_keys),
+            sig=(False, tuple(pending)),
+        )
+        return hold_reason
+    trace_loupe(
+        frame_context,
+        "loupe.mag_residency_hold",
+        "ran",
+        "lens_interest_resident sampling source tiles",
+        ids=tuple(str(k) for k in source_keys),
+        sig=(True,),
+    )
+    return None
+
+
+def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_key=None):
     """Tile-aware uv_rect slicing for one magnifier source (see tile_capture.py).
 
     Attaches each slice's array ``layer``/``content_scale`` (looked up via
@@ -107,6 +278,12 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None):
     service's reason as a ``loupe.mag_dropped_slice`` FrameContext record
     instead of staying silent. ``frame_context=None`` keeps every existing
     call site behavior-identical.
+
+    Loupe residency gate: when ``fallback_key`` (the stored/low-res role
+    for this source) is given, a non-resident source slice samples the
+    fallback's resident tile over the same footprint (blur, not holes)
+    instead of dropping; only a slice with no resident fallback anywhere
+    still drops. ``fallback_key=None`` keeps the old drop path exactly.
     """
     tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
     grid = tile_service.grid_for(source_key) if tile_service is not None else None
@@ -159,11 +336,41 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None):
     for sl in slices:
         slot = tile_service.slot_for(source_key, sl["tile_index"])
         if slot is None:
-            # Not yet GPU-resident (upload still in flight) -- drop rather
-            # than default to layer 0, which would sample whatever
-            # unrelated tile happens to occupy that layer right now.
+            # Not yet GPU-resident (upload still in flight) -- sample the
+            # stored/low-res fallback over the same footprint when one is
+            # resident (blur, not holes); drop only when no fallback
+            # covers this slice either.
+            if fallback_key is not None:
+                fallback_slice = _low_res_fallback_slice(
+                    tile_service,
+                    fallback_key,
+                    uv_rect,
+                    sl["tc_x"],
+                    sl["tc_y"],
+                    sl["core_tc_x"],
+                    sl["core_tc_y"],
+                )
+                if fallback_slice is not None:
+                    trace_loupe(
+                        frame_context,
+                        "loupe.mag_fallback_slice",
+                        "ran",
+                        "low_res_fallback source not GPU-resident"
+                        f" sampling fallback={fallback_key!r}",
+                        ids=(str(source_key), tuple(sl["tile_index"])),
+                        sig=(str(source_key), tuple(sl["tile_index"]), str(fallback_key)),
+                    )
+                    resolved.append(fallback_slice)
+                    continue
+            # Defaulting to layer 0 would sample whatever unrelated tile
+            # happens to occupy that layer right now -- drop instead.
+            # NOTE (supervisor seam fix, Phase 1 integration): per-tile identity
+            # travels in `ids=` (rendered as ids=%r), NOT in the reason.
+            # Reasons stay per-event stable so loupe_trace's (pass, verdict,
+            # reason) aggregation collapses N tiles into one line (1D bar:
+            # N drops => <=2 lines). Embedding tile_index here broke that.
             _drop_reason = (
-                "dropped_nonresident_slice tile not GPU-resident"
+                "dropped_nonresident_slice not GPU-resident"
                 + (
                     f" request_level={residency_reason}"
                     if residency_reason is not None
@@ -417,6 +624,26 @@ class MagnifierPass(CanvasRenderPass):
             and ctx.source_texture_ids[0]
             and ctx.source_texture_ids[1]
         )
+        # Loupe residency gate: HOLD stored until request_level on the lens
+        # interest rect reports resident for both sources -- the flip is one
+        # atomic swap instead of a progressive tile-by-tile fill (the
+        # 24-of-30-missing first-frame holes). A held frame samples stored
+        # (already resident under the main canvas) and needs no fallback.
+        _fallback_by_source: dict = {}
+        if use_source:
+            _hold_reason = _lens_residency_hold(
+                rhi_renderer,
+                (ctx.source_texture_ids[0], ctx.source_texture_ids[1]),
+                overlay,
+                frame_context,
+            )
+            if _hold_reason is not None:
+                use_source = False
+            else:
+                _fallback_by_source = {
+                    ctx.source_texture_ids[0]: ctx.texture_ids[0],
+                    ctx.source_texture_ids[1]: ctx.texture_ids[1],
+                }
         tex_key_1 = ctx.source_texture_ids[0] if use_source else ctx.texture_ids[0]
         tex_key_2 = ctx.source_texture_ids[1] if use_source else ctx.texture_ids[1]
         diff_key = (
@@ -554,7 +781,11 @@ class MagnifierPass(CanvasRenderPass):
             if gpu_slot:
                 records = build_tile_records(
                     source_slices_fn=lambda key, rect: _source_slices(
-                        rhi_renderer, key, rect, frame_context
+                        rhi_renderer,
+                        key,
+                        rect,
+                        frame_context,
+                        fallback_key=_fallback_by_source.get(key),
                     ),
                     combined=combined,
                     source_mode=source_mode,

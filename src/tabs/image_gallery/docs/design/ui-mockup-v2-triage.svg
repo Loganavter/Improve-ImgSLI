@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" font-family="Segoe UI, DejaVu Sans, sans-serif">
+  <!-- STATE S2: triage complete, mid-review. Grouped-by-series grid, best/rank/rejected card states, hover mini-toolbar -->
+
+  <!-- window shell -->
+  <rect x="20" y="16" width="1240" height="812" rx="12" fill="#2b2b2b" stroke="#4a4a4a"/>
+  <rect x="21" y="17" width="1238" height="40" rx="11" fill="#333333"/>
+  <text x="44" y="42" font-size="13" fill="#dfdfdf">Improve ImgSLI — Image Gallery</text>
+  <circle cx="1196" cy="37" r="7" fill="#3a3a3a" stroke="#5a5a5a"/>
+  <circle cx="1170" cy="37" r="7" fill="#3a3a3a" stroke="#5a5a5a"/>
+  <circle cx="1144" cy="37" r="7" fill="#c0392b"/>
+
+  <!-- toolbar row -->
+  <g>
+    <rect x="44" y="72" width="132" height="34" rx="8" fill="#3a3a3a" stroke="#FFFFFF" stroke-opacity="0.15"/>
+    <path d="M60 94 v-10 h9 l3 3 h12 v7 z" fill="#0096FF"/>
+    <text x="92" y="94" font-size="13" fill="#dfdfdf">Open Folder…</text>
+  </g>
+  <g>
+    <rect x="196" y="74" width="280" height="30" rx="8" fill="#242424" stroke="#FFFFFF" stroke-opacity="0.24"/>
+    <text x="212" y="94" font-size="12" fill="#8f8f8f">Filter by tag / description…</text>
+    <circle cx="456" cy="89" r="7" fill="none" stroke="#8f8f8f" stroke-width="1.4"/>
+    <path d="M451 84 l10 10 M461 84 l-10 10" stroke="#8f8f8f" stroke-width="1.4"/>
+  </g>
+  <g>
+    <rect x="496" y="73" width="140" height="33" rx="8" fill="#333333" stroke="#4a4a4a"/>
+    <text x="512" y="95" font-size="12" fill="#dfdfdf">Sort: Rank</text>
+    <path d="M612 86 l7 9 7 -9 z" fill="#8f8f8f"/>
+  </g>
+  <g>
+    <rect x="1130" y="74" width="106" height="32" rx="8" fill="#333333" stroke="#4a4a4a"/>
+    <rect x="1138" y="82" width="44" height="16" rx="4" fill="#0096FF" fill-opacity="0.2"/>
+    <g stroke="#0096FF" stroke-width="1.6">
+      <rect x="1143" y="86" width="14" height="8" rx="1" fill="none"/>
+      <rect x="1162" y="86" width="14" height="8" rx="1" fill="none"/>
+    </g>
+    <g stroke="#8f8f8f" stroke-width="1.6">
+      <path d="M1194 85 h32 M1194 90 h32 M1194 95 h32"/>
+    </g>
+  </g>
+  <!-- scan finished indicator (was spinner during S1) -->
+  <text x="660" y="95" font-size="12" fill="#3fbf5f">✓ triage complete</text>
+
+  <!-- stats strip -->
+  <rect x="44" y="114" width="1192" height="34" rx="8" fill="#333333"/>
+  <text x="60" y="136" font-size="13" fill="#dfdfdf">40 images · 7 series · <tspan fill="#0096FF">33 redundant</tspan></text>
+  <g>
+    <rect x="782" y="119" width="96" height="24" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+    <text x="797" y="135" font-size="11.5" fill="#dfdfdf">Keep best</text>
+  </g>
+  <g>
+    <rect x="888" y="119" width="168" height="24" rx="6" fill="none" stroke="#0096FF" stroke-opacity="0.6"/>
+    <text x="902" y="135" font-size="11.5" fill="#7fc4ff">Clean rejected (5)</text>
+  </g>
+  <g>
+    <rect x="1066" y="119" width="162" height="24" rx="6" fill="none" stroke="#FFFFFF" stroke-opacity="0.2"/>
+    <text x="1080" y="135" font-size="11.5" fill="#dfdfdf">Compare finalists</text>
+  </g>
+  <text x="48" y="163" font-size="10" font-style="italic" fill="#777">stats strip appears after local pass; buttons: gallery.keep-best-of-series / gallery.clean-rejected / dispatch via ImageCarryService</text>
+
+  <!-- SERIES 1 header -->
+  <rect x="44" y="172" width="3" height="14" fill="#0096FF"/>
+  <text x="56" y="183" font-size="11" letter-spacing="1" fill="#9a9a9a">SERIES 1 · SUNSET_042.JPG · 4 VARIANTS ▾</text>
+  <text x="380" y="183" font-size="10" font-style="italic" fill="#777">host-owned collapsible group header (clusters ≥2 only)</text>
+
+  <!-- card row A: y192 h170 -->
+  <!-- c1 BEST -->
+  <g>
+    <rect x="44" y="192" width="250" height="170" rx="10" fill="#383838" stroke="#0096FF" stroke-width="2"/>
+    <clipPath id="a1"><rect x="52" y="200" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#a1)">
+      <rect x="52" y="200" width="234" height="110" fill="#7a5a3a"/>
+      <circle cx="169" cy="252" r="26" fill="#f0c060"/>
+      <rect x="52" y="272" width="234" height="38" fill="#4a3d2a"/>
+    </g>
+    <rect x="52" y="206" width="58" height="18" rx="9" fill="#0096FF"/>
+    <text x="60" y="219" font-size="10" fill="#ffffff">★ BEST</text>
+    <text x="52" y="330" font-size="12" fill="#dfdfdf">sunset_042_up6.jpg</text>
+    <circle cx="236" cy="326" r="4" fill="#3fbf5f"/>
+    <circle cx="222" cy="326" r="4" fill="#3fbf5f"/>
+    <circle cx="208" cy="326" r="4" fill="#3fbf5f"/>
+  </g>
+  <!-- c2 rank 2 -->
+  <g>
+    <rect x="318" y="192" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="a2"><rect x="326" y="200" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#a2)">
+      <rect x="326" y="200" width="234" height="110" fill="#6a4e34"/>
+      <circle cx="443" cy="252" r="26" fill="#d9a850"/>
+      <rect x="326" y="272" width="234" height="38" fill="#423728"/>
+    </g>
+    <rect x="326" y="206" width="30" height="18" rx="9" fill="#555555"/>
+    <text x="334" y="219" font-size="10" fill="#dfdfdf">#2</text>
+    <text x="326" y="330" font-size="12" fill="#dfdfdf">sunset_042_up4.png</text>
+    <circle cx="510" cy="326" r="4" fill="#3fbf5f"/>
+    <circle cx="496" cy="326" r="4" fill="#e8b64c"/>
+    <circle cx="482" cy="326" r="4" fill="#3fbf5f"/>
+  </g>
+  <!-- c3 rejected (dimmed) -->
+  <g opacity="0.38">
+    <rect x="592" y="192" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="a3"><rect x="600" y="200" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#a3)">
+      <rect x="600" y="200" width="234" height="110" fill="#5c4630"/>
+      <circle cx="717" cy="252" r="26" fill="#c09448"/>
+      <rect x="600" y="272" width="234" height="38" fill="#3a3226"/>
+      <g fill="#2e2820">
+        <circle cx="640" cy="230" r="1"/><circle cx="700" cy="215" r="1"/><circle cx="760" cy="240" r="1"/>
+        <circle cx="660" cy="290" r="1"/><circle cx="800" cy="225" r="1"/><circle cx="730" cy="300" r="1"/>
+      </g>
+    </g>
+    <text x="600" y="330" font-size="12" fill="#dfdfdf">sunset_042_x2.jpg</text>
+    <line x1="600" y1="326" x2="716" y2="326" stroke="#dfdfdf"/>
+    <circle cx="600" cy="330" r="4" fill="#c0392b"/>
+    <circle cx="586" cy="330" r="4" fill="#e8b64c"/>
+  </g>
+  <circle cx="824" cy="210" r="10" fill="#D93025"/>
+  <path d="M819 205 l10 10 M829 205 l-10 10" stroke="#ffffff" stroke-width="2"/>
+  <text x="592" y="377" font-size="10" font-style="italic" fill="#777">rejected: opacity .38, strikes below rank order, counts into "Clean rejected (n)"</text>
+
+  <!-- c4 rank 3 hovered -->
+  <g>
+    <rect x="866" y="192" width="250" height="170" rx="10" fill="#424242" stroke="#FFFFFF" stroke-opacity="0.15"/>
+    <clipPath id="a4"><rect x="874" y="200" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#a4)">
+      <rect x="874" y="200" width="234" height="110" fill="#6f5436"/>
+      <circle cx="991" cy="252" r="26" fill="#e2ae4e"/>
+      <rect x="874" y="272" width="234" height="38" fill="#453a2a"/>
+    </g>
+    <rect x="874" y="206" width="30" height="18" rx="9" fill="#555555"/>
+    <text x="882" y="219" font-size="10" fill="#dfdfdf">#3</text>
+    <text x="874" y="330" font-size="12" fill="#dfdfdf">sunset_042_w2.png</text>
+    <circle cx="1082" cy="326" r="4" fill="#3fbf5f"/>
+    <circle cx="1068" cy="326" r="4" fill="#e8b64c"/>
+    <circle cx="1054" cy="326" r="4" fill="#3fbf5f"/>
+    <rect x="874" y="359" width="234" height="3" rx="1.5" fill="#0096FF"/>
+  </g>
+  <!-- hover mini-toolbar -->
+  <g>
+    <rect x="1022" y="198" width="88" height="30" rx="15" fill="#2b2b2b" fill-opacity="0.92" stroke="#FFFFFF" stroke-opacity="0.25"/>
+    <text x="1034" y="218" font-size="13" fill="#e8b64c">★</text>
+    <text x="1062" y="218" font-size="13" fill="#D93025">✕</text>
+    <text x="1086" y="218" font-size="13" fill="#0096FF">⇄</text>
+  </g>
+  <text x="866" y="377" font-size="10" font-style="italic" fill="#777">hover: IconActionFlyout-style capsule — ★ make best · ✕ reject · ⇄ compare</text>
+
+  <!-- SERIES 2 header -->
+  <rect x="44" y="392" width="3" height="14" fill="#0096FF"/>
+  <text x="56" y="403" font-size="11" letter-spacing="1" fill="#9a9a9a">SERIES 2 · CITY_WALK_07.PNG · 3 VARIANTS ▾</text>
+
+  <!-- card row B: y408 h170 -->
+  <g>
+    <rect x="44" y="408" width="250" height="170" rx="10" fill="#383838" stroke="#0096FF" stroke-width="2"/>
+    <clipPath id="b1"><rect x="52" y="416" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#b1)">
+      <rect x="52" y="416" width="234" height="110" fill="#33415a"/>
+      <rect x="74" y="446" width="30" height="46" fill="#e6e2da"/>
+      <rect x="114" y="454" width="30" height="38" fill="#d8d4cc"/>
+      <rect x="154" y="440" width="30" height="52" fill="#efece6"/>
+      <rect x="204" y="458" width="42" height="34" fill="#cfd4da"/>
+      <rect x="52" y="492" width="234" height="34" fill="#22304a"/>
+    </g>
+    <rect x="52" y="422" width="58" height="18" rx="9" fill="#0096FF"/>
+    <text x="60" y="435" font-size="10" fill="#ffffff">★ BEST</text>
+    <text x="52" y="546" font-size="12" fill="#dfdfdf">city_walk_07_x4.png</text>
+    <circle cx="236" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="222" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="208" cy="542" r="4" fill="#3fbf5f"/>
+  </g>
+  <g>
+    <rect x="318" y="408" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="b2"><rect x="326" y="416" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#b2)">
+      <rect x="326" y="416" width="234" height="110" fill="#313f56"/>
+      <rect x="348" y="446" width="30" height="46" fill="#d4d0c8"/>
+      <rect x="388" y="454" width="30" height="38" fill="#c6c2ba"/>
+      <rect x="428" y="440" width="30" height="52" fill="#ddd9d2"/>
+      <rect x="478" y="458" width="42" height="34" fill="#bfc4ca"/>
+      <rect x="326" y="492" width="234" height="34" fill="#1f2c42"/>
+    </g>
+    <rect x="326" y="422" width="30" height="18" rx="9" fill="#555555"/>
+    <text x="334" y="435" font-size="10" fill="#dfdfdf">#2</text>
+    <rect x="440" y="500" width="112" height="18" rx="9" fill="#2b2b2b" stroke="#0096FF" stroke-opacity="0.6"/>
+    <text x="450" y="513" font-size="10" fill="#7fc4ff">AI tie-break…</text>
+    <text x="326" y="546" font-size="12" fill="#dfdfdf">city_walk_07_x6.png</text>
+    <circle cx="510" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="496" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="482" cy="542" r="4" fill="#e8b64c"/>
+  </g>
+  <g>
+    <rect x="592" y="408" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="b3"><rect x="600" y="416" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#b3)">
+      <rect x="600" y="416" width="234" height="110" fill="#313f56"/>
+      <rect x="622" y="446" width="30" height="46" fill="#d4d0c8"/>
+      <rect x="662" y="454" width="30" height="38" fill="#c6c2ba"/>
+      <rect x="702" y="440" width="30" height="52" fill="#ddd9d2"/>
+      <rect x="752" y="458" width="42" height="34" fill="#bfc4ca"/>
+      <rect x="600" y="492" width="234" height="34" fill="#1f2c42"/>
+    </g>
+    <rect x="600" y="422" width="30" height="18" rx="9" fill="#555555"/>
+    <text x="608" y="435" font-size="10" fill="#dfdfdf">#3</text>
+    <rect x="714" y="500" width="112" height="18" rx="9" fill="#2b2b2b" stroke="#0096FF" stroke-opacity="0.6"/>
+    <text x="724" y="513" font-size="10" fill="#7fc4ff">AI tie-break…</text>
+    <text x="600" y="546" font-size="12" fill="#dfdfdf">city_walk_07_esrgan.png</text>
+    <circle cx="784" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="770" cy="542" r="4" fill="#3fbf5f"/>
+    <circle cx="756" cy="542" r="4" fill="#e8b64c"/>
+  </g>
+  <text x="592" y="593" font-size="10" font-style="italic" fill="#777">local metrics tied → optional API pass runs only on these two finalists, never on the folder</text>
+
+  <!-- UNGROUPED -->
+  <rect x="44" y="612" width="3" height="14" fill="#555555"/>
+  <text x="56" y="623" font-size="11" letter-spacing="1" fill="#9a9a9a">UNGROUPED · 3</text>
+  <g>
+    <rect x="44" y="634" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="u1"><rect x="52" y="642" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#u1)">
+      <rect x="52" y="642" width="234" height="110" fill="#3d5a45"/>
+      <circle cx="169" cy="694" r="22" fill="#d96e30"/>
+      <path d="M52 716 q58 -28 116 0 t118 0 v38 h-234 z" fill="#2c4636"/>
+    </g>
+    <text x="52" y="772" font-size="12" fill="#dfdfdf">forest_bridge.jpg</text>
+    <circle cx="236" cy="768" r="4" fill="#3fbf5f"/>
+    <circle cx="222" cy="768" r="4" fill="#3fbf5f"/>
+  </g>
+  <g>
+    <rect x="318" y="634" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="u2"><rect x="326" y="642" width="234" height="110" rx="8"/></clipPath>
+    <rect x="326" y="642" width="234" height="110" clip-path="url(#u2)" fill="#303030"/>
+    <text x="443" y="702" font-size="24" fill="#6a6a6a" text-anchor="middle">!</text>
+    <text x="326" y="772" font-size="12" fill="#dfdfdf">corrupt_scan.bmp</text>
+    <text x="326" y="790" font-size="10.5" fill="#c0392b">unreadable — excluded from triage</text>
+  </g>
+  <g>
+    <rect x="592" y="634" width="250" height="170" rx="10" fill="#383838" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <clipPath id="u3"><rect x="600" y="642" width="234" height="110" rx="8"/></clipPath>
+    <g clip-path="url(#u3)">
+      <rect x="600" y="642" width="234" height="110" fill="#20303a"/>
+      <path d="M600 642 l234 96 v14 h-234 z" fill="#16242c"/>
+      <circle cx="660" cy="686" r="16" fill="#e8e4da"/>
+    </g>
+    <text x="600" y="772" font-size="12" fill="#dfdfdf">harbor_11.jpg</text>
+    <circle cx="784" cy="768" r="4" fill="#e8b64c"/>
+    <circle cx="770" cy="768" r="4" fill="#3fbf5f"/>
+  </g>
+
+  <!-- footer hints -->
+  <text x="44" y="822" font-size="10.5" font-style="italic" fill="#8a8a8a">keys: Space reject · B best · Enter compare selected · dbl-click quick look (TopLevelInWindowOverlay) · quality dots: ● sharpness ● exposure ● noise (outlier shown warm/red)</text>
+</svg>

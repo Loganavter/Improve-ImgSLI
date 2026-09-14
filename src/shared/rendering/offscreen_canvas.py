@@ -1,10 +1,8 @@
 """Shared primitives for offscreen ``QRhiWidget`` rendering.
 
-Both the main-compare (:class:`plugins.export.services.gpu_export_proxy.GpuExportProxy`)
-and multi-compare (:class:`tabs.multi_compare.services.gpu_export.MultiCompareGpuExporter`)
-exporters instantiate a hidden canvas widget, resize it, apply a
+Canvas exporters instantiate a hidden canvas widget, resize it, apply a
 ``CanvasRenderPlan`` and read back the framebuffer. The Qt-boilerplate is
-identical between them; only widget creation and post-processing differ.
+identical between callers; only widget creation and post-processing differ.
 """
 
 from __future__ import annotations
