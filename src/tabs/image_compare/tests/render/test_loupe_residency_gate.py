@@ -182,8 +182,9 @@ def test_no_fallback_anywhere_still_drops_with_tile_index():
     assert resolved == []
     drops = [d for d in ctx if d.pass_name == "loupe.mag_dropped_slice"]
     assert drops
-    # the drop reason names its tile index (repro-grade diagnostics)
-    assert any("tile=(0, 1)" in d.reason for d in drops)
+    # Per-tile identity travels in `ids` (supervisor seam fix: reasons stay
+    # per-event stable so the drop event aggregates to one log line).
+    assert any((0, 1) in d.ids for d in drops)
     assert all("request_level=" in d.reason for d in drops)
 
 

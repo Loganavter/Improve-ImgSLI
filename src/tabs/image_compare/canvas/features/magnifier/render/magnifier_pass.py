@@ -355,8 +355,8 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                         frame_context,
                         "loupe.mag_fallback_slice",
                         "ran",
-                        f"low_res_fallback tile={sl['tile_index']} source not GPU-resident"
-                        f" sampling fallback={fallback_key!r} tile={fallback_slice['tile_index']}",
+                        "low_res_fallback source not GPU-resident"
+                        f" sampling fallback={fallback_key!r}",
                         ids=(str(source_key), tuple(sl["tile_index"])),
                         sig=(str(source_key), tuple(sl["tile_index"]), str(fallback_key)),
                     )
@@ -364,8 +364,13 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                     continue
             # Defaulting to layer 0 would sample whatever unrelated tile
             # happens to occupy that layer right now -- drop instead.
+            # NOTE (supervisor seam fix, Phase 1 integration): per-tile identity
+            # travels in `ids=` (rendered as ids=%r), NOT in the reason.
+            # Reasons stay per-event stable so loupe_trace's (pass, verdict,
+            # reason) aggregation collapses N tiles into one line (1D bar:
+            # N drops => <=2 lines). Embedding tile_index here broke that.
             _drop_reason = (
-                f"dropped_nonresident_slice tile={sl['tile_index']} not GPU-resident"
+                "dropped_nonresident_slice not GPU-resident"
                 + (
                     f" request_level={residency_reason}"
                     if residency_reason is not None
