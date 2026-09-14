@@ -18,6 +18,7 @@ from engine.cache.image_identity import image_uid
 from .._debug import rhi_render_debug
 from ...render_context import build_render_runtime_context
 from engine.frame.context import FrameContext, make_ids, viewport_hash
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 from ...texture_parts.tile_geometry import _viewport_zoom_offset_for_tile
 from .lod_commit import commit_lod_keys
 
@@ -32,8 +33,8 @@ except Exception:  # pragma: no cover
     def _ic_preview_enabled() -> bool:  # type: ignore
         return False
 
-# Throttle per-frame raw sources log — moved from renderer.py.
-_last_renderer_sources_raw_sig: tuple | None = None
+# Throttle per-frame raw sources log — state lives in loupe_trace's
+# centralized throttle store (stream "frame_setup.sources_raw").
 
 
 def prepare_frame(
@@ -204,10 +205,8 @@ def prepare_frame(
     if _ic_preview_enabled():
         # throttle: raw sources at 60Hz — emit only when sig changes
         try:
-            global _last_renderer_sources_raw_sig  # type: ignore[used-before-def]
             _raw_sig = (base_image.use_hires, tuple(str(k) for k in texture_keys), tuple(image_uid(s) if s is not None else None for s in sources), tuple(type(s).__name__ if s is not None else None for s in sources))  # type: ignore[has-type]
-            if _raw_sig != _last_renderer_sources_raw_sig:  # type: ignore[has-type]
-                _last_renderer_sources_raw_sig = _raw_sig  # type: ignore[has-type]
+            if _throttle_emit("frame_setup.sources_raw", _raw_sig):  # type: ignore[has-type]
 
                 def _sz(o):
                     if o is None:
