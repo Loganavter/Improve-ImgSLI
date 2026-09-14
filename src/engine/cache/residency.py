@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shared.image_processing.regions import UniformTileGrid
+from engine.store.regions import UniformTileGrid
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.tile_constants import TILE_UPLOAD_BUDGET_PER_CALL
 from engine.cache.tile_geometry import _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN, crop_apron_tile

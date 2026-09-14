@@ -9,9 +9,9 @@ from PIL import Image
 
 import logging
 
-from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from engine.store.pixel_ops.resample import write_resampled_to_store
 from shared.image_processing.resample_map import get_resample
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 logger = logging.getLogger("ImproveImgSLI")
 

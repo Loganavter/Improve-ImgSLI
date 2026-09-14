@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import time
 
-from shared.image_processing.pyramid_registry import pyramid_for
-from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
+from engine.store.pyramid_registry import pyramid_for
+from engine.store.tiled_pixel_store import TiledPixelStore, pixel_source_size
 from engine.cache.lod import LevelKey
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Audit-Meta: pattern=state-machine size=exempt reason="one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
 
-from shared.image_processing.regions import UniformTileGrid, build_uniform_tile_grid
+from engine.store.regions import UniformTileGrid, build_uniform_tile_grid
 from engine.cache.tile_constants import DEFAULT_TILE_EXTENT
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 

@@ -13,8 +13,8 @@ this module only owns identity and lifecycle.
 
 from __future__ import annotations
 
-from shared.image_processing.pyramid_pixel_store import PyramidPixelStore
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pyramid_pixel_store import PyramidPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 
 _pyramids: dict[int, PyramidPixelStore] = {}

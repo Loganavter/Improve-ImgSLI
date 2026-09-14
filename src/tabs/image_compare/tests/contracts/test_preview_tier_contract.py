@@ -8,7 +8,7 @@ import inspect
 from PIL import Image
 
 from shared.image_processing.progressive_loader import load_preview_image
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.state.document import DocumentModel
 from tests.contracts._framework import ROOT, iter_py, rel
 

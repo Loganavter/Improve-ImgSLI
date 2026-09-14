@@ -350,7 +350,7 @@ def test_restore_fill_failure_keeps_slot(tmp_path):
 def test_collect_pixel_cache_sources_returns_open_session_stores(tmp_path):
     """Save path: only this session's live, open pixel stores are offered
     for spill embedding (B1: resolved from the session cache)."""
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     pool = _CapturingPool()
     sessions = _FakeSessionStore(["s1", "s2"], "s1")

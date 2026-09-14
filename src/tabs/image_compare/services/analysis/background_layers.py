@@ -17,8 +17,8 @@ from shared.analysis.differ import (
 )
 from shared.analysis.edge_detector import create_edge_map
 from shared.analysis.ssim_source import create_ssim_map_from_sources
-from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pixel_ops.downscale import downscale_pair_to_limit
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.services.analysis.analysis_pair import (
     prepare_pair_for_global_analysis,
 )

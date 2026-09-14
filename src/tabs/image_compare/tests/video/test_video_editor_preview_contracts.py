@@ -442,7 +442,7 @@ def test_video_editor_ready_does_not_activate_from_background(monkeypatch):
 
 def test_snapshot_frame_renderer_content_fit_uses_requested_resampler(monkeypatch):
     from tabs.image_compare.services.video_snapshot_rendering import geometry as geometry_mod
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     calls = []
 
@@ -478,7 +478,7 @@ def test_snapshot_frame_renderer_content_fit_uses_requested_resampler(monkeypatc
 
 
 def test_fit_source_to_content_accepts_tiled_pixel_store():
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.image_compare.services.video_snapshot_rendering.geometry import (
         fit_source_to_content,
     )
@@ -494,7 +494,7 @@ def test_fit_source_to_content_accepts_tiled_pixel_store():
 
 def test_prescale_pair_accepts_tiled_pixel_store():
     from shared.image_processing.prescale import prescale_pair
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     img1 = TiledPixelStore.from_pil(Image.new("RGBA", (40, 30), (255, 0, 0, 255)))
     img2 = TiledPixelStore.from_pil(Image.new("RGBA", (40, 30), (0, 255, 0, 255)))
@@ -508,7 +508,7 @@ def test_prescale_pair_accepts_tiled_pixel_store():
 def test_plan_builder_keeps_unpadded_tiled_sources():
     from types import SimpleNamespace
 
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.image_compare.canvas.presentation.geometry import CanvasGeometry
     from tabs.image_compare.services.snapshot_render_plan_builder import (
         SnapshotRenderPlanBuilder,
@@ -703,7 +703,7 @@ def test_video_export_contain_resize_does_not_stretch_aspect():
 
 def test_unpadded_store_plan_apply_sets_shader_letterbox_from_clip(monkeypatch):
     """prepare→apply smoke: unpadded TiledPixelStore + overlay_clip → letterbox."""
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from engine.cache import get_effective_export_interpolation_method
     from tabs.image_compare.canvas.presentation.geometry import CanvasGeometry
     from tabs.image_compare.canvas.presentation import plan_applicator as applicator

@@ -25,8 +25,8 @@ from PySide6.QtWidgets import QApplication
 from core.state_management.dispatcher import Dispatcher
 from core.store import Store
 from core.store_viewport import SessionData
-from shared.image_processing import pyramid_registry
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store import pyramid_registry
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from tabs.image_compare.pipeline.pipeline import ImagePipeline
 from tabs.image_compare.presenters.image_canvas.background_parts import render_flow

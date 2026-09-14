@@ -224,7 +224,7 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
     if coord is not None:
         # Use coordinator's worker lifecycle + toast routing (B3).
         # MC abort predicate: pyramid.valid
-        from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+        from engine.store.pyramid_registry import ensure_pyramid as _ensure
 
         _pyr = _ensure(store)
 
@@ -395,7 +395,7 @@ def apply_full_resolution(
             if existing is not None and existing is not store:
                 # Same-path sibling already cached (double-add dedup):
                 # share it, close the duplicate decode.
-                from shared.image_processing.tiled_pixel_store import close_pixel_store
+                from engine.store.tiled_pixel_store import close_pixel_store
 
                 try:
                     close_pixel_store(store)

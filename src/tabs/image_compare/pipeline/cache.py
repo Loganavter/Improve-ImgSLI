@@ -48,7 +48,7 @@ import logging
 logger = logging.getLogger("ImproveImgSLI")
 
 if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
 # Embedded project pixel cache — single source via host-owned
 # ``shared.image_processing.embedded_pixel_cache`` (host may not import tabs,
@@ -131,7 +131,7 @@ _PREVIEW_CACHE_MAX_BYTES = 128 * 1024 * 1024
 def _store_bytes(store) -> int:
     """Best-effort RGBA byte size for budget accounting (0 when unknown/closed)."""
     try:
-        from shared.image_processing.tiled_pixel_store import pixel_source_size
+        from engine.store.tiled_pixel_store import pixel_source_size
 
         w, h = pixel_source_size(store)
         if w > 0 and h > 0:
@@ -143,7 +143,7 @@ def _store_bytes(store) -> int:
 
 def _qimage_bytes(qimage) -> int:
     try:
-        from shared.image_processing.tiled_pixel_store import pixel_source_size
+        from engine.store.tiled_pixel_store import pixel_source_size
 
         w, h = pixel_source_size(qimage)
         if w > 0 and h > 0:
@@ -459,7 +459,7 @@ class PipelineCache:
 
     def _close_store(self, store) -> None:
         try:
-            from shared.image_processing.tiled_pixel_store import close_pixel_store
+            from engine.store.tiled_pixel_store import close_pixel_store
 
             close_pixel_store(store)
         except Exception:
@@ -493,7 +493,7 @@ class PipelineCache:
             cache_path, width, height = embedded
             try:
                 from shared.image_processing.autocrop.debug import autocrop_debug
-                from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+                from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
 
                 autocrop_debug(
                     "cache-hit path=%s -> from_embedded_cache %dx%d (crop_service=%s NOT applied)",
@@ -506,7 +506,7 @@ class PipelineCache:
             except Exception:
                 raise
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
             # W1+W2: всегда full-frame, без запекания кропа.
             store = TiledPixelStore.from_path(path, crop_service=None)
@@ -642,7 +642,7 @@ class PipelineCache:
                     reg.sweep()  # type: ignore[attr-defined]
         except Exception:
             try:
-                from shared.image_processing import pyramid_registry
+                from engine.store import pyramid_registry
 
                 pyramid_registry.sweep()
             except Exception:

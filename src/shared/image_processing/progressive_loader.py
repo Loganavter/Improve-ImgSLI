@@ -175,7 +175,7 @@ def load_preview_image(
                     preview = preview.crop(scaled.to_tuple())
                 # если box is None — без кропа (единый зонд CropService, без fallback)
 
-            from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+            from engine.store.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
 
         # PIL thumbnail fallback — single path for all non-streaming formats.
@@ -208,7 +208,7 @@ def load_preview_image(
                 if scaled is not None:
                     preview = preview.crop(scaled.to_tuple())
                 # если box is None — без кропа (единый зонд CropService)
-            from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+            from engine.store.tiled_pixel_store import qimage_from_pixel_source
             return qimage_from_pixel_source(preview)
 
     except ImageSizeLimitError:
@@ -243,7 +243,7 @@ def _load_preview_vips(
         import numpy as np
         import pyvips
         from PySide6.QtGui import QImage
-        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+        from engine.store.tiled_pixel_store import qimage_from_pixel_source
 
         thumb = pyvips.Image.thumbnail(
             image_path, 1024, height=1024, size=pyvips.enums.Size.DOWN
@@ -382,7 +382,7 @@ class ProgressiveImageLoader:
                 return None
         # Fallback without cache (isolated tests)
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
             if crop_service is not None:
                 return TiledPixelStore.from_path(image_path, crop_service=crop_service)

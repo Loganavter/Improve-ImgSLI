@@ -20,7 +20,7 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.gpu.glass_panel import GlassPanelRenderer
 from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
 from engine.cache.tile_texture_service import TileTextureService

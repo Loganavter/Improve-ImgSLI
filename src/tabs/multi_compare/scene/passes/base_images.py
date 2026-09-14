@@ -8,7 +8,7 @@ import struct
 
 from PySide6.QtGui import QImage, QRhiViewport
 
-from shared.image_processing.tiled_pixel_store import (
+from engine.store.tiled_pixel_store import (
     TiledPixelStore,
     pixel_source_size,
 )

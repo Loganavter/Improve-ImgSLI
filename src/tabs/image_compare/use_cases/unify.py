@@ -116,7 +116,7 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
             pass
         return
     try:
-        from shared.image_processing.pixel_ops.unify import is_preview_tier as _is_preview_tier
+        from engine.store.pixel_ops.unify import is_preview_tier as _is_preview_tier
     except Exception:
         _is_preview_tier = lambda _s: False  # type: ignore
     if _is_preview_tier(s1) or _is_preview_tier(s2):
@@ -147,11 +147,11 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
                 w1, h1 = int(getattr(s1, "width", 0) or 0), int(getattr(s1, "height", 0) or 0)
                 w2, h2 = int(getattr(s2, "width", 0) or 0), int(getattr(s2, "height", 0) or 0)
                 if w1 == 0 or h1 == 0:
-                    from shared.image_processing.tiled_pixel_store import pixel_source_size
+                    from engine.store.tiled_pixel_store import pixel_source_size
 
                     w1, h1 = pixel_source_size(s1)
                 if w2 == 0 or h2 == 0:
-                    from shared.image_processing.tiled_pixel_store import pixel_source_size
+                    from engine.store.tiled_pixel_store import pixel_source_size
 
                     w2, h2 = pixel_source_size(s2)
                 wh = (max(w1, w2), max(h1, h2))
@@ -487,11 +487,11 @@ def on_unified_images_ready(controller, result):
                     w1, h1 = int(getattr(u1, "width", 0) or 0), int(getattr(u1, "height", 0) or 0)
                     w2, h2 = int(getattr(u2, "width", 0) or 0), int(getattr(u2, "height", 0) or 0)
                     if w1 == 0 or h1 == 0:
-                        from shared.image_processing.tiled_pixel_store import pixel_source_size
+                        from engine.store.tiled_pixel_store import pixel_source_size
 
                         w1, h1 = pixel_source_size(u1)
                     if w2 == 0 or h2 == 0:
-                        from shared.image_processing.tiled_pixel_store import pixel_source_size
+                        from engine.store.tiled_pixel_store import pixel_source_size
 
                         w2, h2 = pixel_source_size(u2)
                     wh = (max(w1, w2), max(h1, h2))

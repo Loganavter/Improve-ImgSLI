@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 

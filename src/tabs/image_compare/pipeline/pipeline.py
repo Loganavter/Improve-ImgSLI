@@ -20,7 +20,7 @@ from tabs.image_compare.pipeline.cache import PipelineCache
 logger = logging.getLogger("ImproveImgSLI")
 
 if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 @dataclass(frozen=True)
@@ -200,7 +200,7 @@ class ImagePipeline:
         if cached is not None:
             return cached
         try:
-            from shared.image_processing.pixel_ops.unify import unify_pair
+            from engine.store.pixel_ops.unify import unify_pair
 
             should_abort = signal.should_abort if signal is not None else None
             u1, u2 = unify_pair(

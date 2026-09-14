@@ -21,7 +21,7 @@ from PIL import Image
 
 from core.constants import AppConstants
 from shared.image_processing import progressive_loader as pl
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def _write_rgba_png(path: str, width: int, height: int) -> None:
@@ -123,7 +123,7 @@ def test_get_image_dimensions_oversized_with_streaming(tmp_path):
 
 def test_auto_crop_vips_and_pil_agree(tmp_path):
     from shared.image_processing.resize import get_auto_crop_box
-    from shared.image_processing.tiled_pixel_store import _find_trim_box_vips
+    from engine.store.tiled_pixel_store import _find_trim_box_vips
 
     arr = np.zeros((60, 80, 4), dtype=np.uint8)
     arr[10:50, 20:60, :3] = 200
@@ -172,7 +172,7 @@ def test_stream_failure_falls_back_with_bound(monkeypatch, tmp_path):
     if not _can_stream_any():
         return
 
-    import shared.image_processing.tiled_pixel_store as tps
+    import engine.store.tiled_pixel_store as tps
 
     def _boom(*args, **kwargs):
         raise RuntimeError("simulated stream failure")

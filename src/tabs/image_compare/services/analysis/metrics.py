@@ -45,7 +45,7 @@ class MetricsService:
 
         # inline is_open/generation capture replaces generation token
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+            from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
 
             cap1 = (img1, getattr(img1, "generation", None)) if isinstance(img1, _TPS) else (img1, None)
             cap2 = (img2, getattr(img2, "generation", None)) if isinstance(img2, _TPS) else (img2, None)
@@ -142,8 +142,8 @@ class MetricsService:
         """Worker task to compute metrics."""
         try:
             from shared.analysis import calculate_psnr, calculate_ssim
-            from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.pixel_ops.downscale import downscale_pair_to_limit
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
             # inline is_open/generation check
             for img, cap in ((img1, cap1), (img2, cap2)):
@@ -174,7 +174,7 @@ class MetricsService:
                 if img1 is None or img2 is None:
                     return None
                 if getattr(img1, "size", None) != getattr(img2, "size", None):
-                    from shared.image_processing.pixel_ops.unify import unify_pair
+                    from engine.store.pixel_ops.unify import unify_pair
 
                     img1, img2 = unify_pair(img1, img2)
                     if img1 is None or img2 is None:

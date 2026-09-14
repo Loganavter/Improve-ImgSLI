@@ -32,8 +32,8 @@ def _get_unified_images(
     *,
     resize_method: str = "LANCZOS",
 ):
-    from shared.image_processing.pixel_ops.unify import unify_pair
-    from shared.image_processing.tiled_pixel_store import (
+    from engine.store.pixel_ops.unify import unify_pair
+    from engine.store.tiled_pixel_store import (
         TiledPixelStore,
         maybe_wrap_pixel_store,
     )
@@ -109,10 +109,10 @@ def _build_snapshot_store(
         content_offset_x, content_offset_y = 0, 0
         content_w, content_h = base_w, base_h
         if virtual_w > 0 and virtual_h > 0 and base_w > 0 and base_h > 0:
-            from shared.image_processing.pixel_ops.resample import (
+            from engine.store.pixel_ops.resample import (
                 write_resampled_to_store,
             )
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
             fitted1, fitted2 = source_img1, source_img2
             img_w = fitted1.width if fitted1 else 0

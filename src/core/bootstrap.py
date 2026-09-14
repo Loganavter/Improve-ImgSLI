@@ -112,7 +112,7 @@ class ApplicationContext:
         """
         self._cache_purge_reclaimed_bytes = 0
         try:
-            from shared.image_processing.tiled_pixel_store import (
+            from engine.store.tiled_pixel_store import (
                 purge_stale_spill_files,
                 resolve_pixel_spill_dir,
             )

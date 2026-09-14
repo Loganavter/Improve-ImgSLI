@@ -193,8 +193,8 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
             try:
                 _both_previews = peeked["peeked_preview1"] is not None and peeked["peeked_preview2"] is not None
                 if _both_previews:
-                    from shared.image_processing.pyramid_registry import pyramid_for
-                    from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+                    from engine.store.pyramid_registry import pyramid_for
+                    from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
 
                     def _pyramid_complete(img):
                         if img is None:
@@ -268,7 +268,7 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                 _s1u = presenter.store.viewport.session_data.image_state.image1
                 _s2u = presenter.store.viewport.session_data.image_state.image2
                 if _s1u is not None and _s2u is not None:
-                    from shared.image_processing.tiled_pixel_store import pixel_source_size as _pss
+                    from engine.store.tiled_pixel_store import pixel_source_size as _pss
 
                     try:
                         _w1, _h1 = _pss(_s1u)

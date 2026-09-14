@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing import pyramid_registry
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store import pyramid_registry
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
     _display_cache_key,
