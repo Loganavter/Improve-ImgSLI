@@ -1,13 +1,16 @@
-"""Per-slot plain-texture pipeline/SRB/texture resources for Multi
-Compare's base-image pass.
+"""Per-slot plain-texture pipeline/SRB resources for Multi Compare's
+base-image pass.
 
-Split out of ``BaseImagesPass`` -- owns the non-array draw path: one
-``QRhiTexture`` per (still-1x1) tile, the shared graphics pipeline that
-draws them, per-slot vertex/uniform buffers, and the per-(slot-index,
-tile-key) SRB cache. The texture-array instanced-draw path (multi-tile
-slots) lives in ``array_resources.py`` instead; tile *residency decisions*
-stay in ``BaseImagesPass._realize_tile_residency``, which calls into
-whichever of the two owns the tile actually being uploaded.
+Thin tab-side consumer of ``engine.gpu.plain_resources.
+PlainTextureResourcesBase`` (Phase D4 mc-plain decision): the generic
+lifetime half -- per-key ``QRhiTexture`` dict, dynamic vertex/uniform
+buffers, upload, destroy, release -- lives in the engine; this module
+keeps only what is shader-specific to this tab -- the slot graphics
+pipeline, the per-(slot-index, tile-key) SRB cache bound to this tab's
+own binding layout, and the slot-id key selection. Tile *residency
+decisions* stay in ``BaseImagesPass._realize_tile_residency``, which calls
+into whichever of this or ``array_resources.py`` owns the tile actually
+being uploaded.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from PySide6.QtGui import (
 )
 
 from engine.cache.lod import LevelKey
+from engine.gpu.plain_resources import PlainTextureResourcesBase
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
     SLOT_UNIFORM_SIZE,
@@ -41,47 +45,35 @@ def _tile_key_slot_id(tile_key: object) -> object:
     return tile_key
 
 
-class SlotResources:
-    """Owns the plain per-slot pipeline, textures, vertex/uniform buffers,
-    and tile SRB cache -- one instance per ``BaseImagesPass``."""
+class SlotResources(PlainTextureResourcesBase):
+    """Tab-side plain-path consumer: engine base owns the textures and
+    dynamic buffers, this subclass adds the slot graphics pipeline and
+    the tile SRB cache -- one instance per ``BaseImagesPass``."""
 
     def __init__(self, *, uniform_size: int) -> None:
+        super().__init__(uniform_stride=uniform_size)
         self.pipeline: QRhiGraphicsPipeline | None = None
         self._render_pass_descriptor: QRhiRenderPassDescriptor | None = None
         self._pipeline_sample_count: int | None = None
-        self.slot_textures: dict[object, QRhiTexture] = {}
-        self.slot_texture_sizes: dict[object, tuple[int, int]] = {}
-        self.slot_vertex_buffers: list[QRhiBuffer] = []
-        self.slot_uniform_buffers: list[QRhiBuffer] = []
-        self._slot_uniform_capacity: list[int] = []
-        self._slot_uniform_stride = uniform_size
         self._tile_srbs: dict[tuple[int, object], tuple[QRhiShaderResourceBindings, QRhiTexture]] = {}
 
     def release(self) -> None:
-        for res in (
-            self.pipeline,
-            *self.slot_vertex_buffers,
-            *self.slot_uniform_buffers,
-            *(srb for srb, _texture in self._tile_srbs.values()),
-            *self.slot_textures.values(),
-        ):
-            if res is not None:
+        if self.pipeline is not None:
+            try:
+                self.pipeline.destroy()
+            except RuntimeError:
+                pass
+        for srb, _texture in self._tile_srbs.values():
+            if srb is not None:
                 try:
-                    res.destroy()
+                    srb.destroy()
                 except RuntimeError:
                     pass
+        super().release()
         self.pipeline = None
         self._render_pass_descriptor = None
         self._pipeline_sample_count = None
-        self.slot_textures = {}
-        self.slot_texture_sizes = {}
-        self.slot_vertex_buffers = []
-        self.slot_uniform_buffers = []
-        self._slot_uniform_capacity = []
         self._tile_srbs = {}
-
-    def set_uniform_stride(self, stride: int) -> None:
-        self._slot_uniform_stride = stride
 
     def ensure_pipeline(self, renderer, target) -> bool:
         """Recreate the graphics pipeline when the swapchain RT descriptor
@@ -181,23 +173,9 @@ class SlotResources:
         return srb
 
     def ensure_slot_resources(self, renderer, count: int) -> None:
-        while len(self.slot_vertex_buffers) < count:
-            buf = renderer.rhi.newBuffer(
-                QRhiBuffer.Type.Dynamic,
-                QRhiBuffer.UsageFlag.VertexBuffer,
-                len(FULLSCREEN_VERTICES),
-            )
-            buf.create()
-            self.slot_vertex_buffers.append(buf)
-        while len(self.slot_uniform_buffers) < count:
-            buf = renderer.rhi.newBuffer(
-                QRhiBuffer.Type.Dynamic,
-                QRhiBuffer.UsageFlag.UniformBuffer,
-                self._slot_uniform_stride,
-            )
-            buf.create()
-            self.slot_uniform_buffers.append(buf)
-            self._slot_uniform_capacity.append(1)
+        self.ensure_buffer_count(
+            renderer.rhi, count, vertex_bytes=len(FULLSCREEN_VERTICES)
+        )
 
     def ensure_slot_uniform_capacity(self, renderer, index: int, slot_count: int) -> None:
         """Grow ``slot_uniform_buffers[index]`` to hold ``slot_count``
@@ -210,27 +188,14 @@ class SlotResources:
         investigations/multitile-uniform-desync.md). Must be called before
         beginPass: growing recreates the buffer object, which invalidates
         every cached tile SRB bound to it."""
-        slot_count = max(1, slot_count)
-        if index >= len(self._slot_uniform_capacity):
+        old_buffer = self.ensure_uniform_capacity(renderer.rhi, index, slot_count)
+        if old_buffer is None:
             return
-        if slot_count <= self._slot_uniform_capacity[index]:
-            return
-        new_buffer = renderer.rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            self._slot_uniform_stride * slot_count,
-        )
-        if not new_buffer.create():
-            raise RuntimeError("Failed to grow multi_compare slot uniform buffer")
-        old_buffer = self.slot_uniform_buffers[index]
-        self.slot_uniform_buffers[index] = new_buffer
-        self._slot_uniform_capacity[index] = slot_count
         self._purge_tile_srbs_for_index(index)
-        if old_buffer is not None:
-            try:
-                old_buffer.destroy()
-            except RuntimeError:
-                pass
+        try:
+            old_buffer.destroy()
+        except RuntimeError:
+            pass
 
     def ensure_tile_srb(self, renderer, index: int, tile_key: object, texture):
         cache_key = (index, tile_key)
@@ -263,19 +228,12 @@ class SlotResources:
         return srb
 
     def upload_tile(self, renderer, tile_key: object, image, updates) -> None:
-        size = (image.width(), image.height())
-        existing = self.slot_textures.get(tile_key)
-        if existing is None or self.slot_texture_sizes.get(tile_key) != size:
-            if existing is not None:
-                try:
-                    existing.destroy()
-                except RuntimeError:
-                    pass
+        def _allocate(size: tuple[int, int]):
             tex = renderer.rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(*size))
             tex.create()
-            self.slot_textures[tile_key] = tex
-            self.slot_texture_sizes[tile_key] = size
-        updates.uploadTexture(self.slot_textures[tile_key], image)
+            return tex
+
+        self.upload_texture(tile_key, image, updates, allocate=_allocate)
 
     def destroy_slot_textures(self, sid: int, *, keep: frozenset | set) -> None:
         stale = [
@@ -283,14 +241,7 @@ class SlotResources:
             for key in self.slot_textures
             if _tile_key_slot_id(key) == sid and key not in keep
         ]
-        for key in stale:
-            texture = self.slot_textures.pop(key, None)
-            if texture is not None:
-                try:
-                    texture.destroy()
-                except RuntimeError:
-                    pass
-            self.slot_texture_sizes.pop(key, None)
+        self.discard_textures(stale)
 
     def _purge_tile_srbs_for_index(self, index: int) -> None:
         stale = [cache_key for cache_key in self._tile_srbs if cache_key[0] == index]
