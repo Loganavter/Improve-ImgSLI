@@ -118,7 +118,7 @@ def test_flag_off_is_total_noop(monkeypatch):
 
 
 def _make_2x2_service():
-    from shared.rendering.tile_texture_service import TileTextureService
+    from engine.cache.tile_texture_service import TileTextureService
 
     service = TileTextureService(max_tile_extent=1024)
     service.register_source("img1", (2048, 2048))  # 2x2 grid
@@ -143,7 +143,7 @@ def test_request_level_partial_pending_with_reason():
 
 
 def test_request_level_unknown_source_and_level():
-    from shared.rendering.lod import LevelKey
+    from engine.cache.lod import LevelKey
 
     service = _make_2x2_service()
     assert service.request_level("nope", (0, 0, 64, 64))[1:] == (

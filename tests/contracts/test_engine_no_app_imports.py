@@ -1,8 +1,8 @@
-"""Engine/app-layer seal: ``src/shared/rendering`` never references app layers.
+"""Engine/app-layer seal: ``src/engine`` never references app layers.
 
-The tile engine (``src/shared/rendering/`` today, ``src/engine/`` tomorrow)
-must NEVER reference ``tabs.*``, ``plugins.*``, or ``core/store`` — in code
-OR in string literals/comments/docstrings. Tabs call into the engine; the
+The tile engine (``src/engine/`` since the Phase-2 mechanical move from
+``src/shared/rendering/``) must NEVER reference ``tabs.*``, ``plugins.*``,
+or ``core/store`` — in code OR in string literals/comments/docstrings. Tabs call into the engine; the
 engine never names its callers.
 
 Two legacy service-locator shims (``tab_canvas_services.py``,
@@ -23,7 +23,7 @@ import tokenize
 
 from ._framework import ROOT, iter_py, rel
 
-ENGINE = ROOT / "src" / "shared" / "rendering"
+ENGINE = ROOT / "src" / "engine"
 
 # Dotted module references / paths the engine must never name. The trailing
 # identifier class keeps generic English ("both canvas tabs.") out of scope:
@@ -105,7 +105,7 @@ def test_engine_has_no_app_imports():
 
 def test_legacy_shims_hold_only_the_pinned_import():
     for name in _LEGACY_SHIM_IMPORTS:
-        py = ENGINE / name
+        py = ENGINE / "cache" / name
         assert py.is_file(), f"legacy shim {name} moved without updating the seal"
         try:
             text = py.read_text(encoding="utf-8")

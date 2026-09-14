@@ -9,7 +9,7 @@ from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetMagnifierPositionAction,
 )
 from tabs.image_compare.canvas.features.magnifier.commands.common import dispatch_viewport_action, emit_interaction_update
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 
 def begin_capture_drag(actions) -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from shared.rendering import get_effective_export_interpolation_method
-from shared.rendering.tab_canvas_services import build_render_scene
+from engine.cache import get_effective_export_interpolation_method
+from engine.cache.tab_canvas_services import build_render_scene
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 
 

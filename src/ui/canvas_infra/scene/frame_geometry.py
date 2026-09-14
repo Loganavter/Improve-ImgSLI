@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shared.rendering import VirtualCanvasLayout
+from engine.cache import VirtualCanvasLayout
 from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
 from ui.canvas_infra.viewport.geometry import QuickContentRect
 

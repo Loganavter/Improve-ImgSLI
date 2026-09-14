@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from PIL import Image
 from PySide6.QtGui import QImage
 
-from shared.rendering.host_texture_cache import cache_for_widget
+from engine.gpu.host_texture_cache import cache_for_widget
 from tabs.image_compare.canvas.rhi_renderer.residency import (
     _pil_image_for_texture_key,
 )

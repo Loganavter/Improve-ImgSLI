@@ -25,11 +25,11 @@ import itertools
 
 from shared.image_processing.pyramid_registry import pyramid_for
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.image_identity import image_uid
-from shared.rendering.lod import LevelKey
-from shared.rendering.residency import ResidencySpec, TileResidencyRealizerBase
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.image_identity import image_uid
+from engine.cache.lod import LevelKey
+from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_texture_service import TileTextureService
 
 from ..texture_parts.tile_geometry import _visible_side_image_rect
 from ..texture_parts.crop_clip import (
@@ -84,7 +84,7 @@ _TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 # tradeoff, never a correctness one.
 # Budget shared with ``shared/rendering/host_texture_cache.py`` (one
 # canonical 3 GiB value; keep them in sync via the shared constant).
-from shared.rendering.host_texture_cache import (
+from engine.gpu.host_texture_cache import (
     DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES as _HOST_TEXTURE_CACHE_BUDGET_BYTES,
 )
 

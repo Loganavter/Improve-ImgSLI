@@ -5,16 +5,16 @@ from dataclasses import dataclass
 
 from shared.image_processing.pyramid_registry import pyramid_for
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.lod import LevelKey, select_level
-from shared.rendering.tile_coverage import (
+from engine.cache.lod import LevelKey, select_level
+from engine.cache.tile_coverage import (
     FALLBACK_COVERAGE_THRESHOLD as _FALLBACK_COVERAGE_THRESHOLD,
     covered_fraction as _covered_fraction,
     intersection_rect as _intersection_rect,
     rects_overlap as _rects_overlap,
     to_common_space as _to_common_space,
 )
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_texture_service import TileTextureService
 
 from ..texture_parts.tile_geometry import _apron_rect, _TILE_APRON_PX, _visible_side_image_rect
 from .resources import _ARRAY_LAYER_PX

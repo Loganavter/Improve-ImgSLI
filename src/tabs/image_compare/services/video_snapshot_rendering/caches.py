@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 from tabs.image_compare.services.video_snapshot_rendering.models import ImagePrepCacheEntry
 

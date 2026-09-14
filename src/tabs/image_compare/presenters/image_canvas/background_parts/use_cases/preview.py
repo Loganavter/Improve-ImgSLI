@@ -7,8 +7,8 @@ as its first argument (CODE_PATTERNS: functions taking the owner); the
 pure picker helpers keep their original signatures.
 """
 
-from shared.rendering.display_image_picker import pick_display_image
-from shared.rendering.image_identity import image_uid
+from engine.cache.display_image_picker import pick_display_image
+from engine.cache.image_identity import image_uid
 
 
 def pick_display_with_preview_backing(

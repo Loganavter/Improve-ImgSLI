@@ -26,7 +26,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 
 from shared.image_processing.autocrop.model import CropBox
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.features.magnifier.workers import diff_cache
 from tabs.image_compare.presenters.image_canvas.background_parts import diff_toasts
 from tabs.image_compare.services.analysis.background_layers import (

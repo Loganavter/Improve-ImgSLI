@@ -90,10 +90,10 @@ ALLOWLIST: frozenset[str] = frozenset(
         "src/plugins/settings/models.py",
         "src/plugins/settings/dialog_context.py",
         "src/plugins/settings/dialog.py",
-        "src/shared/rendering/residency.py",
-        "src/shared/rendering/tile_texture_service.py",
-        "src/shared/rendering/offscreen_canvas.py",
-        "src/shared/rendering/uniform_layout.py",
+        "src/engine/cache/residency.py",
+        "src/engine/cache/tile_texture_service.py",
+        "src/engine/gpu/offscreen_canvas.py",
+        "src/engine/cache/uniform_layout.py",
         "src/shared/canvas/keyboard_constants.py",
         "src/shared/image_processing/export_encoding.py",
         "src/shared/image_processing/image_dims.py",
@@ -227,7 +227,7 @@ def test_platform_file_does_not_import_tab_package_directly(py_file: Path):
 
 
 def test_shared_live_snapshot_is_tab_agnostic():
-    path = SRC / "shared" / "rendering" / "live_snapshot.py"
+    path = SRC / "engine" / "cache" / "live_snapshot.py"
     text = path.read_text(encoding="utf-8")
     forbidden = ("image1", "image2", "image_list", "current_index", "FrameSnapshot")
     hits = [token for token in forbidden if token in text]

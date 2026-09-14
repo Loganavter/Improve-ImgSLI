@@ -15,8 +15,8 @@ from tabs.image_compare.services.gpu_export_scene import (
     build_export_render_scene,
 )
 from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
-from shared.rendering.image_identity import image_uid
-from shared.rendering import (
+from engine.cache.image_identity import image_uid
+from engine.cache import (
     NormalizedBounds,
     TargetSurfaceSpec,
 )

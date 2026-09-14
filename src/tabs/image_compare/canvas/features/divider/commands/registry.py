@@ -12,7 +12,7 @@ from core.state_management.viewport_actions import (
 )
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color
-from shared.rendering import FeatureLayoutRequirement, NormalizedBounds
+from engine.cache import FeatureLayoutRequirement, NormalizedBounds
 from ui.canvas_infra.viewport.geometry import resolve_axis_position
 
 from tabs.image_compare.canvas.features.divider.input.actions import SetDividerThicknessAction, SetDividerVisibleAction

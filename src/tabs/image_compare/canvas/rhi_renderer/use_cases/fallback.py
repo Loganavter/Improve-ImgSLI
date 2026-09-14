@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from shared.rendering.fallback_lod import resolve_fallback_lod
-from shared.rendering.lod import LevelKey
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.lod import LevelKey
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import (
     build_array_draw_plan,

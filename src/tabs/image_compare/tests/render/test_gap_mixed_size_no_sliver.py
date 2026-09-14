@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import build_array_draw_plan
 from tabs.image_compare.canvas.texture_parts.base_images import update_common_letterbox_geometry
 

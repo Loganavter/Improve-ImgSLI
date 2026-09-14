@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from PIL import Image
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 
 
@@ -120,7 +120,7 @@ def test_first_call_uploads_at_most_the_budget(monkeypatch):
     # TILE_UPLOAD_BUDGET_PER_CALL production tuning happens to be (64 at
     # LIVE_TILE_EXTENT=512's ~1MB/tile -- see tile_constants.py) -- a small
     # local budget keeps this test's fixture image small.
-    from shared.rendering import residency as shared_residency_module
+    from engine.cache import residency as shared_residency_module
 
     local_budget = 2
     monkeypatch.setattr(
@@ -146,7 +146,7 @@ def test_first_call_uploads_at_most_the_budget(monkeypatch):
 
 
 def test_remaining_tiles_upload_on_a_follow_up_call(monkeypatch):
-    from shared.rendering import residency as shared_residency_module
+    from engine.cache import residency as shared_residency_module
 
     local_budget = 2
     monkeypatch.setattr(

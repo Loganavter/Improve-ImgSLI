@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import time
 
-from shared.rendering.image_identity import image_uid
-from shared.rendering.tile_constants import LOD_FETCH_SETTLE_MS
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.image_identity import image_uid
+from engine.cache.tile_constants import LOD_FETCH_SETTLE_MS
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import resolve_lod_texture_keys
 

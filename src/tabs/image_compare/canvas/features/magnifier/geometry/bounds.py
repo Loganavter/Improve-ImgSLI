@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from shared.rendering import (
+from engine.cache import (
     FeatureLayoutRequirement,
     NormalizedBounds,
 )

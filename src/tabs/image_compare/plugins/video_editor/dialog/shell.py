@@ -39,7 +39,7 @@ from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import Video
 from tabs.image_compare.plugins.video_editor.presenter import VideoEditorPresenter
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import scaled_px
-from shared.rendering.tab_canvas_services import create_canvas_widget
+from engine.cache.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
 

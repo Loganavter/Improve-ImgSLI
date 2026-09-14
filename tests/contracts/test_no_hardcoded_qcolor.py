@@ -32,7 +32,7 @@ HARDCODED_RE = re.compile(
 # Allow-listed files / patterns that are not theming (e.g., color picker HSV, transparent, tests, canvas)
 ALLOW_PATHS = {
     "src/core/theme.py",  # QColor(v) from themes.json is allowed (variable, not literal)
-    "src/shared/rendering/glass_panel.py",  # debug red QColor(255,0,0)
+    "src/engine/gpu/glass_panel.py",  # debug red QColor(255,0,0)
     "src/ui/widgets/color/picker_dialog.py",  # HSV-generated, keep allow for fromHsvF
 }
 
@@ -41,7 +41,7 @@ ALLOW_FILE_PATTERNS = [
     re.compile(r".*\.pyc"),
     re.compile(r"src/tabs/.*/canvas/.*"),  # canvas rendering — not UI chrome, uses overlay colors
     re.compile(r"src/tabs/.*/scene/.*"),
-    re.compile(r"src/shared/rendering/.*"),
+    re.compile(r"src/engine/.*"),
     re.compile(r"src/ui/canvas_infra/.*"),
     re.compile(r"src/tabs/image_compare/canvas/.*"),
     re.compile(r"src/tabs/multi_compare/canvas/.*"),

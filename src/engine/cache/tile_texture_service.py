@@ -3,8 +3,8 @@ from __future__ import annotations
 # Audit-Meta: pattern=state-machine size=exempt reason="one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
 
 from shared.image_processing.regions import UniformTileGrid, build_uniform_tile_grid
-from shared.rendering.tile_constants import DEFAULT_TILE_EXTENT
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_constants import DEFAULT_TILE_EXTENT
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 __all__ = ["DEFAULT_TILE_EXTENT", "TileIndex", "TileTextureService"]
 
@@ -453,7 +453,7 @@ class TileTextureService:
         registered (plain base-only sources need no pin: their single grid
         is already the coarsest content). Pure bookkeeping: marks nothing
         resident, touches no GPU state."""
-        from shared.rendering.lod import LevelKey
+        from engine.cache.lod import LevelKey
 
         coarsest: object | None = None
         coarsest_level = -1
@@ -501,7 +501,7 @@ class TileTextureService:
         Pure query: marks nothing resident, touches no GPU state, never
         raises on unknown sources.
         """
-        from shared.rendering.lod import LevelKey, select_level
+        from engine.cache.lod import LevelKey, select_level
 
         if dest_scale is None:
             dest_scale = _REQUEST_QUALITY_SCALES.get(str(quality or "high").lower(), 1.0)

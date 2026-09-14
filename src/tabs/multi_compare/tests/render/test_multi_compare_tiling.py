@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from PIL import Image
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.host_texture_cache import HostTextureUploadCache
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.gpu.host_texture_cache import HostTextureUploadCache
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 from tabs.multi_compare.scene.tile_geometry import (
     build_slot_array_tiles,

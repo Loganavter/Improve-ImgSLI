@@ -9,7 +9,7 @@ timeline state.
 
 from __future__ import annotations
 
-from shared.rendering.first_frame_debug import FirstFrameDebug
+from engine.cache.first_frame_debug import FirstFrameDebug
 
 _ffd = FirstFrameDebug(
     env_name="IMGSLI_MC_FIRST_FRAME_DEBUG",

@@ -271,7 +271,7 @@ Rendering is split into two stages:
 1. Build an immutable `CanvasRenderPlan` from current store state.
 2. Execute it as ordered QRhi passes inside the tab's `CanvasWidget`.
 
-This keeps export, thumbnails, and interactive preview aligned around the same layout and rendering contracts. Offscreen/headless rendering of the same plan is available via `shared/rendering/offscreen_canvas.py` for export and thumbnails.
+This keeps export, thumbnails, and interactive preview aligned around the same layout and rendering contracts. Offscreen/headless rendering of the same plan is available via `src/engine/gpu/offscreen_canvas.py` for export and thumbnails.
 
 ### Viewport focus
 
@@ -288,7 +288,7 @@ If you need to add functionality, use the smallest viable integration point:
 | new tab-owned state | tab's `state/` package + extension reducer (see [STORE.md](STORE.md)) |
 | new app-wide capability | `plugins/` |
 | new workspace mode | `tabs/` |
-| reusable rendering/layout primitive | `shared/rendering/` (→ `src/engine/` per "Tile engine" above) |
+| reusable rendering/layout primitive | `src/engine/` (`cache/` Qt-free, `gpu/` Qt-tainted shell) |
 | OS or file integration | `services/` |
 
 ## Practical Reading Order

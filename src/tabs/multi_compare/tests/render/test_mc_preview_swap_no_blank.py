@@ -23,7 +23,7 @@ from PIL import Image
 from PySide6.QtGui import QImage
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 
 

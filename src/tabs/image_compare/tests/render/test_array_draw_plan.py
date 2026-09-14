@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import (
     ArrayDrawItem,
     _covered_fraction,

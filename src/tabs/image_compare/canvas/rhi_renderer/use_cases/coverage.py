@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from shared.rendering.tile_coverage import (
+from engine.cache.tile_coverage import (
     covered_fraction as _covered_fraction,
     intersection_rect as _intersection_rect,
     rects_overlap as _rects_overlap,

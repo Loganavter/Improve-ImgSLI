@@ -4,7 +4,7 @@ import PIL.Image
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
@@ -150,7 +150,7 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
                 image_uid(pil_image),
                 img_size,
             )
-            from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+            from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
             if tile_dump_enabled():
                 log_tile_event(

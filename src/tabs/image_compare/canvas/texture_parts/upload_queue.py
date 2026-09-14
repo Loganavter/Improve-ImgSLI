@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtGui import QImage
 
-from shared.rendering.host_texture_cache import cache_for_widget, qimage_from_pil
-from shared.rendering.image_identity import image_uid
+from engine.gpu.host_texture_cache import cache_for_widget, qimage_from_pil
+from engine.cache.image_identity import image_uid
 
 _QIMAGE_BY_UID_CACHE_CAPACITY = 4
 

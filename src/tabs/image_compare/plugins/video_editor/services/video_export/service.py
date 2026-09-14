@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from PySide6.QtGui import QColor
 
 from plugins.export.services.gpu_export import GpuExportService
-from shared.rendering import TargetSurfaceSpec
+from engine.cache import TargetSurfaceSpec
 from tabs.image_compare.plugins.video_editor.services.keyframing import KeyframedRecording
 from tabs.image_compare.plugins.video_editor.services.video_export.bounds import (
     CanvasBoundsAnalyzer,

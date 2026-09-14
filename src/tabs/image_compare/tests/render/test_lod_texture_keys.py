@@ -8,7 +8,7 @@ from PIL import Image
 
 from shared.image_processing import pyramid_registry
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.lod import LevelKey
+from engine.cache.lod import LevelKey
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import resolve_lod_texture_keys
 
 

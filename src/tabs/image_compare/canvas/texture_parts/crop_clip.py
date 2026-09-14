@@ -533,7 +533,7 @@ def slot_for_texture_key(widget: Any, texture_key: Any) -> int | None:
     yield ``None``.
     """
     try:
-        from shared.rendering.lod import LevelKey
+        from engine.cache.lod import LevelKey
 
         if isinstance(texture_key, LevelKey):
             return slot_for_texture_key(widget, texture_key.base)
@@ -561,7 +561,7 @@ def path_for_texture_key(
 ) -> Any | None:
     """File path behind a texture role key, or ``None`` (diff/unknown)."""
     try:
-        from shared.rendering.lod import LevelKey
+        from engine.cache.lod import LevelKey
 
         if isinstance(texture_key, LevelKey):
             return path_for_texture_key(widget, texture_key.base, source_key=source_key)

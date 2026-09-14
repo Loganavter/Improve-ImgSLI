@@ -16,8 +16,8 @@ from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWhe
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
-from shared.rendering.coalesced_flush import CoalescedFlush
-from shared.rendering.glass_panel import GlassPanelRegistry
+from engine.gpu.coalesced_flush import CoalescedFlush
+from engine.gpu.glass_panel import GlassPanelRegistry
 
 from tabs.multi_compare.canvas import interaction as canvas_interaction
 from tabs.multi_compare.first_frame_debug import (
@@ -55,7 +55,7 @@ __all__ = [
 # How many completed presents get a compositor settle kick. Shared with
 # image_compare so both canvas tabs wait for the first frame that actually
 # reaches the display (see shared/rendering/first_frame_gate.py).
-from shared.rendering.first_frame_gate import (
+from engine.cache.first_frame_gate import (
     FIRST_PRESENT_SETTLE_COUNT as _FIRST_PRESENT_SETTLE_COUNT,
     first_visual_present_count as _first_visual_present_count,
 )

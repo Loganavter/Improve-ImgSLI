@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 
 from PySide6.QtGui import QColor, QRhiViewport
 

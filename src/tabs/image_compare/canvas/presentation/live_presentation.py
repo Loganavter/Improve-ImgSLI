@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from shared.rendering.display_image_picker import pick_display_image, pick_first_real
-from shared.rendering.image_identity import image_uid
+from engine.cache.display_image_picker import pick_display_image, pick_first_real
+from engine.cache.image_identity import image_uid
 from shared.image_processing.tiled_pixel_store import autocrop_debug
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
 

@@ -27,7 +27,7 @@ from core.store import Store
 from core.store_viewport import SessionData
 from shared.image_processing import pyramid_registry
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.pipeline.pipeline import ImagePipeline
 from tabs.image_compare.presenters.image_canvas.background_parts import render_flow
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (

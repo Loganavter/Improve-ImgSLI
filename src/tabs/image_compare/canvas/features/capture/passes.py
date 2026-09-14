@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtGui import QColor, QRhiViewport
 
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
     SceneVisibility,
@@ -13,7 +13,7 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
-from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
+from engine.cache.stroke_geometry import shrink_screen_radius_for_stroke
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,

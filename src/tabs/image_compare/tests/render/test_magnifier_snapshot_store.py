@@ -64,7 +64,7 @@ def test_normalize_leaves_already_valid_position_alone():
     assert abs(model.position.y - 0.5) < 1e-6
 
 def _make_layout(x_min=0.0, x_max=1.25, y_min=0.0, y_max=1.0):
-    from shared.rendering.layout_contract import NormalizedBounds, VirtualCanvasLayout
+    from engine.cache.layout_contract import NormalizedBounds, VirtualCanvasLayout
     return VirtualCanvasLayout(
         canvas_bounds=NormalizedBounds(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max),
         content_bounds=NormalizedBounds(x_min=0.0, x_max=1.0, y_min=0.0, y_max=1.0),

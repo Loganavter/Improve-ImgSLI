@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from shared.rendering import NormalizedBounds
+from engine.cache import NormalizedBounds
 from tabs.image_compare.plugins.video_editor.services.video_export.models import GlobalCanvasBounds
 
 _blog = logging.getLogger("ImproveImgSLI.bounds_analyzer")

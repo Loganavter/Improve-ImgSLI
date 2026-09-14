@@ -46,8 +46,8 @@ from PySide6.QtGui import (
     QShader,
 )
 
-from shared.rendering.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
-from shared.rendering.tile_mip import mip_level_count, mip_level_pixel_size
+from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
+from engine.cache.tile_mip import mip_level_count, mip_level_pixel_size
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 

@@ -8,12 +8,12 @@ from PySide6.QtGui import QRhiCommandBuffer, QRhiDepthStencilClearValue, QRhiVie
 
 from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
-from shared.rendering.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
-from shared.rendering.tile_debug import (
+from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
+from engine.cache.tile_debug import (
     log_tile_event,
     tile_dump_enabled,
 )
-from shared.rendering.tile_texture_service import (
+from engine.cache.tile_texture_service import (
     TileTextureService,
     _tile_indices_with_margin,
 )
@@ -23,7 +23,7 @@ from ..texture_parts.tile_geometry import (
     _viewport_zoom_offset_for_tile,
     _visible_side_image_rect,
 )
-from shared.rendering.glass_panel import GlassPanelRenderer
+from engine.gpu.glass_panel import GlassPanelRenderer
 from ._debug import rhi_render_debug, rhi_render_debug_enabled
 from ..frame_context import FrameContext, snapshot_last_frame
 

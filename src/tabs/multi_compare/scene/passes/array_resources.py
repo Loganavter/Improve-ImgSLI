@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from PySide6.QtGui import QRhiVertexInputAttribute
 
-from shared.rendering.array_resources import TileArrayResourcesBase
+from engine.gpu.array_resources import TileArrayResourcesBase
 
 # Per-instance vertex layout for the array pipeline
 # (multi_compare_array.vert): iPanFit(vec4,16) + iZoom(float,4) +

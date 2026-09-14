@@ -13,7 +13,7 @@ as first arg — the owner keeps construction/wiring + instance state
 from __future__ import annotations
 
 from ui.canvas_infra.rhi.render_common import should_render_blank_white
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 from .._debug import rhi_render_debug
 from ...render_context import build_render_runtime_context

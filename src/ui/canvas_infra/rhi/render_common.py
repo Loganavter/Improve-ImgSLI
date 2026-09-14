@@ -1,10 +1,10 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPalette
 
-from shared.rendering.screen_projection import (
+from engine.cache.screen_projection import (
     ndc_rect_from_screen_disk as ndc_rect_from_screen_disk,
 )
-from shared.rendering.screen_projection import project_px_to_screen
+from engine.cache.screen_projection import project_px_to_screen
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,

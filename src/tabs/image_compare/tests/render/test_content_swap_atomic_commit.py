@@ -33,8 +33,8 @@ commit.
 
 from types import SimpleNamespace
 
-from shared.rendering.lod import LevelKey
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.lod import LevelKey
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import (
     _covered_fraction,
     _to_common_space,

@@ -45,7 +45,7 @@ def _base_image():
 
 
 def _make_2x2_service():
-    from shared.rendering.tile_texture_service import TileTextureService
+    from engine.cache.tile_texture_service import TileTextureService
 
     service = TileTextureService(max_tile_extent=1024)
     service.register_source("img1", (2048, 2048))  # 2x2 grid

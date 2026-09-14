@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from shared.rendering.export_tiling import iter_export_tile_rects
-from shared.rendering.tile_geometry import viewport_zoom_offset_for_tile as _viewport_zoom_offset_for_tile
+from engine.gpu.export_tiling import iter_export_tile_rects
+from engine.cache.tile_geometry import viewport_zoom_offset_for_tile as _viewport_zoom_offset_for_tile
 
 
 def test_iter_export_tile_rects_single_tile_when_within_extent():

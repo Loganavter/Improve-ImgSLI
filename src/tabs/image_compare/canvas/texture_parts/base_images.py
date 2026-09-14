@@ -4,7 +4,7 @@ from PySide6.QtGui import QImage
 
 from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
@@ -258,7 +258,7 @@ def update_common_letterbox_geometry(
         return
 
     from shared.image_processing.image_dims import get_image_dims
-    from shared.rendering.unified_envelope import eager_envelope_rect
+    from engine.cache.unified_envelope import eager_envelope_rect
 
     w1, h1 = get_image_dims(image1) if image1 is not None else (0, 0)
     w2, h2 = get_image_dims(image2) if image2 is not None else (0, 0)
@@ -414,7 +414,7 @@ def upload_pil_images(
     )
     stored_changed = stored_ids != state._stored_image_ids
     if stored_changed:
-        from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+        from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
         if tile_dump_enabled():
             log_tile_event(
                 "stored_changed",

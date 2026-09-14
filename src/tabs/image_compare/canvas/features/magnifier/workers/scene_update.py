@@ -4,7 +4,7 @@ import time
 # File-Size-Exempt: single magnifier rebuild pipeline sharing presenter/image_label locals across its phases; P3 loupe trace records are additive call sites, not new responsibilities.
 from dataclasses import replace as _dc_replace
 
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
@@ -37,7 +37,7 @@ from tabs.image_compare.canvas.features.magnifier.workers.common import (
     get_live_image_label,
     is_effective_magnifier_interactive,
 )
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import ensure_cached_diff_image
 

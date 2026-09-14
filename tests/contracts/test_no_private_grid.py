@@ -1,7 +1,7 @@
 """Tabs own no tile grid/cache lattice and allocate no tile texture privately.
 
 The grid + slot lattice lives only in ``TileTextureService``
-(``src/shared/rendering/tile_texture_service.py``): tabs read grids via
+(``src/engine/cache/tile_texture_service.py``): tabs read grids via
 ``grid_for``/``register_source`` and slots via ``slot_for``, and every
 per-tile ``QRhiTexture`` allocation happens in a known resource owner
 (whole-image 1x1 path, plain-path slot textures, overlay/placeholder

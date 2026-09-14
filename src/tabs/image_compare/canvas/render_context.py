@@ -29,7 +29,7 @@ from tabs.image_compare.canvas.render_arch import (
 
 from .render_config import update_display_split_position
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
-from shared.rendering.render_debug import rhi_render_debug
+from engine.cache.render_debug import rhi_render_debug
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
     upload_pil_images,

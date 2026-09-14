@@ -64,7 +64,7 @@ def test_pyramid_already_in_flight_skip_finishes_toast():
     coord = _make_pyramid(toast)
     store = SimpleNamespace(width=8, height=8)
 
-    from shared.rendering.image_identity import image_uid
+    from engine.cache.image_identity import image_uid
 
     uid = image_uid(store)
     coord._pyramid_builds.add(uid)

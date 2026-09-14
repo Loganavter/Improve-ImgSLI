@@ -185,7 +185,7 @@ class ImagePipeline:
             return None, None
         # uid-based memo (store identity, not path, to catch re-decodes)
         # use image_uid (counter/cacheKey fallback) for GC-safe identity, not id()
-        from shared.rendering.image_identity import image_uid
+        from engine.cache.image_identity import image_uid
 
         uid1 = image_uid(store1)
         uid2 = image_uid(store2)

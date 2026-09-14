@@ -30,10 +30,10 @@ import time
 
 from shared.image_processing.pyramid_registry import pyramid_for
 from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
-from shared.rendering.lod import LevelKey
-from shared.rendering.render_debug import rhi_render_debug
-from shared.rendering.residency import ResidencySpec, TileResidencyRealizerBase
-from shared.rendering.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
+from engine.cache.lod import LevelKey
+from engine.cache.render_debug import rhi_render_debug
+from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
+from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
 from tabs.multi_compare.scene.resources import (
     SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
     SLOT_TILE_CACHE_BUDGET_BYTES,

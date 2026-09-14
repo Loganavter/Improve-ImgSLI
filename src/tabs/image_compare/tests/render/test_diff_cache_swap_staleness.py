@@ -13,7 +13,7 @@ from PIL import Image
 
 from tabs.image_compare.canvas.features.magnifier.workers import diff_cache
 from tabs.image_compare.presenters.image_canvas.background_parts import diff_toasts
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 
 def _presenter(*, cached_diff_image=None, cached_diff_source_key=None):

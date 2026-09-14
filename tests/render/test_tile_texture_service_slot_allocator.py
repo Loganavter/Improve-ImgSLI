@@ -5,7 +5,7 @@ Maps (source_id, tile index) to (array_index, layer) slots inside one or
 more fixed-capacity texture arrays, with free-list reuse on eviction.
 """
 
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 
 
 def _service(max_array_size=2, width=3 * 1024, height=1024, max_tile_extent=1024):

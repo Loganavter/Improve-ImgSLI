@@ -164,7 +164,7 @@ class PyramidBuildCoordinator:
         still pending). Skipped cases with a live toast finish it via the
         toast coordinator instead of leaving it stuck at "pyramid started".
         """
-        from shared.rendering.image_identity import image_uid
+        from engine.cache.image_identity import image_uid
 
         get_pyramid = self._resolve_get_pyramid()
 

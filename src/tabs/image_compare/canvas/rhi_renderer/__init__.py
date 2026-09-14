@@ -11,7 +11,7 @@ from ..texture_parts.tile_geometry import (
     _viewport_zoom_offset_for_tile,
     _visible_side_image_rect,
 )
-from shared.rendering.tile_texture_service import _tile_indices_with_margin
+from engine.cache.tile_texture_service import _tile_indices_with_margin
 from .renderer import RhiCanvasRenderer
 from .residency import _TILE_CACHE_BUDGET_BYTES
 from .resources import _ARRAY_LAYER_PX

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shared.rendering.tile_coverage import FALLBACK_COVERAGE_THRESHOLD, covered_fraction
-from shared.rendering.tile_geometry import _apron_rect, _TILE_APRON_PX
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_coverage import FALLBACK_COVERAGE_THRESHOLD, covered_fraction
+from engine.cache.tile_geometry import _apron_rect, _TILE_APRON_PX
+from engine.cache.tile_texture_service import TileTextureService
 
 _FULL_TILE_RECT = (0.0, 0.0, 1.0, 1.0)
 

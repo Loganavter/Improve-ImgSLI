@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.frame_context import FrameContext
 
 import pytest
@@ -249,7 +249,7 @@ def test_no_interest_keeps_visible_center_order():
 
 
 def test_pin_coarsest_level_survives_eviction():
-    from shared.rendering.lod import LevelKey
+    from engine.cache.lod import LevelKey
 
     service = _make_service()
     service.register_source(LevelKey("s", 1), (1024, 1024))

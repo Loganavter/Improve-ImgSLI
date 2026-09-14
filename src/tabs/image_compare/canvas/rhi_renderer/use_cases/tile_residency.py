@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,

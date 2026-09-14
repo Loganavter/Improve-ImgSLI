@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from shared.rendering.tile_geometry import (
+from engine.cache.tile_geometry import (
     _TILE_APRON_PX,
     _TILE_RESIDENCY_MARGIN,
     _apron_rect,

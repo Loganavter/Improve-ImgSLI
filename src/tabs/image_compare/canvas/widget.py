@@ -49,8 +49,8 @@ from .render_context import (
 )
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.canvas_infra.rhi.rhi_render import render_clear_frame
-from shared.rendering.coalesced_flush import CoalescedFlush
-from shared.rendering.glass_panel import GlassPanelRegistry
+from engine.gpu.coalesced_flush import CoalescedFlush
+from engine.gpu.glass_panel import GlassPanelRegistry
 from .rhi_renderer import RhiCanvasRenderer
 from .scene import build_render_scene
 from .state import CanvasRuntimeState, init_widget_state
@@ -74,7 +74,7 @@ from .texture_parts.layers import (
 # How many completed presents get a compositor settle kick. Shared with
 # multi_compare so both canvas tabs wait for the first frame that actually
 # reaches the display (see shared/rendering/first_frame_gate.py).
-from shared.rendering.first_frame_gate import (
+from engine.cache.first_frame_gate import (
     FIRST_PRESENT_SETTLE_COUNT as _FIRST_PRESENT_SETTLE_COUNT,
     first_visual_present_count as _first_visual_present_count,
 )

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 
-from shared.rendering.tile_constants import TILE_UPLOAD_TIME_BUDGET_MS
+from engine.cache.tile_constants import TILE_UPLOAD_TIME_BUDGET_MS
 
 
 class UploadDeadline:

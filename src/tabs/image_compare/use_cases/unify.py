@@ -56,7 +56,7 @@ def _clear_unification_flags(controller) -> None:
 
 
 def _unify_resize_method(controller) -> str:
-    from shared.rendering.interpolation import get_effective_main_interpolation_method
+    from engine.cache.interpolation import get_effective_main_interpolation_method
 
     return get_effective_main_interpolation_method(controller.store.viewport)
 
@@ -157,7 +157,7 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
                 wh = (max(w1, w2), max(h1, h2))
             except Exception:
                 wh = (0, 0)
-            from shared.rendering.image_identity import image_uid
+            from engine.cache.image_identity import image_uid
 
             cached = pl.cache.get_unified(
                 image_uid(s1), image_uid(s2), method, wh[0], wh[1]
@@ -251,7 +251,7 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
                 # a skipped mixed-tier pass must never suppress the retry
                 # after both sides go full (same paths, new stores).
                 try:
-                    from shared.rendering.image_identity import image_uid as _uid
+                    from engine.cache.image_identity import image_uid as _uid
                 except Exception:
                     _uid = None  # type: ignore
                 try:
@@ -497,7 +497,7 @@ def on_unified_images_ready(controller, result):
                     wh = (max(w1, w2), max(h1, h2))
                 except Exception:
                     wh = (0, 0)
-                from shared.rendering.image_identity import image_uid
+                from engine.cache.image_identity import image_uid
 
                 # memo key is source uid, not result uid (fix never-hit)
                 s1_src = s2_src = None

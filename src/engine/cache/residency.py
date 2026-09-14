@@ -38,11 +38,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from shared.image_processing.regions import UniformTileGrid
-from shared.rendering.render_debug import rhi_render_debug
-from shared.rendering.tile_constants import TILE_UPLOAD_BUDGET_PER_CALL
-from shared.rendering.tile_geometry import _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN, crop_apron_tile
-from shared.rendering.tile_prefetch import TilePrefetcher
-from shared.rendering.tile_upload_budget import UploadDeadline, plan_key_upload
+from engine.cache.render_debug import rhi_render_debug
+from engine.cache.tile_constants import TILE_UPLOAD_BUDGET_PER_CALL
+from engine.cache.tile_geometry import _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN, crop_apron_tile
+from engine.gpu.tile_prefetch import TilePrefetcher
+from engine.cache.tile_upload_budget import UploadDeadline, plan_key_upload
 
 # Background warm requests are real memmap reads competing with the render
 # thread for the GIL/CPU -- capped low and separately from

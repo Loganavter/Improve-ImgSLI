@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.resources import RhiResources
 
 
@@ -67,7 +67,7 @@ def test_first_call_uploads_at_most_the_budget(tmp_path, monkeypatch):
     # TILE_UPLOAD_BUDGET_PER_CALL production tuning happens to be (64 at
     # LIVE_TILE_EXTENT=512's ~1MB/tile -- see tile_constants.py) -- a small
     # local budget keeps this test's fixture image small.
-    from shared.rendering import residency as residency_module
+    from engine.cache import residency as residency_module
 
     local_budget = 2
     monkeypatch.setattr(
@@ -106,7 +106,7 @@ def test_first_call_uploads_at_most_the_budget(tmp_path, monkeypatch):
 
 
 def test_remaining_tiles_upload_on_a_follow_up_call(tmp_path, monkeypatch):
-    from shared.rendering import residency as residency_module
+    from engine.cache import residency as residency_module
 
     local_budget = 2
     monkeypatch.setattr(
@@ -154,7 +154,7 @@ def test_time_budget_stops_upload_before_count_budget(tmp_path, monkeypatch):
     upload budget": the wall-clock check must be able to stop a call before
     even TILE_UPLOAD_BUDGET_PER_CALL tiles are uploaded, if the clock says
     the per-call time budget is already spent."""
-    from shared.rendering import tile_upload_budget as residency_module
+    from engine.cache import tile_upload_budget as residency_module
 
     store = _tps(Image.new("RGBA", (1200, 800), "blue"), tmp_path)
     update_calls: list = []
@@ -205,7 +205,7 @@ def test_shared_deadline_does_not_starve_a_later_key_of_its_first_tile(
     regardless of what an earlier key already spent, as long as the budget
     wasn't already blown before this call even started (that case stays
     covered by ``test_time_budget_stops_upload_before_count_budget``)."""
-    from shared.rendering import tile_upload_budget as residency_module
+    from engine.cache import tile_upload_budget as residency_module
 
     store = _tps(Image.new("RGBA", (1200, 800), "blue"), tmp_path)
     update_calls: list = []

@@ -23,7 +23,7 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
-from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
+from engine.cache.stroke_geometry import shrink_screen_radius_for_stroke
 
 from tabs.image_compare.canvas.features.magnifier.render.passes_common import pack_arc_uniform
 from tabs.image_compare.canvas.features.magnifier.render.shader_layout import SHADER_DIR, ARC_UNIFORM_SIZE

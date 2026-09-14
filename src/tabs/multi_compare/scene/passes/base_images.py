@@ -12,14 +12,14 @@ from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     pixel_source_size,
 )
-from shared.rendering.fallback_lod import resolve_fallback_lod
-from shared.rendering.host_texture_cache import cache_for_host
-from shared.rendering.lod import LevelKey
-from shared.rendering.mip_cascade import MipCascadeGenerator
-from shared.rendering.render_debug import rhi_render_debug
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_geometry import _TILE_APRON_PX
-from shared.rendering.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
+from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.gpu.host_texture_cache import cache_for_host
+from engine.cache.lod import LevelKey
+from engine.gpu.mip_cascade import MipCascadeGenerator
+from engine.cache.render_debug import rhi_render_debug
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_geometry import _TILE_APRON_PX
+from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
 from tabs.multi_compare.scene.projection import letterbox_uv
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,

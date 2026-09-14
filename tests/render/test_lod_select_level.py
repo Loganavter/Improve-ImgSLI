@@ -1,4 +1,4 @@
-from shared.rendering.lod import select_level
+from engine.cache.lod import select_level
 
 
 def test_zoomed_in_uses_base_level():

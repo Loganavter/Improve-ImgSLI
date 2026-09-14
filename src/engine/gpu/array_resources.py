@@ -35,8 +35,8 @@ from PySide6.QtGui import (
     QRhiVertexInputLayout,
 )
 
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_texture_service import TileTextureService
 
 
 class TileArrayResourcesBase:

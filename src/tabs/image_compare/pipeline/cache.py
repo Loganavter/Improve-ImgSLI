@@ -163,7 +163,7 @@ def _unify_pair_bytes(pair) -> int:
 
 def _uid_of(store) -> int | None:
     try:
-        from shared.rendering.image_identity import image_uid
+        from engine.cache.image_identity import image_uid
 
         return int(image_uid(store))
     except Exception:

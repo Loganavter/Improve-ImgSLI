@@ -1,6 +1,6 @@
 """Tiled export geometry for multi-compare outputs."""
 
-from shared.rendering.export_tiling import TiledFramebufferExporter, iter_export_tile_rects
+from engine.gpu.export_tiling import TiledFramebufferExporter, iter_export_tile_rects
 
 
 def test_iter_export_tile_rects_splits_large_output():

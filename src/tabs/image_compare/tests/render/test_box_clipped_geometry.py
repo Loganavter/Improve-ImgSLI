@@ -18,8 +18,8 @@ from PIL import Image
 
 from shared.image_processing.autocrop.model import CropBox
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
-from shared.rendering.unified_envelope import eager_envelope_rect
+from engine.cache.tile_texture_service import TileTextureService
+from engine.cache.unified_envelope import eager_envelope_rect
 from tabs.image_compare.canvas.rhi_renderer.resources import RhiResources
 from tabs.image_compare.canvas.texture_parts.base_images import (
     update_common_letterbox_geometry,
@@ -247,7 +247,7 @@ def test_box_cropped_store_view_matches_offset_parent_crop(tmp_path):
             qimage_from_pixel_source,
         )
         from shared.image_processing.image_dims import get_image_dims
-        from shared.rendering.tile_geometry import crop_apron_tile
+        from engine.cache.tile_geometry import crop_apron_tile
 
         full_q = qimage_from_pixel_source(store, (8, 8, 40, 32))
         got = view.crop((0, 0, 32, 24))

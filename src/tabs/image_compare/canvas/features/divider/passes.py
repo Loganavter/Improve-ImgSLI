@@ -29,7 +29,7 @@ from tabs.image_compare.canvas.render_config import (
     get_view_transformed_content_rect_widget_px,
 )
 from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _VERTICES = struct.pack(

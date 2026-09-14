@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
-from shared.rendering.glass_panel import GlassPanelSpec
+from engine.gpu.glass_panel import GlassPanelSpec
 from ui.theming import resolve_theme_color
 from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
 from ui.widgets.glass_hud import target_watch

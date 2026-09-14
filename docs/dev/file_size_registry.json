@@ -14,6 +14,40 @@
       }
     },
     {
+      "path": "src/engine/cache/tile_texture_service.py",
+      "lines": 627,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
+      }
+    },
+    {
+      "path": "src/engine/gpu/glass_panel.py",
+      "lines": 917,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
+      }
+    },
+    {
+      "path": "src/engine/gpu/mip_cascade.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
+      }
+    },
+    {
       "path": "src/plugins/export/dialog.py",
       "lines": 733,
       "limit": 500,
@@ -99,40 +133,6 @@
       "parsed": {
         "pattern": "state-machine",
         "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
-      }
-    },
-    {
-      "path": "src/shared/rendering/glass_panel.py",
-      "lines": 917,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
-      }
-    },
-    {
-      "path": "src/shared/rendering/mip_cascade.py",
-      "lines": 584,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
-      }
-    },
-    {
-      "path": "src/shared/rendering/tile_texture_service.py",
-      "lines": 627,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "size": "exempt",
-        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
       }
     },
     {
