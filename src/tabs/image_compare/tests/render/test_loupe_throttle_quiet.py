@@ -229,3 +229,140 @@ def test_resident_slices_stay_silent(loupe_env):
     assert service.interest_rect_for("img1") == (0, 0, 1024, 1024)
     assert [d for d in ctx if d.pass_name == "loupe.mag_dropped_slice"] == []
     assert lines == []
+
+
+# ---------------------------------------------------------------------------
+# drop-log aggregation (task-engine-1d-log-2026-09-14): one event, N tiles
+# ---------------------------------------------------------------------------
+
+
+def _rendered_lines(lines):
+    """Final log text as the real logger would format it (msg % args)."""
+    return [msg % a if a else msg for msg, a in lines]
+
+
+def test_per_tile_sig_aggregates_to_identified_lines(loupe_env):
+    """N dropped tiles, one shared reason: <=2 lines, tile ID in the text.
+
+    Regression for the 24 byte-identical drop lines: the per-tile
+    ``tile_index`` rode in the throttle ``sig`` (so every tile re-emitted)
+    but never reached the log text (so every line read the same). Now the
+    first tile's line carries its ``ids`` and same-reason siblings stay
+    silent — while every hit still appends its per-frame record.
+    """
+    lines = loupe_env
+    ctx = _std_ctx()
+    reason = "dropped_nonresident_slice tile not GPU-resident request_level=3-of-4-tiles-missing"
+    tiles = [(r, c) for r in range(6) for c in range(4)]  # 24 tiles, one event
+    for tile in tiles:
+        trace_loupe(
+            ctx,
+            "loupe.mag_dropped_slice",
+            "skipped",
+            reason,
+            ids=("img1", tile),
+            sig=("img1", tile, "3-of-4-tiles-missing"),
+        )
+    assert len(ctx) == len(tiles)  # records: per-frame truth, never throttled
+    assert 1 <= len(lines) <= 2  # the event stays visible, never N lines
+    text = _rendered_lines(lines)
+    assert text[0].count("dropped_nonresident_slice") >= 1
+    # tile identity survived into the log text (not sig-only like before)
+    assert any(f"({t[0]}, {t[1]})" in line for t in tiles for line in text)
+    # no two emitted lines are byte-identical anymore
+    assert len(set(text)) == len(text)
+
+
+def test_steady_frame_after_aggregated_drops_emits_nothing(loupe_env):
+    """Repeating the identical N-tile drop frame adds 0 new log lines."""
+    lines = loupe_env
+    ctx = _std_ctx()
+    reason = "dropped_nonresident_slice tile not GPU-resident request_level=3-of-4-tiles-missing"
+    tiles = [(r, c) for r in range(6) for c in range(4)]
+    for _ in range(2):  # two identical steady frames
+        for tile in tiles:
+            trace_loupe(
+                ctx,
+                "loupe.mag_dropped_slice",
+                "skipped",
+                reason,
+                ids=("img1", tile),
+                sig=("img1", tile, "3-of-4-tiles-missing"),
+            )
+    assert len(ctx) == 2 * len(tiles)
+    # both identical frames together emitted only the first frame's line(s)
+    assert 1 <= len(lines) <= 2
+    first_frame_lines = len(lines)
+    for tile in tiles:  # third identical frame: strictly silent
+        trace_loupe(
+            ctx,
+            "loupe.mag_dropped_slice",
+            "skipped",
+            reason,
+            ids=("img1", tile),
+            sig=("img1", tile, "3-of-4-tiles-missing"),
+        )
+    assert len(lines) == first_frame_lines
+
+
+def test_aggregated_drop_emits_again_on_new_reason(loupe_env):
+    """Guard against over-suppression: a new drop reason logs again."""
+    lines = loupe_env
+    ctx = _std_ctx()
+    for tile in ((0, 0), (0, 1)):
+        trace_loupe(
+            ctx,
+            "loupe.mag_dropped_slice",
+            "skipped",
+            "dropped_nonresident_slice request_level=3-of-4-tiles-missing",
+            ids=("img1", tile),
+            sig=("img1", tile, "3-of-4-tiles-missing"),
+        )
+    assert len(lines) == 1
+    # residency progressed: same tiles, new reason → new line, with identity
+    for tile in ((0, 0), (0, 1)):
+        trace_loupe(
+            ctx,
+            "loupe.mag_dropped_slice",
+            "skipped",
+            "dropped_nonresident_slice request_level=1-of-4-tiles-missing",
+            ids=("img1", tile),
+            sig=("img1", tile, "1-of-4-tiles-missing"),
+        )
+    assert len(lines) == 2
+    assert "(0, 0)" in _rendered_lines(lines)[1]
+
+
+def test_dropped_slices_end_to_end_bounded_and_identified(loupe_env):
+    """Full loupe path: every non-resident slice drops, log stays bounded.
+
+    Same ``_source_slices`` setup as
+    ``test_dropped_slice_records_carry_service_reason`` but asserting the
+    engine-1d acceptance bar: N drops → at most 2 lines carrying tile
+    identity, and a steady repeat frame → 0 new lines.
+    """
+    from tabs.image_compare.canvas.features.magnifier.render import (
+        magnifier_pass as mag_mod,
+    )
+
+    lines = loupe_env
+    service = _make_2x2_service()  # nothing marked resident
+    renderer = SimpleNamespace(tile_service=service)
+    ctx = _std_ctx()
+    # full-image lens window: all 4 tiles non-resident → 4 drops, one event
+    resolved = mag_mod._source_slices(
+        renderer, "img1", (0.0, 0.0, 1.0, 1.0), frame_context=ctx
+    )
+    assert resolved == []
+    drops = [d for d in ctx if d.pass_name == "loupe.mag_dropped_slice"]
+    assert len(drops) >= 2  # genuinely multi-tile: aggregation has work to do
+    assert 1 <= len(lines) <= 2
+    text = _rendered_lines(lines)
+    assert len(set(text)) == len(text)  # no byte-identical repeats
+    assert any("request_level=" in line for line in text)
+    assert any(
+        f"({r}, {c})" in line for (r, c) in ((0, 0), (0, 1), (1, 0), (1, 1)) for line in text
+    )
+    before = len(lines)
+    mag_mod._source_slices(renderer, "img1", (0.0, 0.0, 1.0, 1.0), frame_context=ctx)
+    assert len(lines) == before  # steady frame: 0 new lines

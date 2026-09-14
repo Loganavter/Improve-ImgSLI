@@ -10,11 +10,24 @@ dedup, the coord dedup and the dropped non-resident slices) record here as
 Throttle recipes (copied, not shared — each site keeps its own state like
 the existing per-module ``_last_*_sig`` globals):
 - ``sig`` — per-frame path, ``draw_plan.py`` recipe: the log line fires
-  once per distinct decision signature, not once per frame.
+  once per distinct decision signature, not once per frame. Callers that
+  pass an explicit per-item ``sig`` for one shared event (e.g. one dropped
+  tile each of N non-resident loupe slices, same reason) aggregate further:
+  only the first item's line carries the event — same ``(pass_name,
+  verdict, reason)`` with a new item sig stays silent. Records are
+  unaffected (every hit still appends its per-frame ``FrameDecision``
+  with per-item ``ids``), and any genuine reason change emits again, so
+  aggregation can never silence a new event, only repeat tiles of one
+  already logged.
 - ``time`` — mouse flow, ``schedule.py`` recipe: at most one line per
   ``interval_s`` (coords dedup runs on every mouse move).
 - ``once`` — dead/legacy paths, ``live_handles.note_skipped_once`` recipe:
   one line per key ever (raster quads without gpu params).
+
+Emitted lines carry the caller's ``ids`` (``ids=(...)`` suffix) whenever
+non-empty, so the one surviving line of an aggregated multi-tile drop
+still identifies a tile — per-tile ``sig`` values never reach the log
+text, which is what used to emit N byte-identical lines for one event.
 
 Records are the per-frame truth: while the flag is on, every hit appends
 one ``FrameDecision`` (cheap frozen dataclass) and only the *log line* is
@@ -59,6 +72,13 @@ _MISSING = object()
 _last_sig: dict = {}
 _last_time: dict = {}
 _seen_once: set = set()
+# Last *emitted* (pass_name, verdict, reason) per throttle stream. The
+# per-item explicit ``sig`` (e.g. per dropped tile) advances ``_last_sig``
+# on every tile, but the log line only fires when the shared event triple
+# changes — otherwise N tiles of one drop event collapse into the first
+# tile's single line. Default-sig callers are unaffected: their observed
+# sig IS the triple, so a change in one is a change in the other.
+_last_emitted_base: dict = {}
 
 
 def frame_context_from_widget(widget):
@@ -79,6 +99,7 @@ def reset_loupe_trace_state() -> None:
     _last_sig.clear()
     _last_time.clear()
     _seen_once.clear()
+    _last_emitted_base.clear()
 
 
 def trace_loupe(
@@ -99,6 +120,10 @@ def trace_loupe(
     context). ``sig`` defaults to ``(pass_name, verdict, reason)``;
     ``key`` defaults to ``pass_name`` — pass an explicit key when one
     pass_name has independent throttle streams (e.g. per quad index).
+    An explicit per-item ``sig`` with an unchanged ``(pass_name, verdict,
+    reason)`` triple aggregates: the record is still appended, but the
+    log line fires only for the first item of the event (with its
+    ``ids``), not once per item.
     """
     if not ic_loupe_debug_enabled():
         return None
@@ -121,9 +146,24 @@ def trace_loupe(
         observed = sig if sig is not None else (pass_name, verdict, reason)
         if _last_sig.get(stream, _MISSING) != observed:
             _last_sig[stream] = observed
-            emit = True
+            base = (pass_name, verdict, reason)
+            if _last_emitted_base.get(stream, _MISSING) != base:
+                _last_emitted_base[stream] = base
+                emit = True
+            # else: same drop event, further tile (explicit per-item sig):
+            # aggregate silently — the per-tile record above already holds
+            # the identity, and the first tile's line carries it to the log.
     if emit:
-        ic_loupe_debug("%s verdict=%s reason=%s", pass_name, verdict, reason)
+        if ids:
+            ic_loupe_debug(
+                "%s verdict=%s reason=%s ids=%r",
+                pass_name,
+                verdict,
+                reason,
+                tuple(ids),
+            )
+        else:
+            ic_loupe_debug("%s verdict=%s reason=%s", pass_name, verdict, reason)
     return decision
 
 
