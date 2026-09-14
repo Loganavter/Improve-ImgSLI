@@ -27,7 +27,7 @@ Verification: ``QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests/re
 from __future__ import annotations
 
 from engine.cache.image_identity import image_uid
-from tabs.image_compare.canvas.frame_context import FrameContext
+from engine.frame.context import FrameContext
 from tabs.image_compare.canvas.helpers import reset_canvas_overlays as _orig_reset_canvas_overlays
 from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.debug import ic_preview_debug as _preview_log

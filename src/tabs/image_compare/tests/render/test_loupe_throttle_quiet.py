@@ -21,7 +21,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 import tabs.image_compare.canvas.loupe_trace as loupe_mod
-from tabs.image_compare.canvas.frame_context import FrameContext
+from engine.frame.context import FrameContext
 from tabs.image_compare.canvas.loupe_trace import (
     reset_loupe_trace_state,
     trace_loupe,

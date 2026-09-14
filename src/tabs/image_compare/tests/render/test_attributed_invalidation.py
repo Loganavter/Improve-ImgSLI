@@ -88,7 +88,7 @@ def invalidate_off(monkeypatch):
 
 
 def _ctx_with_widget_ctx():
-    from tabs.image_compare.canvas.frame_context import FrameContext
+    from engine.frame.context import FrameContext
 
     return FrameContext()
 
@@ -298,7 +298,7 @@ def test_flag_off_costs_no_records(qapp, invalidate_off):
 
 def test_bus_shape_additive_only():
     """New record kind is additive: generic record()/dump() unchanged."""
-    from tabs.image_compare.canvas.frame_context import (
+    from engine.frame.context import (
         INVALIDATE_PREFIX,
         FrameContext,
     )
