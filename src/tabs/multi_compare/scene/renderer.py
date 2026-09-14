@@ -26,7 +26,7 @@ from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
-from tabs.multi_compare.scene.passes import BaseImagesPass
+from tabs.multi_compare.scene.passes import RENDER_PASSES, BaseImagesPass
 from tabs.multi_compare.scene.projection import build_render_context
 from tabs.multi_compare.scene.resources import SLOT_LIVE_TILE_EXTENT
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
@@ -50,15 +50,25 @@ _SKIP_MIP_CASCADE = os.environ.get("IMGSLI_SKIP_MIP_CASCADE", "").strip().lower(
 )
 
 
+def _manifest_base_images_pass() -> BaseImagesPass:
+    """The scene's base-image stage, routed via the ``RENDER_PASSES``
+    declaration -- never instantiated directly here (mirrors how feature
+    passes come from ``registry().get_render_passes()``)."""
+    for pass_ in RENDER_PASSES:
+        if isinstance(pass_, BaseImagesPass):
+            return pass_
+    raise RuntimeError("RENDER_PASSES must route a BaseImagesPass")
+
+
 class MultiCompareRhiRenderer:
     """Persistent QRhi renderer for ``MultiCompareCanvasWidget``.
 
-    ``image_pass`` (base image tiles) is core-owned and always wired
-    directly, first — mirrors how image_compare's own base-image draw is
-    hardcoded ahead of its feature passes (see
-    MULTI_COMPARE_QRHI_REFACTOR.md A6). ``feature_passes`` are discovered
-    through the shared canvas feature registry, same as image_compare
-    (``rhi_renderer/__init__.py``'s ``initialize()``).
+    ``image_pass`` (base image tiles) is routed via the scene's
+    ``RENDER_PASSES`` manifest and still recorded first — mirrors how
+    image_compare's own base-image draw is hardcoded ahead of its feature
+    passes (see MULTI_COMPARE_QRHI_REFACTOR.md A6). ``feature_passes`` are
+    discovered through the shared canvas feature registry, same as
+    image_compare (``rhi_renderer/__init__.py``'s ``initialize()``).
     """
 
     def __init__(self, host) -> None:
@@ -68,7 +78,9 @@ class MultiCompareRhiRenderer:
         self.sampler: QRhiSampler | None = None
         self.placeholder: QRhiTexture | None = None
         self.tile_service = TileTextureService()
-        self.image_pass = BaseImagesPass()
+        # Manifest-routed (see _manifest_base_images_pass); release() resets
+        # this same instance in place via BaseImagesPass.release().
+        self.image_pass = _manifest_base_images_pass()
         # Mirrors image_compare's RhiCanvasRenderer.glass_panel_renderer --
         # draws the blurred/tinted backdrop + text mask for every GlassHUD
         # (ZoomIndicator here) registered on `host.glass_panels`, see the
@@ -132,9 +144,9 @@ class MultiCompareRhiRenderer:
         # source`) saw "nothing changed" and never re-queued the uploads —
         # the array/slot textures stayed bound to the destroyed context and
         # the canvas rendered blank (background clear color only). Routing
-        # a real identity change through `self.release()` (which replaces
-        # `self.image_pass` with a fresh `BaseImagesPass()`, clearing that
-        # bookkeeping) makes the post-rebuild `_sync_textures()` call below
+        # a real identity change through `self.release()` (which resets
+        # the manifest `image_pass` in place via `BaseImagesPass.release()`,
+        # clearing that bookkeeping) makes the post-rebuild `_sync_textures()` call below
         # see every currently-loaded slot as new and re-upload it.
         if new_rhi is self.rhi and self.feature_passes:
             self.target = target
@@ -174,7 +186,7 @@ class MultiCompareRhiRenderer:
         ph = QImage(1, 1, QImage.Format.Format_RGBA8888)
         ph.fill(0)
         upload.uploadTexture(self.placeholder, ph)
-        self.image_pass.initialize(self, target)
+        self.image_pass.initialize(self.rhi, target)
         command_buffer.resourceUpdate(upload)
 
         self.glass_panel_renderer.initialize(self.rhi)
@@ -235,9 +247,9 @@ class MultiCompareRhiRenderer:
         fb_w = float(target_size.width())
         fb_h = float(target_size.height())
 
-        # Match image_compare: refresh pipelines if popup/swapchain restacked
-        # the color buffer (stale renderPassDescriptor → wrong present).
-        self.image_pass.slot_resources.ensure_pipeline(self, target)
+        # Match image_compare: refresh feature pipelines if popup/swapchain
+        # restacked the color buffer (stale renderPassDescriptor → wrong
+        # present). The base pass ensures its own pipeline in prepare().
         for render_pass in self.feature_passes:
             ensure = getattr(render_pass, "_ensure_pipeline", None)
             if callable(ensure):
@@ -255,7 +267,7 @@ class MultiCompareRhiRenderer:
             available_slot_ids=set(self.image_pass.slot_texture_ids()),
             widget=self.host,
         )
-        self.image_pass.realize_residency(self, ctx, updates)
+        self.image_pass.prepare(self.host, ctx, updates)
 
         # Submit this frame's tile uploads now (rather than folding them into
         # the main pass's own resourceUpdates below) so generate_all_dirty_mips
@@ -291,7 +303,6 @@ class MultiCompareRhiRenderer:
             self.host.update()
 
         updates = self.rhi.nextResourceUpdateBatch()
-        self.image_pass.finish_prepare(self, ctx, updates)
 
         active_feature_passes = iter_active_render_passes(ctx, self.feature_passes)
         for render_pass in active_feature_passes:
@@ -303,7 +314,7 @@ class MultiCompareRhiRenderer:
             QRhiDepthStencilClearValue(1.0, 0),
             updates,
         )
-        self.image_pass.record(self, ctx, command_buffer)
+        self.image_pass.record(command_buffer, self.host, ctx)
         for render_pass in active_feature_passes:
             render_pass.record(command_buffer, self.host, ctx)
         command_buffer.endPass()
