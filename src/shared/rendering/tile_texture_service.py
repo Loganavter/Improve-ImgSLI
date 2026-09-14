@@ -148,6 +148,12 @@ class TileTextureService:
         # ``register_interest_rect`` so future upload-batch ordering can
         # prioritize it. Advisory only -- never affects residency answers.
         self._interest_rects: dict[object, tuple[float, float, float, float]] = {}
+        # Eviction pins (loupe residency gate): pinned source_ids are never
+        # selected by ``evict_over_budget``. Wired by ``pin_coarsest_level``
+        # so a pyramid's coarsest LOD -- the fallback-LOD baseline and the
+        # loupe's low-res sampling source -- survives upload-budget pressure
+        # from finer levels filling in around it.
+        self._pinned: set[object] = set()
 
     def register_source(
         self, source_id: object, image_size: tuple[int, int]
@@ -201,6 +207,9 @@ class TileTextureService:
         interest = self._interest_rects.pop(old_source_id, None)
         if interest is not None:
             self._interest_rects[new_source_id] = interest
+        if old_source_id in self._pinned:
+            self._pinned.discard(old_source_id)
+            self._pinned.add(new_source_id)
         resident = self._resident.pop(old_source_id, None)
         if resident is not None:
             self._resident[new_source_id] = resident
@@ -272,6 +281,7 @@ class TileTextureService:
         missing: set[TileIndex],
         visible_rect: tuple[float, float, float, float] | None,
         budget: int,
+        interest_rect: tuple[float, float, float, float] | None = None,
     ) -> list[TileIndex]:
         """Orders ``missing`` by distance from ``visible_rect``'s center
         (nearest first -- the tile under the user's focus point fills in
@@ -281,19 +291,32 @@ class TileTextureService:
         tiles and calls ``mark_resident`` itself, same as before this
         method existed. Tiles left out of the returned batch stay in the
         caller's own ``target``/``missing`` computation and are naturally
-        reconsidered on the next call -- no separate pending queue needed."""
+        reconsidered on the next call -- no separate pending queue needed.
+
+        Lens interest first (loupe residency gate): when ``interest_rect``
+        is given -- or the consumer previously registered one via
+        ``register_interest_rect`` -- tiles intersecting it sort before all
+        other missing tiles (nearest-interest-center first within each
+        group), so the magnifier's capture window fills in before
+        surrounding margin tiles instead of competing with them under one
+        shared budget."""
         if budget <= 0 or not missing:
             return []
         if len(missing) <= budget:
             return list(missing)
         grid = self._grids.get(source_id)
+        if interest_rect is None:
+            interest_rect = self._interest_rects.get(source_id)
         if grid is None or visible_rect is None:
             return sorted(missing)[:budget]
-        left, top, right, bottom = visible_rect
-        center_x = (left + right) / 2.0
-        center_y = (top + bottom) / 2.0
 
-        def _distance(index: TileIndex) -> float:
+        def _center(rect: tuple[float, float, float, float]) -> tuple[float, float]:
+            left, top, right, bottom = rect
+            return ((left + right) / 2.0, (top + bottom) / 2.0)
+
+        def _distance(
+            index: TileIndex, center_x: float, center_y: float
+        ) -> float:
             row, col = index
             if row < 0 or row >= grid.rows or col < 0 or col >= grid.columns:
                 return float("inf")
@@ -302,13 +325,29 @@ class TileTextureService:
             tile_y = (region.top + region.bottom) / 2.0
             return (tile_x - center_x) ** 2 + (tile_y - center_y) ** 2
 
+        if interest_rect is not None:
+            interest_tiles = self.visible_tiles(source_id, interest_rect)
+            if interest_tiles:
+                interest_cx, interest_cy = _center(interest_rect)
+                return sorted(
+                    missing,
+                    key=lambda index: (
+                        0 if index in interest_tiles else 1,
+                        _distance(index, interest_cx, interest_cy),
+                        index,
+                    ),
+                )[:budget]
+        left, top, right, bottom = visible_rect
+        center_x = (left + right) / 2.0
+        center_y = (top + bottom) / 2.0
+
         # `missing` is a set, so its iteration order is hash-based, not
         # spatial; ties in `_distance` (common -- e.g. every tile one ring
         # out from center is equidistant) would otherwise resolve in that
         # hash order, which looks like a random fill instead of a stable
         # sweep. `index` (row, col) as a tie-break makes equal-distance
         # tiles fill in a fixed, reading-order sequence run to run.
-        return sorted(missing, key=lambda index: (_distance(index), index))[:budget]
+        return sorted(missing, key=lambda index: (_distance(index, center_x, center_y), index))[:budget]
 
     def is_resident(self, source_id: object, index: TileIndex) -> bool:
         return index in self._resident.get(source_id, ())
@@ -385,6 +424,50 @@ class TileTextureService:
         """Last rect passed to ``register_interest_rect`` (``None`` if the
         consumer never registered or cleared it)."""
         return self._interest_rects.get(source_id)
+
+    def set_pinned(self, source_id: object, pinned: bool = True) -> None:
+        """Pins (or unpins) ``source_id`` against ``evict_over_budget``.
+
+        Pinned tiles are never selected for eviction regardless of the
+        caller's ``protected`` set -- the loupe's coarsest-LOD hold (see
+        ``pin_coarsest_level``). Residency answers (``is_resident``,
+        ``slot_for``, ``request_level``) are unaffected; pinning only
+        exempts from eviction."""
+        if pinned:
+            self._pinned.add(source_id)
+        else:
+            self._pinned.discard(source_id)
+
+    def is_pinned(self, source_id: object) -> bool:
+        """Whether ``source_id`` is currently exempt from eviction."""
+        return source_id in self._pinned
+
+    def pin_coarsest_level(self, source_id: object) -> object | None:
+        """Pins the coarsest registered pyramid level of ``source_id``.
+
+        Scans registered grids for ``LevelKey(source_id, k)`` entries and
+        pins the deepest (max-``k``) one -- the fallback-LOD baseline and
+        the loupe's low-res sampling source -- so finer levels filling in
+        around it can never evict it under budget pressure. Returns the
+        pinned key, or ``None`` when no pyramid level of ``source_id`` is
+        registered (plain base-only sources need no pin: their single grid
+        is already the coarsest content). Pure bookkeeping: marks nothing
+        resident, touches no GPU state."""
+        from shared.rendering.lod import LevelKey
+
+        coarsest: object | None = None
+        coarsest_level = -1
+        for key in self._grids:
+            if (
+                isinstance(key, LevelKey)
+                and key.base == source_id
+                and int(key.level) > coarsest_level
+            ):
+                coarsest = key
+                coarsest_level = int(key.level)
+        if coarsest is not None:
+            self._pinned.add(coarsest)
+        return coarsest
 
     def request_level(
         self,
@@ -494,6 +577,7 @@ class TileTextureService:
                 cache_key
                 for cache_key in self._tile_byte_sizes
                 if cache_key[1] not in protected.get(cache_key[0], ())
+                and cache_key[0] not in self._pinned
             ),
             key=lambda cache_key: self._tile_last_used.get(cache_key, 0),
         )
@@ -522,6 +606,7 @@ class TileTextureService:
         self._grids.pop(source_id, None)
         self._resident.pop(source_id, None)
         self._interest_rects.pop(source_id, None)
+        self._pinned.discard(source_id)
         for cache_key in [
             cache_key for cache_key in self._tile_byte_sizes if cache_key[0] == source_id
         ]:
