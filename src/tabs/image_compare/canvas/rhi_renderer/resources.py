@@ -15,9 +15,9 @@ from PySide6.QtGui import (
 )
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.mip_cascade import MipCascadeGenerator
-from shared.rendering.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.gpu.mip_cascade import MipCascadeGenerator
+from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
+from engine.cache.uniform_layout import assert_uniform_size
 
 from ..texture_parts.tile_geometry import _TILE_APRON_PX
 from ..texture_parts.upload_queue import (
@@ -31,7 +31,7 @@ from .residency import _TILE_CACHE_BUDGET_BYTES, TileResidencyRealizer
 _SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
 # Clamped to the backend's real max at construction time (see initialize())
 # as a defensive floor only; every real backend supports far more than 2048px.
-from shared.rendering.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
+from engine.cache.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
 # docs/dev/rendering/tile-array-atlas-plan.md Phase 2 -- every layer of the
 # texture array must share one pixel size (a hard cross-backend constraint,
 # not addressed by the plan's original per-tile-heterogeneous-size design),

@@ -4,7 +4,7 @@ import PIL.Image
 
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.resize import resize_images_processor
-from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
+from engine.cache import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.image_export.models import ExportSaveContext
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
 from tabs.image_compare.services.snapshot_render_plan_builder import (

@@ -13,7 +13,7 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
 from shared.image_processing.pil_save import write_pil_image_cancelable
 from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
-from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
+from engine.cache import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
 from tabs.image_compare.services.snapshot_render_plan_builder import (
     calculate_still_snapshot_bounds,

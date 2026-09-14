@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 from types import SimpleNamespace
 
-from shared.rendering.unified_envelope import eager_envelope_rect
+from engine.cache.unified_envelope import eager_envelope_rect
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 

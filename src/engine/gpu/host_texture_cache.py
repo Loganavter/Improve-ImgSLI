@@ -8,7 +8,7 @@ from dataclasses import fields, is_dataclass
 from PySide6.QtGui import QImage
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore, qimage_from_pixel_source
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 _QIMAGE_BY_UID_CACHE_CAPACITY = 4
 DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024

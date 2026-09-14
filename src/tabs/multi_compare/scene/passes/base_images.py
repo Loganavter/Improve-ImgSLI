@@ -12,14 +12,14 @@ from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     pixel_source_size,
 )
-from shared.rendering.fallback_lod import resolve_fallback_lod
-from shared.rendering.host_texture_cache import cache_for_host
-from shared.rendering.lod import LevelKey
-from shared.rendering.mip_cascade import MipCascadeGenerator
-from shared.rendering.render_debug import rhi_render_debug
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_geometry import _TILE_APRON_PX
-from shared.rendering.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
+from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.gpu.host_texture_cache import cache_for_host
+from engine.cache.lod import LevelKey
+from engine.gpu.mip_cascade import MipCascadeGenerator
+from engine.cache.render_debug import rhi_render_debug
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_geometry import _TILE_APRON_PX
+from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
 from tabs.multi_compare.scene.projection import letterbox_uv
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
@@ -36,7 +36,8 @@ from tabs.multi_compare.scene.tile_geometry import (
     build_slot_draw_plan,
     drop_covered_fallback_tiles,
 )
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
+from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 from . import residency
 from .array_resources import ArrayResources
@@ -198,16 +199,6 @@ def _pack_slot_uniforms(
     )
 
 
-def _host_key_repr(key: LevelKey | object) -> str:
-    if isinstance(key, LevelKey):
-        return f"{int(key.base)}_lvl{int(key.level)}"
-    return str(key)
-
-
-def _slot_host_key(key: object) -> str:
-    return f"slot_{_host_key_repr(key)}"
-
-
 class BaseImagesPass(CanvasRenderPass):
     """Owns image textures, tile pipeline, uniforms, and draw recording.
 
@@ -234,7 +225,24 @@ class BaseImagesPass(CanvasRenderPass):
     yet, or the slot is shown at/above native resolution) keeps the bare
     ``sid`` key, so the eager single-upload fast path in ``_upload_slot``
     stays byte-identical to before pyramids existed.
+
+    Phase-2 pass shape: the engine decides residency (``TileTextureService``
+    grids/slots + ``TileResidencyRealizerBase.realize_specs``); this pass
+    only resolves per-slot specs (``residency.realize``) and uploads tiles
+    (``_SlotUploadRealizer._upload_tile``). Pass order comes from the
+    central stacking policy via ``stack_role`` (never local numbers), and
+    ``record()`` reads only its context plus this pass's own prepared
+    state -- no widget/store access, no export-mode branches
+    (snapshot-replay per rendering-model).
     """
+
+    # Forward-shape declaration for routing through
+    # ``iter_active_render_passes``/``iter_ordered_render_passes``: no
+    # CanvasStackRole maps to RenderPhase.BASE_IMAGE yet, so this declares
+    # the nearest content role until the policy gains one. The live
+    # renderer still wires ``image_pass`` first (see scene/renderer.py).
+    stack_role = CanvasStackRole.IMAGE_OVERLAY_CONTENT
+    visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
         self.slot_pixel_sources: dict[int, TiledPixelStore | QImage] = {}
@@ -305,6 +313,15 @@ class BaseImagesPass(CanvasRenderPass):
         # new level in between (see residency.py's realize() docstring/the
         # comment at its `resolved_lod` local).
         self._frame_resolved_lod: dict[int, tuple[object, object | None]] = {}
+
+    def should_paint(self, ctx) -> bool:
+        """Base content draws whenever the frame has projected layers.
+
+        Reads only ``ctx`` (record-reads-only-ctx direction) -- the
+        renderer still calls ``record()`` directly (see scene/renderer.py),
+        so this is forward-shape for ``iter_active_render_passes``.
+        """
+        return bool(getattr(ctx, "projected_layers", ()))
 
     def has_slot_texture(self, slot_id: int) -> bool:
         return int(slot_id) in self.slot_pixel_sources
@@ -834,7 +851,7 @@ class BaseImagesPass(CanvasRenderPass):
         if grid.rows == 1 and grid.columns == 1:
             tile_key = tile_service.tile_key(sid, 0, 0)
             self.slot_resources.destroy_slot_textures(sid, keep={tile_key})
-            qimage = host_cache.qimage_from_source(source, _slot_host_key(sid))
+            qimage = host_cache.qimage_from_source(source, residency._slot_host_key(sid))
             self.slot_resources.upload_tile(renderer, tile_key, qimage, updates)
             # A same-frame plain overwrite subsumes any deferred cleanup
             # from an earlier swap -- the texture now holds new content.
@@ -891,7 +908,7 @@ class BaseImagesPass(CanvasRenderPass):
             self._ensure_array_resources(renderer)
             assert self.array_resources is not None
             image = host_cache.qimage_from_source(
-                old_source, _slot_host_key(fallback_key)
+                old_source, residency._slot_host_key(fallback_key)
             )
             if image is None or image.isNull():
                 return
@@ -962,3 +979,11 @@ class BaseImagesPass(CanvasRenderPass):
         self._dirty_layers_this_frame = dirty_layers
         self._key_more_pending.update(key_incomplete_by_key)
         self._frame_resolved_lod = resolved_lod
+
+
+# Phase-2 pass shape (manifest-equivalent for the scene's base pass):
+# ``stack_role``/``visibility`` above declare order via stacking_policy.
+# The live renderer still owns its ``BaseImagesPass`` instance directly
+# (see scene/renderer.py) -- this list is the declaration point for
+# routing it through the ordered pass set later.
+RENDER_PASSES: list[CanvasRenderPass] = [BaseImagesPass()]

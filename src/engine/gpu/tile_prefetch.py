@@ -25,7 +25,7 @@ import logging
 from PySide6.QtCore import QThreadPool
 from sli_ui_toolkit.workers import GenericWorker
 
-from shared.rendering.tile_geometry import crop_apron_tile
+from engine.cache.tile_geometry import crop_apron_tile
 
 logger = logging.getLogger("ImproveImgSLI")
 

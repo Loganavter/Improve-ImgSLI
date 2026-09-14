@@ -20,7 +20,7 @@ from PIL import Image
 from PySide6.QtGui import QImage
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.resources import RhiResources
 from tabs.image_compare.canvas.texture_parts.upload_queue import (
     touch_texture_upload_cache,
@@ -91,7 +91,7 @@ def _swap_to_store_hold(tmp_path, monkeypatch):
     on ``stored_0`` whose new content is still incomplete (starved upload
     budget), i.e. the joint hold must still be engaged on both sides.
     """
-    from shared.rendering import residency as shared_residency_module
+    from engine.cache import residency as shared_residency_module
 
     monkeypatch.setattr(shared_residency_module, "TILE_UPLOAD_BUDGET_PER_CALL", 2)
     update_calls: list = []
@@ -149,7 +149,7 @@ def test_preview_hold_releases_once_both_halves_complete(tmp_path, monkeypatch):
     """The joint hold is 'until BOTH halves have complete tile replacement':
     once the pair's new content is fully resident the hold must release
     instead of pinning stale stash tiles (and their host images) forever."""
-    from shared.rendering import residency as shared_residency_module
+    from engine.cache import residency as shared_residency_module
 
     widget, resources, tile_service = _swap_to_store_hold(tmp_path, monkeypatch)
 

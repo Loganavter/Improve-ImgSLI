@@ -8,7 +8,7 @@ Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Canvas Layout Contract.
 from __future__ import annotations
 
 from core.store import Store
-from shared.rendering.layout_contract import (
+from engine.cache.layout_contract import (
     FeatureLayoutRequirement,
     NormalizedBounds,
     VirtualCanvasLayout,

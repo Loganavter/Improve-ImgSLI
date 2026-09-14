@@ -88,7 +88,7 @@ class PyramidPixelStore:
 
     def best_level_for_scale(self, dest_scale: float) -> int:
         """Ideal level for ``dest_scale``, clamped to what is built so far."""
-        from shared.rendering.lod import select_level
+        from engine.cache.lod import select_level
 
         return select_level(dest_scale, self.level_count)
 

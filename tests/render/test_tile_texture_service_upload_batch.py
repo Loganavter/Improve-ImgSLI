@@ -6,7 +6,7 @@ tile upload") -- no Qt/GPU needed, TileTextureService never touches a GPU
 texture itself.
 """
 
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_texture_service import TileTextureService
 
 
 def _service(width=3 * 1024, height=1024, max_tile_extent=1024):

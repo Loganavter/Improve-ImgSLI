@@ -10,7 +10,7 @@ import struct
 
 from PySide6.QtGui import QColor
 
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 from tabs.image_compare.canvas.features.magnifier.render.shader_layout import (
     ARC_UNIFORM_SIZE,
     BORDER_DISK_UNIFORM_SIZE,

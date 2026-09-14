@@ -12,8 +12,8 @@ from PySide6.QtGui import QImage, QPixmap
 
 from domain.types import Rect
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.image_identity import image_uid
-from shared.rendering.unified_envelope import eager_envelope_rect
+from engine.cache.image_identity import image_uid
+from engine.cache.unified_envelope import eager_envelope_rect
 from tabs.image_compare.debug import (
     ic_gap_debug as _gap_log,
     ic_gap_debug_enabled as _gap_enabled,

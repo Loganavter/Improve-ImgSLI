@@ -12,7 +12,7 @@ from PySide6.QtGui import (
     QShader,
 )
 
-from shared.rendering.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
+from engine.cache.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
 
 SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders" / "qrhi"
 VERTEX_STRIDE = 16

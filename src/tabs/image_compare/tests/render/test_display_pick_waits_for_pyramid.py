@@ -15,7 +15,7 @@ from PIL import Image
 
 from shared.image_processing import pyramid_registry
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.display_image_picker import pick_display_image
+from engine.cache.display_image_picker import pick_display_image
 
 
 def _store(width=64, height=64):

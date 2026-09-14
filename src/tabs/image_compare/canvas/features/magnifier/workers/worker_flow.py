@@ -7,7 +7,7 @@ def render_magnifier_layer(presenter, sig):
     if not presenter._cached_base_pixmap:
         return False
     try:
-        from shared.rendering.image_identity import image_uid as _wf_image_uid
+        from engine.cache.image_identity import image_uid as _wf_image_uid
 
         _rc = presenter.store.viewport.session_data.render_cache
         _cached_diff = getattr(_rc, "cached_diff_image", None)

@@ -50,7 +50,7 @@ from events.app_event.interactive_movement_input import (
     resolve_movement_directions,
 )
 from events.app_event.interactive_movement_math import damp, damp_vector, is_close
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from tabs.image_compare.canvas.registry import registry
 
 logger = logging.getLogger("ImproveImgSLI")

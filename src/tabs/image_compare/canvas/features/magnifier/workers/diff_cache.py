@@ -5,7 +5,7 @@ from sli_ui_toolkit.workers import GenericWorker
 from core.state_management.actions import SetCachedDiffImageAction
 
 from shared.image_processing.store_lease import StoreLease
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 logger = logging.getLogger("ImproveImgSLI")
 

@@ -68,7 +68,7 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
     )
     if geometry.outer_rect_px is not None:
         state._content_rect_px = geometry.outer_rect_px
-    from shared.rendering.render_debug import rhi_render_debug
+    from engine.cache.render_debug import rhi_render_debug
 
     rhi_render_debug(
         "content_rect widget=%dx%d fit=%dx%d owns_padded=%s -> outer=%r",

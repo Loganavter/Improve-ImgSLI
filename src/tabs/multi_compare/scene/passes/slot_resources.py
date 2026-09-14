@@ -24,7 +24,7 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
-from shared.rendering.lod import LevelKey
+from engine.cache.lod import LevelKey
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
     SLOT_UNIFORM_SIZE,

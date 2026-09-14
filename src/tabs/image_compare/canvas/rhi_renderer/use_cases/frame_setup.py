@@ -13,10 +13,11 @@ as first arg — the owner keeps construction/wiring + instance state
 from __future__ import annotations
 
 from ui.canvas_infra.rhi.render_common import should_render_blank_white
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 from .._debug import rhi_render_debug
 from ...render_context import build_render_runtime_context
+from ...frame_context import FrameContext, make_ids, viewport_hash
 from ...texture_parts.tile_geometry import _viewport_zoom_offset_for_tile
 from .lod_commit import commit_lod_keys
 
@@ -35,13 +36,23 @@ except Exception:  # pragma: no cover
 _last_renderer_sources_raw_sig: tuple | None = None
 
 
-def prepare_frame(renderer, widget, command_buffer, clear_color=None) -> tuple | None:
+def prepare_frame(
+    renderer,
+    widget,
+    command_buffer,
+    clear_color=None,
+    frame_context: FrameContext | None = None,
+) -> tuple | None:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer.render`` preamble.
 
     Covers target/rhi guard, ``apply_pending_uploads``, ``build_render_runtime_context``,
     ``should_draw``/``target_size``/``viewport_zoom``/``sources`` raw/pending handling
     (``renderer.py:344-512`` pre-split). Mutates ``renderer.resources.residency.last_rekeyed_keys``
     and ``renderer._lod_*`` via ``commit_lod_keys`` exactly as before.
+
+    ``frame_context`` is the Phase-2 frame-bus hook: when provided, the two
+    early-skip exits record their reason IN ADDITION to existing behavior
+    (``None`` keeps every existing call site behavior-identical).
 
     Returns ``None`` when frame should be skipped (no target/rhi) so caller can
     ``return False``. Otherwise returns a tuple
@@ -58,6 +69,16 @@ def prepare_frame(renderer, widget, command_buffer, clear_color=None) -> tuple |
             target,
             renderer.rhi,
         )
+        # Phase-2 frame bus: early-skip reason (record only, never instead).
+        if frame_context is not None:
+            frame_context.record(
+                "prepare_frame",
+                "skipped",
+                "prepare_frame early-skip no-target-or-rhi"
+                f" target={'set' if target is not None else 'none'}"
+                f" rhi={'set' if renderer.rhi is not None else 'none'}",
+                ids=make_ids(frame_context.frame_id, "no-target-or-rhi"),
+            )
         return None
 
     updates = renderer.rhi.nextResourceUpdateBatch()
@@ -139,6 +160,18 @@ def prepare_frame(renderer, widget, command_buffer, clear_color=None) -> tuple |
 
     # Early out when nothing to draw — still return context for mips/draw submit
     if not should_draw:
+        # Phase-2 frame bus: early-skip reason (record only, never instead).
+        if frame_context is not None:
+            _vhash = viewport_hash(viewport_zoom, viewport_offset)
+            frame_context.record(
+                "prepare_frame",
+                "skipped",
+                "prepare_frame early-skip should_draw=False"
+                f" base_image={'set' if base_image is not None else 'none'}"
+                f" uploaded={list(ctx.images_uploaded)}"
+                f" viewport_hash={_vhash}",
+                ids=make_ids(frame_context.frame_id, _vhash),
+            )
         return (
             ctx,
             base_image,

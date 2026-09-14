@@ -3,7 +3,7 @@
 from PIL import Image
 from PySide6.QtGui import QColor, QImage
 
-from shared.rendering.export_tiling import TiledFramebufferExporter
+from engine.gpu.export_tiling import TiledFramebufferExporter
 
 
 class _StubWidget:

@@ -3,23 +3,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shared.image_processing.pyramid_registry import pyramid_for
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.lod import LevelKey, select_level
-from shared.rendering.tile_coverage import (
+from engine.cache.tile_coverage import (
     FALLBACK_COVERAGE_THRESHOLD as _FALLBACK_COVERAGE_THRESHOLD,
     covered_fraction as _covered_fraction,
     intersection_rect as _intersection_rect,
     rects_overlap as _rects_overlap,
     to_common_space as _to_common_space,
 )
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_texture_service import TileTextureService
 
-from ..texture_parts.tile_geometry import _apron_rect, _TILE_APRON_PX, _visible_side_image_rect
+from ..texture_parts.tile_geometry import (
+    best_tile_overlap_index,
+    iter_visible_side_tiles,
+    tile_content_scale,
+)
+from .residency import resolve_lod_texture_keys
 from .resources import _ARRAY_LAYER_PX
-from .uniforms import _FULL_TILE_RECT
-from ._debug import rhi_render_debug
 
 try:
     from tabs.image_compare.debug import ic_gap_debug as _gap_log, ic_gap_debug_enabled as _gap_enabled  # type: ignore
@@ -40,101 +40,11 @@ except Exception:  # pragma: no cover
 _last_gap_draw_plan_sig: tuple | None = None
 
 
-def resolve_lod_texture_keys(
-    texture_keys: tuple[object, object],
-    sources: tuple[object, object],
-    base_image,
-    canvas_size_px: tuple[float, float],
-) -> tuple[object, object]:
-    """Substitutes each side's texture key with a ``LevelKey`` for the
-    pyramid mipmap level matching the current on-screen scale.
-
-    ``canvas_size_px`` is the full logical canvas in *device* pixels (live:
-    widget size x DPR; tiled export: the whole export canvas), so live
-    render, snapshot and export resolve identical levels for the same
-    document+zoom (rendering-model.md parity). Per-tile export zoom is
-    deliberately not used here — all tiles of one export must sample one
-    level or seams appear. Sides without a registered pyramid (plain PIL,
-    preview tier, pyramid not yet built/invalidated) keep their bare key,
-    which is byte-identical to the pre-pyramid path."""
-    canvas_w_px, canvas_h_px = canvas_size_px
-    zoom = float(base_image.zoom) or 1.0
-    letterboxes = (base_image.letterbox1, base_image.letterbox2)
-    pyramids = [
-        pyramid_for(source) if isinstance(source, TiledPixelStore) else None
-        for source in sources
-    ]
-    # Both sides' pyramids build their levels asynchronously in the
-    # background and can finish a level at different times. Clamping each
-    # side to its own pyramid.level_count independently (as
-    # best_level_for_scale does) lets one side pick a level the other
-    # hasn't built yet whenever both are multi-tile -- their tile rects are
-    # fractions of that side's own grid dimensions, which are only
-    # comparable between sides when both grids have the same row/column
-    # count. A shared level_count cap keeps both sides' clamped level (and
-    # thus grid dimensions) identical whenever they'd otherwise want the
-    # same level (the common case, since compared images are unified to
-    # matching sizes/letterboxes).
-    # Effective level count per TiledPixelStore source: missing pyramid
-    # (still TiledPixelStore, not pyramid-built yet) is treated as 1
-    # (only base level) so a [3, None] pair clamps to 1 rather than 3
-    # — otherwise the ready side picks a coarse level whose grid mismatches
-    # the bare side's grid and produces 0.0007 sliver bboxes.
-    effective_counts: list[int] = []
-    for src, pyr in zip(sources, pyramids):
-        if isinstance(src, TiledPixelStore):
-            effective_counts.append(pyr.level_count if pyr is not None else 1)
-    shared_level_count = min(effective_counts) if effective_counts else 0
-    if _gap_enabled():
-        try:
-            _gap_log(
-                "gap resolve_lod shared_level=%d ready=%d canvas=%.0fx%.0f zoom=%.3f letterbox1=(%.3f,%.3f,%.3f,%.3f) letterbox2=(%.3f,%.3f,%.3f,%.3f) keys=%s src_types=%s pyr_counts=%s",
-                shared_level_count,
-                len(ready_pyramids),
-                canvas_w_px,
-                canvas_h_px,
-                zoom,
-                *letterboxes[0],
-                *letterboxes[1],
-                [str(k) for k in texture_keys],
-                [type(s).__name__ if s is not None else None for s in sources],
-                [p.level_count if p else None for p in pyramids],
-            )
-        except Exception:
-            pass
-    resolved = []
-    for key, letterbox, source, pyramid in zip(
-        texture_keys, letterboxes, sources, pyramids
-    ):
-        if not isinstance(source, TiledPixelStore):
-            resolved.append(key)
-            continue
-        if pyramid is None:
-            resolved.append(key)
-            continue
-        src_w, src_h = source.size
-        disp_w = canvas_w_px * float(letterbox[2] or 1.0) * zoom
-        disp_h = canvas_h_px * float(letterbox[3] or 1.0) * zoom
-        dest_scale = max(
-            disp_w / float(max(1, src_w)), disp_h / float(max(1, src_h))
-        )
-        level = select_level(dest_scale, shared_level_count)
-        rhi_render_debug(
-            "resolve_lod key=%s use_hires=%s zoom=%.3f src=%dx%d disp=%.1fx%.1f "
-            "dest_scale=%.5f level=%d/%d",
-            key,
-            getattr(base_image, "use_hires", None),
-            zoom,
-            src_w,
-            src_h,
-            disp_w,
-            disp_h,
-            dest_scale,
-            level,
-            pyramid.level_count - 1,
-        )
-        resolved.append(key if level == 0 else LevelKey(key, level))
-    return tuple(resolved)  # type: ignore[return-value]  # tuple of key|LevelKey
+# LOD-key resolution lives in ``residency.py`` (next to the grid
+# registration that consumes it -- the BaseImagesPass shape: tab resolves
+# specs, engine decides); re-exported here so existing callers
+# (``renderer.py``, ``use_cases/lod_commit.py``, tests) keep importing it
+# from this module unchanged.
 
 
 def _best_diff_tile_index(
@@ -143,21 +53,7 @@ def _best_diff_tile_index(
     """Shared overlap-pick core of ``_resolve_diff_tile_key``/
     ``_resolve_diff_tile_index`` -- see the former's docstring for why a
     best-pixel-overlap pick (rather than an exact match) is correct here."""
-    left_f, top_f, width_f, height_f = rect1
-    left = left_f * grid.total_width
-    top = top_f * grid.total_height
-    right = (left_f + width_f) * grid.total_width
-    bottom = (top_f + height_f) * grid.total_height
-    best_index = None
-    best_overlap = -1.0
-    for row, col, region in grid.iter_regions():
-        overlap_w = max(0.0, min(right, region.right) - max(left, region.left))
-        overlap_h = max(0.0, min(bottom, region.bottom) - max(top, region.top))
-        overlap = overlap_w * overlap_h
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_index = (row, col)
-    return best_index
+    return best_tile_overlap_index(grid, rect1)
 
 
 def _resolve_diff_tile_index(
@@ -216,10 +112,7 @@ class ArrayDrawItem:
 
 
 def _content_scale(content_size: tuple[int, int] | None) -> tuple[float, float]:
-    if content_size is None:
-        return (1.0, 1.0)
-    width, height = content_size
-    return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
+    return tile_content_scale(content_size, _ARRAY_LAYER_PX)
 
 
 def _array_side_tiles(
@@ -235,33 +128,19 @@ def _array_side_tiles(
     col)`` index (needed to look up its array slot/content-scale) --
     including a still-1x1 side, which uploads into the array too (see
     ``resources.py``'s ``realize_tile_plan``), so its one tile needs the
-    same index-based slot lookup as any other."""
-    grid = tile_service.grid_for(key)
-    if grid is None:
-        return [(key, _FULL_TILE_RECT, (0, 0))]
-    visible_rect = _visible_side_image_rect(
-        base_image,
+    same index-based slot lookup as any other.
+
+    Thin alias over ``texture_parts.tile_geometry.iter_visible_side_tiles``
+    (the single enumeration the residency pass agrees on); kept under this
+    name so the pairing loop below reads in this module's own terms."""
+    return iter_visible_side_tiles(
+        tile_service,
+        key,
         letterbox,
-        grid,
+        base_image,
         viewport_zoom=viewport_zoom,
         viewport_offset=viewport_offset,
     )
-    visible_indices = tile_service.visible_tiles(key, visible_rect)
-    side_tiles = []
-    for row, col, region in grid.iter_regions():
-        if (row, col) not in visible_indices:
-            continue
-        left, top, right, bottom = _apron_rect(
-            grid.total_width, grid.total_height, region, _TILE_APRON_PX
-        )
-        rect = (
-            left / grid.total_width,
-            top / grid.total_height,
-            (right - left) / grid.total_width,
-            (bottom - top) / grid.total_height,
-        )
-        side_tiles.append((key, rect, (row, col)))
-    return side_tiles
 
 
 def drop_covered_fallback_items(

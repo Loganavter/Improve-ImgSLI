@@ -4,20 +4,20 @@ from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 from PIL import Image
 
-from shared.rendering.export_tiling import (
+from engine.gpu.export_tiling import (
     DEFAULT_EXPORT_TILE_MAX_EXTENT,
     TiledFramebufferExporter,
     iter_export_tile_rects,
     qimage_to_pil_rgba,
 )
-from shared.rendering.offscreen_canvas import (
+from engine.gpu.offscreen_canvas import (
     configure_offscreen_widget,
     render_widget_frame,
     resize_and_show_offscreen_widget,
     show_offscreen_widget,
     shutdown_offscreen_widget,
 )
-from shared.rendering.tab_canvas_services import create_canvas_widget
+from engine.cache.tab_canvas_services import create_canvas_widget
 
 logger = logging.getLogger("ImproveImgSLI")
 

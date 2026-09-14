@@ -170,7 +170,7 @@ class PipelineCacheReducer:
     @staticmethod
     def _uid_of(store):
         try:
-            from shared.rendering.image_identity import image_uid
+            from engine.cache.image_identity import image_uid
             return int(image_uid(store))
         except Exception:
             return None

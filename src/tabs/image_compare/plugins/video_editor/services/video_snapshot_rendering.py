@@ -12,7 +12,7 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
     VideoRenderRequest,
 )
 from shared.image_processing.prescale import prescale_pair
-from shared.rendering import get_effective_export_interpolation_method
+from engine.cache import get_effective_export_interpolation_method
 
 
 @dataclass(slots=True)

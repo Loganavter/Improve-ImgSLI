@@ -1,6 +1,7 @@
+# Audit-Meta: pattern=state-machine size=exempt reason="export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins"
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from PySide6.QtGui import QColor
 
@@ -15,11 +16,13 @@ from tabs.image_compare.services.gpu_export_scene import (
     build_export_render_scene,
 )
 from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
-from shared.rendering.image_identity import image_uid
-from shared.rendering import (
+from engine.cache.image_identity import image_uid
+from engine.cache import (
     NormalizedBounds,
     TargetSurfaceSpec,
 )
+from engine.cache.lod import LevelKey, select_level
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.presentation.plan_builder import (
     build_canvas_plan,
     compute_canvas_plan,
@@ -492,3 +495,111 @@ class SnapshotRenderPlanBuilder:
             "diff": cached_diff_image,
             "raw_diff": cached_diff_image,
         }
+
+
+# ---------------------------------------------------------------------------
+# Parity-harness test support (task-engine-2d, bucket 2D).
+#
+# Pure snapshot LOD + tile decision used ONLY by
+# src/tabs/image_compare/tests/render/test_live_export_parity.py to pin the
+# live/export parity invariant: same snapshot in -> same level + same tiles
+# out. ``SnapshotRenderPlanBuilder.build_render_plan`` never calls these
+# (no production-logic change). Both the live canvas path
+# (``rhi_renderer/draw_plan.py::resolve_lod_texture_keys`` +
+# ``TileTextureService.visible_tiles``) and this helper decide through
+# ``engine.cache.lod.select_level`` with identical inputs, and neither takes
+# a ``mode`` argument -- so no ``if mode == "export"`` branch can sneak in
+# on either side of the harness.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SnapshotLodTiles:
+    """Export-path LOD + tile decision for one snapshot (test support)."""
+
+    levels: tuple[int, int]
+    tile_sets: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]
+
+
+def snapshot_lod_tiles_for_sources(
+    sources,
+    *,
+    canvas_size_px,
+    zoom: float = 1.0,
+    letterboxes=((0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0)),
+    texture_keys=("source_0", "source_1"),
+    image_space_rect=None,
+    tile_service=None,
+) -> SnapshotLodTiles:
+    """Decide LOD levels + tile sets for one export snapshot (test support).
+
+    ``sources`` is a ``(side0, side1)`` pair of pixel sources (``TiledPixelStore``
+    or PIL); ``canvas_size_px`` is the snapshot surface in device pixels;
+    ``zoom``/``letterboxes`` describe the snapshot's view exactly like the
+    live path's ``base_image``. ``image_space_rect`` (``(left, top, right,
+    bottom)`` in level-image pixels, or ``None`` for the whole snapshot)
+    is fed unchanged to ``visible_tiles`` -- the harness passes the same
+    rect to the live path, pinning "same snapshot -> same tiles".
+
+    Level grids are registered into ``tile_service`` (a fresh
+    ``TileTextureService`` when omitted) under the resolved keys -- bare
+    base key for level 0, ``LevelKey(base, k)`` above -- mirroring what the
+    live upload path registers before residency/draw-plan run.
+    """
+    from shared.image_processing.pyramid_registry import pyramid_for
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+    canvas_w_px = float(canvas_size_px[0])
+    canvas_h_px = float(canvas_size_px[1])
+    zoom_f = float(zoom) or 1.0
+    pyramids = [
+        pyramid_for(source) if isinstance(source, TiledPixelStore) else None
+        for source in sources
+    ]
+    # Shared-level clamp, mirroring
+    # ``resolve_lod_texture_keys``: both sides' clamped level (and thus grid
+    # dimensions) stay identical whenever they'd otherwise want the same
+    # level; a side whose pyramid is missing/not yet built counts as 1
+    # (base level only) so it can't outrun the slower side.
+    effective_counts: list[int] = []
+    for src, pyr in zip(sources, pyramids):
+        if isinstance(src, TiledPixelStore):
+            effective_counts.append(pyr.level_count if pyr is not None else 1)
+    shared_level_count = min(effective_counts) if effective_counts else 0
+
+    levels: list[int] = []
+    keys: list[object] = []
+    sizes: list[tuple[int, int]] = []
+    for key, letterbox, source, pyramid in zip(
+        texture_keys, letterboxes, sources, pyramids
+    ):
+        if not isinstance(source, TiledPixelStore) or pyramid is None:
+            levels.append(0)
+            keys.append(key)
+            size = getattr(source, "size", (1, 1))
+            sizes.append((int(size[0]), int(size[1])))
+            continue
+        src_w, src_h = source.size
+        disp_w = canvas_w_px * float(letterbox[2] or 1.0) * zoom_f
+        disp_h = canvas_h_px * float(letterbox[3] or 1.0) * zoom_f
+        dest_scale = max(
+            disp_w / float(max(1, src_w)), disp_h / float(max(1, src_h))
+        )
+        level = select_level(dest_scale, shared_level_count)
+        levels.append(level)
+        keys.append(key if level == 0 else LevelKey(key, level))
+        level_size = pyramid.level(level).size if level else source.size
+        sizes.append((int(level_size[0]), int(level_size[1])))
+
+    service = tile_service if tile_service is not None else TileTextureService()
+    tile_sets: list[tuple[tuple[int, int], ...]] = []
+    for key, (width, height) in zip(keys, sizes):
+        service.register_source(key, (width, height))
+        rect = image_space_rect
+        if rect is None:
+            rect = (0.0, 0.0, float(width), float(height))
+        tile_sets.append(tuple(sorted(service.visible_tiles(key, rect))))
+    return SnapshotLodTiles(
+        levels=(levels[0], levels[1]),
+        tile_sets=(tile_sets[0], tile_sets[1]),
+    )

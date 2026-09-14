@@ -16,8 +16,8 @@ from unittest import mock
 
 import pytest
 
-from shared.rendering.fallback_lod import resolve_fallback_lod
-from shared.rendering.lod import LevelKey
+from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.lod import LevelKey
 from tabs.image_compare.canvas.rhi_renderer.renderer import (
     RhiCanvasRenderer,
     _is_rekeyed_content_baseline,
@@ -404,7 +404,7 @@ def test_bbox_width_for_distinct_images():
         update_common_letterbox_geometry,
     )
     from tabs.image_compare.canvas.rhi_renderer.draw_plan import build_array_draw_plan
-    from shared.rendering.tile_texture_service import TileTextureService
+    from engine.cache.tile_texture_service import TileTextureService
 
     # fake widget with canvas 1171x965 (as in logs) and runtime_state
     widget = SimpleNamespace()
@@ -453,7 +453,7 @@ def test_bbox_width_for_distinct_images():
     # For split comparison each tile pair's bbox is seam sliver ~0.002 (intersection of left/right halves)
     # Instead check that plan is not empty and layers are distinct (not left-on-both)
     # and that at least one item has non-trivial area when viewed via _covered_fraction
-    from shared.rendering.tile_coverage import covered_fraction, to_common_space
+    from engine.cache.tile_coverage import covered_fraction, to_common_space
 
     # covered fraction of each side's visible rect should be ~1.0 when both fully resident
     # (previous bug made right side sliver-only and left-on-both)

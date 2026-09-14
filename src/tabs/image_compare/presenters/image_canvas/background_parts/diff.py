@@ -1,4 +1,4 @@
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.helpers import get_canvas_widget
 
 from .diff_toasts import dismiss_active_diff_toast

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from PySide6.QtGui import QRhiVertexInputAttribute
 
-from shared.rendering.array_resources import TileArrayResourcesBase
+from engine.gpu.array_resources import TileArrayResourcesBase
 
 from .uniforms import _ARRAY_UNIFORM_BLOCK_SIZE
 

@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from shared.rendering.fallback_lod import resolve_fallback_lod
-from shared.rendering.lod import LevelKey
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.lod import LevelKey
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import (
     build_array_draw_plan,
@@ -42,7 +42,7 @@ except Exception:  # pragma: no cover
         return False
 
 from .._debug import rhi_render_debug
-from ...frame_context import FrameContext
+from ...frame_context import FrameContext, make_ids
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -366,6 +366,7 @@ def resolve_fallback_plan(
     # P1A frame-context pilot: record the final decision IN ADDITION to the
     # logs above (never instead of them). Unthrottled — the context keeps
     # every frame's verdict even when the sig-throttled logs stay quiet.
+    # Phase-2 frame bus: ids follow the schema-v1 layout (frame tag first).
     if frame_context is not None:
         _promoted = new_last_good_key == key
         frame_context.record(
@@ -375,6 +376,8 @@ def resolve_fallback_plan(
             f" more_pending={main_more_pending} promoted={_promoted}"
             f" current={len(current_array_plan)}"
             f" kept={fallback_diag.get('kept')} raw={fallback_diag.get('raw')}",
-            ids=(texture_keys, diff_source_key),
+            ids=make_ids(
+                frame_context.frame_id, texture_keys, diff_source_key
+            ),
         )
     return new_last_good_key, array_draw_plan

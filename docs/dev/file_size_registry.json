@@ -14,6 +14,40 @@
       }
     },
     {
+      "path": "src/engine/cache/tile_texture_service.py",
+      "lines": 627,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
+      }
+    },
+    {
+      "path": "src/engine/gpu/glass_panel.py",
+      "lines": 917,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
+      }
+    },
+    {
+      "path": "src/engine/gpu/mip_cascade.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
+      }
+    },
+    {
       "path": "src/plugins/export/dialog.py",
       "lines": 733,
       "limit": 500,
@@ -99,40 +133,6 @@
       "parsed": {
         "pattern": "state-machine",
         "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
-      }
-    },
-    {
-      "path": "src/shared/rendering/glass_panel.py",
-      "lines": 917,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
-      }
-    },
-    {
-      "path": "src/shared/rendering/mip_cascade.py",
-      "lines": 584,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
-      }
-    },
-    {
-      "path": "src/shared/rendering/tile_texture_service.py",
-      "lines": 627,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "size": "exempt",
-        "reason": "one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
       }
     },
     {
@@ -240,7 +240,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/frame_context.py",
-      "lines": 148,
+      "lines": 289,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
@@ -306,7 +306,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 648,
+      "lines": 527,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -328,7 +328,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 760,
+      "lines": 874,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -340,7 +340,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
-      "lines": 448,
+      "lines": 518,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -352,7 +352,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
-      "lines": 252,
+      "lines": 280,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -364,7 +364,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 380,
+      "lines": 383,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -376,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
-      "lines": 272,
+      "lines": 305,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
@@ -388,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py",
-      "lines": 157,
+      "lines": 194,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -565,6 +565,18 @@
       "parsed": {
         "pattern": "thin-owner-target",
         "reason": "playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/services/snapshot_render_plan_builder.py",
+      "lines": 605,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins"
       }
     },
     {
@@ -767,7 +779,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
-      "lines": 964,
+      "lines": 989,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",

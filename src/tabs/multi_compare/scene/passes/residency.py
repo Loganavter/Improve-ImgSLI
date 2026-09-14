@@ -14,7 +14,7 @@ below, while ``BaseImagesPass`` owns ``_last_good_key``/``_key_more_pending``/
 explicitly.
 
 The per-key target/protect/budget/upload loop lives in
-``shared.rendering.residency.TileResidencyRealizerBase.realize_specs``
+``engine.cache.residency.TileResidencyRealizerBase.realize_specs``
 (docs/dev/rendering/renderer-unification-plan.md Phase 3 step 3) -- this
 module only resolves *this call's* list of specs (N-way per-slot pan/fit/zoom,
 with its own inline per-slot LOD resolution and array-vs-plain draw-path
@@ -30,10 +30,10 @@ import time
 
 from shared.image_processing.pyramid_registry import pyramid_for
 from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
-from shared.rendering.lod import LevelKey
-from shared.rendering.render_debug import rhi_render_debug
-from shared.rendering.residency import ResidencySpec, TileResidencyRealizerBase
-from shared.rendering.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
+from engine.cache.lod import LevelKey
+from engine.cache.render_debug import rhi_render_debug
+from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
+from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
 from tabs.multi_compare.scene.resources import (
     SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
     SLOT_TILE_CACHE_BUDGET_BYTES,

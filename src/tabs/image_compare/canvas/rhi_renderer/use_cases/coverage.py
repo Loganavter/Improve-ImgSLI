@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from shared.rendering.tile_coverage import (
+from engine.cache.tile_coverage import (
     covered_fraction as _covered_fraction,
     intersection_rect as _intersection_rect,
     rects_overlap as _rects_overlap,
@@ -20,6 +20,7 @@ from shared.rendering.tile_coverage import (
 )
 
 from .._debug import rhi_render_debug, rhi_render_debug_enabled
+from ...frame_context import FrameContext, make_ids
 from ...texture_parts.tile_geometry import _visible_side_image_rect
 
 try:
@@ -46,6 +47,29 @@ _last_renderer_coverage_sig: tuple | None = None
 _last_first_paint_hold_sig: tuple | None = None
 
 
+def _record_coverage_fact(
+    frame_context: FrameContext,
+    covered1: float,
+    covered2: float,
+    bbox_cov: float,
+    entries: int,
+    main_more_pending: bool,
+) -> None:
+    """Phase-2 frame-bus write for the coverage phase (record only)."""
+    frame_context.record(
+        "coverage",
+        "ran",
+        f"coverage covered1={covered1:.4f} covered2={covered2:.4f}"
+        f" bbox={bbox_cov:.4f} entries={entries}"
+        f" more_pending={bool(main_more_pending)}",
+        ids=make_ids(
+            frame_context.frame_id,
+            f"{covered1:.4f}/{covered2:.4f}/{bbox_cov:.4f}",
+            entries,
+        ),
+    )
+
+
 def evaluate_coverage(
     renderer,
     tile_service,
@@ -55,6 +79,7 @@ def evaluate_coverage(
     viewport_offset: tuple[float, float] | None,
     array_draw_plan: list,
     main_more_pending: bool,
+    frame_context: FrameContext | None = None,
 ) -> tuple[float, float, float]:
     """Gap-coverage diagnostics extracted from ``RhiCanvasRenderer.render``.
 
@@ -66,6 +91,10 @@ def evaluate_coverage(
     without recomputing. When debug/preview is off no logs are emitted and
     coverage still computed (cheap 9x9 sampling) so the caller always has
     valid numbers.
+
+    ``frame_context`` is the Phase-2 frame-bus hook: when provided, the
+    coverage numbers record IN ADDITION to existing behavior (``None``
+    keeps every existing call site behavior-identical).
     """
     global _last_renderer_coverage_sig
 
@@ -179,6 +208,16 @@ def evaluate_coverage(
     # on, exactly as the original `if rhi_render_debug_enabled() or
     # _ic_preview_enabled():` gate.
     if not (rhi_render_debug_enabled() or _ic_preview_enabled()):
+        # Phase-2 frame bus: coverage numbers (record only, never instead).
+        if frame_context is not None:
+            _record_coverage_fact(
+                frame_context,
+                covered1,
+                covered2,
+                _bbox_cov,
+                len(array_draw_plan),
+                main_more_pending,
+            )
         return covered1, covered2, _bbox_cov
 
     _gap_atomic = getattr(renderer, "_fallback_atomic_snapshot", getattr(renderer, "_content_swap_active", False))
@@ -311,6 +350,16 @@ def evaluate_coverage(
                     )
                 except Exception:
                     pass
+    # Phase-2 frame bus: coverage numbers (record only, never instead).
+    if frame_context is not None:
+        _record_coverage_fact(
+            frame_context,
+            covered1,
+            covered2,
+            _bbox_cov,
+            len(array_draw_plan),
+            main_more_pending,
+        )
     return covered1, covered2, _bbox_cov
 
 
@@ -328,6 +377,7 @@ def apply_first_paint_hold(
     covered1: float | None = None,
     covered2: float | None = None,
     bbox_cov: float | None = None,
+    frame_context: FrameContext | None = None,
 ) -> list:
     """First-paint atomic hold extracted from ``RhiCanvasRenderer.render``.
 
@@ -343,6 +393,10 @@ def apply_first_paint_hold(
     thin delegator's call shape. If no coverage is supplied and
     ``base_image`` is available, coverage is recomputed cheaply (matching
     the original ``if "covered1" not in locals():`` fallback).
+
+    ``frame_context`` is the Phase-2 frame-bus hook: when provided, an
+    engaged hold records IN ADDITION to existing behavior (``None`` keeps
+    every existing call site behavior-identical).
     """
     global _last_first_paint_hold_sig
     # Normalize covered_ok into per-side values
@@ -429,6 +483,22 @@ def apply_first_paint_hold(
                 renderer._last_good_texture_keys, renderer._last_good_diff_key = (None, None)
             except Exception:
                 pass
+            # Phase-2 frame bus: engaged hold (record only, never instead).
+            if frame_context is not None:
+                frame_context.record(
+                    "first_paint_hold",
+                    "ran",
+                    "first_paint_hold held placeholder"
+                    f" more_pending={bool(main_more_pending)}"
+                    f" covered={float(_hold_cov1):.3f}/{float(_hold_cov2):.3f}"
+                    f" bbox={float(_hold_bbox):.3f}"
+                    f" held_entries={len(array_draw_plan)}",
+                    ids=make_ids(
+                        frame_context.frame_id,
+                        f"{float(_hold_cov1):.3f}/{float(_hold_cov2):.3f}/{float(_hold_bbox):.3f}",
+                        len(array_draw_plan),
+                    ),
+                )
             return []
         # covered and not more_pending -> allow through, keep plan as-is
         return array_draw_plan

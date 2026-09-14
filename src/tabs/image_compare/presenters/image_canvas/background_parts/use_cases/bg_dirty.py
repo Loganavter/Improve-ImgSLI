@@ -15,7 +15,7 @@ import logging
 
 from PySide6.QtGui import QPixmap
 
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.helpers import get_canvas_widget as _orig_get_canvas_widget
 from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas as _orig_apply_store_to_canvas
 from tabs.image_compare.canvas.registry import registry
@@ -283,8 +283,8 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                         _cache_u = _resolve_unify_gate_cache(presenter)
                         if _cache_u is not None:
                             try:
-                                from shared.rendering.image_identity import image_uid as _uid2
-                                from shared.rendering.interpolation import get_effective_main_interpolation_method as _get_method
+                                from engine.cache.image_identity import image_uid as _uid2
+                                from engine.cache.interpolation import get_effective_main_interpolation_method as _get_method
 
                                 _method_u = _get_method(presenter.store.viewport)
                                 _wh_u = (max(_w1, _w2), max(_h1, _h2))

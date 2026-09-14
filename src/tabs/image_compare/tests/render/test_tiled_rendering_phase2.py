@@ -12,7 +12,7 @@ from tabs.image_compare.canvas.rhi_renderer import (
     _TILE_CACHE_BUDGET_BYTES,
     _visible_side_image_rect,
 )
-from shared.rendering.tile_texture_service import (
+from engine.cache.tile_texture_service import (
     TileTextureService,
 )
 

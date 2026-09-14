@@ -24,7 +24,7 @@ from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering i
     PreparedCanvasFrame,
     SnapshotFrameRenderer,
 )
-from shared.rendering import TargetSurfaceSpec
+from engine.cache import TargetSurfaceSpec
 
 
 @pytest.fixture(autouse=True)
@@ -334,7 +334,7 @@ def test_image_export_frame_preserves_edge_magnifier_position_and_expands_canvas
     from core.store import Store
     from core.store_viewport import SessionData
     from domain.types import Point
-    from shared.rendering.live_snapshot import build_live_frame_snapshot
+    from engine.cache.live_snapshot import build_live_frame_snapshot
     from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
     from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
     from tabs.image_compare.state.document import DocumentModel
@@ -399,7 +399,7 @@ def test_crop_snapshot_frame_keeps_default_magnifier_normalization():
     from core.store import Store
     from core.store_viewport import SessionData
     from domain.types import Point
-    from shared.rendering.live_snapshot import build_live_frame_snapshot
+    from engine.cache.live_snapshot import build_live_frame_snapshot
     from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
     from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
     from tabs.image_compare.state.document import DocumentModel

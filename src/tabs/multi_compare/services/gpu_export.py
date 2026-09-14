@@ -20,11 +20,11 @@ import logging
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from shared.rendering.export_tiling import (
+from engine.gpu.export_tiling import (
     DEFAULT_EXPORT_TILE_MAX_EXTENT,
     TiledFramebufferExporter,
 )
-from shared.rendering.offscreen_canvas import (
+from engine.gpu.offscreen_canvas import (
     configure_offscreen_widget,
     render_widget_frame,
     resize_offscreen_widget,

@@ -6,7 +6,7 @@ progressively revealing new tiles over the old ones); ``atomic=True``
 new key is fully resident, then flip over in one frame.
 """
 
-from shared.rendering.fallback_lod import resolve_fallback_lod
+from engine.cache.fallback_lod import resolve_fallback_lod
 
 
 def test_default_progressive_merge_unchanged():

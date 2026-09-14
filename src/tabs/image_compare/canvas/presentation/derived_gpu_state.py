@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from shared.image_processing.tiled_pixel_store import pixel_source_size
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 
 
 @dataclass(frozen=True)

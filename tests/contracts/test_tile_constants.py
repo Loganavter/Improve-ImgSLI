@@ -6,7 +6,7 @@ tile constant must alias shared.rendering.tile_constants, not fork the value.
 """
 
 from core.constants import AppConstants
-from shared.rendering import tile_constants
+from engine.cache import tile_constants
 
 
 def test_gpu_tile_divisible_by_host_tile():
@@ -26,7 +26,7 @@ def test_app_constants_mirror():
 
 
 def test_reexports_alias_tile_constants():
-    from shared.rendering import tile_geometry, tile_texture_service
+    from engine.cache import tile_geometry, tile_texture_service
     from tabs.image_compare.canvas.rhi_renderer import resources
     from tabs.multi_compare.scene import resources as mc_resources
 

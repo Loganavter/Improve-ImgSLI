@@ -70,7 +70,7 @@ def test_realize_tile_plan_uploads_single_tile_tiled_pixel_store(tmp_path):
     resources.textures = {}
     resources.texture_sizes = {}
     tile_service = __import__(
-        "shared.rendering.tile_texture_service", fromlist=["TileTextureService"]
+        "engine.cache.tile_texture_service", fromlist=["TileTextureService"]
     ).TileTextureService(max_tile_extent=512)
     updates = MagicMock()
     resources.array_resources.upload_tile_to_array = MagicMock(wraps=resources.array_resources.upload_tile_to_array)
@@ -114,7 +114,7 @@ def test_realize_source_tiles_for_magnifier_when_canvas_uses_stored(tmp_path):
     resources.textures = {}
     resources.texture_sizes = {}
     tile_service = __import__(
-        "shared.rendering.tile_texture_service", fromlist=["TileTextureService"]
+        "engine.cache.tile_texture_service", fromlist=["TileTextureService"]
     ).TileTextureService(max_tile_extent=512)
     updates = MagicMock()
     resources.array_resources.upload_tile_to_array = MagicMock(wraps=resources.array_resources.upload_tile_to_array)
@@ -176,7 +176,7 @@ def test_realize_tile_plan_reregisters_stale_grid_when_source_grows(tmp_path):
     resources.textures = {}
     resources.texture_sizes = {}
     tile_service = __import__(
-        "shared.rendering.tile_texture_service", fromlist=["TileTextureService"]
+        "engine.cache.tile_texture_service", fromlist=["TileTextureService"]
     ).TileTextureService(max_tile_extent=512)
     updates = MagicMock()
     resources.upload_whole = MagicMock()

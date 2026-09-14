@@ -21,9 +21,9 @@ from PySide6.QtGui import (
 )
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.glass_panel import GlassPanelRenderer
-from shared.rendering.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
-from shared.rendering.tile_texture_service import TileTextureService
+from engine.gpu.glass_panel import GlassPanelRenderer
+from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
+from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
 from tabs.multi_compare.scene.passes import BaseImagesPass

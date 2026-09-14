@@ -117,8 +117,8 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/services/analysis/cached_diff.py", 278, "self.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 97, "self.store.viewport.session_data.image_state"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 111, "self.store.viewport.session_data.image_state"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 352, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 354, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 355, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 357, "self.store.viewport.session_data.render_cache"),
         # -- UI settings / transient interpolation previews --
         ("src/tabs/image_compare/ui/settings_persistence.py", 68, "image_state"),
         ("src/tabs/image_compare/ui/settings_persistence.py", 69, "image_state"),

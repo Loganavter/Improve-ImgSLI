@@ -5,8 +5,8 @@ from PySide6.QtGui import QImage, QPixmap
 
 from domain.types import Rect
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.display_image_picker import pick_display_image
-from shared.rendering.image_identity import image_uid
+from engine.cache.display_image_picker import pick_display_image
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")

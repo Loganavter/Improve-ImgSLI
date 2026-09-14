@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import time
 
-from shared.rendering.image_identity import image_uid
-from shared.rendering.tile_constants import LOD_FETCH_SETTLE_MS
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.image_identity import image_uid
+from engine.cache.tile_constants import LOD_FETCH_SETTLE_MS
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import resolve_lod_texture_keys
+
+from ...frame_context import BudgetStats, FrameContext, make_ids
 
 try:
     from tabs.image_compare.debug import ic_preview_debug as _ic_preview_log  # type: ignore
@@ -36,7 +38,14 @@ except Exception:  # pragma: no cover
 _last_renderer_sources_committed_sig: tuple | None = None
 
 
-def commit_lod_keys(renderer, texture_keys, sources, base_image, canvas_size_px) -> tuple:
+def commit_lod_keys(
+    renderer,
+    texture_keys,
+    sources,
+    base_image,
+    canvas_size_px,
+    frame_context: FrameContext | None = None,
+) -> tuple:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer`` LOD commit
     block in ``renderer.py:862`` — see its inline comments for contract.
 
@@ -46,6 +55,11 @@ def commit_lod_keys(renderer, texture_keys, sources, base_image, canvas_size_px)
     ``LOD_FETCH_SETTLE_MS`` settling. Mutates ``renderer._lod_pending_*``
     / ``renderer._lod_committed_*`` exactly as before and returns
     ``(committed_keys, source_changed)``.
+
+    ``frame_context`` is the Phase-2 frame-bus hook: when provided, the
+    commit decision records its LOD keys + settle time IN ADDITION to
+    existing behavior (``None`` keeps every existing call site
+    behavior-identical).
     """
     # Copy-pasted body from renderer.py:491-597 — keep log throttling identical.
     raw_texture_keys = resolve_lod_texture_keys(
@@ -153,5 +167,28 @@ def commit_lod_keys(renderer, texture_keys, sources, base_image, canvas_size_px)
             raw_texture_keys=[str(k) for k in raw_texture_keys],
             committed_texture_keys=[str(k) for k in texture_keys],
             pending_since_ms=(now - renderer._lod_pending_since) * 1000.0,
+        )
+    # Phase-2 frame bus: LOD keys + settle time (record only, never instead).
+    if frame_context is not None:
+        _pending_ms = (now - renderer._lod_pending_since) * 1000.0
+        _held = bool(raw_texture_keys != texture_keys)
+        _stats = BudgetStats(
+            time_ms=_pending_ms,
+            budget_ms=float(LOD_FETCH_SETTLE_MS),
+            more_pending=_held,
+        )
+        frame_context.record(
+            "lod_commit",
+            "skipped" if _held else "ran",
+            f"lod_commit source_changed={source_changed}"
+            f" raw={[str(k) for k in raw_texture_keys]}"
+            f" committed={[str(k) for k in texture_keys]}"
+            f" {_stats.describe()}",
+            ids=make_ids(
+                frame_context.frame_id,
+                tuple(str(k) for k in raw_texture_keys),
+                tuple(str(k) for k in texture_keys),
+                _stats.as_tuple(),
+            ),
         )
     return texture_keys, source_changed

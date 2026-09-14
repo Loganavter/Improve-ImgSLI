@@ -55,7 +55,7 @@ from tabs.image_compare.canvas.rhi_renderer import (
     _TILE_APRON_PX,
     _apron_rect,
 )
-from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
     SceneVisibility,
@@ -73,7 +73,7 @@ from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
 )
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 
 _MAG_UNIFORM_FMT = (
     "<16f 4f 2f 2f f f f f 4f 4f f f i i i i i i i i i i i i i i 4f 4f 4f 4f 4f"

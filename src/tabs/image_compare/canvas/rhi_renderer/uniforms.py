@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import struct
 
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 
 # std140 layout of base.frag/base.vert's UBuf: mat4 mvp(64) + vec2 offset(8)
 # + vec2 zoom(8) + float splitPosition(4) + 12B pad + vec4 letterbox1(16) +

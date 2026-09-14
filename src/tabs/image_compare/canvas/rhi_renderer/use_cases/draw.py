@@ -21,6 +21,7 @@ from PySide6.QtGui import QRhiDepthStencilClearValue, QRhiViewport
 
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
 
+from ...frame_context import FrameContext, make_ids
 from ..resources import pack_array_instance
 from ..uniforms import pack_array_uniforms
 
@@ -36,6 +37,7 @@ def submit_array_draw(
     clear_color=None,
     base_image=None,
     diff_ready=None,
+    frame_context: FrameContext | None = None,
     **kwargs,
 ) -> None:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer.render()``'s draw
@@ -50,6 +52,10 @@ def submit_array_draw(
     array_draw_plan, base_image, diff_ready)`` — when supplied they override
     the values derived from ``ctx``. Extra ``**kwargs`` are ignored so both
     call styles are accepted.
+
+    ``frame_context`` is the Phase-2 frame-bus hook: when provided, the
+    submit gate + begin/end fact record IN ADDITION to existing behavior
+    (``None`` keeps every existing call site behavior-identical).
 
     Side effects: mutates ``updates`` (uniform/instance buffer writes),
     records ``prepare``/``record_pre_pass``/``beginPass``/``draw``/
@@ -191,6 +197,10 @@ def submit_array_draw(
         )
 
     # Main pass — exactly as before
+    # Phase-2 frame bus: begin/end fact flags (assignments only — control
+    # flow and exception behavior below are byte-identical to before).
+    _began = False
+    _ended = False
     if target is not None and clear_color is not None and updates is not None:
         command_buffer.beginPass(
             target,
@@ -198,6 +208,7 @@ def submit_array_draw(
             QRhiDepthStencilClearValue(1.0, 0),
             updates,
         )
+        _began = True
     else:
         # Fallback: try to beginPass with whatever we have (tests may mock)
         try:
@@ -207,6 +218,7 @@ def submit_array_draw(
                 QRhiDepthStencilClearValue(1.0, 0),
                 updates,
             )
+            _began = True
         except Exception:
             # If command_buffer is a mock, just proceed
             pass
@@ -248,5 +260,21 @@ def submit_array_draw(
 
     try:
         command_buffer.endPass()
+        _ended = True
     except Exception:
         pass
+
+    # Phase-2 frame bus: submit gate + begin/end fact (record only).
+    if frame_context is not None:
+        frame_context.record(
+            "submit",
+            "ran" if array_draw_plan else "skipped",
+            f"submit entries={len(array_draw_plan)}"
+            f" gated_passes={len(active_feature_passes)}"
+            f" begin={_began} end={_ended}",
+            ids=make_ids(
+                frame_context.frame_id,
+                len(array_draw_plan),
+                len(active_feature_passes),
+            ),
+        )

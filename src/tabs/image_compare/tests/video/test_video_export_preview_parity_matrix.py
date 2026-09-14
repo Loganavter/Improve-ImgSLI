@@ -15,7 +15,7 @@ from tabs.image_compare.services.snapshot_render_plan_builder import (
     SnapshotRenderPlanBuilder,
 )
 from shared.image_processing.prescale import prescale_pair
-from shared.rendering import get_effective_export_interpolation_method
+from engine.cache import get_effective_export_interpolation_method
 from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
 from tabs.image_compare.canvas.scene import RenderScene
 

@@ -9,7 +9,7 @@ display). All functions take ``presenter`` as first argument.
 
 from __future__ import annotations
 
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
 
 from .preview import _update_preview_tracking
@@ -173,7 +173,7 @@ def handle_have_gate(presenter, source1, source2, document, peeked) -> bool:
         return True
     if reason == "live_half":
         # live-half paint — mirrors render_gate.py:400-421 / render_flow:781-802
-        from shared.rendering.display_image_picker import pick_display_image as _pick
+        from engine.cache.display_image_picker import pick_display_image as _pick
 
         global _last_one_side_log_sig
         _one_side_sig = (have1, have2, image_uid(source1) if source1 else None, image_uid(source2) if source2 else None)

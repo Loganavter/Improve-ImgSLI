@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 from shared.image_processing.pil_save import next_available_path
-from shared.rendering import NormalizedBounds, TargetSurfaceSpec, VirtualCanvasLayout
+from engine.cache import NormalizedBounds, TargetSurfaceSpec, VirtualCanvasLayout
 
 
 def unique_video_path(directory: str, base_name: str, ext: str) -> str:

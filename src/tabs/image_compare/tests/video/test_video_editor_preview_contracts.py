@@ -582,7 +582,7 @@ def test_resolve_scaled_content_geometry_uses_target_not_letterboxed_render():
     """
     from types import SimpleNamespace
 
-    from shared.rendering import NormalizedBounds, VirtualCanvasLayout
+    from engine.cache import NormalizedBounds, VirtualCanvasLayout
     from tabs.image_compare.services.video_snapshot_rendering.geometry import (
         geometry_with_aspect_insets,
         resolve_scaled_content_geometry,
@@ -704,7 +704,7 @@ def test_video_export_contain_resize_does_not_stretch_aspect():
 def test_unpadded_store_plan_apply_sets_shader_letterbox_from_clip(monkeypatch):
     """prepare→apply smoke: unpadded TiledPixelStore + overlay_clip → letterbox."""
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
-    from shared.rendering import get_effective_export_interpolation_method
+    from engine.cache import get_effective_export_interpolation_method
     from tabs.image_compare.canvas.presentation.geometry import CanvasGeometry
     from tabs.image_compare.canvas.presentation import plan_applicator as applicator
     from tabs.image_compare.canvas.scene import RenderScene
@@ -903,7 +903,7 @@ def test_unpadded_store_plan_apply_sets_shader_letterbox_from_clip(monkeypatch):
 def test_snapshot_frame_renderer_prescale_target_uses_exact_output_size():
     from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
     from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
-    from shared.rendering import TargetSurfaceSpec
+    from engine.cache import TargetSurfaceSpec
 
     request = VideoRenderRequest(
         target_surface=TargetSurfaceSpec(width=1954, height=1066, fill_rgba=(0, 0, 0, 0)),
@@ -932,7 +932,7 @@ def test_snapshot_frame_renderer_prescale_target_keeps_fit_content_base_visible(
         VideoRenderRequest,
     )
     from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
-    from shared.rendering import TargetSurfaceSpec
+    from engine.cache import TargetSurfaceSpec
 
     request = VideoRenderRequest(
         target_surface=TargetSurfaceSpec(width=594, height=562, fill_rgba=(0, 0, 0, 0)),
@@ -961,7 +961,7 @@ def test_snapshot_frame_renderer_prescale_target_keeps_fit_content_base_visible(
 def test_snapshot_frame_renderer_coerces_nearest_export_resampler(monkeypatch):
     from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
     from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
-    from shared.rendering import TargetSurfaceSpec
+    from engine.cache import TargetSurfaceSpec
 
     class Renderer(SnapshotFrameRenderer):
         def _prepare_canvas_frame_core(self, snap, request, img1, img2, **kwargs):

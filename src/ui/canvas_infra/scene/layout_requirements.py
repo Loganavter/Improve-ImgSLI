@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout
+from engine.cache import VirtualCanvasLayout, resolve_virtual_canvas_layout
 from ui.canvas_infra.scene.registry import get_canvas_registry
 
 def resolve_feature_virtual_layout(

@@ -26,7 +26,7 @@ Verification: ``QT_QPA_PLATFORM=offscreen pytest src/tabs/image_compare/tests/re
 
 from __future__ import annotations
 
-from shared.rendering.image_identity import image_uid
+from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.frame_context import FrameContext
 from tabs.image_compare.canvas.helpers import reset_canvas_overlays as _orig_reset_canvas_overlays
 from tabs.image_compare.canvas.registry import registry
@@ -136,7 +136,7 @@ def update_comparison_if_needed(presenter, frame_context: FrameContext | None = 
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         _preview_log("update: single-image mode %s - display_single_image_on_label", presenter.store.viewport.view_state.showing_single_image_mode)
-        from shared.rendering.display_image_picker import pick_display_image as _pick
+        from engine.cache.display_image_picker import pick_display_image as _pick
 
         image_to_show = (
             _pick(presenter.store.viewport.session_data.image_state.image1, source1, peeked["peeked_preview1"], None)
@@ -169,7 +169,7 @@ def update_comparison_if_needed(presenter, frame_context: FrameContext | None = 
         last_mag_sig = getattr(presenter, "_last_mag_signature", None)
         image_label = presenter.widget.image_label
         try:
-            from shared.rendering.image_identity import image_uid as _mag_image_uid
+            from engine.cache.image_identity import image_uid as _mag_image_uid
 
             _rc = presenter.store.viewport.session_data.render_cache
             _cached_diff = getattr(_rc, "cached_diff_image", None)

@@ -49,7 +49,7 @@ _BOUNDS_ALLOWLIST = {
     "src/ui/canvas_infra/scene/frame_geometry.py",
     "src/ui/canvas_infra/scene/layout_requirements.py",
     # Defines VirtualCanvasLayout/NormalizedBounds themselves.
-    "src/shared/rendering/layout_contract.py",
+    "src/engine/cache/layout_contract.py",
     # Snapshot prepare / headless export still read canvas_bounds to derive
     # geometry and clip (unpadded stores + CanvasGeometry), not to bake
     # padding into pixels. Keep allowlisted so this guard stays about

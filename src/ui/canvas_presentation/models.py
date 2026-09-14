@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from PIL import Image
-from shared.rendering import VirtualCanvasLayout
+from engine.cache import VirtualCanvasLayout
 
 @dataclass(slots=True, frozen=True)
 class CanvasTarget:

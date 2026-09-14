@@ -3,9 +3,9 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from shared.rendering.uniform_layout import assert_uniform_size
+from engine.cache.uniform_layout import assert_uniform_size
 
-from PySide6.QtGui import QColor, QRhiViewport
+from PySide6.QtGui import QRhiViewport
 
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
@@ -13,7 +13,9 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
+from tabs.image_compare.canvas.features.guides.overlay_model import (
+    resolve_guide_spans,
+)
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,
@@ -53,71 +55,31 @@ class GuidesPass(CanvasRenderPass):
         matrix = tuple(
             float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
         )
-        line_width = float(ctx.resolved_style.annotation_line_stroke_px)
-        for (
-            capture_center,
-            capture_radius,
-            target_centers,
-            target_radii,
-            color,
-        ) in tuple(widget.runtime_state._guide_sets):
-            if capture_center is None:
-                continue
-            end_x, end_y = widget_px_to_screen_px(
-                widget,
-                capture_center.x(),
-                capture_center.y(),
-                canvas_width=ctx.canvas_width,
-                canvas_height=ctx.canvas_height,
-                canvas_offset_x=ctx.canvas_offset_x,
-                canvas_offset_y=ctx.canvas_offset_y,
+        # Span decisions are stateless (overlay_model); this shell only packs
+        # them into per-item uniform blocks and stages the GPU buffers.
+        for span in resolve_guide_spans(ctx, widget, matrix):
+            self._items.append(
+                struct.pack(
+                    _UNIFORM_FMT,
+                    *matrix,
+                    float(ctx.width),
+                    float(ctx.height),
+                    span.start_x,
+                    span.start_y,
+                    span.end_x,
+                    span.end_y,
+                    span.start_radius,
+                    span.end_radius,
+                    span.line_width,
+                    0.0,
+                    0.0,
+                    0.0,
+                    span.red,
+                    span.green,
+                    span.blue,
+                    span.alpha,
+                )
             )
-            end_radius = max(0.0, float(capture_radius or 0.0) * float(ctx.zoom_level))
-            draw_color = QColor(color)
-            targets = tuple(target_centers or ())
-            radii = tuple(target_radii or ())
-            for index, target_center in enumerate(targets):
-                if target_center is None:
-                    continue
-                target_radius = (
-                    radii[index]
-                    if index < len(radii)
-                    else (radii[-1] if radii else 0.0)
-                )
-                start_x, start_y = widget_px_to_screen_px(
-                    widget,
-                    target_center.x(),
-                    target_center.y(),
-                    canvas_width=ctx.canvas_width,
-                    canvas_height=ctx.canvas_height,
-                    canvas_offset_x=ctx.canvas_offset_x,
-                    canvas_offset_y=ctx.canvas_offset_y,
-                )
-                self._items.append(
-                    struct.pack(
-                        _UNIFORM_FMT,
-                        *matrix,
-                        float(ctx.width),
-                        float(ctx.height),
-                        float(start_x),
-                        float(start_y),
-                        float(end_x),
-                        float(end_y),
-                        max(
-                            0.0,
-                            float(target_radius or 0.0) * float(ctx.zoom_level),
-                        ),
-                        end_radius,
-                        line_width,
-                        0.0,
-                        0.0,
-                        0.0,
-                        draw_color.redF(),
-                        draw_color.greenF(),
-                        draw_color.blueF(),
-                        draw_color.alphaF(),
-                    )
-                )
         self.resources.ensure_items(len(self._items))
         self.resources.prepare_vertex_buffer(resource_updates)
         for index, block in enumerate(self._items):
