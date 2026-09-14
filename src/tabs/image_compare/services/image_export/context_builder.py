@@ -142,7 +142,7 @@ class ExportContextBuilder:
             live_snapshot.viewport_state
         )
 
-        from shared.image_processing.pixel_ops.unify import unify_pair
+        from engine.store.pixel_ops.unify import unify_pair
 
         image1_for_save, image2_for_save = unify_pair(
             original1_full,
@@ -215,8 +215,8 @@ class ExportContextBuilder:
         image,
         max_edge: int = 1200,
     ) -> PIL.Image.Image:
-        from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        from engine.store.pixel_ops.downscale import downscale_source_to_pil
+        from engine.store.tiled_pixel_store import TiledPixelStore
 
         width, height = image.size
         longest_edge = max(width, height)

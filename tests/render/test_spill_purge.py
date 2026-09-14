@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.image_processing import tiled_pixel_store as tps
+from engine.store import tiled_pixel_store as tps
 
 _SRC_DIR = str(Path(tps.__file__).resolve().parents[2])
 
@@ -33,7 +33,7 @@ import sys, os, time
 sys.path.insert(0, {src!r})
 from PySide6.QtWidgets import QApplication
 app = QApplication.instance() or QApplication(["x", "-platform", "offscreen"])
-import shared.image_processing.tiled_pixel_store as tps
+import engine.store.tiled_pixel_store as tps
 tps._acquire_instance_lock({spill_dir!r})
 print("LOCKED" if tps._have_exclusive_lock else "NOT_LOCKED", flush=True)
 time.sleep({hold_seconds})

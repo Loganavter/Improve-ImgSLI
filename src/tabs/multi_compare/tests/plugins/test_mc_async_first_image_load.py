@@ -161,7 +161,7 @@ def test_drop_handler_returns_fast_with_imageless_slot(tmp_path, monkeypatch):
 
 def test_preview_fills_slot_then_full_res_second_stage(tmp_path):
     """Worker preview → cache + note_slot_pixels → full-res worker → store."""
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.multi_compare.pipeline.cache import resolve_slot_source
 
     pool = _CapturingPool()

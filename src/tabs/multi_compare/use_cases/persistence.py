@@ -318,7 +318,7 @@ def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> di
     Only open ``TiledPixelStore`` instances are returned (previews are
     re-decodable on reopen).
     """
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     store = getattr(context, "store", None)
     if store is None:

@@ -76,7 +76,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     if not (0 <= index_in_list < len(lst)) or lst[index_in_list].path != path:
         ic_preview_debug("handle_full_image_loaded slot=%s -> lst mismatch len=%s path_mismatch=%s", image_number, len(lst), lst[index_in_list].path if 0 <= index_in_list < len(lst) else "oob")
         return
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore, close_pixel_store, maybe_wrap_pixel_store
+    from engine.store.tiled_pixel_store import TiledPixelStore, close_pixel_store, maybe_wrap_pixel_store
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)

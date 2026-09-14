@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from shared.image_processing import pyramid_registry
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store import pyramid_registry
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 @pytest.fixture(autouse=True)

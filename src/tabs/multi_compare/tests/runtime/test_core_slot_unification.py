@@ -161,7 +161,7 @@ def test_remove_slot_undo_keeps_store_open(tmp_path):
     the same usable store (no close ever touches an undo snapshot)."""
     from pathlib import Path
 
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.multi_compare.pipeline.cache import MultiComparePixelCache
 
     store, dispatcher = _make_store_with_mc_session()

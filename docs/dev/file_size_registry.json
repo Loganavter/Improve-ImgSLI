@@ -48,6 +48,17 @@
       }
     },
     {
+      "path": "src/engine/store/tiled_pixel_store.py",
+      "lines": 992,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
+      }
+    },
+    {
       "path": "src/plugins/export/dialog.py",
       "lines": 733,
       "limit": 500,
@@ -122,17 +133,6 @@
       "parsed": {
         "pattern": "collaborator",
         "reason": "deprecated shim over autocrop.CropService — no state, delegates to DI service"
-      }
-    },
-    {
-      "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 992,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
-      "parsed": {
-        "pattern": "state-machine",
-        "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
       }
     },
     {

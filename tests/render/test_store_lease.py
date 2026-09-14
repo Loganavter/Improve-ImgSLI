@@ -3,7 +3,7 @@
 from PIL import Image
 
 from shared.image_processing.store_lease import StoreLease
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def test_lease_invalid_after_close():
@@ -25,7 +25,7 @@ def test_worker_skips_stale_lease():
     lease = StoreLease.capture(store)
     store.close()
 
-    from shared.image_processing.pixel_ops.unify import unify_pair
+    from engine.store.pixel_ops.unify import unify_pair
 
     img = Image.new("RGBA", (16, 16), "green")
     u1, u2 = unify_pair(store, img, lease1=lease, lease2=None)

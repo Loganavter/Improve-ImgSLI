@@ -75,7 +75,7 @@ def test_double_add_same_file_single_preview_decode(tmp_path, monkeypatch):
 
     assert preview_calls and len(preview_calls) == 1
     # Both slots filled from the one decode (preview tier, then full tier).
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.multi_compare.pipeline.cache import resolve_slot_source
 
     assert len(widget.state.slots) == 2
@@ -121,7 +121,7 @@ def test_full_stage_bounded_two_concurrent(tmp_path):
     _drain(pool)
     assert getattr(controller, "_mc_full_queue", []) == []
     assert getattr(controller, "_mc_full_active", {}) == {}
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.multi_compare.pipeline.cache import resolve_slot_source as _resolve
 
     for slot in widget.state.slots:

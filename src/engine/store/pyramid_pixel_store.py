@@ -18,7 +18,7 @@ from typing import Callable
 
 import numpy as np
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 logger = logging.getLogger("ImproveImgSLI")
 

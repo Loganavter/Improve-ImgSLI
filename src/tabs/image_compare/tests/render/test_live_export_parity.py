@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from shared.image_processing import pyramid_registry
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store import pyramid_registry
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.lod import LevelKey
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import (

@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtGui import QImage
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 

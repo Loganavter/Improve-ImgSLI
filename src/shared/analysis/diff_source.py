@@ -25,8 +25,8 @@ from shared.analysis.edge_detector import (
 )
 from shared.analysis.output import finalize_diff_output
 from shared.image_processing.store_lease import StoreLease
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.image_processing.regions import build_uniform_tile_grid
+from engine.store.tiled_pixel_store import TiledPixelStore
+from engine.store.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -54,7 +54,7 @@ def _align_source2(source1, source2):
     if source2.size == source1.size:
         return source2
     if isinstance(source2, TiledPixelStore):
-        from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
+        from engine.store.pixel_ops.downscale import downscale_source_to_pil
 
         return downscale_source_to_pil(source2, source1.size)
     return source2.resize(source1.size, Image.Resampling.LANCZOS)

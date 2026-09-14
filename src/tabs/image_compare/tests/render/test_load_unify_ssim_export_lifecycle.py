@@ -4,10 +4,10 @@ from PIL import Image
 
 from shared.analysis.diff_source import create_highlight_diff_from_sources
 from shared.analysis.ssim_source import create_ssim_map_from_sources
-from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
-from shared.image_processing.pixel_ops.unify import unify_pair
+from engine.store.pixel_ops.downscale import downscale_pair_to_limit
+from engine.store.pixel_ops.unify import unify_pair
 from shared.image_processing.store_lease import StoreLease
-from shared.image_processing.tiled_pixel_store import (
+from engine.store.tiled_pixel_store import (
     TiledPixelStore,
     qimage_from_pixel_source,
 )

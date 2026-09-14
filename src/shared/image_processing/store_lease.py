@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 @dataclass(frozen=True)
@@ -18,7 +18,7 @@ class StoreLease:
 
     @classmethod
     def capture(cls, store) -> "StoreLease | None":
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        from engine.store.tiled_pixel_store import TiledPixelStore
 
         if not isinstance(store, TiledPixelStore):
             return None

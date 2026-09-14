@@ -231,7 +231,7 @@ def on_image_loaded(controller, result):
         try:
             if pil_img is not None:
                 from PySide6.QtGui import QImage
-                from shared.image_processing.tiled_pixel_store import TiledPixelStore
+                from engine.store.tiled_pixel_store import TiledPixelStore
                 from tabs.image_compare.state.actions import PutPixelAction, PutPreviewAction
                 d = getattr(controller.store, "get_dispatcher", lambda: None)()
                 has_dispatcher = d is not None
@@ -311,7 +311,7 @@ def on_image_loaded(controller, result):
                     pass
             load_full_resolution_async(controller, path, image_number, index_in_list)
         else:
-            from shared.image_processing.tiled_pixel_store import (
+            from engine.store.tiled_pixel_store import (
                 TiledPixelStore,
                 close_pixel_store,
                 maybe_wrap_pixel_store,
@@ -617,7 +617,7 @@ def on_full_resolution_error(controller, path: str, err) -> None:
 
 
 def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signal, method_name):
-    from shared.image_processing.pixel_ops.unify import unify_pair
+    from engine.store.pixel_ops.unify import unify_pair
 
     try:
         from tabs.image_compare.pipeline.abort import AbortSignal
@@ -637,7 +637,7 @@ def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signa
     try:
         import time
 
-        from shared.image_processing.tiled_pixel_store import pixel_source_size
+        from engine.store.tiled_pixel_store import pixel_source_size
 
         try:
             _sw1, _sh1 = pixel_source_size(img1)

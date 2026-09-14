@@ -175,7 +175,7 @@ def crop_source_to_box(source: Any, box: CropBox | None) -> Any:
     if source is None or box is None:
         return source
     try:
-        from shared.image_processing.tiled_pixel_store import pixel_source_size
+        from engine.store.tiled_pixel_store import pixel_source_size
 
         w, h = pixel_source_size(source)
     except Exception:
@@ -203,7 +203,7 @@ def crop_source_to_box(source: Any, box: CropBox | None) -> Any:
     if left == 0 and top == 0 and right == w and bottom == h:
         return source
     try:
-        from shared.image_processing.pixel_ops.resample import crop_source
+        from engine.store.pixel_ops.resample import crop_source
 
         return crop_source(source, (left, top, right, bottom))
     except Exception:

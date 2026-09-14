@@ -44,7 +44,7 @@ def layer_fit_scale(image, rect_w: float, rect_h: float) -> tuple[float, float]:
     if hasattr(image, "shape"):
         h, w = image.shape[:2]
     else:
-        from shared.image_processing.tiled_pixel_store import pixel_source_size
+        from engine.store.tiled_pixel_store import pixel_source_size
 
         w, h = pixel_source_size(image)
     if h <= 0 or w <= 0:

@@ -28,7 +28,7 @@ def _close_outgoing_store(document, image_number: int, outgoing_store) -> None:
     # SlotSource: other slot sharing same path is handled by PipelineCache refcount;
     # direct document pixel fields removed (Phase 3).
     try:
-        from shared.image_processing.tiled_pixel_store import close_pixel_store
+        from engine.store.tiled_pixel_store import close_pixel_store
 
         close_pixel_store(outgoing_store)
     except Exception:
@@ -329,7 +329,7 @@ class PlaylistListOperations:
                 pass
             if outgoing_store is None:
                 try:
-                    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+                    from engine.store.tiled_pixel_store import TiledPixelStore
 
                     item_img = getattr(outgoing_item, "image", None)
                     if isinstance(item_img, TiledPixelStore):
@@ -408,7 +408,7 @@ class PlaylistListOperations:
                 pass
             if outgoing_store is None:
                 try:
-                    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+                    from engine.store.tiled_pixel_store import TiledPixelStore
 
                     item_img = getattr(outgoing_item, "image", None)
                     if isinstance(item_img, TiledPixelStore):
@@ -435,7 +435,7 @@ class PlaylistListOperations:
                 # pixel store for non-current removals: close the item's own store if tiled
                 if not is_current_removal:
                     try:
-                        from shared.image_processing.tiled_pixel_store import TiledPixelStore, close_pixel_store
+                        from engine.store.tiled_pixel_store import TiledPixelStore, close_pixel_store
 
                         item_img = getattr(outgoing_item, "image", None)
                         if isinstance(item_img, TiledPixelStore):
@@ -498,7 +498,7 @@ class PlaylistListOperations:
             pass
         # collect per-item tiled stores that are not the slot store
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
             for item in list(target_list):
                 img = getattr(item, "image", None)

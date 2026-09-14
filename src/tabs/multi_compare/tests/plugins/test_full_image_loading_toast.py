@@ -113,14 +113,14 @@ def test_start_pyramid_build_finishes_toast_immediately_when_no_pyramid_needed(
     )
     controller._show_loading_toast(1)
 
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     path = tmp_path / "tiny.png"
     Image.new("RGB", (8, 8), (1, 2, 3)).save(path)
     store = TiledPixelStore.from_path(str(path))
 
     monkeypatch.setattr(
-        "shared.image_processing.pyramid_registry.ensure_pyramid", lambda _store: None
+        "engine.store.pyramid_registry.ensure_pyramid", lambda _store: None
     )
 
     controller._start_pyramid_build(store, slot_id=1)
@@ -138,7 +138,7 @@ def test_start_pyramid_build_tracks_progress_and_completes(tmp_path, monkeypatch
     )
     controller._show_loading_toast(1)
 
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     path = tmp_path / "tiny.png"
     Image.new("RGB", (8, 8), (1, 2, 3)).save(path)
@@ -162,7 +162,7 @@ def test_start_pyramid_build_tracks_progress_and_completes(tmp_path, monkeypatch
 
     pyramid = _FakePyramid()
     monkeypatch.setattr(
-        "shared.image_processing.pyramid_registry.ensure_pyramid", lambda _store: pyramid
+        "engine.store.pyramid_registry.ensure_pyramid", lambda _store: pyramid
     )
 
     controller._start_pyramid_build(store, slot_id=1)

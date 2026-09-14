@@ -26,7 +26,7 @@ def load_pixel_store(
     ``shared.image_processing.embedded_pixel_cache`` (без импорта ``tabs``).
     """
     from shared.image_processing.autocrop.debug import autocrop_debug
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     # Нормализация deprecated auto_crop → crop_service
     if crop_service is None and auto_crop is not None:

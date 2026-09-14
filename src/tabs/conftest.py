@@ -42,7 +42,7 @@ def _redirect_tps_spill_to_tmp(_hermetic_tps_spill_dir, monkeypatch):
     cache to the session tmp dir; tests passing their own ``tmp_dir`` are
     unaffected (``tmp_dir`` wins in ``_spill_dir``).
     """
-    from shared.image_processing import tiled_pixel_store as _tps
+    from engine.store import tiled_pixel_store as _tps
 
     monkeypatch.setattr(_tps, "_spill_dir_cache", _hermetic_tps_spill_dir)
 
