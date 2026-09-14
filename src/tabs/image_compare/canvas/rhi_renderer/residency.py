@@ -22,6 +22,7 @@ genuinely different per tab.
 from __future__ import annotations
 
 import itertools
+import time
 
 from engine.store.pyramid_registry import pyramid_for
 from engine.store.tiled_pixel_store import TiledPixelStore
@@ -30,6 +31,11 @@ from engine.cache.lod import LevelKey, select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
+from engine.frame.context import BudgetStats, make_ids
+from engine.cache import residency as _engine_residency
+from engine.cache import tile_upload_budget as _tile_upload_budget
+
+from tabs.image_compare.canvas.loupe_trace import frame_context_from_widget
 
 from ..texture_parts.tile_geometry import resolve_side_visible_rect
 from ..texture_parts.crop_clip import (
@@ -851,6 +857,18 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     [len(tile_service.resident_tiles(k) or ()) for k in _preview_protect],
                 )
 
+        # Phase-B2 frame bus: snapshot pre-call residency (pure reads) and
+        # the wall clock so the record below carries measured values, not
+        # placeholders. Reads only -- budget/eviction decisions are untouched.
+        _resident_before = {
+            spec.key: tile_service.resident_tiles(spec.key) for spec in specs
+        }
+        # Live module-global reads (same namespaces ``realize_specs`` /
+        # ``UploadDeadline`` read at call time), so tuned/patched budgets
+        # flow into the record instead of a stale import-time copy.
+        _live_count_budget = _engine_residency.TILE_UPLOAD_BUDGET_PER_CALL
+        _live_time_budget_ms = _tile_upload_budget.TILE_UPLOAD_TIME_BUDGET_MS
+        _realize_t0 = time.perf_counter()
         result = self.realize_specs(
             tile_service,
             specs,
@@ -858,6 +876,40 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             extra_protect_keys=extra_protect_keys,
             dirty_layers=dirty_layers,
         )
+        # Phase-B2 frame bus: realize budget/deadline/residency fact
+        # (record only -- the loop above is behavior-identical).
+        _frame_context = frame_context_from_widget(widget)
+        if _frame_context is not None:
+            _realize_ms = (time.perf_counter() - _realize_t0) * 1000.0
+            _uploaded = 0
+            _skipped = 0
+            for _spec in specs:
+                _after = tile_service.resident_tiles(_spec.key)
+                _uploaded += len(
+                    _after - _resident_before.get(_spec.key, set())
+                )
+                _skipped += len(
+                    set(result.protected_by_key.get(_spec.key, set())) - _after
+                )
+            _stats = BudgetStats(
+                budget=int(_live_count_budget),
+                uploaded=int(_uploaded),
+                skipped=int(_skipped),
+                time_ms=float(_realize_ms),
+                budget_ms=float(_live_time_budget_ms),
+                more_pending=bool(result.more_tiles_pending),
+            )
+            _frame_context.record(
+                "realize_tile_plan",
+                "skipped" if result.more_tiles_pending else "ran",
+                f"realize_tile_plan keys={[str(s.key) for s in specs]}"
+                f" {_stats.describe()}",
+                ids=make_ids(
+                    _frame_context.frame_id,
+                    tuple(str(s.key) for s in specs),
+                    _stats.as_tuple(),
+                ),
+            )
 
         if owns_dirty_layers:
             # No caller-supplied dict: nobody downstream will call

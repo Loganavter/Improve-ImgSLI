@@ -13,6 +13,9 @@ from __future__ import annotations
 import time
 
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.frame.context import BudgetStats, make_ids
+from engine.cache import residency as _engine_residency
+from engine.cache import tile_upload_budget as _tile_upload_budget
 from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
@@ -97,12 +100,37 @@ def realize_main_tiles(
         extra_protect_keys=fallback_protect_keys,
         dirty_layers=dirty_layers,
     )
+    # Phase-B2 frame bus: branch duration reuses the gated measurement
+    # above (existing tile_dump_enabled pattern only -- 0.0 when the gate
+    # is off, never a new unconditional clock on this path).
+    _main_dt = 0.0
     if _debug_timing:
         _dt = time.perf_counter() - _t0
+        _main_dt = _dt
         if _dt > 0.05:
             log_tile_event(
                 "realize_tile_plan.timing", which="main", duration_s=_dt
             )
+    # Phase-B2 frame bus: main-branch budget/deadline fact (record only).
+    _frame_context = frame_context_from_widget(widget)
+    if _frame_context is not None:
+        _stats = BudgetStats(
+            budget=int(_engine_residency.TILE_UPLOAD_BUDGET_PER_CALL),
+            time_ms=float(_main_dt),
+            budget_ms=float(_tile_upload_budget.TILE_UPLOAD_TIME_BUDGET_MS),
+            more_pending=bool(main_more_pending),
+        )
+        _frame_context.record(
+            "realize_main",
+            "skipped" if main_more_pending else "ran",
+            f"realize_main keys={[str(k) for k in texture_keys]}"
+            f" {_stats.describe()}",
+            ids=make_ids(
+                _frame_context.frame_id,
+                tuple(str(k) for k in texture_keys),
+                _stats.as_tuple(),
+            ),
+        )
     # Propagate tile more_pending to canvas runtime_state for union letterbox hold
     try:
         widget.runtime_state._tile_more_pending = bool(main_more_pending)
@@ -234,6 +262,7 @@ def realize_magnifier_tiles(
     if _mag_branch_active:
         _debug_timing = tile_dump_enabled()
         _t1 = time.perf_counter() if _debug_timing else 0.0
+        _mag_dt = 0.0
         # Loupe residency gate: the magnifier samples the diff overlay too
         # (diff modes read it alongside source tiles), so its tiles resolve
         # under the same capture window -- not diff_key=None, which left
@@ -265,6 +294,7 @@ def realize_magnifier_tiles(
                 pass
         if _debug_timing:
             _dt1 = time.perf_counter() - _t1
+            _mag_dt = _dt1
             if _dt1 > 0.05:
                 log_tile_event(
                     "realize_tile_plan.timing",
@@ -274,3 +304,24 @@ def realize_magnifier_tiles(
         _trace_mag_residency(
             renderer, widget, ctx, _cap_uv, _mag_diff_key, mag_more_pending
         )
+        # Phase-B2 frame bus: magnifier-branch budget/deadline fact
+        # (record only; duration reuses the gated measurement above).
+        _mag_frame_context = frame_context_from_widget(widget)
+        if _mag_frame_context is not None:
+            _mag_stats = BudgetStats(
+                budget=int(_engine_residency.TILE_UPLOAD_BUDGET_PER_CALL),
+                time_ms=float(_mag_dt),
+                budget_ms=float(_tile_upload_budget.TILE_UPLOAD_TIME_BUDGET_MS),
+                more_pending=bool(mag_more_pending),
+            )
+            _mag_frame_context.record(
+                "realize_magnifier",
+                "skipped" if mag_more_pending else "ran",
+                f"realize_magnifier keys={[str(k) for k in ctx.source_texture_ids]}"
+                f" {_mag_stats.describe()}",
+                ids=make_ids(
+                    _mag_frame_context.frame_id,
+                    tuple(str(k) for k in ctx.source_texture_ids),
+                    _mag_stats.as_tuple(),
+                ),
+            )
