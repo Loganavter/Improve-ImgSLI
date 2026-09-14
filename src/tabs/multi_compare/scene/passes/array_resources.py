@@ -11,8 +11,11 @@ this tab's own per-instance vertex layout/shaders/uniform size (no
 cross-image pairing here, so one instance is a single (layer, tile) pair
 instead of an image1/image2/diff triple). Tile *residency decisions*
 (which tiles should be resident, cropping, marking resident) stay in
-``BaseImagesPass._realize_tile_residency``; this class only owns the GPU
-resources those decisions get realized against.
+``passes/residency.py::realize`` (spec resolution) plus
+``shared.rendering.residency.TileResidencyRealizerBase.realize_specs``
+(the per-key target/protect/budget/upload loop) -- ``BaseImagesPass``
+only forwards its own state into ``realize()``; this class only owns the
+GPU resources those decisions get realized against.
 """
 
 from __future__ import annotations
