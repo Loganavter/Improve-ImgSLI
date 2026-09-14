@@ -161,6 +161,29 @@ Comparison letterbox (`image_compare`): `update_common_letterbox_geometry` (`can
 
 Canvas features are discovered automatically from `tabs/<tab>/canvas/features/<name>/`. A feature package should be removable without breaking startup, as long as no other code imports it directly.
 
+### Tile engine (direction)
+
+The tile stack both canvas tabs share is becoming a named engine instead of
+an unnamed convention each feature re-solves (residency, fallback, throttle).
+Target shape — `src/engine/` with `cache/` (Qt-free residency/LOD/coverage),
+`gpu/` (Qt-tainted shell behind engine-owned interfaces), `frame/` (context +
+ordered passes), `passes/` (merged tab passes), `store/` (pixel stores).
+Rules, enforced by contract tests (`tests/contracts/test_engine_no_app_imports.py`,
+`test_no_private_grid.py`, `test_coverage_uses_slot_for.py`):
+
+- engine code never imports `tabs.*`, `plugins.*`, or `core/store` — in code
+  or string literals;
+- tabs own no grid/cache lattice and allocate no tile textures outside the service;
+- coverage is computed only over resident slots (`slot_for(...) is not None`);
+- passes `record()` reading only their context; no `if mode == "export"`
+  inside a pass (snapshot-replay per [rendering-model](rendering/rendering-model.md)).
+
+Feature checklist for new tile work (also in [CODE_PATTERNS.md](CODE_PATTERNS.md)):
+declare a `ResidencySpec` → draw-list via `slot_for` + `select_level` →
+read only `FrameContext` in `record()` → manifest + `RENDER_PASSES` ordered
+by stacking policy → budget test + live and snapshot runs. Full plan:
+[plan_engine_design.md](plan_engine_design.md).
+
 ## Plugins
 
 Anything with `@plugin(...)` participates in the same lifecycle — both
@@ -265,7 +288,7 @@ If you need to add functionality, use the smallest viable integration point:
 | new tab-owned state | tab's `state/` package + extension reducer (see [STORE.md](STORE.md)) |
 | new app-wide capability | `plugins/` |
 | new workspace mode | `tabs/` |
-| reusable rendering/layout primitive | `shared/rendering/` |
+| reusable rendering/layout primitive | `shared/rendering/` (→ `src/engine/` per "Tile engine" above) |
 | OS or file integration | `services/` |
 
 ## Practical Reading Order
