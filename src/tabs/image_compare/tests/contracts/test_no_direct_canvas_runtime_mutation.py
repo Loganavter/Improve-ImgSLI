@@ -38,6 +38,10 @@ ALLOWED_WRITERS = {
     "src/shared/rendering/host_texture_cache.py",
     "src/ui/canvas_infra/rhi/rhi_render.py",
     "src/tabs/image_compare/use_cases/canvas_invalidate.py",  # Phase 4 thin-owner forwarder, barrier-equivalent clear on invalidate
+    # NOTE (engine-migration C3): upload_pil_images and the plan applicator
+    # moved behind engine.cache.display_tier_service — same barrier writers,
+    # new home. The tab surfaces above stay allowlisted (hook binding only).
+    "src/engine/cache/display_tier_service.py",
 }
 
 

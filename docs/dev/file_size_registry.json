@@ -14,6 +14,18 @@
       }
     },
     {
+      "path": "src/engine/cache/display_tier_service.py",
+      "lines": 1258,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"display-tier upload/geometry + legacy-plan apply share one hook boundary and canvas-state commit lifecycle — splitting threads commits across modules\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "display-tier upload/geometry + legacy-plan apply share one hook boundary and canvas-state commit lifecycle — splitting threads commits across modules"
+      }
+    },
+    {
       "path": "src/engine/cache/tile_texture_service.py",
       "lines": 627,
       "limit": 500,
@@ -283,17 +295,6 @@
       }
     },
     {
-      "path": "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
-      "lines": 534,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=canvas-presentation reason=\"plan applicator — 5 helpers + geometry sync + store binding, 519 lines\"",
-      "parsed": {
-        "pattern": "canvas-presentation",
-        "reason": "plan applicator — 5 helpers + geometry sync + store binding, 519 lines"
-      }
-    },
-    {
       "path": "src/tabs/image_compare/canvas/render_context.py",
       "lines": 644,
       "limit": 500,
@@ -408,18 +409,6 @@
         "pattern": "thin-owner",
         "size": "exempt",
         "reason": "tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine"
-      }
-    },
-    {
-      "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
-      "lines": 615,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",
-      "parsed": {
-        "pattern": "canvas-presentation",
-        "size": "exempt",
-        "reason": "texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines"
       }
     },
     {
