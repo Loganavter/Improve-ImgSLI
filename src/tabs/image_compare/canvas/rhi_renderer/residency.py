@@ -11,7 +11,7 @@ performs them against real QRhi resources -- it never decides on its own
 which indices should be resident.
 
 The actual per-key target/protect/budget/upload loop lives in
-``shared.rendering.residency.TileResidencyRealizerBase.realize_specs``
+``engine.cache.residency.TileResidencyRealizerBase.realize_specs``
 (docs/dev/rendering/renderer-unification-plan.md Phase 3 step 3) -- this
 class only resolves *this call's* list of specs (fixed image1/image2/diff
 letterbox pairs, whose LOD level the caller already picked) and supplies
@@ -26,12 +26,12 @@ import itertools
 from shared.image_processing.pyramid_registry import pyramid_for
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
-from engine.cache.lod import LevelKey
+from engine.cache.lod import LevelKey, select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
 
-from ..texture_parts.tile_geometry import _visible_side_image_rect
+from ..texture_parts.tile_geometry import resolve_side_visible_rect
 from ..texture_parts.crop_clip import (
     BoxCroppedStoreView,
     path_for_texture_key,
@@ -53,6 +53,16 @@ except Exception:  # pragma: no cover - import-time fallback
 
     def _ic_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
         return None
+
+try:
+    from tabs.image_compare.debug import ic_gap_debug as _gap_log, ic_gap_debug_enabled as _gap_enabled  # type: ignore
+except Exception:  # pragma: no cover - import-time fallback
+
+    def _gap_log(msg: str, *a, **kw) -> None:  # type: ignore
+        return None
+
+    def _gap_enabled() -> bool:  # type: ignore
+        return False
 
 # docs/dev/TILED_RENDERING_DESIGN.md Phase 2 "Open questions: Cache budget"
 # -- byte budget over resident-tile pixel bytes (RGBA8, post-apron), not a
@@ -82,7 +92,7 @@ _TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 # PIL image on next use (see the cache-miss fallback in
 # ``realize_tile_plan`` below), so eviction here is a memory/recompute
 # tradeoff, never a correctness one.
-# Budget shared with ``shared/rendering/host_texture_cache.py`` (one
+# Budget shared with ``engine/gpu/host_texture_cache.py`` (one
 # canonical 3 GiB value; keep them in sync via the shared constant).
 from engine.gpu.host_texture_cache import (
     DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES as _HOST_TEXTURE_CACHE_BUDGET_BYTES,
@@ -113,6 +123,113 @@ def _pil_image_for_texture_key(widget, key):
     if key == widget._diff_source_texture_id:
         return state._diff_source_pil_image
     return None
+
+
+def resolve_lod_texture_keys(
+    texture_keys: tuple[object, object],
+    sources: tuple[object, object],
+    base_image,
+    canvas_size_px: tuple[float, float],
+) -> tuple[object, object]:
+    """Substitutes each side's texture key with a ``LevelKey`` for the
+    pyramid mipmap level matching the current on-screen scale.
+
+    Tab-side spec resolution (mirrors multi_compare's
+    ``residency.lod_key_and_source``): the engine decides the level via
+    ``select_level``; this only translates this call's (keys, sources,
+    letterboxes, canvas size) into the resolved keys the residency pass
+    registers grids for and the draw plan builds tiles from. Lives here --
+    next to ``realize_tile_plan``'s grid registration -- rather than in
+    ``draw_plan.py`` so LOD-key resolution and grid registration can't
+    drift apart; ``draw_plan`` re-exports it for existing callers.
+
+    ``canvas_size_px`` is the full logical canvas in *device* pixels (live:
+    widget size x DPR; tiled export: the whole export canvas), so live
+    render, snapshot and export resolve identical levels for the same
+    document+zoom (rendering-model.md parity). Per-tile export zoom is
+    deliberately not used here — all tiles of one export must sample one
+    level or seams appear. Sides without a registered pyramid (plain PIL,
+    preview tier, pyramid not yet built/invalidated) keep their bare key,
+    which is byte-identical to the pre-pyramid path."""
+    canvas_w_px, canvas_h_px = canvas_size_px
+    zoom = float(base_image.zoom) or 1.0
+    letterboxes = (base_image.letterbox1, base_image.letterbox2)
+    pyramids = [
+        pyramid_for(source) if isinstance(source, TiledPixelStore) else None
+        for source in sources
+    ]
+    # Both sides' pyramids build their levels asynchronously in the
+    # background and can finish a level at different times. Clamping each
+    # side to its own pyramid.level_count independently (as
+    # best_level_for_scale does) lets one side pick a level the other
+    # hasn't built yet whenever both are multi-tile -- their tile rects are
+    # fractions of that side's own grid dimensions, which are only
+    # comparable between sides when both grids have the same row/column
+    # count. A shared level_count cap keeps both sides' clamped level (and
+    # thus grid dimensions) identical whenever they'd otherwise want the
+    # same level (the common case, since compared images are unified to
+    # matching sizes/letterboxes).
+    # Effective level count per TiledPixelStore source: missing pyramid
+    # (still TiledPixelStore, not pyramid-built yet) is treated as 1
+    # (only base level) so a [3, None] pair clamps to 1 rather than 3
+    # — otherwise the ready side picks a coarse level whose grid mismatches
+    # the bare side's grid and produces 0.0007 sliver bboxes.
+    effective_counts: list[int] = []
+    for src, pyr in zip(sources, pyramids):
+        if isinstance(src, TiledPixelStore):
+            effective_counts.append(pyr.level_count if pyr is not None else 1)
+    shared_level_count = min(effective_counts) if effective_counts else 0
+    ready_count = sum(1 for pyr in pyramids if pyr is not None)
+    if _gap_enabled():
+        try:
+            _gap_log(
+                "gap resolve_lod shared_level=%d ready=%d canvas=%.0fx%.0f zoom=%.3f letterbox1=(%.3f,%.3f,%.3f,%.3f) letterbox2=(%.3f,%.3f,%.3f,%.3f) keys=%s src_types=%s pyr_counts=%s",
+                shared_level_count,
+                ready_count,
+                canvas_w_px,
+                canvas_h_px,
+                zoom,
+                *letterboxes[0],
+                *letterboxes[1],
+                [str(k) for k in texture_keys],
+                [type(s).__name__ if s is not None else None for s in sources],
+                [p.level_count if p else None for p in pyramids],
+            )
+        except Exception:
+            pass
+    resolved = []
+    for key, letterbox, source, pyramid in zip(
+        texture_keys, letterboxes, sources, pyramids
+    ):
+        if not isinstance(source, TiledPixelStore):
+            resolved.append(key)
+            continue
+        if pyramid is None:
+            resolved.append(key)
+            continue
+        src_w, src_h = source.size
+        disp_w = canvas_w_px * float(letterbox[2] or 1.0) * zoom
+        disp_h = canvas_h_px * float(letterbox[3] or 1.0) * zoom
+        dest_scale = max(
+            disp_w / float(max(1, src_w)), disp_h / float(max(1, src_h))
+        )
+        level = select_level(dest_scale, shared_level_count)
+        rhi_render_debug(
+            "resolve_lod key=%s use_hires=%s zoom=%.3f src=%dx%d disp=%.1fx%.1f "
+            "dest_scale=%.5f level=%d/%d",
+            key,
+            getattr(base_image, "use_hires", None),
+            zoom,
+            src_w,
+            src_h,
+            disp_w,
+            disp_h,
+            dest_scale,
+            level,
+            pyramid.level_count - 1,
+        )
+        resolved.append(key if level == 0 else LevelKey(key, level))
+    return tuple(resolved)  # type: ignore[return-value]  # tuple of key|LevelKey
 
 
 class TileResidencyRealizer(TileResidencyRealizerBase):
@@ -396,7 +513,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         should be resident (visible rect plus a residency margin ring) and
         aren't already, and evicts whatever
         ``tile_service.evict_over_budget()`` decides to reclaim -- see
-        ``shared.rendering.residency.realize_specs`` for the shared loop
+        ``engine.cache.residency.realize_specs`` for the shared loop
         this delegates to. Tiles are cropped from the full-resolution
         QImage cached at ``widget.runtime_state._texture_upload_cache``
         (the same cache ``restore_texture_uploads`` uses to survive context
@@ -672,22 +789,19 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                             )
                     except Exception:
                         pass
-            if capture_uv_rect is not None:
-                cap_left, cap_top, cap_right, cap_bottom = capture_uv_rect
-                visible_rect = (
-                    cap_left * grid.total_width,
-                    cap_top * grid.total_height,
-                    cap_right * grid.total_width,
-                    cap_bottom * grid.total_height,
-                )
-            else:
-                visible_rect = _visible_side_image_rect(
-                    base_image,
-                    letterbox,
-                    grid,
-                    viewport_zoom=viewport_zoom,
-                    viewport_offset=viewport_offset,
-                )
+            # Visible rect shares one derivation with the draw plan
+            # (texture_parts.tile_geometry.resolve_side_visible_rect, incl.
+            # the magnifier capture_uv_rect override) -- "what's uploaded"
+            # and "what's drawn" agree by construction, never by parallel
+            # implementations.
+            visible_rect = resolve_side_visible_rect(
+                base_image,
+                letterbox,
+                grid,
+                viewport_zoom=viewport_zoom,
+                viewport_offset=viewport_offset,
+                capture_uv_rect=capture_uv_rect,
+            )
             crop_source = pil_source if is_tiled_store else full_image
             # W3a: grid and crop source share the box-clipped coordinate
             # space. Stores stay lazy through an offset view (no bake, no
