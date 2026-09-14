@@ -26,6 +26,17 @@
       }
     },
     {
+      "path": "src/engine/frame/context.py",
+      "lines": 289,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads"
+      }
+    },
+    {
       "path": "src/engine/gpu/glass_panel.py",
       "lines": 917,
       "limit": 500,
@@ -239,17 +250,6 @@
       }
     },
     {
-      "path": "src/tabs/image_compare/canvas/frame_context.py",
-      "lines": 289,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
-      "parsed": {
-        "pattern": "leaf-collector",
-        "reason": "P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads"
-      }
-    },
-    {
       "path": "src/tabs/image_compare/canvas/interaction.py",
       "lines": 584,
       "limit": 500,
@@ -317,7 +317,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 482,
+      "lines": 479,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -328,7 +328,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 888,
+      "lines": 884,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -340,7 +340,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
-      "lines": 521,
+      "lines": 518,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -352,7 +352,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
-      "lines": 283,
+      "lines": 280,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -364,7 +364,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 386,
+      "lines": 383,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -376,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
-      "lines": 318,
+      "lines": 315,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
@@ -388,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py",
-      "lines": 197,
+      "lines": 194,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"LOD commit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -412,7 +412,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/base_images.py",
-      "lines": 619,
+      "lines": 615,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/base_images single geometry owner + Store transact (Bucket A), 520 lines\"",

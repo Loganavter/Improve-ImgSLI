@@ -20,10 +20,7 @@ from engine.cache.tile_coverage import (
 )
 
 from .._debug import rhi_render_debug, rhi_render_debug_enabled
-try:  # Phase-A engine migration: frame_context moves to engine.frame.context (A2)
-    from engine.frame.context import FrameContext, make_ids
-except ImportError:  # fallback until engine.frame lands; then this branch goes away
-    from ...frame_context import FrameContext, make_ids
+from engine.frame.context import FrameContext, make_ids
 from ...texture_parts.tile_geometry import _visible_side_image_rect
 
 try:

@@ -2,12 +2,8 @@
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
-try:  # Phase-A engine migration: store units move to engine.store.* (A1)
-    from engine.store.pixel_ops.downscale import downscale_source_to_pil
-    from engine.store.tiled_pixel_store import TiledPixelStore
-except ImportError:  # fallback until engine.store lands; then this branch goes away
-    from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pixel_ops.downscale import downscale_source_to_pil
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 

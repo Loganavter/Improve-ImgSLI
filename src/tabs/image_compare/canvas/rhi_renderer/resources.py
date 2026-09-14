@@ -14,10 +14,7 @@ from PySide6.QtGui import (
     QShader,
 )
 
-try:  # Phase-A engine migration: store units move to engine.store.* (A1)
-    from engine.store.tiled_pixel_store import TiledPixelStore
-except ImportError:  # fallback until engine.store lands; then this branch goes away
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
 from engine.cache.uniform_layout import assert_uniform_size

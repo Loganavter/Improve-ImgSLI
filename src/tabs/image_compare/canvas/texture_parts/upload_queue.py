@@ -88,7 +88,7 @@ def queue_texture_upload(
                         qimage_from_pixel_source,
                     )
                 except ImportError:
-                    from shared.image_processing.tiled_pixel_store import (
+                    from engine.store.tiled_pixel_store import (
                         TiledPixelStore,
                         qimage_from_pixel_source,
                     )

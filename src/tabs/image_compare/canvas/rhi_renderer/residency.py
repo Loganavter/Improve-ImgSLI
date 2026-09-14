@@ -23,12 +23,8 @@ from __future__ import annotations
 
 import itertools
 
-try:  # Phase-A engine migration: store units move to engine.store.* (A1)
-    from engine.store.pyramid_registry import pyramid_for
-    from engine.store.tiled_pixel_store import TiledPixelStore
-except ImportError:  # fallback until engine.store lands; then this branch goes away
-    from shared.image_processing.pyramid_registry import pyramid_for
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pyramid_registry import pyramid_for
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from engine.cache.lod import LevelKey, select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
@@ -657,7 +653,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                             pixel_source_size,
                         )
                     except ImportError:
-                        from shared.image_processing.tiled_pixel_store import (
+                        from engine.store.tiled_pixel_store import (
                             pixel_source_size,
                         )
 
@@ -794,7 +790,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                                     qimage_from_pixel_source,
                                 )
                             except ImportError:
-                                from shared.image_processing.tiled_pixel_store import (
+                                from engine.store.tiled_pixel_store import (
                                     qimage_from_pixel_source,
                                 )
 
