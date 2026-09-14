@@ -29,6 +29,7 @@ from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from engine.cache.lod import LevelKey, select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
+from engine.cache.stash import ContentStash
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
 from engine.frame.context import BudgetStats, make_ids
@@ -261,35 +262,26 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # instead of `register_source` silently dropping it from residency
         # (docs/dev/rendering/qrhi-gotchas.md same-slot-swap finding).
         self.last_rekeyed_keys: dict[object, object] = {}
-        # Last-seen `image_uid()` of the live pil_source per key, so a
-        # same-size content swap (grid dimensions unchanged) can still be
-        # detected -- see the content_changed comment in realize_tile_plan.
-        self._pil_source_uid_by_key: dict[object, int] = {}
-        # Per-key memo of {content_uid: stash_key} for content this key has
-        # already shown before. A role that keeps toggling between a small
-        # fixed set of distinct contents under the *same* slot key -- e.g.
-        # "stored_0"/"stored_1" alternating between the normal comparison
-        # pair and a single-image-mode preview on rapid Space+click -- would
-        # otherwise re-register (register_source resets residency) and
-        # fully re-crop+re-upload every tile on every single toggle, even
-        # though the content it's toggling back to was fully resident a
-        # moment ago. `realize_tile_plan`'s re-register branch checks this
-        # memo before registering a blank grid: if the incoming content was
-        # stashed here, `rekey_source` swaps it straight back onto `key`
-        # with zero GPU work instead. Entries live only as long as
-        # `tile_service` still has them resident (budget eviction can still
-        # reclaim a stashed entry between toggles -- then it's just a normal
-        # cache miss, not a correctness issue).
-        self._content_stash: dict[object, dict[int, object]] = {}
-        # Preview baseline that must survive until BOTH halves have complete
-        # tile replacement (UX: preview never deleted until both sides'
-        # final hires tiles fully resident). The first QImage preview stashed
-        # for a slot is kept here and always added to extra_protect_keys,
-        # so intermediate low-res stores (1024/1440 unified) never evict it
-        # before the final hires (5760) is fully resident and promoted.
-        self._preview_stash: dict[object, object] = {}
-        # Whether previous pil_source for key was a QImage preview (not TiledPixelStore)
-        self._prev_is_preview_by_key: dict[object, bool] = {}
+        # Stash/hold tile storage lives in the engine contract
+        # (``engine.cache.stash.ContentStash``) -- this realizer only feeds
+        # it per-call specs and records its rekeyed-old-content map above
+        # for the renderer to fold into the frame's fallback-LOD baseline.
+        # ``_pil_source_uid_by_key``/``_prev_is_preview_by_key`` moved with
+        # it (``ContentStash.note_source``); the per-(key, uid) content
+        # memo and the joint preview holds moved as the stash's own
+        # ``_contents``/``_preview_holds``.
+        self._stash = ContentStash(log=_ic_preview_log)
+
+    @property
+    def _preview_stash(self):
+        """Read-through view of the engine stash's joint preview holds.
+
+        Compatibility for the frozen preview-hold tripwire test
+        (``test_preview_hold_host_eviction`` asserts membership on
+        ``residency._preview_stash``). Storage is owned solely by
+        ``self._stash`` -- this returns its live view, never a copy.
+        """
+        return self._stash.preview_holds_view()
 
     def _upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
         self._array_resources.upload_tile_to_array(
@@ -334,167 +326,6 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         )
         tile_service.rekey_source(key, prev_key)
         self.last_rekeyed_keys[key] = prev_key
-
-    def _rekey_or_restore(
-        self,
-        tile_service: TileTextureService,
-        key: object,
-        prev_uid: int | None,
-        src_uid: int,
-        src_w: int,
-        src_h: int,
-        prev_is_preview: bool = False,
-    ):
-        """Same-slot content swap for ``key`` (``prev_uid``'s content ->
-        ``src_uid``'s). If ``src_uid`` was stashed here from an earlier
-        swap *and* is still resident, restores it onto ``key`` via
-        ``rekey_source`` with zero GPU work instead of registering a blank
-        grid and re-cropping+re-uploading every tile -- the toggle-between-
-        a-few-known-contents case (see ``self._content_stash``'s docstring).
-        Otherwise behaves like the old unconditional ``rekey_stale_content``
-        + ``register_source``, except the outgoing content is stashed under
-        a key stable per ``(key, prev_uid)`` rather than a disposable
-        one-shot key, so a later swap back to it can be recognized."""
-        if prev_uid is not None and prev_uid == src_uid:
-            # Same object, different size -- a mutated/resized source, not
-            # a swap between two known contents. Nothing to stash or
-            # restore; drop straight through to a fresh register below.
-            return tile_service.register_source(key, (src_w, src_h))
-
-        stash = self._content_stash.setdefault(key, {})
-        if prev_uid is not None and tile_service.resident_tiles(key):
-            stash_key = ("_content_stash", key, prev_uid)
-            tile_service.rekey_source(key, stash_key)
-            stash[prev_uid] = stash_key
-            if prev_is_preview:
-                # Keep QImage preview baseline until BOTH halves have complete
-                # tile replacement (joint hold). Intermediate low-res stores
-                # must not overwrite it as fallback baseline.
-                self._preview_stash[key] = stash_key
-                self.last_rekeyed_keys[key] = stash_key
-                _ic_preview_log(
-                    "rekey _content_stash preview hold: key=%s prev_uid=%s -> stash_key=%s resident=%d (preview baseline kept)",
-                    key,
-                    prev_uid,
-                    stash_key,
-                    len(tile_service.resident_tiles(stash_key) or ()),
-                )
-            else:
-                # If preview baseline still resident, keep it as fallback
-                # instead of overwriting with intermediate low-res store.
-                _preview_key = self._preview_stash.get(key)
-                if _preview_key is not None and tile_service.resident_tiles(_preview_key):
-                    _ic_preview_log(
-                        "rekey _content_stash: key=%s prev_uid=%s -> stash_key=%s resident=%d (preview baseline kept, not promoted)",
-                        key,
-                        prev_uid,
-                        stash_key,
-                        len(tile_service.resident_tiles(stash_key) or ()),
-                    )
-                    # keep last_rekeyed pointing to preview, not intermediate
-                    self.last_rekeyed_keys[key] = _preview_key
-                else:
-                    # no preview hold, promote intermediate as usual; clear stale preview hold
-                    if _preview_key is not None:
-                        self._preview_stash.pop(key, None)
-                    self.last_rekeyed_keys[key] = stash_key
-                    _ic_preview_log(
-                        "rekey _content_stash: key=%s prev_uid=%s -> stash_key=%s resident=%d",
-                        key,
-                        prev_uid,
-                        stash_key,
-                        len(tile_service.resident_tiles(stash_key) or ()),
-                    )
-            if tile_dump_enabled():
-                log_tile_event(
-                    "rekey_stale_content",
-                    key=str(key),
-                    prev_key=str(stash_key),
-                    resident_tile_count=len(tile_service.resident_tiles(stash_key)),
-                )
-
-        restore_key = stash.get(src_uid)
-        if restore_key is not None and tile_service.resident_tiles(restore_key):
-            _ic_preview_log(
-                "restore_stashed_content: key=%s src_uid=%s <- restore_key=%s resident=%d",
-                key,
-                src_uid,
-                restore_key,
-                len(tile_service.resident_tiles(restore_key) or ()),
-            )
-            tile_service.rekey_source(restore_key, key)
-            del stash[src_uid]
-            if tile_dump_enabled():
-                log_tile_event(
-                    "restore_stashed_content",
-                    key=str(key),
-                    restore_key=str(restore_key),
-                    resident_tile_count=len(tile_service.resident_tiles(key)),
-                )
-            return tile_service.grid_for(key)
-        elif restore_key is not None:
-            _ic_preview_log(
-                "restore_stashed_content: SKIP key=%s src_uid=%s restore_key=%s — evicted, cache miss",
-                key,
-                src_uid,
-                restore_key,
-            )
-
-        return tile_service.register_source(key, (src_w, src_h))
-
-    def _release_and_protect_preview_holds(
-        self, tile_service, pairs, texture_keys, result
-    ) -> set:
-        """Joint preview-hold maintenance + host-cache protected set.
-
-        The preview baseline stashed in ``_preview_stash`` is a *joint* hold
-        ("until BOTH halves have complete tile replacement"): its GPU tiles
-        are protected via ``extra_protect_keys`` inside ``realize_specs``,
-        but the host-side QImage behind the fallback is evicted by a
-        separate ``evict_texture_upload_cache_over_budget`` pass whose
-        protected set used to be only this call's own pairs. A call made
-        for a different role pair (the magnifier's ``source_*`` residency
-        call shares this realizer and this host cache with the main
-        ``stored_*`` call) could therefore drop the held baseline while its
-        GPU hold was still active -- and neither progressive re-crop nor
-        post-context-loss ``restore_texture_uploads`` (which re-queues from
-        the host cache) could bring it back.
-
-        So: drop holds whose stash key lost all residency (dead fallback --
-        protecting nothing), release this call's pair holds once both
-        halves' new content is fully resident (per
-        ``result.key_incomplete_by_key``), and return this call's pairs plus
-        the role keys backing the surviving holds as the host protected set.
-        Stash/tuple keys never live in the host cache (whole-image QImages
-        keyed by texture role), so only the role key is added per hold.
-        """
-        for held_role in list(self._preview_stash):
-            try:
-                alive = bool(
-                    tile_service.resident_tiles(self._preview_stash[held_role])
-                )
-            except Exception:
-                alive = False
-            if not alive:
-                self._preview_stash.pop(held_role, None)
-        try:
-            pair_complete = bool(texture_keys) and all(
-                result.key_incomplete_by_key.get(key) is False
-                for key in texture_keys
-            )
-        except Exception:
-            pair_complete = False
-        if pair_complete:
-            for key in texture_keys:
-                self._preview_stash.pop(key, None)
-        host_protected = {key for key, _ in pairs}
-        for held_role, stash_key in self._preview_stash.items():
-            try:
-                if tile_service.resident_tiles(stash_key):
-                    host_protected.add(held_role)
-            except Exception:
-                pass
-        return host_protected
 
     def realize_tile_plan(
         self,
@@ -704,7 +535,12 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                         int(_scaled_box[3] - _scaled_box[1]),
                     )
                     src_uid = (src_uid, _scaled_box)
-                prev_uid = self._pil_source_uid_by_key.get(key)
+                prev_uid: object | None
+                prev_is_preview: bool
+                content_changed: bool
+                prev_uid, prev_is_preview, content_changed = self._stash.note_source(
+                    key, src_uid, is_preview=not is_tiled_store
+                )
                 # A same-size image swap into an already-loaded slot (the
                 # common case: two photos being compared are rarely the
                 # exact same resolution, but it does happen, and every
@@ -722,11 +558,6 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                 # rhi_renderer/__init__.py for why) catches this alongside
                 # the size check (docs/dev/rendering/qrhi-gotchas.md
                 # same-slot-swap finding, same-size follow-up).
-                content_changed = prev_uid is not None and prev_uid != src_uid
-                # remember whether previous source was QImage preview for preview-hold
-                prev_is_preview = bool(self._prev_is_preview_by_key.get(key, False))
-                self._pil_source_uid_by_key[key] = src_uid
-                self._prev_is_preview_by_key[key] = not is_tiled_store
                 if (
                     grid is None
                     or int(grid.total_width) != int(src_w)
@@ -745,8 +576,14 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     )
                     if grid is not None:
                         self._evict_stale_tiles(key, set())
-                        grid = self._rekey_or_restore(
-                            tile_service, key, prev_uid, src_uid, src_w, src_h, prev_is_preview=prev_is_preview
+                        grid = self._stash.rekey_or_restore(
+                            tile_service,
+                            key,
+                            src_uid,
+                            (src_w, src_h),
+                            prev_uid=prev_uid,
+                            prev_is_preview=prev_is_preview,
+                            rekeyed=self.last_rekeyed_keys,
                         )
                     else:
                         grid = tile_service.register_source(key, (src_w, src_h))
@@ -844,18 +681,11 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # Joint preview hold: keep QImage preview stash alive until BOTH halves
         # have complete tile replacement. Without this, intermediate 1024/1440
         # stores would evict the preview baseline before final hires (5760)
-        # is fully resident.
-        if self._preview_stash:
-            _preview_protect = tuple(
-                k for k in self._preview_stash.values() if tile_service.resident_tiles(k)
-            )
-            if _preview_protect:
-                extra_protect_keys = tuple(extra_protect_keys) + _preview_protect
-                _ic_preview_log(
-                    "preview protect hold: keys=%s resident=%s",
-                    list(self._preview_stash.keys()),
-                    [len(tile_service.resident_tiles(k) or ()) for k in _preview_protect],
-                )
+        # is fully resident. Hold keys contributed by the engine stash.
+        extra_protect_keys = (
+            tuple(extra_protect_keys)
+            + self._stash.preview_extra_protect_keys(tile_service)
+        )
 
         # Phase-B2 frame bus: snapshot pre-call residency (pure reads) and
         # the wall clock so the record below carries measured values, not
@@ -920,7 +750,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             for array_index in dirty_layers:
                 updates.generateMips(self._array_resources.tile_arrays[array_index])
 
-        host_protected = self._release_and_protect_preview_holds(
+        host_protected = self._stash.release_and_protect_preview_holds(
             tile_service, pairs, texture_keys, result
         )
         evict_texture_upload_cache_over_budget(
