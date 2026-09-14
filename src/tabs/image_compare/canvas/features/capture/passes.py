@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from PySide6.QtGui import QColor, QRhiViewport
+from PySide6.QtGui import QRhiViewport
 
 from engine.cache.uniform_layout import assert_uniform_size
 from ui.canvas_infra.scene.pass_contract import (
@@ -12,8 +12,10 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
-from engine.cache.stroke_geometry import shrink_screen_radius_for_stroke
+from tabs.image_compare.canvas.features.capture.overlay_model import (
+    resolve_capture_circles,
+    resolve_capture_rings,
+)
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,
@@ -37,19 +39,10 @@ class CaptureRingPass(CanvasRenderPass):
 
     @staticmethod
     def _resolve_capture_circles(widget, ctx) -> tuple:
-        overlay = getattr(ctx, "feature_overlay", None)
-        circles = tuple(getattr(overlay, "capture_circles", ()) or ())
-        if circles:
-            return circles
-        payloads = (
-            ctx.scene_frame.feature_payloads
-            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
-            else {}
-        )
-        payload_circles = payloads.get("capture_circles")
-        if payload_circles:
-            return tuple(payload_circles)
-        return tuple(getattr(widget.runtime_state, "_capture_circles", ()))
+        # Stateless decision layer (overlay_model); shim preserves the
+        # historical raw-circle return shape (see
+        # test_runtime_overlay_snapshot_contracts.py).
+        return resolve_capture_circles(ctx, widget)
 
     def initialize(self, rhi, target) -> None:
         self.resources.initialize(rhi, target, _SHADER_DIR, "capture")
@@ -64,40 +57,25 @@ class CaptureRingPass(CanvasRenderPass):
         matrix = tuple(
             float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
         )
-        line_width = float(ctx.resolved_style.annotation_ring_stroke_px)
-        for center, radius, color in self._resolve_capture_circles(widget, ctx):
-            if center is None or float(radius or 0.0) <= 0.0:
-                continue
-            center_x, center_y = widget_px_to_screen_px(
-                widget,
-                center.x(),
-                center.y(),
-                canvas_width=ctx.canvas_width,
-                canvas_height=ctx.canvas_height,
-                canvas_offset_x=ctx.canvas_offset_x,
-                canvas_offset_y=ctx.canvas_offset_y,
-            )
-            draw_color = QColor(color)
-            draw_color.setAlpha(255)
-            screen_radius = shrink_screen_radius_for_stroke(
-                float(radius) * float(ctx.zoom_level), line_width
-            )
+        # Ring decisions are stateless (overlay_model); this shell only packs
+        # them into per-item uniform blocks and stages the GPU buffers.
+        for ring in resolve_capture_rings(ctx, widget):
             self._items.append(
                 struct.pack(
                     _UNIFORM_FMT,
                     *matrix,
                     float(ctx.width),
                     float(ctx.height),
-                    float(center_x),
-                    float(center_y),
-                    screen_radius,
-                    line_width,
+                    ring.center_x,
+                    ring.center_y,
+                    ring.screen_radius,
+                    ring.line_width,
                     0.0,
                     0.0,
-                    draw_color.redF(),
-                    draw_color.greenF(),
-                    draw_color.blueF(),
-                    draw_color.alphaF(),
+                    ring.red,
+                    ring.green,
+                    ring.blue,
+                    ring.alpha,
                 )
             )
         self.resources.ensure_items(len(self._items))

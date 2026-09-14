@@ -25,11 +25,12 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from tabs.image_compare.canvas.render_config import (
-    get_view_transformed_content_rect_widget_px,
-)
-from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
 from engine.cache.uniform_layout import assert_uniform_size
+from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
+from tabs.image_compare.canvas.features.divider.overlay_model import (
+    content_split_visual,
+    resolve_divider_spec,
+)
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _VERTICES = struct.pack(
@@ -66,12 +67,7 @@ def _load_shader(name: str) -> QShader:
 
 
 def _content_split_visual(ctx) -> float:
-    scene = getattr(ctx, "scene_frame", None)
-    raw = getattr(scene, "split_position_visual", 0.5)
-    split_override = getattr(scene, "split_override", None)
-    if split_override is not None:
-        raw = split_override
-    return max(0.0, min(1.0, float(raw if raw is not None else 0.5)))
+    return content_split_visual(ctx)
 
 
 class DividerPass(CanvasRenderPass):
@@ -87,29 +83,17 @@ class DividerPass(CanvasRenderPass):
 
     @staticmethod
     def _resolve_divider_state(widget, ctx):
-        payloads = (
-            ctx.scene_frame.feature_payloads
-            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
-            else {}
+        # Stateless decision layer (overlay_model); this shim preserves the
+        # historical tuple shape for should_paint/prepare below.
+        spec = resolve_divider_spec(ctx, widget)
+        return (
+            spec.show,
+            spec.position_px,
+            spec.thickness_px,
+            spec.is_horizontal,
+            QColor.fromRgbF(spec.red, spec.green, spec.blue, spec.alpha),
+            (spec.clip_x, spec.clip_y, spec.clip_w, spec.clip_h),
         )
-        show_divider = bool(payloads.get("show_divider", False))
-        thickness_px = float(payloads.get("divider_thickness", 0) or 0)
-        color = QColor(payloads.get("divider_color", QColor(255, 255, 255, 255)))
-        is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
-        spit = _content_split_visual(ctx)
-
-        # Position + clip from the letterbox *after* the same zoom/pan as
-        # base.frag. See src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md.
-        clip = get_view_transformed_content_rect_widget_px(widget)
-        if clip is None:
-            clip = (0.0, 0.0, float(ctx.canvas_width), float(ctx.canvas_height))
-        cx, cy, cw, ch = (float(v) for v in clip)
-        if is_horizontal:
-            position_px = cy + ch * spit - float(ctx.canvas_offset_y)
-        else:
-            position_px = cx + cw * spit - float(ctx.canvas_offset_x)
-
-        return show_divider, position_px, thickness_px, is_horizontal, color, (cx, cy, cw, ch)
 
     def initialize(self, rhi, target) -> None:
         self.release()
