@@ -262,7 +262,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/loupe_trace.py",
-      "lines": 191,
+      "lines": 231,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P3 render-core consolidation: throttled [ic-loupe] record helper, stdlib-only leaf, no timers/threads\"",
