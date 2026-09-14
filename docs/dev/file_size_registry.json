@@ -125,7 +125,7 @@
     },
     {
       "path": "src/shared/rendering/tile_texture_service.py",
-      "lines": 542,
+      "lines": 627,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
@@ -200,7 +200,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
-      "lines": 852,
+      "lines": 1078,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi pass, one resource lifecycle (border-disk",
@@ -400,7 +400,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/tile_residency.py",
-      "lines": 184,
+      "lines": 276,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tile residency extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",

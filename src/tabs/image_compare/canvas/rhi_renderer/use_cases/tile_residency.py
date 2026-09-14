@@ -13,6 +13,11 @@ from __future__ import annotations
 import time
 
 from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+from tabs.image_compare.canvas.loupe_trace import (
+    frame_context_from_widget,
+    trace_loupe,
+)
+from tabs.image_compare.debug import ic_loupe_debug_enabled
 
 
 def _union_capture_uv_rect(overlay) -> tuple[float, float, float, float] | None:
@@ -112,6 +117,71 @@ def realize_main_tiles(
     return bool(main_more_pending)
 
 
+def _trace_mag_residency(
+    renderer, widget, ctx, capture_uv_rect, diff_key, more_pending
+) -> None:
+    """One sig-throttled ``loupe.mag_residency`` record per magnifier
+    residency call: which capture window resolved, the real diff key, and
+    -- when tiles are still missing -- exactly which ``tile_index`` values
+    are pending (bounded: first 8 + count), so a loupe-hole repro names its
+    tiles instead of printing one identical line per missing tile.
+
+    Index computation runs only with ``IMGSLI_IC_LOUPE_DEBUG`` on; steady
+    production pays one env check (``trace_loupe`` itself is a no-op with
+    the flag off)."""
+    if not ic_loupe_debug_enabled():
+        return
+    frame_context = frame_context_from_widget(widget)
+    pending_by_source: dict[str, str] = {}
+    try:
+        for source_id in tuple(ctx.source_texture_ids):
+            grid = renderer.tile_service.grid_for(source_id)
+            if grid is None or capture_uv_rect is None:
+                continue
+            cap_left, cap_top, cap_right, cap_bottom = capture_uv_rect
+            missing = sorted(
+                index
+                for index in renderer.tile_service.visible_tiles(
+                    source_id,
+                    (
+                        cap_left * grid.total_width,
+                        cap_top * grid.total_height,
+                        cap_right * grid.total_width,
+                        cap_bottom * grid.total_height,
+                    ),
+                )
+                if renderer.tile_service.slot_for(source_id, index) is None
+            )
+            if missing:
+                shown = ",".join(f"{r}x{c}" for r, c in missing[:8])
+                suffix = f"+{len(missing) - 8}-more" if len(missing) > 8 else ""
+                pending_by_source[str(source_id)] = f"{len(missing)}:[{shown}{suffix}]"
+    except Exception:
+        pass
+    if pending_by_source:
+        trace_loupe(
+            frame_context,
+            "loupe.mag_residency",
+            "skipped",
+            f"more_pending={bool(more_pending)} diff={diff_key!r}"
+            f" capture_uv={list(capture_uv_rect) if capture_uv_rect is not None else None}"
+            f" pending_tiles={pending_by_source}",
+            ids=tuple(str(k) for k in tuple(ctx.source_texture_ids)),
+            sig=(tuple(sorted(pending_by_source.items())), str(diff_key)),
+        )
+    else:
+        trace_loupe(
+            frame_context,
+            "loupe.mag_residency",
+            "ran",
+            f"more_pending={bool(more_pending)} diff={diff_key!r}"
+            f" capture_uv={list(capture_uv_rect) if capture_uv_rect is not None else None}"
+            " lens_capture_resident",
+            ids=tuple(str(k) for k in tuple(ctx.source_texture_ids)),
+            sig=(bool(more_pending), str(diff_key)),
+        )
+
+
 def realize_magnifier_tiles(
     renderer,
     widget,
@@ -164,16 +234,35 @@ def realize_magnifier_tiles(
     if _mag_branch_active:
         _debug_timing = tile_dump_enabled()
         _t1 = time.perf_counter() if _debug_timing else 0.0
-        renderer.resources.residency.realize_tile_plan(
+        # Loupe residency gate: the magnifier samples the diff overlay too
+        # (diff modes read it alongside source tiles), so its tiles resolve
+        # under the same capture window -- not diff_key=None, which left
+        # the lens's diff permanently non-resident on tiled diffs.
+        _mag_diff_key = (
+            ctx.diff_source_texture_id
+            if getattr(ctx, "diff_source_ready", False)
+            and ctx.diff_source_texture_id
+            else None
+        )
+        mag_more_pending = renderer.resources.residency.realize_tile_plan(
             renderer.tile_service,
             widget,
             tuple(ctx.source_texture_ids),
             base_image,
             updates,
-            diff_key=None,
+            diff_key=_mag_diff_key,
             capture_uv_rect=_cap_uv,
             dirty_layers=dirty_layers,
         )
+        # Coarsest LOD stays pinned against eviction: each source's deepest
+        # pyramid level is the fallback-LOD baseline and the loupe's low-res
+        # sampling source -- finer levels filling in around it must never
+        # reclaim it under budget pressure. No-op for base-only sources.
+        for _source_id in tuple(ctx.source_texture_ids):
+            try:
+                renderer.tile_service.pin_coarsest_level(_source_id)
+            except Exception:
+                pass
         if _debug_timing:
             _dt1 = time.perf_counter() - _t1
             if _dt1 > 0.05:
@@ -182,3 +271,6 @@ def realize_magnifier_tiles(
                     which="magnifier_source",
                     duration_s=_dt1,
                 )
+        _trace_mag_residency(
+            renderer, widget, ctx, _cap_uv, _mag_diff_key, mag_more_pending
+        )
