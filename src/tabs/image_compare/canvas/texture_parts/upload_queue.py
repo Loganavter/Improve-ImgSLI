@@ -1,3 +1,17 @@
+"""Whole-image texture-upload staging queue (single owner, E2 decision).
+
+This module is the one live owner of whole-image texture-upload staging:
+PIL/store-to-QImage conversion (uid-deduped), RGBA normalization, and
+appending to ``widget.runtime_state._pending_texture_uploads``, which the
+rhi_renderer apply path flushes. Retention underneath is engine-owned
+(``engine.gpu.host_texture_cache``); this module only stages.
+
+Not a second queue: the multi-slot tab's ``pending_uploads`` intake is a
+different stage (slot-source swap decisions feeding the base-images swap
+machine, ``engine.gpu.base_images_pass.apply_swap_spec``), never staged
+here -- the two never hold the same content.
+"""
+
 from __future__ import annotations
 
 from PySide6.QtGui import QImage

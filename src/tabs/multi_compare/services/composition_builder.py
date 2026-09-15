@@ -1,9 +1,14 @@
 """Convert ``MultiCompareState`` into a ``CompositionPlan``.
 
+Plan *construction* (sole owner, E2 decision) -- not plan application.
 The multi-compare workspace owns its own layout tree (``LeafNode`` /
 ``SplitNode`` in :mod:`tabs.multi_compare.models`); this module translates that
 tree into the canvas-presentation ``CompositionNode`` family so the same
-renderer can draw it for live preview and export.
+renderer can draw it for live preview and export. Application stays with
+the single plan-application owners (the legacy render-plan impl in the
+engine display-tier service for image-compare plans; the shared
+``ui.canvas_presentation`` resolve/apply helpers for compositions) --
+this module shares no code path with them and is never an applicator.
 """
 
 from __future__ import annotations
