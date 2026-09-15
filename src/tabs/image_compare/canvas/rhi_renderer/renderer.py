@@ -56,10 +56,7 @@ except Exception:  # pragma: no cover - import-time fallback for tests
         return False
 
 from .draw_plan import (
-    _covered_fraction,
-    _to_common_space,
     build_array_draw_plan,
-    drop_covered_fallback_items,
     resolve_lod_texture_keys,
 )
 from .residency import _TILE_CACHE_BUDGET_BYTES

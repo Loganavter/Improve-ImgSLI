@@ -15,11 +15,11 @@ import logging
 
 from engine.cache.fallback_lod import resolve_fallback_lod
 from engine.cache.lod import LevelKey
+from engine.cache.tile_coverage import drop_covered_fallback_items
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import (
     build_array_draw_plan,
-    drop_covered_fallback_items,
 )
 
 try:
@@ -270,7 +270,18 @@ def resolve_fallback_plan(
             return items
 
         def _drop_covered(fallback_items, current_items):
-            dropped = drop_covered_fallback_items(fallback_items, current_items, base_image)
+            # Phase F flag-day: tab adapter deleted, engine owns the
+            # filter -- adapt item rects + letterboxes at the call site.
+            if not current_items:
+                dropped = fallback_items
+            else:
+                kept = drop_covered_fallback_items(
+                    [(item.rect1, item.rect2) for item in fallback_items],
+                    [(item.rect1, item.rect2) for item in current_items],
+                    tuple(base_image.letterbox1),
+                    tuple(base_image.letterbox2),
+                )
+                dropped = [fallback_items[index] for index in kept]
             fallback_diag["kept"] = len(dropped)
             return dropped
 

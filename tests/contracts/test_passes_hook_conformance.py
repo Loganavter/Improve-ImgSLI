@@ -41,9 +41,7 @@ ENGINE_REALIZER = ROOT / "src" / "engine" / "cache" / "residency.py"
 IC_RESIDENCY = (
     ROOT / "src" / "tabs" / "image_compare" / "canvas" / "rhi_renderer" / "residency.py"
 )
-IC_MANIFEST = (
-    ROOT / "src" / "tabs" / "image_compare" / "canvas" / "rhi_renderer" / "passes.py"
-)
+IC_MANIFEST = ROOT / "src" / "engine" / "gpu" / "base_images_pass.py"
 MC_RESIDENCY = (
     ROOT / "src" / "tabs" / "multi_compare" / "scene" / "passes" / "residency.py"
 )
@@ -104,6 +102,22 @@ def _class_bases(tree: ast.Module, class_name: str) -> list[str]:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             return [_unparse(b) for b in node.bases]
     return []
+
+
+def _class_attr_value(tree: ast.Module, class_name: str, attr: str):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for stmt in node.body:
+                if (
+                    isinstance(stmt, ast.Assign)
+                    and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], ast.Name)
+                    and stmt.targets[0].id == attr
+                    and isinstance(stmt.value, ast.Attribute)
+                    and isinstance(stmt.value.value, ast.Name)
+                ):
+                    return (stmt.value.value.id, stmt.value.attr)
+    return None
 
 
 def _manifest_routes(path, class_name: str) -> bool:
@@ -246,9 +260,23 @@ def test_ic_conforms_as_is():
         f"{_SEAM_SIGNATURES['upload_tile']}, got {_arg_names(func)}"
     )
     assert _returns_none(func)
-    assert _manifest_routes(IC_MANIFEST, "BaseImagesPass"), (
-        "fixed-pair A0 manifest must keep routing BaseImagesPass via "
-        "RENDER_PASSES (full dogma: test_ic_render_manifest)"
+    public = _method_node(tree, "TileResidencyRealizer", "upload_tile")
+    assert public is not None, (
+        "fixed-pair TileResidencyRealizer must provide the public seam "
+        "upload_tile (Phase F rename-only promotion of _upload_tile)"
+    )
+    assert _arg_names(public) == _SEAM_SIGNATURES["upload_tile"], (
+        f"fixed-pair upload_tile shape must match the seam upload_tile: "
+        f"expected {_SEAM_SIGNATURES['upload_tile']}, got "
+        f"{_arg_names(public)}"
+    )
+    assert _returns_none(public)
+    manifest_tree = _parse(IC_MANIFEST)
+    role = _class_attr_value(manifest_tree, "BaseImagesPass", "stack_role")
+    assert role == ("CanvasStackRole", "IMAGE_OVERLAY_CONTENT"), (
+        "merged engine pass must declare the shared base role directly "
+        "(Phase F: tab A0 manifest retired here; full dogma: "
+        "test_ic_render_manifest)"
     )
     assert _method_node(tree, "TileResidencyRealizer", "resolve_specs") is None, (
         "fixed-pair spec-building still lives in realize_tile_plan -- E2 "

@@ -272,20 +272,20 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # ``_contents``/``_preview_holds``.
         self._stash = ContentStash(log=_ic_preview_log)
 
-    @property
-    def _preview_stash(self):
-        """Read-through view of the engine stash's joint preview holds.
-
-        Compatibility for the frozen preview-hold tripwire test
-        (``test_preview_hold_host_eviction`` asserts membership on
-        ``residency._preview_stash``). Storage is owned solely by
-        ``self._stash`` -- this returns its live view, never a copy.
-        """
-        return self._stash.preview_holds_view()
-
     def _upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
         self._array_resources.upload_tile_to_array(
             tile_service, key, index, tile_image, updates, dirty_layers
+        )
+
+    def upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
+        """Public seam spelling of ``_upload_tile`` (plan-engine-tab-migration F).
+
+        Same parameter shape as ``engine.passes.hooks`` upload_tile
+        (rename-only promotion); the engine realize loop keeps calling the
+        private override, tab/external callers use this name.
+        """
+        self._upload_tile(
+            tile_service, key, index, tile_image, updates, dirty_layers, region
         )
 
     def rekey_stale_content(self, tile_service: TileTextureService, key: object) -> None:

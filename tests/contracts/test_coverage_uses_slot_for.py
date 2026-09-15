@@ -35,6 +35,7 @@ import ast
 from ._framework import ROOT, iter_py, rel
 
 IC_DRAW_PLAN = ROOT / "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py"
+ENGINE_COVERAGE = ROOT / "src/engine/cache/tile_coverage.py"
 IC_FALLBACK = (
     ROOT / "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py"
 )
@@ -99,8 +100,10 @@ def test_mc_prepare_array_plan_filters_current_and_fallback():
 
 
 def test_drop_functions_are_pure_over_caller_supplied_lists():
+    # Phase F flag-day: the tab adapter is deleted, the single home is
+    # engine.cache.tile_coverage (sole caller: use_cases/fallback.py).
     for path, func in (
-        (IC_DRAW_PLAN, "drop_covered_fallback_items"),
+        (ENGINE_COVERAGE, "drop_covered_fallback_items"),
         (MC_TILE_GEOMETRY, "drop_covered_fallback_tiles"),
     ):
         seg = _function_segment(path, func)
@@ -139,8 +142,12 @@ def _call_names_in(path) -> set[str]:
 
 
 def test_coverage_consumers_are_exactly_the_known_set():
+    # Phase F flag-day: draw_plan.py no longer names coverage calls (the
+    # tab adapter + re-exports were deleted; the pairing loop calls
+    # to_common_space/rects_overlap/intersection_rect directly, which are
+    # geometry -- not coverage -- call names). Sole drop_covered caller
+    # is use_cases/fallback.py (engine home).
     expected = {
-        rel(IC_DRAW_PLAN),
         rel(IC_COVERAGE),
         rel(IC_FALLBACK),
         rel(MC_TILE_GEOMETRY),

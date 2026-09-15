@@ -307,7 +307,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 520,
+      "lines": 485,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -318,7 +318,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 518,
+      "lines": 515,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 378,
+      "lines": 389,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -768,7 +768,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
-      "lines": 1115,
+      "lines": 1033,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",

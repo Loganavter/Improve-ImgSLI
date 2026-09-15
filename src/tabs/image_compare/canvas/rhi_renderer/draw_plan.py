@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.cache import tile_coverage
 from engine.cache.tile_coverage import (
     intersection_rect,
     rects_overlap,
@@ -13,14 +12,6 @@ from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
 from engine.frame.context import FrameContext, make_ids
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
-
-# Backward-compat re-exports: ``renderer.py`` and the IC render tests
-# import these underscore names from this module and are outside C1's
-# scope, so the names must keep resolving here. They are plain aliases of
-# the engine functions -- no local math. New code imports the engine
-# names directly from ``engine.cache.tile_coverage``.
-_covered_fraction = tile_coverage.covered_fraction
-_to_common_space = tile_coverage.to_common_space
 
 from ..texture_parts.tile_geometry import (
     best_tile_overlap_index,
@@ -152,37 +143,11 @@ def _array_side_tiles(
     )
 
 
-def drop_covered_fallback_items(
-    fallback_items: list[ArrayDrawItem],
-    current_items: list[ArrayDrawItem],
-    base_image,
-) -> list[ArrayDrawItem]:
-    """Tab-side adapter over the engine coverage filter.
-
-    Extracts each item's side-1/side-2 own-image-fraction rects plus the
-    two side letterboxes and delegates the keep/drop decision to
-    ``engine.cache.tile_coverage`` (shared on-screen mapping with
-    ``to_common_space``, per-side ``covered_fraction`` point sampling at
-    the engine threshold, both-sides-must-cover rule), then maps the kept
-    indices back to items. No coverage math of its own remains here --
-    behavior is bit-for-bit the previous inline body, only the home of
-    the algorithm changed.
-
-    Kept under this name/signature (rather than calling the engine
-    function directly at every use) because ``use_cases/fallback.py``,
-    ``renderer.py``, and the IC render tests import it from this module.
-    """
-    if not current_items:
-        return fallback_items
-    letterbox1 = tuple(base_image.letterbox1)
-    letterbox2 = tuple(base_image.letterbox2)
-    kept_indices = tile_coverage.drop_covered_fallback_items(
-        [(item.rect1, item.rect2) for item in fallback_items],
-        [(item.rect1, item.rect2) for item in current_items],
-        letterbox1,
-        letterbox2,
-    )
-    return [fallback_items[index] for index in kept_indices]
+# NOTE (Phase F flag-day): the tab-side ``drop_covered_fallback_items``
+# adapter and the ``_covered_fraction``/``_to_common_space`` re-exports
+# lived here and were deleted -- the single home is
+# ``engine.cache.tile_coverage`` (sole caller: use_cases/fallback.py).
+# No coverage math remains in this module.
 
 
 def build_array_draw_plan(

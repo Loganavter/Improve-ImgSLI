@@ -34,10 +34,9 @@ commit.
 from types import SimpleNamespace
 
 from engine.cache.lod import LevelKey
+from engine.cache.tile_coverage import covered_fraction, to_common_space
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import (
-    _covered_fraction,
-    _to_common_space,
     build_array_draw_plan,
 )
 from tabs.image_compare.canvas.rhi_renderer.renderer import RhiCanvasRenderer
@@ -110,13 +109,13 @@ def _covered_visible_fraction(plan, base_image):
     unit = (0.0, 0.0, 1.0, 1.0)
     letterbox1 = tuple(base_image.letterbox1)
     letterbox2 = tuple(base_image.letterbox2)
-    covered1 = _covered_fraction(
+    covered1 = covered_fraction(
         unit,
-        [_to_common_space(item.rect1, letterbox1) for item in plan],
+        [to_common_space(item.rect1, letterbox1) for item in plan],
     )
-    covered2 = _covered_fraction(
+    covered2 = covered_fraction(
         unit,
-        [_to_common_space(item.rect2, letterbox2) for item in plan],
+        [to_common_space(item.rect2, letterbox2) for item in plan],
     )
     return min(covered1, covered2)
 

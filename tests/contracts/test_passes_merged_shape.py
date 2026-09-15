@@ -23,10 +23,11 @@ verbatim (``test_passes_hook_conformance.py``):
   plus the stacking-policy enums only -- no tab imports, no app-layer
   literals, no QRhi machinery.
 
-Whole-owner accounting: exactly three files define ``BaseImagesPass``
-(the engine pass plus the two tab-local copies retiring in the Phase F
-flag-day, which re-points renderers/manifests/gate tests and deletes
-them). This test caps the set -- no fourth copy may appear -- and pins
+Whole-owner accounting: exactly two files define ``BaseImagesPass`` --
+the engine pass plus the multi-slot tab-hooks surface (Phase F flag-day
+deleted the fixed-pair manifest; the multi-slot path stays as the hooks
+home that binds tab state and delegates the moved machine to the engine
+pass). This test caps the set -- no third copy may appear -- and pins
 that the realize loop still has exactly one home
 (``engine/cache/residency.py``).
 """
@@ -41,9 +42,6 @@ from ._framework import ROOT, iter_py, read, rel
 ENGINE_PASS = ROOT / "src" / "engine" / "gpu" / "base_images_pass.py"
 ENGINE_REALIZER = ROOT / "src" / "engine" / "cache" / "residency.py"
 
-IC_MANIFEST = (
-    ROOT / "src" / "tabs" / "image_compare" / "canvas" / "rhi_renderer" / "passes.py"
-)
 IC_RESIDENCY = (
     ROOT / "src" / "tabs" / "image_compare" / "canvas" / "rhi_renderer" / "residency.py"
 )
@@ -54,8 +52,9 @@ MC_RESIDENCY = (
     ROOT / "src" / "tabs" / "multi_compare" / "scene" / "passes" / "residency.py"
 )
 
-# The two tab-local copies retiring in the Phase F flag-day.
-_RETIRING_TAB_COPIES = frozenset({IC_MANIFEST, MC_BASE_IMAGES})
+# The retired fixed-pair manifest (Phase F flag-day deleted it; the
+# multi-slot path stays as the tab-hooks home).
+_TAB_HOOKS_HOME = frozenset({MC_BASE_IMAGES})
 
 # E1-verbatim seam signatures: method -> positional arg names.
 _SEAM_SIGNATURES = {
@@ -321,14 +320,13 @@ def test_routing_role_parity_with_both_tabs():
         f"engine BaseImagesPass.visibility must stay explicit ALL, got "
         f"{visibility}"
     )
-    for path in (IC_MANIFEST, MC_BASE_IMAGES):
-        tab_tree = _parse(path)
-        assert _class_attr_value(tab_tree, "BaseImagesPass", "stack_role") == role, (
-            f"{rel(path)} stack_role drifted from the merged pass role"
-        )
-        assert _class_attr_value(tab_tree, "BaseImagesPass", "visibility") == visibility, (
-            f"{rel(path)} visibility drifted from the merged pass scope"
-        )
+    tab_tree = _parse(MC_BASE_IMAGES)
+    assert _class_attr_value(tab_tree, "BaseImagesPass", "stack_role") == role, (
+        f"multi_compare hooks stack_role drifted from the merged pass role"
+    )
+    assert _class_attr_value(tab_tree, "BaseImagesPass", "visibility") == visibility, (
+        f"multi_compare hooks visibility drifted from the merged pass scope"
+    )
 
 
 def test_realize_loop_has_single_home():
@@ -362,10 +360,10 @@ def test_realize_loop_has_single_home():
 
 
 def test_base_images_pass_definitions_capped():
-    """Exactly three BaseImagesPass definitions: the engine pass plus the
-    two tab-local copies retiring in the Phase F flag-day (which deletes
-    them and re-points renderers/manifests/gate tests). No fourth copy
-    may appear in the meantime."""
+    """Exactly two BaseImagesPass definitions: the engine pass plus the
+    multi-slot tab-hooks surface (which binds tab state and delegates the
+    moved swap/residency machine to the engine pass -- no second
+    implementation). No third copy may appear."""
     definers = set()
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts or "tests" in path.parts:
@@ -377,8 +375,8 @@ def test_base_images_pass_definitions_capped():
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == "BaseImagesPass":
                 definers.add(path)
-    assert definers == ({ENGINE_PASS} | set(_RETIRING_TAB_COPIES)), (
+    assert definers == ({ENGINE_PASS} | set(_TAB_HOOKS_HOME)), (
             "BaseImagesPass definitions changed: "
-            f"{sorted(rel(p) for p in definers)} (engine pass + the two "
-            f"retiring tab copies only -- Phase F deletes the tab copies)"
+            f"{sorted(rel(p) for p in definers)} (engine pass + the "
+            f"multi-slot tab-hooks home only)"
         )
