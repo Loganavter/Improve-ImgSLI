@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import struct
+from dataclasses import dataclass
 
 from PySide6.QtGui import QImage, QRhiViewport
 
@@ -76,6 +77,33 @@ _ARRAY_CAPACITY = min(
 # (e.g. preview) residency under a distinct key before register_source()
 # wipes the bare `sid` key -- see _upload_slot.
 _PREVIOUS_GENERATION_LEVEL = -1
+
+
+@dataclass
+class _SwapSpec:
+    """Resolved content-swap decision for one ``(sid, source)`` upload.
+
+    Pure decision, no mutation: produced by ``resolve_swap_spec`` (reads
+    only ``slot_pixel_sources`` + ``tile_service.grid_for``) and consumed
+    by ``_apply_swap_spec`` (which performs the rekey/register/upload in
+    the original order). Splitting the decision from the mutation is the
+    swap machine's final thin-client shape -- the spec feeds the engine
+    loop (``apply_pending_texture_ops``), the tab only resolves specs,
+    funnels uploads through ``upload_tile``, and reacts through the
+    backfill/promotion hooks below.
+    """
+
+    sid: int
+    size: tuple[int, int]
+    old_source: TiledPixelStore | QImage | None
+    old_is_multi: bool
+    # ``LevelKey(sid, _PREVIOUS_GENERATION_LEVEL)`` when a previous grid
+    # exists to rescue, else ``None`` (first upload -- nothing to rekey).
+    fallback_key: object | None
+    # 1x1-preview -> multi-full backfill condition, evaluated on old state
+    # only (the new grid's own multi-ness is re-checked at apply time,
+    # where the plain branch returns before this is read).
+    needs_backfill: bool
 
 
 def _pack_array_uniforms(
@@ -790,14 +818,33 @@ class BaseImagesPass(CanvasRenderPass):
         self.slot_resources.destroy_slot_textures(sid, keep=frozenset())
         self.slot_resources.purge_tile_srbs_for_slot(sid)
 
-    def _upload_slot(
+    def upload_tile(self, renderer, tile_key: object, image, updates) -> None:
+        """Single plain-path upload funnel for the swap machine.
+
+        Every 1x1 tile upload this pass performs outside the budgeted
+        residency loop (the eager single-upload fast path in
+        ``_apply_swap_spec``) goes through here, into ``slot_resources``
+        -- the tab never mints tile textures itself (see
+        ``tests/contracts/test_no_private_grid.py``). The E1 hook seam
+        pins this signature alongside ``resolve_swap_spec``.
+        """
+        self.slot_resources.upload_tile(renderer, tile_key, image, updates)
+
+    def resolve_swap_spec(
         self,
-        renderer,
         tile_service,
         sid: int,
         source: TiledPixelStore | QImage,
-        updates,
-    ) -> None:
+    ) -> _SwapSpec | None:
+        """Resolves one ``(sid, source)`` upload into a swap decision.
+
+        Pure: reads only ``slot_pixel_sources`` and
+        ``tile_service.grid_for`` -- performs no rekey/register/upload, so
+        calling it twice (or discarding the result) is always safe. Returns
+        ``None`` for a true duplicate upload (same object already applied),
+        a ``_SwapSpec`` otherwise. The E1 hook seam pins this signature
+        alongside ``upload_tile``.
+        """
         if self.slot_pixel_sources.get(sid) is source:
             # `pending_uploads` can carry more than one entry for the same
             # (sid, source) pair queued within one frame (canvas_widget can
@@ -814,7 +861,48 @@ class BaseImagesPass(CanvasRenderPass):
             # instead of the preview's 1/2 -- i.e. the preview never
             # survived to be drawn at all). Skip entirely once this exact
             # source is already applied.
-            return
+            return None
+        size = pixel_source_size(source)
+        old_source = self.slot_pixel_sources.get(sid)
+        old_grid = tile_service.grid_for(sid)
+        old_is_multi = old_grid is not None and (
+            old_grid.rows > 1 or old_grid.columns > 1
+        )
+        if old_grid is not None:
+            fallback_key: object | None = LevelKey(sid, _PREVIOUS_GENERATION_LEVEL)
+        else:
+            fallback_key = None
+        needs_backfill = (
+            old_grid is not None
+            and not old_is_multi
+            and old_source is not None
+        )
+        return _SwapSpec(
+            sid=sid,
+            size=size,
+            old_source=old_source,
+            old_is_multi=old_is_multi,
+            fallback_key=fallback_key,
+            needs_backfill=needs_backfill,
+        )
+
+    def _apply_swap_spec(
+        self,
+        renderer,
+        tile_service,
+        sid: int,
+        source: TiledPixelStore | QImage,
+        spec: _SwapSpec,
+        updates,
+    ) -> None:
+        """Performs a resolved swap in the original mutation order.
+
+        Owns the rekey ordering, the same-key size-change fallback
+        preservation, and the 1x1->multi backfill trigger -- semantics are
+        bit-identical to the pre-split ``_upload_slot`` body; only the
+        decision half moved into ``resolve_swap_spec`` and the plain upload
+        into ``upload_tile``.
+        """
         # A source swap (e.g. preview QImage -> real TiledPixelStore)
         # invalidates any LOD level built against the *old* source below --
         # those pyramids no longer apply. It deliberately does NOT reset
@@ -832,13 +920,7 @@ class BaseImagesPass(CanvasRenderPass):
             key_more_pending=self._key_more_pending,
             slot_lod_keys=self._slot_lod_keys,
         )
-        size = pixel_source_size(source)
-        old_source = self.slot_pixel_sources.get(sid)
-        old_grid = tile_service.grid_for(sid)
-        old_is_multi = old_grid is not None and (
-            old_grid.rows > 1 or old_grid.columns > 1
-        )
-        if old_grid is not None:
+        if spec.fallback_key is not None:
             # Any same-``sid`` content swap (multi->multi, 1x1->multi,
             # multi->1x1, 1x1->1x1) rekeys the still-good old content
             # under a distinct fallback key first, so the existing
@@ -864,13 +946,12 @@ class BaseImagesPass(CanvasRenderPass):
             # zero fallback tiles). Force it back to "still pending" so the
             # promotion can't fire until this frame's own residency pass
             # reports real completion for the new content.
-            fallback_key = LevelKey(sid, _PREVIOUS_GENERATION_LEVEL)
-            tile_service.invalidate_source(fallback_key)
-            tile_service.rekey_source(sid, fallback_key)
-            self._last_good_key[sid] = fallback_key
-            self._key_more_pending[fallback_key] = False
+            tile_service.invalidate_source(spec.fallback_key)
+            tile_service.rekey_source(sid, spec.fallback_key)
+            self._last_good_key[sid] = spec.fallback_key
+            self._key_more_pending[spec.fallback_key] = False
             self._key_more_pending[sid] = True
-        grid = tile_service.register_source(sid, size)
+        grid = tile_service.register_source(sid, spec.size)
         self.slot_pixel_sources[sid] = source
         self.slot_resources.purge_tile_srbs_for_slot(sid)
         host_cache = self._host_cache(renderer)
@@ -878,16 +959,12 @@ class BaseImagesPass(CanvasRenderPass):
             tile_key = tile_service.tile_key(sid, 0, 0)
             self.slot_resources.destroy_slot_textures(sid, keep={tile_key})
             qimage = host_cache.qimage_from_source(source, residency._slot_host_key(sid))
-            self.slot_resources.upload_tile(renderer, tile_key, qimage, updates)
+            self.upload_tile(renderer, tile_key, qimage, updates)
             # A same-frame plain overwrite subsumes any deferred cleanup
             # from an earlier swap -- the texture now holds new content.
             self._pending_plain_cleanup.discard(sid)
             return
-        if (
-            not old_is_multi
-            and old_grid is not None
-            and old_source is not None
-        ):
+        if spec.needs_backfill:
             # 1x1-preview -> multi-full: the old content was plain-only
             # (never array-resident), so the rekey above preserved
             # bookkeeping but nothing drawable on the array path -- and the
@@ -900,9 +977,31 @@ class BaseImagesPass(CanvasRenderPass):
             # once the new key promotes -- see ``_prepare_array_plan``.
             self._backfill_plain_preview_to_array(
                 renderer, tile_service, host_cache, updates,
-                sid, self._last_good_key[sid], old_source,
+                sid, self._last_good_key[sid], spec.old_source,
             )
             self._pending_plain_cleanup.add(sid)
+
+    def _upload_slot(
+        self,
+        renderer,
+        tile_service,
+        sid: int,
+        source: TiledPixelStore | QImage,
+        updates,
+    ) -> None:
+        """Thin orchestrator over the swap machine: resolve, then apply.
+
+        The engine loop (``apply_pending_texture_ops``) drives uploads;
+        this pass only resolves per-upload specs (``resolve_swap_spec``),
+        funnels tile uploads (``upload_tile``), and reacts through the
+        backfill/promotion tab hooks -- the machine's semantics (rekey
+        ordering, backfill conditions, fallback preservation) live in
+        those pieces unchanged.
+        """
+        spec = self.resolve_swap_spec(tile_service, sid, source)
+        if spec is None:
+            return
+        self._apply_swap_spec(renderer, tile_service, sid, source, spec, updates)
 
     def _backfill_plain_preview_to_array(
         self,
@@ -916,7 +1015,8 @@ class BaseImagesPass(CanvasRenderPass):
     ) -> None:
         """Upload a plain-only 1x1 preview into the array under ``fallback_key``.
 
-        Called from ``_upload_slot`` on a 1x1-preview -> multi-full swap:
+        Backfill tab hook for the swap machine: called from
+        ``_apply_swap_spec`` on a 1x1-preview -> multi-full swap:
         the rekey preserved the old grid's bookkeeping, but a preview that
         only ever lived as a plain ``slot_textures`` entry has no array
         slot, so the fallback-LOD draw in ``_prepare_array_plan`` would
