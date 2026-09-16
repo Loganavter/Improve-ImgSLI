@@ -19,6 +19,41 @@ resolved via ``TileTextureService`` (see ``_source_slices``) and packed
 into the uniform block alongside ``uvRect1``/``uvRect2``. Legacy
 raster-overlay entry points remain on ``CanvasWidget`` for compatibility,
 but the active magnifier runtime does not use them.
+
+F4-BOUNDARY (PERMANENT BOUNDARY verdict, scale-free-overlays F4): the
+content path below STAYS in this file and is never mounted onto
+``engine.overlay.OverlayShell`` / ``TexturedOverlayShell``. Proof:
+
+(1) LINES THAT STAY (array-shape GPU sites, each marked F4-BOUNDARY):
+``prepare`` array-consume (``array_resources.tile_arrays[0]`` held, not
+owned, with ``placeholder_texture_array`` fallback);
+``_ensure_mag_uniform_capacity`` strided dynamic-offset uniform buffer
+(``rhi.ubufAligned(MAG_UNIFORM_SIZE)``, one long-lived buffer, per-item
+slots); ``_build_mag_srb`` single SRB with
+``uniformBufferWithDynamicOffset`` + externally-owned ``sampler2DArray``
+binding; ``prepare`` per-frame SRB rebuild on backing-array replace;
+``initialize`` dual-pipeline lifecycle (``border`` shell + ``mag``
+pipeline); ``record`` dynamic-offset draw loop
+(``setShaderResources(self.mag_srb, 1, (0, index * stride))``).
+
+(2) UNIQUENESS: no existing engine shell hosts this conjunction --
+externally-owned ``sampler2DArray`` (array_resources owns, this pass
+holds) + strided dynamic-offset uniforms (``OverlayShell`` is one
+uniform buffer + one SRB per item, no textures, no dynamic offsets) +
+per-frame SRB rebuild on backing-array replace (``TexturedOverlayShell``
+rebuilds only on its own texture resize, never on an external array
+replace) + dual pipelines (border_disk + mag) under one resource
+lifecycle. ``SemanticOverlayItems``/``pack_arcs`` (F2) covers only the
+arc/border decoration path, never array-sampled content.
+
+(3) INVALIDATION: if content ever drops array sampling, this boundary
+dissolves -- single raster upload migrates to ``TexturedOverlayShell``,
+pure decoration (no texture at all) migrates to ``OverlayShell`` +
+``semantic.py`` pack. Until then, array-shape markers pinned by
+``src/tabs/image_compare/tests/render/test_magnifier_content_boundary.py``.
+
+Record path + hold gates untouched (ruling 4: math moves, gating stays);
+no tab-side scale definition (engine ``content_scale_for`` import only).
 """
 
 from __future__ import annotations
@@ -630,6 +665,10 @@ class MagnifierPass(CanvasRenderPass):
         self.release()
         self.rhi = rhi
         self._target = target
+        # F4-BOUNDARY (dual pipelines): border-disk companion pipeline plus
+        # the uber mag pipeline share this pass's resource lifecycle --
+        # never split into two CanvasRenderPass classes (see module
+        # docstring); only the arc/border decoration half is F2-migrated.
         self.border.initialize(rhi, target, SHADER_DIR, "border_disk")
 
         self.mag_vertex_buffer = rhi.newBuffer(
@@ -690,6 +729,9 @@ class MagnifierPass(CanvasRenderPass):
         one long-lived buffer and writing every slot pre-pass (never
         recreating it just because the record count went up) sidesteps
         that regardless of whether it's the actual cause here."""
+        # F4-BOUNDARY (strided buffer): one long-lived buffer, per-item
+        # slots via ubufAligned stride + dynamic offsets -- no engine shell
+        # hosts this shape (OverlayShell is one buffer + one SRB per item).
         rhi = self.rhi
         assert rhi is not None
         stride = rhi.ubufAligned(MAG_UNIFORM_SIZE)
@@ -723,6 +765,12 @@ class MagnifierPass(CanvasRenderPass):
                 pass
 
     def _build_mag_srb(self, bg_array):
+        # F4-BOUNDARY (dynamic-offset SRB): binding 0 is a strided uniform
+        # buffer with dynamic offset; binding 1 is the EXTERNALLY-OWNED
+        # sampler2DArray (array_resources.tile_arrays[0], held not owned --
+        # mag.frag ``layout(binding = 1) uniform sampler2DArray bgArray``).
+        # TexturedOverlayShell binds its OWN single raster texture with a
+        # plain uniformBuffer -- this conjunction lives only here.
         srb = self.rhi.newShaderResourceBindings()
         stages = (
             QRhiShaderResourceBinding.StageFlag.VertexStage
@@ -801,6 +849,10 @@ class MagnifierPass(CanvasRenderPass):
         _loupe_diag = frame_context is not None and ic_loupe_debug_enabled()
         _loupe_n0 = len(frame_context) if _loupe_diag else 0
         array_resources = getattr(rhi_renderer.resources, "array_resources", None) if rhi_renderer else None
+        # F4-BOUNDARY (array consume): the shared tile-array texture is HELD
+        # (array_resources owns it), never created here -- the 1x1
+        # placeholder array below is the no-renderer fallback only. A shell
+        # migration must preserve held-not-owned array sampling.
         if array_resources is not None:
             array_resources._ensure_tile_array(0)
             bg_array = array_resources.tile_arrays[0]
@@ -1312,6 +1364,9 @@ class MagnifierPass(CanvasRenderPass):
         # new backing texture, so the SRB is rebuilt every frame regardless
         # (``_ensure_mag_uniform_capacity`` above already tore it down when
         # the buffer itself grew).
+        # F4-BOUNDARY (SRB rebuild): per-frame rebuild tracks the
+        # EXTERNAL backing-array replace -- TexturedOverlayShell rebuilds
+        # only on its own texture resize, never on an external replace.
         if self.mag_srb is not None:
             try:
                 self.mag_srb.destroy()
@@ -1359,6 +1414,10 @@ class MagnifierPass(CanvasRenderPass):
             assert self.mag_vertex_buffer is not None
             command_buffer.setVertexInput(0, [(self.mag_vertex_buffer, 0)])
             stride = self.mag_uniform_stride
+            # F4-BOUNDARY (dynamic-offset draw): one shared SRB rebound per
+            # item with its strided dynamic offset -- record path is math
+            # routing only (ruling 4: gating lives in prepare's hold gates
+            # above, never here).
             for index, item in enumerate(self._mag_items):
                 command_buffer.setShaderResources(
                     self.mag_srb, 1, (0, index * stride)
