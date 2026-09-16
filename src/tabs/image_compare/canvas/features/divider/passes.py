@@ -2,22 +2,9 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import Any
 
-from PySide6.QtGui import (
-    QColor,
-    QRhiBuffer,
-    QRhiCommandBuffer,
-    QRhi,
-    QRhiGraphicsPipeline,
-    QRhiShaderResourceBinding,
-    QRhiShaderResourceBindings,
-    QRhiShaderStage,
-    QRhiVertexInputAttribute,
-    QRhiVertexInputBinding,
-    QRhiVertexInputLayout,
-    QRhiViewport,
-    QShader,
-)
+from PySide6.QtGui import QColor
 
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
@@ -26,6 +13,7 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from engine.cache.uniform_layout import assert_uniform_size
+from engine.overlay import OverlayBinding, OverlayResolver, OverlayShell
 from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
 from tabs.image_compare.canvas.features.divider.overlay_model import (
     content_split_visual,
@@ -33,41 +21,55 @@ from tabs.image_compare.canvas.features.divider.overlay_model import (
 )
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
-_VERTICES = struct.pack(
-    "<16f",
-    -1.0,
-    1.0,
-    0.0,
-    0.0,
-    -1.0,
-    -1.0,
-    0.0,
-    1.0,
-    1.0,
-    1.0,
-    1.0,
-    0.0,
-    1.0,
-    -1.0,
-    1.0,
-    1.0,
-)
 # std140: mat4(64) + vec2(8) + 2 floats(8) + vec4 color(16) + vec4 clip(16)
 # + int(4) + pad(12) = 128
 _UNIFORM_FMT = "<24f4fi3f"
 _UNIFORM_SIZE = 128
 assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="DividerPass uniform")
 
-
-def _load_shader(name: str) -> QShader:
-    shader = QShader.fromSerialized((_SHADER_DIR / name).read_bytes())
-    if not shader.isValid():
-        raise RuntimeError(f"Invalid divider shader: {name}")
-    return shader
+BINDING = OverlayBinding(
+    shader_dir=_SHADER_DIR,
+    shader_stem="divider",
+    uniform_size=_UNIFORM_SIZE,
+)
 
 
 def _content_split_visual(ctx) -> float:
     return content_split_visual(ctx)
+
+
+def _blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
+    """Ctx-first uniform-block resolver: ctx in, one packed block out."""
+
+    def resolve(ctx: Any) -> tuple[bytes, ...]:
+        _show, position, thickness, horizontal, color, clip = (
+            DividerPass._resolve_divider_state(widget, ctx)
+        )
+        cx, cy, cw, ch = clip
+        return (
+            struct.pack(
+                _UNIFORM_FMT,
+                *matrix,
+                float(ctx.width),
+                float(ctx.height),
+                position,
+                thickness * 0.5,
+                color.redF(),
+                color.greenF(),
+                color.blueF(),
+                color.alphaF(),
+                cx,
+                cy,
+                cw,
+                ch,
+                int(horizontal),
+                0.0,
+                0.0,
+                0.0,
+            ),
+        )
+
+    return resolve
 
 
 class DividerPass(CanvasRenderPass):
@@ -75,11 +77,7 @@ class DividerPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.rhi: QRhi | None = None
-        self.vertex_buffer: QRhiBuffer | None = None
-        self.uniform_buffer: QRhiBuffer | None = None
-        self.srb: QRhiShaderResourceBindings | None = None
-        self.pipeline: QRhiGraphicsPipeline | None = None
+        self._shell = OverlayShell(_UNIFORM_SIZE)
 
     @staticmethod
     def _resolve_divider_state(widget, ctx):
@@ -96,61 +94,7 @@ class DividerPass(CanvasRenderPass):
         )
 
     def initialize(self, rhi, target) -> None:
-        self.release()
-        self.rhi = rhi
-        self.vertex_buffer = rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.VertexBuffer,
-            len(_VERTICES),
-        )
-        self.vertex_buffer.create()
-        self.uniform_buffer = rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            _UNIFORM_SIZE,
-        )
-        self.uniform_buffer.create()
-        self.srb = rhi.newShaderResourceBindings()
-        stages = (
-            QRhiShaderResourceBinding.StageFlag.VertexStage
-            | QRhiShaderResourceBinding.StageFlag.FragmentStage
-        )
-        self.srb.setBindings(
-            [QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer)]
-        )
-        self.srb.create()
-
-        self.pipeline = rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex, _load_shader("divider.vert.qsb")
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment, _load_shader("divider.frag.qsb")
-                ),
-            ]
-        )
-        self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
-        self.pipeline.setSampleCount(target.sampleCount())
-        self.pipeline.setShaderResourceBindings(self.srb)
-        self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
-        self.pipeline.setFlags(QRhiGraphicsPipeline.Flag.UsesScissor)
-        layout = QRhiVertexInputLayout()
-        layout.setBindings([QRhiVertexInputBinding(16)])
-        layout.setAttributes(
-            [
-                QRhiVertexInputAttribute(
-                    0, 0, QRhiVertexInputAttribute.Format.Float2, 0
-                ),
-                QRhiVertexInputAttribute(
-                    0, 1, QRhiVertexInputAttribute.Format.Float2, 8
-                ),
-            ]
-        )
-        self.pipeline.setVertexInputLayout(layout)
-        if not self.pipeline.create():
-            raise RuntimeError("Failed to create divider QRhi pipeline")
+        self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
 
     def should_paint(self, ctx) -> bool:
         show, _position, thickness, _horizontal, _color, _clip = self._resolve_divider_state(
@@ -173,75 +117,29 @@ class DividerPass(CanvasRenderPass):
         )
 
     def prepare(self, widget, ctx, resource_updates) -> None:
-        _show, position, thickness, horizontal, color, clip = self._resolve_divider_state(
-            widget, ctx
-        )
-        assert self.rhi is not None
-        matrix = tuple(float(value) for value in self.rhi.clipSpaceCorrMatrix().data())
-        cx, cy, cw, ch = clip
-        block = struct.pack(
-            _UNIFORM_FMT,
-            *matrix,
-            float(ctx.width),
-            float(ctx.height),
-            position,
-            thickness * 0.5,
-            color.redF(),
-            color.greenF(),
-            color.blueF(),
-            color.alphaF(),
-            cx,
-            cy,
-            cw,
-            ch,
-            int(horizontal),
-            0.0,
-            0.0,
-            0.0,
-        )
-        resource_updates.updateDynamicBuffer(self.vertex_buffer, 0, _VERTICES)
-        resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, block)
+        matrix = self._shell.clip_matrix()
+        (block,) = _blocks_resolver(widget, matrix)(ctx)
+        self._shell.ensure_slots(1)
+        self._shell.stage_quad(resource_updates)
+        self._shell.stage_slot(resource_updates, 0, block)
 
-    def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
-        assert self.rhi is not None
+    def record(self, command_buffer, widget, ctx) -> None:
         target_size = widget.renderTarget().pixelSize()
-        assert self.pipeline is not None
-        command_buffer.setGraphicsPipeline(self.pipeline)
-        command_buffer.setViewport(
-            QRhiViewport(
-                0.0, 0.0, float(target_size.width()), float(target_size.height())
-            )
-        )
         # Full-target scissor only — content clip lives in the fragment shader
         # (src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md).
-        command_buffer.setScissor(
-            scissor_from_widget_rect(
-                widget, self.rhi, ctx, 0.0, 0.0, float(ctx.width), float(ctx.height)
-            )
+        scissor = scissor_from_widget_rect(
+            widget, self._shell.rhi, ctx, 0.0, 0.0, float(ctx.width), float(ctx.height)
         )
-        assert self.srb is not None
-        command_buffer.setShaderResources(self.srb)
-        assert self.vertex_buffer is not None
-        command_buffer.setVertexInput(0, [(self.vertex_buffer, 0)])
-        command_buffer.draw(4)
+        self._shell.draw(
+            command_buffer,
+            width=float(target_size.width()),
+            height=float(target_size.height()),
+            scissor=scissor,
+            count=1,
+        )
 
     def release(self) -> None:
-        for resource in (
-            self.pipeline,
-            self.srb,
-            self.uniform_buffer,
-            self.vertex_buffer,
-        ):
-            if resource is not None:
-                try:
-                    resource.destroy()
-                except RuntimeError:
-                    pass
-        self.pipeline = None
-        self.srb = None
-        self.uniform_buffer = None
-        self.vertex_buffer = None
-        self.rhi = None
+        self._shell.teardown()
 
 
 RENDER_PASSES: list[CanvasRenderPass] = [DividerPass()]
