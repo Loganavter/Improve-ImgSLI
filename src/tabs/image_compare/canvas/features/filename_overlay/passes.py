@@ -37,7 +37,35 @@ from tabs.image_compare.canvas.features.filename_overlay.render.label_raster imp
 
 
 class FilenameOverlayPass(CanvasRenderPass):
-    """Renders filename labels as screen-positioned textured quads."""
+    """Renders filename labels as screen-positioned textured quads.
+
+    F5 FILENAME-VERDICT: PERMANENT BOUNDARY (not a migration candidate).
+
+    (1) WHAT STAYS (exact GPU sites -- see the markers below):
+    per-slot raw + final textures (``ensure_slot_textures`` in
+    ``render/gpu_resources.py``), per-slot ``RenderTarget`` downsample
+    targets with their own rpdesc, the ``_LABEL_SUPERSAMPLE = 4``
+    supersampled upload -> Lanczos pre-pass (``label_downsample.frag``
+    ``SCALE = 4`` / ``RADIUS = 8``) -> device-resolve in
+    ``record_pre_pass`` below, per-slot screen quads via
+    ``build_quad_vertices`` (never fullscreen), and per-slot vertex
+    buffers with ``srb_linear`` / ``srb_nearest`` selection in
+    ``record`` below.
+
+    (2) WHY (uniqueness proof): two independently-sized label textures
+    plus a supersample stage plus a device-resolve plus per-slot screen
+    quads has no image in the single-fullscreen-upload
+    ``TexturedOverlayShell`` (one texture, upload-then-draw in the same
+    main pass, shared ``FULLSCREEN_VERTICES``, one ``srb``). MC
+    ``layer_labels`` rides the shell ONLY because it is one fullscreen
+    raster with no supersample stage.
+
+    (3) INVALIDATION CONDITION: re-open this verdict if the shell gains
+    slot-targets plus a GPU-supersample stage, or if these labels drop
+    supersampling for a single fullscreen raster like MC. Either change
+    breaks the markers pinned in
+    ``src/tabs/image_compare/tests/render/test_filename_boundary.py``.
+    """
 
     stack_role = CanvasStackRole.HUD_LABEL
     visibility = SceneVisibility.ALL
@@ -241,6 +269,9 @@ class FilenameOverlayPass(CanvasRenderPass):
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
+            # BOUNDARY (F5): per-slot screen quads -- each label draws its
+            # own NDC quad from build_quad_vertices, never the shared
+            # FULLSCREEN_VERTICES the TexturedOverlayShell stages.
             vertices = build_quad_vertices(ctx, screen_rect)
             resource_updates.updateDynamicBuffer(slot.vertex_buffer, 0, vertices)
             slot.vertices = vertices
@@ -250,6 +281,11 @@ class FilenameOverlayPass(CanvasRenderPass):
     def record_pre_pass(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
         if self._gpu.pipeline is None:
             return
+        # BOUNDARY (F5): device-resolve stage -- the uploadTexture +
+        # beginPass/endPass nesting here is the shape TexturedOverlayShell
+        # cannot host (it uploads in prepare and draws in the same main
+        # pass). Pinned by test_filename_boundary.py; see the class
+        # docstring for the invalidation condition.
         # Lanczos-2 downsample: raw_texture (supersampled, uploaded right
         # below) -> texture (device res, what record()'s main draw samples)
         # -- see render/gpu_resources.py's LabelSlot docstring. Only for
@@ -298,6 +334,9 @@ class FilenameOverlayPass(CanvasRenderPass):
         fb_height = float(int(ctx.height) * dpr)
         command_buffer.setGraphicsPipeline(self._gpu.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_width, fb_height))
+        # BOUNDARY (F5): per-slot draw -- own vertex buffer per slot plus
+        # srb_linear/srb_nearest selection. The shell draws one fullscreen
+        # quad through one srb; this loop cannot delegate to it.
         for slot in self._gpu.slots:
             if not slot.active:
                 continue
