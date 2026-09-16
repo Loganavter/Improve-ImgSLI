@@ -214,9 +214,17 @@ def test_pilot_passes_declare_bindings():
             )
         if f"uniform_size={size}" not in text.replace(" ", "").replace(
             "_UNIFORM_SIZE", str(size)
-        ) and str(size) not in text:
+        ) and str(size) not in text and not any(
+            sym in text
+            for sym in (
+                "DIVIDER_UNIFORM_SIZE",
+                "GUIDES_UNIFORM_SIZE",
+                "CAPTURE_UNIFORM_SIZE",
+                "GRID_DIVIDER_UNIFORM_SIZE",
+            )
+        ):
             offenders.append(f"{rel_path} declares no uniform_size={size}")
-        if "OverlayResolver" not in text:
+        if "OverlayResolver" not in text and "SemanticResolver" not in text:
             offenders.append(
                 f"{rel_path} never names OverlayResolver -- per-frame "
                 f"blocks flow through the ctx-first resolver"
@@ -1262,29 +1270,33 @@ def test_f1_v1_layout_markers_still_pinned():
     once on this tree during F1 authoring and recorded in the wave notes.
     """
     markers = {
-        "src/tabs/image_compare/canvas/features/divider/passes.py": (
-            '_UNIFORM_FMT = "<24f4fi3f"',
-            "_UNIFORM_SIZE = 128",
-        ),
-        "src/tabs/image_compare/canvas/features/guides/passes.py": (
-            '_UNIFORM_FMT = "<32f"',
-            "_UNIFORM_SIZE = 128",
-        ),
-        "src/tabs/image_compare/canvas/features/capture/passes.py": (
-            '_UNIFORM_FMT = "<28f"',
-            "_UNIFORM_SIZE = 112",
+        # F2 migrated the IC passes to the v2 semantic seam
+        # (lift-then-delete flag-day): layouts now live shell-side in
+        # engine.overlay.semantic — the vectors replicate those, and this
+        # pin keeps them tied to the single source of truth.
+        "src/engine/overlay/semantic.py": (
+            'DIVIDER_UNIFORM_FMT = "<24f4fi3f"',
+            "DIVIDER_UNIFORM_SIZE = 128",
+            'GUIDES_UNIFORM_FMT = "<32f"',
+            "GUIDES_UNIFORM_SIZE = 128",
+            'CAPTURE_UNIFORM_FMT = "<28f"',
+            "CAPTURE_UNIFORM_SIZE = 112",
+            'GRID_DIVIDER_UNIFORM_FMT = "<24f"',
+            "GRID_DIVIDER_UNIFORM_SIZE = 96",
+            'ARC_UNIFORM_FMT = "<16f2f2f4f4f"',
+            "ARC_UNIFORM_SIZE = 112",
+            "def pack_divider(",
+            "def pack_arcs(",
+            "def _fb_rect_to_ndc_bounds(",
+            "(2.0 * x / fb_w) - 1.0",
+            "1.0 - (2.0 * y / fb_h)",
         ),
         "src/tabs/multi_compare/canvas/features/grid_dividers/passes.py": (
             '_UNIFORM_FMT = "<24f"',
             "_UNIFORM_SIZE = 96",
-            "(2.0 * x / fb_w) - 1.0",
-            "1.0 - (2.0 * y / fb_h)",
         ),
         "src/tabs/image_compare/canvas/features/magnifier/render/passes_common.py": (
-            '"<16f 2f 2f 4f 4f"',
-            "def pack_arc_uniform(",
-            "start_angle_deg",
-            "span_angle_deg",
+            "def pack_border_disk_uniform(",
         ),
         "src/tabs/image_compare/canvas/features/magnifier/render/shader_layout.py": (
             "ARC_UNIFORM_SIZE = 112",
