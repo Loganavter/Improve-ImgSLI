@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from shared.image_processing.pyramid_registry import pyramid_for
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pyramid_registry import pyramid_for
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def pick_first_real(*candidates):

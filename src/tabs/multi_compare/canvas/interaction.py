@@ -53,7 +53,7 @@ def fit_scale_for(slot: CompareSlot, rect: QRect, source=None) -> tuple[float, f
     """
     if source is None or rect.width() <= 0 or rect.height() <= 0:
         return 1.0, 1.0
-    from shared.image_processing.tiled_pixel_store import pixel_source_size
+    from engine.store.tiled_pixel_store import pixel_source_size
 
     w, h = pixel_source_size(source)
     if h <= 0 or w <= 0:
@@ -530,7 +530,7 @@ def start_internal_drag(widget, slot_id: int) -> None:
     if rect is not None and slot is not None:
         from PySide6.QtGui import QPixmap
 
-        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+        from engine.store.tiled_pixel_store import qimage_from_pixel_source
 
         source = _source_for(widget, slot)
         if source is not None:

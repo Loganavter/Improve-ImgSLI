@@ -2,9 +2,9 @@
 
 from PIL import Image
 
-from shared.image_processing.pixel_ops.unify import unify_pair
+from engine.store.pixel_ops.unify import unify_pair
 from shared.image_processing.resize import resize_images_processor
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def _gradient(w, h):

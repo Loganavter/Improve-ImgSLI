@@ -14,7 +14,7 @@ from PySide6.QtGui import (
     QShader,
 )
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
 from engine.cache.uniform_layout import assert_uniform_size

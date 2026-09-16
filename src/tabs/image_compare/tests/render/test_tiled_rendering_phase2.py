@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shared.image_processing.regions import build_uniform_tile_grid
+from engine.store.regions import build_uniform_tile_grid
 from tabs.image_compare.canvas.rhi_renderer import (
     _apron_rect,
     _TILE_APRON_PX,

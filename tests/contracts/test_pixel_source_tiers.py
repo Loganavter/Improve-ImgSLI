@@ -17,9 +17,9 @@ import ast
 from tests.contracts._framework import ROOT, iter_py, rel
 
 ALLOWLIST = {
-    "src/shared/image_processing/tiled_pixel_store.py",
+    "src/engine/store/tiled_pixel_store.py",
     # memmap-failure fallback in the unify large path (`to_real_pil_copy`).
-    "src/shared/image_processing/pixel_ops/unify.py",
+    "src/engine/store/pixel_ops/unify.py",
 }
 
 _FULL_FRAME_CALLS = {"materialize_full", "to_real_pil_copy", "to_pil"}

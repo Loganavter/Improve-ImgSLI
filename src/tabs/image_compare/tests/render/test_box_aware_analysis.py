@@ -27,8 +27,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 
 from shared.image_processing.autocrop.model import CropBox
-from shared.image_processing.pixel_ops.unify import unify_pair
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pixel_ops.unify import unify_pair
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
 from tabs.image_compare.services.analysis.analysis_pair import (
     crop_pair_to_boxes,

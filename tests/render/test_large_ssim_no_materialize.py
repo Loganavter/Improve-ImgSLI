@@ -4,7 +4,7 @@ from PIL import Image
 
 from shared.analysis.ssim_source import create_ssim_map_from_sources
 from shared.image_processing.store_lease import StoreLease
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def test_large_ssim_from_sources_avoids_materialize_full(monkeypatch):

@@ -15,8 +15,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QImage
 
-from shared.image_processing.pixel_ops.unify import unify_pair
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.pixel_ops.unify import unify_pair
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def _tiny_store():

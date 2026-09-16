@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from engine.store.pixel_ops.resample import write_resampled_to_store
 from shared.image_processing.resample_map import get_resample
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
 from tabs.image_compare.plugins.video_editor.services.video_export_models import (
     GlobalCanvasBounds,

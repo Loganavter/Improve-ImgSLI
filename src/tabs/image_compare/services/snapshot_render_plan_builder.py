@@ -546,8 +546,8 @@ def snapshot_lod_tiles_for_sources(
     base key for level 0, ``LevelKey(base, k)`` above -- mirroring what the
     live upload path registers before residency/draw-plan run.
     """
-    from shared.image_processing.pyramid_registry import pyramid_for
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.pyramid_registry import pyramid_for
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
     canvas_w_px = float(canvas_size_px[0])
     canvas_h_px = float(canvas_size_px[1])

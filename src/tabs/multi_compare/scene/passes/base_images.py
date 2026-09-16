@@ -8,13 +8,19 @@ import struct
 
 from PySide6.QtGui import QImage, QRhiViewport
 
-from shared.image_processing.tiled_pixel_store import (
-    TiledPixelStore,
-    pixel_source_size,
-)
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.fallback_lod import resolve_fallback_lod
 from engine.gpu.host_texture_cache import cache_for_host
 from engine.cache.lod import LevelKey
+from engine.gpu.base_images_pass import (
+    SwapSpec,
+    SwapApplyHooks,
+    apply_swap_spec as _engine_apply_swap_spec,
+    backfill_plain_preview_to_array as _engine_backfill,
+    resolve_swap_spec as _engine_resolve_swap_spec,
+    slot_host_key as _engine_slot_host_key,
+    slot_tile_host_key as _engine_slot_tile_host_key,
+)
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
@@ -71,11 +77,10 @@ _ARRAY_CAPACITY = min(
     ),
 )
 
-# Sentinel LevelKey.level value (real pyramid levels are always >= 1, per
-# LevelKey's own docstring) used to rescue a slot's previous-generation
-# (e.g. preview) residency under a distinct key before register_source()
-# wipes the bare `sid` key -- see _upload_slot.
-_PREVIOUS_GENERATION_LEVEL = -1
+# Swap-machine decision/apply/backfill live in the merged engine pass
+# (``engine.gpu.base_images_pass``); this module keeps the tab hook impls
+# (resolve/upload/backfill wrappers binding tab state) below. The
+# previous-generation sentinel and spec dataclass retired with the move.
 
 
 def _pack_array_uniforms(
@@ -236,11 +241,14 @@ class BaseImagesPass(CanvasRenderPass):
     (snapshot-replay per rendering-model).
     """
 
-    # Forward-shape declaration for routing through
-    # ``iter_active_render_passes``/``iter_ordered_render_passes``: no
+    # Routing declaration for ``RENDER_PASSES`` (see scene/renderer.py): no
     # CanvasStackRole maps to RenderPhase.BASE_IMAGE yet, so this declares
-    # the nearest content role until the policy gains one. The live
-    # renderer still wires ``image_pass`` first (see scene/renderer.py).
+    # the nearest content role until the policy gains one. ``visibility``
+    # stays explicit ``ALL`` on purpose -- ``MultiCompareRenderContext``
+    # carries no render-mode signal, so ``iter_active_render_passes``'
+    # resolver defaults to ``PREVIEW`` (see
+    # ``canvas/features/drag_drop_overlay/passes.py``); narrowing this to
+    # ``INTERACTIVE`` would silently disable the base pass permanently.
     stack_role = CanvasStackRole.IMAGE_OVERLAY_CONTENT
     visibility = SceneVisibility.ALL
 
@@ -307,7 +315,7 @@ class BaseImagesPass(CanvasRenderPass):
         self._dirty_layers_this_frame: dict[int, set[int]] = {}
         # This frame's per-slot (key, pixel_source) as resolved by
         # residency.realize()'s own lod_key_and_source call -- stashed so
-        # _prepare_array_plan/finish_prepare's plain-path loop reuse it
+        # _prepare_array_plan/prepare's plain-path loop reuses it
         # verbatim instead of independently re-resolving it later in the same
         # frame, which could disagree if a background pyramid build landed a
         # new level in between (see residency.py's realize() docstring/the
@@ -318,8 +326,9 @@ class BaseImagesPass(CanvasRenderPass):
         """Base content draws whenever the frame has projected layers.
 
         Reads only ``ctx`` (record-reads-only-ctx direction) -- the
-        renderer still calls ``record()`` directly (see scene/renderer.py),
-        so this is forward-shape for ``iter_active_render_passes``.
+        renderer records ``image_pass`` first explicitly (see
+        scene/renderer.py); the shape already fits
+        ``iter_active_render_passes`` if routing ever merges.
         """
         return bool(getattr(ctx, "projected_layers", ()))
 
@@ -374,10 +383,15 @@ class BaseImagesPass(CanvasRenderPass):
             name_prefix="multi-compare",
         )
 
-    def initialize(self, renderer, target) -> None:
-        self.slot_resources.set_uniform_stride(renderer.rhi.ubufAligned(SLOT_UNIFORM_SIZE))
-        self._ensure_array_resources(renderer)
-        self.slot_resources.ensure_pipeline(renderer, target)
+    def initialize(self, rhi, target) -> None:
+        """Contract-shape init (mirrors
+        ``magnifier_pass.initialize(rhi, target)``): rhi-local work only
+        (uniform stride). The sampler/array resources and the slot pipeline
+        need renderer-owned objects ``initialize`` never receives, so they
+        resolve lazily in ``prepare()`` via ``widget._renderer`` --
+        ``prepare`` runs every frame before ``record``.
+        """
+        self.slot_resources.set_uniform_stride(rhi.ubufAligned(SLOT_UNIFORM_SIZE))
 
     def release(self) -> None:
         if self._mip_cascade is not None:
@@ -396,12 +410,38 @@ class BaseImagesPass(CanvasRenderPass):
             self._upload_slot(renderer, tile_service, sid, source, updates)
         self.pending_uploads.clear()
 
-    def realize_residency(self, renderer, ctx, updates) -> None:
-        """First half of the old ``prepare()``: everything that must be
-        submitted to the GPU (``command_buffer.resourceUpdate``) before
-        ``generate_all_dirty_mips`` can safely sample this frame's
-        just-uploaded tile content -- see ``MultiCompareRhiRenderer.render``'s
-        sequencing and ``generate_all_dirty_mips``'s docstring."""
+    def take_dirty_layers(self) -> dict[int, set[int]]:
+        """Pops this frame's array-index/layer set dirtied by
+        ``_upload_tile_to_array`` during ``prepare`` -- read by
+        ``MultiCompareRhiRenderer.render`` once, between submitting the tile
+        uploads and running ``generate_all_dirty_mips``."""
+        dirty_layers = self._dirty_layers_this_frame
+        self._dirty_layers_this_frame = {}
+        return dirty_layers
+
+    def prepare(self, widget, ctx, updates) -> None:
+        """Contract-shape per-frame preparation (mirrors image_compare's
+        ``magnifier_pass.prepare(widget, ctx, resource_updates)``).
+
+        Renderer-owned GPU helpers resolve through ``widget._renderer``
+        (same reach-through as the magnifier's ``widget._rhi_renderer``) --
+        only ``widget``/``ctx``/``updates`` cross the contract boundary.
+
+        Does in one batch what used to be the ``realize_residency`` +
+        ``finish_prepare`` pair split around the mip-cascade submit: uploads
+        and residency first (must precede ``generate_all_dirty_mips``, which
+        samples this frame's just-uploaded tiles -- see
+        ``MultiCompareRhiRenderer.render``'s sequencing), then the draw-plan
+        uniforms/SRBs below (disjoint buffers with no mip dependency, so
+        sharing the pre-mips batch is behavior-identical to the old
+        post-mips one). The upload-queue flush
+        (``apply_pending_texture_ops``) stays renderer-driven before the ctx
+        build -- it feeds ``available_slot_ids``, not the contract.
+        """
+        renderer = getattr(widget, "_renderer", widget)
+        # Match image_compare: refresh pipelines if popup/swapchain restacked
+        # the color buffer (stale renderPassDescriptor → wrong present).
+        self.slot_resources.ensure_pipeline(renderer, widget.renderTarget())
         self.slot_resources.ensure_slot_resources(renderer, len(ctx.projected_layers))
         # Shared fullscreen quad — letterbox + slot cell are UV uniforms.
         # Also the vertex input generate_all_dirty_mips' downsample pass
@@ -411,21 +451,8 @@ class BaseImagesPass(CanvasRenderPass):
                 self.slot_resources.slot_vertex_buffers[0], 0, FULLSCREEN_VERTICES
             )
         self._realize_tile_residency(renderer, ctx, updates)
-
-    def take_dirty_layers(self) -> dict[int, set[int]]:
-        """Pops this frame's array-index/layer set dirtied by
-        ``_upload_tile_to_array`` during ``realize_residency`` -- read by
-        ``MultiCompareRhiRenderer.render`` once, between submitting the tile
-        uploads and running ``generate_all_dirty_mips``."""
-        dirty_layers = self._dirty_layers_this_frame
-        self._dirty_layers_this_frame = {}
-        return dirty_layers
-
-    def finish_prepare(self, renderer, ctx, updates) -> None:
-        """Second half of the old ``prepare()``: builds this frame's draw
-        plan (array instances or per-tile uniforms/SRBs) -- called with a
-        fresh ``updates`` batch, after ``realize_residency``'s batch has
-        been submitted and any dirty mips regenerated."""
+        # --- draw-plan half (ex-``finish_prepare``): builds this frame's
+        # array instances or per-tile uniforms/SRBs into the same batch. ---
         fb_w, fb_h = ctx.framebuffer_size
         composition = ctx.composition
         canvas_w = float(getattr(composition, "canvas_w", 1) or 1)
@@ -709,7 +736,11 @@ class BaseImagesPass(CanvasRenderPass):
             self.array_resources.array_instance_buffer, 0, b"".join(instances)
         )
 
-    def record(self, renderer, ctx, command_buffer) -> None:
+    def record(self, command_buffer, widget, ctx) -> None:
+        """Contract-shape draw (mirrors image_compare's
+        ``magnifier_pass.record(command_buffer, widget, ctx)``): reads only
+        ``ctx`` plus this pass's own prepared state.
+        """
         if not ctx.projected_layers or not self.slot_resources.slot_vertex_buffers:
             return
         fb_w, fb_h = ctx.framebuffer_size
@@ -764,6 +795,110 @@ class BaseImagesPass(CanvasRenderPass):
         self.slot_resources.destroy_slot_textures(sid, keep=frozenset())
         self.slot_resources.purge_tile_srbs_for_slot(sid)
 
+    def upload_tile(self, renderer, tile_key: object, image, updates) -> None:
+        """Single plain-path upload funnel for the swap machine.
+
+        Every 1x1 tile upload this pass performs outside the budgeted
+        residency loop (the eager single-upload fast path in
+        ``_apply_swap_spec``) goes through here, into ``slot_resources``
+        -- the tab never mints tile textures itself (see
+        ``tests/contracts/test_no_private_grid.py``). The E1 hook seam
+        pins this signature alongside ``resolve_swap_spec``.
+        """
+        self.slot_resources.upload_tile(renderer, tile_key, image, updates)
+
+    def resolve_swap_spec(
+        self,
+        tile_service,
+        sid: int,
+        source: TiledPixelStore | QImage,
+    ) -> SwapSpec | None:
+        """Resolves one ``(sid, source)`` upload into a swap decision.
+
+        Thin tab hook over the merged engine decision
+        (``engine.gpu.base_images_pass.resolve_swap_spec``): reads only
+        ``slot_pixel_sources`` + ``tile_service.grid_for``. Returns
+        ``None`` for a true duplicate upload (same object already
+        applied), a ``SwapSpec`` otherwise. The E1 hook seam pins this
+        signature alongside ``upload_tile``.
+        """
+        return _engine_resolve_swap_spec(
+            self.slot_pixel_sources, tile_service, sid, source
+        )
+
+    def _swap_hooks(self, renderer, tile_service, host_cache, updates) -> SwapApplyHooks:
+        """Tab-bound effects for the engine swap orchestration.
+
+        C3 hook-bundle pattern: binds ``residency`` helpers, slot maps,
+        and resource owners by reference, no adaptation logic. Mirrors
+        the pre-merge ``_apply_swap_spec`` body exactly. Built per call
+        so the backfill hook closes over this call's renderer/cache.
+        """
+        return SwapApplyHooks(
+            forget_stale_lod=lambda sid: residency.forget_stale_lod_keys(
+                tile_service,
+                sid,
+                last_good_key=self._last_good_key,
+                key_more_pending=self._key_more_pending,
+                slot_lod_keys=self._slot_lod_keys,
+            ),
+            note_source_applied=lambda sid, source: self.slot_pixel_sources.__setitem__(sid, source),
+            purge_slot_srbs=lambda sid: self.slot_resources.purge_tile_srbs_for_slot(sid),
+            destroy_slot_plain_textures=lambda sid, keep: self.slot_resources.destroy_slot_textures(sid, keep=keep),
+            upload_plain_tile=lambda r, tile_key, image, u: self.upload_tile(r, tile_key, image, u),
+            discard_pending_plain_cleanup=lambda sid: self._pending_plain_cleanup.discard(sid),
+            backfill_plain_preview=lambda sid, fallback_key, old_source: self._backfill_plain_preview_to_array(
+                renderer,
+                tile_service,
+                host_cache,
+                updates,
+                sid,
+                self._last_good_key[sid],
+                old_source,
+            ),
+            note_pending_plain_cleanup=lambda sid: self._pending_plain_cleanup.add(sid),
+            note_swap_fallback=lambda sid, fallback_key: self._note_swap_fallback(sid, fallback_key),
+        )
+
+    @staticmethod
+    def _note_swap_fallback_maps(last_good_key, key_more_pending, sid, fallback_key) -> None:
+        last_good_key[sid] = fallback_key
+        key_more_pending[fallback_key] = False
+        key_more_pending[sid] = True
+
+    def _note_swap_fallback(self, sid, fallback_key) -> None:
+        self._note_swap_fallback_maps(
+            self._last_good_key, self._key_more_pending, sid, fallback_key
+        )
+
+    def _apply_swap_spec(
+        self,
+        renderer,
+        tile_service,
+        sid: int,
+        source: TiledPixelStore | QImage,
+        spec: SwapSpec,
+        updates,
+    ) -> None:
+        """Thin tab hook over the engine swap orchestration.
+
+        Delegates to ``engine.gpu.base_images_pass.apply_swap_spec`` with
+        the tab-bound ``SwapApplyHooks``; semantics (rekey ordering,
+        same-key size-change fallback preservation, 1x1->multi backfill
+        trigger) live in the engine, effects bind here.
+        """
+        host_cache = self._host_cache(renderer)
+        _engine_apply_swap_spec(
+            tile_service=tile_service,
+            renderer=renderer,
+            sid=sid,
+            source=source,
+            spec=spec,
+            updates=updates,
+            host_cache=host_cache,
+            hooks=self._swap_hooks(renderer, tile_service, host_cache, updates),
+        )
+
     def _upload_slot(
         self,
         renderer,
@@ -772,111 +907,19 @@ class BaseImagesPass(CanvasRenderPass):
         source: TiledPixelStore | QImage,
         updates,
     ) -> None:
-        if self.slot_pixel_sources.get(sid) is source:
-            # `pending_uploads` can carry more than one entry for the same
-            # (sid, source) pair queued within one frame (canvas_widget can
-            # call queue_upload for a slot more than once before the next
-            # apply_pending_texture_ops flush) -- already a same-key no-op
-            # before the rekey logic below existed, but that logic is NOT
-            # idempotent under a duplicate call: the first call rekeys the
-            # genuinely-old grid to `fallback_key` and registers a fresh,
-            # still-empty grid under `sid`; a second call for the exact same
-            # source then sees THAT fresh empty grid as "old content worth
-            # preserving" and rekeys it over the real fallback, discarding
-            # the one content worth keeping (found via a log showing the
-            # rekeyed fallback grid's tiles at native 1/40 resolution
-            # instead of the preview's 1/2 -- i.e. the preview never
-            # survived to be drawn at all). Skip entirely once this exact
-            # source is already applied.
+        """Thin orchestrator over the swap machine: resolve, then apply.
+
+        The engine loop (``apply_pending_texture_ops``) drives uploads;
+        this pass only resolves per-upload specs (``resolve_swap_spec``),
+        funnels tile uploads (``upload_tile``), and reacts through the
+        backfill/promotion tab hooks -- the machine's semantics (rekey
+        ordering, backfill conditions, fallback preservation) live in
+        those pieces unchanged.
+        """
+        spec = self.resolve_swap_spec(tile_service, sid, source)
+        if spec is None:
             return
-        # A source swap (e.g. preview QImage -> real TiledPixelStore)
-        # invalidates any LOD level built against the *old* source below --
-        # those pyramids no longer apply. It deliberately does NOT reset
-        # `last_good_key[sid]` when that fallback still names bare `sid`
-        # itself: image_compare has no equivalent reset on its own source
-        # swap, and wiping it here forced every same-key size change (e.g.
-        # this exact preview -> full-resolution swap) to go through a fully
-        # empty slot instead of being able to fall back to whatever was
-        # already resident, unlike image_compare's swap. See
-        # `forget_stale_lod_keys` for the corrected, narrower invalidation.
-        residency.forget_stale_lod_keys(
-            tile_service,
-            sid,
-            last_good_key=self._last_good_key,
-            key_more_pending=self._key_more_pending,
-            slot_lod_keys=self._slot_lod_keys,
-        )
-        size = pixel_source_size(source)
-        old_source = self.slot_pixel_sources.get(sid)
-        old_grid = tile_service.grid_for(sid)
-        old_is_multi = old_grid is not None and (
-            old_grid.rows > 1 or old_grid.columns > 1
-        )
-        if old_grid is not None:
-            # Any same-``sid`` content swap (multi->multi, 1x1->multi,
-            # multi->1x1, 1x1->1x1) rekeys the still-good old content
-            # under a distinct fallback key first, so the existing
-            # fallback-LOD machinery (``_last_good_key`` /
-            # ``_prepare_array_plan``) can draw it underneath the new grid
-            # until covered -- exactly like a pyramid level transition.
-            # (Previously only the multi->multi case rekeyed, and the
-            # 1x1->multi case additionally destroyed the only visible
-            # content up front -- see below.) For 1x1->1x1 the rekey only
-            # moves near-empty bookkeeping: the eager plain upload below
-            # redraws the same frame, so there is no blank either way.
-            #
-            # ``_key_more_pending`` is keyed by the *value* of the resolved
-            # LOD key, not by content generation -- and while no pyramid
-            # exists yet, both the old preview and the brand-new grid
-            # resolve to the same bare ``sid`` key (lod_key_and_source's
-            # no-pyramid fallback). Left alone, the previous generation's
-            # now-stale "fully uploaded" flag for that same key leaks
-            # forward and satisfies _prepare_array_plan's promotion check
-            # after just the new grid's first tile lands, discarding the
-            # fallback we just set up above before it ever gets to draw
-            # (confirmed via log: instance_count=1 the very next frame,
-            # zero fallback tiles). Force it back to "still pending" so the
-            # promotion can't fire until this frame's own residency pass
-            # reports real completion for the new content.
-            fallback_key = LevelKey(sid, _PREVIOUS_GENERATION_LEVEL)
-            tile_service.invalidate_source(fallback_key)
-            tile_service.rekey_source(sid, fallback_key)
-            self._last_good_key[sid] = fallback_key
-            self._key_more_pending[fallback_key] = False
-            self._key_more_pending[sid] = True
-        grid = tile_service.register_source(sid, size)
-        self.slot_pixel_sources[sid] = source
-        self.slot_resources.purge_tile_srbs_for_slot(sid)
-        host_cache = self._host_cache(renderer)
-        if grid.rows == 1 and grid.columns == 1:
-            tile_key = tile_service.tile_key(sid, 0, 0)
-            self.slot_resources.destroy_slot_textures(sid, keep={tile_key})
-            qimage = host_cache.qimage_from_source(source, residency._slot_host_key(sid))
-            self.slot_resources.upload_tile(renderer, tile_key, qimage, updates)
-            # A same-frame plain overwrite subsumes any deferred cleanup
-            # from an earlier swap -- the texture now holds new content.
-            self._pending_plain_cleanup.discard(sid)
-            return
-        if (
-            not old_is_multi
-            and old_grid is not None
-            and old_source is not None
-        ):
-            # 1x1-preview -> multi-full: the old content was plain-only
-            # (never array-resident), so the rekey above preserved
-            # bookkeeping but nothing drawable on the array path -- and the
-            # new grid's own tiles still trickle in over several budgeted
-            # residency passes. Backfill the preview's single tile into the
-            # array under the fallback key so the slot keeps showing the
-            # preview underneath until the new grid covers it. The stale
-            # plain texture itself is deliberately NOT destroyed here
-            # (destroy-before-upload was the blank window); it is released
-            # once the new key promotes -- see ``_prepare_array_plan``.
-            self._backfill_plain_preview_to_array(
-                renderer, tile_service, host_cache, updates,
-                sid, self._last_good_key[sid], old_source,
-            )
-            self._pending_plain_cleanup.add(sid)
+        self._apply_swap_spec(renderer, tile_service, sid, source, spec, updates)
 
     def _backfill_plain_preview_to_array(
         self,
@@ -890,7 +933,8 @@ class BaseImagesPass(CanvasRenderPass):
     ) -> None:
         """Upload a plain-only 1x1 preview into the array under ``fallback_key``.
 
-        Called from ``_upload_slot`` on a 1x1-preview -> multi-full swap:
+        Backfill tab hook for the swap machine: called from
+        ``_apply_swap_spec`` on a 1x1-preview -> multi-full swap:
         the rekey preserved the old grid's bookkeeping, but a preview that
         only ever lived as a plain ``slot_textures`` entry has no array
         slot, so the fallback-LOD draw in ``_prepare_array_plan`` would
@@ -908,11 +952,11 @@ class BaseImagesPass(CanvasRenderPass):
             self._ensure_array_resources(renderer)
             assert self.array_resources is not None
             image = host_cache.qimage_from_source(
-                old_source, residency._slot_host_key(fallback_key)
+                old_source, _engine_slot_host_key(fallback_key)
             )
             if image is None or image.isNull():
                 return
-            host_cache.store(residency._slot_tile_host_key(fallback_key, 0, 0), image)
+            host_cache.store(_engine_slot_tile_host_key(fallback_key, 0, 0), image)
             self.array_resources.upload_tile_to_array(
                 tile_service,
                 fallback_key,
@@ -981,9 +1025,9 @@ class BaseImagesPass(CanvasRenderPass):
         self._frame_resolved_lod = resolved_lod
 
 
-# Phase-2 pass shape (manifest-equivalent for the scene's base pass):
+# Contract-shape manifest for the scene's base pass:
 # ``stack_role``/``visibility`` above declare order via stacking_policy.
-# The live renderer still owns its ``BaseImagesPass`` instance directly
-# (see scene/renderer.py) -- this list is the declaration point for
-# routing it through the ordered pass set later.
+# The live renderer takes its ``image_pass`` from this list (see
+# scene/renderer.py) -- never instantiating ``BaseImagesPass`` directly --
+# while still recording it first, ahead of the registry feature passes.
 RENDER_PASSES: list[CanvasRenderPass] = [BaseImagesPass()]

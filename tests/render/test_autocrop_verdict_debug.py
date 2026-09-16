@@ -12,7 +12,7 @@ import logging
 from PIL import Image
 
 from shared.image_processing.autocrop import CropService
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def _save(path, img):

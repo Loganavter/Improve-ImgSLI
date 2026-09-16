@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing import pyramid_registry
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store import pyramid_registry
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.display_image_picker import pick_display_image
 
 

@@ -11,7 +11,7 @@ taking the presenter as first argument.
 from PySide6.QtGui import QImage, QPixmap
 
 from domain.types import Rect
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
 from engine.cache.unified_envelope import eager_envelope_rect
 from tabs.image_compare.debug import (

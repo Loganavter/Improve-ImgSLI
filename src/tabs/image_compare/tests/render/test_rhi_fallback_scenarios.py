@@ -141,10 +141,11 @@ def _run_fallback(
 
         mock_build.side_effect = fake_build
 
-        # also patch drop_covered to be identity
+        # also patch drop_covered to be identity (Phase F: single home
+        # is engine.cache.tile_coverage, called from use_cases/fallback)
         with mock.patch(
-            "tabs.image_compare.canvas.rhi_renderer.renderer.drop_covered_fallback_items",
-            side_effect=lambda f, c, base: f,
+            "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback.drop_covered_fallback_items",
+            side_effect=lambda f, c, lb1, lb2, **kw: list(range(len(f))),
         ):
             svc = _fake_tile_service()
             base = _base_image()

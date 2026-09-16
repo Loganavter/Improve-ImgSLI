@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from engine.store.tiled_pixel_store import TiledPixelStore
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -226,7 +226,7 @@ class MultiComparePixelCache:
         if source is None:
             return None
         try:
-            from shared.image_processing.tiled_pixel_store import pixel_source_size
+            from engine.store.tiled_pixel_store import pixel_source_size
 
             w, h = pixel_source_size(source)
         except Exception:
@@ -270,7 +270,7 @@ class MultiComparePixelCache:
         if store is None:
             return
         try:
-            from shared.image_processing.tiled_pixel_store import close_pixel_store
+            from engine.store.tiled_pixel_store import close_pixel_store
 
             close_pixel_store(store)
         except Exception:

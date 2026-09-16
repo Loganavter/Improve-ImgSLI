@@ -21,7 +21,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from engine.cache.tile_texture_service import TileTextureService
-from tabs.image_compare.canvas.frame_context import FrameContext
+from engine.frame.context import FrameContext
 
 import pytest
 

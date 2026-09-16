@@ -1,12 +1,12 @@
 import numpy as np
 from PIL import Image
 
-from shared.image_processing.pyramid_pixel_store import (
+from engine.store.pyramid_pixel_store import (
     COARSEST_MIN_DIM,
     PyramidPixelStore,
     _halve_box_filter,
 )
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 
 
 def _noise_store(width, height, seed=7):

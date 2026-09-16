@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.canvas.texture_parts.base_images import (
     letterbox_pil,
     update_common_letterbox_geometry,

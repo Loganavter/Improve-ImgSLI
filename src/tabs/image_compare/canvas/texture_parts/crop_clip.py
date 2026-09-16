@@ -379,7 +379,10 @@ def clip_image_for_upload(image: Any, box: tuple[int, int, int, int] | None) -> 
     if image is None or box is None:
         return image
     try:
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        try:  # Phase-A: engine.store root (A1); fallback until it lands
+            from engine.store.tiled_pixel_store import TiledPixelStore
+        except ImportError:
+            from engine.store.tiled_pixel_store import TiledPixelStore
 
         if isinstance(image, TiledPixelStore):
             return image
@@ -454,7 +457,10 @@ class BoxCroppedStoreView:
         at = max(0, min(at, h))
         ar = max(0, min(ar, w))
         ab = max(0, min(ab, h))
-        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+        try:  # Phase-A: engine.store root (A1); fallback until it lands
+            from engine.store.tiled_pixel_store import qimage_from_pixel_source
+        except ImportError:
+            from engine.store.tiled_pixel_store import qimage_from_pixel_source
 
         return qimage_from_pixel_source(
             self._parent, (al + left, at + top, ar + left, ab + top)

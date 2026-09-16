@@ -15,11 +15,11 @@ import logging
 
 from engine.cache.fallback_lod import resolve_fallback_lod
 from engine.cache.lod import LevelKey
+from engine.cache.tile_coverage import drop_covered_fallback_items
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 
 from ..draw_plan import (
     build_array_draw_plan,
-    drop_covered_fallback_items,
 )
 
 try:
@@ -42,14 +42,14 @@ except Exception:  # pragma: no cover
         return False
 
 from .._debug import rhi_render_debug
-from ...frame_context import FrameContext, make_ids
+from engine.frame.context import FrameContext, make_ids
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Throttle globals moved from renderer.py — owned here, shared via module.
-_last_renderer_fallback_sig: tuple | None = None
-_last_renderer_rekeyed_sig: tuple | None = None
-_last_first_paint_hold_sig: tuple | None = None
+# Throttle state moved from renderer.py into loupe_trace's centralized
+# store — owned here via streams "fallback.decision" + "fallback.rekeyed"
+# + "fallback.first_paint_hold".
 
 
 def _is_rekeyed_content_key(key: object) -> bool:
@@ -114,10 +114,8 @@ def resolve_fallback_plan(
             _rekeyed_lookup(diff_source_key),
         )
         try:
-            global _last_renderer_rekeyed_sig
             _rk_sig = (tuple(str(k) for k in texture_keys), tuple(sorted((str(k), str(v)) for k, v in rekeyed.items())), str(last_good_key))
-            if _rk_sig != _last_renderer_rekeyed_sig:
-                _last_renderer_rekeyed_sig = _rk_sig
+            if _throttle_emit("fallback.rekeyed", _rk_sig):
                 _ic_preview_log(
                     "rekeyed LevelKey lookup: texture_keys=%s rekeyed_map=%s -> last_good=%s",
                     [str(k) for k in texture_keys],
@@ -181,11 +179,9 @@ def resolve_fallback_plan(
     decision_is_content_swap = is_content_swap
     decision_content_swap_flag = renderer._content_swap_active
     decision_last_good_has_marker = _is_rekeyed_content_baseline(last_good_key)
-    global _last_renderer_fallback_sig
     _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
-    _should_emit_fallback = _fallback_sig != _last_renderer_fallback_sig
+    _should_emit_fallback = _throttle_emit("fallback.decision", _fallback_sig)
     if _should_emit_fallback:
-        _last_renderer_fallback_sig = _fallback_sig
         _ic_preview_log(
             "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s",
             source_changed,
@@ -223,10 +219,8 @@ def resolve_fallback_plan(
     fallback_diag: dict[str, int] = {}
     if last_good_key is None and main_more_pending and current_array_plan:
         try:
-            global _last_first_paint_hold_sig
             _hold_sig = (str(key), len(current_array_plan), bool(main_more_pending))
-            if _hold_sig != _last_first_paint_hold_sig:
-                _last_first_paint_hold_sig = _hold_sig
+            if _throttle_emit("fallback.first_paint_hold", _hold_sig):
                 _ic_preview_log(
                     "first_paint_hold _resolve: last_good None more_pending True hold placeholder current=%d key=%s",
                     len(current_array_plan),
@@ -269,13 +263,25 @@ def resolve_fallback_plan(
                 sampler_name=sampler_name,
                 viewport_zoom=viewport_zoom,
                 viewport_offset=viewport_offset,
+                frame_context=frame_context,
             )
             fallback_diag["raw"] = len(items)
             fallback_diag["kept"] = len(items)
             return items
 
         def _drop_covered(fallback_items, current_items):
-            dropped = drop_covered_fallback_items(fallback_items, current_items, base_image)
+            # Phase F flag-day: tab adapter deleted, engine owns the
+            # filter -- adapt item rects + letterboxes at the call site.
+            if not current_items:
+                dropped = fallback_items
+            else:
+                kept = drop_covered_fallback_items(
+                    [(item.rect1, item.rect2) for item in fallback_items],
+                    [(item.rect1, item.rect2) for item in current_items],
+                    tuple(base_image.letterbox1),
+                    tuple(base_image.letterbox2),
+                )
+                dropped = [fallback_items[index] for index in kept]
             fallback_diag["kept"] = len(dropped)
             return dropped
 

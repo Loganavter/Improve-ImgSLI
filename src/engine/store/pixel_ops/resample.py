@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
+from engine.store.tiled_pixel_store import TiledPixelStore, pixel_source_size
 
 _BLOCK = 512
 

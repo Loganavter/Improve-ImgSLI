@@ -1,7 +1,7 @@
 """One-time notice after upgrading from a version that left stale
 TiledPixelStore spill files behind between sessions (see
 core.bootstrap.ApplicationContext._maybe_flag_cache_purge_notice and
-shared.image_processing.tiled_pixel_store.purge_stale_spill_files)."""
+engine.store.tiled_pixel_store.purge_stale_spill_files)."""
 
 from __future__ import annotations
 

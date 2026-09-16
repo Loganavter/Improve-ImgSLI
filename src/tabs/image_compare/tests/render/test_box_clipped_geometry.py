@@ -17,7 +17,7 @@ import pytest
 from PIL import Image
 
 from shared.image_processing.autocrop.model import CropBox
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.tile_texture_service import TileTextureService
 from engine.cache.unified_envelope import eager_envelope_rect
 from tabs.image_compare.canvas.rhi_renderer.resources import RhiResources
@@ -242,7 +242,7 @@ def test_box_cropped_store_view_matches_offset_parent_crop(tmp_path):
         assert view.is_open
         from PySide6.QtGui import QImage as _QImage
 
-        from shared.image_processing.tiled_pixel_store import (
+        from engine.store.tiled_pixel_store import (
             pixel_source_size,
             qimage_from_pixel_source,
         )

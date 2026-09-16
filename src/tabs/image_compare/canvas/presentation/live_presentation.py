@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from engine.cache.display_image_picker import pick_display_image, pick_first_real
 from engine.cache.image_identity import image_uid
-from shared.image_processing.tiled_pixel_store import autocrop_debug
+from engine.store.tiled_pixel_store import autocrop_debug
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
 
 def _peek_slot(store, slot: int):
@@ -86,7 +86,7 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
             return None
         # QImage.size is a method, TiledPixelStore.size is a tuple property
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+            from engine.store.tiled_pixel_store import TiledPixelStore
             from PySide6.QtGui import QImage, QPixmap
 
             if isinstance(img, TiledPixelStore):

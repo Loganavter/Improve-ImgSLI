@@ -430,7 +430,7 @@ class MultiCompareController:
     def _start_pyramid_build(self, store, *, slot_id: int | None = None) -> None:
         # Coordinator owns thread_pool + toast routing.
         # MC abort predicate: not pyramid.valid (capture resolved pyramid).
-        from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+        from engine.store.pyramid_registry import ensure_pyramid as _ensure
 
         _pyr = _ensure(store)
 

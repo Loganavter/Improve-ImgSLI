@@ -6,9 +6,9 @@ import logging
 
 from PIL import Image
 
-from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from engine.store.pixel_ops.resample import write_resampled_to_store
 from shared.image_processing.resample_map import get_resample
-from shared.image_processing.tiled_pixel_store import (
+from engine.store.tiled_pixel_store import (
     TiledPixelStore,
     maybe_wrap_pixel_store,
     pixel_source_size,
@@ -85,7 +85,7 @@ def unify_pair(
         return None, None
 
     if target_w * target_h <= _ACCURATE_UNIFY_MAX_PIXELS:
-        from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
+        from engine.store.pixel_ops.downscale import downscale_source_to_pil
         from shared.image_processing.resize import resize_images_processor
 
         try:

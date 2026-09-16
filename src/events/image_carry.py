@@ -336,7 +336,7 @@ def preview_pixmap_from_pixel_source(image, *, width: int = _PREVIEW_WIDTH) -> Q
     if image is None:
         return QPixmap()
     try:
-        from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+        from engine.store.tiled_pixel_store import qimage_from_pixel_source
 
         qimg = qimage_from_pixel_source(image)
         return QPixmap.fromImage(qimg).scaledToWidth(

@@ -1,6 +1,6 @@
 """P1A frame-context pilot: collector + 2 pilot integrations.
 
-Covers ``canvas/frame_context.py`` (FrameDecision / FrameContext /
+Covers ``engine/frame/context.py`` (FrameDecision / FrameContext /
 dump / reset / last-frame snapshot) and the two additive pilot writers:
 mag-gate (``render_gate.py``) and fallback decision (``fallback.py``).
 
@@ -16,8 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from tabs.image_compare.canvas import frame_context as fc_mod
-from tabs.image_compare.canvas.frame_context import (
+from engine.frame import context as fc_mod
+from engine.frame.context import (
     FrameContext,
     last_frame_snapshot,
     snapshot_last_frame,

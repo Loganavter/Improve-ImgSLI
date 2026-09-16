@@ -162,7 +162,7 @@ class PipelineCacheReducer:
     @staticmethod
     def _close_store(store) -> None:
         try:
-            from shared.image_processing.tiled_pixel_store import close_pixel_store
+            from engine.store.tiled_pixel_store import close_pixel_store
             close_pixel_store(store)
         except Exception:
             pass
@@ -178,7 +178,7 @@ class PipelineCacheReducer:
     @staticmethod
     def _store_bytes(store) -> int:
         try:
-            from shared.image_processing.tiled_pixel_store import pixel_source_size
+            from engine.store.tiled_pixel_store import pixel_source_size
             w, h = pixel_source_size(store)
             if w > 0 and h > 0:
                 return int(w) * int(h) * 4
@@ -351,7 +351,7 @@ class PipelineCacheReducer:
         _, _, max_preview, max_preview_bytes, _, _ = PipelineCacheReducer._limits()
         def _pv_bytes(q):
             try:
-                from shared.image_processing.tiled_pixel_store import pixel_source_size
+                from engine.store.tiled_pixel_store import pixel_source_size
                 w, h = pixel_source_size(q)
                 if w > 0 and h > 0:
                     return int(w) * int(h) * 4
@@ -447,7 +447,7 @@ class PipelineCacheReducer:
                     reg.sweep()
         except Exception:
             try:
-                from shared.image_processing import pyramid_registry
+                from engine.store import pyramid_registry
                 pyramid_registry.sweep()
             except Exception:
                 pass

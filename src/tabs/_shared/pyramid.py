@@ -129,7 +129,7 @@ class PyramidBuildCoordinator:
         if self._get_pyramid is not None:
             return self._get_pyramid
         try:
-            from shared.image_processing.pyramid_registry import ensure_pyramid
+            from engine.store.pyramid_registry import ensure_pyramid
 
             return ensure_pyramid
         except Exception:
@@ -139,7 +139,7 @@ class PyramidBuildCoordinator:
         if self._estimate_levels is not None:
             return self._estimate_levels
         try:
-            from shared.image_processing.pyramid_pixel_store import estimate_total_levels
+            from engine.store.pyramid_pixel_store import estimate_total_levels
 
             return estimate_total_levels
         except Exception:

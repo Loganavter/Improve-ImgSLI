@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 from core.constants import AppConstants
-from shared.image_processing.tiled_pixel_store import (
+from engine.store.tiled_pixel_store import (
     TiledPixelStore,
     close_pixel_store,
     maybe_wrap_pixel_store,
@@ -217,7 +217,7 @@ def test_from_path_auto_crop_small_image_keeps_all_content(tmp_path):
 
 def test_from_pil_does_not_asarray_full_image(monkeypatch):
     """Spill must not allocate one HxWx4 numpy copy of the whole PIL image."""
-    import shared.image_processing.tiled_pixel_store as tps
+    import engine.store.tiled_pixel_store as tps
 
     ts = AppConstants.PIXEL_TILE_SIZE
     original = _gradient_image(width=96, height=ts + 40)

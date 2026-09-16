@@ -85,9 +85,10 @@ def build_slot_draw_plan(
     visible_rect = _visible_slot_image_rect(pan_offset, fit_scale, zoom, grid)
     visible_indices = tile_service.visible_tiles(slot_id, visible_rect)
     items: list[SlotDrawItem] = []
-    for row, col, region in grid.iter_regions():
-        if (row, col) not in visible_indices:
-            continue
+    # Driven by the service's visible set (sorted = row-major, the same
+    # order grid.iter_regions() yields), never by scanning the grid.
+    for row, col in sorted(visible_indices):
+        region = grid.region_for(row, col)
         left, top, right, bottom = _apron_rect(
             grid.total_width, grid.total_height, region, _TILE_APRON_PX
         )
@@ -124,9 +125,9 @@ def build_slot_array_tiles(
     visible_rect = _visible_slot_image_rect(pan_offset, fit_scale, zoom, grid)
     visible_indices = tile_service.visible_tiles(slot_id, visible_rect)
     items: list[SlotArrayTile] = []
-    for row, col, region in grid.iter_regions():
-        if (row, col) not in visible_indices:
-            continue
+    # Same visible-set-driven iteration as build_slot_draw_plan above.
+    for row, col in sorted(visible_indices):
+        region = grid.region_for(row, col)
         left, top, right, bottom = _apron_rect(
             grid.total_width, grid.total_height, region, _TILE_APRON_PX
         )

@@ -9,12 +9,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from engine.cache.tile_coverage import (
+    covered_fraction,
+    drop_covered_fallback_items as engine_drop_covered,
+)
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import (
     ArrayDrawItem,
-    _covered_fraction,
     build_array_draw_plan,
-    drop_covered_fallback_items,
 )
 
 
@@ -238,26 +240,42 @@ def _fake_item(rect1: tuple[float, float, float, float]) -> ArrayDrawItem:
     )
 
 
+def _pairs(items):
+    return [(item.rect1, item.rect2) for item in items]
+
+
+_IDENTITY_LETTERBOX = (0.0, 0.0, 1.0, 1.0)
+
+
 def test_drop_covered_fallback_items_removes_overlapping_regions():
     # Current level already covers the left half of the screen; only the
     # fallback tile over the still-uncovered right half should survive.
+    # Phase F flag-day: the tab adapter is deleted, the single home is
+    # engine.cache.tile_coverage (rect pairs + letterboxes -> kept indices).
     fallback_items = [
         _fake_item((0.0, 0.0, 0.5, 1.0)),
         _fake_item((0.5, 0.0, 0.5, 1.0)),
     ]
     current_items = [_fake_item((0.0, 0.0, 0.5, 1.0))]
 
-    kept = drop_covered_fallback_items(fallback_items, current_items, _base_image())
+    kept = engine_drop_covered(
+        _pairs(fallback_items),
+        _pairs(current_items),
+        _IDENTITY_LETTERBOX,
+        _IDENTITY_LETTERBOX,
+    )
 
-    assert kept == [fallback_items[1]]
+    assert kept == [1]
 
 
 def test_drop_covered_fallback_items_keeps_everything_when_current_is_empty():
     fallback_items = [_fake_item((0.0, 0.0, 1.0, 1.0))]
 
-    kept = drop_covered_fallback_items(fallback_items, [], _base_image())
+    kept = engine_drop_covered(
+        _pairs(fallback_items), [], _IDENTITY_LETTERBOX, _IDENTITY_LETTERBOX
+    )
 
-    assert kept == fallback_items
+    assert kept == [0]
 
 
 def test_covered_fraction_not_fooled_by_duplicate_overlapping_rects():
@@ -278,7 +296,7 @@ def test_covered_fraction_not_fooled_by_duplicate_overlapping_rects():
     rect = (0.0, 0.0, 1.0, 1.0)
     others = [(0.0, 0.0, 0.5, 1.0)] * 10
 
-    covered = _covered_fraction(rect, others)
+    covered = covered_fraction(rect, others)
 
     # Exactly half the rect is covered; the 9x9 sample grid's discretization
     # rounds that to 5/9 (~0.556) rather than a mathematically exact 0.5 --
@@ -291,6 +309,6 @@ def test_covered_fraction_detects_full_coverage_without_duplicates():
     rect = (0.0, 0.0, 1.0, 1.0)
     others = [(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 1.0)]
 
-    covered = _covered_fraction(rect, others)
+    covered = covered_fraction(rect, others)
 
     assert covered >= 0.99

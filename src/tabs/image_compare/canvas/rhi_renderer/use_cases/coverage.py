@@ -20,7 +20,8 @@ from engine.cache.tile_coverage import (
 )
 
 from .._debug import rhi_render_debug, rhi_render_debug_enabled
-from ...frame_context import FrameContext, make_ids
+from engine.frame.context import FrameContext, make_ids
+from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 from ...texture_parts.tile_geometry import _visible_side_image_rect
 
 try:
@@ -42,9 +43,8 @@ except Exception:  # pragma: no cover
     def _ic_preview_enabled() -> bool:  # type: ignore
         return False
 
-# Throttle globals moved from renderer.py — owned here.
-_last_renderer_coverage_sig: tuple | None = None
-_last_first_paint_hold_sig: tuple | None = None
+# Throttle state moved from renderer.py into loupe_trace's centralized
+# store — owned here via streams "coverage.healthy" + "coverage.first_paint_hold".
 
 
 def _record_coverage_fact(
@@ -96,7 +96,6 @@ def evaluate_coverage(
     coverage numbers record IN ADDITION to existing behavior (``None``
     keeps every existing call site behavior-identical).
     """
-    global _last_renderer_coverage_sig
 
     # Fast path: when no debug requested we still need coverage numbers for
     # first_paint_hold, so compute them cheaply without the extra bbox-dist
@@ -301,8 +300,7 @@ def evaluate_coverage(
                 bool(_gap_more),
                 bool(_gap_atomic),
             )
-            if _cov_sig != _last_renderer_coverage_sig:
-                _last_renderer_coverage_sig = _cov_sig
+            if _throttle_emit("coverage.healthy", _cov_sig):
                 _ic_preview_log(
                     "coverage_healthy covered1=%.4f covered2=%.4f bbox=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s",
                     covered1,
@@ -396,9 +394,8 @@ def apply_first_paint_hold(
 
     ``frame_context`` is the Phase-2 frame-bus hook: when provided, an
     engaged hold records IN ADDITION to existing behavior (``None`` keeps
-    every existing call site behavior-identical).
+    every existing call site     behavior-identical).
     """
-    global _last_first_paint_hold_sig
     # Normalize covered_ok into per-side values
     _hold_cov1: float | None = covered1
     _hold_cov2: float | None = covered2
@@ -458,8 +455,7 @@ def apply_first_paint_hold(
         if main_more_pending or not _hold_covered_ok:
             try:
                 _hold_sig2 = (bool(main_more_pending), round(float(_hold_cov1), 3), round(float(_hold_cov2), 3), len(array_draw_plan))  # type: ignore[arg-type]
-                if _hold_sig2 != _last_first_paint_hold_sig:
-                    _last_first_paint_hold_sig = _hold_sig2
+                if _throttle_emit("coverage.first_paint_hold", _hold_sig2):
                     _ic_preview_log(
                         "first_paint_hold render: prev_last_good None more_pending=%s covered=%.3f/%.3f bbox=%.3f hold placeholder (was %d entries)",
                         main_more_pending,
@@ -505,8 +501,7 @@ def apply_first_paint_hold(
     elif _prev_hold_is_first and not array_draw_plan and current_array_plan and main_more_pending:
         try:
             _hold_sig3 = (bool(main_more_pending), len(current_array_plan))
-            if _hold_sig3 != _last_first_paint_hold_sig:
-                _last_first_paint_hold_sig = _hold_sig3
+            if _throttle_emit("coverage.first_paint_hold", _hold_sig3):
                 _ic_preview_log(
                     "first_paint_hold render: still held placeholder current=%d more_pending=%s",
                     len(current_array_plan),

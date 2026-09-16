@@ -9,7 +9,7 @@ from PIL import Image
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QWidget
 
-from shared.image_processing.regions import build_uniform_tile_grid
+from engine.store.regions import build_uniform_tile_grid
 from engine.gpu.offscreen_canvas import (
     configure_offscreen_widget,
     render_widget_frame,

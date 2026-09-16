@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.plugins.video_editor.services.video_export_models import (
     GlobalCanvasBounds,
 )

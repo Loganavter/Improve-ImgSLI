@@ -154,7 +154,7 @@ class CachedDiffService:
 
         # inline is_open/generation capture instead of generation token
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+            from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
 
             cap1 = (image1, getattr(image1, "generation", None)) if isinstance(image1, _TPS) else (image1, None)
             cap2 = (image2, getattr(image2, "generation", None)) if isinstance(image2, _TPS) else (image2, None)
@@ -208,7 +208,7 @@ class CachedDiffService:
         started_at = time.perf_counter()
         # inline stale check via is_open/generation
         try:
-            from shared.image_processing.tiled_pixel_store import TiledPixelStore as _TPS
+            from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
 
             for img, cap in ((img1, cap1), (img2, cap2)):
                 if cap is None:

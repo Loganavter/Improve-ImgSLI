@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 from PySide6.QtGui import QImage
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.rhi_renderer.resources import RhiResources
 from tabs.image_compare.canvas.texture_parts.upload_queue import (
@@ -113,7 +113,7 @@ def _swap_to_store_hold(tmp_path, monkeypatch):
     resources.residency.realize_tile_plan(
         tile_service, widget, ("stored_0", "stored_1"), base_image, updates
     )
-    assert "stored_0" in resources.residency._preview_stash, (
+    assert "stored_0" in resources.residency._stash.preview_holds_view(), (
         "preview->store swap must engage the joint preview hold"
     )
     return widget, resources, tile_service
@@ -138,7 +138,7 @@ def test_held_preview_baseline_survives_foreign_pair_eviction(tmp_path, monkeypa
         capture_uv_rect=(0.0, 0.0, 1.0, 1.0),
     )
 
-    assert "stored_0" in resources.residency._preview_stash
+    assert "stored_0" in resources.residency._stash.preview_holds_view()
     assert touch_texture_upload_cache(widget, "stored_0") is not None, (
         "held preview baseline's host QImage must survive a foreign-pair "
         "eviction pass while the joint hold is active"
@@ -162,6 +162,6 @@ def test_preview_hold_releases_once_both_halves_complete(tmp_path, monkeypatch):
         tile_service, widget, ("stored_0", "stored_1"), _base_image(), MagicMock()
     )
 
-    assert "stored_0" not in resources.residency._preview_stash, (
+    assert "stored_0" not in resources.residency._stash.preview_holds_view(), (
         "preview hold must release once both halves' new content is resident"
     )

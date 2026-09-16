@@ -96,9 +96,13 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 29, "presenter.store.viewport.interaction_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 33, "presenter.store.viewport.interaction_state"),
         # -- presentation geometry scratch --
-        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 313, "geometry_state"),
-        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 314, "geometry_state"),
-        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 315, "geometry_state"),
+        # NOTE: lines shifted 313-315 → 50-52 by the C3 display-tier wave
+        # (sync_geometry_state moved to engine.cache.display_tier_service;
+        # same dispatch-failure fallback sites, now in the tab-surface
+        # _commit_geometry_attrs hook impl, not new bypasses).
+        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 50, "geometry_state"),
+        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 51, "geometry_state"),
+        ("src/tabs/image_compare/canvas/presentation/plan_applicator.py", 52, "geometry_state"),
         ("src/tabs/image_compare/canvas/presentation/snapshot_frame.py", 55, "_store.viewport.geometry_state"),
         ("src/tabs/image_compare/canvas/presentation/snapshot_frame.py", 56, "_store.viewport.geometry_state"),
         ("src/tabs/image_compare/canvas/presentation/snapshot_frame.py", 61, "_store.viewport.geometry_state"),

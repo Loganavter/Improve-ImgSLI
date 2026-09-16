@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
+from engine.store.pixel_ops.downscale import downscale_source_to_pil
 from ui.canvas_presentation.layout import compute_content_layout
 from ui.canvas_presentation.models import (
     CanvasTarget,
