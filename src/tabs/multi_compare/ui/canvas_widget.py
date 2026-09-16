@@ -590,14 +590,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
     def _canvas_layout(self) -> tuple[int, int, float, float, float] | None:
         return hit_projection.canvas_layout(self)
 
-    def _project_canvas_rect(
-        self, rect_canvas: QRect, sr: float, ox: float, oy: float
-    ) -> QRect:
-        return hit_projection.project_canvas_rect(rect_canvas, sr, ox, oy)
-
-    def _composition_gap_canvas_px(self) -> int:
-        return hit_projection.composition_gap_canvas_px(self)
-
     def _drop_gaps(self):
         return hit_projection.drop_gaps(self)
 
@@ -725,17 +717,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         return bg
 
     # --- chrome input (stubs → canvas/interaction.py) ---
-
-    @staticmethod
-    def _clamp_pan_values(
-        pan_x: float, pan_y: float, zoom: float
-    ) -> tuple[float, float]:
-        return canvas_interaction.clamp_pan_values(pan_x, pan_y, zoom)
-
-    def _fit_scale_for(self, slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-        return canvas_interaction.fit_scale_for(
-            slot, rect, canvas_interaction._source_for(self, slot)
-        )
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         canvas_interaction.handle_wheel_event(self, event)

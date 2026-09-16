@@ -6,9 +6,8 @@ Orthogonality (design.md:96-99): selection is about *dispatching* (HUD
 (``crown``/``rejected``/``series`` about folder quality). HUD lives in
 ``SelectionHudController`` (``ui/selection_hud.py``, ``BaseFlyout`` pinned
 bottom-center group ``gallery_selection``) and is suppressed during S3
-(``clean_review`` overlay) via ``FlyoutManager`` group policy — see
-``set_hud_suppressed``. Thin owner delegates here; widget/controller
-integration does the coordinator.
+(``clean_review`` overlay) via ``FlyoutManager`` group policy. Thin owner
+delegates here; widget/controller integration does the coordinator.
 
 Owner shape (duck-typed):
   owner.state.selected_paths: set[Path]
@@ -22,8 +21,6 @@ No implied lookups — owner and paths are passed explicitly.
 from __future__ import annotations
 
 from pathlib import Path
-
-from PySide6.QtCore import Qt
 
 
 def _selected_set(owner) -> set[Path]:
@@ -165,47 +162,6 @@ def toggle_card(owner, path: Path, additive: bool | None = None) -> None:  # typ
     _set_selected(owner, current)
 
 
-def set_hud_suppressed(owner, suppressed: bool) -> None:  # type: ignore[no-untyped-def]
-    """Suppress HUD while S3 overlay is visible (FlyoutManager group gallery_selection).
-
-    Delegates to ``SelectionHudController.set_suppressed`` when available;
-    falls back to hide/show so stale HUDs without the new API still hide.
-    Coordinator (widget/controller) calls this on S3 show/hide; HUD API is
-    prepared here, integration is owned by the coordinator (no widget import).
-    """
-    hud = getattr(owner, "_selection_hud", None) or getattr(owner, "selection_hud", None)
-    if hud is None:
-        # Also try widget-hosted HUD (thin owner may keep HUD on widget).
-        for attr in ("widget", "grid_view", "_widget"):
-            host = getattr(owner, attr, None)
-            if host is not None:
-                hud = getattr(host, "_selection_hud", None) or getattr(host, "selection_hud", None)
-                if hud is not None:
-                    break
-    if hud is None:
-        return
-    if hasattr(hud, "set_suppressed"):
-        try:
-            hud.set_suppressed(bool(suppressed))
-            return
-        except Exception:
-            pass
-    # Fallback for HUDs without set_suppressed.
-    try:
-        if suppressed and hasattr(hud, "hide"):
-            hud.hide()
-        elif not suppressed and hasattr(hud, "show"):
-            # Only show if there is a selection.
-            try:
-                sel = _selected_set(owner)
-                if sel:
-                    hud.show()
-            except Exception:
-                hud.show()
-    except Exception:
-        pass
-
-
 def clear_selection(owner) -> None:  # type: ignore[no-untyped-def]
     _set_selected(owner, set())
 
@@ -225,35 +181,3 @@ def select_all(owner) -> None:  # type: ignore[no-untyped-def]
         except Exception:
             continue
     _set_selected(owner, paths)
-
-
-def key_press_event(owner, event) -> bool:  # type: ignore[no-untyped-def]
-    """Handle selection-related keys. Returns True if handled."""
-    try:
-        key = event.key()
-        mods = event.modifiers()
-    except Exception:
-        return False
-
-    # Escape → clear selection.
-    if key == Qt.Key.Key_Escape:
-        if _selected_set(owner):
-            clear_selection(owner)
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return True
-        return False
-
-    # Ctrl+A → select all.
-    if key == Qt.Key.Key_A and bool(mods & Qt.KeyboardModifier.ControlModifier):
-        select_all(owner)
-        try:
-            event.accept()
-        except Exception:
-            pass
-        return True
-
-    # Delete / Backspace could be interpreted as clear; leave to caller.
-    return False

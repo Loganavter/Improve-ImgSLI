@@ -427,32 +427,12 @@ class ImageGalleryWidget(QWidget):
 
         _drag_drop.on_empty_file_dropped(self, path_str)
 
-    def _try_open_folder(self, folder: Path) -> None:
-        from tabs.image_gallery.ui import drag_drop as _drag_drop
-
-        _drag_drop.try_open_folder(self, folder)
-
     # -- S4 quick look ----------------------------------------------------------
 
     def show_quick_look(self, item_or_path) -> None:  # type: ignore[no-untyped-def]
         from tabs.image_gallery.ui import quick_look_hooks
 
         return quick_look_hooks.show_quick_look(self, item_or_path)
-
-    def _on_quick_compare(self, path) -> None:  # type: ignore[no-untyped-def]
-        from tabs.image_gallery.ui import quick_look_hooks
-
-        return quick_look_hooks.on_quick_compare(self, path)
-
-    def _on_quick_reject(self, path) -> None:  # type: ignore[no-untyped-def]
-        from tabs.image_gallery.ui import quick_look_hooks
-
-        return quick_look_hooks.on_quick_reject(self, path)
-
-    def _on_quick_set_source(self, path) -> None:  # type: ignore[no-untyped-def]
-        from tabs.image_gallery.ui import quick_look_hooks
-
-        return quick_look_hooks.on_quick_set_source(self, path)
 
     def refresh_quick_look(self, item) -> None:  # type: ignore[no-untyped-def]
         from tabs.image_gallery.ui import quick_look_hooks
@@ -485,11 +465,6 @@ class ImageGalleryWidget(QWidget):
 
     # -- keyboard: Space reject toggle, B make best, Enter compare, Esc close/back, arrows navigate
     # widget keyPressEvent -> triage functions (design.md:129) ----------------
-
-    def _current_path(self) -> Path | None:
-        from tabs.image_gallery.use_cases import triage_ui
-
-        return triage_ui.current_path(self)
 
     def _owner_for_triage(self):
         from tabs.image_gallery.use_cases import triage_ui
@@ -665,11 +640,6 @@ class ImageGalleryWidget(QWidget):
                 pass
 
     # -- DnD: accept drops anywhere on the widget (fixes "после скидывания ничего") --
-
-    def _is_acceptable_drop(self, event) -> bool:
-        from tabs.image_gallery.ui import drag_drop as _drag_drop
-
-        return _drag_drop.is_acceptable_drop(self, event)
 
     def dragEnterEvent(self, event) -> None:  # type: ignore[override]
         from tabs.image_gallery.ui import drag_drop as _drag_drop

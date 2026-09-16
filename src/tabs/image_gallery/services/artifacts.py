@@ -154,26 +154,6 @@ def _hf_energy(arr) -> float:
         return 0.0
 
 
-def _severity_from_ratio(ratio: float, mild_thr: float, flagged_thr: float, *, higher_is_worse: bool = True) -> Severity:
-    """Map ratio to severity given thresholds."""
-    try:
-        if higher_is_worse:
-            if ratio >= flagged_thr:
-                return _SEV_FLAGGED
-            if ratio >= mild_thr:
-                return _SEV_MILD
-            return _SEV_CLEAN
-        else:
-            # Lower is worse (e.g. energy loss).
-            if ratio <= flagged_thr:
-                return _SEV_FLAGGED
-            if ratio <= mild_thr:
-                return _SEV_MILD
-            return _SEV_CLEAN
-    except Exception:
-        return _SEV_CLEAN
-
-
 # ---------------------------------------------------------------------------
 # Detectors
 # ---------------------------------------------------------------------------
@@ -298,11 +278,6 @@ def detect_halo(pil_image: Image.Image, source_image: Image.Image | None = None)
             return _SEV_CLEAN
     except Exception:
         return _SEV_CLEAN
-
-
-# Alias for catalog naming.
-def detect_halo_overshoot(pil_image: Image.Image, source_image: Image.Image | None = None) -> Severity:
-    return detect_halo(pil_image, source_image)
 
 
 def detect_over_smoothing(pil_image: Image.Image, source_image: Image.Image | None = None) -> Severity:

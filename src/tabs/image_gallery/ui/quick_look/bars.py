@@ -68,10 +68,6 @@ class _BarWidget(QWidget):
         outer.addStretch(1)
         self._update_fill()
 
-    def set_fraction(self, v: float) -> None:
-        self._fraction = max(0.0, min(1.0, float(v)))
-        self._update_fill()
-
     def _update_fill(self) -> None:
         try:
             layout = self.layout()
@@ -166,11 +162,6 @@ class _DualRestoredInventedBar(QWidget):
         outer.addWidget(self._right, 0)
         outer.addStretch(1)
         self._update_geometry()
-
-    def set_hf(self, v: float) -> None:
-        self._hf = float(v)
-        self._update_geometry()
-        self.update()
 
     def _update_geometry(self) -> None:
         try:

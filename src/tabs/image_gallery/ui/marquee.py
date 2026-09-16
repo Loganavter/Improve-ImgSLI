@@ -25,7 +25,7 @@ from PySide6.QtCore import QEvent, QObject, QRect, Qt
 from PySide6.QtGui import QMouseEvent
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import MarqueeBandGesture, MarqueeBandOverlay
+from sli_ui_toolkit.widgets import MarqueeBandGesture
 
 try:
     from tabs.image_gallery.ui.grid_view import GRID_COLUMNS, GRID_MARGIN, GRID_SPACING, GALLERY_CARD_W, GALLERY_CARD_H

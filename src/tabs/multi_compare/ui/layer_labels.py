@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 
 from ui.canvas_presentation.filename_labels import (
     draw_round_rect,
@@ -181,57 +181,3 @@ def layer_label_rect(
         style=style,
         image_bottom_fb=image_bottom_fb,
     )
-
-
-def rasterize_layer_label(
-    *,
-    text: str,
-    rect_fb: QRectF,
-    style: LayerLabelStyle,
-) -> QImage:
-    """Rasterize one label into a tight transparent image."""
-    width = max(1, int(round(rect_fb.width())))
-    height = max(1, int(round(rect_fb.height())))
-    img = QImage(width, height, QImage.Format.Format_RGBA8888_Premultiplied)
-    img.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(img)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-    try:
-        local_rect = QRectF(0.0, 0.0, float(width), float(height))
-        overlay_style = style.to_filename_overlay_style()
-        draw_round_rect(painter, local_rect, style.bg_color, overlay_style)
-
-        font = _font(style)
-        fm = QFontMetrics(font)
-        text_inset = float(style.text_inset_fb)
-        inner_w = local_rect.width() - text_inset * 2.0
-        fitted = fit_text(text, fm, inner_w)
-        if style.font_weight > 0:
-            draw_text_bold_supersampled(
-                painter,
-                fitted,
-                font,
-                style.text_color,
-                style.font_weight,
-                width,
-                height,
-                text_inset,
-            )
-        else:
-            painter.setFont(font)
-            painter.setPen(style.text_color)
-            text_rect = QRectF(
-                text_inset,
-                0.0,
-                inner_w,
-                local_rect.height(),
-            )
-            painter.drawText(
-                text_rect,
-                int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
-                fitted,
-            )
-    finally:
-        painter.end()
-    return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)

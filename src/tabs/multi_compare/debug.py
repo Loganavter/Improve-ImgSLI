@@ -54,11 +54,6 @@ def mc_dnd_debug_enabled() -> bool:
     return _mc_debug_enabled()
 
 
-def mc_debug(msg: str, *args, **kwargs) -> None:
-    if mc_debug_enabled():
-        _emit("[mc-debug]", msg, *args, **kwargs)
-
-
 def mc_dnd_debug(msg: str, *args, **kwargs) -> None:
     if mc_dnd_debug_enabled():
         _emit("[mc-dnd]", msg, *args, **kwargs)

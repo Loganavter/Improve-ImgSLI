@@ -215,26 +215,3 @@ def select_mode(
 # Aliases expected by alternative call sites / tests.
 auto_select_mode = select_mode
 detect_mode = select_mode
-
-# Also support signature auto_select_mode(items, series, source) variations via wrapper.
-
-def _compat_auto_select(*args, **kwargs) -> _Mode:
-    # Accept flexible arg order for legacy callers.
-    series_list = kwargs.get("series_list", kwargs.get("series"))
-    items = kwargs.get("items")
-    source_path = kwargs.get("source_path", kwargs.get("source"))
-    if args:
-        # Heuristic: if first arg looks like items (list of GalleryItem), second series.
-        # We inspect type: if args[0] is list and elements have .path.
-        if series_list is None and len(args) >= 1:
-            # Could be (items, series, source) or (series, items, source)
-            # Prefer explicit kwargs; else try positional as (series, items, source) per doc.
-            # The controller calls select_mode(series, items, source) → positional.
-            if len(args) == 3:
-                series_list, items, source_path = args[0], args[1], args[2]
-            elif len(args) == 2:
-                series_list, items = args[0], args[1]
-            elif len(args) == 1:
-                # Single folder path case? Not used.
-                pass
-    return select_mode(series_list, items, source_path)
