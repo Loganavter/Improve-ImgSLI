@@ -131,13 +131,18 @@ class VideoExporterService:
         materialized = self._materialize_snapshots(snapshots)
         return self._bounds_analyzer.calculate(materialized, auto_crop)
 
-    def get_cached_global_bounds(self, snapshots, auto_crop=False):
-        materialized = self._materialize_snapshots(snapshots)
-        current_hash = (
+    def _snapshots_hash(self, materialized) -> tuple | None:
+        if not materialized:
+            return None
+        return (
             (len(materialized), materialized[-1].timestamp if materialized else 0)
             if materialized
             else None
         )
+
+    def get_cached_global_bounds(self, snapshots, auto_crop=False):
+        materialized = self._materialize_snapshots(snapshots)
+        current_hash = self._snapshots_hash(materialized)
 
         if (
             self._cached_global_bounds is None
@@ -150,6 +155,29 @@ class VideoExporterService:
             self._cached_bounds_snapshots_hash = current_hash
 
         return self._cached_global_bounds
+
+    def peek_cached_global_bounds(self) -> GlobalCanvasBounds | None:
+        """GUI-thread-safe read of the cached bounds — never computes.
+
+        ``get_cached_global_bounds`` recomputes synchronously on a hash miss
+        (decode/measure work); the preview coordinator must not call that on
+        the GUI thread. It reads here instead and waits for the background
+        ``recalculate_global_bounds`` worker to :meth:`store_cached_global_bounds`.
+        """
+        return self._cached_global_bounds
+
+    def store_cached_global_bounds(
+        self, bounds: GlobalCanvasBounds | None, snapshots
+    ) -> GlobalCanvasBounds | None:
+        """Single write path for the bounds cache (service-owned single source).
+
+        Background ``recalculate_global_bounds`` workers publish here; the
+        coordinator mirror is gone, so every reader goes through the service.
+        """
+        materialized = self._materialize_snapshots(snapshots)
+        self._cached_global_bounds = bounds
+        self._cached_bounds_snapshots_hash = self._snapshots_hash(materialized)
+        return bounds
 
     def invalidate_bounds_cache(self):
         self._cached_global_bounds = None
