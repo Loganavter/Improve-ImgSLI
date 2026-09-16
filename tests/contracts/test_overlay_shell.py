@@ -35,7 +35,7 @@ from ._framework import ROOT, read
 
 OVERLAY = ROOT / "src" / "engine" / "overlay"
 
-# Pilot scope (S1). S2 extends with MC pass paths; rules below apply
+# Pilot scope (S1) + first mounted MC pass (R-a). S2 extends with MC pass paths; rules below apply
 # unchanged to every listed file.
 _PILOT_PASSES = {
     "src/tabs/image_compare/canvas/features/guides/passes.py": (
@@ -49,6 +49,10 @@ _PILOT_PASSES = {
     "src/tabs/image_compare/canvas/features/capture/passes.py": (
         "capture",
         112,
+    ),
+    "src/tabs/multi_compare/canvas/features/grid_dividers/passes.py": (
+        "grid_divider",
+        96,
     ),
 }
 
@@ -363,12 +367,15 @@ def test_overlay_resolver_protocol_is_ctx_first():
 # initialize/record/release -- so the pilot mount/record dogmas cannot apply
 # to them verbatim. Per-pass verdicts (ruling 2, proven here, not asserted):
 #
-# * dividers.py -> MIGRATE (model side): pure geometry (composition gaps ->
-#   fb rects + color) exposing a ctx-first ``resolve(ctx)`` returning engine
-#   types (``tuple[bytes, ...]``). Its shell path is proven shared below
-#   (``_MC_QUAD_SHELL`` is uniform-quad-shaped, IC-divider-like); the
-#   mechanical mount of that shell file is S6's (outside S2 scope), flagged
-#   by ``test_mc_grid_dividers_shell_still_hand_rolled`` which S6 retires.
+# * dividers.py -> MIGRATED (model side + R-a mount): pure geometry
+#   (composition gaps -> fb rects + color) exposing a ctx-first
+#   ``resolve(ctx)`` returning engine types (``tuple[bytes, ...]``), now
+#   consumed by the mounted ``GridDividersPass`` (R-a): that pass joined
+#   ``_PILOT_PASSES`` above, so the mount/record/binding dogmas prove the
+#   shared shell path, and ``test_mc_grid_dividers_shell_shape_matches...``
+#   pins the quad shape on the shell plus the tab's binding. The retired
+#   ``test_mc_grid_dividers_shell_still_hand_rolled`` tripwire used to flag
+#   the outstanding mount here.
 # * labels.py / drag_overlay.py -> PIN (genuinely pass-owned): glyph and
 #   interaction raster needs a framebuffer-sized texture upload
 #   (``uploadTexture`` + sampler in the shared texture base), which the
@@ -536,51 +543,32 @@ def test_mc_drag_intake_stays_host_bound():
 
 
 def test_mc_grid_dividers_shell_shape_matches_shared_quad():
-    """Shell-path proof (dividers): GridDividersPass is uniform-quad-shaped
-    (TriangleStrip, SrcAlpha blend, 2xFloat2 layout -- like OverlayShell),
-    so S6's mount is mechanical rather than a redesign."""
-    text = read(ROOT / _MC_QUAD_SHELL)
+    """Mount proof (dividers): GridDividersPass rides the shared uniform
+    quad shell, so the pipeline shape lives in ``engine.overlay`` and the
+    tab only declares its binding. Pins both halves: the shell keeps the
+    quad shape (TriangleStrip, SrcAlpha blend, 2xFloat2 layout) and the
+    mounted pass sits under the pilot dogmas with its grid_divider stem
+    and 96-byte blocks."""
+    assert _MC_QUAD_SHELL in _PILOT_PASSES, (
+        f"{_MC_QUAD_SHELL} must stay mounted under the pilot ownership "
+        f"dogmas ({sorted(_PILOT_PASSES)}) -- the engine owns the draw"
+    )
+    assert _PILOT_PASSES[_MC_QUAD_SHELL] == ("grid_divider", 96), (
+        f"{_MC_QUAD_SHELL} binding drifted: {_PILOT_PASSES[_MC_QUAD_SHELL]} -- "
+        f"the mount declares shader_stem='grid_divider', uniform_size=96"
+    )
+    shell_text = read(ROOT / "src" / "engine" / "overlay" / "shell.py")
     for marker in (
         "TriangleStrip",
         "BlendFactor.SrcAlpha",
         "BlendFactor.OneMinusSrcAlpha",
         "Format.Float2",
     ):
-        assert marker in text, (
-            f"{_MC_QUAD_SHELL} lost '{marker}' -- the S6 mount proof "
-            f"assumes the shared-quad pipeline shape"
+        assert marker in shell_text, (
+            "src/engine/overlay/shell.py lost "
+            f"'{marker}' -- the mounted dividers render through the "
+            f"shared-quad pipeline shape"
         )
-
-
-def test_mc_grid_dividers_shell_still_hand_rolled():
-    """Follow-on tripwire: the GridDividersPass mount is S6's (outside S2
-    scope). It still hand-rolls GPU objects and stays off engine.overlay.
-    S6 retires this test when it mounts the shell and deletes the inline
-    NDC-quad packing in favor of the dividers resolve() seam."""
-    text = read(ROOT / _MC_QUAD_SHELL)
-    for mark in ("newGraphicsPipeline", "newBuffer"):
-        assert mark in text, (
-            f"{_MC_QUAD_SHELL} no longer spells '{mark}' -- if S6 mounted "
-            f"the shell, retire this tripwire and re-point the source "
-            f"through resolve()"
-        )
-    assert "from engine.overlay" not in text, (
-        f"{_MC_QUAD_SHELL} now imports engine.overlay -- mount landed, "
-        f"retire this tripwire per the lift-then-delete flag-day"
-    )
-    tree = _parse(ROOT / _MC_QUAD_SHELL)
-    assert not any(
-        isinstance(node, ast.ClassDef)
-        and node.name.endswith("Pass")
-        and any(
-            _unparse(base) == "FullscreenOverlayTexturePass"
-            for base in node.bases
-        )
-        for node in ast.walk(tree)
-    ), (
-        f"{_MC_QUAD_SHELL} joined the texture base -- dividers are "
-        f"uniform quads, not raster texture; mount onto the uniform shell"
-    )
 
 
 def test_overlay_shell_avoids_legacy_resource_fingerprint():
