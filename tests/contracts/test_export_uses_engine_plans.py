@@ -420,3 +420,107 @@ def test_prescale_resample_helpers_stay_allow_listed():
         + "\n(prescale/resample stays CPU-side per harness; allow-list additions "
         "need a deliberate contract update)"
     )
+
+
+# ---------------------------------------------------------------------------
+# S4 (additive, supervisor ruling §12): MC grid export onto the R4 engine
+# tile vocabulary. S0 verdict: MC export builds no plan object of its own
+# (save_composite = pure PIL encode; MultiCompareGpuExporter wraps the
+# caller-supplied CompositionPlan built upstream by the single-owner shared
+# live/export constructor build_composition_plan, boundary-pinned by
+# test_plan_application_boundary and NOT touched here); per-slot tile
+# enumeration already lives in scene/tile_geometry.py (S2/S5 scope,
+# engine-pattern-owned) and export framebuffer tiling parity is already by
+# construction (engine TiledFramebufferExporter + offscreen_canvas).
+#
+# The S3 mirror inside S4 scope (services/gpu_export.py only): a single
+# engine-backed entry (resolve_mc_export_slot_tiles) enumerating each
+# layer's whole-image tile set through plan_tiles_for_grid, exercised per
+# render by render_to_qimage as a tripwire probe (records, never alters).
+# These tests are ADDITIVE ONLY -- no S3 test above is modified.
+# ---------------------------------------------------------------------------
+
+MC_GPU_EXPORT = (
+    ROOT
+    / "src"
+    / "tabs"
+    / "multi_compare"
+    / "services"
+    / "gpu_export.py"
+)
+
+_MC_SEAM_NAME = "resolve_mc_export_slot_tiles"
+
+# Size adaptation only (_export_layer_size, _iter_export_layers): no tile
+# math may live beside the seam. Mirrors the S3 _FORBIDDEN_DEFS shape for
+# the MC export scope.
+_MC_FORBIDDEN_DEFS = frozenset(
+    {
+        "to_common_space",
+        "rects_overlap",
+        "intersection_rect",
+        "covered_fraction",
+        "slot_visible_rect",
+        "plan_tiles_for_grid",
+        "build_slot_plan_tiles",
+        "best_overlap_tile_index",
+        "content_scale_for",
+        "build_compare_pair_plan",
+        "select_level",
+        "visible_tiles",
+        "resolve_lod_texture_keys",
+    }
+)
+
+
+def _mc_parse():
+    return ast.parse(read(MC_GPU_EXPORT))
+
+
+def test_mc_exporter_imports_engine_tile_vocabulary():
+    tree = _mc_parse()
+    names = _imported_from(tree, "engine.cache.draw_plans")
+    assert "plan_tiles_for_grid" in names, (
+        "multi_compare gpu_export must import plan_tiles_for_grid from "
+        "engine.cache.draw_plans (the R4 tile-enumeration vocabulary)"
+    )
+
+
+def test_mc_export_entry_enumerates_through_engine():
+    tree = _mc_parse()
+    assert "plan_tiles_for_grid" in _call_names_in(tree), (
+        "gpu_export never calls plan_tiles_for_grid (MC export tile "
+        "enumeration must come from the R4 vocabulary)"
+    )
+    seg = _function_segment(MC_GPU_EXPORT, _MC_SEAM_NAME)
+    assert "plan_tiles_for_grid(" in seg, (
+        "the MC export tile entry must enumerate through plan_tiles_for_grid"
+    )
+    for smuggled in (
+        "select_level(",
+        "visible_tiles(",
+        "LevelKey(",
+        "_apron_rect(",
+        "build_slot_plan_tiles(",
+    ):
+        assert smuggled not in seg, (
+            f"resolve_mc_export_slot_tiles inlines {smuggled!r} -- second "
+            f"implementation (ruling 2); LOD/viewport math lives elsewhere"
+        )
+
+
+def test_mc_render_to_qimage_calls_engine_entry():
+    seg = _function_segment(MC_GPU_EXPORT, "render_to_qimage")
+    assert f"{_MC_SEAM_NAME}(" in seg, (
+        "MultiCompareGpuExporter.render_to_qimage must call the engine "
+        "tile entry (parity by construction, Phase S-c)"
+    )
+
+
+def test_mc_export_defines_no_second_decision_math():
+    defined = _defined_names(_mc_parse())
+    clash = defined & _MC_FORBIDDEN_DEFS
+    assert not clash, (
+        f"multi_compare gpu_export re-defines engine decision homes: "
+        f"{sorted(clash)} (ruling 2: no second implementations)"
+    )
