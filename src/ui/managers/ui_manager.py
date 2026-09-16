@@ -53,24 +53,6 @@ class UIManager(QObject):
     def show_flyout(self, image_number: int):
         self.transient.show_flyout(image_number)
 
-    def _sync_flyout_combo_status(self):
-        self.transient.sync_flyout_combo_status()
-
-    def toggle_interpolation_flyout(self):
-        self.transient.toggle_interpolation_flyout()
-
-    def show_interpolation_flyout(self):
-        self.transient.show_interpolation_flyout()
-
-    def _apply_interpolation_choice(self, idx: int):
-        self.transient.apply_interpolation_choice(idx)
-
-    def _close_interpolation_flyout(self):
-        self.transient.close_interpolation_flyout()
-
-    def _on_interpolation_flyout_closed_event(self):
-        self.transient.on_interpolation_flyout_closed_event()
-
     def toggle_font_settings_flyout(self, anchor_widget=None):
         self.transient.toggle_font_settings_flyout(anchor_widget)
 

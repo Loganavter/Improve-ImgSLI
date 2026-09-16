@@ -12,7 +12,6 @@ from .simple_adapter import (
     SimpleUnifiedFlyoutController,
     SimpleUnifiedFlyoutStore,
     UnifiedFlyoutItem,
-    make_main_window_proxy,
 )
 
 __all__ = [

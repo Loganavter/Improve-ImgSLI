@@ -44,10 +44,6 @@ class ContextMenuManager:
         if provider not in self._providers:
             self._providers.append(provider)
 
-    def unregister_provider(self, provider: ContextMenuProvider) -> None:
-        if provider in self._providers:
-            self._providers.remove(provider)
-
     def entries_for(self, request: ContextMenuRequest) -> tuple[ContextMenuEntry, ...]:
         entries: list[ContextMenuEntry] = []
         for provider in tuple(self._providers):

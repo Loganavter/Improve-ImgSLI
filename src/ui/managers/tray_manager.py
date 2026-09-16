@@ -110,9 +110,6 @@ class TrayManager(QObject):
             visible = bool(path and os.path.isfile(path))
             self._actions["open_file"].setVisible(visible)
 
-    def get_last_saved_path(self) -> str:
-        return self._last_saved_path
-
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         if self._actions:
@@ -136,18 +133,6 @@ class TrayManager(QObject):
 
     def _on_tray_message_clicked(self):
         self.open_last_folder_requested.emit()
-
-    def show_tray_notification(self, title: str, message: str, timeout_ms: int = 4000):
-        if self.tray_icon and self.tray_icon.isVisible():
-            try:
-                self.tray_icon.showMessage(
-                    title,
-                    message,
-                    QSystemTrayIcon.MessageIcon.Information,
-                    max(0, int(timeout_ms)),
-                )
-            except Exception as e:
-                logger.error(f"Ошибка при показе уведомления трея: {e}")
 
     def shutdown(self):
         if self.tray_icon:

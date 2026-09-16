@@ -35,12 +35,6 @@ class AppConstants:
         "EWA_LANCZOS": 4,
     }
 
-    @staticmethod
-    def is_interpolation_conflict(main_method: str, optimization_method: str) -> bool:
-        main_speed = AppConstants.INTERPOLATION_SPEED_ORDER.get(main_method, 999)
-        opt_speed = AppConstants.INTERPOLATION_SPEED_ORDER.get(optimization_method, 999)
-        return main_speed <= opt_speed
-
     FLYOUT_ANIMATION_DURATION_MS = 150
     TEXT_SETTINGS_FLYOUT_ANIMATION_DURATION_MS = 150
     TRANSIENT_HOVER_OPEN_DELAY_MS = 150

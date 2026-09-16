@@ -228,12 +228,6 @@ class MainWindow(QWidget):
                 squared=squared,
             )
 
-    def begin_offscreen_prewarm(self):
-        self._offscreen_prewarm_active = True
-
-    def end_offscreen_prewarm(self):
-        self._offscreen_prewarm_active = False
-
     @property
     def menu_controller(self):
         """Public accessor for the CSD/title-bar controller.
@@ -260,9 +254,6 @@ class MainWindow(QWidget):
         except Exception:
             logger.exception("Failed to resolve toast manager from layout plugin")
         return None
-
-    def initialize_application(self):
-        self._startup_controller.prepare(self)
 
     def start(self):
         self._startup_controller.start(self)

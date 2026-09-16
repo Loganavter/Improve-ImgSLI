@@ -147,29 +147,6 @@ class WindowEventHandler(QObject):
         except Exception:
             pass
 
-    def _schedule_load_when_stable(
-        self, image_paths: list[str], slot_num: int, delay_ms: int = 100
-    ):
-        def _try_load():
-
-            is_stable = (
-                bool(getattr(self.main_window, "_is_ui_stable", True))
-                and self.main_window.isVisible()
-            )
-            if not is_stable:
-                QTimer.singleShot(delay_ms, _try_load)
-                return
-            if self.main_controller and self.main_controller.sessions:
-                self.main_controller.sessions.load_images_from_paths(
-                    image_paths, slot_num
-                )
-            self._first_external_load_pending = False
-
-        if self._first_external_load_pending:
-            QTimer.singleShot(delay_ms, _try_load)
-        else:
-            QTimer.singleShot(0, _try_load)
-
     def handle_drag_enter(self, event: QDragEnterEvent):
         # DEBUG: log every enter with full overlay state to diagnose "still blocks"
         _dnd_debug(

@@ -1,4 +1,4 @@
-from PySide6.QtCore import QPoint, QRect, QTimer, Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.config import get_dragdrop_service, get_flyout_timings, resolve_overlay_layer
@@ -177,16 +177,6 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
             return self.rect().contains(self.mapFromGlobal(global_pos))
         except RuntimeError:
             return False
-
-    def anchor_contains_global(self, global_pos) -> bool:
-        for anchor in self.anchor_widgets():
-            try:
-                top_left = anchor.mapToGlobal(QPoint(0, 0))
-                if QRect(top_left, anchor.size()).contains(global_pos):
-                    return True
-            except RuntimeError:
-                continue
-        return False
 
     def set_list_anchors(
         self,

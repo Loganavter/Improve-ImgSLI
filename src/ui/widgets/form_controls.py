@@ -87,13 +87,6 @@ class DialogActionBar(QWidget):
             self.setMinimumHeight(max(self.minimumHeight(), hint_h))
             self.setMaximumHeight(max(self.minimumHeight(), hint_h))
 
-    def set_button_texts(self, primary_text: str, secondary_text: str) -> None:
-        self.primary_button.setText(primary_text)
-        self.secondary_button.setText(secondary_text)
-        self._apply_button_minimums()
-        self.lock_content_minimum_height()
-
-
 class OutputPathSection(QWidget):
     def __init__(
         self,

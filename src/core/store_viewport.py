@@ -332,9 +332,6 @@ class ViewportState:
             geometry_state=self._geometry_state.clone(),
         )
 
-    def clone_visual_state(self):
-        return self.clone()
-
     def freeze_for_export(self):
         frozen = self.clone()
         frozen.interaction_state.space_bar_pressed = False

@@ -42,14 +42,6 @@ class PluginSettings:
 
         return instance
 
-    def persist_dataclass(self, instance: Any) -> None:
-        if not is_dataclass(instance):
-            return
-
-        for field in fields(instance):
-            value = getattr(instance, field.name, None)
-            self.set_value(field.name, value)
-
 def auto_persist(cls: type) -> type:
     setattr(cls, "_auto_persist", True)
     return cls

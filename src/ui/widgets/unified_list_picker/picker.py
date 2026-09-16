@@ -13,7 +13,6 @@ from .simple_adapter import (
     SimpleUnifiedFlyoutController,
     SimpleUnifiedFlyoutStore,
     UnifiedFlyoutItem,
-    make_main_window_proxy,
 )
 
 __all__ = [
@@ -63,9 +62,6 @@ class UnifiedListPicker(
 
     def is_drag_enabled(self) -> bool:
         return bool(getattr(self, "_drag_enabled", True))
-
-    def set_drag_enabled(self, enabled: bool) -> None:
-        self._drag_enabled = bool(enabled)
     @classmethod
     def create_double_list(
         cls,
