@@ -104,7 +104,8 @@ class PlaybackCoordinator:
         self.update_buttons_state()
         self.thumbnail_coordinator.generate_thumbnails()
 
-        self.preview_coordinator._cached_global_bounds = None
+        # Bounds live in the service: invalidate there (single reset path),
+        # then recompute in the background; preview reads via the service.
         exporter = getattr(self.export_controller, "video_exporter", None)
         if exporter is not None:
             exporter.invalidate_bounds_cache()

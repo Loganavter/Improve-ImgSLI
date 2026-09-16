@@ -1,6 +1,6 @@
 """Video-editor thumbnail pipeline — queue, workers, convert, emit.
 
-Audit-Meta: pattern=state-machine size=exempt reason="one thumbnail pipeline — queue/worker/convert/emit share one task-id + cancel/pending guard"
+Audit-Meta: pattern=state-machine size=exempt reason="one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard"
 """
 
 import logging
@@ -78,8 +78,12 @@ class ThumbnailService(QObject):
 
     def __init__(self):
         super().__init__()
-        self._is_generating = False
-        self._current_task_id = 0
+        # Single cancellation token: bumped by every new wave and by
+        # cancel(). Workers capture the value at queue time; completions
+        # whose token mismatches the current one are stale and dropped on
+        # arrival. Replaces the old `_is_generating` + `_generation_cancelled`
+        # bool pair and the log-only `_current_task_id`.
+        self._generation = 0
         self._thread_pool = QThreadPool(self)
         try:
             ideal = QThreadPool.globalInstance().maxThreadCount()
@@ -96,7 +100,6 @@ class ThumbnailService(QObject):
         self._render_snapshot_async: Optional[Callable[..., None]] = None
         self._auto_crop = False
         self._active_workers = 0
-        self._generation_cancelled = False
         self._fps = 60
 
     def generate_thumbnails(
@@ -127,35 +130,28 @@ class ThumbnailService(QObject):
             return -1
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_svc generate ENTRY is_gen=%s cancelled=%s pending=%s gen=%s priority_len=%s target=%s fps=%s", self._is_generating, self._generation_cancelled, len(self._pending_indices), len(self._generated_indices), len(priority_indices) if priority_indices else 0, target_count, fps)
+            ic_video_debug("thumb_svc generate ENTRY gen=%s pending=%s generated=%s priority_len=%s target=%s fps=%s", self._generation, len(self._pending_indices), len(self._generated_indices), len(priority_indices) if priority_indices else 0, target_count, fps)
         except Exception:
             pass
-        # If a previous generation is still in flight, retire it so a
-        # resize-triggered refresh doesn't return -1 forever (the old
-        # `_is_generating` guard caused the strip to die after any resize
-        # that happened before the first wave finished).
-        if self._is_generating:
-            try:
-                from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_svc generate PREEMPT is_gen=%s cancelled->True pending_clear %s->0 active %s->0", self._is_generating, len(self._pending_indices), self._active_workers)
-            except Exception:
-                pass
-            self._generation_cancelled = True
-            self._pending_indices.clear()
-            self._is_generating = False
-            self._active_workers = 0
+        # Every new wave retires any in-flight one: bump the single
+        # generation token so stale worker completions drop on arrival
+        # (a resize-triggered refresh preempts the previous wave instead
+        # of returning -1 forever). No poison flag, so no reset needed on
+        # the additional path.
+        self._generation += 1
+        generation = self._generation
+        try:
+            from tabs.image_compare.debug import ic_video_debug
+            ic_video_debug("thumb_svc generate NEW gen=%s pending_clear %s->0", generation, len(self._pending_indices))
+        except Exception:
+            pass
+        self._pending_indices.clear()
 
         self._recording = self._coerce_recording(recording)
         self._thumbnail_size = thumbnail_size
         self._auto_crop = auto_crop
         self._fps = max(1, int(fps))
         self._generated_indices.clear()
-        self._pending_indices.clear()
-        self._generation_cancelled = False
-
-        self._is_generating = True
-        self._current_task_id += 1
-        task_id = self._current_task_id
 
         count = self._get_frame_count()
         indices_to_generate = self._build_initial_indices(
@@ -167,13 +163,13 @@ class ThumbnailService(QObject):
         self._active_workers = len(indices_to_generate)
         try:
             from tabs.image_compare.debug import ic_video_debug, ic_perf_debug
-            ic_video_debug("thumb_svc generate task=%s count=%s target=%s fps=%s queue=%s indices=%s", task_id, count, target_count, self._fps, len(indices_to_generate), indices_to_generate[:12])
-            ic_perf_debug("thumbnails_generate task=%s count=%s target=%s fps=%s queue=%s pool_max=%s", task_id, count, target_count, self._fps, len(indices_to_generate), self._thread_pool.maxThreadCount())
+            ic_video_debug("thumb_svc generate gen=%s count=%s target=%s fps=%s queue=%s indices=%s", generation, count, target_count, self._fps, len(indices_to_generate), indices_to_generate[:12])
+            ic_perf_debug("thumbnails_generate gen=%s count=%s target=%s fps=%s queue=%s pool_max=%s", generation, count, target_count, self._fps, len(indices_to_generate), self._thread_pool.maxThreadCount())
         except Exception:
             pass
         _thlog.debug(
-            "thumbnails_generate task=%s count=%s target=%s fps=%s queue=%s",
-            task_id,
+            "thumbnails_generate gen=%s count=%s target=%s fps=%s queue=%s",
+            generation,
             count,
             target_count,
             self._fps,
@@ -182,12 +178,11 @@ class ThumbnailService(QObject):
         if self._active_workers <= 0:
             try:
                 from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_svc generate EMPTY queue task=%s", task_id)
+                ic_video_debug("thumb_svc generate EMPTY queue gen=%s", generation)
             except Exception:
                 pass
-            self._is_generating = False
             self.generationFinished.emit()
-            return task_id
+            return generation
 
         for idx in indices_to_generate:
             self._queue_thumbnail_worker(
@@ -196,7 +191,7 @@ class ThumbnailService(QObject):
                 track_finish=True,
             )
 
-        return task_id
+        return generation
 
     def generate_additional_thumbnails(self, indices: List[int], fps: int | None = None):
         if not self._recording:
@@ -208,19 +203,11 @@ class ThumbnailService(QObject):
             return
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_svc additional ENTRY cancelled=%s pending=%s gen=%s req=%s fps_in=%s", self._generation_cancelled, len(self._pending_indices), len(self._generated_indices), indices[:12] if indices else [], fps)
+            ic_video_debug("thumb_svc additional ENTRY gen=%s pending=%s generated=%s req=%s fps_in=%s", self._generation, len(self._pending_indices), len(self._generated_indices), indices[:12] if indices else [], fps)
         except Exception:
             pass
-        # Stale `cancel()` poisoned `_generation_cancelled=True` — without
-        # reset every arrival is dropped in `_on_thumbnail_generated`.
-        if self._generation_cancelled:
-            try:
-                from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_svc additional RESET poison cancelled->False pending_clear %s->0", len(self._pending_indices))
-            except Exception:
-                pass
-            self._generation_cancelled = False
-            self._pending_indices.clear()
+        # No poison reset: the generation token makes stale arrivals drop
+        # on their own, so additional waves queue under the live token.
         if fps is not None:
             self._fps = max(1, int(fps))
 
@@ -361,6 +348,11 @@ class ThumbnailService(QObject):
         priority: int,
         track_finish: bool,
     ) -> None:
+        # Capture the live token: the wave bumped `self._generation` before
+        # queueing, so every worker of this wave carries the same value and
+        # any wave/cancel that bumps it afterwards retires this worker's
+        # completion. (Signature unchanged — callers/tests patch this hook.)
+        generation = self._generation
         if index in self._pending_indices:
             return
         self._pending_indices.add(index)
@@ -380,6 +372,7 @@ class ThumbnailService(QObject):
                 self._thumbnail_render_scale,
                 self._fps,
                 track_finish,
+                generation,
             )
             self._thread_pool.start(worker, priority=priority)
             return
@@ -394,10 +387,12 @@ class ThumbnailService(QObject):
             None,
         )
         worker.signals.result.connect(
-            lambda result, i=index: self._on_thumbnail_generated(i, result)
+            lambda result, i=index, g=generation: self._on_thumbnail_generated(i, result, g)
         )
         if track_finish:
-            worker.signals.finished.connect(self._on_worker_finished)
+            worker.signals.finished.connect(
+                lambda g=generation: self._on_worker_finished(g)
+            )
         self._thread_pool.start(worker, priority=priority)
 
     def _start_single_thumbnail_async(
@@ -408,6 +403,7 @@ class ThumbnailService(QObject):
         render_scale: float,
         fps: int,
         track_finish: bool,
+        generation: int,
     ) -> None:
         """Runs on the background pool thread; must not block on the GPU."""
         try:
@@ -429,9 +425,9 @@ class ThumbnailService(QObject):
                     result is not None,
                     getattr(result, "size", None),
                 )
-                self._on_thumbnail_generated(index, result)
+                self._on_thumbnail_generated(index, result, generation)
                 if track_finish:
-                    self._on_worker_finished()
+                    self._on_worker_finished(generation)
 
             self._render_snapshot_async(
                 snap, target_w, target_h, _on_rendered, auto_crop=auto_crop
@@ -440,16 +436,18 @@ class ThumbnailService(QObject):
             logger.error(
                 f"Error starting async thumbnail at index {index}: {e}", exc_info=True
             )
-            self._on_thumbnail_generated(index, None)
+            self._on_thumbnail_generated(index, None, generation)
             if track_finish:
-                self._on_worker_finished()
+                self._on_worker_finished(generation)
 
-    def _on_thumbnail_generated(self, index: int, pil_image):
+    def _on_thumbnail_generated(
+        self, index: int, pil_image, generation: int | None = None
+    ):
         self._pending_indices.discard(index)
-        if self._generation_cancelled:
+        if generation is not None and generation != self._generation:
             try:
                 from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_svc _on_generated DROP cancelled idx=%s ok=%s pending=%s gen=%s", index, pil_image is not None, len(self._pending_indices), len(self._generated_indices))
+                ic_video_debug("thumb_svc _on_generated DROP stale gen=%s live=%s idx=%s", generation, self._generation, index)
             except Exception:
                 pass
             return
@@ -497,12 +495,19 @@ class ThumbnailService(QObject):
             except Exception as e:
                 logger.error(f"Error converting thumbnail {index}: {e}")
 
-    def _on_worker_finished(self):
+    def _on_worker_finished(self, generation: int | None = None):
+        if generation is not None and generation != self._generation:
+            try:
+                from tabs.image_compare.debug import ic_video_debug
+                ic_video_debug("thumb_svc _on_worker_finished DROP stale gen=%s live=%s", generation, self._generation)
+            except Exception:
+                pass
+            return
         self._active_workers -= 1
         _thlog.debug("thumbnail_worker_finished active=%s", self._active_workers)
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_svc _on_worker_finished active=%s is_gen=%s", self._active_workers, self._is_generating)
+            ic_video_debug("thumb_svc _on_worker_finished active=%s gen=%s", self._active_workers, self._generation)
         except Exception:
             pass
 
@@ -512,11 +517,13 @@ class ThumbnailService(QObject):
                 ic_video_debug("thumb_svc generationFinished emit active=%s", self._active_workers)
             except Exception:
                 pass
-            self._is_generating = False
+            self._active_workers = 0
             self.generationFinished.emit()
 
     def cancel(self):
-        self._generation_cancelled = True
-        self._is_generating = False
+        # Retire the live wave: bump the token so any worker that finishes
+        # after this point drops its result on arrival.
+        self._generation += 1
         self._pending_indices.clear()
+        self._active_workers = 0
         self._thread_pool.waitForDone(500)

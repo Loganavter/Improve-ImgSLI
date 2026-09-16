@@ -45,7 +45,8 @@ class PreviewCoordinator:
         self._last_render_params = (None, None, None)
         self.fit_content_mode = False
         self.preview_render_scale = 1.0
-        self._cached_global_bounds = None
+        # No local bounds mirror: the VideoExporterService owns the global
+        # bounds cache (peek/store/invalidate); read via _get_service_bounds().
         self._bounds_request_id: int = 0
         self._stored_crop_resolution = None
 
@@ -98,8 +99,66 @@ class PreviewCoordinator:
             self._preview_updater.start()
 
     def reset_render_state(self):
+        """Single invalidation path for the preview frame cache.
+
+        ``prepare_key``/``plan``/``store``/``request_key``/``frame_pil`` are
+        only ever dropped here (and at teardown in ``cleanup``); resize,
+        bounds, and scale changes flow through this, never ad-hoc clears.
+        """
         self._last_render_params = (None, None, None)
         self._preview_frame_cache = None
+
+    def _get_service_bounds(self):
+        """Single-source read of the cached global bounds (service-owned).
+
+        Returns ``None`` when no exporter is wired or the background
+        recalculation has not published yet — callers wait/recalculate.
+        """
+        exporter = getattr(self.export_controller, "video_exporter", None)
+        if exporter is None:
+            return None
+        peek = getattr(exporter, "peek_cached_global_bounds", None)
+        if callable(peek):
+            try:
+                return peek()
+            except Exception:
+                return None
+        return getattr(exporter, "_cached_global_bounds", None)
+
+    @staticmethod
+    def _build_preview_keys(
+        snapshot_signature,
+        render_w: int,
+        render_h: int,
+        fit_content_mode: bool,
+        fill_color_tuple,
+        global_bounds,
+        preview_w: int,
+        preview_h: int,
+    ):
+        """Single construction site for the preview cache keys.
+
+        ``prepare_key`` is the only cache identity (same render buffer can be
+        re-letterboxed into a resized pane without re-prepare); ``request_key``
+        extends it with the widget display size for the canvas source/display
+        keys downstream — never a second lookup scheme.
+        """
+        # Prepare key ignores widget display size: same render buffer can be
+        # re-letterboxed into a resized preview pane without re-prepare.
+        prepare_key = (
+            snapshot_signature,
+            render_w,
+            render_h,
+            fit_content_mode,
+            fill_color_tuple,
+            global_bounds,
+        )
+        request_key = (
+            prepare_key,
+            preview_w,
+            preview_h,
+        )
+        return prepare_key, request_key
 
     def _clip_overlays_for_mode(self) -> bool:
         return not self.fit_content_mode
@@ -158,7 +217,7 @@ class PreviewCoordinator:
             _vplog.debug("preview_skip size=%s", available_size)
             return
 
-        if self.fit_content_mode and self._cached_global_bounds is None:
+        if self.fit_content_mode and self._get_service_bounds() is None:
             self.recalculate_global_bounds()
             _vplog.debug(
                 "preview_wait_global_bounds request_id=%s",
@@ -405,7 +464,7 @@ class PreviewCoordinator:
         preview_w, preview_h = self.get_preview_size_safe()
         render_w, render_h = self._resolve_preview_render_size(preview_w, preview_h)
         fill_color_tuple = self._resolve_fill_color_tuple()
-        global_bounds = self._cached_global_bounds if self.fit_content_mode else None
+        global_bounds = self._get_service_bounds() if self.fit_content_mode else None
         self._trace(
             "video.preview.request",
             f"preview request render={render_w}x{render_h} display={preview_w}x{preview_h}",
@@ -429,18 +488,13 @@ class PreviewCoordinator:
             viewport_fingerprint(snap.viewport_state),
             frozen_value(snap.settings_state),
         )
-        # Prepare key ignores widget display size: same render buffer can be
-        # re-letterboxed into a resized preview pane without re-prepare.
-        prepare_key = (
+        prepare_key, request_key = self._build_preview_keys(
             snapshot_signature,
             render_w,
             render_h,
             self.fit_content_mode,
             fill_color_tuple,
             global_bounds,
-        )
-        request_key = (
-            prepare_key,
             preview_w,
             preview_h,
         )
@@ -653,7 +707,7 @@ class PreviewCoordinator:
                 self.view.set_resolution(width, height)
                 self.view.blockSignals(False)
 
-            self._cached_global_bounds = None
+            # Bounds live in the service: invalidate there (single reset path).
             exporter = getattr(self.export_controller, "video_exporter", None)
             if exporter is not None:
                 exporter.invalidate_bounds_cache()
@@ -689,7 +743,21 @@ class PreviewCoordinator:
     def on_global_bounds_calculated(self, bounds, request_id: int | None = None):
         if request_id is not None and request_id != self._bounds_request_id:
             return
-        self._cached_global_bounds = bounds
+        # Publish to the service-owned cache (single write path, no mirror).
+        exporter = getattr(self.export_controller, "video_exporter", None)
+        if exporter is not None:
+            try:
+                snapshots = self.editor_service.get_current_snapshots()
+            except Exception:
+                snapshots = None
+            try:
+                store = getattr(exporter, "store_cached_global_bounds", None)
+                if callable(store):
+                    store(bounds, snapshots)
+                else:  # pragma: no cover — legacy fake exporters in tests
+                    exporter._cached_global_bounds = bounds
+            except Exception:
+                pass
 
         if self.emit_fit_content_available is not None:
             # Nothing to uncrop when the virtual canvas never leaves 0..1
