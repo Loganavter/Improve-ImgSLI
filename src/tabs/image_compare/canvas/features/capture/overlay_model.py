@@ -27,15 +27,15 @@ from dataclasses import dataclass
 
 from PySide6.QtGui import QColor
 
+from engine.cache.screen_projection import project_px_to_screen
 from engine.cache.stroke_geometry import shrink_screen_radius_for_stroke
-from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 
 __all__ = ["CaptureRing", "resolve_capture_circles", "resolve_capture_rings"]
 
 
 @dataclass(frozen=True, slots=True)
 class CaptureRing:
-    """One capture ring, fully resolved to screen space (plain data)."""
+    """One capture ring, fully resolved to canvas-px (plain data)."""
 
     center_x: float
     center_y: float
@@ -70,26 +70,33 @@ def resolve_capture_circles(ctx, widget) -> tuple:
 
 
 def resolve_capture_rings(ctx, widget) -> tuple[CaptureRing, ...]:
-    """Resolve screen-space capture rings for this frame (pure).
+    """Resolve canvas-px capture rings for this frame (pure).
 
     Applies zoom, pan projection, stroke-shrink, and full-opacity ring
-    color. Calling twice with an unchanged frame yields an equal tuple;
+    color. Projection inputs come from ``ctx`` (canvas dims, zoom, pan,
+    tile offsets) via the shared engine projector -- the widget handle
+    only sources the fallback circle list (see ``resolve_capture_circles``).
+    Calling twice with an unchanged frame yields an equal tuple;
     nothing is cached, stored, or mutated.
     """
     line_width = float(ctx.resolved_style.annotation_ring_stroke_px)
     zoom = float(ctx.zoom_level)
+    pan_x = float(getattr(ctx, "pan_offset_x", 0.0))
+    pan_y = float(getattr(ctx, "pan_offset_y", 0.0))
     rings: list[CaptureRing] = []
     for center, radius, color in resolve_capture_circles(ctx, widget):
         if center is None or float(radius or 0.0) <= 0.0:
             continue
-        center_x, center_y = widget_px_to_screen_px(
-            widget,
+        center_x, center_y = project_px_to_screen(
             center.x(),
             center.y(),
-            canvas_width=ctx.canvas_width,
-            canvas_height=ctx.canvas_height,
-            canvas_offset_x=ctx.canvas_offset_x,
-            canvas_offset_y=ctx.canvas_offset_y,
+            float(ctx.canvas_width),
+            float(ctx.canvas_height),
+            zoom,
+            pan_x,
+            pan_y,
+            canvas_offset_x=float(ctx.canvas_offset_x),
+            canvas_offset_y=float(ctx.canvas_offset_y),
         )
         draw_color = QColor(color)
         draw_color.setAlpha(255)
