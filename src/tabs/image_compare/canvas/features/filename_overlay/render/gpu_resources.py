@@ -1,3 +1,30 @@
+"""QRhi resources for the IC filename_overlay pass (F5 BOUNDARY, stays).
+
+F5 filename-verdict -- documented permanent boundary, not a migration
+candidate. Three-part proof (full statement on ``FilenameOverlayPass``;
+mechanical pins in
+``src/tabs/image_compare/tests/render/test_filename_boundary.py``):
+
+(1) WHAT STAYS: per-slot raw + final textures (``ensure_slot_textures``
+below), per-slot ``RenderTarget`` downsample targets with their own
+rpdesc, the ``_LABEL_SUPERSAMPLE = 4`` supersampled upload -> Lanczos
+pre-pass (``label_downsample.frag`` ``SCALE = 4`` / ``RADIUS = 8``) ->
+device-resolve in ``record_pre_pass``, per-slot screen quads via
+``build_quad_vertices`` (never fullscreen), per-slot vertex buffers
+with ``srb_linear`` / ``srb_nearest`` selection.
+
+(2) WHY: two independently-sized label textures plus a supersample
+stage plus a device-resolve plus per-slot screen quads has no image in
+the single-fullscreen-upload ``TexturedOverlayShell`` (one texture,
+upload-then-draw in the same main pass, shared ``FULLSCREEN_VERTICES``,
+one ``srb``). MC ``layer_labels`` rides the shell ONLY because it is
+one fullscreen raster with no supersample stage.
+
+(3) INVALIDATION: re-open the verdict if the shell gains slot-targets
+plus a GPU-supersample stage, or if these labels drop supersampling
+for a single fullscreen raster like MC.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -114,6 +141,13 @@ class FilenameOverlayGpuResources:
     the should_paint/prepare/record orchestration; resource lifecycle
     (create in ``initialize()``, resize on demand, destroy in ``release()``)
     lives here instead.
+
+    F5 BOUNDARY: this two-slot shape (raw + final texture, per-slot
+    downsample target/rpdesc/pipeline/SRB, per-slot vertex buffer and
+    ``srb_nearest`` / ``srb_linear``) is what stays -- it has no image
+    in ``TexturedOverlayShell``'s single-texture, single-SRB,
+    fullscreen-quad shape. See the module docstring for the full
+    verdict and its invalidation condition.
     """
 
     def __init__(self) -> None:
@@ -239,6 +273,9 @@ class FilenameOverlayGpuResources:
         fixed multiple of final, see render/label_raster.py's
         _LABEL_SUPERSAMPLE), but each is checked independently since
         neither depends on the other having actually changed."""
+        # BOUNDARY (F5): per-slot raw + final textures -- the two-texture
+        # shape (supersampled CPU-upload source + RenderTarget-flagged
+        # device-res resolve target) the single-texture shell cannot host.
         raw_changed = slot.raw_texture is None or slot.raw_texture_size != raw_size
         if raw_changed:
             if slot.raw_texture is not None:
@@ -279,6 +316,9 @@ class FilenameOverlayGpuResources:
         if not (raw_changed or final_changed):
             return
 
+        # BOUNDARY (F5): per-slot downsample target + own rpdesc -- one
+        # dedicated RenderTarget/pipeline/SRB per slot (never shared
+        # across slots), the device-resolve stage with no shell image.
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
         if slot.srb_downsample is not None:
             try:
