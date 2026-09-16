@@ -17,7 +17,6 @@ __all__ = [
     "best_tile_overlap_index",
     "iter_visible_side_tiles",
     "resolve_side_visible_rect",
-    "tile_content_scale",
 ]
 
 # Full-image fraction rect for a side with no registered grid (1x1
@@ -165,19 +164,6 @@ def iter_visible_side_tiles(
         )
         side_tiles.append((key, rect, (row, col)))
     return side_tiles
-
-
-def tile_content_scale(
-    content_size: tuple[int, int] | None, layer_px: float
-) -> tuple[float, float]:
-    """Per-tile content scale (content px / array-layer px) the shader uses
-    to rescale UVs before sampling. ``layer_px`` is passed explicitly (the
-    tab's own ``_ARRAY_LAYER_PX``) so this shared helper never imports a
-    renderer module."""
-    if content_size is None:
-        return (1.0, 1.0)
-    width, height = content_size
-    return (width / layer_px, height / layer_px)
 
 
 def best_tile_overlap_index(grid, rect: tuple[float, float, float, float]) -> tuple[int, int] | None:
