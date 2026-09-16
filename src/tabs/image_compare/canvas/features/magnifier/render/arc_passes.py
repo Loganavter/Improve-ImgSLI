@@ -9,9 +9,12 @@ the unrelated ``MagnifierPass`` (see ``magnifier_pass.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QRhiCommandBuffer, QRhiViewport
 
+from engine.overlay import OverlayResolver
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,
@@ -92,44 +95,75 @@ class _ArcItemsPass(CanvasRenderPass):
         self._items = []
 
 
-class OccludedArcPass(_ArcItemsPass):
-    """Draws the occluded arc segments of the capture ring when dragging."""
+def _resolve_occluded_capture_arcs(
+    ctx,
+) -> tuple[tuple[QPointF, float, float, float, bool], ...]:
+    """Ctx-first geometry resolver: runtime snapshot first, scene payload fallback."""
+    overlay = getattr(ctx, "feature_overlay", None)
+    arcs = tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
+    if arcs:
+        return tuple(arcs)
+    payloads = (
+        ctx.scene_frame.feature_payloads
+        if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
+        else {}
+    )
+    payload_arcs = payloads.get("occluded_capture_arcs")
+    if payload_arcs:
+        return tuple(payload_arcs)
+    overlay = getattr(ctx, "feature_overlay", None)
+    return tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
 
-    stack_role = CanvasStackRole.ANNOTATION_BORDER
-    visibility = SceneVisibility.INTERACTIVE
-    use_scissor = True
 
-    @staticmethod
-    def _resolve_occluded_capture_arcs(
-        ctx,
-    ) -> tuple[tuple[QPointF, float, float, float, bool], ...]:
-        overlay = getattr(ctx, "feature_overlay", None)
-        arcs = tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
-        if arcs:
-            return tuple(arcs)
-        payloads = (
-            ctx.scene_frame.feature_payloads
-            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
-            else {}
-        )
-        payload_arcs = payloads.get("occluded_capture_arcs")
-        if payload_arcs:
-            return tuple(payload_arcs)
-        overlay = getattr(ctx, "feature_overlay", None)
-        return tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
+def _resolve_hidden_capture_circles(
+    ctx,
+) -> tuple[tuple[QPointF, float, bool], ...]:
+    """Ctx-first geometry resolver: runtime snapshot first, scene payload fallback."""
+    overlay = getattr(ctx, "feature_overlay", None)
+    circles = tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
+    if circles:
+        return circles
+    payloads = (
+        ctx.scene_frame.feature_payloads
+        if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
+        else {}
+    )
+    payload_circles = payloads.get("hidden_capture_circles")
+    if payload_circles:
+        return tuple(payload_circles)
+    overlay = getattr(ctx, "feature_overlay", None)
+    return tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
 
-    def should_paint(self, ctx) -> bool:
-        if is_single_image_preview_scene(ctx):
-            return False
-        return bool(self._resolve_occluded_capture_arcs(ctx))
 
-    def prepare(self, widget, ctx, resource_updates) -> None:
-        self._items = []
-        matrix = tuple(
-            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
-        )
+def _resolve_hidden_overlay_circles(
+    ctx,
+) -> tuple[tuple[QPointF, float, bool], ...]:
+    """Ctx-first geometry resolver: runtime snapshot first, scene payload fallback."""
+    overlay = getattr(ctx, "feature_overlay", None)
+    circles = tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
+    if circles:
+        return circles
+    payloads = (
+        ctx.scene_frame.feature_payloads
+        if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
+        else {}
+    )
+    payload_circles = payloads.get("hidden_magnifier_circles")
+    if payload_circles:
+        return tuple(payload_circles)
+    overlay = getattr(ctx, "feature_overlay", None)
+    return tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
+
+
+def _occluded_arcs_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
+    """Ctx-first uniform-block resolver: ctx in, packed arc-item bytes out."""
+
+    def resolve(ctx: Any) -> tuple[bytes, ...]:
+        # Arc decisions are stateless (module resolvers above); this binding
+        # only packs them into per-item uniform blocks.
+        blocks: list[bytes] = []
         line_width_px = max(1.0, float(ctx.resolved_style.annotation_arc_stroke_px))
-        for arc in self._resolve_occluded_capture_arcs(ctx):
+        for arc in _resolve_occluded_capture_arcs(ctx):
             if len(arc) < 5:
                 continue
             center, radius, start_deg, span_deg, is_active = arc
@@ -140,7 +174,7 @@ class OccludedArcPass(_ArcItemsPass):
                 float(radius) * float(ctx.zoom_level), line_width_px
             )
             color = QColor(255, 105, 170, 255 if bool(is_active) else 210)
-            self._items.append(
+            blocks.append(
                 pack_arc_uniform(
                     matrix,
                     float(ctx.width),
@@ -154,66 +188,18 @@ class OccludedArcPass(_ArcItemsPass):
                     color,
                 )
             )
-        self._upload_items(resource_updates)
+        return tuple(blocks)
+
+    return resolve
 
 
-class HiddenSelectionPass(_ArcItemsPass):
-    """Selection rings for hidden capture & magnifier circles."""
+def _hidden_selection_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
+    """Ctx-first uniform-block resolver: ctx in, packed arc-item bytes out."""
 
-    stack_role = CanvasStackRole.DEBUG_VIS
-    visibility = SceneVisibility.INTERACTIVE
-
-    @staticmethod
-    def _resolve_hidden_capture_circles(
-        ctx,
-    ) -> tuple[tuple[QPointF, float, bool], ...]:
-        overlay = getattr(ctx, "feature_overlay", None)
-        circles = tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
-        if circles:
-            return circles
-        payloads = (
-            ctx.scene_frame.feature_payloads
-            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
-            else {}
-        )
-        payload_circles = payloads.get("hidden_capture_circles")
-        if payload_circles:
-            return tuple(payload_circles)
-        overlay = getattr(ctx, "feature_overlay", None)
-        return tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
-
-    @staticmethod
-    def _resolve_hidden_overlay_circles(
-        ctx,
-    ) -> tuple[tuple[QPointF, float, bool], ...]:
-        overlay = getattr(ctx, "feature_overlay", None)
-        circles = tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
-        if circles:
-            return circles
-        payloads = (
-            ctx.scene_frame.feature_payloads
-            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
-            else {}
-        )
-        payload_circles = payloads.get("hidden_magnifier_circles")
-        if payload_circles:
-            return tuple(payload_circles)
-        overlay = getattr(ctx, "feature_overlay", None)
-        return tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
-
-    def should_paint(self, ctx) -> bool:
-        if is_single_image_preview_scene(ctx):
-            return False
-        return bool(
-            self._resolve_hidden_capture_circles(ctx)
-            or self._resolve_hidden_overlay_circles(ctx)
-        )
-
-    def prepare(self, widget, ctx, resource_updates) -> None:
-        self._items = []
-        matrix = tuple(
-            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
-        )
+    def resolve(ctx: Any) -> tuple[bytes, ...]:
+        # Circle decisions are stateless (module resolvers above); this
+        # binding only packs them into per-item uniform blocks.
+        blocks: list[bytes] = []
         stroke_px = max(1.0, float(ctx.resolved_style.annotation_selection_stroke_px))
 
         def _emit(center, radius, *, active: bool, capture: bool) -> None:
@@ -236,7 +222,7 @@ class HiddenSelectionPass(_ArcItemsPass):
                 if capture
                 else QColor(70, 190, 255, 255 if active else 210)
             )
-            self._items.append(
+            blocks.append(
                 pack_arc_uniform(
                     matrix,
                     float(ctx.width),
@@ -251,9 +237,81 @@ class HiddenSelectionPass(_ArcItemsPass):
                 )
             )
 
-        for center, radius, is_active in self._resolve_hidden_capture_circles(ctx):
+        for center, radius, is_active in _resolve_hidden_capture_circles(ctx):
             _emit(center, radius, active=bool(is_active), capture=True)
-        for center, radius, is_active in self._resolve_hidden_overlay_circles(ctx):
+        for center, radius, is_active in _resolve_hidden_overlay_circles(ctx):
             _emit(center, radius, active=bool(is_active), capture=False)
+        return tuple(blocks)
 
+    return resolve
+
+
+class OccludedArcPass(_ArcItemsPass):
+    """Draws the occluded arc segments of the capture ring when dragging."""
+
+    stack_role = CanvasStackRole.ANNOTATION_BORDER
+    visibility = SceneVisibility.INTERACTIVE
+    use_scissor = True
+
+    @staticmethod
+    def _resolve_occluded_capture_arcs(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, float, float, bool], ...]:
+        # Stateless decision layer (module resolver above); this shim
+        # preserves the historical return shape (see
+        # test_runtime_overlay_snapshot_contracts.py).
+        return _resolve_occluded_capture_arcs(ctx)
+
+    def should_paint(self, ctx) -> bool:
+        if is_single_image_preview_scene(ctx):
+            return False
+        return bool(self._resolve_occluded_capture_arcs(ctx))
+
+    def prepare(self, widget, ctx, resource_updates) -> None:
+        self._items = []
+        matrix = tuple(
+            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
+        )
+        self._items = list(_occluded_arcs_blocks_resolver(widget, matrix)(ctx))
+        self._upload_items(resource_updates)
+
+
+class HiddenSelectionPass(_ArcItemsPass):
+    """Selection rings for hidden capture & magnifier circles."""
+
+    stack_role = CanvasStackRole.DEBUG_VIS
+    visibility = SceneVisibility.INTERACTIVE
+
+    @staticmethod
+    def _resolve_hidden_capture_circles(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, bool], ...]:
+        # Stateless decision layer (module resolver above); this shim
+        # preserves the historical return shape (see
+        # test_runtime_overlay_snapshot_contracts.py).
+        return _resolve_hidden_capture_circles(ctx)
+
+    @staticmethod
+    def _resolve_hidden_overlay_circles(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, bool], ...]:
+        # Stateless decision layer (module resolver above); this shim
+        # preserves the historical return shape (see
+        # test_runtime_overlay_snapshot_contracts.py).
+        return _resolve_hidden_overlay_circles(ctx)
+
+    def should_paint(self, ctx) -> bool:
+        if is_single_image_preview_scene(ctx):
+            return False
+        return bool(
+            self._resolve_hidden_capture_circles(ctx)
+            or self._resolve_hidden_overlay_circles(ctx)
+        )
+
+    def prepare(self, widget, ctx, resource_updates) -> None:
+        self._items = []
+        matrix = tuple(
+            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
+        )
+        self._items = list(_hidden_selection_blocks_resolver(widget, matrix)(ctx))
         self._upload_items(resource_updates)

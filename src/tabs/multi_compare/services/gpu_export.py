@@ -56,11 +56,29 @@ logger = logging.getLogger("ImproveImgSLI")
 # engine-backed entry the export side exercises per render: every layer's
 # whole-image tile set enumerated through the R4 vocabulary
 # (``engine.cache.draw_plans.plan_tiles_for_grid``) instead of a tab-local
-# decision. Tripwire probe for now, mirroring S3's ``_export_lod_probe``:
-# the export GPU render re-resolves residency at render time through the
-# shared live renderer (``BaseImagesPass`` + ``tile_geometry`` adapters),
-# so this result only records the decision (a later phase may consume it
-# for tile-aware export); it never alters the render below. No second
+# decision. PERMANENT SEAM (task-engine-leftovers-2026-09-16, Phase R-d,
+# ruling 4): the export GPU render re-resolves residency at render time
+# through the shared live renderer (``BaseImagesPass`` + ``tile_geometry``
+# adapters), so this result records the decision only; it never alters the
+# render below.
+#
+# R4 consumption verdict (pinned, not tripwire): feeding this probe into the
+# export first frame is infeasible without live-path changes, which are out
+# of scope (scene/passes/* read-only). Blocking call chain:
+# - The probe registers each layer's WHOLE-image set per layer_id into its
+#   OWN throwaway TileTextureService; the export offscreen widget owns a
+#   DIFFERENT tile_service whose specs build viewport-driven per slot via
+#   build_slot_specs from the tab geometry/LOD model -- disjoint service
+#   objects, and whole-image sets would additionally OVERRIDE viewport
+#   culling (wrong: live culls per viewport through build_slot_plan_tiles).
+# - passes/residency.py:467 realize(...) + :572 realize(...) take no
+#   authoritative-tile parameter; the feed half flows through the merged
+#   engine pass (EngineBaseImagesPass.realize) over frame.resolve_specs --
+#   plumbing an authoritative set needs a new param through _SlotSpecFrame
+#   + the engine realize loop.
+# Equality evidence (not assumed): the S3-mirror entry uses the same
+# plan_tiles_for_grid core the live path enumerates through, and
+# test_live_export_parity.py pins probe==live for that core. No second
 # implementations (ruling 2): this module defines no tile math of its own
 # (size adaptation only -- no coverage/geometry/LOD decisions).
 # ---------------------------------------------------------------------------
@@ -232,13 +250,11 @@ class MultiCompareGpuExporter:
         """Render ``composition`` into a QImage of ``output_w`` × ``output_h``."""
         from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
-        # S4 (Phase S-c): export per-slot tile decisions come from the R4
-        # engine vocabulary by construction -- resolve this render's tile
-        # sets through the same engine-backed entry the contract pins.
-        # Tripwire probe for now: the offscreen render below re-resolves
-        # residency at render time through the shared live renderer, so
-        # this result only records the decision (a later phase may consume
-        # it for tile-aware export); it never alters the render below.
+        # S4 (Phase S-c) + R4 permanent seam (see module header): export
+        # per-slot tile decisions come from the R4 engine vocabulary by
+        # construction -- resolve this render's tile sets through the same
+        # engine-backed entry the contract pins. Record only; never alters
+        # the render below (consumption infeasible per header chain).
         _export_tile_probe = resolve_mc_export_slot_tiles(composition)
         logger.debug(
             "mc export slot tile probe slots=%s tiles=%s",
