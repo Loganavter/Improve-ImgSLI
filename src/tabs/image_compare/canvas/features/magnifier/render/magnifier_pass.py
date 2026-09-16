@@ -270,6 +270,7 @@ def _lens_residency_hold(renderer, source_keys, overlay, frame_context=None) -> 
             hold_reason,
             ids=tuple(str(k) for k in source_keys),
             sig=(False, tuple(pending)),
+            key="loupe.mag_residency_hold.level",
         )
         return hold_reason
     trace_loupe(
@@ -279,6 +280,7 @@ def _lens_residency_hold(renderer, source_keys, overlay, frame_context=None) -> 
         "lens_interest_resident sampling source tiles",
         ids=tuple(str(k) for k in source_keys),
         sig=(True,),
+        key="loupe.mag_residency_hold.level",
     )
     return None
 
@@ -395,6 +397,7 @@ def _frame_slices_residency_hold(renderer, indices, frame_context=None, _stats=N
             f"frame_slices_resident sampling source tiles slices={len(indices)}",
             ids=tuple(str(k) for k, _ in indices[:8]),
             sig=(True, len(indices)),
+            key="loupe.mag_residency_hold.slices",
         )
         return None
     shown = ",".join(f"{k}:{r}x{c}" for k, (r, c) in missing[:8])
@@ -410,6 +413,7 @@ def _frame_slices_residency_hold(renderer, indices, frame_context=None, _stats=N
         hold_reason,
         ids=tuple(str(k) for k, _ in missing[:8]),
         sig=(False, tuple(sorted((str(k), tuple(idx)) for k, idx in missing))),
+        key="loupe.mag_residency_hold.slices",
     )
     return hold_reason
 
