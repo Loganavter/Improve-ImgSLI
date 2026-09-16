@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable
+from typing import Any
 
 from core.plugin_system.event_bus import EventBus
 from core.plugin_system.plugin import Plugin, PluginState
@@ -18,10 +18,6 @@ class PluginLifecycleManager:
         name = self._plugin_name(plugin)
         if name not in self._plugins:
             self._plugins[name] = plugin
-
-    def register_many(self, plugins: Iterable[Plugin]) -> None:
-        for plugin in plugins:
-            self.register(plugin)
 
     def get(self, name: str) -> Plugin | None:
         return self._plugins.get(name)
@@ -46,10 +42,6 @@ class PluginLifecycleManager:
     def activate_one(self, plugin: Plugin) -> None:
         name = self._plugin_name(plugin)
         self._safe_call(plugin, "activate", None, name, PluginState.ACTIVE)
-
-    def deactivate_all(self) -> None:
-        for name, plugin in self._plugins.items():
-            self._safe_call(plugin, "deactivate", None, name, PluginState.INACTIVE)
 
     def shutdown_all(self) -> None:
         for name, plugin in self._plugins.items():

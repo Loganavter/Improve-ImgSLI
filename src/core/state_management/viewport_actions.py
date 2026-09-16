@@ -63,17 +63,3 @@ class SetCanvasWidgetStateAction(Action):
 
     def get_payload(self):
         return {"feature": self.feature, "state": self.state}
-
-@dataclass
-class UpdateCanvasFeatureStateAction(Action):
-    """Alias for SET_CANVAS_WIDGET_STATE — feature commands may use this name per STORE.md:164."""
-
-    feature: str
-    state: object
-    type: str = field(default=ActionType.UPDATE_CANVAS_FEATURE_STATE.value, kw_only=True)
-
-    def __post_init__(self):
-        self.feature = str(self.feature)
-
-    def get_payload(self):
-        return {"feature": self.feature, "state": self.state}

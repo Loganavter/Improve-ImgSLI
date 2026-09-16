@@ -947,7 +947,7 @@
     },
     {
       "path": "src/ui/widgets/rating_item.py",
-      "lines": 575,
+      "lines": 563,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single rating item painter — custom control\"",

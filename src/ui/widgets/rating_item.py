@@ -376,9 +376,6 @@ class RatingListItem(Button):
         self.btn_minus.set_override_bg_color(color)
         self.btn_plus.set_override_bg_color(color)
 
-    def _find_panel(self):
-        return drag_drop.find_panel(self)
-
     def drag_indices(self) -> list[int]:
         """Indices to move: multi-selection if this row is in it, else self."""
         return drag_drop.drag_indices(self)
@@ -434,9 +431,6 @@ class RatingListItem(Button):
         super().mouseMoveEvent(event)
         drag_drop.mouse_move_event(self, event)
 
-    def _drag_allowed(self) -> bool:
-        return drag_drop.drag_allowed(self)
-
     def mouseReleaseEvent(self, event: QMouseEvent):
         if self._is_drag_initiated:
             # Drag swallowed the click — clear PRESSED state without firing
@@ -483,12 +477,6 @@ class RatingListItem(Button):
 
     def _on_button_released(self, button):
         rating_gestures.on_button_released(self, button)
-
-    def _cancel_button_interaction(self):
-        rating_gestures.cancel_button_interaction(self)
-
-    def _update_label_from_store(self):
-        rating_gestures.update_label_from_store(self)
 
     def _show_tooltip(self):
         tooltip.show_tooltip(self)

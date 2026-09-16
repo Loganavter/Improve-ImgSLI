@@ -77,15 +77,6 @@ class ImageLabelGeometry:
     def _active_tab(self):
         return get_shared_tab_registry().get_active_tab()
 
-    def _clamp_pos_to_image_display_rect(self, cursor_pos: QPointF) -> QPointF:
-        rect = self._get_effective_interaction_rect()
-        if rect is None or rect.w <= 0 or rect.h <= 0:
-            return cursor_pos
-        return QPointF(
-            max(float(rect.x), min(float(cursor_pos.x()), float(rect.x + rect.w))),
-            max(float(rect.y), min(float(cursor_pos.y()), float(rect.y + rect.h))),
-        )
-
     def _get_effective_interaction_rect(self):
         tab = self._active_tab()
         content_rect = tab.get_canvas_content_rect_px() if tab is not None else None

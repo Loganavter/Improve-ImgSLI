@@ -50,8 +50,3 @@ SETTINGS_SCALARS: tuple[ScalarSpec, ...] = (
     ScalarSpec("export_favorite_dir", "export_favorite_dir", "SET_EXPORT_FAVORITE_DIR", "SetExportFavoriteDirAction", "path"),
     ScalarSpec("keyboard_overrides", "keyboard_overrides", "SET_KEYBOARD_OVERRIDES", "SetKeyboardOverridesAction", "overrides"),
 )
-
-
-def specs_for_action_class(action_class: str) -> tuple[ScalarSpec, ...]:
-    """All scalar records carried by one action class."""
-    return tuple(s for s in SETTINGS_SCALARS if s.action_class == action_class)

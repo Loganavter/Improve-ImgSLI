@@ -70,14 +70,6 @@ class DragAndDropService(QObject):
     def is_dragging(self):
         return self._is_dragging
 
-    def get_source_data(self):
-        if not self._source_data:
-            return None
-        try:
-            return dict(self._source_data)
-        except Exception:
-            return self._source_data
-
     def start_drag(self, source_widget, event):
         if self._is_dragging:
             return

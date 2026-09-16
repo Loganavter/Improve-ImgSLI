@@ -99,9 +99,6 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
     def get_dispatcher(self):
         return self._dispatcher
 
-    def set_recorder(self, recorder):
-        self.recorder = recorder
-
     def emit_state_change(self, scope: str = "viewport"):
         if self._change_batch_depth > 0:
             if scope not in self._change_batch_scopes:
