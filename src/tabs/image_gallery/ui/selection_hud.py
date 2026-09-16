@@ -209,45 +209,6 @@ class SelectionHudController:
         elif self._count > 0:
             self.show()
 
-    def set_handlers(
-        self,
-        *,
-        on_clear: Callable[[], None] | None = None,
-        on_carry: Callable[[], None] | None = None,
-        on_analyze: Callable[[], None] | None = None,
-        on_find_similar: Callable[[], None] | None = None,
-        translate: Callable[[str, str], str] | None = None,
-    ) -> None:
-        if on_clear is not None:
-            self._on_clear = on_clear
-        if on_carry is not None:
-            self._on_carry = on_carry
-        if on_analyze is not None:
-            self._on_analyze = on_analyze
-        if on_find_similar is not None:
-            self._on_find_similar = on_find_similar
-        if translate is not None:
-            self._translate = translate
-            # Refresh button texts via _t.
-            try:
-                self._clear_btn.setText(_t(translate, "image_gallery.selection.clear", "Clear"))
-            except Exception:
-                pass
-            if self._analyze_btn is not None:
-                try:
-                    self._analyze_btn.setText(_t(translate, "image_gallery.selection.analyze", "Analyze"))
-                except Exception:
-                    pass
-            try:
-                self._find_similar_btn.setText(_t(translate, "image_gallery.selection.find_similar", "Find similar"))
-            except Exception:
-                pass
-            try:
-                self._carry_btn.setText(_t(translate, "image_gallery.selection.compare", "Compare →"))
-            except Exception:
-                pass
-            self._refresh_label()
-
     # -- internals ---------------------------------------------------------
 
     def _refresh_label(self) -> None:

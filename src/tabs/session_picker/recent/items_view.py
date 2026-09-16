@@ -275,9 +275,6 @@ class RecentItemsView(QWidget):
         self.corner_cover.set_color(shelf_bg)
         self._corner_sync.sync()
 
-    def apply_opaque_fill(self, color: QColor) -> None:
-        self.apply_surface_colors(content_bg=color, shelf_bg=color)
-
     def resync_corner_cover(self) -> None:
         """Re-align the viewport corner cover after the host layout settles.
 

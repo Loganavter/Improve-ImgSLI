@@ -476,16 +476,6 @@ class MultiCompareController:
             self, slot_id, path, store, keep_slot_on_error=keep_slot_on_error
         )
 
-    def _on_preview_ready(self, slot_id: int, path: Path, result) -> None:
-        preview_decode_use_cases.on_preview_ready(self, slot_id, path, result)
-
-    def _on_preview_error(
-        self, path: Path, slot_id: int, err, *, keep_slot_on_error: bool = False
-    ) -> None:
-        preview_decode_use_cases.on_preview_error(
-            self, path, slot_id, err, keep_slot_on_error=keep_slot_on_error
-        )
-
     def _load_single_auto(self, path: Path) -> int | None:
         from tabs.multi_compare.use_cases import dialog_add as dialog_add_use_cases
 

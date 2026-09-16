@@ -329,11 +329,6 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
-    # Convenience for widget.set_triage
-    def set_counts(self, *, total: int, series: int, redundant: int, rejected: int = 0) -> None:
-        self.set_stats(total, series, redundant)
-        self.set_rejected_count(rejected)
-
     @property
     def stats_label(self) -> QWidget:
         # S2-6: container of the per-segment stat Labels (kept as a property
@@ -349,17 +344,5 @@ class StatsStrip(QWidget):
         return self._stats_redundant_label
 
     @property
-    def keep_button(self) -> Button:
-        return self._keep_btn
-
-    @property
     def clean_button(self) -> Button:
         return self._clean_btn
-
-    @property
-    def compare_button(self) -> Button:
-        return self._compare_btn
-
-    @property
-    def mode_chip(self) -> Label:
-        return self._mode_chip

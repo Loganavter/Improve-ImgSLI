@@ -253,18 +253,6 @@ class MultiComparePixelCache:
         self._preview.clear()
         self._bump_generation()
 
-    def open_pixel_sources(self) -> dict[str, Any]:
-        """``{normpath: open TiledPixelStore}`` snapshot for project save."""
-        out: dict[str, Any] = {}
-        for key, store in list(self._pixel.items()):
-            if not _is_usable_pixel(store):
-                continue
-            try:
-                out[str(key[0])] = store
-            except Exception:
-                continue
-        return out
-
     @staticmethod
     def _close_store(store: Any) -> None:
         if store is None:

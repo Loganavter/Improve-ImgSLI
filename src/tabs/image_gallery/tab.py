@@ -187,19 +187,6 @@ class ImageGalleryTab(TabContract):
             return None
         return getattr(session, "id", None)
 
-    def _resolve_saved_folder(self, context: TabContext) -> Path | None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return None
-        session = context.get_active_session()
-        if session is None or getattr(session, "session_type", None) != self.session_type:
-            return None
-        saved = session.state_slots.get(_STATE_SLOT) if hasattr(session, "state_slots") else None
-        if not saved:
-            return None
-        raw = saved.get("folder")
-        return Path(raw) if raw else None
-
     # -- snapshot / restore ------------------------------------------------
 
     def _snapshot_into(self, context: TabContext, session_id: str | None) -> None:

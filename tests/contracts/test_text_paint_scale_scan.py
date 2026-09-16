@@ -37,10 +37,6 @@ _TEXT_WITHOUT_SET_FONT: dict[tuple[str, str], str] = {
         "canvas scene text: label rasterized in framebuffer px (fb-space), "
         "sized by the scene style, not the UI scale"
     ),
-    ("tabs/multi_compare/ui/layer_labels.py", "rasterize_layer_label"): (
-        "canvas scene text: label rasterized in framebuffer px (fb-space), "
-        "sized by the scene style, not the UI scale"
-    ),
     (
         "tabs/image_compare/canvas/features/filename_overlay/render/label_raster.py",
         "rasterize_label",

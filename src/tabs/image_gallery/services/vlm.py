@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tabs.image_gallery.models import CompareBrief, TieBreakResult
-from tabs.image_gallery.services.ai_client import AiClientError, AiResponseError, call_sync
+from tabs.image_gallery.services.ai_client import AiResponseError, call_sync
 
 # Stage 3 prompts — visibly targeted, never whole-folder scan
 TIE_BREAK_PROMPT_TEMPLATE = (
@@ -221,52 +221,3 @@ def compare_brief_sync(
     payload = build_compare_brief_request(Path(path_a), Path(path_b), model=model)
     raw = call_sync(base_url, api_key, payload)
     return parse_compare_brief_response(raw, model=model, path_a=Path(path_a), path_b=Path(path_b))
-
-
-# -- backwards-compatible wrappers matching task signature --------------
-
-def tie_break(
-    series_top2: list[Path] | list,
-    source: Path | None = None,
-    *,
-    base_url: str = "",
-    api_key: str = "",
-    model: str = "",
-) -> TieBreakResult:
-    """Task-specified signature: tie_break(series_top2, source?) -> TieBreakResult.
-
-    ``series_top2`` is expected to be a 2-element list of Paths (or GalleryItems
-    with .path). This wrapper extracts paths and delegates to ``tie_break_sync``.
-    """
-    if len(series_top2) != 2:
-        raise AiClientError("tie_break requires exactly 2 items")
-    def _as_path(x) -> Path:
-        if isinstance(x, Path):
-            return x
-        if hasattr(x, "path"):
-            return Path(getattr(x, "path"))
-        return Path(str(x))
-    a = _as_path(series_top2[0])
-    b = _as_path(series_top2[1])
-    return tie_break_sync(a, b, base_url=base_url, api_key=api_key, model=model, source=source)
-
-
-def compare_brief(
-    pair_paths: list[Path] | tuple[Path, Path],
-    *,
-    base_url: str = "",
-    api_key: str = "",
-    model: str = "",
-) -> CompareBrief:
-    """Task-specified signature: compare_brief(pair_paths) -> CompareBrief (one per pair)."""
-    if len(pair_paths) != 2:
-        raise AiClientError("compare_brief requires exactly 2 paths")
-    def _as_path(x) -> Path:
-        if isinstance(x, Path):
-            return x
-        if hasattr(x, "path"):
-            return Path(getattr(x, "path"))
-        return Path(str(x))
-    a = _as_path(pair_paths[0])
-    b = _as_path(pair_paths[1])
-    return compare_brief_sync(a, b, base_url=base_url, api_key=api_key, model=model)

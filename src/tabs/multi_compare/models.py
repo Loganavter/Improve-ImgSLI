@@ -145,21 +145,6 @@ def swap_slot_ids(node: LayoutNode | None, sid_a: int, sid_b: int) -> LayoutNode
     return node
 
 
-def move_leaf(
-    root: LayoutNode | None,
-    source_slot_id: int,
-    target_slot_id: int,
-    side: str,
-) -> LayoutNode | None:
-    """Pluck source leaf and insert it beside target leaf on the given side."""
-    if root is None or source_slot_id == target_slot_id:
-        return root
-    pruned = remove_leaf(root, source_slot_id)
-    if pruned is None:
-        return LeafNode(source_slot_id)
-    return insert_beside(pruned, target_slot_id, side, source_slot_id)
-
-
 def node_at_path(node: LayoutNode | None, path: tuple[int, ...]) -> LayoutNode | None:
     cur = node
     for i in path:

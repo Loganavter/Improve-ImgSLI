@@ -11,32 +11,6 @@ Keep as comment/placeholder — no runtime effect in Stage 3.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-
-def prepare_video_compare_intake(folder: Path) -> dict:
-    """Stage 4 placeholder: collect video intake from gallery triage.
-
-    Future: map ``GalleryState.series`` + finalists into video-editor timeline
-    sessions. Currently returns empty descriptor — callers should treat as no-op.
-    """
-    # STAGE4_TODO: wire to tabs/image_compare/plugins/video_editor/services/timeline.py
-    # - detect video files in folder (same scan as images but VIDEO_EXTS)
-    # - cluster by perceptual hash (first frame) → series
-    # - expose compare_finalists → video_editor.create_session
-    return {"folder": str(folder), "videos": [], "series": [], "stage": "placeholder"}
-
-
-def dispatch_to_video_compare(paths: list[Path]) -> bool:
-    """Stage 4 placeholder: dispatch finalists into video-compare workspace.
-
-    Future: use ``events/image_carry.py`` style handoff but for video_editor
-    ( ``image_carry`` currently handles stills → ImageCompare/MultiCompare ).
-    Returns False until implemented.
-    """
-    # STAGE4_TODO: route via TabRegistry.create_service_for("image_compare", "create_video_session", paths)
-    return False
-
 
 # -- contract note for docs/dev/tabs ----------------------------------
 # Stage 4 verification will add:
