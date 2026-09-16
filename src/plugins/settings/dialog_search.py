@@ -115,8 +115,7 @@ def section_catalog(dialog) -> list[SectionSearchResult]:
     ``search_texts`` is the union of every chrome row's haystack (page, group
     and member rows — ids, labels, descriptions, breadcrumbs, aliases,
     normalized, all languages), so a query hits the section as soon as any
-    entry inside it matches — and the best-matching entry stays addressable
-    via ``best_address``.
+    entry inside it matches.
     """
     registry = get_action_registry()
     by_id = chrome_map(dialog)
@@ -187,31 +186,6 @@ def _best_text_score(norm_query: str, texts: tuple[str, ...]) -> int | None:
         if score is not None:
             best = score if best is None else min(best, score)
     return best
-
-
-def best_address(
-    result: SectionSearchResult,
-    query: str,
-) -> tuple[str | None, str | None]:
-    """Best ``(group_key, member_key)`` matched inside the section.
-
-    ``(None, None)`` when only the section itself (page row / title) matched.
-    ``match_score_normalized`` is non-fuzzy by default, so only locatable
-    matches resolve (same rule as ``matching_targets``).
-    """
-    norm_query = normalize_for_search(query)
-    if not norm_query:
-        return None, None
-    best_row: SettingsSearchResult | None = None
-    best_score: int | None = None
-    for row in result.rows:
-        score = _best_text_score(norm_query, row.search_texts)
-        if score is not None and (best_score is None or score < best_score):
-            best_row = row
-            best_score = score
-    if best_row is None or best_row.group_key is None:
-        return None, None
-    return best_row.group_key, best_row.member_key
 
 
 def section_icon(dialog, section_id: str):

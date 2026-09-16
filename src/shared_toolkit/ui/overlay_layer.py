@@ -219,36 +219,6 @@ class OverlayLayer(QObject):
         y = max(bounds.top(), min(rect.y(), bounds.bottom() - height + 1))
         return QRect(x, y, width, height)
 
-    def place_rect_relative_to_anchor(
-        self,
-        anchor_widget: QWidget,
-        size: QSize,
-        position: str = "top",
-        offset: int = 6,
-        margin: int = 8,
-    ) -> QRect:
-        anchor_rect = self.anchor_rect(anchor_widget)
-        # `size` is the popup's *outer* size, which already includes
-        # _PopupBubble.SHADOW_RADIUS of transparent drop-shadow padding on
-        # every side — so the visible bubble edge sits shadow_radius further
-        # from the anchor than the outer edge computed below. `offset` is
-        # meant to be the total visible gap, so it must be at least
-        # shadow_radius (to clear the halo) but should not have shadow_radius
-        # added *again* on top once it's already large enough on its own.
-        offset = max(offset, _PopupBubble.SHADOW_RADIUS) - _PopupBubble.SHADOW_RADIUS
-
-        if position == "bottom":
-            x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2
-            y = anchor_rect.bottom() + 1 + offset
-        elif position == "left-top":
-            x = anchor_rect.left() - size.width() - offset
-            y = anchor_rect.top() - size.height() - offset
-        else:
-            x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2
-            y = anchor_rect.y() - size.height() - offset
-
-        return self.clamp_rect(QRect(x, y, size.width(), size.height()), margin=margin)
-
     def place_global_rect_relative_to_anchor(
         self,
         anchor_widget: QWidget,
@@ -260,9 +230,8 @@ class OverlayLayer(QObject):
         anchor_rect = self.anchor_global_rect(anchor_widget)
         host_window = self._host.window()
         bounds = host_window.frameGeometry().adjusted(margin, margin, -margin, -margin)
-        # See place_rect_relative_to_anchor above: `size` is the popup's
-        # outer size (already includes SHADOW_RADIUS padding on every side),
-        # so without this correction the visible bubble ends up
+        # `size` is the popup's outer size (already includes SHADOW_RADIUS
+        # padding on every side), so without this correction the visible bubble ends up
         # offset + SHADOW_RADIUS from the anchor instead of just `offset` —
         # nearly double the intended gap for offset=6/SHADOW_RADIUS=8.
         offset = max(offset, _PopupBubble.SHADOW_RADIUS) - _PopupBubble.SHADOW_RADIUS

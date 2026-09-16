@@ -98,15 +98,3 @@ class GeometryManager:
             self.settings.setValue("normal_rect", self.normal_rect_str)
 
         self.settings.sync()
-
-    def on_left_maximized_state(self):
-        self._freeze_normal_updates = False
-        self.update_normal_geometry_if_needed()
-
-    def begin_maximize_transition(self):
-        try:
-            g = self.window.geometry()
-            self.normal_rect_str = f"{g.x()},{g.y()},{g.width()},{g.height()}"
-        except Exception:
-            pass
-        self._freeze_normal_updates = True
