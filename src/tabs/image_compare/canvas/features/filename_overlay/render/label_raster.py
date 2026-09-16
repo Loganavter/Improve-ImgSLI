@@ -1,3 +1,16 @@
+"""CPU raster + per-slot screen quads for the filename_overlay pass.
+
+F5 BOUNDARY (stays): the ``_LABEL_SUPERSAMPLE`` supersampled upload and
+the per-slot ``build_quad_vertices`` screen quads below are two of the
+five stays in the filename verdict (full statement on
+``FilenameOverlayPass``; mechanical pins in
+``src/tabs/image_compare/tests/render/test_filename_boundary.py``).
+A single-fullscreen-upload shell has no supersample stage and no
+per-slot quads, so this module's output shape cannot ride it; MC
+``layer_labels`` rides the shell only because it rasters one fullscreen
+frame with no supersampling.
+"""
+
 from __future__ import annotations
 
 import struct
@@ -27,6 +40,11 @@ _LABEL_SUPERSAMPLE = 4
 
 
 def build_quad_vertices(ctx, rect: QRectF) -> bytes:
+    """Per-slot screen quad for one label rect (BOUNDARY, F5).
+
+    Emits one NDC TriangleStrip quad sized to ``rect`` -- never the
+    shared ``FULLSCREEN_VERTICES`` the ``TexturedOverlayShell`` stages.
+    """
     w = float(ctx.width)
     h = float(ctx.height)
     x0 = rect.left() / w * 2.0 - 1.0
@@ -71,7 +89,12 @@ def rasterize_label(
     ``_LABEL_SUPERSAMPLE`` x its own final device resolution and returns it
     *undownscaled*, alongside that final device-px size -- see this
     module's ``_LABEL_SUPERSAMPLE`` docstring for why (the caller's GPU
-    downsample pass does the actual downscale)."""
+    downsample pass does the actual downscale).
+
+    BOUNDARY (F5): this supersampled-upload shape is the stay the shell
+    cannot host -- the shell uploads device-res bytes and draws them in
+    the same main pass, with no Lanczos pre-pass stage in between.
+    """
     dpr = max(1.0, float(dpr))
     phys_w = max(1, int(round(rw * dpr)))
     phys_h = max(1, int(round(rh * dpr)))
