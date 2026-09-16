@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 from typing import Any
 
-from engine.cache.uniform_layout import assert_uniform_size
 from engine.overlay import (
+    CAPTURE_UNIFORM_SIZE,
+    DiskItem,
     OverlayBinding,
-    OverlayResolver,
     OverlayShell,
-    UniformPassView,
+    Rgba,
+    SemanticOverlayItems,
+    SemanticResolver,
+    pack_capture,
 )
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
@@ -26,39 +28,31 @@ from tabs.image_compare.canvas.rhi_feature_common import (
 )
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
-_UNIFORM_FMT = "<28f"
-_UNIFORM_SIZE = 112
-assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="CaptureRingPass uniform")
 
 BINDING = OverlayBinding(
     shader_dir=_SHADER_DIR,
     shader_stem="capture",
-    uniform_size=_UNIFORM_SIZE,
+    uniform_size=CAPTURE_UNIFORM_SIZE,
 )
 
 
-def _blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
-    """Ctx-first uniform-block resolver: ctx in, packed blocks out."""
+def _semantic_resolver(widget) -> SemanticResolver:
+    """Ctx-first semantic resolver: ctx in, canvas-px ring items out.
 
-    def resolve(ctx: Any) -> tuple[bytes, ...]:
-        # Ring decisions are stateless (overlay_model); this binding only packs
-        # them into per-item uniform blocks.
+    Ring decisions are stateless (overlay_model); this binding only adapts
+    them to engine-typed items -- byte layout lives shell-side in
+    ``pack_capture``.
+    """
+
+    def resolve(ctx: Any) -> SemanticOverlayItems:
         return tuple(
-            struct.pack(
-                _UNIFORM_FMT,
-                *matrix,
-                float(ctx.width),
-                float(ctx.height),
-                ring.center_x,
-                ring.center_y,
-                ring.screen_radius,
-                ring.line_width,
-                0.0,
-                0.0,
-                ring.red,
-                ring.green,
-                ring.blue,
-                ring.alpha,
+            DiskItem(
+                cx=ring.center_x,
+                cy=ring.center_y,
+                radius=ring.screen_radius,
+                line_width_key="annotation_ring_stroke_px",
+                color=Rgba(ring.red, ring.green, ring.blue, ring.alpha),
+                extra=(ring.line_width,),
             )
             for ring in resolve_capture_rings(ctx, widget)
         )
@@ -73,8 +67,7 @@ class CaptureRingPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self._shell = OverlayShell(_UNIFORM_SIZE)
-        self.resources = UniformPassView(self._shell)
+        self._shell = OverlayShell(CAPTURE_UNIFORM_SIZE)
         self._items: list[bytes] = []
 
     @staticmethod
@@ -94,16 +87,11 @@ class CaptureRingPass(CanvasRenderPass):
 
     def prepare(self, widget, ctx, resource_updates) -> None:
         self._items = []
-        matrix = tuple(
-            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
-        )
-        self._items = list(_blocks_resolver(widget, matrix)(ctx))
-        self.resources.ensure_items(len(self._items))
-        self.resources.prepare_vertex_buffer(resource_updates)
-        for index, block in enumerate(self._items):
-            resource_updates.updateDynamicBuffer(
-                self.resources.uniform_buffers[index], 0, block
-            )
+        matrix = self._shell.clip_matrix()
+        items = _semantic_resolver(widget)(ctx)
+        blocks = pack_capture(items, matrix, float(ctx.width), float(ctx.height))
+        self._items = list(blocks)
+        self._shell.stage_packed(resource_updates, blocks)
 
     def record(self, command_buffer, widget, ctx) -> None:
         if not self._items:

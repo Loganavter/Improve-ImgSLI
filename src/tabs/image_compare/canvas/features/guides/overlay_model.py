@@ -23,14 +23,14 @@ from dataclasses import dataclass
 
 from PySide6.QtGui import QColor
 
-from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
+from engine.cache.screen_projection import project_px_to_screen
 
 __all__ = ["GuideSpan", "resolve_guide_spans"]
 
 
 @dataclass(frozen=True, slots=True)
 class GuideSpan:
-    """One laser guide line, fully resolved to screen space (plain data)."""
+    """One laser guide line, fully resolved to canvas-px (plain data)."""
 
     start_x: float
     start_y: float
@@ -45,19 +45,27 @@ class GuideSpan:
     alpha: float
 
 
-def resolve_guide_spans(ctx, widget, matrix) -> tuple[GuideSpan, ...]:
-    """Resolve every guide line for this frame from the context (pure).
+def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
+    """Resolve canvas-px guide spans for this frame from the context (pure).
 
-    Reads ``widget.runtime_state._guide_sets``, ``ctx`` zoom / canvas
-    geometry / style only. Calling twice with an unchanged frame yields
-    an equal tuple; nothing is cached, stored, or mutated.
+    Reads ``widget.runtime_state._guide_sets``, ``ctx`` zoom / pan /
+    canvas geometry / style only. Projection inputs come from ``ctx``
+    (canvas dims, zoom, pan, tile offsets) via the shared engine
+    projector -- the widget handle only sources the guide sets.
+    Calling twice with an unchanged frame yields an equal tuple;
+    nothing is cached, stored, or mutated.
     """
-    del matrix  # matrix is packed by the pass; spans are matrix-free.
     guide_sets = tuple(getattr(widget.runtime_state, "_guide_sets", ()) or ())
     if not guide_sets:
         return ()
     line_width = float(ctx.resolved_style.annotation_line_stroke_px)
     zoom = float(ctx.zoom_level)
+    pan_x = float(getattr(ctx, "pan_offset_x", 0.0))
+    pan_y = float(getattr(ctx, "pan_offset_y", 0.0))
+    canvas_w = float(ctx.canvas_width)
+    canvas_h = float(ctx.canvas_height)
+    offset_x = float(ctx.canvas_offset_x)
+    offset_y = float(ctx.canvas_offset_y)
     spans: list[GuideSpan] = []
     for (
         capture_center,
@@ -68,14 +76,16 @@ def resolve_guide_spans(ctx, widget, matrix) -> tuple[GuideSpan, ...]:
     ) in guide_sets:
         if capture_center is None:
             continue
-        end_x, end_y = widget_px_to_screen_px(
-            widget,
+        end_x, end_y = project_px_to_screen(
             capture_center.x(),
             capture_center.y(),
-            canvas_width=ctx.canvas_width,
-            canvas_height=ctx.canvas_height,
-            canvas_offset_x=ctx.canvas_offset_x,
-            canvas_offset_y=ctx.canvas_offset_y,
+            canvas_w,
+            canvas_h,
+            zoom,
+            pan_x,
+            pan_y,
+            canvas_offset_x=offset_x,
+            canvas_offset_y=offset_y,
         )
         end_radius = max(0.0, float(capture_radius or 0.0) * zoom)
         draw_color = QColor(color)
@@ -89,14 +99,16 @@ def resolve_guide_spans(ctx, widget, matrix) -> tuple[GuideSpan, ...]:
                 if index < len(radii)
                 else (radii[-1] if radii else 0.0)
             )
-            start_x, start_y = widget_px_to_screen_px(
-                widget,
+            start_x, start_y = project_px_to_screen(
                 target_center.x(),
                 target_center.y(),
-                canvas_width=ctx.canvas_width,
-                canvas_height=ctx.canvas_height,
-                canvas_offset_x=ctx.canvas_offset_x,
-                canvas_offset_y=ctx.canvas_offset_y,
+                canvas_w,
+                canvas_h,
+                zoom,
+                pan_x,
+                pan_y,
+                canvas_offset_x=offset_x,
+                canvas_offset_y=offset_y,
             )
             spans.append(
                 GuideSpan(

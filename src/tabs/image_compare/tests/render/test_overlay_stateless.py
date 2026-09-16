@@ -236,8 +236,8 @@ def test_guides_resolve_is_pure_and_frozen():
     )
 
     ctx, widget = _guides_ctx_widget()
-    first = resolve_guide_spans(ctx, widget, matrix=None)
-    second = resolve_guide_spans(ctx, widget, matrix=None)
+    first = resolve_guide_spans(ctx, widget)
+    second = resolve_guide_spans(ctx, widget)
     assert first == second and len(first) == 1
     span = first[0]
     # Identity projection at zoom=1/pan=0: screen == widget px (float noise).
@@ -257,30 +257,31 @@ def test_guides_resolve_empty_and_scales_with_zoom():
 
     ctx, widget = _guides_ctx_widget()
     widget.runtime_state._guide_sets = []
-    assert resolve_guide_spans(ctx, widget, matrix=None) == ()
+    assert resolve_guide_spans(ctx, widget) == ()
 
     widget.runtime_state._guide_sets = _guides_ctx_widget()[1].runtime_state._guide_sets
     ctx.zoom_level = 2.0
-    (span,) = resolve_guide_spans(ctx, widget, matrix=None)
+    (span,) = resolve_guide_spans(ctx, widget)
     assert span.start_radius == 8.0 and span.end_radius == 10.0
 
 
 def test_guides_pass_prepares_from_resolver():
-    """GuidesPass.prepare packs exactly the resolver's spans (no fork)."""
+    """GuidesPass.prepare stages exactly the resolver's spans (no fork)."""
+    from engine.overlay.semantic import GUIDES_UNIFORM_FMT, pack_guides
     from tabs.image_compare.canvas.features.guides.overlay_model import (
         resolve_guide_spans,
     )
     from tabs.image_compare.canvas.features.guides.passes import (
         GuidesPass,
-        _UNIFORM_FMT,
+        _semantic_resolver,
     )
 
     ctx, widget = _guides_ctx_widget()
     ctx.widget = widget
     matrix = tuple([1.0 if i % 5 == 0 else 0.0 for i in range(16)])
-    (span,) = resolve_guide_spans(ctx, widget, matrix)
+    (span,) = resolve_guide_spans(ctx, widget)
     expected = struct.pack(
-        _UNIFORM_FMT,
+        GUIDES_UNIFORM_FMT,
         *matrix,
         100.0,
         100.0,
@@ -301,38 +302,28 @@ def test_guides_pass_prepares_from_resolver():
     )
     assert len(expected) == 128
 
-    calls = []
+    items = _semantic_resolver(widget)(ctx)
+    assert pack_guides(items, matrix, 100.0, 100.0) == (expected,)
 
-    class FakeRhi:
-        def clipSpaceCorrMatrix(self):
-            m = SimpleNamespace(data=lambda: list(matrix))
-            return m
+    staged: dict = {}
 
-    class FakeResources:
-        rhi = FakeRhi()
+    class FakeShell:
+        def clip_matrix(self):
+            return matrix
 
-        def ensure_items(self, n):
-            calls.append(("ensure", n))
-
-        def prepare_vertex_buffer(self, updates):
-            calls.append(("vertex", True))
-
-        uniform_buffers = [object()]
+        def stage_packed(self, resource_updates, blocks, *, start=0):
+            staged["blocks"] = tuple(blocks)
+            staged["updates"] = resource_updates
+            return len(blocks)
 
     fnord = GuidesPass()
-    fnord.resources = FakeResources()
+    fnord._shell = FakeShell()
 
-    class Updates:
-        def __init__(self):
-            self.blocks = []
-
-        def updateDynamicBuffer(self, buf, offset, block):
-            self.blocks.append(block)
-
-    updates = Updates()
+    updates = object()
     fnord.prepare(widget, ctx, updates)
-    assert updates.blocks == [expected]
-    assert ("ensure", 1) in calls
+    assert staged["blocks"] == (expected,)
+    assert staged["updates"] is updates
+    assert fnord._items == [expected]
 
 
 # ---------------------------------------------------------------------------
