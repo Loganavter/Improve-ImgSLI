@@ -83,13 +83,6 @@ assert_uniform_size(_MAG_UNIFORM_FMT, MAG_UNIFORM_SIZE, label="MagnifierPass uni
 _log = logging.getLogger("ImproveImgSLI.magnifier.pass")
 
 
-def _content_scale(content_size) -> tuple[float, float]:
-    if content_size is None:
-        return (1.0, 1.0)
-    width, height = content_size
-    return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
-
-
 def _lens_union_uv(overlay) -> tuple[float, float, float, float] | None:
     """Union of every active magnifier slot's capture window (``uv_rect``/
     ``uv_rect2``, zoom/pan-invariant fractions of the full source image).
@@ -184,6 +177,11 @@ def _low_res_fallback_slice(
     tile_h_px = tile_bottom - tile_top
     if tile_w_px <= 0 or tile_h_px <= 0:
         return None
+    # S5: content-scale math lives in the engine draw-plan module (MC
+    # base_images.py:670 precedent); function-local import keeps the tab ->
+    # engine edge at the call site, never engine -> tab.
+    from engine.cache.draw_plans import content_scale_for as _engine_content_scale
+
     return {
         "tile_key": tile_service.tile_key(fallback_key, index[0], index[1]),
         "tile_index": index,
@@ -198,8 +196,8 @@ def _low_res_fallback_slice(
         "core_tc_x": core_tc_x,
         "core_tc_y": core_tc_y,
         "layer": slot[1],
-        "content_scale": _content_scale(
-            tile_service.content_size_for(fallback_key, index)
+        "content_scale": _engine_content_scale(
+            tile_service.content_size_for(fallback_key, index), _ARRAY_LAYER_PX
         ),
         "fallback_for": tuple(index),
     }
@@ -394,8 +392,12 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                 )
             continue
         sl["layer"] = slot[1]
-        sl["content_scale"] = _content_scale(
-            tile_service.content_size_for(source_key, sl["tile_index"])
+        # S5: same engine entry as the fallback slice above (MC precedent).
+        from engine.cache.draw_plans import content_scale_for as _engine_content_scale
+
+        sl["content_scale"] = _engine_content_scale(
+            tile_service.content_size_for(source_key, sl["tile_index"]),
+            _ARRAY_LAYER_PX,
         )
         resolved.append(sl)
     return resolved
