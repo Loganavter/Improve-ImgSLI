@@ -111,22 +111,34 @@ class ViewStateReducer:
             current[feature_name] = feature_state
             return replace(view_state, canvas_widget_state=current)
         if isinstance(action, SetSplitPositionAction):
-            return replace(
-                view_state, split_position=max(0.0, min(1.0, action.position))
-            )
+            clamped = max(0.0, min(1.0, action.position))
+            if view_state.split_position == clamped:
+                return view_state
+            return replace(view_state, split_position=clamped)
         if isinstance(action, SetSplitPositionVisualAction):
-            return replace(
-                view_state, split_position_visual=max(0.0, min(1.0, action.position))
-            )
+            clamped = max(0.0, min(1.0, action.position))
+            if view_state.split_position_visual == clamped:
+                return view_state
+            return replace(view_state, split_position_visual=clamped)
         if isinstance(action, ToggleOrientationAction):
+            if view_state.is_horizontal == action.is_horizontal:
+                return view_state
             return replace(view_state, is_horizontal=action.is_horizontal)
         if isinstance(action, SetMovementSpeedAction):
+            if view_state.movement_speed_per_sec == action.speed:
+                return view_state
             return replace(view_state, movement_speed_per_sec=action.speed)
         if isinstance(action, SetDiffModeAction):
+            if view_state.diff_mode == action.mode:
+                return view_state
             return replace(view_state, diff_mode=action.mode)
         if isinstance(action, SetChannelViewModeAction):
+            if view_state.channel_view_mode == action.mode:
+                return view_state
             return replace(view_state, channel_view_mode=action.mode)
         if isinstance(action, SetShowingSingleImageModeAction):
+            if view_state.showing_single_image_mode == action.mode:
+                return view_state
             return replace(view_state, showing_single_image_mode=action.mode)
         for feature in sorted(
             get_canvas_registry(session_type).get_widget_features(),
@@ -136,6 +148,11 @@ class ViewStateReducer:
             if reduced is not view_state:
                 return reduced
         if isinstance(action, InvalidateRenderCacheAction):
+            if (
+                view_state.text_bg_visual_height == 0.0
+                and view_state.text_bg_visual_width == 0.0
+            ):
+                return view_state
             return replace(
                 view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
             )
@@ -156,26 +173,48 @@ class InteractionStateReducer:
         interaction_state: InteractionState, action: Action, session_type: str | None = None
     ) -> InteractionState:
         if isinstance(action, SetIsDraggingSliderAction):
+            if interaction_state.is_dragging_any_slider == action.is_dragging:
+                return interaction_state
             return replace(interaction_state, is_dragging_any_slider=action.is_dragging)
         if isinstance(action, SetResizeInProgressAction):
+            if interaction_state.resize_in_progress == action.enabled:
+                return interaction_state
             return replace(interaction_state, resize_in_progress=action.enabled)
         if isinstance(action, SetInteractiveModeAction):
+            if interaction_state.is_interactive_mode == action.enabled:
+                return interaction_state
             return replace(interaction_state, is_interactive_mode=action.enabled)
         if isinstance(action, SetDraggingSplitLineAction):
+            if interaction_state.is_dragging_split_line == action.enabled:
+                return interaction_state
             return replace(interaction_state, is_dragging_split_line=action.enabled)
         if isinstance(action, SetPressedKeysAction):
+            if interaction_state.pressed_keys == action.keys:
+                return interaction_state
             return replace(interaction_state, pressed_keys=set(action.keys))
         if isinstance(action, SetSpaceBarPressedAction):
+            if interaction_state.space_bar_pressed == action.enabled:
+                return interaction_state
             return replace(interaction_state, space_bar_pressed=action.enabled)
         if isinstance(action, SetInteractionSessionIdAction):
+            if interaction_state.interaction_session_id == action.session_id:
+                return interaction_state
             return replace(interaction_state, interaction_session_id=action.session_id)
         if isinstance(action, SetUserInteractingAction):
+            if interaction_state.is_user_interacting == action.enabled:
+                return interaction_state
             return replace(interaction_state, is_user_interacting=action.enabled)
         if isinstance(action, SetLastHorizontalMovementKeyAction):
+            if interaction_state.last_horizontal_movement_key == action.key:
+                return interaction_state
             return replace(interaction_state, last_horizontal_movement_key=action.key)
         if isinstance(action, SetLastVerticalMovementKeyAction):
+            if interaction_state.last_vertical_movement_key == action.key:
+                return interaction_state
             return replace(interaction_state, last_vertical_movement_key=action.key)
         if isinstance(action, SetLastSpacingMovementKeyAction):
+            if interaction_state.last_spacing_movement_key == action.key:
+                return interaction_state
             return replace(interaction_state, last_spacing_movement_key=action.key)
         for feature in sorted(
             get_canvas_registry(session_type).get_widget_features(),
@@ -195,6 +234,14 @@ class GeometryStateReducer:
         geometry_state: GeometryState, action: Action, session_type: str | None = None
     ) -> GeometryState:
         if isinstance(action, InvalidateGeometryCacheAction):
+            if (
+                geometry_state.pixmap_width == 0
+                and geometry_state.pixmap_height == 0
+                and geometry_state.image_display_rect_on_label == Rect()
+                and geometry_state.fixed_label_width is None
+                and geometry_state.fixed_label_height is None
+            ):
+                return geometry_state
             return replace(
                 geometry_state,
                 pixmap_width=0,
@@ -204,6 +251,14 @@ class GeometryStateReducer:
                 fixed_label_height=None,
             )
         if isinstance(action, ClearAllCachesAction):
+            if (
+                geometry_state.pixmap_width == 0
+                and geometry_state.pixmap_height == 0
+                and geometry_state.image_display_rect_on_label == Rect()
+                and geometry_state.fixed_label_width is None
+                and geometry_state.fixed_label_height is None
+            ):
+                return geometry_state
             return replace(
                 geometry_state,
                 pixmap_width=0,
@@ -213,12 +268,24 @@ class GeometryStateReducer:
                 fixed_label_height=None,
             )
         if isinstance(action, SetPixmapDimensionsAction):
+            if (
+                geometry_state.pixmap_width == action.width
+                and geometry_state.pixmap_height == action.height
+            ):
+                return geometry_state
             return replace(
                 geometry_state, pixmap_width=action.width, pixmap_height=action.height
             )
         if isinstance(action, SetImageDisplayRectAction):
+            if geometry_state.image_display_rect_on_label == action.rect:
+                return geometry_state
             return replace(geometry_state, image_display_rect_on_label=action.rect)
         if isinstance(action, SetFixedLabelDimensionsAction):
+            if (
+                geometry_state.fixed_label_width == action.width
+                and geometry_state.fixed_label_height == action.height
+            ):
+                return geometry_state
             return replace(
                 geometry_state,
                 fixed_label_width=action.width,
