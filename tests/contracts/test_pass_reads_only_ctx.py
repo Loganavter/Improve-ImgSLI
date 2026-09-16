@@ -67,12 +67,20 @@ _PINNED_WIDGET_READS = {
         "widget.renderTarget",
         "widget.runtime_state",
     ],
-    "src/tabs/image_compare/canvas/rhi_overlay_pass_base.py": [],
+    # R3b: both canvas/rhi_overlay_pass_base.py mirrors retired (their
+    # record() moved into the mounted passes + engine shell) -- entries
+    # removed deliberately, not by accident.
     "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py": [
         "widget.state",
     ],
+    # R3b: labels + focus_dim define their own record() for the first time
+    # (they mount TexturedOverlayShell directly after the mirror retire;
+    # previously they inherited record() from the mirror base). Both are
+    # ctx-only (framebuffer size from ctx, draw through the shell) -- they
+    # join the pin at zero, the target state for mounted passes.
+    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": [],
+    "src/tabs/multi_compare/canvas/features/layer_labels/passes.py": [],
     "src/tabs/multi_compare/canvas/features/grid_dividers/passes.py": [],
-    "src/tabs/multi_compare/canvas/rhi_overlay_pass_base.py": [],
     "src/tabs/multi_compare/scene/passes/base_images.py": [],
 }
 

@@ -40,16 +40,17 @@ _LATTICE_NAMES = frozenset(
 # - rhi_renderer/resources.py: whole-image 1x1 upload path + placeholder.
 # - slot_resources.py: plain (non-array) path per-slot textures, residency
 #   still decided by the service (BaseImagesPass._realize_tile_residency).
-# - scene/renderer.py, */rhi_overlay_pass_base.py, magnifier_pass.py,
+# - scene/renderer.py, magnifier_pass.py,
 #   filename_overlay gpu_resources.py: 1x1 placeholders / overlay surfaces /
 #   render targets — never tile-content grids.
+# R3b: both */rhi_overlay_pass_base.py mirrors retired (their overlay
+# surfaces moved into engine.overlay.TexturedOverlayShell) -- entries
+# removed deliberately, not by accident.
 _ALLOWED_TEXTURE_OWNERS = frozenset(
     {
         "src/tabs/image_compare/canvas/rhi_renderer/resources.py",
         "src/tabs/multi_compare/scene/passes/slot_resources.py",
         "src/tabs/multi_compare/scene/renderer.py",
-        "src/tabs/image_compare/canvas/rhi_overlay_pass_base.py",
-        "src/tabs/multi_compare/canvas/rhi_overlay_pass_base.py",
         "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
         "src/tabs/image_compare/canvas/features/filename_overlay/render/gpu_resources.py",
     }
