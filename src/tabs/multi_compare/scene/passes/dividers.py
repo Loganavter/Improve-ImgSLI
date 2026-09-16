@@ -10,17 +10,35 @@ from PySide6.QtGui import QColor, QPainter
 
 from domain.qt_adapters import ensure_visible_qcolor
 from domain.types import Color
+from engine.overlay import RectItem, Rgba, SemanticOverlayItems
 from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
 from ui.canvas_infra.rhi.render_metrics import resolve_relative_px
 
 # Ctx-first resolver block layout (S2 model-side migrate seam onto the S1
 # engine overlay shell): mat4 clip_matrix (16f) + divider rect in framebuffer
 # px, canvas-clipped (x, y, w, h: 4f) + divider color as float RGBA (4f).
+# Pinned by tests/contracts/test_overlay_shell.py
+# (test_mc_dividers_exposes_ctx_first_resolver): keep this name until F6
+# ratchets that dogma onto the v2 semantic seam (resolve_items below).
 # The NDC-quad conversion stays shell-side (S6 mount of GridDividersPass);
 # this seam mirrors the IC DividerPass strategy (rect + color in-shader over
 # a fullscreen quad) rather than the current hand-rolled NDC vertex upload.
 _DIVIDER_BLOCK_FMT = "<24f"
 _DIVIDER_BLOCK_SIZE = 96
+
+
+def _f32(value: float) -> float:
+    """Quantize one scalar to float32 (single-rounding parity, F3).
+
+    The v1 bytes seam (``resolve()`` below) carries rects as f32, so the
+    retired unpack/repack path ran its NDC math on f32-quantized values.
+    Quantizing at the semantic source keeps the shell-packed blocks
+    byte-identical to the legacy blocks through the coexistence window
+    (double rounding otherwise drifts 1 ulp on non-exact widths such as
+    du-resolved thicknesses). Downstream packs to f32 uniforms either way,
+    so nothing representable is lost.
+    """
+    return struct.unpack("<f", struct.pack("<f", float(value)))[0]
 
 
 class DividersOverlaySource:
@@ -144,22 +162,18 @@ class DividersOverlaySource:
         return ensure_visible_qcolor(rgba, fallback=fallback)
 
 
-def resolve(ctx: Any) -> tuple[bytes, ...]:
-    """Ctx-first uniform-block resolver for MC grid dividers (S2 migrate seam).
+def resolve_items(ctx: Any) -> SemanticOverlayItems:
+    """Ctx-first semantic resolver: ctx in, fb-px divider rects out (F3).
 
-    Takes the opaque per-frame pass context first and returns packed uniform
-    blocks (engine types: ``tuple[bytes, ...]``) -- one ``_DIVIDER_BLOCK_FMT``
-    block per visible divider. The engine forwards ``ctx`` without
-    interpreting it; composition/scale/offset/framebuffer/clip stay bound
-    here from the tab's own frame sources. Owns no GPU objects: pure
-    ``DividersOverlaySource`` geometry (``projected_divider_rects`` +
-    ``_divider_color``) plus ``ctx.clip_matrix``.
-
-    Not yet consumed: ``GridDividersPass`` (``canvas/features/grid_dividers``)
-    still packs NDC vertex quads inline. S6 mounts that shell onto the
-    shared overlay shell consuming these blocks and deletes the inline
-    packing (lift-then-delete flag-day) -- do not duplicate this format
-    there, call this resolver.
+    Owns gap geometry (``DividersOverlaySource.projected_divider_rects``),
+    canvas clipping, and color -- one ``RectItem`` per visible divider in
+    framebuffer px. Projection stays resolver-side, mirroring the scene
+    seam; the shell packs these items via ``pack_grid_dividers`` with the
+    frame matrix from ``ctx.clip_matrix`` (no ``canvas_scale`` -- the rects
+    arrive projected). The engine forwards ``ctx`` without interpreting it;
+    composition/scale/offset/framebuffer stay bound here from the tab's own
+    frame sources. Owns no GPU objects: pure ``DividersOverlaySource``
+    geometry plus ``ctx`` frame values.
     """
     source = DividersOverlaySource()
     composition = ctx.composition
@@ -177,31 +191,63 @@ def resolve(ctx: Any) -> tuple[bytes, ...]:
     canvas_clip = QRectF(
         ox, oy, composition.canvas_w * ctx.scale, composition.canvas_h * ctx.scale
     )
-    matrix = tuple(float(value) for value in ctx.clip_matrix)
     color = source._divider_color(None, composition)
-    red, green, blue, alpha = (
-        color.redF(),
-        color.greenF(),
-        color.blueF(),
-        color.alphaF(),
+    rgba = Rgba(
+        float(color.redF()),
+        float(color.greenF()),
+        float(color.blueF()),
+        float(color.alphaF()),
     )
-    blocks: list[bytes] = []
+    items: list[RectItem] = []
     for rect in rects:
         clipped = rect.intersected(canvas_clip)
         if clipped.width() <= 0.0 or clipped.height() <= 0.0:
             continue
-        blocks.append(
-            struct.pack(
-                _DIVIDER_BLOCK_FMT,
-                *matrix,
-                float(clipped.x()),
-                float(clipped.y()),
-                float(clipped.width()),
-                float(clipped.height()),
-                red,
-                green,
-                blue,
-                alpha,
+        items.append(
+            RectItem(
+                _f32(clipped.x()),
+                _f32(clipped.y()),
+                _f32(clipped.width()),
+                _f32(clipped.height()),
+                rgba,
             )
         )
-    return tuple(blocks)
+    return tuple(items)
+
+
+def resolve(ctx: Any) -> tuple[bytes, ...]:
+    """Ctx-first uniform-block resolver for MC grid dividers (S2 migrate seam).
+
+    Takes the opaque per-frame pass context first and returns packed uniform
+    blocks (engine types: ``tuple[bytes, ...]``) -- one ``_DIVIDER_BLOCK_FMT``
+    block per visible divider. Geometry is single-sourced from
+    ``resolve_items()`` above (gap semantics the shell packs); this v1 bytes
+    seam stays alive through the F-b..F-c coexistence window until F6
+    retires it with the ``_DIVIDER_BLOCK_FMT`` layout (both pinned by
+    ``test_mc_dividers_exposes_ctx_first_resolver``).
+
+    Not yet consumed: ``GridDividersPass`` (``canvas/features/grid_dividers``)
+    now packs ``resolve_items()`` shell-side via ``pack_grid_dividers``;
+    this entry remains for the v1 bytes consumers until the F6 flag-day
+    deletes it (lift-then-delete) -- do not duplicate this format elsewhere,
+    call ``resolve_items``.
+    """
+    items = resolve_items(ctx)
+    if not items:
+        return ()
+    matrix = tuple(float(value) for value in ctx.clip_matrix)
+    return tuple(
+        struct.pack(
+            _DIVIDER_BLOCK_FMT,
+            *matrix,
+            item.x,
+            item.y,
+            item.w,
+            item.h,
+            item.color.r,
+            item.color.g,
+            item.color.b,
+            item.color.a,
+        )
+        for item in items
+    )
