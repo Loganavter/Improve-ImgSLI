@@ -96,16 +96,10 @@ def queue_texture_upload(
             box_tuple = None
         if box_tuple is not None:
             try:
-                try:  # Phase-A: engine.store root (A1); fallback until it lands
-                    from engine.store.tiled_pixel_store import (
-                        TiledPixelStore,
-                        qimage_from_pixel_source,
-                    )
-                except ImportError:
-                    from engine.store.tiled_pixel_store import (
-                        TiledPixelStore,
-                        qimage_from_pixel_source,
-                    )
+                from engine.store.tiled_pixel_store import (
+                    TiledPixelStore,
+                    qimage_from_pixel_source,
+                )
 
                 if isinstance(pil_image, TiledPixelStore):
                     # Existing sub-rect util: box region straight from the
