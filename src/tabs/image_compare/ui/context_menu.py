@@ -29,12 +29,6 @@ class ImageCompareContextMenuProvider:
     def attach_session_controller(self, session_ctrl) -> None:
         self._session_ctrl = session_ctrl
 
-    def attach_flyout(self, flyout) -> None:
-        self.flyout = flyout
-
-    def attach_ui_manager(self, ui_manager) -> None:
-        self._ui_manager_ref = ui_manager
-
     def entries_for(self, request: ContextMenuRequest) -> tuple[ContextMenuEntry, ...]:
         if request.session_type != "image_compare":
             return ()

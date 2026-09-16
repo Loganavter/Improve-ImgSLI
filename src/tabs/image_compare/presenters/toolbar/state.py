@@ -53,9 +53,9 @@ def check_name_lengths(presenter):
             presenter.store.settings.current_language,
             limit=limit,
         )
-        presenter.widget.update_name_length_warning(warning, "", True)
+        presenter.widget.update_name_length_warning(warning, True)
     else:
-        presenter.widget.update_name_length_warning("", "", False)
+        presenter.widget.update_name_length_warning("", False)
 
 def _note_dead_control(attr_name: str) -> None:
     # Throttle: one debug line per attr, not per store emit — the sync

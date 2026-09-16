@@ -198,10 +198,6 @@ class CanvasOverlayCoordinator:
         command = _get_overlay_runtime_command("overlay.rebuild")
         return command(self.presenter) if command is not None else None
 
-    def render_layer(self, sig) -> bool:
-        command = _get_overlay_runtime_command("overlay.render_layer")
-        return bool(command(self.presenter, sig)) if command is not None else False
-
     def stop_interactive_movement(self):
         command = _get_overlay_runtime_command("overlay.stop_interactive_movement")
         if command is None:

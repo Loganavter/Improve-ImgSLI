@@ -5,7 +5,7 @@ Audit-Meta: pattern=state-machine size=exempt reason="one thumbnail pipeline —
 
 import logging
 import math
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from PIL import Image
 from PySide6.QtCore import QObject, QThreadPool, Signal
@@ -260,9 +260,6 @@ class ThumbnailService(QObject):
                 track_finish=False,
             )
 
-    def request_priority_thumbnails(self, indices: List[int]):
-        self.generate_additional_thumbnails(indices)
-
     def _generate_single_thumbnail(
         self,
         index: int,
@@ -316,9 +313,6 @@ class ThumbnailService(QObject):
         if duration <= 0:
             return 1
         return max(1, int(math.ceil(duration * self._fps)) + 1)
-
-    def set_thumbnail_render_scale(self, scale: float):
-        self._thumbnail_render_scale = max(1.0, float(scale))
 
     def set_snapshot_renderer(
         self, renderer: Optional[Callable[..., Optional[Image.Image]]]
@@ -521,21 +515,8 @@ class ThumbnailService(QObject):
             self._is_generating = False
             self.generationFinished.emit()
 
-    def _on_single_thumbnail_ready(self, result: Tuple[int, QPixmap]):
-        index, pixmap = result
-        self._generated_indices.add(index)
-        self.thumbnailReady.emit(index, pixmap)
-
-    def _on_thumbnails_ready(self, result: Dict):
-        if result:
-            self.thumbnailsGenerated.emit(result)
-
     def cancel(self):
         self._generation_cancelled = True
         self._is_generating = False
         self._pending_indices.clear()
         self._thread_pool.waitForDone(500)
-
-    def _on_generation_finished(self):
-        self._is_generating = False
-        self.generationFinished.emit()

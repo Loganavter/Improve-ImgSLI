@@ -266,10 +266,6 @@ class VideoEditorDialog(ThemedDialog):
     def _setup_shortcuts(self):
         self.runtime.setup_shortcuts()
 
-    def _load_initial_data(self):
-
-        pass
-
     def set_preview(self, pixmap: QPixmap):
         self.runtime.set_preview(pixmap)
 
@@ -460,9 +456,6 @@ class VideoEditorDialog(ThemedDialog):
     def on_export_finished(self, success: bool):
         self.runtime.on_export_finished(success)
 
-    def _reset_export_ui_state(self):
-        self.runtime.reset_export_ui_state()
-
     def _on_export_log(self, line: str):
         if hasattr(self, "export_log_edit"):
             self.export_log_edit.append_info(line)
@@ -504,38 +497,6 @@ class VideoEditorDialog(ThemedDialog):
         key = ExportConfigBuilder.get_preset_translation_key(preset) or f"video.{preset}"
         translated = self._tr(key)
         return preset if translated == key else translated
-
-    def _preset_from_translated(self, translated_text):
-
-        gif_reverse_mapping = {
-            self._tr("video.high_quality"): "High Quality",
-            self._tr("video.balanced"): "Balanced",
-            self._tr("video.compact_dithered"): "Compact (Dithered)",
-        }
-        if translated_text in gif_reverse_mapping:
-            return gif_reverse_mapping[translated_text]
-
-        from tabs.image_compare.plugins.video_editor.services.export_config import CODEC_PROFILES
-
-        all_presets = []
-        for profile in CODEC_PROFILES.values():
-            all_presets.extend(profile.presets)
-        for preset in all_presets:
-            if self._tr_preset(preset) == translated_text:
-                return preset
-        return "medium"
-
-    def _get_settings_refs(self):
-        return self.persistence.get_settings_refs()
-
-    def _load_export_settings(self):
-        self.persistence.load_export_settings()
-
-    def _connect_export_settings_persistence(self):
-        self.persistence.connect_export_settings_persistence()
-
-    def _persist_export_settings(self):
-        self.persistence.persist_export_settings()
 
     def on_dialog_theme_changed(self) -> None:
         self._update_preview_palette()

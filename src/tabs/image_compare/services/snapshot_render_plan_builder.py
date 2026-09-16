@@ -86,10 +86,6 @@ def query_active_magnifier_divider_thickness(store) -> int:
     return int(command(store) if command is not None else 0)
 
 
-    command = registry().get_feature_command_by_alias("overlay.active_divider_thickness")
-    return int(command(store) if command is not None else 0)
-
-
 def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     base_w = max(
         1,

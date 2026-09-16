@@ -158,9 +158,6 @@ class VideoExporterService:
     def get_image(self, path, auto_crop=False):
         return self._image_repository.get_image(path, auto_crop)
 
-    def _get_image(self, path, auto_crop=False):
-        return self.get_image(path, auto_crop)
-
     @staticmethod
     def _coerce_global_bounds(global_bounds) -> GlobalCanvasBounds | None:
         if global_bounds is None:

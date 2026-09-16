@@ -516,11 +516,6 @@ class ExportConfigBuilder:
         }
 
     @staticmethod
-    def get_default_crf_for_codec(codec_name_or_id: str) -> int:
-        family = ExportConfigBuilder.get_codec_family(codec_name_or_id)
-        return DEFAULT_CRF_BY_FAMILY.get(family, 23)
-
-    @staticmethod
     def get_pixel_formats_for_codec(codec_name_or_id: str) -> list[str]:
         return list(ExportConfigBuilder.get_profile(codec_name_or_id).pixel_formats)
 
@@ -618,7 +613,3 @@ class ExportConfigBuilder:
             result["bitrate"] = "8000k"
 
         return result
-
-    @staticmethod
-    def map_codec_to_internal_name(codec_display_name: str) -> str:
-        return ExportConfigBuilder.get_codec_internal_name(codec_display_name)

@@ -15,16 +15,6 @@ class FrameSnapshot:
     name1: str | None = None
     name2: str | None = None
 
-    def to_state_payload(self) -> dict[str, Any]:
-        return {
-            "viewport_state": self.viewport_state,
-            "settings_state": self.settings_state,
-            "image1_path": self.image1_path,
-            "image2_path": self.image2_path,
-            "name1": self.name1,
-            "name2": self.name2,
-        }
-
 class KeyframeToolAdapter(Protocol):
     adapter_id: str
 

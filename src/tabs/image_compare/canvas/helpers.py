@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from tabs.image_compare.canvas.contracts import (
     BaseCanvasProtocol,
-    ExportCanvasProtocol,
     GlLikeCanvasProtocol,
 )
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -21,10 +20,6 @@ def get_canvas_widget(widget) -> GlLikeCanvasProtocol | None:
     # implementation (see tests/contracts/test_canvas_protocols.py), so the
     # result is identical.
     canvas = get_canvas(widget)
-    return canvas if isinstance(canvas, CanvasWidget) else None
-
-
-def get_export_canvas(canvas) -> ExportCanvasProtocol | None:
     return canvas if isinstance(canvas, CanvasWidget) else None
 
 

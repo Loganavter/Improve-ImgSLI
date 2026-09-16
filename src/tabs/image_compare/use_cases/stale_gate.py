@@ -29,11 +29,6 @@ class StaleGate:
             return True
         return False
 
-    def consume_all(self) -> set[str]:
-        out = set(self._stale)
-        self._stale.clear()
-        return out
-
     @property
     def stale(self) -> set[str]:
         return set(self._stale)

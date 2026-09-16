@@ -42,9 +42,6 @@ class PlaybackEngine(QObject):
         if self._is_playing:
             self._restart_playback_clock()
 
-    def get_playback_speed(self) -> float:
-        return self._playback_speed
-
     def _update_timer_interval(self):
         effective_fps = max(0.01, self._fps * self._playback_speed)
         self._timer.setInterval(max(1, int(1000 / effective_fps)))
@@ -52,14 +49,8 @@ class PlaybackEngine(QObject):
     def set_total_frames(self, total_frames):
         self._total_frames = max(0, total_frames)
 
-    def get_total_frames(self):
-        return self._total_frames
-
     def set_range(self, start, end):
         self._range = (max(0, start), max(0, end))
-
-    def get_range(self):
-        return self._range
 
     def set_current_frame(self, frame):
         self._current_frame = max(0, min(frame, self._total_frames - 1))

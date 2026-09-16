@@ -117,9 +117,3 @@ def get_view_transformed_content_rect_widget_px(
         pan_offset_y=get_pan_offset_y(widget),
     )
 
-
-
-def begin_content_scissor(widget, force: bool = False):
-    """No-op in the QRhi pipeline (QRhi passes set scissor per-draw)."""
-    return False
-

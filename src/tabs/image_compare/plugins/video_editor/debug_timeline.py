@@ -33,33 +33,3 @@ def _should_emit(kind: str) -> bool:
         return False
     _last_emit_ms[kind] = now_ms
     return True
-
-
-def video_timeline_debug(kind: str, msg: str, *args, payload: dict | None = None, force: bool = False) -> None:
-    """Emit throttled debug to logger + Tracer.
-
-    kind: Tracer kind, e.g. "video.timeline" or "video.timeline.resize".
-    msg: logger format string with args.
-    payload: optional Tracer payload dict.
-    force: bypass throttle (use sparingly).
-    """
-    if not _enabled():
-        return
-    if not force and not _should_emit(kind):
-        return
-    try:
-        _thlog.debug(msg, *args)
-    except Exception:
-        pass
-    try:
-        from core.tracing.tracer import Tracer
-
-        if Tracer.enabled():
-            summary = msg % args if args else msg
-            Tracer.instance().record(kind, summary, payload or {})
-    except Exception:
-        pass
-
-
-def is_enabled() -> bool:
-    return _enabled()

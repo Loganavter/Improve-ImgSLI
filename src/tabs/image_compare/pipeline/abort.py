@@ -53,7 +53,3 @@ class AbortSignal:
         s = cls()
         s.abort()
         return s
-
-    @classmethod
-    def never(cls) -> "AbortSignal":
-        return cls()

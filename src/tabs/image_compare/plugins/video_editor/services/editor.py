@@ -77,11 +77,6 @@ class VideoEditorService:
             return 0.0
         return min(float(frame_index) / float(self._fps), self.get_duration())
 
-    def get_frame_for_time(self, timestamp: float) -> int:
-        if self._fps <= 0:
-            return 0
-        return max(0, min(int(round(max(0.0, timestamp) * self._fps)), max(0, self.get_frame_count() - 1)))
-
     def get_current_snapshots(self):
         if self._cached_materialized_snapshots is None:
             self._cached_materialized_snapshots = list(

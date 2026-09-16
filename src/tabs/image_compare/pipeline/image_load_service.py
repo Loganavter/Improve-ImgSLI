@@ -97,16 +97,6 @@ class ImageLoadService:
         except Exception:
             return True
 
-    def is_unify_loading(self, path1: str, path2: str, method: str) -> bool:
-        key = self.unify_key_for(path1, path2, method)
-        sig = self._inflight.get(key)
-        if sig is None:
-            return False
-        try:
-            return not sig.is_aborted()
-        except Exception:
-            return True
-
     def try_acquire(self, key: tuple) -> AbortSignal | None:
         existing = self._inflight.get(key)
         if existing is not None:
@@ -130,13 +120,6 @@ class ImageLoadService:
 
     def try_acquire_load(self, path: str, crop_service: Any | None = None) -> tuple[tuple, AbortSignal] | None:
         key = self.key_for(path, crop_service)
-        sig = self.try_acquire(key)
-        if sig is None:
-            return None
-        return (key, sig)
-
-    def try_acquire_unify(self, path1: str, path2: str, method: str) -> tuple[tuple, AbortSignal] | None:
-        key = self.unify_key_for(path1, path2, method)
         sig = self.try_acquire(key)
         if sig is None:
             return None

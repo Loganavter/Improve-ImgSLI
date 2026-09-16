@@ -123,12 +123,6 @@ class DocumentModel:
         items = self.image_list1 if slot == 1 else self.image_list2
         return display_name_or_fallback(items[idx])
 
-    def clear_last_display_name(self, slot: int) -> None:
-        if slot == 1:
-            self._last_display_name1 = ""
-        else:
-            self._last_display_name2 = ""
-
     def get_current_display_name(self, slot: int) -> str:
         idx = self.current_index1 if slot == 1 else self.current_index2
         items = self.image_list1 if slot == 1 else self.image_list2
