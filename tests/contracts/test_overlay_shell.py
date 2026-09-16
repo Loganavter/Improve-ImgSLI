@@ -253,6 +253,7 @@ def test_overlay_package_shape():
     assert files == [
         "__init__.py",
         "bindings.py",
+        "semantic.py",
         "shell.py",
         "textured.py",
         "views.py",
@@ -1035,3 +1036,455 @@ def test_mc_textured_mounts_ride_engine_shell_directly():
                     f"stay tab-side on the mount"
                 )
     assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+# ---------------------------------------------------------------------------
+# F1 SHELL-PACKS (F1 owns this section; S1/S2/R3 sections above untouched).
+#
+# Pins the shell-side packing seam for scale-free resolvers
+# (``src/engine/overlay/semantic.py``): engine-typed semantic structs +
+# v2 resolver protocol plus pack functions emitting byte-identical uniform
+# blocks for the five uniform families (divider / guides / capture /
+# grid-dividers / arcs). The v1 byte-packing resolvers stay alive through
+# the F-b..F-c coexistence window, so every frozen vector below proves
+# v1-pack == v2-pack on this tree (ruling 5 byte-identity bar): divider /
+# guides / capture replicate the pass-declared formats pinned to source
+# text first, grid-dividers and arcs pack through the real v1 helpers
+# (``_fb_rect_to_ndc_bounds`` / ``pack_arc_uniform``) imported live.
+# ---------------------------------------------------------------------------
+
+import struct as _struct
+
+from engine.overlay import (
+    DiskItem as _DiskItem,
+)
+from engine.overlay import (
+    RectItem as _RectItem,
+)
+from engine.overlay import (
+    Rgba as _Rgba,
+)
+from engine.overlay import (
+    SemanticOverlayItems as _SemanticOverlayItems,
+)
+from engine.overlay import (
+    SemanticResolver as _SemanticResolver,
+)
+from engine.overlay import (
+    pack_arcs as _pack_arcs,
+)
+from engine.overlay import (
+    pack_capture as _pack_capture,
+)
+from engine.overlay import (
+    pack_divider as _pack_divider,
+)
+from engine.overlay import (
+    pack_grid_dividers as _pack_grid_dividers,
+)
+from engine.overlay import (
+    pack_guides as _pack_guides,
+)
+
+_F1_MATRIX = tuple(float(i) for i in range(16))
+_F1_FB_W = 800.0
+_F1_FB_H = 600.0
+
+# Frozen pack outputs (hex): any byte drift in a pack function fails here.
+_F1_DIVIDER_HEX = "000000000000803f0000004000004040000080400000a0400000c0400000e040000000410000104100002041000030410000404100005041000060410000704100004844000016440040c8430000c03f0000803f00000000000000000000803f000020410000a0410000434400000c4400000000000000000000000000000000"
+_F1_GUIDES_HEX = "000000000000803f0000004000004040000080400000a0400000c0400000e040000000410000104100002041000030410000404100005041000060410000704100004844000016440000c842000016430000fa430000e143000040410000f04100002040000000000000000000000000000000000000803f000000000000003f"
+_F1_CAPTURE_HEX = "000000000000803f0000004000004040000080400000a0400000c0400000e040000000410000104100002041000030410000404100005041000060410000704100004844000016440000c843000096430000404200004040000000000000000000000000000000000000803f0000803f"
+_F1_GRID_HEX = "000000000000803f0000004000004040000080400000a0400000c0400000e0400000004100001041000020410000304100004041000050410000604100007041000000bfabaa2abf48e1fabeabaa2a3f0000803f0000803f0000803f0000803f"
+_F1_ARCS_HEX = "000000000000803f0000004000004040000080400000a0400000c0400000e040000000410000104100002041000030410000404100005041000060410000704100004844000016440000c843000096430000704200000040000034420000b4420000803fd3d2d23eabaa2a3f0000803f"
+
+
+def test_f1_semantic_import_seal():
+    """semantic.py is engine-only: stdlib/Qt/engine imports, no app names."""
+    text = read(OVERLAY / "semantic.py")
+    tree = _parse(OVERLAY / "semantic.py")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if (node.level or 0) > 0:
+                continue  # intra-package relative import (shell constants)
+            top = node.module.split(".")[0]
+            assert top in ("__future__", "dataclasses", "typing", "engine"), (
+                f"src/engine/overlay/semantic.py:{node.lineno} imports "
+                f"'{node.module}' -- engine overlay imports stdlib and "
+                f"engine modules only"
+            )
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name.split(".")[0] in ("struct", "typing"), (
+                    f"src/engine/overlay/semantic.py:{node.lineno} imports "
+                    f"'{alias.name}' -- stdlib only"
+                )
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        assert "widget" not in line.lower(), (
+            f"src/engine/overlay/semantic.py:{lineno} names 'widget' "
+            f"({line.strip()[:80]!r}) -- packs take precomputed sizes"
+        )
+    assert "FULLSCREEN_VERTICES" in text, (
+        "src/engine/overlay/semantic.py never references FULLSCREEN_VERTICES "
+        "-- pack output renders through the shell quad shape, keep the tie"
+    )
+
+
+def test_f1_semantic_struct_shapes():
+    """Frozen engine-typed structs + ctx-first v2 protocol (ruling 1)."""
+    tree = _parse(OVERLAY / "semantic.py")
+    classes = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
+    for name in ("Rgba", "RectItem", "DiskItem", "TextItem"):
+        assert name in classes, f"semantic.py must declare {name}"
+    rgba_fields = [t.target.id for t in classes["Rgba"].body if isinstance(t, ast.AnnAssign)]
+    assert rgba_fields == ["r", "g", "b", "a"]
+    rect_fields = [t.target.id for t in classes["RectItem"].body if isinstance(t, ast.AnnAssign)]
+    assert rect_fields == ["x", "y", "w", "h", "color"]
+    disk_fields = [t.target.id for t in classes["DiskItem"].body if isinstance(t, ast.AnnAssign)]
+    assert disk_fields == ["cx", "cy", "radius", "line_width_key", "color", "extra"]
+    text_fields = [t.target.id for t in classes["TextItem"].body if isinstance(t, ast.AnnAssign)]
+    assert text_fields == ["rect", "text", "style"]
+    for name in ("Rgba", "RectItem", "DiskItem", "TextItem"):
+        assert "frozen=True" in _unparse(classes[name].decorator_list), (
+            f"semantic.py {name} must be a frozen dataclass (immutable contract)"
+        )
+    assert "SemanticResolver" in classes, "semantic.py must declare SemanticResolver"
+    resolver = classes["SemanticResolver"]
+    assert any(
+        isinstance(b, ast.Name)
+        and b.id == "Protocol"
+        or isinstance(b, ast.Subscript)
+        and getattr(getattr(b, "value", None), "id", "") == "Protocol"
+        for b in resolver.bases
+    ) or "Protocol" in _unparse(resolver), (
+        "SemanticResolver must be a typing.Protocol (structural seam)"
+    )
+    call = _methods(tree, "SemanticResolver").get("__call__")
+    assert call is not None, "SemanticResolver must declare __call__"
+    assert [a.arg for a in call.args.args][:2] == ["self", "ctx"], (
+        "SemanticResolver.__call__ takes ctx first (engine types + opaque ctx)"
+    )
+    assert "SemanticOverlayItems" in _unparse(call.returns), (
+        "SemanticResolver returns SemanticOverlayItems (scale-free geometry)"
+    )
+    union_src = _unparse(tree)
+    for member in ("RectItem", "DiskItem", "TextItem"):
+        assert member in union_src
+    # Runtime surface: frozen structs construct, the union holds them, and a
+    # ctx-first callable satisfies the structural protocol.
+    probe = _RectItem(x=1.0, y=2.0, w=3.0, h=4.0, color=_Rgba(1.0, 1.0, 1.0, 1.0))
+    items: _SemanticOverlayItems = (probe,)
+    assert items[0] == probe
+    assert isinstance(lambda ctx: items, _SemanticResolver)
+
+
+def test_f1_bindings_reexports_v2_and_keeps_v1():
+    """bindings.py re-exports the v2 protocol; v1 seam intact (ruling 2)."""
+    tree = _parse(OVERLAY / "bindings.py")
+    imported: dict[str, list[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "semantic":
+            imported[node.module] = [a.asname or a.name for a in node.names]
+    assert "semantic" in imported, (
+        "bindings.py must import the v2 protocol from .semantic"
+    )
+    for name in ("SemanticOverlayItems", "SemanticResolver"):
+        assert name in imported["semantic"], (
+            f"bindings.py must re-export {name} from .semantic"
+        )
+    # v1 intact: OverlayResolver/OverlayBinding still declared here.
+    classes = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
+    assert "OverlayResolver" in classes and "OverlayBinding" in classes, (
+        "bindings.py must keep declaring OverlayResolver + OverlayBinding "
+        "through the coexistence window"
+    )
+    # Package surface exposes the full v2 vocabulary.
+    init_text = read(OVERLAY / "__init__.py")
+    for name in (
+        "Rgba",
+        "RectItem",
+        "DiskItem",
+        "TextItem",
+        "SemanticOverlayItems",
+        "SemanticResolver",
+        "pack_divider",
+        "pack_guides",
+        "pack_capture",
+        "pack_grid_dividers",
+        "pack_arcs",
+    ):
+        assert name in init_text, (
+            f"src/engine/overlay/__init__.py never exports {name}"
+        )
+
+
+def test_f1_shell_stage_packed_entry_point():
+    """OverlayShell gains stage_packed; the seven stable entries stand."""
+    tree = _parse(OVERLAY / "shell.py")
+    methods = _methods(tree, "OverlayShell")
+    for entry in (
+        "mount",
+        "ensure_slots",
+        "stage_quad",
+        "stage_slot",
+        "clip_matrix",
+        "draw",
+        "teardown",
+    ):
+        assert entry in methods, (
+            f"OverlayShell.{entry} missing -- F1 adds, never renames"
+        )
+    assert "stage_packed" in methods, (
+        "OverlayShell.stage_packed missing -- the v2 semantic staging entry"
+    )
+    func = methods["stage_packed"]
+    assert [a.arg for a in func.args.args] == [
+        "self",
+        "resource_updates",
+        "blocks",
+    ], "OverlayShell.stage_packed(resource_updates, blocks, *, start=0)"
+    assert [a.arg for a in func.args.kwonlyargs] == ["start"], (
+        "OverlayShell.stage_packed takes kw-only start"
+    )
+
+def test_f1_v1_layout_markers_still_pinned():
+    """The v1 layouts the vectors replicate are still declared at source.
+
+    Root tests must not deep-import tab internals (see
+    ``test_root_tests_no_tab_internals_leak``), so the vectors replicate
+    the v1 field order locally while this test pins the replicated facts
+    to the v1 source text: a v1 layout change fails here loudly instead
+    of silently comparing against a stale copy. Live-helper equality
+    (real ``pack_arc_uniform`` / ``_fb_rect_to_ndc_bounds``) was proven
+    once on this tree during F1 authoring and recorded in the wave notes.
+    """
+    markers = {
+        "src/tabs/image_compare/canvas/features/divider/passes.py": (
+            '_UNIFORM_FMT = "<24f4fi3f"',
+            "_UNIFORM_SIZE = 128",
+        ),
+        "src/tabs/image_compare/canvas/features/guides/passes.py": (
+            '_UNIFORM_FMT = "<32f"',
+            "_UNIFORM_SIZE = 128",
+        ),
+        "src/tabs/image_compare/canvas/features/capture/passes.py": (
+            '_UNIFORM_FMT = "<28f"',
+            "_UNIFORM_SIZE = 112",
+        ),
+        "src/tabs/multi_compare/canvas/features/grid_dividers/passes.py": (
+            '_UNIFORM_FMT = "<24f"',
+            "_UNIFORM_SIZE = 96",
+            "(2.0 * x / fb_w) - 1.0",
+            "1.0 - (2.0 * y / fb_h)",
+        ),
+        "src/tabs/image_compare/canvas/features/magnifier/render/passes_common.py": (
+            '"<16f 2f 2f 4f 4f"',
+            "def pack_arc_uniform(",
+            "start_angle_deg",
+            "span_angle_deg",
+        ),
+        "src/tabs/image_compare/canvas/features/magnifier/render/shader_layout.py": (
+            "ARC_UNIFORM_SIZE = 112",
+            None,
+        ),
+    }
+    offenders: list[str] = []
+    for rel_path, wants in markers.items():
+        text = read(ROOT / rel_path)
+        for want in wants:
+            if want is not None and want not in text:
+                offenders.append(
+                    f"{rel_path} lost {want!r} -- the F1 vector replicates it"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+def test_f1_pack_divider_matches_v1():
+    bar = _RectItem(
+        x=399.0, y=50.0, w=3.0, h=500.0, color=_Rgba(1.0, 0.0, 0.0, 1.0)
+    )
+    clip = _RectItem(
+        x=10.0, y=20.0, w=780.0, h=560.0, color=_Rgba(0.0, 0.0, 0.0, 0.0)
+    )
+    (block,) = _pack_divider((bar, clip), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    v1 = _struct.pack(
+        "<24f4fi3f",
+        *_F1_MATRIX,
+        _F1_FB_W,
+        _F1_FB_H,
+        400.5,
+        1.5,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        10.0,
+        20.0,
+        780.0,
+        560.0,
+        0,
+        0.0,
+        0.0,
+        0.0,
+    )
+    assert len(block) == 128
+    assert block == v1, "pack_divider drifted from the v1 divider block"
+    assert block.hex() == _F1_DIVIDER_HEX
+
+
+def test_f1_pack_guides_matches_v1():
+    span = _DiskItem(
+        cx=100.0,
+        cy=150.0,
+        radius=12.0,
+        line_width_key="annotation_line_stroke_px",
+        color=_Rgba(0.0, 1.0, 0.0, 0.5),
+        extra=(500.0, 450.0, 30.0, 2.5),
+    )
+    (block,) = _pack_guides((span,), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    v1 = _struct.pack(
+        "<32f",
+        *_F1_MATRIX,
+        _F1_FB_W,
+        _F1_FB_H,
+        100.0,
+        150.0,
+        500.0,
+        450.0,
+        12.0,
+        30.0,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.5,
+    )
+    assert len(block) == 128
+    assert block == v1, "pack_guides drifted from the v1 guides block"
+    assert block.hex() == _F1_GUIDES_HEX
+
+
+def test_f1_pack_capture_matches_v1():
+    ring = _DiskItem(
+        cx=400.0,
+        cy=300.0,
+        radius=48.0,
+        line_width_key="annotation_ring_stroke_px",
+        color=_Rgba(0.0, 0.0, 1.0, 1.0),
+        extra=(3.0,),
+    )
+    (block,) = _pack_capture((ring,), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    v1 = _struct.pack(
+        "<28f",
+        *_F1_MATRIX,
+        _F1_FB_W,
+        _F1_FB_H,
+        400.0,
+        300.0,
+        48.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+    )
+    assert len(block) == 112
+    assert block == v1, "pack_capture drifted from the v1 capture block"
+    assert block.hex() == _F1_CAPTURE_HEX
+
+
+def test_f1_pack_grid_dividers_matches_v1():
+    rect = _RectItem(
+        x=200.0, y=100.0, w=4.0, h=400.0, color=_Rgba(1.0, 1.0, 1.0, 1.0)
+    )
+    (block,) = _pack_grid_dividers((rect,), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    # v1 field order replicated locally (markers pinned to source above):
+    # mat4 clip matrix + NDC bounds (x0, y0, x1, y1) + float RGBA.
+    x0 = (2.0 * 200.0 / _F1_FB_W) - 1.0
+    x1 = (2.0 * 204.0 / _F1_FB_W) - 1.0
+    y_top = 1.0 - (2.0 * 100.0 / _F1_FB_H)
+    y_bottom = 1.0 - (2.0 * 500.0 / _F1_FB_H)
+    v1 = _struct.pack(
+        "<24f", *_F1_MATRIX, x0, y_bottom, x1, y_top, 1.0, 1.0, 1.0, 1.0
+    )
+    assert len(block) == 96
+    assert block == v1, "pack_grid_dividers drifted from the v1 NDC block"
+    assert block.hex() == _F1_GRID_HEX
+
+
+def test_f1_pack_arcs_matches_v1():
+    pink = (1.0, 105.0 / 255.0, 170.0 / 255.0, 1.0)
+    arc = _DiskItem(
+        cx=400.0,
+        cy=300.0,
+        radius=60.0,
+        line_width_key="annotation_arc_stroke_px",
+        color=_Rgba(*pink),
+        extra=(45.0, 90.0, True, True, 2.0),
+    )
+    (block,) = _pack_arcs((arc,), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    # v1 arc field order replicated locally (markers pinned to source
+    # above): mat4 + fb size + center + radius/width/start/span + RGBA.
+    v1 = _struct.pack(
+        "<16f2f2f4f4f",
+        *_F1_MATRIX,
+        _F1_FB_W,
+        _F1_FB_H,
+        400.0,
+        300.0,
+        60.0,
+        2.0,
+        45.0,
+        90.0,
+        *pink,
+    )
+    assert len(block) == 112
+    assert block == v1, "pack_arcs drifted from the v1 arc block"
+    assert block.hex() == _F1_ARCS_HEX
+
+
+def test_f1_canvas_scale_applies_shell_side():
+    """Scale lives in the pack (never the resolver): 2x doubles geometry."""
+    ring = _DiskItem(
+        cx=400.0,
+        cy=300.0,
+        radius=48.0,
+        line_width_key="annotation_ring_stroke_px",
+        color=_Rgba(0.0, 0.0, 1.0, 1.0),
+        extra=(3.0,),
+    )
+    (block,) = _pack_capture(
+        (ring,), _F1_MATRIX, _F1_FB_W, _F1_FB_H, canvas_scale=2.0
+    )
+    v1 = _struct.pack(
+        "<28f",
+        *_F1_MATRIX,
+        _F1_FB_W,
+        _F1_FB_H,
+        800.0,
+        600.0,
+        96.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+    )
+    assert block == v1, "canvas_scale must scale geometry, never color/matrix/fb"
+    # Default scale is the identity: explicit 1.0 matches the frozen vector.
+    (default,) = _pack_capture((ring,), _F1_MATRIX, _F1_FB_W, _F1_FB_H)
+    (explicit,) = _pack_capture(
+        (ring,), _F1_MATRIX, _F1_FB_W, _F1_FB_H, canvas_scale=1.0
+    )
+    assert default == explicit
+    assert default.hex() == _F1_CAPTURE_HEX
