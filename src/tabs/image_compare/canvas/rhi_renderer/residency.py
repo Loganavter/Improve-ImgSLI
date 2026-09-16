@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import itertools
 import time
+from dataclasses import dataclass, field
 
 from engine.store.pyramid_registry import pyramid_for
 from engine.store.tiled_pixel_store import TiledPixelStore
@@ -35,6 +36,7 @@ from engine.cache.tile_texture_service import TileTextureService
 from engine.frame.context import BudgetStats, make_ids
 from engine.cache import residency as _engine_residency
 from engine.cache import tile_upload_budget as _tile_upload_budget
+from engine.gpu.base_images_pass import BaseImagesPass, BaseImagesSpecHooks
 
 from tabs.image_compare.canvas.loupe_trace import frame_context_from_widget
 
@@ -239,6 +241,40 @@ def resolve_lod_texture_keys(
     return tuple(resolved)  # type: ignore[return-value]  # tuple of key|LevelKey
 
 
+@dataclass
+class RealizeTilePlanContext:
+    """Per-call inputs for the engine base-images pass (E2 feed).
+
+    Carries ``realize_tile_plan``'s identical inputs opaquely into
+    ``BaseImagesPass.realize``: the engine resolves specs from these via
+    ``TileResidencyRealizer.resolve_specs`` and realizes them through its
+    own loop. The ``protect_chain`` / ``pairs`` / ``specs`` /
+    ``resident_before`` / ``realize_t0`` carriers are populated by
+    ``resolve_specs`` for the realize tail (extra protects are only known
+    after this call's registration runs, so the chain is extended in place
+    on the same list object the engine loop reads).
+    """
+
+    tile_service: TileTextureService
+    widget: object
+    texture_keys: tuple[object, object]
+    base_image: object
+    updates: object
+    diff_key: object | None = None
+    viewport_zoom: tuple[float, float] | None = None
+    viewport_offset: tuple[float, float] | None = None
+    capture_uv_rect: tuple[float, float, float, float] | None = None
+    extra_protect_keys: tuple[object, ...] = ()
+    dirty_layers: dict[int, set[int]] | None = None
+    crop_service: object | None = None
+    crop_boxes: tuple[object | None, object | None] | None = None
+    protect_chain: list = field(default_factory=list)
+    pairs: list = field(default_factory=list)
+    specs: list = field(default_factory=list)
+    resident_before: dict = field(default_factory=dict)
+    realize_t0: float = 0.0
+
+
 class TileResidencyRealizer(TileResidencyRealizerBase):
     """Owns ``realize_tile_plan`` -- one instance per ``RhiResources``,
     wired to that instance's ``ArrayResources`` (for uploading tiles into
@@ -271,6 +307,18 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # memo and the joint preview holds moved as the stash's own
         # ``_contents``/``_preview_holds``.
         self._stash = ContentStash(log=_ic_preview_log)
+        # E2 feed: the tab resolves *what* is resident this call
+        # (``resolve_specs`` below, lifted verbatim out of
+        # ``realize_tile_plan``); the engine pass owns *how* residency
+        # happens (the per-key target/protect/budget/upload loop in
+        # ``TileResidencyRealizerBase.realize_specs``). No second loop here.
+        self._engine_pass = BaseImagesPass(
+            tile_cache_budget_bytes=_TILE_CACHE_BUDGET_BYTES,
+            hooks=BaseImagesSpecHooks(
+                resolve_specs=self.resolve_specs,
+                upload_tile=self.upload_tile,
+            ),
+        )
 
     def _upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
         self._array_resources.upload_tile_to_array(
@@ -326,6 +374,275 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         )
         tile_service.rekey_source(key, prev_key)
         self.last_rekeyed_keys[key] = prev_key
+
+    def resolve_specs(self, ctx: RealizeTilePlanContext) -> list[ResidencySpec]:
+        """Build this call's residency spec list from the tab's own model.
+
+        Lifted verbatim out of ``realize_tile_plan`` (E2 extraction, not a
+        rewrite): grid resolve/re-register (crop, magnifier, diff, stash
+        paths) plus the spec-building pass, with identical inputs read off
+        ``ctx``. Feeds ``BaseImagesPass.realize``; the stash/evict tail
+        stays in ``realize_tile_plan``.
+        """
+        tile_service = ctx.tile_service
+        letterboxes = (tuple(ctx.base_image.letterbox1), tuple(ctx.base_image.letterbox2))
+        pairs = list(zip(ctx.texture_keys, letterboxes))
+        if ctx.diff_key is not None:
+            pairs.append((ctx.diff_key, letterboxes[0]))
+        # W3a: resolve raw boxes once per call (warmed-cache lookup, no IO).
+        # Magnifier capture path stays full-frame (see docstring).
+        _crop_enabled = ctx.capture_uv_rect is None
+        _crop_boxes = ctx.crop_boxes
+        if _crop_enabled and _crop_boxes is None:
+            try:
+                _crop_boxes = resolve_slot_boxes(ctx.widget, crop_service=ctx.crop_service)
+            except Exception:
+                _crop_boxes = (None, None)
+        if not _crop_enabled:
+            _crop_boxes = (None, None)
+        try:
+            _raw_box1, _raw_box2 = _crop_boxes[0], _crop_boxes[1]
+        except Exception:
+            _raw_box1 = _raw_box2 = None
+        # Per-key scaled boxes (live-source coords) + pre-box live sizes,
+        # filled by the first pass and read by the spec-building pass.
+        _box_by_key: dict[object, tuple[int, int, int, int]] = {}
+        _full_size_by_key: dict[object, tuple[int, int]] = {}
+
+        # First pass: resolve/re-register every key's grid without doing any
+        # upload work.
+        contexts = []
+        for key, letterbox in pairs:
+            pil_source = _pil_image_for_texture_key(ctx.widget, key)
+            is_tiled_store = isinstance(pil_source, TiledPixelStore)
+            grid = tile_service.grid_for(key)
+            from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+            ic_first_frame_debug(
+                ctx.widget,
+                "realize_tile_plan key=%s pil_source=%s tiled=%s grid=%s",
+                key,
+                "None" if pil_source is None else type(pil_source).__name__,
+                is_tiled_store,
+                "None" if grid is None else f"{grid.total_width}x{grid.total_height}",
+            )
+            # Both TiledPixelStore and QImage preview sources share the same
+            # stable slot keys ("stored_0"/"stored_1"). The preview QImage
+            # (≤1024) must be stashed as a fallback baseline when the full
+            # TiledPixelStore replaces it — otherwise the preview is dropped
+            # and the canvas blanks until the store's tiles land (the
+            # "qimage should stay until all tiles drawn" UX). Always
+            # re-register when the live source size disagrees with the cached
+            # grid, or its own identity changed (see content_changed below).
+            # is_tiled_store was the old gate (lazy TiledPixelStore sources
+            # skip upload_source()), but QImage previews need the same
+            # stash/restore path.
+            if pil_source is not None:
+                try:
+                    from engine.store.tiled_pixel_store import pixel_source_size
+
+                    src_w, src_h = pixel_source_size(pil_source)
+                    if src_w == 0 or src_h == 0:
+                        # Closed or empty store (race with unify closing old store
+                        # while tile_service still references old key) — skip this
+                        # key this frame; next frame's _pil_image_for_texture_key
+                        # will resolve the live store.
+                        continue
+                except Exception:
+                    continue
+                try:
+                    src_uid = image_uid(pil_source)
+                except Exception:
+                    continue
+                # W3a: intersect with the effective box. The grid registers
+                # on the box-clipped size and the box joins the content
+                # identity so a late box arrival re-registers like a swap.
+                # None box -> src_w/src_h/src_uid untouched (parity).
+                _scaled_box: tuple[int, int, int, int] | None = None
+                if _crop_enabled:
+                    try:
+                        _key_path = path_for_texture_key(ctx.widget, key)
+                        _slot_idx = slot_for_texture_key(ctx.widget, key)
+                        _raw = None
+                        if _slot_idx == 0:
+                            _raw = _raw_box1
+                        elif _slot_idx == 1:
+                            _raw = _raw_box2
+                        if _raw is not None:
+                            _scaled_box = scaled_box_for_source(
+                                _raw, path=_key_path, live_size=(src_w, src_h)
+                            )
+                    except Exception:
+                        _scaled_box = None
+                if _scaled_box is not None:
+                    _full_size_by_key[key] = (src_w, src_h)
+                    _box_by_key[key] = _scaled_box
+                    src_w, src_h = (
+                        int(_scaled_box[2] - _scaled_box[0]),
+                        int(_scaled_box[3] - _scaled_box[1]),
+                    )
+                    src_uid = (src_uid, _scaled_box)
+                prev_uid: object | None
+                prev_is_preview: bool
+                content_changed: bool
+                prev_uid, prev_is_preview, content_changed = self._stash.note_source(
+                    key, src_uid, is_preview=not is_tiled_store
+                )
+                # A same-size image swap into an already-loaded slot (the
+                # common case: two photos being compared are rarely the
+                # exact same resolution, but it does happen, and every
+                # letterboxed slot swap in general is size-agnostic from
+                # the caller's perspective) leaves grid.total_width/height
+                # unchanged, so the size check below alone never re-fires --
+                # is_resident stays true for every already-uploaded index
+                # forever, and plan_key_upload only uploads indices that
+                # aren't resident, so the old content simply never gets
+                # replaced except by incidental LRU eviction (e.g. panning
+                # to a not-yet-visited tile), producing a persistent,
+                # patchwork mix of old and new content rather than a clean
+                # transition. Tracking the live source's own identity
+                # (image_uid, not id() -- see the source_ids comment in
+                # rhi_renderer/__init__.py for why) catches this alongside
+                # the size check (docs/dev/rendering/qrhi-gotchas.md
+                # same-slot-swap finding, same-size follow-up).
+                if (
+                    grid is None
+                    or int(grid.total_width) != int(src_w)
+                    or int(grid.total_height) != int(src_h)
+                    or content_changed
+                ):
+                    rhi_render_debug(
+                        "realize_tile_plan re-register key=%s old_grid=%s new_src=%dx%d content_changed=%s",
+                        key,
+                        None
+                        if grid is None
+                        else f"{grid.total_width}x{grid.total_height} ({grid.rows}x{grid.columns})",
+                        src_w,
+                        src_h,
+                        content_changed,
+                    )
+                    if grid is not None:
+                        self._evict_stale_tiles(key, set())
+                        grid = self._stash.rekey_or_restore(
+                            tile_service,
+                            key,
+                            src_uid,
+                            (src_w, src_h),
+                            prev_uid=prev_uid,
+                            prev_is_preview=prev_is_preview,
+                            rekeyed=self.last_rekeyed_keys,
+                        )
+                    else:
+                        grid = tile_service.register_source(key, (src_w, src_h))
+            elif grid is None:
+                continue
+            contexts.append((key, letterbox, pil_source, is_tiled_store, grid))
+
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+        ic_first_frame_debug(
+            ctx.widget,
+            "realize_tile_plan grids=%d resident=%s",
+            len(contexts),
+            {
+                str(k): len(tile_service.resident_tiles(k) or ())
+                for k in ctx.texture_keys
+            },
+        )
+
+        # docs/dev/rendering/tile-array-atlas-plan.md: every grid, including
+        # a still-1x1 side, renders through the shared texture-array pipeline
+        # -- the array shader has one shared sampler2DArray for both sides
+        # plus diff (base_array.frag), so a 1x1 side just gets one array slot
+        # instead of its own whole-image QRhiTexture.
+        specs: list[ResidencySpec] = []
+        for key, letterbox, pil_source, is_tiled_store, grid in contexts:
+            full_image = None
+            if not is_tiled_store:
+                full_image = touch_texture_upload_cache(ctx.widget, key)
+                if full_image is None:
+                    if pil_source is None:
+                        continue
+                    full_image = qimage_from_pil(pil_source)
+                    cache_texture_upload(ctx.widget, key, full_image)
+                # W3a: the cached/decoded tier is box-clipped in the same
+                # coords the grid registered on (upload clipped it, or it is
+                # the decoded tier the box was scaled against). Guard on size
+                # equality so a stale cache tier never mis-clips.
+                _spec_box = _box_by_key.get(key)
+                if _spec_box is not None and full_image is not None:
+                    try:
+                        _live = _full_size_by_key.get(key)
+                        if _live is not None and (
+                            int(full_image.width()), int(full_image.height())
+                        ) == (int(_live[0]), int(_live[1])):
+                            from engine.store.tiled_pixel_store import (
+                                qimage_from_pixel_source,
+                            )
+
+                            full_image = qimage_from_pixel_source(
+                                full_image, _spec_box
+                            )
+                    except Exception:
+                        pass
+            # Visible rect shares one derivation with the draw plan
+            # (texture_parts.tile_geometry.resolve_side_visible_rect, incl.
+            # the magnifier capture_uv_rect override) -- "what's uploaded"
+            # and "what's drawn" agree by construction, never by parallel
+            # implementations.
+            visible_rect = resolve_side_visible_rect(
+                ctx.base_image,
+                letterbox,
+                grid,
+                viewport_zoom=ctx.viewport_zoom,
+                viewport_offset=ctx.viewport_offset,
+                capture_uv_rect=ctx.capture_uv_rect,
+            )
+            crop_source = pil_source if is_tiled_store else full_image
+            # W3a: grid and crop source share the box-clipped coordinate
+            # space. Stores stay lazy through an offset view (no bake, no
+            # materialization); QImage/PIL tiers were cropped above.
+            _tile_box = _box_by_key.get(key)
+            if _tile_box is not None and is_tiled_store and pil_source is not None:
+                try:
+                    crop_source = BoxCroppedStoreView(pil_source, _tile_box)
+                except Exception:
+                    crop_source = pil_source
+            specs.append(
+                ResidencySpec(key=key, grid=grid, visible_rect=visible_rect, crop_source=crop_source)
+            )
+
+        # Extra protects are only known after this call's registration ran
+        # (rekeyed old content + preview holds), i.e. here inside resolve --
+        # but the engine loop reads them after, so they extend the same
+        # `protect_chain` list object the wrapper handed to `realize`.
+        # Tolerate a bare ctx (direct `resolve_specs` callers): fall back to
+        # the tuple input when no chain was attached.
+        _protect_chain = getattr(ctx, "protect_chain", None)
+        if _protect_chain is None:
+            _protect_chain = list(getattr(ctx, "extra_protect_keys", ()))
+            ctx.protect_chain = _protect_chain
+        if self.last_rekeyed_keys:
+            # Protect this call's freshly rekeyed old-content keys from its
+            # own eviction pass -- they were just as resident a moment ago
+            # under the original key and must survive at least this frame
+            # to be usable as a fallback-LOD draw source (see
+            # last_rekeyed_keys's docstring).
+            _protect_chain.extend(self.last_rekeyed_keys.values())
+        # Joint preview hold: keep QImage preview stash alive until BOTH halves
+        # have complete tile replacement. Without this, intermediate 1024/1440
+        # stores would evict the preview baseline before final hires (5760)
+        # is fully resident. Hold keys contributed by the engine stash.
+        _protect_chain.extend(self._stash.preview_extra_protect_keys(tile_service))
+
+        # Phase-B2 frame bus: snapshot pre-call residency (pure reads) and
+        # the wall clock for the record the wrapper files below (reads only
+        # -- budget/eviction decisions are untouched).
+        ctx.resident_before = {
+            spec.key: tile_service.resident_tiles(spec.key) for spec in specs
+        }
+        ctx.pairs = pairs
+        ctx.specs = specs
+        ctx.realize_t0 = time.perf_counter()
+        return specs
 
     def realize_tile_plan(
         self,
@@ -426,28 +743,6 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         (``capture_uv_rect`` set) stays full-frame: its capture UVs are
         full-frame fractions owned by another crew. The diff role has no
         file path and is never clipped."""
-        letterboxes = (tuple(base_image.letterbox1), tuple(base_image.letterbox2))
-        pairs = list(zip(texture_keys, letterboxes))
-        if diff_key is not None:
-            pairs.append((diff_key, letterboxes[0]))
-        # W3a: resolve raw boxes once per call (warmed-cache lookup, no IO).
-        # Magnifier capture path stays full-frame (see docstring).
-        _crop_enabled = capture_uv_rect is None
-        if _crop_enabled and crop_boxes is None:
-            try:
-                crop_boxes = resolve_slot_boxes(widget, crop_service=crop_service)
-            except Exception:
-                crop_boxes = (None, None)
-        if not _crop_enabled:
-            crop_boxes = (None, None)
-        try:
-            _raw_box1, _raw_box2 = crop_boxes[0], crop_boxes[1]
-        except Exception:
-            _raw_box1 = _raw_box2 = None
-        # Per-key scaled boxes (live-source coords) + pre-box live sizes,
-        # filled by the first pass and read by the spec-building pass.
-        _box_by_key: dict[object, tuple[int, int, int, int]] = {}
-        _full_size_by_key: dict[object, tuple[int, int]] = {}
         # Callers that need to defer mip regeneration until after `updates`
         # is submitted (see generate_all_dirty_mips) pass their own dict in and
         # read it back; anyone else gets the old whole-array-generateMips
@@ -455,256 +750,61 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         owns_dirty_layers = dirty_layers is None
         if dirty_layers is None:
             dirty_layers = {}
-
-        # First pass: resolve/re-register every key's grid without doing any
-        # upload work.
-        contexts = []
-        for key, letterbox in pairs:
-            pil_source = _pil_image_for_texture_key(widget, key)
-            is_tiled_store = isinstance(pil_source, TiledPixelStore)
-            grid = tile_service.grid_for(key)
-            from tabs.image_compare.first_frame_debug import ic_first_frame_debug
-            ic_first_frame_debug(
-                widget,
-                "realize_tile_plan key=%s pil_source=%s tiled=%s grid=%s",
-                key,
-                "None" if pil_source is None else type(pil_source).__name__,
-                is_tiled_store,
-                "None" if grid is None else f"{grid.total_width}x{grid.total_height}",
-            )
-            # Both TiledPixelStore and QImage preview sources share the same
-            # stable slot keys ("stored_0"/"stored_1"). The preview QImage
-            # (≤1024) must be stashed as a fallback baseline when the full
-            # TiledPixelStore replaces it — otherwise the preview is dropped
-            # and the canvas blanks until the store's tiles land (the
-            # "qimage should stay until all tiles drawn" UX). Always
-            # re-register when the live source size disagrees with the cached
-            # grid, or its own identity changed (see content_changed below).
-            # is_tiled_store was the old gate (lazy TiledPixelStore sources
-            # skip upload_source()), but QImage previews need the same
-            # stash/restore path.
-            if pil_source is not None:
-                try:
-                    from engine.store.tiled_pixel_store import pixel_source_size
-
-                    src_w, src_h = pixel_source_size(pil_source)
-                    if src_w == 0 or src_h == 0:
-                        # Closed or empty store (race with unify closing old store
-                        # while tile_service still references old key) — skip this
-                        # key this frame; next frame's _pil_image_for_texture_key
-                        # will resolve the live store.
-                        continue
-                except Exception:
-                    continue
-                try:
-                    src_uid = image_uid(pil_source)
-                except Exception:
-                    continue
-                # W3a: intersect with the effective box. The grid registers
-                # on the box-clipped size and the box joins the content
-                # identity so a late box arrival re-registers like a swap.
-                # None box -> src_w/src_h/src_uid untouched (parity).
-                _scaled_box: tuple[int, int, int, int] | None = None
-                if _crop_enabled:
-                    try:
-                        _key_path = path_for_texture_key(widget, key)
-                        _slot_idx = slot_for_texture_key(widget, key)
-                        _raw = None
-                        if _slot_idx == 0:
-                            _raw = _raw_box1
-                        elif _slot_idx == 1:
-                            _raw = _raw_box2
-                        if _raw is not None:
-                            _scaled_box = scaled_box_for_source(
-                                _raw, path=_key_path, live_size=(src_w, src_h)
-                            )
-                    except Exception:
-                        _scaled_box = None
-                if _scaled_box is not None:
-                    _full_size_by_key[key] = (src_w, src_h)
-                    _box_by_key[key] = _scaled_box
-                    src_w, src_h = (
-                        int(_scaled_box[2] - _scaled_box[0]),
-                        int(_scaled_box[3] - _scaled_box[1]),
-                    )
-                    src_uid = (src_uid, _scaled_box)
-                prev_uid: object | None
-                prev_is_preview: bool
-                content_changed: bool
-                prev_uid, prev_is_preview, content_changed = self._stash.note_source(
-                    key, src_uid, is_preview=not is_tiled_store
-                )
-                # A same-size image swap into an already-loaded slot (the
-                # common case: two photos being compared are rarely the
-                # exact same resolution, but it does happen, and every
-                # letterboxed slot swap in general is size-agnostic from
-                # the caller's perspective) leaves grid.total_width/height
-                # unchanged, so the size check below alone never re-fires --
-                # is_resident stays true for every already-uploaded index
-                # forever, and plan_key_upload only uploads indices that
-                # aren't resident, so the old content simply never gets
-                # replaced except by incidental LRU eviction (e.g. panning
-                # to a not-yet-visited tile), producing a persistent,
-                # patchwork mix of old and new content rather than a clean
-                # transition. Tracking the live source's own identity
-                # (image_uid, not id() -- see the source_ids comment in
-                # rhi_renderer/__init__.py for why) catches this alongside
-                # the size check (docs/dev/rendering/qrhi-gotchas.md
-                # same-slot-swap finding, same-size follow-up).
-                if (
-                    grid is None
-                    or int(grid.total_width) != int(src_w)
-                    or int(grid.total_height) != int(src_h)
-                    or content_changed
-                ):
-                    rhi_render_debug(
-                        "realize_tile_plan re-register key=%s old_grid=%s new_src=%dx%d content_changed=%s",
-                        key,
-                        None
-                        if grid is None
-                        else f"{grid.total_width}x{grid.total_height} ({grid.rows}x{grid.columns})",
-                        src_w,
-                        src_h,
-                        content_changed,
-                    )
-                    if grid is not None:
-                        self._evict_stale_tiles(key, set())
-                        grid = self._stash.rekey_or_restore(
-                            tile_service,
-                            key,
-                            src_uid,
-                            (src_w, src_h),
-                            prev_uid=prev_uid,
-                            prev_is_preview=prev_is_preview,
-                            rekeyed=self.last_rekeyed_keys,
-                        )
-                    else:
-                        grid = tile_service.register_source(key, (src_w, src_h))
-            elif grid is None:
-                continue
-            contexts.append((key, letterbox, pil_source, is_tiled_store, grid))
-
-        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
-        ic_first_frame_debug(
-            widget,
-            "realize_tile_plan grids=%d resident=%s",
-            len(contexts),
-            {
-                str(k): len(tile_service.resident_tiles(k) or ())
-                for k in texture_keys
-            },
+        # E2 feed: this call's identical inputs ride one context object into
+        # the engine pass (resolve -> realize_specs -> return). Spec-building
+        # itself (grids, crop boxes, stash, magnifier/diff paths) lives in
+        # `resolve_specs` verbatim; the loop below is the engine's own.
+        # `protect_chain` starts as this call's caller-supplied protects and
+        # `resolve_specs` extends it in place (rekeyed old content + preview
+        # holds are only known after this call's registration runs, i.e.
+        # inside `resolve_specs`, but the engine loop reads them after --
+        # same object, so the ordering holds within one `realize` call).
+        protect_chain: list = list(extra_protect_keys)
+        ctx = RealizeTilePlanContext(
+            tile_service=tile_service,
+            widget=widget,
+            texture_keys=texture_keys,
+            base_image=base_image,
+            updates=updates,
+            diff_key=diff_key,
+            viewport_zoom=viewport_zoom,
+            viewport_offset=viewport_offset,
+            capture_uv_rect=capture_uv_rect,
+            extra_protect_keys=tuple(extra_protect_keys),
+            dirty_layers=dirty_layers,
+            crop_service=crop_service,
+            crop_boxes=crop_boxes,
+            protect_chain=protect_chain,
         )
 
-        # docs/dev/rendering/tile-array-atlas-plan.md: every grid, including
-        # a still-1x1 side, renders through the shared texture-array pipeline
-        # -- the array shader has one shared sampler2DArray for both sides
-        # plus diff (base_array.frag), so a 1x1 side just gets one array slot
-        # instead of its own whole-image QRhiTexture.
-        specs: list[ResidencySpec] = []
-        for key, letterbox, pil_source, is_tiled_store, grid in contexts:
-            full_image = None
-            if not is_tiled_store:
-                full_image = touch_texture_upload_cache(widget, key)
-                if full_image is None:
-                    if pil_source is None:
-                        continue
-                    full_image = qimage_from_pil(pil_source)
-                    cache_texture_upload(widget, key, full_image)
-                # W3a: the cached/decoded tier is box-clipped in the same
-                # coords the grid registered on (upload clipped it, or it is
-                # the decoded tier the box was scaled against). Guard on size
-                # equality so a stale cache tier never mis-clips.
-                _spec_box = _box_by_key.get(key)
-                if _spec_box is not None and full_image is not None:
-                    try:
-                        _live = _full_size_by_key.get(key)
-                        if _live is not None and (
-                            int(full_image.width()), int(full_image.height())
-                        ) == (int(_live[0]), int(_live[1])):
-                            from engine.store.tiled_pixel_store import (
-                                qimage_from_pixel_source,
-                            )
-
-                            full_image = qimage_from_pixel_source(
-                                full_image, _spec_box
-                            )
-                    except Exception:
-                        pass
-            # Visible rect shares one derivation with the draw plan
-            # (texture_parts.tile_geometry.resolve_side_visible_rect, incl.
-            # the magnifier capture_uv_rect override) -- "what's uploaded"
-            # and "what's drawn" agree by construction, never by parallel
-            # implementations.
-            visible_rect = resolve_side_visible_rect(
-                base_image,
-                letterbox,
-                grid,
-                viewport_zoom=viewport_zoom,
-                viewport_offset=viewport_offset,
-                capture_uv_rect=capture_uv_rect,
-            )
-            crop_source = pil_source if is_tiled_store else full_image
-            # W3a: grid and crop source share the box-clipped coordinate
-            # space. Stores stay lazy through an offset view (no bake, no
-            # materialization); QImage/PIL tiers were cropped above.
-            _tile_box = _box_by_key.get(key)
-            if _tile_box is not None and is_tiled_store and pil_source is not None:
-                try:
-                    crop_source = BoxCroppedStoreView(pil_source, _tile_box)
-                except Exception:
-                    crop_source = pil_source
-            specs.append(
-                ResidencySpec(key=key, grid=grid, visible_rect=visible_rect, crop_source=crop_source)
-            )
-
-        if self.last_rekeyed_keys:
-            # Protect this call's freshly rekeyed old-content keys from its
-            # own eviction pass -- they were just as resident a moment ago
-            # under the original key and must survive at least this frame
-            # to be usable as a fallback-LOD draw source (see
-            # last_rekeyed_keys's docstring).
-            extra_protect_keys = tuple(extra_protect_keys) + tuple(
-                self.last_rekeyed_keys.values()
-            )
-        # Joint preview hold: keep QImage preview stash alive until BOTH halves
-        # have complete tile replacement. Without this, intermediate 1024/1440
-        # stores would evict the preview baseline before final hires (5760)
-        # is fully resident. Hold keys contributed by the engine stash.
-        extra_protect_keys = (
-            tuple(extra_protect_keys)
-            + self._stash.preview_extra_protect_keys(tile_service)
+        result = self._engine_pass.realize(
+            ctx,
+            tile_service,
+            updates,
+            dirty_layers=dirty_layers,
+            extra_protect_keys=protect_chain,
+            budget_per_call=None,
         )
-
-        # Phase-B2 frame bus: snapshot pre-call residency (pure reads) and
-        # the wall clock so the record below carries measured values, not
-        # placeholders. Reads only -- budget/eviction decisions are untouched.
-        _resident_before = {
-            spec.key: tile_service.resident_tiles(spec.key) for spec in specs
-        }
-        # Live module-global reads (same namespaces ``realize_specs`` /
-        # ``UploadDeadline`` read at call time), so tuned/patched budgets
-        # flow into the record instead of a stale import-time copy.
+        # Phase-B2 frame bus: live module-global reads (same namespaces
+        # ``realize_specs`` / ``UploadDeadline`` read at call time), so
+        # tuned/patched budgets flow into the record instead of a stale
+        # import-time copy.
         _live_count_budget = _engine_residency.TILE_UPLOAD_BUDGET_PER_CALL
         _live_time_budget_ms = _tile_upload_budget.TILE_UPLOAD_TIME_BUDGET_MS
-        _realize_t0 = time.perf_counter()
-        result = self.realize_specs(
-            tile_service,
-            specs,
-            updates,
-            extra_protect_keys=extra_protect_keys,
-            dirty_layers=dirty_layers,
-        )
+
+        # Specs were resolved inside the engine pass (`ctx.specs`); the
+        # record + stash/evict tail below read them back.
         # Phase-B2 frame bus: realize budget/deadline/residency fact
         # (record only -- the loop above is behavior-identical).
         _frame_context = frame_context_from_widget(widget)
         if _frame_context is not None:
-            _realize_ms = (time.perf_counter() - _realize_t0) * 1000.0
+            _realize_ms = (time.perf_counter() - ctx.realize_t0) * 1000.0
             _uploaded = 0
             _skipped = 0
-            for _spec in specs:
+            for _spec in ctx.specs:
                 _after = tile_service.resident_tiles(_spec.key)
                 _uploaded += len(
-                    _after - _resident_before.get(_spec.key, set())
+                    _after - ctx.resident_before.get(_spec.key, set())
                 )
                 _skipped += len(
                     set(result.protected_by_key.get(_spec.key, set())) - _after
@@ -720,11 +820,11 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             _frame_context.record(
                 "realize_tile_plan",
                 "skipped" if result.more_tiles_pending else "ran",
-                f"realize_tile_plan keys={[str(s.key) for s in specs]}"
+                f"realize_tile_plan keys={[str(s.key) for s in ctx.specs]}"
                 f" {_stats.describe()}",
                 ids=make_ids(
                     _frame_context.frame_id,
-                    tuple(str(s.key) for s in specs),
+                    tuple(str(s.key) for s in ctx.specs),
                     _stats.as_tuple(),
                 ),
             )
@@ -739,7 +839,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                 updates.generateMips(self._array_resources.tile_arrays[array_index])
 
         host_protected = self._stash.release_and_protect_preview_holds(
-            tile_service, pairs, texture_keys, result
+            tile_service, ctx.pairs, texture_keys, result
         )
         evict_texture_upload_cache_over_budget(
             widget, host_protected, _HOST_TEXTURE_CACHE_BUDGET_BYTES
