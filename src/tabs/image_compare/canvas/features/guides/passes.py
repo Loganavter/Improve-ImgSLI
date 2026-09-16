@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import Any
 
 from engine.cache.uniform_layout import assert_uniform_size
-
-from PySide6.QtGui import QRhiViewport
+from engine.overlay import (
+    OverlayBinding,
+    OverlayResolver,
+    OverlayShell,
+    UniformPassView,
+)
 
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
@@ -17,7 +22,6 @@ from tabs.image_compare.canvas.features.guides.overlay_model import (
     resolve_guide_spans,
 )
 from tabs.image_compare.canvas.rhi_feature_common import (
-    FullscreenUniformPassResources,
     resolve_rhi_scissor,
 )
 
@@ -25,6 +29,45 @@ _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _UNIFORM_FMT = "<32f"
 _UNIFORM_SIZE = 128
 assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="GuidesPass uniform")
+
+BINDING = OverlayBinding(
+    shader_dir=_SHADER_DIR,
+    shader_stem="guides",
+    uniform_size=_UNIFORM_SIZE,
+)
+
+
+def _blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
+    """Ctx-first uniform-block resolver: ctx in, packed blocks out."""
+
+    def resolve(ctx: Any) -> tuple[bytes, ...]:
+        # Span decisions are stateless (overlay_model); this binding only packs
+        # them into per-item uniform blocks.
+        return tuple(
+            struct.pack(
+                _UNIFORM_FMT,
+                *matrix,
+                float(ctx.width),
+                float(ctx.height),
+                span.start_x,
+                span.start_y,
+                span.end_x,
+                span.end_y,
+                span.start_radius,
+                span.end_radius,
+                span.line_width,
+                0.0,
+                0.0,
+                0.0,
+                span.red,
+                span.green,
+                span.blue,
+                span.alpha,
+            )
+            for span in resolve_guide_spans(ctx, widget, matrix)
+        )
+
+    return resolve
 
 
 class GuidesPass(CanvasRenderPass):
@@ -34,11 +77,12 @@ class GuidesPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.resources = FullscreenUniformPassResources(_UNIFORM_SIZE)
+        self._shell = OverlayShell(_UNIFORM_SIZE)
+        self.resources = UniformPassView(self._shell)
         self._items: list[bytes] = []
 
     def initialize(self, rhi, target) -> None:
-        self.resources.initialize(rhi, target, _SHADER_DIR, "guides")
+        self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
 
     def should_paint(self, ctx) -> bool:
         state = getattr(ctx.widget, "runtime_state", None)
@@ -55,31 +99,7 @@ class GuidesPass(CanvasRenderPass):
         matrix = tuple(
             float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
         )
-        # Span decisions are stateless (overlay_model); this shell only packs
-        # them into per-item uniform blocks and stages the GPU buffers.
-        for span in resolve_guide_spans(ctx, widget, matrix):
-            self._items.append(
-                struct.pack(
-                    _UNIFORM_FMT,
-                    *matrix,
-                    float(ctx.width),
-                    float(ctx.height),
-                    span.start_x,
-                    span.start_y,
-                    span.end_x,
-                    span.end_y,
-                    span.start_radius,
-                    span.end_radius,
-                    span.line_width,
-                    0.0,
-                    0.0,
-                    0.0,
-                    span.red,
-                    span.green,
-                    span.blue,
-                    span.alpha,
-                )
-            )
+        self._items = list(_blocks_resolver(widget, matrix)(ctx))
         self.resources.ensure_items(len(self._items))
         self.resources.prepare_vertex_buffer(resource_updates)
         for index, block in enumerate(self._items):
@@ -90,33 +110,25 @@ class GuidesPass(CanvasRenderPass):
     def record(self, command_buffer, widget, ctx) -> None:
         if not self._items:
             return
-        command_buffer.setGraphicsPipeline(self.resources.pipeline)
         target_size = widget.renderTarget().pixelSize()
-        command_buffer.setViewport(
-            QRhiViewport(
-                0.0,
-                0.0,
-                float(target_size.width()),
-                float(target_size.height()),
-            )
+        scissor = resolve_rhi_scissor(
+            widget,
+            self._shell.rhi,
+            ctx,
+            clip_to_content=bool(
+                widget.runtime_state._clip_overlays_to_content_rect
+            ),
         )
-        command_buffer.setScissor(
-            resolve_rhi_scissor(
-                widget,
-                self.resources.rhi,
-                ctx,
-                clip_to_content=bool(
-                    widget.runtime_state._clip_overlays_to_content_rect
-                ),
-            )
+        self._shell.draw(
+            command_buffer,
+            width=float(target_size.width()),
+            height=float(target_size.height()),
+            scissor=scissor,
+            count=len(self._items),
         )
-        command_buffer.setVertexInput(0, [(self.resources.vertex_buffer, 0)])
-        for index in range(len(self._items)):
-            command_buffer.setShaderResources(self.resources.srbs[index])
-            command_buffer.draw(4)
 
     def release(self) -> None:
-        self.resources.release()
+        self._shell.teardown()
         self._items = []
 
 

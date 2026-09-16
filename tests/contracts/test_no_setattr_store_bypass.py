@@ -121,8 +121,11 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/services/analysis/cached_diff.py", 278, "self.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 97, "self.store.viewport.session_data.image_state"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 111, "self.store.viewport.session_data.image_state"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 355, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 357, "self.store.viewport.session_data.render_cache"),
+        # NOTE: lines shifted 355/357 → 359/361 by the S3 engine-next export
+        # seam (logging import + LOD-probe call in build_render_plan; same
+        # cached_diff fallback sites, not new bypasses).
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 359, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 361, "self.store.viewport.session_data.render_cache"),
         # -- UI settings / transient interpolation previews --
         ("src/tabs/image_compare/ui/settings_persistence.py", 68, "image_state"),
         ("src/tabs/image_compare/ui/settings_persistence.py", 69, "image_state"),

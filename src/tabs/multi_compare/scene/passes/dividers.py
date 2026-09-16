@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import struct
+from typing import Any
+
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QPainter
 
@@ -9,6 +12,15 @@ from domain.qt_adapters import ensure_visible_qcolor
 from domain.types import Color
 from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
 from ui.canvas_infra.rhi.render_metrics import resolve_relative_px
+
+# Ctx-first resolver block layout (S2 model-side migrate seam onto the S1
+# engine overlay shell): mat4 clip_matrix (16f) + divider rect in framebuffer
+# px, canvas-clipped (x, y, w, h: 4f) + divider color as float RGBA (4f).
+# The NDC-quad conversion stays shell-side (S6 mount of GridDividersPass);
+# this seam mirrors the IC DividerPass strategy (rect + color in-shader over
+# a fullscreen quad) rather than the current hand-rolled NDC vertex upload.
+_DIVIDER_BLOCK_FMT = "<24f"
+_DIVIDER_BLOCK_SIZE = 96
 
 
 class DividersOverlaySource:
@@ -130,3 +142,66 @@ class DividersOverlaySource:
         rgba = getattr(settings, "color_rgba", None) if settings is not None else None
         fallback = Color(*DEFAULT_DIVIDER_COLOR_RGBA)
         return ensure_visible_qcolor(rgba, fallback=fallback)
+
+
+def resolve(ctx: Any) -> tuple[bytes, ...]:
+    """Ctx-first uniform-block resolver for MC grid dividers (S2 migrate seam).
+
+    Takes the opaque per-frame pass context first and returns packed uniform
+    blocks (engine types: ``tuple[bytes, ...]``) -- one ``_DIVIDER_BLOCK_FMT``
+    block per visible divider. The engine forwards ``ctx`` without
+    interpreting it; composition/scale/offset/framebuffer/clip stay bound
+    here from the tab's own frame sources. Owns no GPU objects: pure
+    ``DividersOverlaySource`` geometry (``projected_divider_rects`` +
+    ``_divider_color``) plus ``ctx.clip_matrix``.
+
+    Not yet consumed: ``GridDividersPass`` (``canvas/features/grid_dividers``)
+    still packs NDC vertex quads inline. S6 mounts that shell onto the
+    shared overlay shell consuming these blocks and deletes the inline
+    packing (lift-then-delete flag-day) -- do not duplicate this format
+    there, call this resolver.
+    """
+    source = DividersOverlaySource()
+    composition = ctx.composition
+    if not source.should_paint(composition):
+        return ()
+    rects = source.projected_divider_rects(
+        composition=composition,
+        scale=ctx.scale,
+        offset=ctx.offset,
+        framebuffer_size=ctx.framebuffer_size,
+    )
+    if not rects:
+        return ()
+    ox, oy = ctx.offset
+    canvas_clip = QRectF(
+        ox, oy, composition.canvas_w * ctx.scale, composition.canvas_h * ctx.scale
+    )
+    matrix = tuple(float(value) for value in ctx.clip_matrix)
+    color = source._divider_color(None, composition)
+    red, green, blue, alpha = (
+        color.redF(),
+        color.greenF(),
+        color.blueF(),
+        color.alphaF(),
+    )
+    blocks: list[bytes] = []
+    for rect in rects:
+        clipped = rect.intersected(canvas_clip)
+        if clipped.width() <= 0.0 or clipped.height() <= 0.0:
+            continue
+        blocks.append(
+            struct.pack(
+                _DIVIDER_BLOCK_FMT,
+                *matrix,
+                float(clipped.x()),
+                float(clipped.y()),
+                float(clipped.width()),
+                float(clipped.height()),
+                red,
+                green,
+                blue,
+                alpha,
+            )
+        )
+    return tuple(blocks)
