@@ -273,7 +273,93 @@ def test_level_resident_slots_pending_still_holds():
 
 # ---------------------------------------------------------------------------
 # (3) single-source modes gate exactly what they draw; fakes never hold
+#
+# H3 single-source repro (image-2 lens, the branch (1) never exercised):
+# level-releases + 24/30 src2 slots pending + the OBSERVED single-source
+# fallback state (stored2 resident, so the ungated draw would blur, not
+# hole) -- the slice gate must still HOLD (first frame is an atomic swap,
+# not fallback blur; fallback is for post-hold races only), then swap
+# atomically with full records and ZERO fallback once all-resident.
+# PASSES against the H1 gate (it already mirrors the source_mode==1
+# branch) -- production untouched; this pins the mirror.
 # ---------------------------------------------------------------------------
+
+
+def test_single_source_image2_lagging_holds_then_swaps_atomically():
+    """H3 single-source repro: image-2 lens, level releases, 24/30 pending.
+
+    Same lagging-upload world as (2) but through the ``source_mode == 1``
+    branch (draws ``tex_key_2`` with the stored2 fallback resident -- the
+    observed single-source fallback state). The ungated draw would resolve
+    every slice (6 source + 24 fallback blur, zero drops); the slice gate
+    must still HOLD so the first frame is an atomic swap, not blur. After
+    uploads complete the swap is full records with zero fallback needed.
+    """
+    from tabs.image_compare.canvas.features.magnifier.render import (
+        magnifier_pass as mag_mod,
+    )
+
+    inner = _service_30_tiles()
+    for row in range(5):
+        for col in range(6):
+            inner.mark_resident("src1", (row, col), byte_size=100)
+            inner.mark_resident("src2", (row, col), byte_size=100)
+    lagging = {
+        ("src2", (row, col))
+        for row in range(5)
+        for col in range(6)
+        if (row, col) not in set(_RESIDENT_6)
+    }
+    assert len(lagging) == 24
+    service = _LaggingUploadService(inner, lagging)
+    renderer = SimpleNamespace(tile_service=service)
+    ctx = FrameContext()
+    overlay = _overlay(source=1)  # image-2 lens: single key tex_key_2
+
+    # level says resident: the old gate releases...
+    assert (
+        mag_mod._lens_residency_hold(renderer, ("src1", "src2"), overlay, ctx)
+        is None
+    )
+    # ...but the frame would draw 30 src2 slices with 24 slots pending:
+    # hold (sample stored), never a partial grid.
+    indices = mag_mod._frame_draw_tile_indices(
+        renderer, overlay, "src1", "src2", "placeholder"
+    )
+    assert indices is not None
+    assert len(indices) == 30
+    assert all(key == "src2" for key, _ in indices)
+    hold = mag_mod._frame_slices_residency_hold(renderer, indices, ctx)
+    assert hold is not None
+    assert "24-of-30-slices-missing" in hold
+    # the ungated draw would NOT hole here (stored2 covers: blur, 24
+    # fallback records, zero drops) -- yet the gate still holds: first
+    # frame swaps atomically, fallback stays for post-hold races only.
+    blur_ctx = FrameContext()
+    blurred = mag_mod._source_slices(
+        renderer, "src2", _FULL_UV, frame_context=blur_ctx, fallback_key="stored2"
+    )
+    assert len(blurred) == 30
+    assert _drops(blur_ctx) == []
+    assert len(_fallbacks(blur_ctx)) == 24
+    # held frames sample stored (already resident): full, no drops.
+    draw_ctx = FrameContext()
+    stored = mag_mod._source_slices(
+        renderer, "stored2", _FULL_UV, frame_context=draw_ctx, fallback_key=None
+    )
+    assert len(stored) == 1
+    assert _drops(draw_ctx) == []
+
+    # uploads complete: atomic swap with full records, zero fallback needed.
+    service.complete_uploads()
+    assert mag_mod._frame_slices_residency_hold(renderer, indices, ctx) is None
+    swap_ctx = FrameContext()
+    resolved = mag_mod._source_slices(
+        renderer, "src2", _FULL_UV, frame_context=swap_ctx, fallback_key="stored2"
+    )
+    assert len(resolved) == 30
+    assert _drops(swap_ctx) == []
+    assert _fallbacks(swap_ctx) == []
 
 
 def test_single_source_mode_gates_only_its_own_key():
@@ -315,3 +401,111 @@ def test_no_tile_service_never_holds():
         mag_mod._frame_slices_residency_hold(renderer, None, FrameContext())
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# (4) H3: no-fallback WHY rides on the drop reason, not silent (fallback_key
+# None vs grid unknown vs not resident -- one event, one line)
+# ---------------------------------------------------------------------------
+
+
+def test_no_fallback_key_is_logged_not_silent():
+    """The observed silence, pinned: the diff key has no fallback entry, so
+    the 24 drops came with zero fallback lines AND zero explanation. Now
+    every drop records its no-fallback cause (``nofallback=no_fallback_key``)
+    with per-tile ids -- the same single aggregated log line carries it."""
+    from tabs.image_compare.canvas.features.magnifier.render import (
+        magnifier_pass as mag_mod,
+    )
+
+    service = _service_30_tiles()
+    for index in _RESIDENT_6:
+        service.mark_resident("diff1", index, byte_size=100)
+    renderer = SimpleNamespace(tile_service=service)
+    ctx = FrameContext()
+    resolved = mag_mod._source_slices(
+        renderer, "diff1", _FULL_UV, frame_context=ctx, fallback_key=None
+    )
+    assert len(resolved) == 6
+    drops = _drops(ctx)
+    assert len(drops) == 24
+    assert all("nofallback=no_fallback_key" in d.reason for d in drops)
+    assert all(d.verdict == "skipped" for d in drops)
+    assert any((4, 0) in d.ids for d in drops)  # tile identity preserved
+
+
+def test_fallback_miss_logs_why():
+    """Fallback attempted but covering nothing: the drop reason says which --
+    stored grid not resident vs fallback key never registered."""
+    from tabs.image_compare.canvas.features.magnifier.render import (
+        magnifier_pass as mag_mod,
+    )
+    from engine.cache.tile_texture_service import TileTextureService
+
+    # stored registered but never uploaded: slot miss per slice.
+    service = TileTextureService(max_tile_extent=1024)
+    service.register_source("src", (2048, 2048))  # 2x2, never uploaded
+    service.register_source("stored", (512, 512))
+    renderer = SimpleNamespace(tile_service=service)
+    ctx = FrameContext()
+    assert (
+        mag_mod._source_slices(
+            renderer, "src", _FULL_UV, frame_context=ctx, fallback_key="stored"
+        )
+        == []
+    )
+    drops = _drops(ctx)
+    assert len(drops) == 4
+    assert all("nofallback=fallback_slot_not_resident" in d.reason for d in drops)
+
+    # fallback key never registered: grid unknown, no drops change.
+    ctx2 = FrameContext()
+    assert (
+        mag_mod._source_slices(
+            renderer, "src", _FULL_UV, frame_context=ctx2, fallback_key="nope"
+        )
+        == []
+    )
+    drops2 = _drops(ctx2)
+    assert len(drops2) == 4
+    assert all("nofallback=fallback_grid_unknown" in d.reason for d in drops2)
+
+
+# ---------------------------------------------------------------------------
+# (5) H3 behavior-identity self-check: trace points change no returns
+# ---------------------------------------------------------------------------
+
+
+def test_source_slices_returns_identical_with_trace_on_and_off(monkeypatch):
+    """Same service state, flag on vs off: identical resolved slices.
+
+    The H3 additions are trace records only -- the draw result (resolved
+    list, drops implied) must not depend on ``IMGSLI_IC_LOUPE_DEBUG``.
+    """
+    from tabs.image_compare.canvas.loupe_trace import reset_loupe_trace_state
+    from tabs.image_compare.canvas.features.magnifier.render import (
+        magnifier_pass as mag_mod,
+    )
+
+    def _draw():
+        service = _service_30_tiles()
+        for index in _RESIDENT_6:
+            service.mark_resident("diff1", index, byte_size=100)
+        renderer = SimpleNamespace(tile_service=service)
+        ctx = FrameContext()
+        resolved = mag_mod._source_slices(
+            renderer, "diff1", _FULL_UV, frame_context=ctx, fallback_key=None
+        )
+        fallback_resolved = mag_mod._source_slices(
+            renderer, "src1", _FULL_UV, frame_context=ctx, fallback_key="stored1"
+        )
+        return resolved, fallback_resolved, ctx
+
+    on_resolved, on_fallback, on_ctx = _draw()
+    assert len(_drops(on_ctx)) == 24  # drop path exercised in both runs
+    monkeypatch.delenv("IMGSLI_IC_LOUPE_DEBUG", raising=False)
+    reset_loupe_trace_state()
+    off_resolved, off_fallback, off_ctx = _draw()
+    assert off_resolved == on_resolved
+    assert off_fallback == on_fallback
+    assert len(off_ctx) == 0  # flag off: total no-op, no records

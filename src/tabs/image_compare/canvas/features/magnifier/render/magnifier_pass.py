@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import struct
+import time
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
@@ -73,6 +74,7 @@ from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
 )
+from tabs.image_compare.debug import ic_loupe_debug_enabled
 from engine.cache.uniform_layout import assert_uniform_size
 
 _MAG_UNIFORM_FMT = (
@@ -81,6 +83,11 @@ _MAG_UNIFORM_FMT = (
 assert_uniform_size(_MAG_UNIFORM_FMT, MAG_UNIFORM_SIZE, label="MagnifierPass uniform")
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.pass")
+
+#: H3 loupe-debug: steady-state heartbeat cadence while the lens is active
+#: (``loupe.mag_heartbeat``). One line per second max -- quiet frames read
+#: as held/resident counts, not maybe-suppressed throttle silence.
+_LOUPE_HEARTBEAT_INTERVAL_S = 1.0
 
 
 def _lens_union_uv(overlay) -> tuple[float, float, float, float] | None:
@@ -113,7 +120,8 @@ def _lens_union_uv(overlay) -> tuple[float, float, float, float] | None:
 
 
 def _low_res_fallback_slice(
-    tile_service, fallback_key, capture_uv_rect, tc_x, tc_y, core_tc_x, core_tc_y
+    tile_service, fallback_key, capture_uv_rect, tc_x, tc_y, core_tc_x, core_tc_y,
+    _why=None,
 ) -> dict | None:
     """One fallback slice sampling ``fallback_key`` (the stored/low-res
     role) over exactly the screen footprint a missing source slice would
@@ -128,13 +136,25 @@ def _low_res_fallback_slice(
     contains the sub-rect, so the kept ``tc`` never samples across a tile
     boundary; otherwise ``None`` (caller keeps the old drop path).
     Returns ``None`` when the fallback grid is unknown or its tile is not
-    GPU-resident either."""
+    GPU-resident either.
+
+    H3 loupe-debug (trace-only): every ``None`` return appends its cause
+    (``fallback_grid_unknown`` / ``fallback_grid_empty`` /
+    ``fallback_tile_uncontained`` / ``fallback_slot_not_resident``) to
+    ``_why`` when given a list, so the caller can log WHY no fallback
+    covered the slice. Same branches, same returns; ``None`` (all existing
+    callers but one) records nothing.
+    """
     grid = tile_service.grid_for(fallback_key)
     if grid is None:
+        if _why is not None:
+            _why.append("fallback_grid_unknown")
         return None
     left, top, right, bottom = capture_uv_rect
     total_w, total_h = float(grid.total_width), float(grid.total_height)
     if total_w <= 0 or total_h <= 0:
+        if _why is not None:
+            _why.append("fallback_grid_empty")
         return None
     sub_left = left + tc_x[0] * (right - left)
     sub_right = left + tc_x[1] * (right - left)
@@ -166,9 +186,13 @@ def _low_res_fallback_slice(
                     index = (row, col)
                     region = candidate
         if index is None or region is None:
+            if _why is not None:
+                _why.append("fallback_tile_uncontained")
             return None
     slot = tile_service.slot_for(fallback_key, index)
     if slot is None:
+        if _why is not None:
+            _why.append("fallback_slot_not_resident")
         return None
     tile_left, tile_top, tile_right, tile_bottom = _apron_rect(
         grid.total_width, grid.total_height, region, _TILE_APRON_PX
@@ -336,7 +360,7 @@ def _frame_draw_tile_indices(
     return ordered
 
 
-def _frame_slices_residency_hold(renderer, indices, frame_context=None) -> str | None:
+def _frame_slices_residency_hold(renderer, indices, frame_context=None, _stats=None) -> str | None:
     """Stored-hold gate on the frame's own draw slices (loupe no-holes).
 
     Returns ``None`` when every ``(key, tile_index)`` in ``indices`` (as
@@ -347,7 +371,11 @@ def _frame_slices_residency_hold(renderer, indices, frame_context=None) -> str |
     ``_source_slices`` draws with, so a released hold structurally implies
     zero ``mag_dropped_slice`` on the swap frame for every array-owned key
     (the low-res fallback stays as belt-and-suspenders for post-hold
-    races)."""
+    races).
+
+    H3 loupe-debug (trace-only): ``_stats``, when given a dict, receives
+    ``{"total": N, "missing": M}`` for the heartbeat line -- same branches,
+    same returns, ``None`` (all existing callers) fills nothing."""
     if indices is None:
         return None
     tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
@@ -356,6 +384,9 @@ def _frame_slices_residency_hold(renderer, indices, frame_context=None) -> str |
     missing = [
         (key, index) for key, index in indices if tile_service.slot_for(key, index) is None
     ]
+    if _stats is not None:
+        _stats["total"] = len(indices)
+        _stats["missing"] = len(missing)
     if not missing:
         trace_loupe(
             frame_context,
@@ -462,7 +493,16 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
             # stored/low-res fallback over the same footprint when one is
             # resident (blur, not holes); drop only when no fallback
             # covers this slice either.
-            if fallback_key is not None:
+            # H3 loupe-debug (trace-only): remember WHY no fallback covered
+            # this slice -- the 2026-09-16 frame dropped 24 slices with zero
+            # fallback lines and nothing said the diff key simply HAS no
+            # fallback entry. The cause rides on the drop reason below (one
+            # event, one line, same aggregation as before).
+            _no_fb_why: str | None = None
+            if fallback_key is None:
+                _no_fb_why = "no_fallback_key"
+            else:
+                _why_codes: list = []
                 fallback_slice = _low_res_fallback_slice(
                     tile_service,
                     fallback_key,
@@ -471,7 +511,10 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                     sl["tc_y"],
                     sl["core_tc_x"],
                     sl["core_tc_y"],
+                    _why_codes,
                 )
+                if _why_codes:
+                    _no_fb_why = _why_codes[0]
                 if fallback_slice is not None:
                     trace_loupe(
                         frame_context,
@@ -498,6 +541,7 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                     if residency_reason is not None
                     else ""
                 )
+                + (f" nofallback={_no_fb_why}" if _no_fb_why is not None else "")
             )
             trace_loupe(
                 frame_context,
@@ -505,7 +549,7 @@ def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_k
                 "skipped",
                 _drop_reason,
                 ids=(str(source_key), tuple(sl["tile_index"])),
-                sig=(str(source_key), tuple(sl["tile_index"]), residency_reason),
+                sig=(str(source_key), tuple(sl["tile_index"]), residency_reason, _no_fb_why),
             )
             if tile_dump_enabled():
                 log_tile_event(
@@ -570,6 +614,13 @@ class MagnifierPass(CanvasRenderPass):
         # ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
         # emit once per distinct decision signature, not once per frame).
         self._last_no_slot_sig: tuple | None = None
+        # H3 loupe-debug (trace-only): hold->swap timing + heartbeat gate.
+        # Never read by any draw branch -- emission scaffolding only, so
+        # behavior is identical whether the loupe flag is on or off.
+        self._loupe_was_holding = False
+        self._loupe_hold_start_seq: int | None = None
+        self._loupe_hold_start_t: float | None = None
+        self._loupe_hb_last_t = 0.0
 
     def initialize(self, rhi, target) -> None:
         self.release()
@@ -737,6 +788,14 @@ class MagnifierPass(CanvasRenderPass):
         # fakes/tests without a renderer: records stay silent, rendering
         # behavior identical.
         frame_context = frame_context_from_widget(widget)
+        # H3 loupe-debug (trace-only): per-frame diagnostic horizon. One
+        # live length snapshot so the end-of-prepare swap/heartbeat lines
+        # can count this frame's own drops/fallbacks/holds without keeping
+        # counters on the hot draw path. Flag off -> the end block is
+        # skipped and this is one env check + one len(); steady production
+        # pays nothing else.
+        _loupe_diag = frame_context is not None and ic_loupe_debug_enabled()
+        _loupe_n0 = len(frame_context) if _loupe_diag else 0
         array_resources = getattr(rhi_renderer.resources, "array_resources", None) if rhi_renderer else None
         if array_resources is not None:
             array_resources._ensure_tile_array(0)
@@ -750,6 +809,15 @@ class MagnifierPass(CanvasRenderPass):
             and ctx.source_texture_ids[0]
             and ctx.source_texture_ids[1]
         )
+        # H3 loupe-debug (trace-only): hold tracking for the swap summary.
+        # ``_loupe_preconditions`` is the pre-gate value: when the lens is
+        # not even attempting source, any tracked hold start is stale (lens
+        # off) and is cleared -- trace state only, never read by draws.
+        _loupe_preconditions = use_source
+        if not _loupe_preconditions:
+            self._loupe_was_holding = False
+            self._loupe_hold_start_seq = None
+            self._loupe_hold_start_t = None
         # Loupe residency gate: HOLD stored until the lens may sample source
         # tiles -- first ``request_level`` on the lens interest rect for both
         # sources (registers the interest rect that prioritizes uploads),
@@ -762,6 +830,12 @@ class MagnifierPass(CanvasRenderPass):
         # frame. A held frame samples stored (already resident under the
         # main canvas) and needs no fallback.
         _fallback_by_source: dict = {}
+        # H3 loupe-debug (trace-only): slice counts for the swap/heartbeat
+        # lines (filled by the slice gate below) + the swap arming flag.
+        # The gate runs only when the lens attempts source, so an empty
+        # stats dict at the end means the lens never got that far.
+        _loupe_slice_stats: dict = {}
+        _loupe_swap_armed = False
         _diff_key_for_hold = (
             ctx.diff_source_texture_id
             if ctx.diff_source_ready and ctx.diff_source_texture_id
@@ -785,10 +859,22 @@ class MagnifierPass(CanvasRenderPass):
                         _diff_key_for_hold,
                     ),
                     frame_context,
+                    _loupe_slice_stats,
                 )
             if _hold_reason is not None:
                 use_source = False
+                if not self._loupe_was_holding:
+                    self._loupe_was_holding = True
+                    self._loupe_hold_start_seq = prepare_call_seq
+                    self._loupe_hold_start_t = time.monotonic()
             else:
+                if self._loupe_was_holding:
+                    # Hold -> release transition: the atomic swap frame. The
+                    # drop/fallback counts are only known after the quad
+                    # loop below, so arm the end-of-prepare summary here
+                    # and consume the transition now.
+                    _loupe_swap_armed = True
+                    self._loupe_was_holding = False
                 _fallback_by_source = {
                     ctx.source_texture_ids[0]: ctx.texture_ids[0],
                     ctx.source_texture_ids[1]: ctx.texture_ids[1],
@@ -1125,6 +1211,86 @@ class MagnifierPass(CanvasRenderPass):
                     ids=(_quad_index,),
                     throttle="once",
                     key=("loupe.mag_no_slot", _quad_index),
+                )
+
+        # H3 loupe-debug (trace-only): swap summary + heartbeat. The swap
+        # frame (hold -> release, armed above) is always logged UNTHROTTLED
+        # -- hold duration, drops/total, fallback/total, fallback_key map --
+        # via a per-frame-unique sig, so the 2026-09-16 shape (swap then
+        # throttled silence) can never read as ambiguous again. The
+        # heartbeat fires at most ~1/sec while the lens is active so quiet
+        # reads as held/resident counts. Both count this frame's own
+        # records (snapshot at prepare top); hot-path cost is one clock
+        # read, and the record scan runs only on swap/heartbeat frames.
+        # Same draws either way -- this block only emits trace records.
+        _loupe_now = time.monotonic() if _loupe_diag else 0.0
+        _loupe_lens_active = bool(
+            getattr(overlay, "gpu_active", False)
+        ) and bool(getattr(overlay, "quads", ()))
+        _loupe_hb_due = (
+            _loupe_diag
+            and _loupe_lens_active
+            and (_loupe_now - self._loupe_hb_last_t) >= _LOUPE_HEARTBEAT_INTERVAL_S
+        )
+        if _loupe_diag and (_loupe_swap_armed or _loupe_hb_due):
+            _loupe_drops = _loupe_fb = _loupe_holds = 0
+            for _decision in list(frame_context)[_loupe_n0:]:
+                if _decision.pass_name == "loupe.mag_dropped_slice":
+                    _loupe_drops += 1
+                elif _decision.pass_name == "loupe.mag_fallback_slice":
+                    _loupe_fb += 1
+                elif (
+                    _decision.pass_name == "loupe.mag_residency_hold"
+                    and _decision.verdict == "skipped"
+                ):
+                    _loupe_holds += 1
+            if _loupe_swap_armed:
+                _start_seq = self._loupe_hold_start_seq
+                _start_t = self._loupe_hold_start_t
+                _hold_frames = (
+                    prepare_call_seq - _start_seq if _start_seq is not None else 0
+                )
+                _hold_ms = (
+                    (_loupe_now - _start_t) * 1000.0 if _start_t is not None else 0.0
+                )
+                self._loupe_hold_start_seq = None
+                self._loupe_hold_start_t = None
+                _swap_total = _loupe_slice_stats.get("total")
+                _swap_total_txt = (
+                    str(_swap_total) if _swap_total is not None else "n/a"
+                )
+                _fbmap = ",".join(
+                    f"{k}=>{v}"
+                    for k, v in sorted(_fallback_by_source.items(), key=repr)
+                )
+                trace_loupe(
+                    frame_context,
+                    "loupe.mag_swap",
+                    "ran",
+                    f"swap_stored_to_source hold_frames={_hold_frames}"
+                    f" hold_ms={_hold_ms:.1f} drops={_loupe_drops}/{_swap_total_txt}"
+                    f" fallback={_loupe_fb}/{_swap_total_txt}"
+                    f" fallback_keys={{{_fbmap}}}",
+                    ids=(str(tex_key_1), str(tex_key_2), str(diff_key)),
+                    sig=("swap", prepare_call_seq),
+                )
+            if _loupe_hb_due:
+                self._loupe_hb_last_t = _loupe_now
+                _hb_total = _loupe_slice_stats.get("total")
+                _hb_missing = _loupe_slice_stats.get("missing")
+                if _hb_total is not None and _hb_missing is not None:
+                    _slices_txt = f"{_hb_total - _hb_missing}/{_hb_total}"
+                else:
+                    _slices_txt = "n/a"
+                trace_loupe(
+                    frame_context,
+                    "loupe.mag_heartbeat",
+                    "ran",
+                    f"heartbeat use_source={use_source} slices={_slices_txt}"
+                    f" holds={_loupe_holds} drops={_loupe_drops}"
+                    f" fallback={_loupe_fb}",
+                    ids=(str(tex_key_1), str(tex_key_2)),
+                    sig=("heartbeat", prepare_call_seq),
                 )
 
         self.border.ensure_items(len(self._border_items))
