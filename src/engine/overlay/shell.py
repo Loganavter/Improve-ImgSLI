@@ -17,6 +17,10 @@ tab-side ``OverlayResolver`` (ctx-first), and the scissor/viewport
 arrive precomputed. ``shader_dir`` / ``shader_stem`` locate the
 tab-owned compiled shaders (``<stem>.vert.qsb`` / ``<stem>.frag.qsb``);
 shader bytes stay tab-owned, pipeline ownership lives here.
+
+The v2 semantic intake (``semantic.py``) packs scale-free items into the
+same opaque blocks; ``stage_packed`` below is its staging entry point
+(ensure slots + stage quad + stage each block, returning the count).
 """
 
 from __future__ import annotations
@@ -181,6 +185,29 @@ class OverlayShell:
         resource_updates.updateDynamicBuffer(
             self.slot_uniforms[index], 0, block
         )
+
+    def stage_packed(
+        self,
+        resource_updates: Any,
+        blocks: tuple[bytes, ...] | list[bytes],
+        *,
+        start: int = 0,
+    ) -> int:
+        """Stage v2 semantic-packed blocks (ensure slots + quad + slots).
+
+        Takes the opaque blocks a ``semantic.py`` pack function produced
+        for this frame; grows the slot set, stages the shared quad, then
+        stages each block from ``start``. Returns the staged count (0 and
+        no GPU traffic when ``blocks`` is empty).
+        """
+        blocks = tuple(blocks)
+        if not blocks:
+            return 0
+        self.ensure_slots(start + len(blocks))
+        self.stage_quad(resource_updates)
+        for offset, block in enumerate(blocks):
+            self.stage_slot(resource_updates, start + offset, block)
+        return len(blocks)
 
     def draw(
         self,
