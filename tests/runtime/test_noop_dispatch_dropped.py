@@ -238,12 +238,6 @@ EXEMPT_WITH_REASON: dict = {
     "magnifier:SetMagnifierOffsetRelativeVisualAction": "model-based, needs widget-state fixture",
     "magnifier:SetActiveMagnifierIdAction": "needs fixture with known active_id",
     "magnifier:SetMagnifierLaserEnabledAction": "model-based, needs widget-state fixture",
-    # Legacy dupes of the core *Visual actions (same names, magnifier module):
-    # the reducers isinstance-check the CORE classes; dispatch sites of the
-    # dupes are unverified — TODO audit, then either delete or cover.
-    "magnifier:SetInteractiveOffsetVisualAction": "legacy dupe of core class, audit pending",
-    "magnifier:SetInteractiveSpacingVisualAction": "legacy dupe of core class, audit pending",
-    "magnifier:SetInteractiveInternalSplitVisualAction": "legacy dupe of core class, audit pending",
 }
 
 _SCANNED_MODULES = [
