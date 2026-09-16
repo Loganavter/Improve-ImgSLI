@@ -9,6 +9,14 @@ the single plan-application owners (the legacy render-plan impl in the
 engine display-tier service for image-compare plans; the shared
 ``ui.canvas_presentation`` resolve/apply helpers for compositions) --
 this module shares no code path with them and is never an applicator.
+
+Boundary contract (R-d decision pin, not merge):
+``tests/contracts/test_plan_application_boundary.py`` -- this module keeps
+exactly one public function (``build_composition_plan``) and imports
+nothing from the application side (display-tier service, plan
+applicators, ``resolve_composition`` / ``apply_*`` symbols, QRhi).
+Construction values become drawable only behind the shared applicator's
+``composition_root`` dispatch.
 """
 
 from __future__ import annotations
