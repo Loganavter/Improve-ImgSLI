@@ -97,8 +97,9 @@ pipeline (`paintEvent` + token reads) owns every surface:
   at `show()`, same mechanism as the toolkit's
   `ScrollableDialogPage._apply_dialog_surface`), or transparent mode
   (`surface_token=None`) where the host pane already paints the surface
-  (video-editor tabs). `ui.theming.tint_scroll_surface` remains as the
-  documented app facade for hosts that cannot swap classes. Toolkit
+  (video-editor tabs). `ui.theming.tint_scroll_surface` was deleted
+  2026-09-16, dead-code sweep (zero callers); hosts that cannot swap
+  classes use the token-fill / transparent modes above. Toolkit
   `HelpDocumentView` also paints its own surface from `dialog.background`
   (used standalone in the Image Properties dialog).
 - `bootstrap.py` registers no QSS; `Plugin.get_qss_paths()` was removed.

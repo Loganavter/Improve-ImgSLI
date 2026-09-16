@@ -71,7 +71,8 @@ Executing the safe round-2 findings; each step verified with import sweep
   examples to the live `base_array` stems; `compile_shaders.py --check`
   still 33/33.
 - **Batch 3 — Mostly done** (~325 LOC): `Events` StrEnum (31), duplicate
-  `ui_scale_factor` (61), `log_initialized_rhi_widget` stub, capabilities
+  `ui_scale_factor` (61), `log_initialized_rhi_widget` stub (deleted
+  2026-09-16, dead-code sweep), capabilities
   mechanism (`_capability_map`/`get_plugin_by_capability`/`broadcast_event`/
   `_gather_capabilities` + `provides_capability` ×4 + `capabilities=` attrs),
   `IUIPlugin` marker interface (empty after hook removal) + `get_ui_components`
@@ -178,8 +179,10 @@ deleted `pixel_source.py` — reference rewritten to `tiled_pixel_store.py`.
 - Dead video-session layer: `video_editor/model.py` trimmed 386 → 112
   (`VideoSessionModel` + `VideoDecoderState` + `VideoSourceState` +
   `VideoSessionSnapshot`, 274 lines, sole user was `test_video_session_model.py`
-  — deleted with it). `VideoProjectModel`/`VideoSelectionState`/
-  `VideoTimelineState` stay (used by `presenter.py`, `plugin.py`).
+  — deleted with it). `VideoProjectModel` stays; `VideoSelectionState`/
+  `VideoTimelineState` (+ `from_mapping`, `is_empty`, `get_aspect_ratio`)
+  deleted 2026-09-16, dead-code sweep (zero callers; unused imports in
+  `plugin.py` removed with them).
 
 Pre-existing failures, NOT caused by this sprint (verified on clean HEAD):
 `test_recent_projects_panel.py::test_shelf_geometry_settles_by_first_drain`
