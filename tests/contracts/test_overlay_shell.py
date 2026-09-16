@@ -24,6 +24,12 @@ S1 owns this file; S2 (MC mount) extends it only: add MC pass paths to
 ``_PILOT_PASSES`` (renaming the constant is allowed but keep both tabs
 in one list) and extend the stem/size map. Ownership and intake rules
 apply unchanged to every added pass.
+
+R3a (textured shell) extends it further: the ``R3A TEXTURED`` section
+below pins the ``TexturedOverlayShell`` seam (``src/engine/overlay/``)
+and the first raster mount (IC drag overlay). It also widens two S1
+shape tests to the new module (``test_overlay_package_shape`` file
+list, legacy-fingerprint loop) -- the only S1 edits R3a makes.
 """
 
 from __future__ import annotations
@@ -244,9 +250,13 @@ def test_overlay_package_shape():
     files = sorted(
         p.name for p in OVERLAY.glob("*.py") if "__pycache__" not in p.parts
     )
-    assert files == ["__init__.py", "bindings.py", "shell.py", "views.py"], (
-        f"src/engine/overlay/ holds the shell + seam only: {files}"
-    )
+    assert files == [
+        "__init__.py",
+        "bindings.py",
+        "shell.py",
+        "textured.py",
+        "views.py",
+    ], f"src/engine/overlay/ holds the shells + seams only: {files}"
 
 
 def test_overlay_names_no_tab_geometry():
@@ -584,7 +594,7 @@ def test_overlay_shell_avoids_legacy_resource_fingerprint():
     """
     legacy_methods = {"initialize", "ensure_items", "release"}
     legacy_attrs = {"uniform_buffers", "srbs"}
-    for name in ("shell.py", "views.py"):
+    for name in ("shell.py", "textured.py", "views.py"):
         tree = _parse(OVERLAY / name)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
@@ -609,3 +619,301 @@ def test_overlay_shell_avoids_legacy_resource_fingerprint():
                 f"legacy duplicate-resource fingerprint -- keep the "
                 f"renamed shell API while the legacy owner stands"
             )
+
+
+# ---------------------------------------------------------------------------
+# R3A TEXTURED (R3a owns this section; R3b extends it with MC mounts).
+#
+# Pins the ``TexturedOverlayShell`` seam (``src/engine/overlay/``)
+# and the first raster mount (IC drag overlay):
+#
+# * engine owns GPU: the mounted ``passes.py`` declares its binding
+#   only -- no GPU allocation, no bespoke pipeline builders, no
+#   draw-recorder calls, no retained pipeline / texture / buffer
+#   attributes of its own. ``initialize`` mounts the shell,
+#   ``release`` tears it down, ``record`` draws through it.
+# * bytes intake: the engine takes ``(width, height, pixels)`` bytes
+#   + the opaque ``ctx`` and never host images -- ``textured.py``
+#   names no tab/plugin module, no ``widget``, no ``QImage``-typed
+#   intake; its resolver protocol takes ``ctx`` first and returns
+#   ``tuple[int, int, bytes] | None``.
+# * R0 shape: uploadTexture + Linear/Linear/None ClampToEdge sampler
+#   + premultiplied One/OneMinusSrcAlpha blend + TriangleStrip, no
+#   scissor; mount builds vertex buffer + 64B uniform + sampler +
+#   1x1 RGBA8 placeholder + SRB + pipeline; prepare stages quad +
+#   clip, resizes (destroy texture, new RGBA8 texture, rebuild SRB,
+#   force-rebuild pipeline), uploads, sets active; record draws one
+#   fullscreen quad over the full framebuffer.
+# ---------------------------------------------------------------------------
+
+# Raster mounts on the textured shell: pass path -> shader stem.
+_TEXTURED_PASSES = {
+    "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
+}
+
+
+def test_textured_passes_allocate_no_gpu_objects():
+    offenders: list[str] = []
+    for rel_path in _TEXTURED_PASSES:
+        text = read(ROOT / rel_path)
+        for mark in _FORBIDDEN_ALLOC:
+            if mark in text:
+                offenders.append(
+                    f"{rel_path} spells '{mark}' -- GPU allocation "
+                    f"lives in engine.overlay.TexturedOverlayShell"
+                )
+        for mark in _FORBIDDEN_BUILDERS:
+            if mark in text:
+                offenders.append(
+                    f"{rel_path} defines '{mark}' -- pipeline building "
+                    f"lives in engine.overlay.TexturedOverlayShell"
+                )
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if _FORBIDDEN_SELF_GPU_RE.search(line):
+                offenders.append(
+                    f"{rel_path}:{lineno} owns a GPU attribute "
+                    f"({line.strip()[:80]!r}) -- passes hold "
+                    f"self._shell only"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+def test_textured_passes_record_only_through_shell_draw():
+    offenders: list[str] = []
+    for rel_path in _TEXTURED_PASSES:
+        tree = _parse(ROOT / rel_path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or not node.name.endswith("Pass"):
+                continue
+            methods = _methods(tree, node.name)
+            record = methods.get("record")
+            if record is None:
+                offenders.append(f"{rel_path}: {node.name} defines no record()")
+                continue
+            body = _unparse(record)
+            for mark in _FORBIDDEN_RECORD:
+                if mark in body:
+                    offenders.append(
+                        f"{rel_path}: {node.name}.record calls '{mark}' -- "
+                        f"draw-recorder calls live in "
+                        f"TexturedOverlayShell.draw; tab record() "
+                        f"delegates via self._shell.draw(...)"
+                    )
+            if "self._shell.draw" not in body:
+                offenders.append(
+                    f"{rel_path}: {node.name}.record never calls "
+                    f"self._shell.draw -- the engine owns the draw"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+def test_textured_passes_mount_and_teardown_shell():
+    offenders: list[str] = []
+    for rel_path in _TEXTURED_PASSES:
+        tree = _parse(ROOT / rel_path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or not node.name.endswith("Pass"):
+                continue
+            methods = _methods(tree, node.name)
+            init = methods.get("initialize")
+            release = methods.get("release")
+            if init is None or "self._shell.mount" not in _unparse(init):
+                offenders.append(
+                    f"{rel_path}: {node.name}.initialize must mount the "
+                    f"engine shell (self._shell.mount(...)) -- no bespoke init"
+                )
+            if release is None or "self._shell.teardown" not in _unparse(release):
+                offenders.append(
+                    f"{rel_path}: {node.name}.release must tear down the "
+                    f"engine shell (self._shell.teardown())"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+def test_textured_passes_declare_bindings():
+    offenders: list[str] = []
+    for rel_path, (stem,) in _TEXTURED_PASSES.items():
+        text = read(ROOT / rel_path)
+        tree = _parse(ROOT / rel_path)
+        if "from engine.overlay import" not in text and (
+            "from engine.overlay" not in text
+        ):
+            offenders.append(
+                f"{rel_path} never imports engine.overlay -- passes "
+                f"declare bindings against the shared shell"
+            )
+        if "TexturedOverlayBinding(" not in text or f'shader_stem="{stem}"' not in text:
+            offenders.append(
+                f"{rel_path} defines no TexturedOverlayBinding(shader_stem={stem!r})"
+            )
+        if "TexturedOverlayResolver" not in text:
+            offenders.append(
+                f"{rel_path} never names TexturedOverlayResolver -- per-frame "
+                f"rasters flow through the ctx-first resolver"
+            )
+        resolvers = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "resolve"
+        ]
+        if not resolvers:
+            offenders.append(
+                f"{rel_path} defines no ctx-first resolve() raster resolver"
+            )
+        for func in resolvers:
+            args = [a.arg for a in func.args.args]
+            if not args or args[0] != "ctx":
+                offenders.append(
+                    f"{rel_path}:{func.lineno} resolve{tuple(args)} -- "
+                    f"resolvers take the frame context first"
+                )
+            if "tuple[int, int, bytes] | None" not in _unparse(func).replace(
+                "Optional", ""
+            ) and "tuple[int, int, bytes]" not in _unparse(func.returns):
+                offenders.append(
+                    f"{rel_path}:{func.lineno} resolve must return "
+                    f"tuple[int, int, bytes] | None (framebuffer bytes intake)"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+def test_textured_shell_entry_points():
+    tree = _parse(OVERLAY / "textured.py")
+    methods = _methods(tree, "TexturedOverlayShell")
+    for entry in (
+        "mount",
+        "stage_quad",
+        "stage_clip",
+        "upload_frame",
+        "draw",
+        "teardown",
+    ):
+        assert entry in methods, (
+            f"TexturedOverlayShell.{entry} missing -- R3b mounts onto "
+            f"these names; renaming breaks the handoff"
+        )
+    assert "__init__" in methods
+    text = read(OVERLAY / "textured.py")
+    assert "TEXTURED_UNIFORM_SIZE = 64" in text, (
+        "textured.py must pin TEXTURED_UNIFORM_SIZE = 64 -- the 64B "
+        "clip-matrix uniform the overlay shaders read"
+    )
+
+
+def test_textured_resolver_protocol_is_ctx_first():
+    tree = _parse(OVERLAY / "textured.py")
+    classes = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
+    assert "TexturedOverlayResolver" in classes, (
+        "textured.py must declare TexturedOverlayResolver"
+    )
+    assert "TexturedOverlayBinding" in classes, (
+        "textured.py must declare TexturedOverlayBinding"
+    )
+    resolver = classes["TexturedOverlayResolver"]
+    assert any(
+        isinstance(b, ast.Name)
+        and b.id == "Protocol"
+        or isinstance(b, ast.Subscript)
+        and getattr(getattr(b, "value", None), "id", "") == "Protocol"
+        for b in resolver.bases
+    ) or "Protocol" in _unparse(resolver), (
+        "TexturedOverlayResolver must be a typing.Protocol (structural seam)"
+    )
+    call = _methods(tree, "TexturedOverlayResolver").get("__call__")
+    assert call is not None, "TexturedOverlayResolver must declare __call__"
+    assert [a.arg for a in call.args.args][:2] == ["self", "ctx"], (
+        "TexturedOverlayResolver.__call__ takes ctx first (bytes + opaque ctx)"
+    )
+    assert "tuple[int, int, bytes] | None" in _unparse(call), (
+        "TexturedOverlayResolver returns (width, height, pixels) bytes or None"
+    )
+    binding = _methods(tree, "TexturedOverlayBinding")
+    assert not binding, "TexturedOverlayBinding is a dataclass bundle, not a method bag"
+
+
+def test_textured_shell_keeps_r0_pipeline_shape():
+    """R0 shape: premul blend + linear sampler + TriangleStrip, no scissor."""
+    text = read(OVERLAY / "textured.py")
+    for marker in (
+        "uploadTexture",
+        "sampledTexture",
+        "Filter.Linear",
+        "AddressMode.ClampToEdge",
+        "BlendFactor.One",
+        "BlendFactor.OneMinusSrcAlpha",
+        "Topology.TriangleStrip",
+        "Format.RGBA8",
+        "Format.Float2",
+        "FULLSCREEN_VERTICES",
+    ):
+        assert marker in text, (
+            f"src/engine/overlay/textured.py lost '{marker}' -- the "
+            f"mounted raster passes render through this pipeline shape"
+        )
+    assert "UsesScissor" not in text, (
+        "src/engine/overlay/textured.py gained a scissor flag -- the "
+        "textured shell draws one fullscreen quad with no scissor (R0)"
+    )
+    assert "TEXTURED_UNIFORM_SIZE" in text and "64" in text
+
+
+def test_textured_shell_mount_builds_full_set():
+    """Mount builds vertex + 64B uniform + sampler + 1x1 + SRB + pipeline."""
+    tree = _parse(OVERLAY / "textured.py")
+    mount = _methods(tree, "TexturedOverlayShell").get("mount")
+    assert mount is not None, "TexturedOverlayShell.mount missing"
+    body = _unparse(mount)
+    for mark in (
+        "newBuffer",
+        "newSampler",
+        "newTexture",
+        "newShaderResourceBindings",
+        "_ensure_pipeline",
+        "_build_srb",
+    ):
+        assert mark in body or mark in _unparse(tree), (
+            f"TexturedOverlayShell.mount never reaches '{mark}' -- mount "
+            f"builds the full retained set (R0)"
+        )
+    upload = _methods(tree, "TexturedOverlayShell").get("upload_frame")
+    assert upload is not None, "TexturedOverlayShell.upload_frame missing"
+    upload_body = _unparse(upload)
+    for mark in ("newTexture", "_build_srb", "_ensure_pipeline", "uploadTexture"):
+        assert mark in upload_body, (
+            f"TexturedOverlayShell.upload_frame never reaches '{mark}' -- "
+            f"the resize path (destroy texture, new RGBA8 texture, rebuild "
+            f"SRB, force-rebuild pipeline) + upload live here (R0)"
+        )
+
+
+def test_ic_drag_mount_rides_engine_shell_directly():
+    """IC drag owns no mirror base: engine shell, kept seams, strict draw."""
+    rel_path = "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py"
+    tree = _parse(ROOT / rel_path)
+    text = read(ROOT / rel_path)
+    assert "FullscreenOverlayTexturePass" not in text, (
+        f"{rel_path} still names the retired mirror base -- R3a mounts "
+        f"the engine shell directly (R3b deletes the mirror)"
+    )
+    pass_nodes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name.endswith("Pass")
+    ]
+    assert pass_nodes, f"{rel_path} defines no *Pass"
+    for node in pass_nodes:
+        bases = [_unparse(base) for base in node.bases]
+        assert bases == ["CanvasRenderPass"], (
+            f"{rel_path}: {node.name} bases {bases} -- the mount subclasses "
+            f"the pass contract directly, never the retired mirror"
+        )
+    # Kept tab-side seams: gating, stacking, raster cache keys.
+    for marker in ("should_paint", "stack_role", "_raster", "_drag_overlay_cache_key"):
+        assert marker in text, (
+            f"{rel_path} lost '{marker}' -- gating/stacking/raster-cache "
+            f"stay tab-side on the mount"
+        )
+    assert "RENDER_PASSES" in text, f"{rel_path} must keep RENDER_PASSES"
