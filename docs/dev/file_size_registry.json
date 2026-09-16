@@ -778,6 +778,18 @@
       }
     },
     {
+      "path": "src/tabs/multi_compare/scene/passes/residency.py",
+      "lines": 607,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md\"",
+      "parsed": {
+        "pattern": "tile-residency",
+        "size": "exempt",
+        "reason": "viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md"
+      }
+    },
+    {
       "path": "src/tabs/multi_compare/scene/store.py",
       "lines": 786,
       "limit": 500,
