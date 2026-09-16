@@ -392,6 +392,14 @@ def test_overlay_resolver_protocol_is_ctx_first():
 #   uniform-only ``OverlayShell`` cannot host (no texture/sampler entry
 #   points). Drag additionally takes live host handles (``host.state`` /
 #   ``host._translate``), not an opaque ctx. Pinned here as what stays + why.
+#
+# R3b supersedes the labels/drag PIN above without touching S1: the
+# textured engine shell (``engine.overlay.textured``, R3a) now hosts
+# exactly that texture-upload shape, so all three MC raster mounts
+# (labels / drag / focus_dim) ride ``TexturedOverlayShell`` directly
+# (``_TEXTURED_PASSES`` + the R3B section below) and both tab-side
+# mirrors retire atomically. Scene sources (``scene/passes/*``) stay
+# S2-pinned read-only; per-pass DPR behavior is preserved, never unified.
 # ---------------------------------------------------------------------------
 
 # Model-side migrate source: must expose the ctx-first resolver intake.
@@ -502,42 +510,67 @@ def test_mc_raster_sources_expose_no_resolver():
     assert not offenders, "\n  - " + "\n  - ".join(offenders)
 
 
-def test_mc_raster_pins_stay_on_texture_shell():
-    """Pin reason: glyph/interaction raster needs texture upload, which the
-    uniform-only OverlayShell cannot host (no texture/sampler entry points).
+def test_mc_raster_mounts_ride_textured_engine_shell():
+    """Mount proof (R3b): the glyph/interaction raster passes ride the
+    engine textured shell -- the pin reason moved with them.
+
+    R3b retires the tab-side texture-upload path (both
+    ``rhi_overlay_pass_base`` mirrors are gone, pinned below): the
+    ``uploadTexture`` + ``sampledTexture`` path the S2 pin cited now
+    lives in ``engine.overlay.textured`` only, and every MC raster
+    mount declares its binding against it (proven per-pass by the
+    ``test_textured_*`` dogmas over ``_TEXTURED_PASSES`` above).
     """
-    base_text = read(ROOT / _MC_TEXTURE_BASE)
-    assert "uploadTexture" in base_text and "sampledTexture" in base_text, (
-        f"{_MC_TEXTURE_BASE} must keep the texture-upload path -- it is the "
-        f"pin reason for both raster passes"
-    )
-    offenders: list[str] = []
-    for source_path, shell_path in _MC_TEXTURE_PINS.items():
-        shell_text = read(ROOT / shell_path)
-        shell_tree = _parse(ROOT / shell_path)
-        subclasses = any(
-            isinstance(node, ast.ClassDef)
-            and node.name.endswith("Pass")
-            and any(
-                _unparse(base) == "FullscreenOverlayTexturePass"
-                for base in node.bases
-            )
-            for node in ast.walk(shell_tree)
+    engine_text = read(OVERLAY / "textured.py")
+    for marker in ("uploadTexture", "sampledTexture"):
+        assert marker in engine_text, (
+            f"src/engine/overlay/textured.py lost '{marker}' -- it is the "
+            f"pin reason the MC raster mounts render through"
         )
-        if not subclasses:
-            offenders.append(
-                f"{shell_path} no longer subclasses "
-                f"FullscreenOverlayTexturePass -- the raster pin assumes "
-                f"the texture shell (S6 moves it only with a textured "
-                f"engine shell, never the uniform one)"
+    for mirror_rel in _RETIRED_TEXTURED_MIRRORS:
+        tree = _parse(ROOT / mirror_rel)
+        for node in ast.walk(tree):
+            assert not (
+                isinstance(node, ast.ClassDef)
+                and node.name == "FullscreenOverlayTexturePass"
+            ), (
+                f"{mirror_rel} redefines FullscreenOverlayTexturePass -- "
+                f"the mirror retired in R3b; the engine shell owns the "
+                f"textured shape now"
             )
-        if "from engine.overlay import" in shell_text or (
-            "from engine.overlay" in shell_text
-        ):
-            offenders.append(
-                f"{shell_path} imports engine.overlay -- pinned shells stay "
-                f"pass-owned until a textured engine shell exists"
-            )
+
+
+def test_no_tab_side_textured_mirror_classes():
+    """Retire pin (R3b, ruling 3): no tab-side textured defs remain.
+
+    ``FullscreenOverlayTexturePass`` is defined nowhere under
+    ``src/tabs`` -- the last subclasses (3 MC passes + IC drag) all
+    mount ``engine.overlay.TexturedOverlayShell`` directly. Docstring
+    mentions (e.g. registry prose) are documentation, not defs, and
+    stay allowed; only the class definition is pinned here.
+    """
+    offenders: list[str] = []
+    for rel_path in (
+        "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py",
+        "src/tabs/multi_compare/canvas/features/layer_labels/passes.py",
+        "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py",
+        "src/tabs/multi_compare/canvas/features/focus_dim/passes.py",
+        *_RETIRED_TEXTURED_MIRRORS,
+    ):
+        tree = _parse(ROOT / rel_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and (
+                node.name == "FullscreenOverlayTexturePass"
+                or any(
+                    _unparse(base) == "FullscreenOverlayTexturePass"
+                    for base in node.bases
+                )
+            ):
+                offenders.append(
+                    f"{rel_path}:{node.lineno} class {node.name} still "
+                    f"owns/subclasses the retired mirror -- mounts subclass "
+                    f"CanvasRenderPass directly"
+                )
     assert not offenders, "\n  - " + "\n  - ".join(offenders)
 
 
@@ -647,9 +680,21 @@ def test_overlay_shell_avoids_legacy_resource_fingerprint():
 # ---------------------------------------------------------------------------
 
 # Raster mounts on the textured shell: pass path -> shader stem.
+# R3b: all three MC raster passes join the IC drag mount here.
 _TEXTURED_PASSES = {
     "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
+    "src/tabs/multi_compare/canvas/features/layer_labels/passes.py": ("overlay",),
+    "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
+    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": ("overlay",),
 }
+
+# Tab-side textured mirrors retired by R3b (ruling 3, atomic with the
+# last MC mount): both files keep their module shells, neither may
+# define the mirror class again -- the engine shell is the single owner.
+_RETIRED_TEXTURED_MIRRORS = (
+    "src/tabs/image_compare/canvas/rhi_overlay_pass_base.py",
+    "src/tabs/multi_compare/canvas/rhi_overlay_pass_base.py",
+)
 
 
 def test_textured_passes_allocate_no_gpu_objects():
@@ -917,3 +962,76 @@ def test_ic_drag_mount_rides_engine_shell_directly():
             f"stay tab-side on the mount"
         )
     assert "RENDER_PASSES" in text, f"{rel_path} must keep RENDER_PASSES"
+
+
+# ---------------------------------------------------------------------------
+# R3B TEXTURED-MC (R3b owns this section).
+#
+# All three MC raster passes mount TexturedOverlayShell directly (same
+# seam as the R3a IC drag mount): engine owns GPU, ctx-first bytes
+# intake, shader_stem='overlay'. Per-pass DPR behavior is preserved,
+# never unified (labels source-owned, drag scales, focus is DPR-free
+# rect fill). The tab-side mirrors retire in the same wave (ruling 3,
+# atomic): pinned absent by test_no_tab_side_textured_mirror_classes.
+# ---------------------------------------------------------------------------
+
+# MC mount -> tab-side seams that must stay on the mount (gating,
+# stacking, raster behavior owned by the pass, not the shell).
+_MC_TEXTURED_SEAMS = {
+    "src/tabs/multi_compare/canvas/features/layer_labels/passes.py": (
+        "should_paint",
+        "stack_role",
+        "_raster",
+        "LabelsOverlaySource",
+        "RENDER_PASSES",
+    ),
+    "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py": (
+        "should_paint",
+        "stack_role",
+        "_raster",
+        "DragDropOverlaySource",
+        "_dbg_recorded",
+        "RENDER_PASSES",
+    ),
+    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": (
+        "should_paint",
+        "stack_role",
+        "_raster",
+        "DIM_COLOR",
+        "RENDER_PASSES",
+    ),
+}
+
+
+def test_mc_textured_mounts_ride_engine_shell_directly():
+    """MC mounts own no mirror base: engine shell, kept seams, strict draw."""
+    offenders: list[str] = []
+    for rel_path, seams in _MC_TEXTURED_SEAMS.items():
+        tree = _parse(ROOT / rel_path)
+        text = read(ROOT / rel_path)
+        if "FullscreenOverlayTexturePass" in text:
+            offenders.append(
+                f"{rel_path} still names the retired mirror base -- R3b mounts "
+                f"the engine shell directly"
+            )
+        pass_nodes = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Pass")
+        ]
+        if not pass_nodes:
+            offenders.append(f"{rel_path} defines no *Pass")
+        for node in pass_nodes:
+            bases = [_unparse(base) for base in node.bases]
+            if bases != ["CanvasRenderPass"]:
+                offenders.append(
+                    f"{rel_path}: {node.name} bases {bases} -- the mount subclasses "
+                    f"the pass contract directly, never the retired mirror"
+                )
+        for marker in seams:
+            if marker not in text:
+                offenders.append(
+                    f"{rel_path} lost '{marker}' -- gating/stacking/raster seams "
+                    f"stay tab-side on the mount"
+                )
+    assert not offenders, "\n  - " + "\n  - ".join(offenders)

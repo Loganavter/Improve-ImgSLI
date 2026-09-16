@@ -22,6 +22,19 @@ replicate this specific fullscreen-quad-with-per-item-uniform-buffer shape.
 A pass that legitimately needs a different resource shape (e.g. per-item
 texture bindings, like MagnifierPass's own mag_pipeline) does not match this
 fingerprint and is not flagged.
+
+R3b re-point (textured shape): the fullscreen-TEXTURED resource shape
+(raster-upload overlay: vertex buffer + 64B uniform + sampler + RGBA8
+texture + SRB + pipeline, ``initialize`` / ``prepare`` / ``record`` /
+``release``) was owned tab-side by two ``FullscreenOverlayTexturePass``
+mirrors until R3b mounted their last consumers (3 MC passes + IC drag)
+onto ``engine.overlay.TexturedOverlayShell`` and retired both mirrors
+atomically. The engine shell is now the SINGLE owner of that shape:
+``_TEXTURED_OWNER`` below allowlists only the engine module, and
+``test_textured_shape_has_single_engine_owner`` fails if any tab-side
+class reintroduces the mirror. The uniform-shape guard above is untouched
+(``rhi_feature_common.py`` still owns it until magnifier/arcs/filename
+migrate -- out of R3b scope).
 """
 
 from __future__ import annotations
@@ -90,3 +103,53 @@ def _duplicate_resource_class_violations() -> list[str]:
 def test_no_duplicate_fullscreen_pass_resource_classes():
     violations = _duplicate_resource_class_violations()
     assert not violations, "\n  - " + "\n  - ".join(violations)
+
+
+# ---------------------------------------------------------------------------
+# R3b: textured shape has a single ENGINE owner (no tab-side mirrors).
+# ---------------------------------------------------------------------------
+
+# The single owner of the fullscreen-textured resource shape (engine only).
+_TEXTURED_OWNER = "src/engine/overlay/textured.py"
+
+# Retired tab-side mirror names: reintroducing any of them fails.
+_RETIRED_TEXTURED_MIRRORS = frozenset({"FullscreenOverlayTexturePass"})
+
+
+def test_textured_shape_has_single_engine_owner():
+    """The textured overlay shape lives only in the engine shell.
+
+    R3b retired both tab-side ``FullscreenOverlayTexturePass`` mirrors
+    (IC + MC ``canvas/rhi_overlay_pass_base.py``) atomically with the
+    last MC mount. Any class under ``src/`` reintroducing the mirror
+    name fails here -- new raster passes mount
+    ``engine.overlay.TexturedOverlayShell`` instead of hand-rolling
+    (or mirroring) the texture/sampler/pipeline set.
+    """
+    violations: list[str] = []
+    for path in iter_py(SRC):
+        path_rel = rel(path)
+        if path_rel == _TEXTURED_OWNER:
+            continue
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if node.name in _RETIRED_TEXTURED_MIRRORS:
+                violations.append(
+                    f"{path_rel}:{node.lineno} class {node.name} reintroduces the "
+                    f"retired tab-side textured mirror -- the single owner is "
+                    f"{_TEXTURED_OWNER} (mount TexturedOverlayShell instead)"
+                )
+    assert not violations, "\n  - " + "\n  - ".join(violations)
+
+
+def test_textured_owner_is_engine_only():
+    """The textured-shape allowlist points at the engine shell only."""
+    assert _TEXTURED_OWNER == "src/engine/overlay/textured.py", (
+        f"textured single-owner drifted: {_TEXTURED_OWNER} -- re-pointing "
+        f"it tab-side reopens the mirror the R3b retire closed"
+    )
