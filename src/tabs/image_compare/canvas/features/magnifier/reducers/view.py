@@ -110,6 +110,16 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
         state.default_capture_size_relative = action.size
         return _replace_widget_state(view_state, state)
     if isinstance(action, ToggleMagnifierAction):
+        current = (view_state.canvas_widget_state or {}).get("magnifier")
+        if current is None:
+            if not action.enabled:
+                return view_state
+        elif (
+            isinstance(current, MagnifierWidgetState)
+            and current.enabled == bool(action.enabled)
+            and not (action.enabled and not current.active_id)
+        ):
+            return view_state
         state = _clone_magnifier_widget_state(view_state)
         state.enabled = bool(action.enabled)
         if action.enabled and not state.active_id:
@@ -177,6 +187,15 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
         magnifiers[active_id] = model
         return _replace_widget_state(view_state, state)
     if isinstance(action, SetOptimizeMagnifierMovementAction):
+        if action.enabled == view_state.optimize_interactive_movement:
+            current = (view_state.canvas_widget_state or {}).get("magnifier")
+            # The normal path re-inserts a value-preserving clone of the
+            # current entry (a missing entry reads back as the default,
+            # which downstream treats identically to missing), so the copy
+            # would be content-identical — return the identical object and
+            # let Dispatcher drop the dispatch.
+            if current is None or isinstance(current, MagnifierWidgetState):
+                return view_state
         state = _clone_magnifier_widget_state(view_state)
         canvas_widget_state = dict(view_state.canvas_widget_state)
         canvas_widget_state["magnifier"] = state
@@ -186,6 +205,8 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
             canvas_widget_state=canvas_widget_state,
         )
     if isinstance(action, SetHighlightedMagnifierElementAction):
+        if view_state.highlighted_overlay_element == action.element:
+            return view_state
         return replace(view_state, highlighted_overlay_element=action.element)
     if isinstance(action, SetMagnifierLaserEnabledAction):
         state, active_id, magnifiers, model = _ensure_active_magnifier_model(view_state)
