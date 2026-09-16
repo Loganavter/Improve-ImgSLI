@@ -173,13 +173,6 @@ def _instance_bbox(
     return (ax0, ay0, max(0.0, ax1 - ax0), max(0.0, ay1 - ay0))
 
 
-def _content_scale(content_size: tuple[int, int] | None) -> tuple[float, float]:
-    if content_size is None:
-        return (1.0, 1.0)
-    width, height = content_size
-    return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
-
-
 def _pack_slot_uniforms(
     clip_matrix: tuple[float, ...],
     layer,
