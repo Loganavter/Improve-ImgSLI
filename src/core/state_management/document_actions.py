@@ -11,13 +11,6 @@ class SetCurrentIndexAction(Action):
     def get_payload(self): return {"slot": self.slot, "index": self.index}
 
 @dataclass
-class SetOriginalImageAction(Action):
-    slot: int
-    image: Any
-    type: str = field(default=ActionType.SET_ORIGINAL_IMAGE.value, kw_only=True)
-    def get_payload(self): return {"slot": self.slot, "image": self.image}
-
-@dataclass
 class SetFullResImageAction(Action):
     slot: int
     image: Any

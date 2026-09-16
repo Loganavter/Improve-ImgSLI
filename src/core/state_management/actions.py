@@ -24,7 +24,6 @@ from core.state_management.document_actions import (
     SetCurrentIndexAction,
     SetFullResImageAction,
     SetImagePathAction,
-    SetOriginalImageAction,
     SetPreviewImageAction,
 )
 from core.state_management.geometry_actions import (
