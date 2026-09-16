@@ -90,11 +90,6 @@ class CropService:
             return None
         return res.box
 
-    # Совместимость: старый код использовал get_crop_box -> tuple | None
-    def get_crop_box(self, path: str | Path) -> tuple[int, int, int, int] | None:
-        box = self.get(path)
-        return box.to_tuple() if box is not None else None
-
     def invalidate(self, path: str | Path | None = None) -> None:
         """Сбросить кэш для path или весь."""
         if path is None:

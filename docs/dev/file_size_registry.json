@@ -149,7 +149,7 @@
     },
     {
       "path": "src/shared/image_processing/autocrop_service.py",
-      "lines": 77,
+      "lines": 49,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=collaborator reason=\"deprecated shim over autocrop.CropService — no state, delegates to DI service\"",
