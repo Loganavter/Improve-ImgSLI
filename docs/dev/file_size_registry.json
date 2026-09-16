@@ -307,7 +307,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 485,
+      "lines": 305,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -329,7 +329,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 766,
+      "lines": 854,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
@@ -377,7 +377,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
-      "lines": 314,
+      "lines": 300,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
@@ -413,7 +413,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/crop_clip.py",
-      "lines": 583,
+      "lines": 577,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/crop_clip single box seam (W3a/W3f) — box-clipped texture/geometry helpers share one resolution path\"",
@@ -768,13 +768,25 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
-      "lines": 1033,
+      "lines": 1031,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",
       "parsed": {
         "pattern": "state-machine",
         "reason": "single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/passes/residency.py",
+      "lines": 607,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md\"",
+      "parsed": {
+        "pattern": "tile-residency",
+        "size": "exempt",
+        "reason": "viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md"
       }
     },
     {

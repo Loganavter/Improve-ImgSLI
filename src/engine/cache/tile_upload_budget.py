@@ -31,7 +31,14 @@ class UploadDeadline:
 
     __slots__ = ("_deadline", "_deadline_already_exhausted")
 
-    def __init__(self, *, budget_ms: float = TILE_UPLOAD_TIME_BUDGET_MS) -> None:
+    def __init__(self, *, budget_ms: float | None = None) -> None:
+        # NOTE (R7): budget resolves at CALL time, not def time. The old
+        # `= TILE_UPLOAD_TIME_BUDGET_MS` default bound the value at import,
+        # so monkeypatching the constant (budget-record tests) never took
+        # effect and the production 12ms deadline flaked under full-suite
+        # load. Prod behavior identical (same constant when unset).
+        if budget_ms is None:
+            budget_ms = TILE_UPLOAD_TIME_BUDGET_MS
         # Two separate time.monotonic() reads, not one reused value: a
         # second read that's already past the first read's deadline is the
         # "prior frame overran badly" case this guards -- in real use the

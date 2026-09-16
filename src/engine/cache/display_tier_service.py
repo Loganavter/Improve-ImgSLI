@@ -723,7 +723,7 @@ def clear_diff_texture(widget, *, hooks: DisplayTierHooks):
 
 
 # ---------------------------------------------------------------------------
-# Legacy-plan impl (from presentation/plan_applicator)
+# Legacy-plan impl (from presentation/plan_applicator) -- single home for apply_plan_full/apply_plan_scene_only (R-d pin: tests/contracts/test_plan_application_boundary.py)
 # ---------------------------------------------------------------------------
 
 

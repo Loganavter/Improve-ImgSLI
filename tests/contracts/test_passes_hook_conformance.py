@@ -278,9 +278,17 @@ def test_ic_conforms_as_is():
         "(Phase F: tab A0 manifest retired here; full dogma: "
         "test_ic_render_manifest)"
     )
-    assert _method_node(tree, "TileResidencyRealizer", "resolve_specs") is None, (
-        "fixed-pair spec-building still lives in realize_tile_plan -- E2 "
-        "lifts it behind resolve_specs (adaptation, not a gap to fix here)"
+    lifted = _method_node(tree, "TileResidencyRealizer", "resolve_specs")
+    assert lifted is not None, (
+        "R3 lifted fixed-pair spec-building behind resolve_specs -- "
+        "the E2 adaptation this pin anticipated"
+    )
+    assert _arg_names(lifted) == _SEAM_SIGNATURES["resolve_specs"], (
+        f"fixed-pair resolve_specs must keep the seam shape: expected "
+        f"{_SEAM_SIGNATURES['resolve_specs']}, got {_arg_names(lifted)}"
+    )
+    assert _unparse(lifted.returns) == "list[ResidencySpec]", (
+        "fixed-pair resolve_specs must return list[ResidencySpec]"
     )
 
 

@@ -173,13 +173,6 @@ def _instance_bbox(
     return (ax0, ay0, max(0.0, ax1 - ax0), max(0.0, ay1 - ay0))
 
 
-def _content_scale(content_size: tuple[int, int] | None) -> tuple[float, float]:
-    if content_size is None:
-        return (1.0, 1.0)
-    width, height = content_size
-    return (width / _ARRAY_LAYER_PX, height / _ARRAY_LAYER_PX)
-
-
 def _pack_slot_uniforms(
     clip_matrix: tuple[float, ...],
     layer,
@@ -671,7 +664,12 @@ class BaseImagesPass(CanvasRenderPass):
                     # retried next frame once eviction/upload catches up.
                     continue
                 content_size = tile_service.content_size_for(item_key, tile.index)
-                content_scale = _content_scale(content_size)
+                # R4: content-scale math lives in the engine draw-plan module;
+                # this pass only adapts (function-local import keeps the change
+                # inside _prepare_array_plan).
+                from engine.cache.draw_plans import content_scale_for as _engine_content_scale
+
+                content_scale = _engine_content_scale(content_size, _ARRAY_LAYER_PX)
                 rhi_render_debug(
                     "mc-array-instance sid=%s item_key=%s index=%s array_index=%s "
                     "layer=%s tile_rect=%s content_size=%s content_scale=%s",
