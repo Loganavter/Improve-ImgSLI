@@ -671,7 +671,12 @@ class BaseImagesPass(CanvasRenderPass):
                     # retried next frame once eviction/upload catches up.
                     continue
                 content_size = tile_service.content_size_for(item_key, tile.index)
-                content_scale = _content_scale(content_size)
+                # R4: content-scale math lives in the engine draw-plan module;
+                # this pass only adapts (function-local import keeps the change
+                # inside _prepare_array_plan).
+                from engine.cache.draw_plans import content_scale_for as _engine_content_scale
+
+                content_scale = _engine_content_scale(content_size, _ARRAY_LAYER_PX)
                 rhi_render_debug(
                     "mc-array-instance sid=%s item_key=%s index=%s array_index=%s "
                     "layer=%s tile_rect=%s content_size=%s content_scale=%s",
