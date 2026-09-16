@@ -524,3 +524,120 @@ def test_mc_export_defines_no_second_decision_math():
         f"multi_compare gpu_export re-defines engine decision homes: "
         f"{sorted(clash)} (ruling 2: no second implementations)"
     )
+
+
+# ---------------------------------------------------------------------------
+# R4 (additive, task-engine-leftovers-2026-09-16 Phase R-d, ruling 4):
+# the S3/S4 probes are the PERMANENT seam, not a tripwire. Consumption
+# (probe output feeding export-first-frame residency) was attempted and
+# ruled infeasible: the live entry points take no authoritative-tile
+# parameter and the export first frame is a single budget-limited grab --
+# see the evidence comments in snapshot_render_plan_builder.py
+# (build_render_plan) and multi_compare gpu_export.py (module header).
+# These tests pin that verdict mechanically:
+# * each probe result is record-only (bound once, logged once, never
+#   passed into plan construction / the render below);
+# * the live entry points still take no authoritative-tile parameter, so
+#   a half-wired consumption cannot sneak in without failing here first.
+# Probe==live equality itself stays pinned by
+# src/tabs/image_compare/tests/render/test_live_export_parity.py (the
+# SNAPSHOTS matrix), not duplicated here. ADDITIVE ONLY -- no S3/S4 test
+# above is modified.
+# ---------------------------------------------------------------------------
+
+IC_RESIDENCY = (
+    ROOT
+    / "src"
+    / "tabs"
+    / "image_compare"
+    / "canvas"
+    / "rhi_renderer"
+    / "residency.py"
+)
+
+MC_RESIDENCY = (
+    ROOT / "src" / "tabs" / "multi_compare" / "scene" / "passes" / "residency.py"
+)
+
+# Parameter names that would carry an authoritative tile set into residency.
+_AUTHORITATIVE_PARAM_RE = re.compile(
+    r"authoritative|tile_set|tileset|pre_reg|prereg", re.I
+)
+
+
+def _all_arg_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    args = func.args
+    names = [a.arg for a in list(args.args) + list(args.kwonlyargs)]
+    if args.vararg is not None:
+        names.append(args.vararg.arg)
+    if args.kwarg is not None:
+        names.append(args.kwarg.arg)
+    return names
+
+
+def test_r4_ic_probe_result_is_record_only():
+    seg = _function_segment(BUILDER, "build_render_plan")
+    assert "resolve_export_snapshot_lod_tiles(" in seg
+    assert seg.count("_export_lod_probe") == 3, (
+        "build_render_plan must only bind the probe (assignment) and log it "
+        "(logger.debug levels + tile_sets) -- any further use is "
+        "consumption, not a seam"
+    )
+    idx = seg.find("plan = build_canvas_plan(")
+    assert idx != -1, "build_render_plan must still build via build_canvas_plan"
+    assert "_export_lod_probe" not in seg[idx:], (
+        "the probe result must never flow into build_canvas_plan (record "
+        "only -- R4 pinned seam)"
+    )
+
+
+def test_r4_mc_probe_result_is_record_only():
+    seg = _function_segment(MC_GPU_EXPORT, "render_to_qimage")
+    assert f"{_MC_SEAM_NAME}(" in seg
+    assert seg.count("_export_tile_probe") == 3, (
+        "render_to_qimage must only bind the probe (assignment) and log it "
+        "(logger.debug slots + tile counts) -- any further use is "
+        "consumption, not a seam"
+    )
+    idx = seg.find("def prepare_frame")
+    assert idx != -1, "render_to_qimage must still render via prepare_frame"
+    assert "_export_tile_probe" not in seg[idx:], (
+        "the probe result must never flow into the render below (record "
+        "only -- R4 pinned seam)"
+    )
+
+
+def test_r4_live_entry_points_take_no_authoritative_tiles():
+    offenders: list[str] = []
+    ic_tree = ast.parse(read(IC_RESIDENCY))
+    for node in ast.walk(ic_tree):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "realize_tile_plan"
+        ):
+            bad = [
+                name
+                for name in _all_arg_names(node)
+                if _AUTHORITATIVE_PARAM_RE.search(name)
+            ]
+            if bad:
+                offenders.append(f"IC realize_tile_plan: {bad}")
+    mc_tree = ast.parse(read(MC_RESIDENCY))
+    for node in ast.walk(mc_tree):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "realize"
+        ):
+            bad = [
+                name
+                for name in _all_arg_names(node)
+                if _AUTHORITATIVE_PARAM_RE.search(name)
+            ]
+            if bad:
+                offenders.append(f"MC realize: {bad}")
+    assert not offenders, (
+        "live residency entry points grew authoritative-tile parameters:\n"
+        + "\n".join(offenders)
+        + "\n(consumption needs live-path changes -- out of R4 scope; "
+        "update the R4 verdict deliberately, not silently)"
+    )

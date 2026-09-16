@@ -429,15 +429,41 @@ class SnapshotRenderPlanBuilder:
                 channel_mode_int=0,
             )
 
-        # S3 (task-engine-next-migration-2026-09-16, Phase S-c): export
-        # LOD/tile decisions come from the R4 engine vocabulary by
-        # construction -- resolve this snapshot's levels + tile sets through
-        # the same engine-backed entry the parity harness pins, instead of a
-        # plan-build-local decision. Tripwire probe for now: the export GPU
-        # render re-resolves LOD at render time through the shared live
-        # renderer (``resolve_lod_texture_keys`` + ``build_array_draw_plan``),
-        # so this result only records the decision (a later phase may consume
-        # it for tile-aware export); it never alters the plan below.
+        # S3 (task-engine-next-migration-2026-09-16, Phase S-c) + R4
+        # (task-engine-leftovers-2026-09-16, Phase R-d, ruling 4):
+        # PERMANENT SEAM -- export LOD/tile decisions come from the R4
+        # engine vocabulary by construction: this snapshot's levels + tile
+        # sets resolve through the same engine-backed entry the parity
+        # harness pins, instead of a plan-build-local decision. The result
+        # records the decision only; it never alters the plan below.
+        #
+        # R4 consumption verdict (pinned, not tripwire): feeding this probe
+        # into the export first frame is infeasible without live-path
+        # changes, which are out of scope (live renderer files read-only).
+        # Blocking call chain:
+        # - The probe registers into its OWN throwaway TileTextureService
+        #   under bare keys ("source_0", "source_1"); the export offscreen
+        #   widget owns a DIFFERENT tile_service keyed by live LOD keys
+        #   from resolve_lod_texture_keys (canvas/rhi_renderer/draw_plan.py)
+        #   -- disjoint key spaces AND disjoint service objects.
+        # - TileResidencyRealizer.realize_tile_plan
+        #   (canvas/rhi_renderer/residency.py:647) takes no authoritative-
+        #   tile parameter; resolve_specs re-registers grids per key from
+        #   the widget's upload cache (residency.py:535, rekey :525) and
+        #   re-derives each side's visible rect via resolve_side_visible_rect
+        #   (:591) -- a pre-registered grid would be re-derived, never
+        #   consumed. Plumbing an authoritative set needs a new param
+        #   through RealizeTilePlanContext + the engine realize_specs loop.
+        # - The export first frame is a single grab
+        #   (plugins/export/services/gpu_export_proxy.py::_render_plan_frame_single:
+        #   one render_widget_frame + grabFramebuffer), budget-limited
+        #   (TILE_UPLOAD_BUDGET_PER_CALL + time budget) and progressive
+        #   (widget.update() on more_pending, residency.py:848) --
+        #   authoritative residency needs a pump-to-quiescence loop in
+        #   export-owned code (use_cases/export.py, out of scope).
+        # Equality evidence (not assumed): test_live_export_parity.py pins
+        # probe==live (levels + tile sets) on its SNAPSHOTS matrix. No
+        # second implementations (ruling 2).
         _export_lod_probe = resolve_export_snapshot_lod_tiles(
             (scene_images["src1"], scene_images["src2"]),
             canvas_size_px=(
