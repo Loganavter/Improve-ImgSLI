@@ -18,7 +18,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["OverlayBinding", "OverlayResolver"]
+from .semantic import SemanticOverlayItems, SemanticResolver
+
+__all__ = [
+    "OverlayBinding",
+    "OverlayResolver",
+    "SemanticOverlayItems",
+    "SemanticResolver",
+]
 
 
 @runtime_checkable
