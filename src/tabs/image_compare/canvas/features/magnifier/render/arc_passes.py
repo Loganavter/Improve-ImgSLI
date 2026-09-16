@@ -14,7 +14,14 @@ from typing import Any
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QRhiCommandBuffer, QRhiViewport
 
-from engine.overlay import OverlayResolver
+from engine.cache.screen_projection import project_px_to_screen
+from engine.overlay import (
+    DiskItem,
+    Rgba,
+    SemanticOverlayItems,
+    SemanticResolver,
+    pack_arcs,
+)
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,
@@ -25,11 +32,27 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 from engine.cache.stroke_geometry import shrink_screen_radius_for_stroke
 
-from tabs.image_compare.canvas.features.magnifier.render.passes_common import pack_arc_uniform
 from tabs.image_compare.canvas.features.magnifier.render.shader_layout import SHADER_DIR, ARC_UNIFORM_SIZE
+
+
+def _project_center(widget, ctx, center) -> tuple[float, float]:
+    """Canvas-px center for an arc/ring authored in widget-px.
+
+    Render-target dims come from the widget (as the retired tab-side
+    projector default did); zoom/pan come from ``ctx`` so the resolver
+    stays ctx-first for its varying inputs.
+    """
+    return project_px_to_screen(
+        center.x(),
+        center.y(),
+        float(widget.width()),
+        float(widget.height()),
+        float(ctx.zoom_level),
+        float(getattr(ctx, "pan_offset_x", 0.0)),
+        float(getattr(ctx, "pan_offset_y", 0.0)),
+    )
 
 
 class _ArcItemsPass(CanvasRenderPass):
@@ -155,13 +178,16 @@ def _resolve_hidden_overlay_circles(
     return tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
 
 
-def _occluded_arcs_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
-    """Ctx-first uniform-block resolver: ctx in, packed arc-item bytes out."""
+def _occluded_arcs_semantic_resolver(widget) -> SemanticResolver:
+    """Ctx-first semantic resolver: ctx in, canvas-px arc items out.
 
-    def resolve(ctx: Any) -> tuple[bytes, ...]:
-        # Arc decisions are stateless (module resolvers above); this binding
-        # only packs them into per-item uniform blocks.
-        blocks: list[bytes] = []
+    Arc decisions stay stateless (module resolvers above); this binding
+    only adapts them to engine-typed items -- byte layout lives
+    shell-side in ``pack_arcs``.
+    """
+
+    def resolve(ctx: Any) -> SemanticOverlayItems:
+        items: list[DiskItem] = []
         line_width_px = max(1.0, float(ctx.resolved_style.annotation_arc_stroke_px))
         for arc in _resolve_occluded_capture_arcs(ctx):
             if len(arc) < 5:
@@ -169,37 +195,45 @@ def _occluded_arcs_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
             center, radius, start_deg, span_deg, is_active = arc
             if radius is None or radius <= 0 or span_deg is None or span_deg <= 0.25:
                 continue
-            cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
+            cx, cy = _project_center(widget, ctx, center)
             scaled_radius = shrink_screen_radius_for_stroke(
                 float(radius) * float(ctx.zoom_level), line_width_px
             )
-            color = QColor(255, 105, 170, 255 if bool(is_active) else 210)
-            blocks.append(
-                pack_arc_uniform(
-                    matrix,
-                    float(ctx.width),
-                    float(ctx.height),
-                    float(cx),
-                    float(cy),
-                    scaled_radius,
-                    line_width_px,
-                    float(start_deg),
-                    float(span_deg),
-                    color,
+            active = bool(is_active)
+            color = QColor(255, 105, 170, 255 if active else 210)
+            items.append(
+                DiskItem(
+                    cx=float(cx),
+                    cy=float(cy),
+                    radius=scaled_radius,
+                    line_width_key="annotation_arc_stroke_px",
+                    color=Rgba(
+                        color.redF(), color.greenF(), color.blueF(), color.alphaF()
+                    ),
+                    extra=(
+                        float(start_deg),
+                        float(span_deg),
+                        active,
+                        True,
+                        line_width_px,
+                    ),
                 )
             )
-        return tuple(blocks)
+        return tuple(items)
 
     return resolve
 
 
-def _hidden_selection_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
-    """Ctx-first uniform-block resolver: ctx in, packed arc-item bytes out."""
+def _hidden_selection_semantic_resolver(widget) -> SemanticResolver:
+    """Ctx-first semantic resolver: ctx in, canvas-px selection items out.
 
-    def resolve(ctx: Any) -> tuple[bytes, ...]:
-        # Circle decisions are stateless (module resolvers above); this
-        # binding only packs them into per-item uniform blocks.
-        blocks: list[bytes] = []
+    Circle decisions stay stateless (module resolvers above); this
+    binding only adapts them to engine-typed items -- byte layout lives
+    shell-side in ``pack_arcs``.
+    """
+
+    def resolve(ctx: Any) -> SemanticOverlayItems:
+        items: list[DiskItem] = []
         stroke_px = max(1.0, float(ctx.resolved_style.annotation_selection_stroke_px))
 
         def _emit(center, radius, *, active: bool, capture: bool) -> None:
@@ -216,24 +250,22 @@ def _hidden_selection_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
                 )
             if scaled_radius <= 0:
                 return
-            cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
+            cx, cy = _project_center(widget, ctx, center)
             color = (
                 QColor(255, 105, 170, 255 if active else 210)
                 if capture
                 else QColor(70, 190, 255, 255 if active else 210)
             )
-            blocks.append(
-                pack_arc_uniform(
-                    matrix,
-                    float(ctx.width),
-                    float(ctx.height),
-                    float(cx),
-                    float(cy),
-                    scaled_radius,
-                    stroke_px,
-                    0.0,
-                    360.0,
-                    color,
+            items.append(
+                DiskItem(
+                    cx=float(cx),
+                    cy=float(cy),
+                    radius=scaled_radius,
+                    line_width_key="annotation_selection_stroke_px",
+                    color=Rgba(
+                        color.redF(), color.greenF(), color.blueF(), color.alphaF()
+                    ),
+                    extra=(0.0, 360.0, bool(active), bool(capture), stroke_px),
                 )
             )
 
@@ -241,7 +273,7 @@ def _hidden_selection_blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
             _emit(center, radius, active=bool(is_active), capture=True)
         for center, radius, is_active in _resolve_hidden_overlay_circles(ctx):
             _emit(center, radius, active=bool(is_active), capture=False)
-        return tuple(blocks)
+        return tuple(items)
 
     return resolve
 
@@ -272,7 +304,10 @@ class OccludedArcPass(_ArcItemsPass):
         matrix = tuple(
             float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
         )
-        self._items = list(_occluded_arcs_blocks_resolver(widget, matrix)(ctx))
+        items = _occluded_arcs_semantic_resolver(widget)(ctx)
+        self._items = list(
+            pack_arcs(items, matrix, float(ctx.width), float(ctx.height))
+        )
         self._upload_items(resource_updates)
 
 
@@ -313,5 +348,8 @@ class HiddenSelectionPass(_ArcItemsPass):
         matrix = tuple(
             float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
         )
-        self._items = list(_hidden_selection_blocks_resolver(widget, matrix)(ctx))
+        items = _hidden_selection_semantic_resolver(widget)(ctx)
+        self._items = list(
+            pack_arcs(items, matrix, float(ctx.width), float(ctx.height))
+        )
         self._upload_items(resource_updates)

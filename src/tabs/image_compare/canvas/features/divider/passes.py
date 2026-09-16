@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +11,16 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from engine.cache.uniform_layout import assert_uniform_size
-from engine.overlay import OverlayBinding, OverlayResolver, OverlayShell
+from engine.overlay import (
+    DIVIDER_UNIFORM_SIZE,
+    OverlayBinding,
+    OverlayShell,
+    RectItem,
+    Rgba,
+    SemanticOverlayItems,
+    SemanticResolver,
+    pack_divider,
+)
 from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
 from tabs.image_compare.canvas.features.divider.overlay_model import (
     content_split_visual,
@@ -21,16 +28,11 @@ from tabs.image_compare.canvas.features.divider.overlay_model import (
 )
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
-# std140: mat4(64) + vec2(8) + 2 floats(8) + vec4 color(16) + vec4 clip(16)
-# + int(4) + pad(12) = 128
-_UNIFORM_FMT = "<24f4fi3f"
-_UNIFORM_SIZE = 128
-assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="DividerPass uniform")
 
 BINDING = OverlayBinding(
     shader_dir=_SHADER_DIR,
     shader_stem="divider",
-    uniform_size=_UNIFORM_SIZE,
+    uniform_size=DIVIDER_UNIFORM_SIZE,
 )
 
 
@@ -38,36 +40,42 @@ def _content_split_visual(ctx) -> float:
     return content_split_visual(ctx)
 
 
-def _blocks_resolver(widget, matrix: tuple) -> OverlayResolver:
-    """Ctx-first uniform-block resolver: ctx in, one packed block out."""
+def _semantic_resolver(widget) -> SemanticResolver:
+    """Ctx-first semantic resolver: ctx in, canvas-px items out.
 
-    def resolve(ctx: Any) -> tuple[bytes, ...]:
-        _show, position, thickness, horizontal, color, clip = (
-            DividerPass._resolve_divider_state(widget, ctx)
+    Geometry (bar + clip rects, already view-transformed to canvas-px by
+    ``resolve_divider_spec``) arrives as engine-typed items; byte layout
+    lives shell-side in ``pack_divider``.
+    """
+
+    def resolve(ctx: Any) -> SemanticOverlayItems:
+        spec = resolve_divider_spec(ctx, widget)
+        color = Rgba(spec.red, spec.green, spec.blue, spec.alpha)
+        half = spec.thickness_px * 0.5
+        if spec.is_horizontal:
+            bar = RectItem(
+                x=spec.clip_x,
+                y=spec.position_px - half,
+                w=spec.clip_w,
+                h=spec.thickness_px,
+                color=color,
+            )
+        else:
+            bar = RectItem(
+                x=spec.position_px - half,
+                y=spec.clip_y,
+                w=spec.thickness_px,
+                h=spec.clip_h,
+                color=color,
+            )
+        clip = RectItem(
+            x=spec.clip_x,
+            y=spec.clip_y,
+            w=spec.clip_w,
+            h=spec.clip_h,
+            color=Rgba(0.0, 0.0, 0.0, 0.0),
         )
-        cx, cy, cw, ch = clip
-        return (
-            struct.pack(
-                _UNIFORM_FMT,
-                *matrix,
-                float(ctx.width),
-                float(ctx.height),
-                position,
-                thickness * 0.5,
-                color.redF(),
-                color.greenF(),
-                color.blueF(),
-                color.alphaF(),
-                cx,
-                cy,
-                cw,
-                ch,
-                int(horizontal),
-                0.0,
-                0.0,
-                0.0,
-            ),
-        )
+        return (bar, clip)
 
     return resolve
 
@@ -77,7 +85,7 @@ class DividerPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self._shell = OverlayShell(_UNIFORM_SIZE)
+        self._shell = OverlayShell(DIVIDER_UNIFORM_SIZE)
 
     @staticmethod
     def _resolve_divider_state(widget, ctx):
@@ -118,10 +126,9 @@ class DividerPass(CanvasRenderPass):
 
     def prepare(self, widget, ctx, resource_updates) -> None:
         matrix = self._shell.clip_matrix()
-        (block,) = _blocks_resolver(widget, matrix)(ctx)
-        self._shell.ensure_slots(1)
-        self._shell.stage_quad(resource_updates)
-        self._shell.stage_slot(resource_updates, 0, block)
+        items = _semantic_resolver(widget)(ctx)
+        blocks = pack_divider(items, matrix, float(ctx.width), float(ctx.height))
+        self._shell.stage_packed(resource_updates, blocks)
 
     def record(self, command_buffer, widget, ctx) -> None:
         target_size = widget.renderTarget().pixelSize()
