@@ -1,5 +1,4 @@
 # Audit-Meta: pattern=thin-owner reason="Canvas widget thin owner — delegates to interaction/render_context/features"
-from PIL import Image as PilImage
 from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap, QResizeEvent
 from PySide6.QtWidgets import QRhiWidget
@@ -35,14 +34,9 @@ from .interaction import set_guides_params as set_guides_params_impl
 from .interaction import set_overlay_coords as set_overlay_coords_impl
 from .interaction import set_pan as set_pan_impl
 from .interaction import set_zoom as set_zoom_impl
-from .interaction import (
-    update_split_for_zoom,
-)
 from .render_context import (
     begin_update_batch,
-    emit_viewport_state_change,
     end_update_batch,
-    preload_source_textures,
     request_update,
     resize_canvas,
     schedule_source_preload,
@@ -57,12 +51,10 @@ from .state import CanvasRuntimeState, init_widget_state
 from .texture_parts.base_images import (
     configure_offscreen_render,
     get_letterbox_params,
-    letterbox_pil,
     upload_diff_source_pil_image,
     upload_image,
     upload_pil_images,
 )
-from .texture_parts.common import set_texture_filter
 from .texture_parts.layers import clear as clear_textures_and_layers
 from .texture_parts.layers import (
     set_background,
@@ -112,12 +104,11 @@ def _schedule_drag_restack(w) -> None:
 def _keepwarm_pending_reason(w) -> str | None:
     """Why a keep-warm tick must still prime a frame; None when idle.
 
-    P4 attribution companion to :func:`_keepwarm_tick_is_idle`: the same
-    checks, but naming the pending cause so the firing tick can record
-    *why* it could not stand down (``tile_more_pending``,
-    ``fallback_more_pending``, ``content_swap``, ``mip_layers``,
-    ``texture_key_mismatch``) or ``priming`` when renderer state is still
-    missing (first paint — priming preserved by construction).
+    Names the pending cause so the firing tick can record *why* it could
+    not stand down (``tile_more_pending``, ``fallback_more_pending``,
+    ``content_swap``, ``mip_layers``, ``texture_key_mismatch``) or
+    ``priming`` when renderer state is still missing (first paint —
+    priming preserved by construction).
     """
     try:
         renderer = getattr(w, "_rhi_renderer", None)
@@ -148,23 +139,6 @@ def _keepwarm_pending_reason(w) -> str | None:
         return None
     except Exception:
         return "priming"
-
-
-def _keepwarm_tick_is_idle(w) -> bool:
-    """True when the renderer snapshot is healthy and idle.
-
-    A keep-warm tick is a no-op pipeline primer: it only needs to produce
-    a frame while real work is still in flight. Skip the ``update()`` when
-    there is nothing left to resolve -- no tile ``more_pending`` (see
-    ``rhi_renderer/use_cases/tile_residency.py``, which propagates it to
-    ``runtime_state._tile_more_pending``), no deferred mip-cascade layers,
-    no content-swap transition, and the committed texture keys already
-    match the last good baseline. Missing renderer state (first paint,
-    tests without a renderer) returns False so priming is preserved.
-    Implemented via :func:`_keepwarm_pending_reason` (None ⇔ idle) so the
-    predicate and the P4 attribution reason cannot drift apart.
-    """
-    return _keepwarm_pending_reason(w) is None
 
 
 def _drag_restack_tick(w) -> None:
@@ -653,14 +627,6 @@ class CanvasWidget(QRhiWidget):
     def upload_image(self, qimage: QImage, slot_index: int):
         return upload_image(self, qimage, slot_index)
 
-    def upload_image2(self, qimage: QImage):
-        self.upload_image(qimage, 1)
-
-    def _letterbox_pil(
-        self, img: PilImage.Image, slot_index: int = -1
-    ) -> PilImage.Image:
-        return letterbox_pil(self, img, slot_index)
-
     def upload_pil_images(
         self,
         pil_image1,
@@ -819,14 +785,8 @@ class CanvasWidget(QRhiWidget):
     def _request_update(self):
         request_update(self)
 
-    def _emit_viewport_state_change(self):
-        emit_viewport_state_change(self)
-
     def _schedule_source_preload(self):
         schedule_source_preload(self)
-
-    def _preload_source_textures(self):
-        preload_source_textures(self)
 
     def begin_update_batch(self):
         begin_update_batch(self)
@@ -872,9 +832,6 @@ class CanvasWidget(QRhiWidget):
             border_width,
             interp_mode,
         )
-
-    def _set_texture_filter(self, texture_id: int, canvas_filter: int):
-        return set_texture_filter(self, texture_id, canvas_filter)
 
     def clear_feature_overlay_gpu(self):
         return clear_feature_overlay_gpu(self)
@@ -1011,9 +968,6 @@ class CanvasWidget(QRhiWidget):
 
     def contentsRect(self):
         return self.rect()
-
-    def _update_split_for_zoom(self, new_zoom, new_pan_x, new_pan_y):
-        update_split_for_zoom(self, new_zoom, new_pan_x, new_pan_y)
 
     def set_zoom(self, zoom: float):
         set_zoom_impl(self, zoom)

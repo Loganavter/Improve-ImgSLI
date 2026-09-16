@@ -8,7 +8,6 @@ import numpy as np
 from PIL import Image
 
 from core.store import Store
-from domain.types import Color
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.pil_save import write_pil_image_cancelable
 from shared.image_processing.progressive_loader import JXL_SUPPORTED
@@ -390,58 +389,6 @@ class ExportService:
                 pil_format,
                 exc_info=True,
             )
-
-    def quick_export(
-        self,
-        store: Store,
-        original_image1: Image.Image,
-        original_image2: Image.Image,
-        cancel_event: Optional[threading.Event] = None,
-        progress_callback: Optional[Any] = None,
-    ) -> str:
-        """
-        Быстрый экспорт с использованием сохранённых в store настроек.
-        """
-
-        bg_color = getattr(
-            store.settings,
-            "export_background_color",
-            Color(255, 255, 255, 255),
-        )
-        bg_color_tuple = (bg_color.r, bg_color.g, bg_color.b, bg_color.a)
-
-        export_options = {
-            "output_dir": store.settings.export_default_dir,
-            "file_name": self._generate_base_filename(store),
-            "format": store.settings.export_last_format or "PNG",
-            "quality": store.settings.export_quality or 95,
-            "fill_background": getattr(store.settings, "export_fill_background", False),
-            "background_color": bg_color_tuple,
-            "png_compress_level": getattr(
-                store.settings,
-                "export_png_compress_level",
-                9,
-            ),
-            "png_optimize": True,
-            "include_metadata": bool(
-                getattr(store.settings, "export_comment_keep_default", False)
-            ),
-            "comment_text": (
-                getattr(store.settings, "export_comment_text", "")
-                if getattr(store.settings, "export_comment_keep_default", False)
-                else ""
-            ),
-            "is_quick_save": True,
-        }
-
-        return self.export_image(
-            store=store,
-            original_image1=original_image1,
-            original_image2=original_image2,
-            export_options=export_options,
-            cancel_event=cancel_event,
-            progress_callback=progress_callback,
-        )
 
     def _generate_base_filename(self, store: Store) -> str:
         import re

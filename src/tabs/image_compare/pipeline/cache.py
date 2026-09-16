@@ -97,13 +97,6 @@ def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
     return None
 
 
-def clear_embedded_cache() -> None:
-    from shared.image_processing import embedded_pixel_cache as _emb
-
-    _emb.clear()
-    _embedded_cache.clear()
-
-
 def pop_embedded_cache(media_path: str) -> None:
     from shared.image_processing import embedded_pixel_cache as _emb
 
@@ -751,10 +744,6 @@ class PipelineCache:
     @property
     def pixel_size(self) -> int:
         return len(self._pixel)
-
-    @property
-    def unify_size(self) -> int:
-        return len(self._unify)
 
     @property
     def preview_size(self) -> int:

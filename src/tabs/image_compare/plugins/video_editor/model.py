@@ -1,55 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from core.main_controller import MainController
     from core.session_manager import SessionManager
     from core.store import Store
-
-
-@dataclass(frozen=True)
-class VideoTimelineState:
-    position: int = 0
-
-    @classmethod
-    def from_mapping(cls, payload: dict[str, Any] | None) -> "VideoTimelineState":
-        payload = payload or {}
-        return cls(position=max(0, int(payload.get("position", 0))))
-
-    def advance(self, step: int = 1) -> "VideoTimelineState":
-        return replace(self, position=max(0, self.position + int(step)))
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"position": self.position}
-
-
-@dataclass(frozen=True)
-class VideoSelectionState:
-    start: int | None = None
-    end: int | None = None
-
-    @classmethod
-    def from_mapping(cls, payload: dict[str, Any] | None) -> "VideoSelectionState":
-        payload = payload or {}
-        start = payload.get("start")
-        end = payload.get("end")
-        return cls(
-            start=int(start) if start is not None else None,
-            end=int(end) if end is not None else None,
-        )
-
-    def is_empty(self) -> bool:
-        return self.start is None and self.end is None
-
-    def to_dict(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        if self.start is not None:
-            payload["start"] = self.start
-        if self.end is not None:
-            payload["end"] = self.end
-        return payload
 
 
 @dataclass
@@ -86,11 +43,6 @@ class VideoProjectModel:
         # some export paths) snap to the wrong DAR.
         if height > 0:
             self.original_ratio = width / height
-
-    def get_aspect_ratio(self) -> float:
-        if self.height > 0:
-            return self.width / self.height
-        return 16 / 9
 
     def adjust_height_to_aspect_ratio(self, width: int) -> int:
         if not self.aspect_ratio_locked or self.original_ratio <= 0:

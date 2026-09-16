@@ -70,11 +70,6 @@ def _query_overlay(store, capability_id: str, default=None):
     return default if result is None else result
 
 
-def _pick_and_apply(presenter, peeked, current_label_dims, source_key=None):  # noqa: ARG001
-    """Backward compat stub — real body now in ``bg_dirty.handle_background``."""
-    raise NotImplementedError("pick_and_apply moved to bg_dirty.handle_background")
-
-
 def update_comparison_if_needed(presenter, frame_context: FrameContext | None = None):
     """Thin orchestrator — sequencing only, bodies in ``use_cases/*``.
 

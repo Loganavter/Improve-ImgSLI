@@ -255,7 +255,6 @@ class PlaylistListOperations:
             SetFullResImageAction,
             SetImagePathAction,
             SetImageSessionImageAction,
-            SetOriginalImageAction,
             SetPreviewImageAction,
         )
 

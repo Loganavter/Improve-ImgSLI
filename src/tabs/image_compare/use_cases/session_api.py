@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.state_management.actions import SetChannelViewModeAction, SetDiffModeAction, SetInteractiveModeAction
+from core.state_management.actions import SetChannelViewModeAction, SetDiffModeAction
 from core.events import CoreUpdateRequestedEvent
 from tabs.image_compare.events import AnalysisSetChannelViewModeEvent, AnalysisSetDiffModeEvent
 from tabs.image_compare.use_cases import list_ops, navigation
@@ -12,10 +12,6 @@ from tabs.image_compare.use_cases import list_ops, navigation
 
 class SessionApiMixin:
     # view modes
-    def toggle_diff_mode(self, checked: bool):
-        dispatcher = self.store.get_dispatcher()
-        dispatcher.dispatch(SetInteractiveModeAction(checked), scope="viewport")
-        self.store.emit_state_change("viewport")
     def set_diff_mode(self, mode: str):
         if self.store.viewport.view_state.diff_mode == mode: return
         dispatcher = self.store.get_dispatcher()

@@ -62,11 +62,6 @@ def ic_dnd_debug_enabled() -> bool:
     return _ic_debug_enabled()
 
 
-def ic_debug(msg: str, *args, **kwargs) -> None:
-    if ic_debug_enabled():
-        _emit("[ic-debug]", msg, *args, **kwargs)
-
-
 def ic_dnd_debug(msg: str, *args, **kwargs) -> None:
     if ic_dnd_debug_enabled():
         _emit("[ic-dnd]", msg, *args, **kwargs)

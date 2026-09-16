@@ -96,11 +96,6 @@ def show_magnifier_border_color_picker(presenter) -> None:
     )
 
 
-def get_viewport_ctrl(presenter):
-    controller = getattr(presenter, "main_controller", None)
-    return getattr(controller, "viewport_plugin", None) if controller else None
-
-
 def trigger_toolbar_binding(control_id: str, presenter, action: str, *args) -> None:
     binding = registry().get_feature_toolbar_binding(control_id)
     callback = getattr(binding, action, None) if binding is not None else None
