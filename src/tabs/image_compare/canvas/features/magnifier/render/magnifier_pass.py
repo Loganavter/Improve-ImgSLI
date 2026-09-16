@@ -259,6 +259,130 @@ def _lens_residency_hold(renderer, source_keys, overlay, frame_context=None) -> 
     return None
 
 
+def _frame_draw_tile_indices(
+    renderer, overlay, tex_key_1, tex_key_2, diff_key
+) -> list[tuple] | None:
+    """Every ``(key, tile_index)`` this frame's lens would sample.
+
+    Pure geometry (no interest registration, no trace records, no fallback):
+    mirrors ``prepare``'s own per-quad key selection (combined / source_mode
+    / diff_mode branching in ``build_tile_records``) and slices each active
+    ``(key, uv_rect)`` with the same ``tile_uv_slices`` wiring
+    ``_source_slices`` draws with. Returns ``None`` when ungatable (no tile
+    service -- fakes/tests keep the old behavior exactly); keys with no
+    registered grid (e.g. the ``"placeholder"`` diff) are skipped, since the
+    draw path drops those quads anyway and there is nothing to gate on.
+    """
+    tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
+    if tile_service is None:
+        return None
+    if not bool(getattr(overlay, "gpu_active", False)):
+        return []
+    quads = getattr(overlay, "quads", ()) or ()
+    slots = getattr(overlay, "gpu_slots", ()) or ()
+    wanted: list[tuple] = []
+    for i, quad in enumerate(quads):
+        if not quad:
+            continue
+        gpu_slot = slots[i] if i < len(slots) else None
+        if not gpu_slot:
+            continue
+        combined = bool(gpu_slot.get("is_combined", False))
+        source_mode = int(gpu_slot.get("source", 0) or 0)
+        if source_mode == 2 and not combined:
+            diff_mode = int(getattr(overlay, "gpu_diff_mode", 0) or 0)
+        else:
+            diff_mode = 0
+        uv_rect1 = gpu_slot.get("uv_rect", (0.0, 0.0, 1.0, 1.0))
+        uv_rect2 = gpu_slot.get("uv_rect2", uv_rect1)
+        if combined:
+            wanted.append((tex_key_1, uv_rect1))
+            wanted.append((tex_key_2, uv_rect2))
+        elif source_mode == 2 and diff_mode in (1, 2):
+            wanted.append((tex_key_1, uv_rect1))
+            wanted.append((tex_key_2, uv_rect2))
+        elif source_mode == 2 and diff_mode == 3:
+            wanted.append((tex_key_1, uv_rect1))
+        elif source_mode == 2:
+            wanted.append((diff_key, uv_rect1))
+        elif source_mode == 1:
+            wanted.append((tex_key_2, uv_rect2))
+        else:
+            wanted.append((tex_key_1, uv_rect1))
+    indices: list[tuple] = []
+    for key, uv_rect in wanted:
+        grid = tile_service.grid_for(key)
+        if grid is None:
+            continue
+        slices = tile_uv_slices(
+            grid,
+            tile_service.tile_key,
+            key,
+            uv_rect,
+            apron_px=_TILE_APRON_PX,
+            apron_rect_fn=_apron_rect,
+            visible_tiles_fn=(
+                lambda rect, _key=key: tile_service.visible_tiles(_key, rect)
+            ),
+        )
+        for sl in slices:
+            indices.append((key, sl["tile_index"]))
+    seen: set[tuple] = set()
+    ordered: list[tuple] = []
+    for pair in indices:
+        if pair not in seen:
+            seen.add(pair)
+            ordered.append(pair)
+    return ordered
+
+
+def _frame_slices_residency_hold(renderer, indices, frame_context=None) -> str | None:
+    """Stored-hold gate on the frame's own draw slices (loupe no-holes).
+
+    Returns ``None`` when every ``(key, tile_index)`` in ``indices`` (as
+    computed by ``_frame_draw_tile_indices``) has a GPU slot -- the caller
+    may sample source tiles. Otherwise returns a grep-friendly hold reason
+    and the caller keeps sampling ``stored``. ``None`` indices (no tile
+    service) never hold. This is the same ``slot_for`` condition
+    ``_source_slices`` draws with, so a released hold structurally implies
+    zero ``mag_dropped_slice`` on the swap frame for every array-owned key
+    (the low-res fallback stays as belt-and-suspenders for post-hold
+    races)."""
+    if indices is None:
+        return None
+    tile_service = getattr(renderer, "tile_service", None) if renderer is not None else None
+    if tile_service is None:
+        return None
+    missing = [
+        (key, index) for key, index in indices if tile_service.slot_for(key, index) is None
+    ]
+    if not missing:
+        trace_loupe(
+            frame_context,
+            "loupe.mag_residency_hold",
+            "ran",
+            f"frame_slices_resident sampling source tiles slices={len(indices)}",
+            ids=tuple(str(k) for k, _ in indices[:8]),
+            sig=(True, len(indices)),
+        )
+        return None
+    shown = ",".join(f"{k}:{r}x{c}" for k, (r, c) in missing[:8])
+    suffix = f"+{len(missing) - 8}-more" if len(missing) > 8 else ""
+    hold_reason = (
+        f"hold_stored_until_slices_resident {len(missing)}-of-{len(indices)}-slices-missing"
+        f" [{shown}{suffix}]"
+    )
+    trace_loupe(
+        frame_context,
+        "loupe.mag_residency_hold",
+        "skipped",
+        hold_reason,
+        ids=tuple(str(k) for k, _ in missing[:8]),
+        sig=(False, tuple(sorted((str(k), tuple(idx)) for k, idx in missing))),
+    )
+    return hold_reason
+
+
 def _source_slices(renderer, source_key, uv_rect, frame_context=None, fallback_key=None):
     """Tile-aware uv_rect slicing for one magnifier source (see tile_capture.py).
 
@@ -626,12 +750,23 @@ class MagnifierPass(CanvasRenderPass):
             and ctx.source_texture_ids[0]
             and ctx.source_texture_ids[1]
         )
-        # Loupe residency gate: HOLD stored until request_level on the lens
-        # interest rect reports resident for both sources -- the flip is one
-        # atomic swap instead of a progressive tile-by-tile fill (the
-        # 24-of-30-missing first-frame holes). A held frame samples stored
-        # (already resident under the main canvas) and needs no fallback.
+        # Loupe residency gate: HOLD stored until the lens may sample source
+        # tiles -- first ``request_level`` on the lens interest rect for both
+        # sources (registers the interest rect that prioritizes uploads),
+        # then the frame's own draw slices (every ``(key, tile_index)`` the
+        # frame below would sample, including the diff key in diff-lens
+        # modes the level gate never covered). The flip is one atomic swap
+        # instead of a progressive tile-by-tile fill (the 24-of-30-missing
+        # first-frame holes): release implies every drawn slice is
+        # GPU-resident, so ``mag_dropped_slice`` is unreachable on the swap
+        # frame. A held frame samples stored (already resident under the
+        # main canvas) and needs no fallback.
         _fallback_by_source: dict = {}
+        _diff_key_for_hold = (
+            ctx.diff_source_texture_id
+            if ctx.diff_source_ready and ctx.diff_source_texture_id
+            else "placeholder"
+        )
         if use_source:
             _hold_reason = _lens_residency_hold(
                 rhi_renderer,
@@ -639,6 +774,18 @@ class MagnifierPass(CanvasRenderPass):
                 overlay,
                 frame_context,
             )
+            if _hold_reason is None:
+                _hold_reason = _frame_slices_residency_hold(
+                    rhi_renderer,
+                    _frame_draw_tile_indices(
+                        rhi_renderer,
+                        overlay,
+                        ctx.source_texture_ids[0],
+                        ctx.source_texture_ids[1],
+                        _diff_key_for_hold,
+                    ),
+                    frame_context,
+                )
             if _hold_reason is not None:
                 use_source = False
             else:
@@ -648,11 +795,7 @@ class MagnifierPass(CanvasRenderPass):
                 }
         tex_key_1 = ctx.source_texture_ids[0] if use_source else ctx.texture_ids[0]
         tex_key_2 = ctx.source_texture_ids[1] if use_source else ctx.texture_ids[1]
-        diff_key = (
-            ctx.diff_source_texture_id
-            if ctx.diff_source_ready and ctx.diff_source_texture_id
-            else "placeholder"
-        )
+        diff_key = _diff_key_for_hold
         # P3: the texture choice (base vs source images, diff source) was a
         # silent branch -- record which keys this frame samples (sig-throttled,
         # so steady frames stay quiet while any flip gets its reason).
