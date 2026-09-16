@@ -18,7 +18,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
 )
-from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.widgets import (
@@ -48,7 +48,6 @@ from ui.widgets.shelf import (
     SHELF_MARGIN_TOP,
     SHELF_SPACING,
     ShelfWidget,
-    apply_opaque_widget_fill,
 )
 
 
@@ -248,11 +247,6 @@ class RecentProjectsPanel(ShelfWidget):
 
         layout.deferred_relayout(self)
 
-    def _schedule_height_settle(self) -> None:
-        from tabs.session_picker.recent.use_cases import layout
-
-        layout.schedule_height_settle(self)
-
     def _on_shelf_height_changed(self) -> None:
         from tabs.session_picker.recent.use_cases import layout
 
@@ -308,9 +302,6 @@ class RecentProjectsPanel(ShelfWidget):
 
     def _header_button_bg(self):
         return self.header_button_bg()
-
-    def _apply_opaque_widget_fill(self, widget: QWidget | None, color) -> None:
-        apply_opaque_widget_fill(widget, color)
 
     def _sync_opaque_fills(self) -> None:
         if getattr(self, "_items", None) is None:
@@ -465,9 +456,6 @@ class RecentProjectsPanel(ShelfWidget):
 
     def _recent_viewport_max_height(self) -> int:
         return sizing.recent_viewport_max_height(self)
-
-    def _estimate_prelayout_viewport_height(self) -> int:
-        return sizing.estimate_prelayout_viewport_height(self)
 
     def _grid_content_width(self) -> int:
         return sizing.grid_content_width(self)

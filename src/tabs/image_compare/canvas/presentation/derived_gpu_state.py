@@ -25,9 +25,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.store.tiled_pixel_store import pixel_source_size
-from engine.cache.image_identity import image_uid
-
 
 @dataclass(frozen=True)
 class DerivedGpuState:
@@ -53,39 +50,3 @@ class DerivedGpuState:
     letterbox1: tuple[float, float, float, float]
     letterbox2: tuple[float, float, float, float]
     canvas_letterbox: tuple[float, float, float, float] | None
-
-
-def build_derived_gpu_state(
-    *,
-    render_img1,
-    render_img2,
-    gui_source1,
-    gui_source2,
-    source_key: tuple | None,
-    letterbox1,
-    letterbox2,
-    canvas_letterbox=None,
-    prev_source_ids=None,
-) -> DerivedGpuState:
-    display_cache_key = (
-        image_uid(render_img1),
-        image_uid(render_img2),
-        pixel_source_size(render_img1) if render_img1 is not None else None,
-        pixel_source_size(render_img2) if render_img2 is not None else None,
-    )
-    is_same = bool(render_img1 is not None and render_img1 is render_img2)
-    cur_ids = (image_uid(gui_source1), image_uid(gui_source2))
-    source_changed = prev_source_ids is not None and cur_ids != prev_source_ids
-    return DerivedGpuState(
-        display_image1=render_img1,
-        display_image2=render_img2,
-        display_cache_key=display_cache_key,
-        source_image1=gui_source1,
-        source_image2=gui_source2,
-        source_key=source_key,
-        is_same_object=is_same,
-        source_changed=source_changed,
-        letterbox1=tuple(letterbox1) if letterbox1 is not None else (0.0, 0.0, 1.0, 1.0),
-        letterbox2=tuple(letterbox2) if letterbox2 is not None else (0.0, 0.0, 1.0, 1.0),
-        canvas_letterbox=tuple(canvas_letterbox) if canvas_letterbox is not None else None,
-    )

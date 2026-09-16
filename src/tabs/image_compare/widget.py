@@ -397,9 +397,7 @@ class ImageCompareWidget(ThemedWidget, QWidget):
     def update_resolution_labels(
         self,
         res1_text: str,
-        tooltip1: str,
         res2_text: str,
-        tooltip2: str,
         *,
         has_image1: bool,
         has_image2: bool,
@@ -478,20 +476,10 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             hud.show_on(self.image_label)
 
     def update_name_length_warning(
-        self, warning_text: str, tooltip_text: str, visible: bool
+        self, warning_text: str, visible: bool
     ):
         self.length_warning_label.setText(warning_text)
         self.length_warning_label.setVisible(visible)
-
-    def update_color_button_tooltip(self, color_name: str, current_language: str):
-        tooltip = tr("image_compare.tooltip.magnifier_colors", current_language)
-        for attr in (
-            "btn_magnifier_color_settings",
-            "btn_magnifier_color_settings_beginner",
-        ):
-            button = getattr(self, attr, None)
-            if button is not None:
-                button.setToolTip(tooltip)
 
     def update_combobox_display(
         self,

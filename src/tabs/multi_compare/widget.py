@@ -242,12 +242,6 @@ class MultiCompareWidget(QWidget):
     def sync_divider_toolbar(self) -> None:
         divider_sync.sync_divider_toolbar(self)
 
-    def _queue_divider_toolbar_resync(self) -> None:
-        divider_sync.queue_divider_toolbar_resync(self)
-
-    def _run_queued_divider_toolbar_sync(self) -> None:
-        divider_sync.run_queued_divider_toolbar_sync(self)
-
     def _sync_divider_toolbar(self) -> None:
         divider_sync._sync_divider_toolbar(self)
 
@@ -355,11 +349,3 @@ class MultiCompareWidget(QWidget):
         target_root: bool,
     ) -> None:
         drag_drop.finalize_pending_paste(self, target_path, side, target_root)
-
-    def _finalize_pending_duplicate(
-        self,
-        target_path: tuple[int, ...] | None,
-        side: str | None,
-        target_root: bool,
-    ) -> None:
-        drag_drop.finalize_pending_duplicate(self, target_path, side, target_root)

@@ -166,17 +166,3 @@ def set_split_weights(
     new_children = list(root.children)
     new_children[idx] = new_child
     return _clone_split(root, children=new_children)
-
-
-def move_leaf(
-    root: LayoutNode | None,
-    source_slot_id: int,
-    target_slot_id: int,
-    side: str,
-) -> LayoutNode | None:
-    if root is None or source_slot_id == target_slot_id:
-        return root
-    pruned = remove_leaf(root, source_slot_id)
-    if pruned is None:
-        return LeafNode(source_slot_id)
-    return insert_beside(pruned, target_slot_id, side, source_slot_id)

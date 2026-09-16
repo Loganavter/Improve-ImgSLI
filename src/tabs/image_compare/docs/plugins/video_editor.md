@@ -30,7 +30,7 @@ tab, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 | Module | Role |
 |---|---|
 | `plugin.py` | `VideoEditorPlugin` — dialog open, recording-service factory, control-flow factory |
-| `model.py` | `VideoSelectionState`, `VideoTimelineState` — timeline/selection models |
+| `model.py` | `VideoProjectModel` — project resolution/aspect model |
 | `dialog/` | `VideoEditorDialog` + related dialog UI |
 | `presenter.py`, `presenter_parts/` | editor presenter (timeline/preview updates) |
 | `services/recorder.py` | `Recorder` — records image-compare state over time |

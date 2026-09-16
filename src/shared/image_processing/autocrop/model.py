@@ -33,10 +33,6 @@ class CropBox(NamedTuple):
     def height(self) -> int:
         return int(self.bottom - self.top)
 
-    def is_full(self, size: tuple[int, int]) -> bool:
-        w, h = size
-        return self.left == 0 and self.top == 0 and self.right == w and self.bottom == h
-
 
 @dataclass(frozen=True)
 class CropConfig:

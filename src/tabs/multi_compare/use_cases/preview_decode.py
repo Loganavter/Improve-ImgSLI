@@ -62,11 +62,6 @@ class _AbortSignal:
         return not self._aborted
 
 
-def new_abort_signal() -> _AbortSignal:
-    """Factory for full-stage signals owned by ``loading.py`` (same token type)."""
-    return _AbortSignal()
-
-
 def _same_fs_path(a: Path | str, b: Path | str) -> bool:
     """Central normalized path-equality guard (single impl lives in ``loading``)."""
     from tabs.multi_compare.use_cases import loading as _loading

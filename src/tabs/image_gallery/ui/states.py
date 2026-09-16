@@ -263,9 +263,5 @@ class GalleryEmptyState(QWidget):
 
     # Re-export sub-widgets for controller/tests.
     @property
-    def drop_label(self) -> DropZoneLabel:
-        return self._drop_label
-
-    @property
     def overlay(self) -> DragDropOverlay | None:
         return self._overlay

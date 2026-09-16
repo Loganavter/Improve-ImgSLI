@@ -45,9 +45,6 @@ class PluginCoordinator:
     def get_plugin(self, name: str) -> Plugin | None:
         return self.lifecycle.get(name)
 
-    def iter_plugins(self) -> tuple[Plugin, ...]:
-        return self.lifecycle.all_plugins()
-
     def execute_command(
         self, plugin_name: str, command: str, *args: Any, **kwargs: Any
     ) -> Any:

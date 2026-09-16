@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 import logging
 import os
 import sys
@@ -144,17 +143,6 @@ class Tracer:
             except Exception:
                 logger.debug("tracer subscriber failed", exc_info=True)
         return rec
-
-    def dump_json(self, path: str | None = None) -> str:
-        records = [r.to_dict() for r in self.get_records()]
-        text = json.dumps(records, indent=2, default=_json_default)
-        if path:
-            try:
-                with open(path, "w", encoding="utf-8") as fh:
-                    fh.write(text)
-            except OSError as exc:
-                logger.warning("tracer dump failed: %s", exc)
-        return text
 
 def _match_kind(kind: str, pattern: str) -> bool:
     if pattern == kind:

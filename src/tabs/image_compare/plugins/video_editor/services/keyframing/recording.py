@@ -204,13 +204,6 @@ class KeyframedRecording:
     def get_duration(self) -> float:
         return self.timeline.get_duration()
 
-    def get_keyframe_count(self) -> int:
-        return sum(
-            len(channel.keyframes)
-            for track in self.timeline.iter_tracks()
-            for channel in track.channels.values()
-        )
-
     def get_track(self, name: str) -> TimelineTrack | None:
         wrapper = self.tracks.get(name)
         return wrapper._track if wrapper is not None else None

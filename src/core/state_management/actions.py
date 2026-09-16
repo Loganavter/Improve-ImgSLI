@@ -24,7 +24,6 @@ from core.state_management.document_actions import (
     SetCurrentIndexAction,
     SetFullResImageAction,
     SetImagePathAction,
-    SetOriginalImageAction,
     SetPreviewImageAction,
 )
 from core.state_management.geometry_actions import (
@@ -83,7 +82,6 @@ from core.state_management.viewport_actions import (
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
     ToggleOrientationAction,
-    UpdateCanvasFeatureStateAction,
 )
 
 __all__ = [name for name in globals() if name.endswith("Action")] + ["Action", "ActionType"]

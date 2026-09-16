@@ -62,7 +62,6 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/plugins/settings/presenter_parts/view_state.py", 48, "self.store.viewport.render_config"),
         # -- canvas feature-state snapshot/projection writes (view_state param) --
         ("src/tabs/image_compare/canvas/features/capture/state/feature_state.py", 28, "view_state"),
-        ("src/tabs/image_compare/canvas/features/capture/state/feature_state.py", 51, "view_state"),
         ("src/tabs/image_compare/canvas/features/capture/widget.py", 102, "view_state"),
         ("src/tabs/image_compare/canvas/features/capture/widget.py", 130, "snap.viewport_state.view_state"),
         ("src/tabs/image_compare/canvas/features/divider/properties.py", 19, "view_state"),
@@ -74,7 +73,6 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/guides/state/feature_state.py", 33, "view_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/persistence.py", 216, "view_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/state/feature_state.py", 61, "view_state"),
-        ("src/tabs/image_compare/canvas/features/magnifier/state/feature_state.py", 84, "view_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/state/store.py", 130, "view_state"),
         # -- filename_overlay snapshot render_config writes --
         ("src/tabs/image_compare/canvas/features/filename_overlay/properties.py", 36, "snap.viewport_state.render_config"),
@@ -123,9 +121,11 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/services/analysis/metrics.py", 111, "self.store.viewport.session_data.image_state"),
         # NOTE: lines shifted 355/357 → 359/361 by the S3 engine-next export
         # seam (logging import + LOD-probe call in build_render_plan; same
-        # cached_diff fallback sites, not new bypasses).
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 359, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 361, "self.store.viewport.session_data.render_cache"),
+        # cached_diff fallback sites, not new bypasses), then back
+        # 359/361 → 355/357 by the D2 dead-code sweep (duplicate
+        # query_active_magnifier_divider_thickness body removed).
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 355, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 357, "self.store.viewport.session_data.render_cache"),
         # -- UI settings / transient interpolation previews --
         ("src/tabs/image_compare/ui/settings_persistence.py", 68, "image_state"),
         ("src/tabs/image_compare/ui/settings_persistence.py", 69, "image_state"),

@@ -74,10 +74,6 @@ def default_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def default_host_help_root() -> Path:
-    return default_repo_root() / "src" / "resources" / "help"
-
-
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:

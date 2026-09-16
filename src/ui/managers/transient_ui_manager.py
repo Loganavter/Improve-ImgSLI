@@ -83,14 +83,6 @@ class TransientUIManager:
             logger.debug("[transient] '%s' → None (deferred)", service_id)
         return service
 
-    def invalidate_miss_cache(self) -> None:
-        """Clear negative-cache so the next access re-probes the registry.
-
-        Called implicitly via active-session change (handled in _get_service),
-        but also exposed for TabRegistry deferred-load or manual invalidation.
-        """
-        self._service_miss_session.clear()
-
     def __getattr__(self, name: str):
         if name in self._service_ids:
             return self._get_service(name)

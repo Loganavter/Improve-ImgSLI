@@ -136,9 +136,6 @@ class MainWindowPresenter(QObject):
     def _connect_signals(self):
         return connect_signals_impl(self)
 
-    def _connect_button_action(self, button, action_id, fallback):
-        button.clicked.connect(fallback)
-
     def connect_event_handler_signals(self, event_handler):
         return connect_event_handler_signals_impl(self, event_handler)
 
@@ -237,6 +234,3 @@ class MainWindowPresenter(QObject):
                 method()
             except AttributeError:
                 pass
-
-    def _update_interpolation_combo_box_ui(self):
-        self.features.settings.update_interpolation_combo_box_ui()

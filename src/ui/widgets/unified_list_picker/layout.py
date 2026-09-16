@@ -19,7 +19,6 @@ from ui.widgets.unified_list_picker.double_geometry import (
     compute_double_mode_geometry,
     ensure_double_mode_scroll_behavior,
     relax_panel_limits_for_double,
-    resolve_double_mode_top,
     sync_double_mode_button_state,
 )
 
@@ -255,9 +254,6 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
             self.SHADOW_RADIUS,
         )
 
-    def _content_height_from_outer(self, outer_rect: QRect) -> int:
-        return max(1, outer_rect.height() - self.SHADOW_RADIUS * 2)
-
     def _clamp_outer_rect(self, outer_rect: QRect, *, allow_resize: bool = False) -> QRect:
         available = surface_available_rect(
             self,
@@ -460,17 +456,6 @@ class _UnifiedFlyoutLayoutMixin(_UnifiedFlyoutBase):
         # Body lives in double_geometry.py (pure function over the picker
         # owner); this delegator keeps the Plan 1 method name on the mixin.
         return sync_double_mode_button_state(self, button1, button2)
-
-    def _resolve_double_mode_top(
-        self, button1, button2, geom1_content: QRect, geom2_content: QRect
-    ) -> int:
-        """Shared content height for DOUBLE mode, honoring the resolved top.
-
-        Body lives in double_geometry.py; see resolve_double_mode_top.
-        """
-        return resolve_double_mode_top(
-            self, button1, button2, geom1_content, geom2_content
-        )
 
     def _compute_double_mode_geometry(self, button1, button2):
         # Body lives in double_geometry.py; this delegator keeps the Plan 1

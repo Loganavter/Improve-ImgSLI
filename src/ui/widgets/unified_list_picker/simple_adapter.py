@@ -157,14 +157,6 @@ class SimpleUnifiedFlyoutController:
         return target[index] if 0 <= index < len(target) else None
 
 
-def make_main_window_proxy(host_window, anchor_left, anchor_right):
-    """Deprecated shim — prefer ``UnifiedFlyout.set_list_anchors``."""
-    flyout = getattr(host_window, "_unified_flyout", None)
-    if flyout is not None and hasattr(flyout, "set_list_anchors"):
-        flyout.set_list_anchors(anchor_left, anchor_right)
-    return host_window
-
-
 def _coerce(item) -> UnifiedFlyoutItem:
     if isinstance(item, UnifiedFlyoutItem):
         return item

@@ -26,23 +26,6 @@ def _filter_image_paths(paths: list[Path]) -> list[Path]:
     return [p for p in paths if is_accepted_image_path(p)]
 
 
-def _default_state():
-    from tabs.multi_compare.models import MultiCompareState
-
-    global _last_session_settings
-    if _last_session_settings is None:
-        _last_session_settings = _load_last_settings()
-    if _last_session_settings is not None:
-        divider, label = _last_session_settings
-        logger.warning(
-            "[divider-color-debug] _default_state: using cached/loaded color_rgba=%s",
-            divider.color_rgba,
-        )
-        return MultiCompareState(divider_settings=divider, label_settings=label)
-    logger.warning("[divider-color-debug] _default_state: falling back to built-in default")
-    return MultiCompareState()
-
-
 class MultiCompareTab(TabContract):
     """Self-contained multi-image comparison tab."""
 

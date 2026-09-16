@@ -123,16 +123,3 @@ class ClipboardPasteCoordinator:
                 self._on_ready(combined)
             except Exception as e:
                 logger.error("clipboard paste on_ready failed: %s", e)
-
-
-def paste_from_clipboard(
-    *,
-    thread_pool=None,
-    on_ready: Callable[[list[Path]], None],
-    on_empty: Callable[[], None] | None = None,
-) -> bool:
-    """Convenience one-liner for tabs that don't need a persistent coordinator."""
-    coord = ClipboardPasteCoordinator(
-        thread_pool=thread_pool, on_ready=on_ready, on_empty=on_empty
-    )
-    return coord.run()

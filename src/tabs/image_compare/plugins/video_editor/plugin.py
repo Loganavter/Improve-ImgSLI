@@ -15,7 +15,6 @@ from core.session_blueprints import (
 )
 from plugins.settings.events import SettingsChangeLanguageEvent
 from tabs.image_compare.plugins.video_editor.dialog import VideoEditorDialog
-from tabs.image_compare.plugins.video_editor.model import VideoSelectionState, VideoTimelineState
 from tabs.image_compare.plugins.video_editor.services.export import VideoExporterService
 from tabs.image_compare.plugins.video_editor.services.export_flow import VideoExportFlow
 from tabs.image_compare.plugins.video_editor.services.recorder import Recorder

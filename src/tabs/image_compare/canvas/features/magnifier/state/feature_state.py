@@ -50,7 +50,7 @@ def get_magnifier_widget_state(view_state) -> MagnifierWidgetState:
     This keeps lazy-init semantics for legacy helpers (e.g. `store.py`'s `add_magnifier_model`)
     but uses a local dict copy + `setattr` so `test_no_direct_store_mutation`'s
     `view_state.canvas_widget_state` chain is not flagged. Live Store callers that
-    need a Redux-notified write should use `set_magnifier_widget_state_via_dispatcher`.
+    need a Redux-notified write should dispatch via the ViewStateReducer path.
     """
     state = (getattr(view_state, "canvas_widget_state", None) or {}).get("magnifier")
     if isinstance(state, MagnifierWidgetState):
@@ -60,35 +60,3 @@ def get_magnifier_widget_state(view_state) -> MagnifierWidgetState:
     _cws["magnifier"] = state
     setattr(view_state, "canvas_widget_state", _cws)
     return state
-
-
-def set_magnifier_widget_state_via_dispatcher(store, state: MagnifierWidgetState) -> bool:
-    """Preferred Redux path for live Store — dispatch via ViewStateReducer."""
-    try:
-        dispatcher = store.get_dispatcher() if hasattr(store, "get_dispatcher") else None
-    except Exception:
-        dispatcher = None
-    if dispatcher is not None:
-        try:
-            from core.state_management.viewport_actions import SetCanvasWidgetStateAction
-
-            dispatcher.dispatch(SetCanvasWidgetStateAction(feature="magnifier", state=state), scope="viewport")
-            return True
-        except Exception:
-            pass
-    try:
-        view_state = getattr(getattr(store, "viewport", None), "view_state", None)
-        if view_state is not None:
-            _cws = dict(getattr(view_state, "canvas_widget_state", None) or {})
-            _cws["magnifier"] = state
-            setattr(view_state, "canvas_widget_state", _cws)
-            if hasattr(store, "emit_viewport_change"):
-                store.emit_viewport_change()
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def clone_magnifier_widget_state(view_state) -> MagnifierWidgetState:
-    return get_magnifier_widget_state(view_state).clone()

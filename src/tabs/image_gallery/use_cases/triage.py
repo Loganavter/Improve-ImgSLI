@@ -508,42 +508,5 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
     return {}
 
 
-def assign_provenance_from_series(owner, series_list) -> int:
-    """Public wiring helper for controller after clustering.
-
-    Mirrors ``cluster_items`` series membership into ``provenance_series_id``
-    for each member. Returns count updated. No QSS, uses scaled_px/ThemeManager
-    only indirectly via clean_review theming.
-    """
-    updated = 0
-    if not series_list:
-        return ensure_provenance_series_ids(owner)
-    # series_list may be list[Series] or list[list[GalleryItem]]
-    for entry in list(series_list):
-        if hasattr(entry, "members"):
-            sid = getattr(entry, "id", None)
-            members = list(getattr(entry, "members", []) or [])
-        elif isinstance(entry, (list, tuple)):
-            members = list(entry)
-            sid = getattr(members[0], "series_id", None) if members else None
-        else:
-            continue
-        if sid is None:
-            continue
-        for m in members:
-            try:
-                if getattr(m, "provenance_series_id", None) is None:
-                    m.provenance_series_id = str(sid)  # type: ignore[attr-defined]
-                    updated += 1
-            except Exception:
-                continue
-    # Also catch singletons (UNGROUPED stays None)
-    try:
-        updated += ensure_provenance_series_ids(owner)
-    except Exception:
-        pass
-    return updated
-
-
 # Ensure provenance fields are present on GalleryItem (Stage 2 safety model)
 # The model file already defines rejected/is_best/crown_rank/provenance_series_id.

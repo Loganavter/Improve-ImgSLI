@@ -43,10 +43,6 @@ class SnapshotFrameRenderer:
         self._last_debug: dict = {}
         self._prescaled_cache: tuple | None = None
 
-    @property
-    def last_backend(self) -> str:
-        return self._last_backend
-
     def reset_backend_state(self) -> None:
         self._last_backend = "gpu"
         self._prescaled_cache = None

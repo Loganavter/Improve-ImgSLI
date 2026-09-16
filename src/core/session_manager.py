@@ -30,12 +30,6 @@ class SessionManager:
     def close_session(self, session_id: str) -> bool:
         return self.store.close_workspace_session(session_id)
 
-    def list_session_types(self) -> tuple[str, ...]:
-        return tuple(
-            blueprint.session_type
-            for blueprint in self.plugin_coordinator.list_session_blueprints()
-        )
-
     def list_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return self.plugin_coordinator.list_session_blueprints()
 
@@ -67,9 +61,3 @@ class SessionManager:
         if metadata:
             self.store.emit_state_change("workspace")
         return session
-
-    def ensure_session_type(self, session_type: str) -> SessionBlueprint:
-        blueprint = self.get_session_blueprint(session_type)
-        if blueprint is None:
-            raise ValueError(f"Session type '{session_type}' is not registered")
-        return blueprint

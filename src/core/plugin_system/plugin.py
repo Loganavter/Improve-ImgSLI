@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import inspect
-import os
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
@@ -38,12 +36,5 @@ class Plugin(ABC):
     def shutdown(self) -> None:
         self._set_state(PluginState.SHUTDOWN)
 
-    def get_state(self) -> PluginState:
-        return self._state
-
     def _set_state(self, state: PluginState) -> None:
         self._state = state
-    def plugin_resource_path(self, *parts: str) -> str:
-        module_file = inspect.getfile(self.__class__)
-        plugin_root = os.path.dirname(module_file)
-        return os.path.join(plugin_root, *parts)

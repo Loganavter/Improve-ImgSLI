@@ -1,8 +1,6 @@
 import itertools
 import logging
 
-from .upload_queue import queue_texture_upload
-
 logger = logging.getLogger("ImproveImgSLI")
 
 _TEXTURE_ID_SEQ = itertools.count(start=10_000)
@@ -10,11 +8,6 @@ _TEXTURE_ID_SEQ = itertools.count(start=10_000)
 
 def gen_texture_ids(count: int) -> list[int]:
     return [next(_TEXTURE_ID_SEQ) for _ in range(count)]
-
-
-def configure_dynamic_texture(texture_id: int):
-    """No-op in the QRhi pipeline (samplers/wrap are part of the SRB)."""
-    return
 
 
 def ensure_feature_overlay_slot_capacity(widget, count: int):
@@ -39,12 +32,6 @@ def ensure_feature_overlay_slot_capacity(widget, count: int):
         overlay._use_circle_mask.append(False)
     while len(overlay._gpu_slots) < count:
         overlay._gpu_slots.append(None)
-
-
-def upload_pil_to_texture_id(
-    widget, pil_image, texture_id: int, slot_index: int | None = None
-):
-    queue_texture_upload(widget, pil_image, texture_id, slot_index)
 
 
 def set_texture_filter(widget, texture_id: int, canvas_filter: int):

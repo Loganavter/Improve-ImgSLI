@@ -174,9 +174,6 @@ class SessionController(SessionApiMixin, QObject):
     def _load_full_resolution_async(self, path, image_number, index_in_list):
         return image_decode.load_full_resolution_async(self, path, image_number, index_in_list)
 
-    def _on_full_load_finished(self, image_number: int) -> None:
-        return image_decode.on_full_load_finished(self, image_number)
-
     def _on_full_resolution_loaded_result(self, result) -> None:
         return image_decode.on_full_resolution_loaded_result(self, result)
 
@@ -244,9 +241,6 @@ class SessionController(SessionApiMixin, QObject):
 
     def _mark_full_res_ready(self, image_number: int) -> None:
         self._loading_toast_coordinator.mark_full_res_ready(image_number)
-
-    def _bump_loading_toast_pyramid_started(self, image_number: int) -> None:
-        self._loading_toast_coordinator.bump_pyramid_started(image_number)
 
     def _finish_loading_toast(self, image_number: int) -> None:
         self._loading_toast_coordinator.finish(image_number)

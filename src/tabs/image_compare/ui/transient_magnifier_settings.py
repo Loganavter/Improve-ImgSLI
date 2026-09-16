@@ -48,26 +48,6 @@ class MagnifierSettingsHoverController(QObject):
             pass
         self._journal.note(what, detail)
 
-    def describe_state(self) -> dict:
-        """Snapshot for diagnostics (UI inspector hook)."""
-        flyout = getattr(self.widget, "magnifier_settings_flyout", None)
-        try:
-            visible = bool(flyout.isVisible()) if flyout is not None else False
-        except Exception:
-            visible = False
-        try:
-            focus_name = type(QApplication.focusWidget()).__name__
-        except Exception:
-            focus_name = "?"
-        timer = getattr(flyout, "_auto_hide", None)
-        return {
-            "visible": visible,
-            "timer_active": bool(timer._timer.isActive()) if timer is not None else False,
-            "focus": focus_name,
-            "zone": self._combined_reason(),
-            "journal": self._journal.snapshot(),
-        }
-
     def _wire(self) -> None:
         widget = self.widget
         toolbar = getattr(widget, "checkbox_widget", None)

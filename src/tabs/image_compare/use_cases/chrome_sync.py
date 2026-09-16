@@ -520,8 +520,6 @@ class ImageCompareChromeSync(QObject):
         try:
             self.widget.update_resolution_labels(
                 res1_text,
-                res1_text,
-                res2_text,
                 res2_text,
                 has_image1=has_image1,
                 has_image2=has_image2,

@@ -6,14 +6,6 @@ from PySide6.QtWidgets import QBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.ui.widgets.helpers import draw_rounded_shadow
 
-def attach_in_window_widget(widget: QWidget, anchor: QWidget | None) -> object | None:
-    from shared_toolkit.ui.overlay_layer import get_overlay_layer
-
-    overlay_layer = get_overlay_layer(anchor)
-    if overlay_layer is not None:
-        overlay_layer.attach(widget)
-    return overlay_layer
-
 def create_shadow_surface(
     host: QWidget,
     *,

@@ -372,10 +372,6 @@ class GalleryToolbar(QWidget):
         return self._filter_edit
 
     @property
-    def mode_combo(self) -> ScrollableComboBox | None:
-        return self._mode_combo
-
-    @property
     def sort_combo(self) -> ScrollableComboBox:
         return self._sort_combo
 
@@ -398,29 +394,6 @@ class GalleryToolbar(QWidget):
     @property
     def triage_indicator(self) -> Label:
         return self._triage_indicator
-
-    def filterText(self) -> str:  # noqa: N802 - Qt-style accessor
-        return self._filter_edit.text()
-
-    def setFilterText(self, text: str) -> None:  # noqa: N802
-        if self._filter_edit.text() != text:
-            self._filter_edit.setText(text)
-
-    def set_mode_items(self, items: list[str], current: int = 0) -> None:
-        """Replace mode combo items (no-op if combo not created)."""
-        if self._mode_combo is None:
-            return
-        # Rebuild items via addItem loop — ScrollableComboBox stores items internally.
-        # Clear by recreating: simplest is remove via internal list reset.
-        try:
-            self._mode_combo._items = []  # type: ignore[attr-defined]
-            self._mode_combo._count = 0  # type: ignore[attr-defined]
-        except Exception:
-            pass
-        for label in items:
-            self._mode_combo.addItem(label)
-        if 0 <= current < self._mode_combo.count():
-            self._mode_combo.setCurrentIndex(current)
 
     def set_scanning(self, n: int, total: int) -> None:
         """Show S1 scanning state: spinner + Label n/N."""
