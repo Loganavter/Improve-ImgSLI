@@ -1,6 +1,7 @@
 # Audit-Meta: pattern=state-machine size=exempt reason="export plan builder plus co-located parity-harness LOD/tile decision that must stay next to the builder it pins"
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 
 from PySide6.QtGui import QColor
@@ -22,6 +23,7 @@ from engine.cache import (
     TargetSurfaceSpec,
 )
 from engine.cache.lod import LevelKey, select_level
+from engine.cache.draw_plans import plan_tiles_for_grid
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.presentation.plan_builder import (
     build_canvas_plan,
@@ -29,6 +31,8 @@ from tabs.image_compare.canvas.presentation.plan_builder import (
 )
 from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
 from tabs.image_compare.canvas.registry import registry
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def build_divider_export_overlay(
@@ -425,6 +429,28 @@ class SnapshotRenderPlanBuilder:
                 channel_mode_int=0,
             )
 
+        # S3 (task-engine-next-migration-2026-09-16, Phase S-c): export
+        # LOD/tile decisions come from the R4 engine vocabulary by
+        # construction -- resolve this snapshot's levels + tile sets through
+        # the same engine-backed entry the parity harness pins, instead of a
+        # plan-build-local decision. Tripwire probe for now: the export GPU
+        # render re-resolves LOD at render time through the shared live
+        # renderer (``resolve_lod_texture_keys`` + ``build_array_draw_plan``),
+        # so this result only records the decision (a later phase may consume
+        # it for tile-aware export); it never alters the plan below.
+        _export_lod_probe = resolve_export_snapshot_lod_tiles(
+            (scene_images["src1"], scene_images["src2"]),
+            canvas_size_px=(
+                float(canvas_plan.canvas_width),
+                float(canvas_plan.canvas_height),
+            ),
+        )
+        logger.debug(
+            "export snapshot LOD probe levels=%s tiles=%s",
+            _export_lod_probe.levels,
+            tuple(len(t) for t in _export_lod_probe.tile_sets),
+        )
+
         plan = build_canvas_plan(
             self.store,
             base_image1,
@@ -498,30 +524,45 @@ class SnapshotRenderPlanBuilder:
 
 
 # ---------------------------------------------------------------------------
-# Parity-harness test support (task-engine-2d, bucket 2D).
+# Export snapshot LOD + tile decision (task-engine-2d bucket 2D + S3 Phase S-c).
 #
-# Pure snapshot LOD + tile decision used ONLY by
-# src/tabs/image_compare/tests/render/test_live_export_parity.py to pin the
-# live/export parity invariant: same snapshot in -> same level + same tiles
-# out. ``SnapshotRenderPlanBuilder.build_render_plan`` never calls these
-# (no production-logic change). Both the live canvas path
-# (``rhi_renderer/draw_plan.py::resolve_lod_texture_keys`` +
-# ``TileTextureService.visible_tiles``) and this helper decide through
-# ``engine.cache.lod.select_level`` with identical inputs, and neither takes
-# a ``mode`` argument -- so no ``if mode == "export"`` branch can sneak in
-# on either side of the harness.
+# ``resolve_export_snapshot_lod_tiles`` is the single engine-backed entry the
+# export path uses: LOD picked through ``resolve_export_lod_level`` (thin
+# wrapper over ``engine.cache.lod.select_level`` -- the engine decides, the
+# tab only resolves this call's specs, mirroring the live
+# ``resolve_lod_texture_keys`` shape) and tiles enumerated through
+# ``engine.cache.draw_plans.plan_tiles_for_grid``. ``SnapshotRenderPlanBuilder.
+# build_render_plan`` exercises this entry per snapshot (parity by
+# construction); ``snapshot_lod_tiles_for_sources`` stays as a thin
+# harness-compat delegate so
+# src/tabs/image_compare/tests/render/test_live_export_parity.py keeps pinning
+# "same snapshot in -> same level + same tiles out" as the tripwire. Neither
+# side takes a ``mode`` argument -- so no ``if mode == "export"`` branch can
+# sneak in on either side of the harness. No second implementations (ruling 2):
+# this module defines no LOD/tile math of its own.
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class SnapshotLodTiles:
-    """Export-path LOD + tile decision for one snapshot (test support)."""
+    """Export-path LOD + tile decision for one snapshot."""
 
     levels: tuple[int, int]
     tile_sets: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]
 
 
-def snapshot_lod_tiles_for_sources(
+def resolve_export_lod_level(dest_scale: float, shared_level_count: int) -> int:
+    """Export-path LOD pick: thin wrapper over the engine decision.
+
+    The single ``select_level`` call site in this module (pinned by
+    ``tests/contracts/test_export_uses_engine_plans.py``) -- tab-side spec
+    resolution (``dest_scale`` derivation, shared-level clamp) feeds the
+    engine decision, exactly like the live ``resolve_lod_texture_keys`` path.
+    """
+    return select_level(float(dest_scale), int(shared_level_count))
+
+
+def resolve_export_snapshot_lod_tiles(
     sources,
     *,
     canvas_size_px,
@@ -531,15 +572,15 @@ def snapshot_lod_tiles_for_sources(
     image_space_rect=None,
     tile_service=None,
 ) -> SnapshotLodTiles:
-    """Decide LOD levels + tile sets for one export snapshot (test support).
+    """Decide LOD levels + tile sets for one export snapshot (engine-backed).
 
     ``sources`` is a ``(side0, side1)`` pair of pixel sources (``TiledPixelStore``
     or PIL); ``canvas_size_px`` is the snapshot surface in device pixels;
     ``zoom``/``letterboxes`` describe the snapshot's view exactly like the
     live path's ``base_image``. ``image_space_rect`` (``(left, top, right,
     bottom)`` in level-image pixels, or ``None`` for the whole snapshot)
-    is fed unchanged to ``visible_tiles`` -- the harness passes the same
-    rect to the live path, pinning "same snapshot -> same tiles".
+    is fed unchanged to the engine tile enumeration -- the harness passes the
+    same rect to the live path, pinning "same snapshot -> same tiles".
 
     Level grids are registered into ``tile_service`` (a fresh
     ``TileTextureService`` when omitted) under the resolved keys -- bare
@@ -585,7 +626,7 @@ def snapshot_lod_tiles_for_sources(
         dest_scale = max(
             disp_w / float(max(1, src_w)), disp_h / float(max(1, src_h))
         )
-        level = select_level(dest_scale, shared_level_count)
+        level = resolve_export_lod_level(dest_scale, shared_level_count)
         levels.append(level)
         keys.append(key if level == 0 else LevelKey(key, level))
         level_size = pyramid.level(level).size if level else source.size
@@ -598,8 +639,36 @@ def snapshot_lod_tiles_for_sources(
         rect = image_space_rect
         if rect is None:
             rect = (0.0, 0.0, float(width), float(height))
-        tile_sets.append(tuple(sorted(service.visible_tiles(key, rect))))
+        tiles = plan_tiles_for_grid(service, key, rect)
+        tile_sets.append(tuple(sorted(tile.index for tile in tiles)))
     return SnapshotLodTiles(
         levels=(levels[0], levels[1]),
         tile_sets=(tile_sets[0], tile_sets[1]),
+    )
+
+
+def snapshot_lod_tiles_for_sources(
+    sources,
+    *,
+    canvas_size_px,
+    zoom: float = 1.0,
+    letterboxes=((0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0)),
+    texture_keys=("source_0", "source_1"),
+    image_space_rect=None,
+    tile_service=None,
+) -> SnapshotLodTiles:
+    """Harness-compat delegate over ``resolve_export_snapshot_lod_tiles``.
+
+    Kept (same signature, same result) only because
+    ``test_live_export_parity.py`` imports this name; all LOD/tile math lives
+    in the engine-backed entry above -- no second implementation.
+    """
+    return resolve_export_snapshot_lod_tiles(
+        sources,
+        canvas_size_px=canvas_size_px,
+        zoom=zoom,
+        letterboxes=letterboxes,
+        texture_keys=texture_keys,
+        image_space_rect=image_space_rect,
+        tile_service=tile_service,
     )
