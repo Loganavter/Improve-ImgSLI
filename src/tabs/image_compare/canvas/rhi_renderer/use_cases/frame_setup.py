@@ -212,14 +212,7 @@ def prepare_frame(
                     if o is None:
                         return None
                     try:
-                        try:  # Phase-A: engine.store root (A1); fallback until it lands
-                            from engine.store.tiled_pixel_store import (
-                                pixel_source_size,
-                            )
-                        except ImportError:
-                            from engine.store.tiled_pixel_store import (
-                                pixel_source_size,
-                            )
+                        from engine.store.tiled_pixel_store import pixel_source_size
 
                         w, h = pixel_source_size(o)
                         if w == 0 and h == 0:
@@ -249,14 +242,7 @@ def prepare_frame(
                 if o is None:
                     return None
                 try:
-                    try:  # Phase-A: engine.store root (A1); fallback until it lands
-                        from engine.store.tiled_pixel_store import (
-                            pixel_source_size,
-                        )
-                    except ImportError:
-                        from engine.store.tiled_pixel_store import (
-                            pixel_source_size,
-                        )
+                    from engine.store.tiled_pixel_store import pixel_source_size
 
                     w, h = pixel_source_size(o)
                     if w == 0 and h == 0:
