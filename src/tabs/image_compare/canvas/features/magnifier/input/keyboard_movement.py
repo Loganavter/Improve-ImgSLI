@@ -106,6 +106,8 @@ class InteractiveMovementController:
         return True
 
     def _set_interactive_mode(self, enabled: bool) -> None:
+        if self.store.viewport.interaction_state.is_interactive_mode == enabled:
+            return
         self._dispatch_viewport_action(SetInteractiveModeAction(enabled))
 
     def _set_visual_state(
@@ -116,15 +118,22 @@ class InteractiveMovementController:
         internal_split: float | None = None,
         split_visual: float | None = None,
     ) -> None:
-        if offset is not None:
+        interaction = self.store.viewport.interaction_state
+        if offset is not None and offset != interaction.interactive_offset_relative_visual:
             self._dispatch_viewport_action(SetInteractiveOffsetVisualAction(offset))
-        if spacing is not None:
+        if spacing is not None and spacing != interaction.interactive_spacing_relative_visual:
             self._dispatch_viewport_action(SetInteractiveSpacingVisualAction(spacing))
-        if internal_split is not None:
+        if (
+            internal_split is not None
+            and internal_split != interaction.interactive_internal_split_visual
+        ):
             self._dispatch_viewport_action(
                 SetInteractiveInternalSplitVisualAction(internal_split)
             )
-        if split_visual is not None:
+        if (
+            split_visual is not None
+            and split_visual != self.store.viewport.view_state.split_position_visual
+        ):
             self._dispatch_viewport_action(SetSplitPositionVisualAction(split_visual))
 
     def _frame_context(self):

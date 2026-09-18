@@ -351,7 +351,9 @@ def test_finish_cycle_on_converged_state_dispatches_nothing(monkeypatch):
 
     store = SimpleNamespace(
         viewport=SimpleNamespace(
-            view_state=SimpleNamespace(split_position=0.5),
+            view_state=SimpleNamespace(
+                split_position=0.5, split_position_visual=0.5
+            ),
             interaction_state=SimpleNamespace(
                 is_interactive_mode=False,
                 interactive_offset_relative_visual=Point(0.0, 0.0),
