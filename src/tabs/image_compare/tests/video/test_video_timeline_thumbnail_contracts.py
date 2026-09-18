@@ -1,6 +1,11 @@
 """Timeline thumbnails: dynamic width preserved, initial/fallback waves use
 capped priority indices, and the coordinator prefers visible timeline indices.
 
+P1 proxy-source structure contracts (no timing asserts — CI/flake
+discipline): the 160x90 request resolves pyramid-coarse / cached-base
+sources without decoding, falls back to the full-res path on miss, and
+cover output lands exactly on 160x90.
+
 Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (video timeline thumbnails).
 """
 
@@ -8,6 +13,37 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from PIL import Image
+
+
+_THUMB = (160, 90)
+
+
+def _proxy_service(*, repo_cache, renderer):
+    """Bare VideoExporterService with fakes — no GPU/tab context needed."""
+    from tabs.image_compare.plugins.video_editor.services.video_export.service import (
+        VideoExporterService,
+    )
+
+    service = VideoExporterService.__new__(VideoExporterService)
+    service._image_repository = SimpleNamespace(_images_cache=dict(repo_cache))
+    service._thumbnail_frame_renderer = renderer
+    service._thumbnail_proxy_resolver = None
+    service._last_thumbnail_source = None
+    service._thumbnail_callback_bridge = None
+    service._last_render_backend = "gpu"
+    return service
+
+
+def _proxy_base(width=5760, height=3240):
+    return SimpleNamespace(width=width, height=height, is_open=True)
+
+
+def _proxy_pyramid(*, proxy, picked=2, depth=3):
+    return SimpleNamespace(
+        level_count=depth,
+        best_level_for_scale=lambda _scale: picked,
+        level=lambda k: proxy if k == picked else (_ for _ in ()).throw(AssertionError(k)),
+    )
 
 def test_renderer_thumbnail_cover_crops_to_fixed_size():
     """Cover (not fit): any opaque render lands exactly on thumbnail_size.
@@ -183,3 +219,194 @@ def test_timeline_resize_debounces_thumbnail_generation(monkeypatch):
 
     coordinator._refresh_visible_thumbnails()
     assert generate_calls == [[4, 8, 12]]
+
+
+def test_thumbnail_proxy_prefers_pyramid_coarse_level(monkeypatch):
+    """Structure: warm pyramid → coarse level, no full-res decode."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    proxy = object()
+    base = _proxy_base()
+    snap = SimpleNamespace(image1_path="a.png", image2_path="b.png")
+    monkeypatch.setattr(
+        svc, "pyramid_for", lambda _store: _proxy_pyramid(proxy=proxy)
+    )
+    calls = {}
+
+    def fake_render_from_images(_snap, _request, image1, image2, **_kwargs):
+        calls["from_images"] = (image1, image2)
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (10, 20, 30, 255)),
+            backend="gpu",
+        )
+
+    def fake_render(_snap, _request):
+        calls["render"] = True
+        raise AssertionError("full-res path must not run on a pyramid hit")
+
+    renderer = SimpleNamespace(
+        render_from_images=fake_render_from_images, render=fake_render
+    )
+    service = _proxy_service(
+        repo_cache={("a.png", False): base, ("b.png", False): base},
+        renderer=renderer,
+    )
+    result = service.render_snapshot_thumbnail_to_pil(snap, 160, 90)
+
+    assert calls.get("from_images") == (proxy, proxy)
+    assert "render" not in calls
+    assert service.last_thumbnail_source == ("pyramid", "pyramid")
+    assert result is not None and result.size == (160, 90)
+
+
+def test_thumbnail_proxy_falls_back_to_cached_base(monkeypatch):
+    """Structure: pyramid absent/incomplete → decoded base reused, no decode."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    base = _proxy_base()
+    snap = SimpleNamespace(image1_path="a.png", image2_path="b.png")
+    monkeypatch.setattr(svc, "pyramid_for", lambda _store: None)
+    seen = {}
+
+    def fake_render_from_images(_snap, _request, image1, image2, **_kwargs):
+        seen["images"] = (image1, image2)
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (40, 50, 60, 255)),
+            backend="gpu",
+        )
+
+    service = _proxy_service(
+        repo_cache={("a.png", False): base, ("b.png", False): base},
+        renderer=SimpleNamespace(render_from_images=fake_render_from_images),
+    )
+    result = service.render_snapshot_thumbnail_to_pil(snap, 160, 90)
+
+    assert seen["images"] == (base, base)
+    assert service.last_thumbnail_source == ("cache", "cache")
+    assert result is not None and result.size == (160, 90)
+
+
+def test_thumbnail_proxy_miss_never_decodes():
+    """Structure: cold caches → full-res fallback, repository never decoded."""
+    base_missing = SimpleNamespace(
+        _images_cache={},
+        get_image=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("must not decode on the probe path")
+        ),
+    )
+    snap = SimpleNamespace(image1_path="a.png", image2_path="b.png")
+    calls = {}
+
+    def fake_render(_snap, _request):
+        calls["render"] = True
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (70, 80, 90, 255)),
+            backend="gpu",
+        )
+
+    def fake_render_from_images(*_args, **_kwargs):
+        calls["from_images"] = True
+        raise AssertionError("proxy path must not run on a miss")
+
+    from tabs.image_compare.plugins.video_editor.services.video_export.service import (
+        VideoExporterService,
+    )
+
+    service = VideoExporterService.__new__(VideoExporterService)
+    service._image_repository = base_missing
+    service._thumbnail_frame_renderer = SimpleNamespace(
+        render=fake_render, render_from_images=fake_render_from_images
+    )
+    service._thumbnail_proxy_resolver = None
+    service._last_thumbnail_source = None
+    service._thumbnail_callback_bridge = None
+    service._last_render_backend = "gpu"
+
+    result = service.render_snapshot_thumbnail_to_pil(snap, 160, 90)
+
+    assert calls.get("render") is True
+    assert "from_images" not in calls
+    assert service.last_thumbnail_source == ("miss", "miss")
+    assert result is not None and result.size == (160, 90)
+
+
+def test_thumbnail_async_proxy_delivers_without_decode(monkeypatch):
+    """Structure: async hit renders from proxy; async miss uses render_async."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    base = _proxy_base()
+    snap = SimpleNamespace(image1_path="a.png", image2_path="b.png")
+    monkeypatch.setattr(svc, "pyramid_for", lambda _store: None)
+    delivered = []
+
+    def fake_render_from_images(_snap, _request, _i1, _i2, **_kwargs):
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (1, 2, 3, 255)), backend="gpu"
+        )
+
+    def fake_render_async(_snap, _request, _cb):
+        raise AssertionError("render_async must not run on a proxy hit")
+
+    service = _proxy_service(
+        repo_cache={("a.png", False): base, ("b.png", False): base},
+        renderer=SimpleNamespace(
+            render_from_images=fake_render_from_images,
+            render_async=fake_render_async,
+        ),
+    )
+    service.render_snapshot_thumbnail_to_pil_async(
+        snap, 160, 90, delivered.append
+    )
+
+    assert len(delivered) == 1
+    assert delivered[0].size == (160, 90)
+    assert service.last_thumbnail_source == ("cache", "cache")
+
+
+def test_thumbnail_proxy_resolver_override_wins(monkeypatch):
+    """Structure: injected resolver short-circuits the built-in lookup."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    custom = object()
+    snap = SimpleNamespace(image1_path="a.png", image2_path="b.png")
+    monkeypatch.setattr(
+        svc, "pyramid_for", lambda _store: (_ for _ in ()).throw(
+            AssertionError("built-in lookup must not run when overridden")
+        )
+    )
+    seen = {}
+
+    def fake_render_from_images(_snap, _request, image1, image2, **_kwargs):
+        seen["images"] = (image1, image2)
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (9, 9, 9, 255)), backend="gpu"
+        )
+
+    service = _proxy_service(
+        repo_cache={},
+        renderer=SimpleNamespace(render_from_images=fake_render_from_images),
+    )
+    service.set_thumbnail_proxy_resolver(
+        lambda _path, _auto_crop, _size: (custom, "pyramid")
+    )
+    result = service.render_snapshot_thumbnail_to_pil(snap, 160, 90)
+
+    assert seen["images"] == (custom, custom)
+    assert service.last_thumbnail_source == ("pyramid", "pyramid")
+    assert result is not None and result.size == (160, 90)
+
+
+def test_cover_source_to_content_fills_thumbnail_target():
+    """Structure: cover (not fit) lands exactly on the content box."""
+    from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+        cover_source_to_content,
+        is_thumbnail_target_size,
+    )
+
+    assert is_thumbnail_target_size(160, 90) is True
+    assert is_thumbnail_target_size(1920, 1080) is False
+
+    wide = Image.new("RGB", (320, 90), (200, 100, 50))
+    assert cover_source_to_content(wide, (160, 90)).size == (160, 90)
+    tall = Image.new("RGB", (90, 180), (50, 100, 200))
+    assert cover_source_to_content(tall, (160, 90)).size == (160, 90)
