@@ -34,9 +34,6 @@ def autocrop_debug(message: str, *args) -> None:
     _autocrop_debug(message, *args)
 
 _spill_dir_cache: str | None = None
-# Probe max теперь в CropConfig (autocrop.model.CropConfig.probe_max).
-# Оставлен для обратной совместимости тестов — не используется напрямую.
-_AUTO_CROP_PROBE_MAX = 1024
 # Legacy: глобальный кэш удалён — единый ключ PipelineCache._pixel_key
 # (path, mtime, size, has_crop, box_tuple). Переменная оставлена пустой для
 # обратной совместимости импортов (autocrop_service, старые тесты) — фактический
