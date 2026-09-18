@@ -68,12 +68,6 @@ class UIManager(QObject):
     def _on_font_changed(self):
         self.transient.on_font_changed()
 
-    def _on_flyout_item_chosen(self, index: int):
-        pass
-
-    def _on_flyout_closed(self, image_number: int):
-        self.transient.on_flyout_closed(image_number)
-
     def _on_unified_flyout_closed(self):
         self.transient.on_unified_flyout_closed()
 

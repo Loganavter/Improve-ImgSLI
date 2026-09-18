@@ -82,10 +82,6 @@ class PyramidPixelStore:
     def level(self, k: int) -> TiledPixelStore:
         return self._levels[k]
 
-    def level_scale(self, k: int) -> float:
-        """Source (level-0) pixels per level-``k`` pixel is ``2**k``; this is 1/2**k."""
-        return 1.0 / float(1 << k)
-
     def best_level_for_scale(self, dest_scale: float) -> int:
         """Ideal level for ``dest_scale``, clamped to what is built so far."""
         from engine.cache.lod import select_level

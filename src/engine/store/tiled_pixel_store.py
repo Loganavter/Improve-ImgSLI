@@ -296,55 +296,6 @@ def _find_trim_box_vips(
     return box.to_tuple() if box is not None else None
 
 
-def _auto_crop_box_scaled(
-    rgba: Image.Image, *, threshold: int = 15
-) -> tuple[int, int, int, int] | None:
-    """Совместимость — делегирует в autocrop CropService (probe_max из CropConfig)."""
-    from shared.image_processing.autocrop.model import CropConfig
-    from shared.image_processing.autocrop.service import CropService
-
-    # Лёгкий ephemeral сервис без кэша — сохраняет parity через тот же scaled-путь.
-    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
-    svc = CropService(cfg)
-    # Используем внутренний _box_from_rgba напрямую чтобы не переоткрывать файл
-    box = svc._box_from_rgba(rgba, threshold)  # type: ignore[attr-defined]
-    return box.to_tuple() if box is not None else None
-
-
-def _auto_crop_box_from_ndarray(
-    arr: np.ndarray, *, threshold: int = 15
-) -> tuple[int, int, int, int] | None:
-    """Совместимость — делегирует в CropService._box_from_ndarray."""
-    from shared.image_processing.autocrop.model import CropConfig
-    from shared.image_processing.autocrop.service import CropService
-
-    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
-    svc = CropService(cfg)
-    box = svc._box_from_ndarray(arr, threshold)  # type: ignore[attr-defined]
-    return box.to_tuple() if box is not None else None
-
-
-def get_cached_crop_box(path_str: str, threshold: int = 15) -> tuple[int, int, int, int] | None:
-    """Deprecated — глобальный кэш удалён, используйте CropService.get().
-
-    Legacy ``_crop_box_cache`` остаётся пустым алиасом (импорт-совместимость);
-    единый ключ — ``PipelineCache._pixel_key`` (box_tuple). Эфемерный сервис
-    не кэширует в глобал повторно.
-    """
-    import warnings
-
-    warnings.warn(
-        "get_cached_crop_box is deprecated, use CropService.get()", DeprecationWarning, stacklevel=2
-    )
-    from shared.image_processing.autocrop.model import CropConfig
-    from shared.image_processing.autocrop.service import CropService
-
-    cfg = CropConfig(thr=threshold, thr_fallback=threshold, probe_max=_AUTO_CROP_PROBE_MAX)
-    svc = CropService(cfg)
-    box = svc.get(path_str)
-    return box.to_tuple() if box is not None else None
-
-
 def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
     """Decode file to one RGBA surface (PIL or ndarray for JXL).
 
