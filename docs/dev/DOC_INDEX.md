@@ -53,6 +53,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
+- **[image_compare State Slot Manifest](STATE_SLOT_MANIFEST.md)** — `docs/dev/STATE_SLOT_MANIFEST.md`
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_compare_dnd_tiles.md](plan_image_compare_dnd_tiles.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_preview_unify_transition_fix.md](plan_preview_unify_transition_fix.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
