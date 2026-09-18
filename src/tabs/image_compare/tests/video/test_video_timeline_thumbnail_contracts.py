@@ -9,7 +9,11 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-def test_renderer_thumbnail_preserves_dynamic_width():
+def test_renderer_thumbnail_cover_crops_to_fixed_size():
+    """Cover (not fit): any opaque render lands exactly on thumbnail_size.
+    Contract changed with the transparent-margin trim (0eb33996): the old
+    fit-height dynamic-width form (320x90) is gone — strip blocks are
+    uniform 160x90, cover-scaled + center-cropped."""
     from tabs.image_compare.plugins.video_editor.services.thumbnails import (
         _render_thumbnail_using_renderer,
     )
@@ -27,7 +31,35 @@ def test_renderer_thumbnail_preserves_dynamic_width():
     )
 
     assert result is not None
-    assert result.size == (320, 90)
+    assert result.size == (160, 90)
+
+def test_finish_trims_transparent_margins_before_cover():
+    """Snapshot-plan letterbox pads (transparent) must not survive into the
+    strip pixmap: painted over the light strip background they read as gaps
+    between blocks. Full-bleed renders pass through untouched."""
+    from tabs.image_compare.plugins.video_editor.services.thumbnails import (
+        _finish_thumbnail_image,
+    )
+
+    # 160x90 with transparent side margins (as dumped live: opaque content
+    # only in cols 20..138) → trimmed, then cover-scaled to exactly 160x90.
+    img = Image.new("RGBA", (160, 90), (0, 0, 0, 0))
+    px = img.load()
+    for y in range(90):
+        for x in range(20, 139):
+            px[x, y] = (170, 143, 107, 255)
+    result = _finish_thumbnail_image(img, (160, 90))
+    assert result is not None
+    assert result.size == (160, 90)
+    alpha = result.getdata(3)
+    assert min(alpha) > 0, "no transparent margins may survive"
+
+    # Full-bleed opaque render: byte-identical passthrough (no-op).
+    full = Image.new("RGBA", (160, 90), (170, 143, 107, 255))
+    assert _finish_thumbnail_image(full, (160, 90)).tobytes() == full.tobytes()
+
+    # Fully transparent render: nothing to show.
+    assert _finish_thumbnail_image(Image.new("RGBA", (160, 90), (0, 0, 0, 0)), (160, 90)) is None
 
 def test_thumbnail_service_initial_wave_uses_priority_indices_only(monkeypatch):
     from tabs.image_compare.plugins.video_editor.services.thumbnails import ThumbnailService

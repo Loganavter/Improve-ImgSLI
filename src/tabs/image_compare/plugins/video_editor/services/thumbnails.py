@@ -37,6 +37,17 @@ def _finish_thumbnail_image(
         return None
     out_w, out_h = thumbnail_size
     rendered = rendered.convert("RGBA")
+    # Trim fully-transparent margins (snapshot-plan letterbox pads survive
+    # the same-size passthrough below and would read as gaps between strip
+    # blocks once painted over the light strip background). Full-bleed
+    # renders are unaffected (bbox == full size → no-op).
+    bbox = rendered.getbbox()
+    if bbox is None:
+        return None
+    if bbox != (0, 0, rendered.width, rendered.height):
+        rendered = rendered.crop(bbox)
+        if rendered.width <= 0 or rendered.height <= 0:
+            return None
     if rendered.size == (out_w, out_h):
         return rendered
     if rendered.width <= 0 or rendered.height <= 0:
