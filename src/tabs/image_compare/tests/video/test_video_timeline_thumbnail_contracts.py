@@ -410,3 +410,188 @@ def test_cover_source_to_content_fills_thumbnail_target():
     assert cover_source_to_content(wide, (160, 90)).size == (160, 90)
     tall = Image.new("RGB", (90, 180), (50, 100, 200))
     assert cover_source_to_content(tall, (160, 90)).size == (160, 90)
+
+
+def test_pipeline_cache_resolver_returns_pyramid_level(monkeypatch):
+    """Structure: session-warmed store → same object reaches pyramid_for, L3 out."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    proxy = object()
+    base = _proxy_base()
+    seen = {}
+
+    def get_pixel(path, auto_crop=None):
+        seen["args"] = (path, auto_crop)
+        return base
+
+    def fake_pyramid_for(store):
+        assert store is base, "resolver must return the canvas-loaded store object"
+        return _proxy_pyramid(proxy=proxy)
+
+    monkeypatch.setattr(svc, "pyramid_for", fake_pyramid_for)
+    resolver = svc.make_pipeline_cache_thumbnail_resolver(
+        SimpleNamespace(get_pixel=get_pixel)
+    )
+
+    image, kind = resolver("a.png", False, _THUMB)
+
+    assert image is proxy
+    assert kind == "pyramid"
+    assert seen["args"] == ("a.png", False)
+
+
+def test_pipeline_cache_resolver_returns_cache_when_pyramid_incomplete(monkeypatch):
+    """Structure: no pyramid (or only L0 usable) → warmed base reused, no decode."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    base = _proxy_base()
+    pcache = SimpleNamespace(get_pixel=lambda path, auto_crop=None: base)
+
+    monkeypatch.setattr(svc, "pyramid_for", lambda _store: None)
+    image, kind = svc.make_pipeline_cache_thumbnail_resolver(pcache)(
+        "a.png", False, _THUMB
+    )
+    assert (image, kind) == (base, "cache")
+
+    monkeypatch.setattr(
+        svc, "pyramid_for", lambda _store: _proxy_pyramid(proxy=object(), picked=0)
+    )
+    image, kind = svc.make_pipeline_cache_thumbnail_resolver(pcache)(
+        "a.png", False, _THUMB
+    )
+    assert (image, kind) == (base, "cache")
+
+
+def test_pipeline_cache_resolver_none_when_store_absent():
+    """Structure: store absent (or no get_pixel) → None, built-in miss path stays."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    absent = SimpleNamespace(get_pixel=lambda path, auto_crop=None: None)
+    assert (
+        svc.make_pipeline_cache_thumbnail_resolver(absent)("a.png", False, _THUMB)
+        is None
+    )
+    assert (
+        svc.make_pipeline_cache_thumbnail_resolver(SimpleNamespace())(
+            "a.png", False, _THUMB
+        )
+        is None
+    )
+    assert (
+        svc.make_pipeline_cache_thumbnail_resolver(None)("a.png", False, _THUMB)
+        is None
+    )
+
+
+def test_presenter_pipeline_cache_resolver_guards():
+    """Structure: every hop (sessions/_pipeline_cache/get_pixel) may be missing."""
+    from tabs.image_compare.plugins.video_editor.presenter import (
+        pipeline_cache_thumbnail_resolver_for,
+    )
+
+    assert pipeline_cache_thumbnail_resolver_for(None) is None
+    assert pipeline_cache_thumbnail_resolver_for(SimpleNamespace()) is None
+    assert pipeline_cache_thumbnail_resolver_for(SimpleNamespace(sessions=None)) is None
+    assert (
+        pipeline_cache_thumbnail_resolver_for(
+            SimpleNamespace(sessions=SimpleNamespace())
+        )
+        is None
+    )
+    assert (
+        pipeline_cache_thumbnail_resolver_for(
+            SimpleNamespace(sessions=SimpleNamespace(_pipeline_cache=SimpleNamespace()))
+        )
+        is None
+    )
+    pcache = SimpleNamespace(get_pixel=lambda path, auto_crop=None: None)
+    resolver = pipeline_cache_thumbnail_resolver_for(
+        SimpleNamespace(sessions=SimpleNamespace(_pipeline_cache=pcache))
+    )
+    assert callable(resolver)
+
+
+def test_presenter_style_injection_thumb_path_uses_pipeline_cache(monkeypatch):
+    """Structure: presenter-style injection → thumb path renders from the pyramid."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+    from tabs.image_compare.plugins.video_editor.presenter import (
+        pipeline_cache_thumbnail_resolver_for,
+    )
+
+    proxy = object()
+    base = _proxy_base()
+    monkeypatch.setattr(
+        svc, "pyramid_for", lambda _store: _proxy_pyramid(proxy=proxy)
+    )
+    pcache = SimpleNamespace(get_pixel=lambda path, auto_crop=None: base)
+    main_controller = SimpleNamespace(
+        sessions=SimpleNamespace(_pipeline_cache=pcache)
+    )
+    resolver = pipeline_cache_thumbnail_resolver_for(main_controller)
+    assert callable(resolver)
+
+    seen = {}
+
+    def fake_render_from_images(_snap, _request, image1, image2, **_kwargs):
+        seen["images"] = (image1, image2)
+        return SimpleNamespace(
+            image=Image.new("RGBA", _THUMB, (11, 22, 33, 255)), backend="gpu"
+        )
+
+    service = _proxy_service(
+        repo_cache={},
+        renderer=SimpleNamespace(render_from_images=fake_render_from_images),
+    )
+    service.set_thumbnail_proxy_resolver(resolver)
+    result = service.render_snapshot_thumbnail_to_pil(
+        SimpleNamespace(image1_path="a.png", image2_path="b.png"), 160, 90
+    )
+
+    assert seen["images"] == (proxy, proxy)
+    assert service.last_thumbnail_source == ("pyramid", "pyramid")
+    assert result is not None and result.size == (160, 90)
+
+
+def test_video_export_image_repository_single_flight(tmp_path, monkeypatch):
+    """Structure: N workers racing one cold key decode exactly once."""
+    import threading
+
+    from tabs.image_compare.plugins.video_editor.services.video_export import (
+        images as images_mod,
+    )
+
+    decodes: list = []
+    decode_lock = threading.Lock()
+
+    def slow_from_path(path, auto_crop=False):
+        with decode_lock:
+            decodes.append(path)
+        import time
+
+        time.sleep(0.05)
+        return object()
+
+    monkeypatch.setattr(
+        images_mod.TiledPixelStore, "from_path", slow_from_path
+    )
+    target = tmp_path / "frame.png"
+    target.write_bytes(b"fake")
+    repo = images_mod.VideoExportImageRepository()
+
+    count = 8
+    barrier = threading.Barrier(count)
+    results: list = [None] * count
+
+    def worker(index):
+        barrier.wait(timeout=10)
+        results[index] = repo.get_image(str(target), False)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert all(thread.is_alive() is False for thread in threads)
+    assert len(decodes) == 1
+    assert all(result is results[0] and result is not None for result in results)

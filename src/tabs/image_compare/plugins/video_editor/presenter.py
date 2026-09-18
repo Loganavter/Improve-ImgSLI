@@ -21,6 +21,37 @@ from tabs.image_compare.plugins.video_editor.services.thumbnails import Thumbnai
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
+def pipeline_cache_thumbnail_resolver_for(main_controller):
+    """Thumbnail proxy resolver peeking the warm tab-side PipelineCache.
+
+    Returns ``resolver(path, auto_crop, target_size)`` or ``None`` when the
+    warm store is unreachable (no sessions, no ``_pipeline_cache``, no
+    ``get_pixel``) — the service then keeps its built-in miss path. Every
+    lookup is getattr-guarded; never raises.
+    """
+    try:
+        sessions = getattr(main_controller, "sessions", None)
+        if sessions is None:
+            return None
+        pipeline_cache = getattr(sessions, "_pipeline_cache", None)
+        if pipeline_cache is None:
+            return None
+        if not callable(getattr(pipeline_cache, "get_pixel", None)):
+            return None
+    except Exception:
+        return None
+    try:
+        from tabs.image_compare.plugins.video_editor.services.video_export.service import (
+            make_pipeline_cache_thumbnail_resolver,
+        )
+    except Exception:
+        return None
+    try:
+        return make_pipeline_cache_thumbnail_resolver(pipeline_cache)
+    except Exception:
+        return None
+
 class VideoEditorPresenter(QObject):
     previewUpdated = Signal(QPixmap)
     previewReady = Signal()
@@ -61,6 +92,20 @@ class VideoEditorPresenter(QObject):
                 # Preferred path: keeps the thumbnail worker thread from
                 # blocking on the GPU round-trip (see ThumbnailService docs).
                 self.thumbnail_service.set_async_snapshot_renderer(async_renderer)
+            # P1-followup: the exporter-private image repository is cold at
+            # dialog open, while the tab-side PipelineCache already holds the
+            # canvas-loaded stores + pyramids — peek there first so the first
+            # strip wave resolves in ms instead of full-res decodes.
+            try:
+                proxy_resolver = pipeline_cache_thumbnail_resolver_for(
+                    main_controller
+                )
+                if proxy_resolver is not None and hasattr(
+                    video_exporter, "set_thumbnail_proxy_resolver"
+                ):
+                    video_exporter.set_thumbnail_proxy_resolver(proxy_resolver)
+            except Exception:
+                logger.debug("PipelineCache thumbnail resolver skipped", exc_info=True)
 
         self.preview_coordinator = PreviewCoordinator(
             view=view,

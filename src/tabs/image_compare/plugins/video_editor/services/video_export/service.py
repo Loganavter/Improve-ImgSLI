@@ -120,19 +120,12 @@ def _cached_thumbnail_base(image_repository, path, auto_crop):
     return img
 
 
-def resolve_thumbnail_proxy_source(
-    image_repository,
-    path,
-    auto_crop=False,
-    target_size=None,
-):
-    """Proxy-resolution pixel source for one thumbnail side — never decodes.
+def _pick_thumbnail_proxy_from_base(base, target_size=None):
+    """Pyramid pick over an already-resolved base store — never decodes.
 
-    Resolution order: already-built pyramid coarse level (covers the
-    thumbnail target) → already-decoded base store → ``(None, "miss")``.
-    On ``"miss"`` the caller must use the full-res path (degrade, never
-    stall). Returns ``(store_or_None, kind)`` with kind in
-    ``{"pyramid", "cache", "miss"}``.
+    Returns ``(store, kind)`` with kind in ``{"pyramid", "cache", "miss"}``.
+    Shared by the built-in repository lookup and the tab-side PipelineCache
+    resolver so both pick the same coarse level for the same target.
     """
     if target_size is None:
         target_size = THUMBNAIL_TARGET_SIZE
@@ -140,7 +133,6 @@ def resolve_thumbnail_proxy_source(
         target_w, target_h = int(target_size[0]), int(target_size[1])
     except Exception:
         target_w, target_h = THUMBNAIL_TARGET_SIZE
-    base = _cached_thumbnail_base(image_repository, path, auto_crop)
     if base is None:
         return None, THUMBNAIL_SOURCE_MISS
     try:
@@ -164,6 +156,59 @@ def resolve_thumbnail_proxy_source(
             except Exception:
                 pass
     return base, THUMBNAIL_SOURCE_CACHE
+
+
+def make_pipeline_cache_thumbnail_resolver(pipeline_cache):
+    """Thumbnail proxy resolver peeking the warm tab-side PipelineCache.
+
+    ``resolver(path, auto_crop, target_size) -> (image, kind) | None``.
+    Peeks ``pipeline_cache.get_pixel(path, auto_crop=auto_crop)`` boxlessly
+    (the pixel key ignores the crop arg) — returning the SAME store object
+    the canvas loaded, so ``pyramid_for`` hits the already-built pyramid.
+    ``None`` (store absent, cache without ``get_pixel``, any error) means
+    "fall through to the built-in miss path". Never decodes, never raises.
+    """
+    def _resolver(path, auto_crop=False, target_size=None):
+        try:
+            get_pixel = getattr(pipeline_cache, "get_pixel", None)
+            if not callable(get_pixel):
+                return None
+            base = get_pixel(path, auto_crop=auto_crop)
+        except Exception:
+            return None
+        if base is None:
+            return None
+        try:
+            image, kind = _pick_thumbnail_proxy_from_base(base, target_size)
+        except Exception:
+            return None
+        if image is None:
+            return None
+        return image, kind
+
+    return _resolver
+
+
+def resolve_thumbnail_proxy_source(
+    image_repository,
+    path,
+    auto_crop=False,
+    target_size=None,
+):
+    """Proxy-resolution pixel source for one thumbnail side — never decodes.
+
+    Resolution order: already-built pyramid coarse level (covers the
+    thumbnail target) → already-decoded base store → ``(None, "miss")``.
+    On ``"miss"`` the caller must use the full-res path (degrade, never
+    stall). Returns ``(store_or_None, kind)`` with kind in
+    ``{"pyramid", "cache", "miss"}``.
+    """
+    if target_size is None:
+        target_size = THUMBNAIL_TARGET_SIZE
+    base = _cached_thumbnail_base(image_repository, path, auto_crop)
+    if base is None:
+        return None, THUMBNAIL_SOURCE_MISS
+    return _pick_thumbnail_proxy_from_base(base, target_size)
 
 
 class VideoExporterService:
@@ -474,6 +519,7 @@ class VideoExporterService:
             images.append(image)
             kinds.append(kind)
         self._last_thumbnail_source = (kinds[0], kinds[1])
+        _vrlog.debug("thumbnail_proxy_kinds=(%s,%s)", kinds[0], kinds[1])
         if images[0] is None or images[1] is None:
             return (None, None), self._last_thumbnail_source
         return (images[0], images[1]), self._last_thumbnail_source
