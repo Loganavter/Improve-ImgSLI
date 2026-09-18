@@ -213,7 +213,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/input/keyboard_movement.py",
-      "lines": 552,
+      "lines": 561,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "InteractiveMovementController is one stateful QTimer-driven",

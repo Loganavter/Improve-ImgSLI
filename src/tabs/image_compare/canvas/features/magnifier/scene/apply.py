@@ -173,37 +173,54 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
 
 
 def _dispatch_magnifier_geometry(geometry_state, center: Point, size: int, store) -> bool:
+    current_center = getattr(geometry_state, "active_overlay_screen_center", None)
+    current_size = getattr(geometry_state, "active_overlay_screen_size", None)
+    center_changed = center != current_center
+    size_changed = size != current_size
+    dispatcher = None
     if store is not None:
         dispatcher = getattr(store, "get_dispatcher", lambda: None)()
-        if dispatcher is not None:
-            try:
-                from tabs.image_compare.canvas.features.magnifier.input.actions import (
-                    SetMagnifierScreenCenterAction,
-                    SetMagnifierScreenSizeAction,
-                )
+    if not center_changed and not size_changed:
+        return dispatcher is not None
+    if dispatcher is not None:
+        try:
+            from tabs.image_compare.canvas.features.magnifier.input.actions import (
+                SetMagnifierScreenCenterAction,
+                SetMagnifierScreenSizeAction,
+            )
 
-                batch = getattr(store, "batch_changes", None)
-                if callable(batch):
-                    with store.batch_changes():
+            batch = getattr(store, "batch_changes", None)
+            if callable(batch):
+                with store.batch_changes():
+                    if center_changed:
                         dispatcher.dispatch(
-                            SetMagnifierScreenCenterAction(center=center), scope="viewport"
+                            SetMagnifierScreenCenterAction(center=center),
+                            scope="viewport",
                         )
+                    if size_changed:
                         dispatcher.dispatch(
-                            SetMagnifierScreenSizeAction(size=size), scope="viewport"
+                            SetMagnifierScreenSizeAction(size=size),
+                            scope="viewport",
                         )
-                else:
+            else:
+                if center_changed:
                     dispatcher.dispatch(
-                        SetMagnifierScreenCenterAction(center=center), scope="viewport"
+                        SetMagnifierScreenCenterAction(center=center),
+                        scope="viewport",
                     )
+                if size_changed:
                     dispatcher.dispatch(
-                        SetMagnifierScreenSizeAction(size=size), scope="viewport"
+                        SetMagnifierScreenSizeAction(size=size),
+                        scope="viewport",
                     )
-                return True
-            except Exception:
-                pass
+            return True
+        except Exception:
+            pass
     try:
-        setattr(geometry_state, "active_overlay_screen_center", center)
-        setattr(geometry_state, "active_overlay_screen_size", size)
+        if center_changed:
+            setattr(geometry_state, "active_overlay_screen_center", center)
+        if size_changed:
+            setattr(geometry_state, "active_overlay_screen_size", size)
     except Exception:
         pass
     return False

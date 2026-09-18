@@ -213,30 +213,3 @@ class SetDraggingSplitInMagnifierAction(Action):
 
     def get_payload(self):
         return {"enabled": self.enabled}
-
-
-@dataclass
-class SetInteractiveOffsetVisualAction(Action):
-    offset: Point
-    type: str = field(default="SET_INTERACTIVE_OFFSET_VISUAL", kw_only=True)
-
-    def get_payload(self):
-        return {"offset": self.offset}
-
-
-@dataclass
-class SetInteractiveSpacingVisualAction(Action):
-    spacing: float
-    type: str = field(default="SET_INTERACTIVE_SPACING_VISUAL", kw_only=True)
-
-    def get_payload(self):
-        return {"spacing": self.spacing}
-
-
-@dataclass
-class SetInteractiveInternalSplitVisualAction(Action):
-    split: float
-    type: str = field(default="SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL", kw_only=True)
-
-    def get_payload(self):
-        return {"split": self.split}

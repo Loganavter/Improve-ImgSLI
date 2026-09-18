@@ -85,8 +85,12 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/filename_overlay/properties.py", 174, "snap.viewport_state.render_config"),
         ("src/tabs/image_compare/canvas/features/filename_overlay/properties.py", 194, "snap.viewport_state.render_config"),
         # -- magnifier geometry scratch (overlay screen center/size) --
-        ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 205, "geometry_state"),
-        ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 206, "geometry_state"),
+        # NOTE: lines shifted 205/206 → 221/223 by the source-side no-op
+        # dispatch gate (task-noop-dispatch-guards-2026-09-16); same
+        # dispatch-failure fallback sites, now individually gated on value
+        # change, not new bypasses.
+        ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 221, "geometry_state"),
+        ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 223, "geometry_state"),
         # -- magnifier worker cache writes --
         ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 142, "presenter.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 147, "presenter.store.viewport.session_data.render_cache"),

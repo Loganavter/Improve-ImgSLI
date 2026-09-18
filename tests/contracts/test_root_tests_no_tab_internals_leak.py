@@ -94,6 +94,16 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
     "tests/runtime/test_reducer_purity_full.py": (
         "widened reducer purity sweep over all action types, image_compare and multi_compare as fixtures"
     ),
+    "tests/runtime/test_noop_dispatch_dropped.py": (
+        "generic reducer no-op identity contract (identical object on "
+        "no-change, which Dispatcher depends on), image_compare reducers "
+        "as fixture alongside core ones"
+    ),
+    "tests/runtime/test_magnifier_geometry_dispatch_gate.py": (
+        "generic source-side no-op dispatch gate contract (skip the call "
+        "entirely when values are unchanged), image_compare magnifier "
+        "geometry as the exercised call site"
+    ),
 }
 
 

@@ -12,7 +12,11 @@ from tabs.image_compare.canvas.features.magnifier.input.actions import (
 
 def reduce_magnifier_geometry_state(geometry_state, action: Action):
     if isinstance(action, SetMagnifierScreenCenterAction):
+        if geometry_state.active_overlay_screen_center == action.center:
+            return geometry_state
         return replace(geometry_state, active_overlay_screen_center=action.center)
     if isinstance(action, SetMagnifierScreenSizeAction):
+        if geometry_state.active_overlay_screen_size == action.size:
+            return geometry_state
         return replace(geometry_state, active_overlay_screen_size=action.size)
     return geometry_state
