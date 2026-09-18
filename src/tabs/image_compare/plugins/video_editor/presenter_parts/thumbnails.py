@@ -35,6 +35,12 @@ class ThumbnailCoordinator:
             interval_ms=SettleGate.DEFAULT_INTERVAL_MS * 2,
             parent=timer_parent,
         )
+        # P3 wave discipline: last visible window handed to the service.
+        # The settled refresh compares against it and retires in-flight
+        # workers only when the wanted set actually changed — same window
+        # re-settling (e.g. repeated resizes without scrolling) must not
+        # bump the generation token. None = no baseline yet (no retire).
+        self._last_visible_indices: List[int] | None = None
 
     def detach_view(self):
         self._visible_refresh.cancel()
@@ -100,6 +106,7 @@ class ThumbnailCoordinator:
             priority_indices=vis,
             fps=self.editor_service.get_fps(),
         )
+        self._last_visible_indices = list(vis)
 
     def on_single_thumbnail_ready(self, index: int, pixmap: QPixmap):
         try:
@@ -116,6 +123,37 @@ class ThumbnailCoordinator:
         self.emit_thumbnails_updated(thumbnails)
 
     def on_thumbnails_generation_finished(self):
+        # P3 idle fill: the initial wave covered the visible window only
+        # (visible-window-exact queue). Queue every still-unseen index at
+        # background priority — generate_additional runs them at lower pool
+        # priority and consults the P2 disk cache first, so a warm
+        # remainder costs ~zero. track_finish=False there means this fill
+        # never re-emits generationFinished: no loop, no second scheduler.
+        try:
+            if self.editor_service is None:
+                return None
+            total_frames = self.editor_service.get_frame_count()
+            generated = set(
+                getattr(self.thumbnail_service, "_generated_indices", None)
+                or ()
+            )
+            pending = set(
+                getattr(self.thumbnail_service, "_pending_indices", None) or ()
+            )
+            if not isinstance(total_frames, int) or total_frames <= 0:
+                return None
+            remainder = [
+                i
+                for i in range(total_frames)
+                if i not in generated and i not in pending
+            ]
+            if remainder:
+                self.thumbnail_service.generate_additional_thumbnails(
+                    remainder,
+                    fps=self.editor_service.get_fps(),
+                )
+        except Exception:
+            logger.debug("Idle thumbnail remainder fill skipped", exc_info=True)
         return None
 
     def on_timeline_viewport_changed(self):
@@ -175,6 +213,23 @@ class ThumbnailCoordinator:
         except Exception:
             pass
         if visible_indices:
+            # P3 scroll-cancel: the refresh path queues same-generation
+            # additional workers, so without a bump a scrolled-away wave
+            # would still apply on arrival. When the wanted set changed,
+            # retire it first — non-blocking (unlike cancel()), progress
+            # in _generated_indices and the P2 disk cache survive, and
+            # cache hits still emit instantly with no worker. Unchanged
+            # window → no bump (debounce re-settles must not churn the
+            # token); no baseline yet (None) → nothing to retire.
+            if self._last_visible_indices is not None and set(
+                visible_indices
+            ) != set(self._last_visible_indices):
+                retire = getattr(
+                    self.thumbnail_service, "retire_in_flight_thumbnails", None
+                )
+                if callable(retire):
+                    retire()
+            self._last_visible_indices = list(visible_indices)
             self.thumbnail_service.generate_additional_thumbnails(
                 visible_indices,
                 fps=self.editor_service.get_fps(),

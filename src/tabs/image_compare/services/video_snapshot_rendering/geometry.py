@@ -14,6 +14,36 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
 )
 
 
+#: Fixed strip-thumbnail target. The cover branch in ``prepare_miss`` is
+#: gated on exactly this size, so export letterbox/fill semantics (which
+#: never render at 160x90) stay untouched.
+THUMBNAIL_TARGET_SIZE = (160, 90)
+
+
+def is_thumbnail_target_size(width, height) -> bool:
+    """True only for the 160x90 strip-thumbnail target (cover, not fit)."""
+    try:
+        return (int(width), int(height)) == THUMBNAIL_TARGET_SIZE
+    except (TypeError, ValueError):
+        return False
+
+
+def thumbnail_proxy_dest_scale(
+    source_width, source_height, target_width, target_height
+) -> float:
+    """Tab-side spec for the pyramid pick: output px per source px.
+
+    The engine decides the level (service calls
+    ``PyramidPixelStore.best_level_for_scale`` with this scale); the tab
+    only resolves the spec — same split as the export LOD path.
+    """
+    sw = max(1, int(source_width))
+    sh = max(1, int(source_height))
+    tw = max(1, int(target_width))
+    th = max(1, int(target_height))
+    return min(tw / float(sw), th / float(sh))
+
+
 def _resample_for_method(method_name: str) -> Image.Resampling:
     return get_resample(method_name)
 
@@ -76,6 +106,59 @@ def fit_source_to_content(
     out = TiledPixelStore.allocate(tw, th)
     write_resampled_to_store(out, source, tw, th, resample)
     return out
+
+
+def cover_source_to_content(
+    source,
+    content_size: tuple[int, int],
+    resize_method: str = "LANCZOS",
+):
+    """Scale ``source`` to COVER ``content_size`` (thumbnail strip only).
+
+    Unlike :func:`fit_source_to_content` (fit-inside + aspect insets folded
+    into pads), cover scales by the max ratio and center-crops to exactly
+    ``content_size`` — the strip shows full-bleed 160x90 blocks with no
+    transparent letterbox pads for ``_finish_thumbnail_image`` to trim.
+    Export/letterbox paths must NOT use this (they keep fit + pads).
+    """
+    cw, ch = int(content_size[0]), int(content_size[1])
+    sw, sh = int(source.width), int(source.height)
+    if sw <= 0 or sh <= 0 or cw <= 0 or ch <= 0:
+        return source
+
+    cover_r = max(cw / float(sw), ch / float(sh))
+    tw = max(1, int(round(sw * cover_r)))
+    th = max(1, int(round(sh * cover_r)))
+
+    resample = _resample_for_method(resize_method)
+    if (tw, th) == (sw, sh):
+        if isinstance(source, TiledPixelStore):
+            grown = source
+        elif isinstance(source, Image.Image):
+            grown = TiledPixelStore.from_pil(
+                source if source.mode == "RGBA" else source.convert("RGBA")
+            )
+        else:
+            return source
+    else:
+        grown = TiledPixelStore.allocate(tw, th)
+        write_resampled_to_store(grown, source, tw, th, resample)
+    if (tw, th) == (cw, ch):
+        return grown
+    left = max(0, (tw - cw) // 2)
+    top = max(0, (th - ch) // 2)
+    try:
+        cropped = grown.crop((left, top, left + cw, top + ch))
+    except Exception:
+        return grown
+    if isinstance(cropped, TiledPixelStore):
+        return cropped
+    try:
+        return TiledPixelStore.from_pil(
+            cropped if cropped.mode == "RGBA" else cropped.convert("RGBA")
+        )
+    except Exception:
+        return grown
 
 
 def geometry_with_aspect_insets(

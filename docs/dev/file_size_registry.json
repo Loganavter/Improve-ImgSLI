@@ -491,7 +491,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
-      "lines": 540,
+      "lines": 685,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard\"",
@@ -503,7 +503,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
-      "lines": 529,
+      "lines": 787,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",

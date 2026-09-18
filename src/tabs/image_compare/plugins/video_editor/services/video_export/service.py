@@ -6,11 +6,17 @@ import os
 import time
 from collections.abc import Sequence
 
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 
 from plugins.export.services.gpu_export import GpuExportService
 from engine.cache import TargetSurfaceSpec
+from engine.store.pyramid_registry import pyramid_for
 from tabs.image_compare.plugins.video_editor.services.keyframing import KeyframedRecording
+from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+    THUMBNAIL_TARGET_SIZE,
+    thumbnail_proxy_dest_scale,
+)
 from tabs.image_compare.plugins.video_editor.services.video_export.bounds import (
     CanvasBoundsAnalyzer,
 )
@@ -39,6 +45,126 @@ _vrlog = logging.getLogger("ImproveImgSLI.video_render")
 
 VIDEO_EDITOR_AUTO_CROP = False
 
+#: Pixel-source kinds for one thumbnail side, recorded on
+#: ``VideoExporterService.last_thumbnail_source`` for structure asserts:
+#: ``"pyramid"`` (already-built coarse level, no decode), ``"cache"``
+#: (already-decoded base store reused, no new decode), ``"miss"`` (nothing
+#: warm — the caller falls back to the full-res path, degrading, never
+#: stalling the strip).
+THUMBNAIL_SOURCE_PYRAMID = "pyramid"
+THUMBNAIL_SOURCE_CACHE = "cache"
+THUMBNAIL_SOURCE_MISS = "miss"
+
+
+class _MainThreadCallbackBridge(QObject):
+    """Posts thumbnail callbacks to the bridge owner's thread (GUI/main).
+
+    The bridge is created in ``VideoExporterService.__init__`` (GUI
+    thread), so a queued ``_fire`` emit from a thumbnail worker lands on
+    the main thread — matching the ``render_snapshot_thumbnail_to_pil_async``
+    contract (``callback`` fires later, on the main thread). Same-thread
+    callers get ``False`` from :meth:`post` and call back directly.
+    """
+
+    _fire = Signal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._fire.connect(self._deliver)
+
+    def post(self, callback, image) -> bool:
+        try:
+            from PySide6.QtCore import QThread
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is None:
+                return False
+            if QThread.currentThread() is app.thread():
+                return False
+            self._fire.emit((callback, image))
+            return True
+        except Exception:
+            return False
+
+    def _deliver(self, payload) -> None:
+        try:
+            callback, image = payload
+        except Exception:
+            return
+        try:
+            callback(image)
+        except Exception:
+            logger.error("Thumbnail async callback failed", exc_info=True)
+
+
+def _cached_thumbnail_base(image_repository, path, auto_crop):
+    """Already-decoded base store for ``(path, auto_crop)``, or None.
+
+    Read-only peek at the repository cache — never decodes, never blocks.
+    """
+    try:
+        cache = getattr(image_repository, "_images_cache", None)
+        if not isinstance(cache, dict):
+            return None
+        img = cache.get((path, auto_crop))
+    except Exception:
+        return None
+    if img is None:
+        return None
+    try:
+        if not getattr(img, "is_open", True):
+            return None
+    except Exception:
+        return None
+    return img
+
+
+def resolve_thumbnail_proxy_source(
+    image_repository,
+    path,
+    auto_crop=False,
+    target_size=None,
+):
+    """Proxy-resolution pixel source for one thumbnail side — never decodes.
+
+    Resolution order: already-built pyramid coarse level (covers the
+    thumbnail target) → already-decoded base store → ``(None, "miss")``.
+    On ``"miss"`` the caller must use the full-res path (degrade, never
+    stall). Returns ``(store_or_None, kind)`` with kind in
+    ``{"pyramid", "cache", "miss"}``.
+    """
+    if target_size is None:
+        target_size = THUMBNAIL_TARGET_SIZE
+    try:
+        target_w, target_h = int(target_size[0]), int(target_size[1])
+    except Exception:
+        target_w, target_h = THUMBNAIL_TARGET_SIZE
+    base = _cached_thumbnail_base(image_repository, path, auto_crop)
+    if base is None:
+        return None, THUMBNAIL_SOURCE_MISS
+    try:
+        src_w, src_h = int(base.width), int(base.height)
+    except Exception:
+        return None, THUMBNAIL_SOURCE_MISS
+    try:
+        pyramid = pyramid_for(base)
+    except Exception:
+        pyramid = None
+    if pyramid is not None:
+        try:
+            depth = int(pyramid.level_count)
+            dest_scale = thumbnail_proxy_dest_scale(src_w, src_h, target_w, target_h)
+            picked = int(pyramid.best_level_for_scale(dest_scale))
+        except Exception:
+            depth, picked = 1, 0
+        if depth > 1 and picked >= 1:
+            try:
+                return pyramid.level(picked), THUMBNAIL_SOURCE_PYRAMID
+            except Exception:
+                pass
+    return base, THUMBNAIL_SOURCE_CACHE
+
 
 class VideoExporterService:
     def __init__(self, recorder, store, main_controller=None, gpu_export_service=None):
@@ -63,6 +189,19 @@ class VideoExporterService:
         self._cancel_requested = False
         self._cancel_lock = threading.Lock()
         self._last_render_backend = "gpu"
+        # P1 thumbnail proxy seam: optional ``resolver(path, auto_crop,
+        # target_size) -> (image_or_None, kind) | None``. Unset → the
+        # built-in repository/pyramid lookup. Session wiring (P2/P3) can
+        # inject display-cache images here without this service knowing
+        # tab internals.
+        self._thumbnail_proxy_resolver = None
+        # Last per-side source kinds ``(kind1, kind2)`` from the thumbnail
+        # path only (structure asserts; export never touches this).
+        self._last_thumbnail_source = None
+        try:
+            self._thumbnail_callback_bridge = _MainThreadCallbackBridge()
+        except Exception:
+            self._thumbnail_callback_bridge = None
 
         self._image_repository = VideoExportImageRepository()
         self._bounds_analyzer = CanvasBoundsAnalyzer(self._image_repository.get_image)
@@ -283,6 +422,72 @@ class VideoExporterService:
         )
         return self._render_snapshot_with_renderer(self._frame_renderer, snap, request)
 
+    def set_thumbnail_proxy_resolver(self, resolver) -> None:
+        """Inject the thumbnail proxy-source resolver (P1 seam).
+
+        ``resolver(path, auto_crop, target_size)`` returns
+        ``(image_or_None, kind)`` or ``None`` to fall through to the
+        built-in repository/pyramid lookup. ``None`` restores the default.
+        """
+        self._thumbnail_proxy_resolver = resolver
+
+    @property
+    def last_thumbnail_source(self):
+        """Per-side source kinds ``(kind1, kind2)`` of the last thumbnail
+        request (``"pyramid"``/``"cache"``/``"miss"``), or ``None`` before
+        the first one. Export requests never touch this."""
+        return self._last_thumbnail_source
+
+    def _resolve_thumbnail_images(self, snap, auto_crop, target_size):
+        """Proxy images for both thumbnail sides — never decodes.
+
+        Returns ``((img1_or_None, img2_or_None), (kind1, kind2))``. Any
+        ``None`` side means that side missed and the caller must fall back
+        to the full-res path for the whole request.
+        """
+        paths = (
+            getattr(snap, "image1_path", None),
+            getattr(snap, "image2_path", None),
+        )
+        images: list = []
+        kinds: list = []
+        for path in paths:
+            image, kind = None, THUMBNAIL_SOURCE_MISS
+            resolver = self._thumbnail_proxy_resolver
+            if resolver is not None:
+                try:
+                    resolved = resolver(path, auto_crop, target_size)
+                except Exception:
+                    resolved = None
+                if resolved is not None:
+                    try:
+                        image, kind = resolved
+                    except Exception:
+                        image, kind = None, THUMBNAIL_SOURCE_MISS
+            if image is None:
+                image, kind = resolve_thumbnail_proxy_source(
+                    self._image_repository,
+                    path,
+                    auto_crop,
+                    target_size,
+                )
+            images.append(image)
+            kinds.append(kind)
+        self._last_thumbnail_source = (kinds[0], kinds[1])
+        if images[0] is None or images[1] is None:
+            return (None, None), self._last_thumbnail_source
+        return (images[0], images[1]), self._last_thumbnail_source
+
+    def _render_thumbnail_from_proxy(self, snap, request, images):
+        render_from_images = getattr(
+            self._thumbnail_frame_renderer, "render_from_images", None
+        )
+        if render_from_images is None:
+            return None
+        result = render_from_images(snap, request, images[0], images[1])
+        self._last_render_backend = result.backend
+        return result.image
+
     def render_snapshot_thumbnail_to_pil(
         self,
         snap,
@@ -303,6 +508,25 @@ class VideoExporterService:
             self._coerce_global_bounds(global_bounds),
             fill_color,
         )
+        # P1: proxy-resolution source (pyramid coarse level / display
+        # cache) instead of a full-res decode. The pyramid pick covers
+        # the actual requested size. Miss on either side → the current
+        # full-res path (degrade, never stall the strip).
+        try:
+            (img1, img2), _kinds = self._resolve_thumbnail_images(
+                snap, auto_crop, (max(1, int(out_w)), max(1, int(out_h)))
+            )
+        except Exception:
+            img1 = img2 = None
+        if img1 is not None and img2 is not None:
+            try:
+                proxied = self._render_thumbnail_from_proxy(
+                    snap, request, (img1, img2)
+                )
+            except Exception:
+                proxied = None
+            if proxied is not None:
+                return proxied
         return self._render_snapshot_with_renderer(
             self._thumbnail_frame_renderer,
             snap,
@@ -336,6 +560,26 @@ class VideoExporterService:
             self._coerce_global_bounds(global_bounds),
             fill_color,
         )
+        # P1 proxy path (same seam as the sync method): no decode on hit —
+        # sync prepare-from-proxy on this worker is tens of ms, strictly
+        # cheaper than today's full-res decode inside ``render_async``.
+        # The callback still lands on the main thread via the bridge.
+        try:
+            (img1, img2), _kinds = self._resolve_thumbnail_images(
+                snap, auto_crop, (max(1, int(out_w)), max(1, int(out_h)))
+            )
+        except Exception:
+            img1 = img2 = None
+        if img1 is not None and img2 is not None:
+            try:
+                proxied = self._render_thumbnail_from_proxy(
+                    snap, request, (img1, img2)
+                )
+            except Exception:
+                proxied = None
+            if proxied is not None:
+                self._deliver_thumbnail_async(callback, proxied)
+                return
         _vrlog.debug(
             "render_begin renderer=thumbnail out=%sx%s fit_content=%s ts=%s async=True",
             request.target_surface.width,
@@ -355,6 +599,20 @@ class VideoExporterService:
             callback(result.image)
 
         self._thumbnail_frame_renderer.render_async(snap, request, _on_result)
+
+    def _deliver_thumbnail_async(self, callback, image) -> None:
+        """Fire an async thumbnail ``callback`` on the main thread.
+
+        Falls back to a direct call when already on the main thread (or
+        with no QApplication, e.g. single-threaded unit tests).
+        """
+        try:
+            bridge = self._thumbnail_callback_bridge
+            if bridge is not None and bridge.post(callback, image):
+                return
+        except Exception:
+            pass
+        callback(image)
 
     def _build_export_job(self, recording, resolution, fps, export_options):
         out_w, out_h = resolution
