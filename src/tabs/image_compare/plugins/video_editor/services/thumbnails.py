@@ -12,6 +12,10 @@ from PySide6.QtCore import QObject, QThreadPool, Signal
 from PySide6.QtGui import QImage, QPixmap
 
 from tabs.image_compare.plugins.video_editor.services.keyframing import KeyframedRecording
+from tabs.image_compare.plugins.video_editor.services.thumbnail_cache import (
+    ThumbnailDiskCache,
+    thumbnail_cache_key_for_snap,
+)
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -112,6 +116,11 @@ class ThumbnailService(QObject):
         self._auto_crop = False
         self._active_workers = 0
         self._fps = 60
+        # P2 persistent disk cache of finished thumbnails. Lazily built on
+        # first use (construction touches the filesystem); a None set via
+        # set_thumbnail_disk_cache() disables it for the service lifetime.
+        self._thumbnail_disk_cache = None
+        self._thumbnail_disk_cache_unavailable = False
 
     def generate_thumbnails(
         self,
@@ -327,6 +336,94 @@ class ThumbnailService(QObject):
         """
         self._render_snapshot_async = renderer
 
+    def set_thumbnail_disk_cache(self, cache) -> None:
+        """Inject the persistent thumbnail disk cache (None disables it).
+
+        Public API additions only — ``generate_thumbnails``,
+        ``generate_additional_thumbnails``, ``cancel`` and the
+        ``set_snapshot_renderer*`` signatures are unchanged; P3 drives the
+        cache through those same methods.
+        """
+        self._thumbnail_disk_cache = cache
+        self._thumbnail_disk_cache_unavailable = cache is None
+
+    def _ensure_thumbnail_disk_cache(self):
+        if self._thumbnail_disk_cache is not None:
+            return self._thumbnail_disk_cache
+        if self._thumbnail_disk_cache_unavailable:
+            return None
+        try:
+            self._thumbnail_disk_cache = ThumbnailDiskCache()
+        except Exception:
+            logger.debug(
+                "Thumbnail disk cache unavailable; continuing without it",
+                exc_info=True,
+            )
+            self._thumbnail_disk_cache_unavailable = True
+            return None
+        return self._thumbnail_disk_cache
+
+    def _thumbnail_cache_key_for_index(self, index: int):
+        """``(cache, key)`` for ``index`` — ``(None, None)`` on any doubt.
+
+        The key is rebuilt from the live recording on every call (queue and
+        completion); a mid-flight recording change just yields the current
+        params' key, never a wrong hit.
+        """
+        try:
+            cache = self._ensure_thumbnail_disk_cache()
+            if cache is None or self._recording is None:
+                return None, None
+            snap = self._recording.evaluate_at(
+                float(index) / float(max(1, self._fps))
+            )
+            key = thumbnail_cache_key_for_snap(
+                snap,
+                auto_crop=self._auto_crop,
+                thumbnail_size=self._thumbnail_size,
+                render_scale=self._thumbnail_render_scale,
+            )
+            if key is None:
+                return None, None
+            return cache, key
+        except Exception:
+            return None, None
+
+    def _serve_thumbnail_from_disk_cache(
+        self, index: int, generation: int, track_finish: bool
+    ) -> bool:
+        """Emit a cached thumbnail without starting a worker. True = served."""
+        try:
+            cache, cache_key = self._thumbnail_cache_key_for_index(index)
+            if cache is None or cache_key is None:
+                return False
+            hit = cache.get(cache_key, expected_size=tuple(self._thumbnail_size))
+        except Exception:
+            return False
+        if hit is None:
+            return False
+        _thlog.debug("thumbnail_cache_hit index=%s", index)
+        self._on_thumbnail_generated(index, hit, generation)
+        if track_finish:
+            self._on_worker_finished(generation)
+        return True
+
+    def _store_thumbnail_in_disk_cache(self, index: int, pil_image) -> None:
+        """Store a live-generation completion.
+
+        Must only be called past the stale-generation guard in
+        :meth:`_on_thumbnail_generated` — stale completions return there and
+        never reach this store.
+        """
+        try:
+            cache, cache_key = self._thumbnail_cache_key_for_index(index)
+            if cache is None or cache_key is None:
+                return
+            if cache.put(cache_key, pil_image):
+                _thlog.debug("thumbnail_cache_store index=%s", index)
+        except Exception:
+            pass
+
     def _build_initial_indices(
         self,
         *,
@@ -366,6 +463,13 @@ class ThumbnailService(QObject):
         generation = self._generation
         if index in self._pending_indices:
             return
+        # P2: finished-thumbnail disk lookup before queueing — a hit emits
+        # via the normal _on_thumbnail_generated path with no worker started.
+        try:
+            if self._serve_thumbnail_from_disk_cache(index, generation, track_finish):
+                return
+        except Exception:
+            pass
         self._pending_indices.add(index)
 
         if self._render_snapshot_async is not None:
@@ -492,6 +596,9 @@ class ThumbnailService(QObject):
                 except Exception:
                     pass
                 pil_image = pil_image.convert("RGBA")
+                # P2: store the finished image under the same generation
+                # token — stale generations returned above and never store.
+                self._store_thumbnail_in_disk_cache(index, pil_image)
                 data = pil_image.tobytes("raw", "RGBA")
                 qimg = QImage(
                     data,
