@@ -179,9 +179,23 @@ def make_pipeline_cache_thumbnail_resolver(pipeline_cache):
             _vrlog.debug("thumbnail_resolver peek error", exc_info=True)
             return None
         if base is None:
+            try:
+                pixel = getattr(pipeline_cache, "_pixel", None)
+                entries = list(pixel.keys()) if hasattr(pixel, "keys") else None
+                sample = (
+                    [os.path.basename(k[0]) if isinstance(k, tuple) and k else k for k in entries[:5]]
+                    if entries
+                    else entries
+                )
+                n = len(entries) if entries is not None else -1
+            except Exception:
+                n, sample = -2, None
             _vrlog.debug(
-                "thumbnail_resolver peek miss path=%s",
+                "thumbnail_resolver peek miss path=%s auto_crop=%s cache_entries=%s sample=%s",
                 os.path.basename(path) if path else None,
+                auto_crop,
+                n,
+                sample,
             )
             return None
         _vrlog.debug(
