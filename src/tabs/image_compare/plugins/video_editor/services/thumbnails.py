@@ -424,6 +424,30 @@ class ThumbnailService(QObject):
         except Exception:
             pass
 
+    def retire_in_flight_thumbnails(self) -> int:
+        """Retire in-flight thumbnail workers without blocking.
+
+        Bumps the single generation token so every worker queued before
+        this call stale-drops its completion on arrival (both the pixmap
+        in :meth:`_on_thumbnail_generated` and the counter in
+        :meth:`_on_worker_finished`). Clears ``_pending_indices`` so the
+        next refresh can re-queue overlapping indices immediately instead
+        of waiting for the retired workers to drain, and resets
+        ``_active_workers`` — no tracked (``track_finish=True``) wave is
+        in flight after this call, and a retired wave must never emit
+        ``generationFinished`` late.
+
+        Unlike :meth:`cancel` this never blocks (no ``waitForDone``), so
+        the viewport-change refresh path can call it on scroll settle.
+        ``_generated_indices`` and the P2 disk cache are preserved: already
+        finished thumbnails stay finished, and cache hits still emit
+        instantly with no worker.
+        """
+        self._generation += 1
+        self._pending_indices.clear()
+        self._active_workers = 0
+        return self._generation
+
     def _build_initial_indices(
         self,
         *,
@@ -431,6 +455,20 @@ class ThumbnailService(QObject):
         target_count: int,
         priority_indices: List[int] | None,
     ) -> List[int]:
+        """P3 wave discipline: visible-window-exact initial wave.
+
+        When the coordinator passes a non-empty visible window
+        (``priority_indices``), the initial queue is exactly that window —
+        no fallback spread is appended on top. The remainder of the strip
+        follows at idle via ``generate_additional_thumbnails`` (queued by
+        the coordinator on ``generationFinished``).
+
+        The ``<= 12`` capped fallback below runs ONLY for the
+        genuinely-unknown case: no view/timeline visible window (empty
+        ``priority_indices``). It spreads a bounded probe over ``count``
+        so the strip still paints something when the viewport is not
+        known yet.
+        """
         valid_priority = []
         seen = set()
         for idx in priority_indices or []:
