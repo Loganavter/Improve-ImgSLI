@@ -20,9 +20,6 @@ class ImageRegion:
     def bottom(self) -> int:
         return self.top + self.height
 
-    def as_box(self) -> tuple[int, int, int, int]:
-        return (self.left, self.top, self.right, self.bottom)
-
 @dataclass(frozen=True)
 class UniformTileGrid:
     total_width: int
