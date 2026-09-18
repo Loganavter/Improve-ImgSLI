@@ -57,8 +57,10 @@ def session_state_thumbnail_resolver_for(main_controller):
     """Thumbnail proxy resolver reading the live Redux image session.
 
     Peeks ``main_controller.sessions.store.viewport.session_data.image_state``
-    (``image1/image2`` + ``loaded_image*_paths``) — the SAME unified stores
-    the canvas renders and the pyramids were built for. Returns
+    (``image1/image2`` — the SAME unified stores the canvas renders and the
+    pyramids were built for) and matches snap paths against the ``document``
+    slot lists (``image_list1/2``, the recorder's own path source;
+    ``loaded_image*_paths`` are never populated). Returns
     ``resolver(path, auto_crop, target_size)`` or ``None`` when unreachable.
     Every lookup is getattr-guarded; never raises.
     """
@@ -93,11 +95,33 @@ def session_state_thumbnail_resolver_for(main_controller):
             istate = getattr(sess_data, "image_state", None)
             if istate is None:
                 return None
+            # NOTE: image_state.loaded_image*_paths are never populated
+            # (write-paths don't exist) — match snap paths against the
+            # document lists instead, the same source the recorder itself
+            # uses for snap.image*_path.
+            doc = None
+            try:
+                get_slot = getattr(redux, "get_session_state_slot", None)
+                if callable(get_slot):
+                    doc = get_slot("document")
+            except Exception:
+                doc = None
+            try:
+                list1 = [
+                    getattr(item, "path", None)
+                    for item in (getattr(doc, "image_list1", None) or [])
+                ]
+                list2 = [
+                    getattr(item, "path", None)
+                    for item in (getattr(doc, "image_list2", None) or [])
+                ]
+            except Exception:
+                list1, list2 = None, None
             return (
                 getattr(istate, "image1", None),
                 getattr(istate, "image2", None),
-                getattr(istate, "loaded_image1_paths", None),
-                getattr(istate, "loaded_image2_paths", None),
+                list1,
+                list2,
             )
         except Exception:
             return None

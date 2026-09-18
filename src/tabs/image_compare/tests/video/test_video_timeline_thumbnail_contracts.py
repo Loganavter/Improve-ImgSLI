@@ -677,3 +677,44 @@ def test_chained_resolvers_session_first_pipeline_second():
     assert chained("a.png", False, _THUMB) == ("img", "pyramid")
 
     assert chain_thumbnail_resolvers(None, None) is None
+
+
+def test_session_state_factory_peeks_document_lists_not_loaded_paths(monkeypatch):
+    """Regression: loaded_image*_paths are never populated — the factory must
+    match snap paths against the document image_lists (recorder's source)."""
+    from types import SimpleNamespace as NS
+
+    from tabs.image_compare.plugins.video_editor.presenter import (
+        session_state_thumbnail_resolver_for,
+    )
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    base = _proxy_base()
+    istate = NS(
+        image1=base,
+        image2=base,
+        loaded_image1_paths=[],
+        loaded_image2_paths=[],
+    )
+    doc = NS(
+        image_list1=[NS(path="/media/ken.png")],
+        image_list2=[NS(path="/media/futsu.png")],
+    )
+    redux = NS(
+        viewport=NS(session_data=NS(image_state=istate)),
+        get_session_state_slot=lambda name: doc if name == "document" else None,
+    )
+    main_controller = NS(sessions=NS(store=redux))
+
+    monkeypatch.setattr(
+        svc, "pyramid_for", lambda _store: _proxy_pyramid(proxy="PX")
+    )
+    resolver = session_state_thumbnail_resolver_for(main_controller)
+    assert resolver is not None
+
+    image, kind = resolver("/media/ken.png", True, _THUMB)
+    assert (image, kind) == ("PX", "pyramid")
+    assert resolver("/media/other.png", True, _THUMB) is None
+
+    assert session_state_thumbnail_resolver_for(None) is None
+    assert session_state_thumbnail_resolver_for(NS(sessions=None)) is None
