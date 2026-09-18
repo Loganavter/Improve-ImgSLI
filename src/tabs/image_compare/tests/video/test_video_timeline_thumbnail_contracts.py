@@ -9,7 +9,11 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-def test_renderer_thumbnail_preserves_dynamic_width():
+def test_renderer_thumbnail_cover_crops_to_fixed_size():
+    """Cover (not fit): any opaque render lands exactly on thumbnail_size.
+    Contract changed with the transparent-margin trim (0eb33996): the old
+    fit-height dynamic-width form (320x90) is gone — strip blocks are
+    uniform 160x90, cover-scaled + center-cropped."""
     from tabs.image_compare.plugins.video_editor.services.thumbnails import (
         _render_thumbnail_using_renderer,
     )
@@ -27,7 +31,7 @@ def test_renderer_thumbnail_preserves_dynamic_width():
     )
 
     assert result is not None
-    assert result.size == (320, 90)
+    assert result.size == (160, 90)
 
 def test_finish_trims_transparent_margins_before_cover():
     """Snapshot-plan letterbox pads (transparent) must not survive into the
