@@ -172,12 +172,24 @@ def make_pipeline_cache_thumbnail_resolver(pipeline_cache):
         try:
             get_pixel = getattr(pipeline_cache, "get_pixel", None)
             if not callable(get_pixel):
+                _vrlog.debug("thumbnail_resolver peek n/a (no get_pixel)")
                 return None
             base = get_pixel(path, auto_crop=auto_crop)
         except Exception:
+            _vrlog.debug("thumbnail_resolver peek error", exc_info=True)
             return None
         if base is None:
+            _vrlog.debug(
+                "thumbnail_resolver peek miss path=%s",
+                os.path.basename(path) if path else None,
+            )
             return None
+        _vrlog.debug(
+            "thumbnail_resolver peek hit path=%s uid=%s open=%s",
+            os.path.basename(path) if path else None,
+            getattr(base, "uid", None),
+            getattr(base, "is_open", None),
+        )
         try:
             image, kind = _pick_thumbnail_proxy_from_base(base, target_size)
         except Exception:
@@ -519,7 +531,12 @@ class VideoExporterService:
             images.append(image)
             kinds.append(kind)
         self._last_thumbnail_source = (kinds[0], kinds[1])
-        _vrlog.debug("thumbnail_proxy_kinds=(%s,%s)", kinds[0], kinds[1])
+        _vrlog.debug(
+            "thumbnail_proxy_kinds=(%s,%s) resolver=%s",
+            kinds[0],
+            kinds[1],
+            "session" if self._thumbnail_proxy_resolver is not None else "none",
+        )
         if images[0] is None or images[1] is None:
             return (None, None), self._last_thumbnail_source
         return (images[0], images[1]), self._last_thumbnail_source

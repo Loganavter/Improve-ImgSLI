@@ -97,6 +97,14 @@ class VideoEditorPresenter(QObject):
             # canvas-loaded stores + pyramids — peek there first so the first
             # strip wave resolves in ms instead of full-res decodes.
             try:
+                sessions = getattr(main_controller, "sessions", None)
+                pipeline_cache = getattr(sessions, "_pipeline_cache", None)
+                logger.debug(
+                    "thumbnail proxy resolver wiring: main_controller=%s sessions=%s pipeline_cache=%s",
+                    main_controller is not None,
+                    sessions is not None,
+                    pipeline_cache is not None,
+                )
                 proxy_resolver = pipeline_cache_thumbnail_resolver_for(
                     main_controller
                 )
@@ -104,6 +112,9 @@ class VideoEditorPresenter(QObject):
                     video_exporter, "set_thumbnail_proxy_resolver"
                 ):
                     video_exporter.set_thumbnail_proxy_resolver(proxy_resolver)
+                    logger.debug("thumbnail proxy resolver injected (session cache)")
+                else:
+                    logger.debug("thumbnail proxy resolver skipped (factory None)")
             except Exception:
                 logger.debug("PipelineCache thumbnail resolver skipped", exc_info=True)
 
