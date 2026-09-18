@@ -595,3 +595,85 @@ def test_video_export_image_repository_single_flight(tmp_path, monkeypatch):
     assert all(thread.is_alive() is False for thread in threads)
     assert len(decodes) == 1
     assert all(result is results[0] and result is not None for result in results)
+
+
+def test_session_state_resolver_returns_pyramid_level_for_loaded_paths(monkeypatch):
+    """Structure: live session image1/image2 (same objects pyramids built for)
+    resolve by loaded path; unmatched path misses."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    proxy = object()
+    base1, base2 = _proxy_base(), _proxy_base()
+
+    def peek():
+        return (
+            base1,
+            base2,
+            ["/media/ken.png"],
+            ["/media/futsu.png"],
+        )
+
+    def fake_pyramid_for(store):
+        assert store is base1 or store is base2
+        return _proxy_pyramid(proxy=proxy)
+
+    monkeypatch.setattr(svc, "pyramid_for", fake_pyramid_for)
+    resolver = svc.make_session_state_thumbnail_resolver(peek)
+
+    image, kind = resolver("/media/ken.png", True, _THUMB)
+    assert image is proxy
+    assert kind == "pyramid"
+
+    image, kind = resolver("/media/futsu.png", True, _THUMB)
+    assert image is proxy
+    assert kind == "pyramid"
+
+    assert resolver("/media/unknown.png", True, _THUMB) is None
+
+
+def test_session_state_resolver_miss_never_decodes_or_raises():
+    """Structure: absent state / broken peek / unmapped path → None, no raise."""
+    import tabs.image_compare.plugins.video_editor.services.video_export.service as svc
+
+    assert svc.make_session_state_thumbnail_resolver(lambda: None)(
+        "a.png", False, _THUMB
+    ) is None
+    assert svc.make_session_state_thumbnail_resolver(None)(
+        "a.png", False, _THUMB
+    ) is None
+
+    def broken():
+        raise RuntimeError("boom")
+
+    assert svc.make_session_state_thumbnail_resolver(broken)(
+        "a.png", False, _THUMB
+    ) is None
+
+
+def test_chained_resolvers_session_first_pipeline_second():
+    """Structure: session-state hit wins; pipeline cache is the fallback."""
+    from tabs.image_compare.plugins.video_editor.presenter import (
+        chain_thumbnail_resolvers,
+    )
+
+    calls = []
+
+    def session_resolver(path, auto_crop=False, target_size=None):
+        calls.append(("session", path))
+        return None
+
+    def cache_resolver(path, auto_crop=False, target_size=None):
+        calls.append(("cache", path))
+        return ("img", "cache")
+
+    chained = chain_thumbnail_resolvers(session_resolver, cache_resolver)
+    assert chained("a.png", False, _THUMB) == ("img", "cache")
+    assert calls == [("session", "a.png"), ("cache", "a.png")]
+
+    def winning(path, auto_crop=False, target_size=None):
+        return ("img", "pyramid")
+
+    chained = chain_thumbnail_resolvers(winning, cache_resolver)
+    assert chained("a.png", False, _THUMB) == ("img", "pyramid")
+
+    assert chain_thumbnail_resolvers(None, None) is None

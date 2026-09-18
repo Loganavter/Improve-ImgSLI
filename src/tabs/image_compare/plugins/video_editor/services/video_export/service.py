@@ -215,6 +215,60 @@ def make_pipeline_cache_thumbnail_resolver(pipeline_cache):
     return _resolver
 
 
+def make_session_state_thumbnail_resolver(peek_session_images):
+    """Thumbnail proxy resolver reading the live Redux image session.
+
+    ``peek_session_images() -> (image1, image2, paths1, paths2) | None``
+    (all getattr-guarded by the caller). ``image1/image2`` are the SAME
+    unified store objects the canvas renders AND the pyramids were built
+    for, so ``pyramid_for`` hits the warm coarse level. Paths match by
+    normpath against ``loaded_image*_paths``; unmatched path → ``None``
+    (fall through). Never decodes, never raises.
+    """
+    def _resolver(path, auto_crop=False, target_size=None):
+        try:
+            state = peek_session_images()
+        except Exception:
+            return None
+        if not state:
+            return None
+        try:
+            img1, img2, lp1, lp2 = state
+        except Exception:
+            return None
+        try:
+            norm = os.path.normpath(path) if path else None
+        except Exception:
+            return None
+        if not norm:
+            return None
+        base = None
+        for cand_paths, img in ((lp1, img1), (lp2, img2)):
+            try:
+                norms = {os.path.normpath(p) for p in (cand_paths or [])}
+            except Exception:
+                continue
+            if norm in norms:
+                base = img
+                break
+        if base is None:
+            return None
+        _vrlog.debug(
+            "thumbnail_session_state peek hit path=%s uid=%s",
+            os.path.basename(path),
+            getattr(base, "uid", getattr(base, "image_uid", None)),
+        )
+        try:
+            image, kind = _pick_thumbnail_proxy_from_base(base, target_size)
+        except Exception:
+            return None
+        if image is None:
+            return None
+        return image, kind
+
+    return _resolver
+
+
 def resolve_thumbnail_proxy_source(
     image_repository,
     path,

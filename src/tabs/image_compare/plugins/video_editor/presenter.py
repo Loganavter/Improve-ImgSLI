@@ -52,6 +52,78 @@ def pipeline_cache_thumbnail_resolver_for(main_controller):
     except Exception:
         return None
 
+
+def session_state_thumbnail_resolver_for(main_controller):
+    """Thumbnail proxy resolver reading the live Redux image session.
+
+    Peeks ``main_controller.sessions.store.viewport.session_data.image_state``
+    (``image1/image2`` + ``loaded_image*_paths``) — the SAME unified stores
+    the canvas renders and the pyramids were built for. Returns
+    ``resolver(path, auto_crop, target_size)`` or ``None`` when unreachable.
+    Every lookup is getattr-guarded; never raises.
+    """
+    try:
+        sessions = getattr(main_controller, "sessions", None)
+        redux = getattr(sessions, "store", None)
+        viewport = getattr(redux, "viewport", None)
+        sess_data = getattr(viewport, "session_data", None)
+        istate = getattr(sess_data, "image_state", None)
+        if istate is None:
+            return None
+        has_images = getattr(istate, "image1", None) is not None or getattr(
+            istate, "image2", None
+        ) is not None
+        if not has_images:
+            return None
+    except Exception:
+        return None
+    try:
+        from tabs.image_compare.plugins.video_editor.services.video_export.service import (
+            make_session_state_thumbnail_resolver,
+        )
+    except Exception:
+        return None
+
+    def _peek():
+        try:
+            sessions = getattr(main_controller, "sessions", None)
+            redux = getattr(sessions, "store", None)
+            viewport = getattr(redux, "viewport", None)
+            sess_data = getattr(viewport, "session_data", None)
+            istate = getattr(sess_data, "image_state", None)
+            if istate is None:
+                return None
+            return (
+                getattr(istate, "image1", None),
+                getattr(istate, "image2", None),
+                getattr(istate, "loaded_image1_paths", None),
+                getattr(istate, "loaded_image2_paths", None),
+            )
+        except Exception:
+            return None
+
+    try:
+        return make_session_state_thumbnail_resolver(_peek)
+    except Exception:
+        return None
+
+
+def chain_thumbnail_resolvers(*resolvers):
+    """First-hit-wins chain over nullable resolvers (session-state first)."""
+    live = [r for r in resolvers if callable(r)]
+
+    def _chained(path, auto_crop=False, target_size=None):
+        for resolver in live:
+            try:
+                hit = resolver(path, auto_crop, target_size)
+            except Exception:
+                continue
+            if hit is not None:
+                return hit
+        return None
+
+    return _chained if live else None
+
 class VideoEditorPresenter(QObject):
     previewUpdated = Signal(QPixmap)
     previewReady = Signal()
@@ -93,26 +165,32 @@ class VideoEditorPresenter(QObject):
                 # blocking on the GPU round-trip (see ThumbnailService docs).
                 self.thumbnail_service.set_async_snapshot_renderer(async_renderer)
             # P1-followup: the exporter-private image repository is cold at
-            # dialog open, while the tab-side PipelineCache already holds the
-            # canvas-loaded stores + pyramids — peek there first so the first
-            # strip wave resolves in ms instead of full-res decodes.
+            # dialog open. Session-state image1/image2 are the SAME unified
+            # stores the canvas renders and the pyramids were built for —
+            # peek there first; PipelineCache second; built-in miss last.
             try:
                 sessions = getattr(main_controller, "sessions", None)
                 pipeline_cache = getattr(sessions, "_pipeline_cache", None)
+                redux = getattr(sessions, "store", None)
+                viewport = getattr(redux, "viewport", None)
+                sess_data = getattr(viewport, "session_data", None)
+                istate = getattr(sess_data, "image_state", None)
                 logger.debug(
-                    "thumbnail proxy resolver wiring: main_controller=%s sessions=%s pipeline_cache=%s",
+                    "thumbnail proxy resolver wiring: main_controller=%s sessions=%s pipeline_cache=%s image_state=%s",
                     main_controller is not None,
                     sessions is not None,
                     pipeline_cache is not None,
+                    istate is not None,
                 )
-                proxy_resolver = pipeline_cache_thumbnail_resolver_for(
-                    main_controller
+                proxy_resolver = chain_thumbnail_resolvers(
+                    session_state_thumbnail_resolver_for(main_controller),
+                    pipeline_cache_thumbnail_resolver_for(main_controller),
                 )
                 if proxy_resolver is not None and hasattr(
                     video_exporter, "set_thumbnail_proxy_resolver"
                 ):
                     video_exporter.set_thumbnail_proxy_resolver(proxy_resolver)
-                    logger.debug("thumbnail proxy resolver injected (session cache)")
+                    logger.debug("thumbnail proxy resolver injected (chained)")
                 else:
                     logger.debug("thumbnail proxy resolver skipped (factory None)")
             except Exception:
