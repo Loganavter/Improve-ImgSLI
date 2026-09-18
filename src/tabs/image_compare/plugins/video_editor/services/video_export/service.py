@@ -98,6 +98,16 @@ class _MainThreadCallbackBridge(QObject):
             logger.error("Thumbnail async callback failed", exc_info=True)
 
 
+def _image_uid_for_log(image):
+    """Best-effort store uid for thumbnail debug lines (never raises)."""
+    try:
+        from engine.cache.image_identity import image_uid
+
+        return image_uid(image)
+    except Exception:
+        return None
+
+
 def _cached_thumbnail_base(image_repository, path, auto_crop):
     """Already-decoded base store for ``(path, auto_crop)``, or None.
 
@@ -256,7 +266,7 @@ def make_session_state_thumbnail_resolver(peek_session_images):
         _vrlog.debug(
             "thumbnail_session_state peek hit path=%s uid=%s",
             os.path.basename(path),
-            getattr(base, "uid", getattr(base, "image_uid", None)),
+            _image_uid_for_log(base),
         )
         try:
             image, kind = _pick_thumbnail_proxy_from_base(base, target_size)
