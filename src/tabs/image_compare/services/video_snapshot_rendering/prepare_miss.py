@@ -13,8 +13,10 @@ from tabs.image_compare.services.snapshot_render_plan_builder import (
     SnapshotRenderPlanBuilder,
 )
 from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+    cover_source_to_content,
     fit_source_to_content,
     geometry_with_aspect_insets,
+    is_thumbnail_target_size,
     resolve_scaled_content_geometry,
 )
 from tabs.image_compare.services.video_snapshot_rendering.models import (
@@ -128,18 +130,35 @@ def prepare_from_cache_miss(
         padding_bottom=max(0, int(target_size[1] - content_size[1] - pad_top)),
         virtual_layout=frame.virtual_layout,
     )
-    scaled_source1 = fit_source_to_content(
-        presentation.source_image1,
-        content_size,
-        request.target_surface.fill_rgba,
-        resize_method,
-    )
-    scaled_source2 = fit_source_to_content(
-        presentation.source_image2,
-        content_size,
-        request.target_surface.fill_rgba,
-        resize_method,
-    )
+    # Strip thumbnails (exactly the 160x90 target) render full-bleed cover
+    # so no transparent letterbox pads reach the strip; every other target
+    # — including all export sizes — keeps fit-inside + aspect pads.
+    if is_thumbnail_target_size(
+        request.target_surface.width, request.target_surface.height
+    ):
+        scaled_source1 = cover_source_to_content(
+            presentation.source_image1,
+            content_size,
+            resize_method,
+        )
+        scaled_source2 = cover_source_to_content(
+            presentation.source_image2,
+            content_size,
+            resize_method,
+        )
+    else:
+        scaled_source1 = fit_source_to_content(
+            presentation.source_image1,
+            content_size,
+            request.target_surface.fill_rgba,
+            resize_method,
+        )
+        scaled_source2 = fit_source_to_content(
+            presentation.source_image2,
+            content_size,
+            request.target_surface.fill_rgba,
+            resize_method,
+        )
     # Prefer side-1 size; sources are unified so sizes should match.
     fitted_size = (
         (scaled_source1.width, scaled_source1.height)
