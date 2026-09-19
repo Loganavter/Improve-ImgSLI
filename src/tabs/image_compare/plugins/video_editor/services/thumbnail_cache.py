@@ -1,10 +1,13 @@
 """Persistent disk cache of finished strip thumbnails (P2 wave).
 
-Key = (source paths + mtime + size, autocrop flag, split state, target
-size, render scale, snapshot-params hash). The hash is CONSERVATIVE: any
-doubt (unstatable source, unhashable snapshot, bad target size) yields
-``None`` (a miss) instead of a guess — a wrong thumbnail is worse than a
-slow thumbnail, so the cache prefers a miss over a wrong hit.
+Key = (index, source paths + mtime + size, autocrop flag, split state,
+target size, render scale, snapshot-params hash, fps). The hash is
+CONSERVATIVE: any doubt (unstatable source, unhashable snapshot, bad
+target size) yields ``None`` (a miss) instead of a guess — a wrong
+thumbnail is worse than a slow thumbnail, so the cache prefers a miss
+over a wrong hit. The index component is mandatory: without it two
+indices sharing one snapshot (static recording, same timestamp) would
+map to one entry and serve each other's pixels (poisoning, I5).
 
 Value = finished 160x90 PNG bytes (the post-``_finish_thumbnail_image``
 cover output). LRU eviction is capped by entry count and total bytes,
@@ -33,7 +36,8 @@ CACHE_SUBDIR_NAME = "thumbnails"
 CACHE_FILE_SUFFIX = ".png"
 
 #: Bump to invalidate every stored entry (key schema change).
-KEY_VERSION = "v1"
+#: v2 adds the mandatory (index, fps) components per I5.
+KEY_VERSION = "v2"
 
 DEFAULT_MAX_ENTRIES = 512
 DEFAULT_MAX_BYTES = 64 * 1024 * 1024
@@ -166,11 +170,19 @@ def _stat_fingerprint(path: str, attr: str) -> str | None:
 def thumbnail_cache_key_for_snap(
     snap,
     *,
+    index: int,
+    fps: int,
     auto_crop: bool = False,
     thumbnail_size=(160, 90),
     render_scale: float = 1.0,
 ) -> str | None:
-    """Cache key for ``snap`` — hex digest, or ``None`` on any doubt (miss).
+    """Cache key for ``snap`` at ``index`` — hex digest, or ``None`` on any
+    doubt (miss).
+
+    ``index`` and ``fps`` are mandatory (no defaults): a key without the
+    index collides across indices sharing one snapshot, and a key without
+    fps serves one frame's pixels for another after an fps change. Both
+    are poisoning bugs, so a missing component fails closed to a miss.
 
     The autocrop *verdict* needs no separate component: for fixed
     ``(auto_crop, snap)`` inputs the renderer output is deterministic, so
@@ -185,6 +197,18 @@ def thumbnail_cache_key_for_snap(
     try:
         scale = float(render_scale)
     except Exception:
+        return None
+    try:
+        index_component = int(index)
+    except Exception:
+        return None
+    if index_component < 0:
+        return None
+    try:
+        fps_component = int(fps)
+    except Exception:
+        return None
+    if fps_component <= 0:
         return None
     snap_hash = hash_snapshot_params(snap)
     if snap_hash is None:
@@ -207,6 +231,8 @@ def thumbnail_cache_key_for_snap(
         raw = "\x00".join(
             [
                 KEY_VERSION,
+                f"index={index_component}",
+                f"fps={fps_component}",
                 f"target={target_w}x{target_h}",
                 f"autocrop={bool(auto_crop)!r}",
                 f"scale={scale!r}",

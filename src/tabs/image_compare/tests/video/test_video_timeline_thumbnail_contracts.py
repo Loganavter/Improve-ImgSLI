@@ -718,3 +718,89 @@ def test_session_state_factory_peeks_document_lists_not_loaded_paths(monkeypatch
 
     assert session_state_thumbnail_resolver_for(None) is None
     assert session_state_thumbnail_resolver_for(NS(sessions=None)) is None
+
+
+def test_cache_key_builder_requires_index_and_fps(tmp_path):
+    """I5: the disk-cache key is unbuildable without index/fps (miss).
+
+    A key that can be built without the index collides across indices
+    sharing one snapshot (poisoning); without fps it serves another
+    frame's pixels after an fps change. Both components are mandatory
+    keyword-only, so a missing component fails closed to a miss.
+    """
+    import pytest
+
+    from tabs.image_compare.plugins.video_editor.services.thumbnail_cache import (
+        thumbnail_cache_key_for_snap,
+    )
+
+    src1 = tmp_path / "a.png"
+    src2 = tmp_path / "b.png"
+    Image.new("RGB", (64, 36), (200, 100, 50)).save(str(src1), "PNG")
+    Image.new("RGB", (64, 36), (50, 100, 200)).save(str(src2), "PNG")
+    snap = SimpleNamespace(
+        timestamp=1.0,
+        image1_path=str(src1),
+        image2_path=str(src2),
+        name1="a",
+        name2="b",
+        viewport_state={"frame": 3, "split": 0.5},
+        settings_state={"mode": "compare"},
+    )
+
+    with pytest.raises(TypeError):
+        thumbnail_cache_key_for_snap(snap, auto_crop=False)
+    with pytest.raises(TypeError):
+        thumbnail_cache_key_for_snap(snap, index=3, auto_crop=False)
+
+    keyed = thumbnail_cache_key_for_snap(
+        snap, index=3, fps=60, auto_crop=False, thumbnail_size=_THUMB
+    )
+    assert keyed is not None
+    assert (
+        thumbnail_cache_key_for_snap(
+            snap, index=4, fps=60, auto_crop=False, thumbnail_size=_THUMB
+        )
+        != keyed
+    )
+    assert (
+        thumbnail_cache_key_for_snap(
+            snap, index=3, fps=30, auto_crop=False, thumbnail_size=_THUMB
+        )
+        != keyed
+    )
+
+
+def test_every_key_construction_site_passes_index_and_fps():
+    """I5: AST audit — every key construction in the service passes index.
+
+    A key built anywhere in the feed without the index component is a
+    poisoning bug (two indices, one entry). This scan fails on the old
+    call shape instead of letting a new call site regress it.
+    """
+    import ast
+    from pathlib import Path
+
+    svc_path = (
+        Path(__file__).resolve().parents[4]
+        / "tabs"
+        / "image_compare"
+        / "plugins"
+        / "video_editor"
+        / "services"
+        / "thumbnails.py"
+    )
+    tree = ast.parse(svc_path.read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "thumbnail_cache_key_for_snap"
+    ]
+    assert calls, "expected key construction sites in the thumbnail service"
+    for node in calls:
+        keywords = {kw.arg for kw in node.keywords}
+        assert {"index", "fps"} <= keywords, (
+            f"key construction at line {node.lineno} misses the I5 components"
+        )

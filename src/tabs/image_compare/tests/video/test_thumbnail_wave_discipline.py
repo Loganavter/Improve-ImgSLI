@@ -528,7 +528,13 @@ def _live_service(monkeypatch):
 def test_same_generation_out_of_window_completion_dropped(
     qapp, monkeypatch
 ):
-    """Z4 membership: scrolled-away index drops, in-window index applies."""
+    """I4 membership: completion outside the CAPTURED window drops.
+
+    The filter reads the window snapshot taken at queue time, never the
+    live window: after the initial wave queues {0, 1, 2}, an additional
+    queue for [3] extends the capture to {0, 1, 2, 3}, and index 7 still
+    drops while index 3 applies.
+    """
     service = _live_service(monkeypatch)
     emitted: dict[int, object] = {}
     service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
@@ -540,22 +546,63 @@ def test_same_generation_out_of_window_completion_dropped(
         fps=60,
     )
     assert service._pending_indices == {0, 1, 2}
+    assert service._generation_windows[generation] == frozenset({0, 1, 2})
 
-    # Zoom path kept the wave alive while the window narrowed to [0].
-    service.set_visible_window([0, 1, 2])
+    # Idle-fill style extension of the same generation's capture.
+    service.generate_additional_thumbnails([3])
+    assert service._generation_windows[generation] == frozenset({0, 1, 2, 3})
+
+    service._on_thumbnail_generated(
+        7, Image.new("RGBA", _THUMB, (9, 9, 9, 255)), generation
+    )
+    assert emitted == {}, "out-of-captured-window completion must drop"
+    assert 7 not in service._generated_indices
+
+    service._on_thumbnail_generated(
+        3, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+    )
+    assert sorted(emitted) == [3]
+    assert 3 in service._generated_indices
+
+
+def test_membership_uses_captured_window_not_live(qapp, monkeypatch):
+    """I4: the live window never overrides the captured one.
+
+    The zoom path keeps the wave alive (no retire) while pushing a new
+    live window. A same-generation completion inside the CAPTURED window
+    still applies even when the live window moved away, and a completion
+    outside the capture drops even when the live window contains it.
+    """
+    service = _live_service(monkeypatch)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+
+    generation = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0, 1, 2],
+        fps=60,
+    )
+
+    # Zoom remap: live window narrows, wave (and its capture) intact.
     service.set_visible_window([0])
 
     service._on_thumbnail_generated(
         2, Image.new("RGBA", _THUMB, (9, 9, 9, 255)), generation
     )
-    assert emitted == {}, "out-of-window completion must drop"
-    assert 2 not in service._generated_indices
-
-    service._on_thumbnail_generated(
-        0, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+    assert sorted(emitted) == [2], (
+        "captured in-window completion applies despite the live window"
     )
-    assert sorted(emitted) == [0]
-    assert 0 in service._generated_indices
+
+    # Live window widens, capture does not follow without a queue.
+    service.set_visible_window([0, 1, 2, 9])
+    service._on_thumbnail_generated(
+        9, Image.new("RGBA", _THUMB, (4, 5, 6, 255)), generation
+    )
+    assert sorted(emitted) == [2], (
+        "outside-capture completion drops despite the live window"
+    )
+    assert 9 not in service._generated_indices
 
 
 def test_unknown_window_applies_completion(qapp, monkeypatch):
@@ -612,6 +659,235 @@ def test_stale_generation_still_drops_inside_window(qapp, monkeypatch):
         1, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), retired
     )
     assert sorted(emitted) == [1]
+
+
+def test_late_a_over_fresh_b_dropped(qapp, monkeypatch):
+    """I4 identity: generation A's pixels never overwrite generation B's.
+
+    Wave A queues index 0, scroll retires it, wave B re-queues index 0.
+    A's completion arrives late with a distinct payload; B's arrives with
+    its own. The surviving pixmap bytes must be B's, never A's.
+    """
+    from PySide6.QtGui import QImage
+
+    service = _live_service(monkeypatch)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+
+    generation_a = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0],
+        fps=60,
+    )
+    generation_b = service.retire_in_flight_thumbnails()
+    assert generation_b == generation_a + 1
+    service.generate_additional_thumbnails([0])
+    assert service._pending_indices == {0}
+
+    payload_a = Image.new("RGBA", _THUMB, (255, 0, 0, 255))
+    payload_b = Image.new("RGBA", _THUMB, (0, 255, 0, 255))
+    service._on_thumbnail_generated(0, payload_a, generation_a)
+    assert emitted == {}, "late A completion must drop"
+    service._on_thumbnail_generated(0, payload_b, generation_b)
+    assert sorted(emitted) == [0]
+
+    surviving = emitted[0].toImage().convertToFormat(
+        QImage.Format.Format_RGBA8888
+    )
+    assert surviving.pixelColor(0, 0).getRgb() == (0, 255, 0, 255)
+
+
+def test_bulk_thumbnails_generated_emits_full_dict(qapp, monkeypatch):
+    """I4 bulk revive: wave completion emits the full dict once.
+
+    The synchronous pool runs every worker inline, so the tracked wave
+    completes inside ``generate_thumbnails``: one ``thumbnailsGenerated``
+    with every index, then the idle-fill ``generationFinished`` with no
+    second bulk (no loop, no scheduler).
+    """
+    from tabs.image_compare.plugins.video_editor.services.thumbnails import (
+        ThumbnailService,
+    )
+
+    service = ThumbnailService()
+    service.set_thumbnail_disk_cache(None)
+    monkeypatch.setattr(
+        service._thread_pool, "start", lambda worker, priority=0: worker.run()
+    )
+
+    def fake_render(snap, w, h, *, auto_crop=False):
+        return Image.new("RGBA", _THUMB, (50, 100, 150, 255))
+
+    service.set_snapshot_renderer(fake_render)
+    bulk: list[dict] = []
+    service.thumbnailsGenerated.connect(lambda thumbs: bulk.append(dict(thumbs)))
+    finished: list[int] = []
+    service.generationFinished.connect(lambda: finished.append(1))
+
+    service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        thumbnail_size=_THUMB,
+        priority_indices=[0, 1],
+        fps=60,
+    )
+
+    assert finished == [1]
+    assert len(bulk) == 1, "completed wave emits exactly one bulk replace"
+    assert sorted(bulk[0]) == [0, 1]
+    assert all(not px.isNull() for px in bulk[0].values())
+
+
+def test_empty_wave_emits_no_bulk(qapp, monkeypatch):
+    """I4 bulk guard: a fully-dropped wave must not wipe the strip.
+
+    Every completion drops (stale token), so the accumulator stays empty
+    and the finish emits ``generationFinished`` with no ``{}`` bulk.
+    """
+    service = _live_service(monkeypatch)
+    bulk: list[dict] = []
+    service.thumbnailsGenerated.connect(lambda thumbs: bulk.append(dict(thumbs)))
+    finished: list[int] = []
+    service.generationFinished.connect(lambda: finished.append(1))
+
+    generation = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0, 1],
+        fps=60,
+    )
+    stale = generation
+    service.retire_in_flight_thumbnails()
+    for _ in range(2):
+        service._on_worker_finished(stale)
+    assert finished == [], "retired wave must never finish late"
+
+    live = service._generation
+    service.generate_additional_thumbnails([0, 1])
+    for _ in range(2):
+        service._on_thumbnail_generated(
+            0, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), stale
+        )
+    service._on_worker_finished(live)
+    assert finished == [1]
+    assert bulk == [], "empty accumulator must not emit an empty replace"
+
+
+def _tagged_coordinator(service, window, zoom=100.0):
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    added: list[int] = []
+    timeline = SimpleNamespace(
+        height=lambda: 200,
+        RULER_HEIGHT=24,
+        has_snapshots=lambda: True,
+        get_total_duration=lambda: 10.0,
+        get_pixels_per_second=lambda: zoom,
+        clear_thumbnails=lambda: None,
+        add_thumbnail=lambda idx, _px: added.append(idx),
+        get_visible_thumbnail_frame_indices=(
+            lambda overscan_blocks=0: list(window)
+        ),
+    )
+    coordinator = ThumbnailCoordinator(
+        view=SimpleNamespace(timeline=timeline),
+        editor_service=SimpleNamespace(
+            get_current_recording=lambda: object(),
+            get_fps=lambda: 60,
+            get_frame_count=lambda: 100,
+        ),
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=service,
+        emit_thumbnails_updated=lambda _thumbnails: None,
+    )
+    return coordinator, added
+
+
+def test_coordinator_mirrors_feed_generation(qapp):
+    """I4: the coordinator mirrors the queued token for tagged drops."""
+    service = SimpleNamespace(
+        generate_thumbnails=lambda recording, **kw: 7,
+        retire_in_flight_thumbnails=lambda: 8,
+        set_visible_window=lambda indices: None,
+        generate_additional_thumbnails=lambda indices, fps=None: None,
+    )
+    coordinator, added = _tagged_coordinator(service, [1, 2, 3])
+    assert coordinator._feed_generation is None
+
+    coordinator.generate_thumbnails()
+    assert coordinator._feed_generation == 7
+
+    coordinator.on_single_thumbnail_ready(1, object(), generation=6)
+    assert added == [], "stale-tagged completion drops before add_thumbnail"
+    coordinator.on_single_thumbnail_ready(1, object(), generation=7)
+    assert added == [1]
+    coordinator.on_single_thumbnail_ready(2, object(), generation=None)
+    assert added == [1, 2], "untagged completion fails open (today's wiring)"
+
+
+def test_coordinator_refresh_tracks_retired_token(qapp):
+    """I4: the scroll-retire path moves the mirror to the retired token."""
+    window: list[int] = [4, 8, 12]
+    service = SimpleNamespace(
+        generate_thumbnails=lambda recording, **kw: 7,
+        retire_in_flight_thumbnails=lambda: 8,
+        set_visible_window=lambda indices: None,
+        generate_additional_thumbnails=lambda indices, fps=None: None,
+        _generated_indices=set(),
+        _pending_indices=set(),
+    )
+    coordinator, added = _tagged_coordinator(service, window)
+    coordinator.generate_thumbnails()
+    assert coordinator._feed_generation == 7
+
+    window[:] = [20, 24]
+    coordinator._refresh_visible_thumbnails()
+    assert coordinator._feed_generation == 8, (
+        "retire must move the mirror so wave-7 arrivals drop"
+    )
+    coordinator.on_single_thumbnail_ready(20, object(), generation=7)
+    assert added == []
+    coordinator.on_single_thumbnail_ready(20, object(), generation=8)
+    assert added == [20]
+
+
+def test_coordinator_bulk_applies_atomic_replace(qapp):
+    """I4: the bulk dict applies via set_thumbnails, never a wipe.
+
+    With a widget seam the coordinator applies the atomic replace
+    directly and skips the presenter re-emit (whose Signal(dict) hop
+    QVariantMap-converts pixmap values away — re-emitting would wipe the
+    strip with ``{}``). Without a widget it fails open through the emit.
+    """
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    replaced: list[dict] = []
+    fanned: list[dict] = []
+    timeline = SimpleNamespace(set_thumbnails=lambda thumbs: replaced.append(thumbs))
+    coordinator = ThumbnailCoordinator(
+        view=SimpleNamespace(timeline=timeline),
+        editor_service=SimpleNamespace(),
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=SimpleNamespace(),
+        emit_thumbnails_updated=lambda thumbs: fanned.append(thumbs),
+    )
+    payload = {0: object(), 1: object()}
+
+    coordinator.on_thumbnails_generated(payload)
+
+    assert len(replaced) == 1
+    assert replaced[0] == payload
+    assert replaced[0] is not payload, "widget gets a copy, not the live dict"
+    assert fanned == [], "applied replace must not re-emit (wipe risk)"
+
+    coordinator.view = None
+    coordinator.on_thumbnails_generated(payload)
+    assert fanned == [payload], "no widget → fail open through the emit"
 
 
 # ---------------------------------------------------------------------------

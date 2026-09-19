@@ -203,22 +203,34 @@ def test_key_builder_hashes_conservatively(tmp_path):
     src2 = _write_source(tmp_path / "b.png")
 
     def key(**over):
+        index = over.pop("index", 3)
+        fps = over.pop("fps", 60)
         params = dict(
             path1=src1, path2=src2, timestamp=1.0, split=0.5, frame=3
         )
         params.update(over)
         return thumbnail_cache_key_for_snap(
-            _snap(**params), auto_crop=False, thumbnail_size=_THUMB
+            _snap(**params),
+            index=index,
+            fps=fps,
+            auto_crop=False,
+            thumbnail_size=_THUMB,
         )
 
     base = key()
     assert base is not None
     assert key() == base, "same inputs must key identically"
+    assert key(index=4) != base, "index must be in the key (I5)"
+    assert key(fps=30) != base, "fps must be in the key (I5)"
     assert key(split=0.9) != base, "split must be in the key"
     assert key(frame=4) != base, "frame identity must be in the key"
     assert (
         thumbnail_cache_key_for_snap(
-            _snap(path1=src1, path2=src2), auto_crop=True, thumbnail_size=_THUMB
+            _snap(path1=src1, path2=src2),
+            index=3,
+            fps=60,
+            auto_crop=True,
+            thumbnail_size=_THUMB,
         )
         != base
     ), "autocrop flag must be in the key"
@@ -227,7 +239,11 @@ def test_key_builder_hashes_conservatively(tmp_path):
     )
     assert (
         thumbnail_cache_key_for_snap(
-            _snap(path1=src1, path2=src2), auto_crop=False, thumbnail_size=(0, 0)
+            _snap(path1=src1, path2=src2),
+            index=3,
+            fps=60,
+            auto_crop=False,
+            thumbnail_size=(0, 0),
         )
         is None
     )
@@ -244,7 +260,9 @@ def test_key_builder_hashes_conservatively(tmp_path):
     bad = _snap(path1=src1, path2=src2)
     bad.viewport_state = _BadRepr()
     assert (
-        thumbnail_cache_key_for_snap(bad, auto_crop=False, thumbnail_size=_THUMB)
+        thumbnail_cache_key_for_snap(
+            bad, index=3, fps=60, auto_crop=False, thumbnail_size=_THUMB
+        )
         is None
     )
 
@@ -261,6 +279,8 @@ def test_lru_evicts_oldest_first(tmp_path):
     keys = [
         thumbnail_cache_key_for_snap(
             _snap(path1=src1, path2=src2, frame=i),
+            index=i,
+            fps=60,
             auto_crop=False,
             thumbnail_size=_THUMB,
         )
@@ -333,3 +353,120 @@ def test_cache_dir_is_thumbnail_subdir_not_log_dir(tmp_path, monkeypatch):
     cache = mod.ThumbnailDiskCache()
     assert cache.cache_dir == str(tmp_path / "LOGDIR" / "thumbnails")
     assert os.path.isdir(cache.cache_dir)
+
+
+class _StaticRecording:
+    """Duck-typed recording returning ONE snap for every timestamp.
+
+    Models a static clip (or any two indices sharing snapshot params):
+    without the index in the key, every index maps to one entry.
+    """
+
+    def __init__(self, snap, duration=10.0):
+        self._snap = snap
+        self._duration = duration
+
+    def evaluate_at(self, timestamp: float):
+        return self._snap
+
+    def get_duration(self) -> float:
+        return self._duration
+
+
+def _static_harness(monkeypatch, tmp_path):
+    from tabs.image_compare.plugins.video_editor.services.thumbnail_cache import (
+        ThumbnailDiskCache,
+    )
+    from tabs.image_compare.plugins.video_editor.services.thumbnails import (
+        ThumbnailService,
+    )
+
+    src1 = _write_source(tmp_path / "img1.png", (200, 100, 50))
+    src2 = _write_source(tmp_path / "img2.png", (50, 100, 200))
+    snap = _snap(path1=src1, path2=src2, timestamp=0.0, split=0.5, frame=0)
+    cache = ThumbnailDiskCache(cache_dir=str(tmp_path / "thumbcache"))
+    service = ThumbnailService()
+    service.set_thumbnail_disk_cache(cache)
+    monkeypatch.setattr(
+        service._thread_pool, "start", lambda worker, priority=0: worker.run()
+    )
+    calls: list[int] = []
+
+    def fake_render(snap, w, h, *, auto_crop=False):
+        calls.append(1)
+        return Image.new("RGBA", _THUMB, (50, 100, 150, 255))
+
+    service.set_snapshot_renderer(fake_render)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+    recording = _StaticRecording(snap)
+    return SimpleNamespace(
+        service=service,
+        cache=cache,
+        calls=calls,
+        emitted=emitted,
+        recording=recording,
+    )
+
+
+def test_shared_snapshot_indices_do_not_share_entries(
+    qapp, monkeypatch, tmp_path
+):
+    """I5 poisoning: two indices, one snapshot → two entries, two renders.
+
+    Under the old index-less key both waves would map to a single entry:
+    the second wave would be a cache hit serving the first index's bytes.
+    """
+    h = _static_harness(monkeypatch, tmp_path)
+
+    h.service.generate_thumbnails(
+        h.recording,
+        target_count=50,
+        thumbnail_size=_THUMB,
+        priority_indices=[0],
+        fps=60,
+    )
+    assert len(h.calls) == 1
+    assert sorted(h.emitted) == [0]
+    assert len(_cache_files(h)) == 1
+
+    h.service.generate_thumbnails(
+        h.recording,
+        target_count=50,
+        thumbnail_size=_THUMB,
+        priority_indices=[1],
+        fps=60,
+    )
+    assert len(h.calls) == 2, (
+        "index 1 must miss: its key differs from index 0's by index"
+    )
+    assert sorted(h.emitted) == [0, 1]
+    assert len(_cache_files(h)) == 2
+
+
+def test_fps_change_serves_no_stale_pixels(qapp, monkeypatch, tmp_path):
+    """I5 poisoning: an fps change must miss, never serve old-frame pixels.
+
+    Same index, same snapshot params, different fps: without fps in the
+    key the second wave would hit the first wave's entry (another frame's
+    pixels under this index).
+    """
+    h = _static_harness(monkeypatch, tmp_path)
+
+    h.service.generate_thumbnails(
+        h.recording,
+        target_count=50,
+        thumbnail_size=_THUMB,
+        priority_indices=[0],
+        fps=60,
+    )
+    assert len(h.calls) == 1
+
+    h.service.generate_thumbnails(
+        h.recording,
+        target_count=50,
+        thumbnail_size=_THUMB,
+        priority_indices=[0],
+        fps=30,
+    )
+    assert len(h.calls) == 2, "fps change must poison the old key (miss)"

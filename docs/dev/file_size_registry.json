@@ -447,7 +447,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
-      "lines": 697,
+      "lines": 698,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
@@ -458,7 +458,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
-      "lines": 640,
+      "lines": 635,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
@@ -469,7 +469,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter.py",
-      "lines": 548,
+      "lines": 550,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"video editor presenter — dialog/timeline signal connect/disconnect mirror plus coordinator ownership\"",
@@ -502,7 +502,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
-      "lines": 776,
+      "lines": 1008,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard\"",

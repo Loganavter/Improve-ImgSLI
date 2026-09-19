@@ -87,7 +87,13 @@ def _render_thumbnail_using_renderer(
         return None
 
 class ThumbnailService(QObject):
-    thumbnailsGenerated = Signal(dict)
+    # NOTE: thumbnailsGenerated is Signal(object), not Signal(dict): a
+    # ``Signal(dict)`` emission converts the payload through QVariantMap,
+    # which drops QPixmap values — receivers got ``{}`` (verified:
+    # ``_pythonToCppCopy: Cannot copy-convert (dict)``). ``object``
+    # delivers the dict intact. The presenter-side ``thumbnailsUpdated``
+    # is still ``Signal(dict)`` (A-shell owns it) — see the coordinator.
+    thumbnailsGenerated = Signal(object)
     thumbnailReady = Signal(int, QPixmap)
     generationFinished = Signal()
 
@@ -109,6 +115,17 @@ class ThumbnailService(QObject):
         self._generated_indices = set()
         self._pending_indices = set()
         self._recording = None
+        # I4 generation-scoped feed: window snapshot captured per
+        # generation at queue time (never the live window). Same-generation
+        # completions outside their captured window drop on arrival;
+        # stale-generation completions always drop via the token above.
+        # Missing entry = unknown (additional-only wave before any initial
+        # queue, or a pruned ancestor) → fail-open, apply everything.
+        self._generation_windows: dict[int, frozenset] = {}
+        # Bulk-revive accumulator: pixmaps of the live generation for the
+        # atomic ``thumbnailsGenerated`` replace on wave completion.
+        # Cleared on every new wave / retire / cancel / teardown.
+        self._generation_pixmaps: dict[int, QPixmap] = {}
         # Frame-count owner is the editor service (``ceil(duration * fps) + 1``
         # off its ``get_duration``). When the coordinator injects it via
         # :meth:`set_frame_count_source`, :meth:`_get_frame_count` derives
@@ -185,6 +202,7 @@ class ThumbnailService(QObject):
         self._auto_crop = auto_crop
         self._fps = max(1, int(fps))
         self._generated_indices.clear()
+        self._generation_pixmaps.clear()
 
         count = self._get_frame_count()
         indices_to_generate = self._build_initial_indices(
@@ -192,6 +210,10 @@ class ThumbnailService(QObject):
             target_count=target_count,
             priority_indices=priority_indices,
         )
+        # I4: capture this generation's window at queue time. The
+        # completion filter reads this snapshot, never ``_visible_window``.
+        self._generation_windows[generation] = frozenset(indices_to_generate)
+        self._prune_generation_windows(keep=8)
 
         self._active_workers = len(indices_to_generate)
         try:
@@ -261,6 +283,18 @@ class ThumbnailService(QObject):
             except Exception:
                 pass
             return
+        # I4: additional queues extend the live generation's captured
+        # window (union) — they are part of the same generation's queueing,
+        # so their completions must survive the membership filter.
+        live_window = self._generation_windows.get(self._generation)
+        if live_window is None:
+            self._generation_windows[self._generation] = frozenset(
+                needed_indices
+            )
+        else:
+            self._generation_windows[self._generation] = (
+                live_window | frozenset(needed_indices)
+            )
         try:
             from tabs.image_compare.debug import ic_video_debug
             ic_video_debug("thumb_svc additional QUEUE fps=%s queue=%s indices=%s", self._fps, len(needed_indices), needed_indices[:12])
@@ -288,19 +322,33 @@ class ThumbnailService(QObject):
         render_scale: float,
         fps: int,
         progress_callback,
+        recording=None,
+        render_snapshot=None,
     ):
-        """Генерирует одно превью и возвращает PIL Image."""
+        """Генерирует одно превью и возвращает PIL Image.
+
+        ``recording`` / ``fps`` / ``render_snapshot`` are the queue-time
+        capture threaded through the worker payload by
+        :meth:`_queue_thumbnail_worker` — this path never reads the live
+        ``self._recording`` / ``self._fps``. A ``None`` capture (direct
+        call outside the queue path) fails closed to a miss: no thumbnail
+        is better than one rendered from the wrong generation's params.
+        """
         try:
+            if recording is None or render_snapshot is None:
+                _thlog.debug(
+                    "thumbnail_worker_drop index=%s reason=no-capture",
+                    index,
+                )
+                return None
             _thlog.debug("thumbnail_worker_start index=%s fps=%s", index, fps)
-            snap = self._recording.evaluate_at(float(index) / float(max(1, fps)))
-            if self._render_snapshot is None:
-                raise RuntimeError("Thumbnail GPU renderer is not configured")
+            snap = recording.evaluate_at(float(index) / float(max(1, fps)))
             result = _render_thumbnail_using_renderer(
                 snap,
                 thumbnail_size,
                 auto_crop,
                 render_scale,
-                self._render_snapshot,
+                render_snapshot,
             )
             _thlog.debug(
                 "thumbnail_worker_end index=%s ok=%s size=%s",
@@ -332,10 +380,15 @@ class ThumbnailService(QObject):
             try:
                 provided = int(provider())
             except Exception:
+                _thlog.debug("frame_count provider raised; failing open")
                 provided = 0
             if provided > 0:
                 return provided
+            _thlog.debug(
+                "frame_count provider non-positive; failing open to recording"
+            )
         if not self._recording:
+            _thlog.debug("frame_count with no recording reads as empty")
             return 0
         duration = self._recording.get_duration()
         if duration <= 0:
@@ -395,25 +448,37 @@ class ThumbnailService(QObject):
             return None
         return self._thumbnail_disk_cache
 
-    def _thumbnail_cache_key_for_index(self, index: int):
+    def _thumbnail_cache_key_for_index(
+        self,
+        index: int,
+        *,
+        fps: int,
+        recording,
+        auto_crop: bool,
+        thumbnail_size: Tuple[int, int],
+        render_scale: float,
+    ):
         """``(cache, key)`` for ``index`` — ``(None, None)`` on any doubt.
 
-        The key is rebuilt from the live recording on every call (queue and
-        completion); a mid-flight recording change just yields the current
-        params' key, never a wrong hit.
+        Pure function of the queue-time capture (I5): every component —
+        index, fps, recording, autocrop, target, render scale — is passed
+        in, never read live. A mid-flight ``self._fps`` / ``self._recording``
+        change cannot shift a queued worker's key under it.
         """
         try:
             cache = self._ensure_thumbnail_disk_cache()
-            if cache is None or self._recording is None:
+            if cache is None or recording is None:
                 return None, None
-            snap = self._recording.evaluate_at(
-                float(index) / float(max(1, self._fps))
+            snap = recording.evaluate_at(
+                float(index) / float(max(1, int(fps)))
             )
             key = thumbnail_cache_key_for_snap(
                 snap,
-                auto_crop=self._auto_crop,
-                thumbnail_size=self._thumbnail_size,
-                render_scale=self._thumbnail_render_scale,
+                index=index,
+                fps=max(1, int(fps)),
+                auto_crop=auto_crop,
+                thumbnail_size=thumbnail_size,
+                render_scale=render_scale,
             )
             if key is None:
                 return None, None
@@ -422,34 +487,63 @@ class ThumbnailService(QObject):
             return None, None
 
     def _serve_thumbnail_from_disk_cache(
-        self, index: int, generation: int, track_finish: bool
+        self,
+        index: int,
+        generation: int,
+        track_finish: bool,
+        *,
+        fps: int,
+        recording,
+        auto_crop: bool,
+        thumbnail_size: Tuple[int, int],
+        render_scale: float,
     ) -> bool:
-        """Emit a cached thumbnail without starting a worker. True = served."""
+        """Emit a cached thumbnail without starting a worker. True = served.
+
+        Lookup uses the same queue-time capture as the worker payload, so
+        a hit serves this generation's pixels, never a stale fps's.
+        Hits skip the store (``store=False``) — rewriting identical bytes
+        would only churn mtime.
+        """
         try:
-            cache, cache_key = self._thumbnail_cache_key_for_index(index)
+            cache, cache_key = self._thumbnail_cache_key_for_index(
+                index,
+                fps=fps,
+                recording=recording,
+                auto_crop=auto_crop,
+                thumbnail_size=thumbnail_size,
+                render_scale=render_scale,
+            )
             if cache is None or cache_key is None:
                 return False
-            hit = cache.get(cache_key, expected_size=tuple(self._thumbnail_size))
+            hit = cache.get(cache_key, expected_size=tuple(thumbnail_size))
         except Exception:
             return False
         if hit is None:
             return False
         _thlog.debug("thumbnail_cache_hit index=%s", index)
-        self._on_thumbnail_generated(index, hit, generation)
+        self._on_thumbnail_generated(index, hit, generation, store=False)
         if track_finish:
             self._on_worker_finished(generation)
         return True
 
-    def _store_thumbnail_in_disk_cache(self, index: int, pil_image) -> None:
-        """Store a live-generation completion.
+    def _store_thumbnail_in_disk_cache(
+        self, index: int, pil_image, *, cache=None, cache_key=None
+    ) -> None:
+        """Store a live-generation completion under its captured key.
 
         Must only be called past the stale-generation guard in
-        :meth:`_on_thumbnail_generated` — stale completions return there and
-        never reach this store.
+        :meth:`_on_thumbnail_generated` — stale completions return there
+        and never reach this store. A missing captured key fails closed
+        (skip + debug log): storing under a rebuilt live key could poison
+        the cache with another generation's pixels.
         """
         try:
-            cache, cache_key = self._thumbnail_cache_key_for_index(index)
             if cache is None or cache_key is None:
+                _thlog.debug(
+                    "thumbnail_cache_store_skip index=%s reason=no-capture",
+                    index,
+                )
                 return
             if cache.put(cache_key, pil_image):
                 _thlog.debug("thumbnail_cache_store index=%s", index)
@@ -470,6 +564,21 @@ class ThumbnailService(QObject):
         except Exception:
             wanted = None
         self._visible_window = wanted if wanted else None
+
+    def _prune_generation_windows(self, keep: int = 8) -> None:
+        """Bound the per-generation window snapshots (I4).
+
+        The token already drops every ancestor's completions, so only
+        recent entries matter; pruning keeps the dict from growing over a
+        long dialog lifetime.
+        """
+        try:
+            windows = self._generation_windows
+            while len(windows) > max(1, int(keep)):
+                oldest = min(windows)
+                del windows[oldest]
+        except Exception:
+            pass
 
     def retire_in_flight_thumbnails(self) -> int:
         """Retire in-flight thumbnail workers without blocking.
@@ -497,6 +606,9 @@ class ThumbnailService(QObject):
         self._generation += 1
         self._pending_indices.clear()
         self._active_workers = 0
+        # Retired pixels must never surface in a later bulk replace.
+        self._generation_pixmaps.clear()
+        self._prune_generation_windows(keep=8)
         return self._generation
 
     def _build_initial_indices(
@@ -552,16 +664,48 @@ class ThumbnailService(QObject):
         generation = self._generation
         if index in self._pending_indices:
             return
+        # I5 queue-time capture: snapshot fps/recording/renderers NOW so
+        # the worker payload, the disk-cache key, and the completion store
+        # all use one coherent params set even if the dialog changes fps
+        # or swaps the recording mid-flight. This snapshot is the capture;
+        # nothing below this point reads the live values for this index.
+        queued_fps = self._fps
+        queued_recording = self._recording
+        queued_size = self._thumbnail_size
+        queued_crop = self._auto_crop
+        queued_scale = self._thumbnail_render_scale
+        queued_render = self._render_snapshot
+        queued_render_async = self._render_snapshot_async
         # P2: finished-thumbnail disk lookup before queueing — a hit emits
         # via the normal _on_thumbnail_generated path with no worker started.
         try:
-            if self._serve_thumbnail_from_disk_cache(index, generation, track_finish):
+            if self._serve_thumbnail_from_disk_cache(
+                index,
+                generation,
+                track_finish,
+                fps=queued_fps,
+                recording=queued_recording,
+                auto_crop=queued_crop,
+                thumbnail_size=queued_size,
+                render_scale=queued_scale,
+            ):
                 return
         except Exception:
             pass
         self._pending_indices.add(index)
+        # The (cache, key) this completion must store under — computed
+        # from the same capture, so the store can never poison the cache
+        # with another generation's pixels.
+        queued_cache, queued_key = self._thumbnail_cache_key_for_index(
+            index,
+            fps=queued_fps,
+            recording=queued_recording,
+            auto_crop=queued_crop,
+            thumbnail_size=queued_size,
+            render_scale=queued_scale,
+        )
 
-        if self._render_snapshot_async is not None:
+        if queued_render_async is not None:
             # Async path: the worker submits the GPU render and returns
             # right away, freeing the (single) pool thread to start the
             # next thumbnail's CPU prep instead of sitting blocked on the
@@ -571,12 +715,16 @@ class ThumbnailService(QObject):
             worker = GenericWorker(
                 self._start_single_thumbnail_async,
                 index,
-                self._thumbnail_size,
-                self._auto_crop,
-                self._thumbnail_render_scale,
-                self._fps,
+                queued_size,
+                queued_crop,
+                queued_scale,
+                queued_fps,
                 track_finish,
                 generation,
+                queued_recording,
+                queued_render_async,
+                queued_cache,
+                queued_key,
             )
             self._thread_pool.start(worker, priority=priority)
             return
@@ -584,14 +732,18 @@ class ThumbnailService(QObject):
         worker = GenericWorker(
             self._generate_single_thumbnail,
             index,
-            self._thumbnail_size,
-            self._auto_crop,
-            self._thumbnail_render_scale,
-            self._fps,
+            queued_size,
+            queued_crop,
+            queued_scale,
+            queued_fps,
             None,
+            queued_recording,
+            queued_render,
         )
         worker.signals.result.connect(
-            lambda result, i=index, g=generation: self._on_thumbnail_generated(i, result, g)
+            lambda result, i=index, g=generation, c=queued_cache, k=queued_key: self._on_thumbnail_generated(
+                i, result, g, cache=c, cache_key=k
+            )
         )
         if track_finish:
             worker.signals.finished.connect(
@@ -608,15 +760,27 @@ class ThumbnailService(QObject):
         fps: int,
         track_finish: bool,
         generation: int,
+        recording=None,
+        render_async=None,
+        cache=None,
+        cache_key=None,
     ) -> None:
-        """Runs on the background pool thread; must not block on the GPU."""
+        """Runs on the background pool thread; must not block on the GPU.
+
+        ``recording`` / ``render_async`` / ``(cache, cache_key)`` are the
+        queue-time capture — this path never reads the live
+        ``self._recording`` / ``self._fps``. A missing capture fails closed
+        through the error path (drop, never a wrong thumbnail).
+        """
         try:
             _thlog.debug(
                 "thumbnail_worker_start index=%s fps=%s async=True", index, fps
             )
-            snap = self._recording.evaluate_at(float(index) / float(max(1, fps)))
-            if self._render_snapshot_async is None:
-                raise RuntimeError("Async thumbnail GPU renderer is not configured")
+            if recording is None or render_async is None:
+                raise RuntimeError(
+                    "Thumbnail capture (recording/renderer) is not configured"
+                )
+            snap = recording.evaluate_at(float(index) / float(max(1, fps)))
             target_w, target_h = _thumbnail_render_target_size(
                 thumbnail_size, render_scale
             )
@@ -629,11 +793,13 @@ class ThumbnailService(QObject):
                     result is not None,
                     getattr(result, "size", None),
                 )
-                self._on_thumbnail_generated(index, result, generation)
+                self._on_thumbnail_generated(
+                    index, result, generation, cache=cache, cache_key=cache_key
+                )
                 if track_finish:
                     self._on_worker_finished(generation)
 
-            self._render_snapshot_async(
+            render_async(
                 snap, target_w, target_h, _on_rendered, auto_crop=auto_crop
             )
         except Exception as e:
@@ -645,8 +811,26 @@ class ThumbnailService(QObject):
                 self._on_worker_finished(generation)
 
     def _on_thumbnail_generated(
-        self, index: int, pil_image, generation: int | None = None
+        self,
+        index: int,
+        pil_image,
+        generation: int | None = None,
+        *,
+        cache=None,
+        cache_key=None,
+        store: bool = True,
     ):
+        """Completion for ``(generation, index)`` — drop on mismatch.
+
+        Stale-generation completions always drop. Same-generation
+        completions drop when outside the CAPTURED window for that
+        generation (the snapshot taken at queue time, never the live
+        ``_visible_window`` — a zoom remap may move the live window while
+        the wave stays valid per Z4). A missing captured entry (legacy
+        direct call, additional-only wave, pruned ancestor) fails open and
+        applies — fail-open for DELIVERY. Identity stays fail-closed: the
+        store only ever uses the captured ``(cache, cache_key)``.
+        """
         self._pending_indices.discard(index)
         if generation is not None and generation != self._generation:
             try:
@@ -655,24 +839,39 @@ class ThumbnailService(QObject):
             except Exception:
                 pass
             return
-        # Z4 membership filter (additional to the generation token, never a
-        # replacement): same-generation but outside the coordinator's last
-        # visible window (+margin) — e.g. a zoom-driven refresh kept the
-        # wave alive while the window moved. Fail-open: unknown window or
-        # any doubt → apply (today's behavior).
-        window = getattr(self, "_visible_window", None)
-        if window is not None:
-            try:
-                outside = index not in window
-            except Exception:
-                outside = False
-            if outside:
+        # I4 membership filter on top of the generation token (never a
+        # replacement): same-generation but outside the captured window —
+        # e.g. a zoom-driven refresh kept the wave alive while the window
+        # moved. Fail-open: unknown window or any doubt → apply (today's
+        # behavior).
+        if generation is not None:
+            captured = self._generation_windows.get(generation)
+            if captured is not None:
                 try:
-                    from tabs.image_compare.debug import ic_video_debug
-                    ic_video_debug("thumb_svc _on_generated DROP outside-window idx=%s gen=%s live=%s window=%s", index, generation, self._generation, len(window))
+                    outside = index not in captured
                 except Exception:
-                    pass
-                return
+                    outside = False
+                if outside:
+                    try:
+                        from tabs.image_compare.debug import ic_video_debug
+                        ic_video_debug("thumb_svc _on_generated DROP outside-captured-window idx=%s gen=%s live=%s window=%s", index, generation, self._generation, len(captured))
+                    except Exception:
+                        pass
+                    return
+        else:
+            window = getattr(self, "_visible_window", None)
+            if window is not None:
+                try:
+                    outside = index not in window
+                except Exception:
+                    outside = False
+                if outside:
+                    try:
+                        from tabs.image_compare.debug import ic_video_debug
+                        ic_video_debug("thumb_svc _on_generated DROP outside-window idx=%s gen=%s live=%s window=%s", index, generation, self._generation, len(window))
+                    except Exception:
+                        pass
+                    return
         try:
             from tabs.image_compare.debug import ic_video_debug
             ic_video_debug("thumb_svc _on_generated idx=%s ok=%s pending=%s gen=%s has_pixmap=%s", index, pil_image is not None, len(self._pending_indices), len(self._generated_indices), bool(pil_image))
@@ -703,9 +902,13 @@ class ThumbnailService(QObject):
                 except Exception:
                     pass
                 pil_image = pil_image.convert("RGBA")
-                # P2: store the finished image under the same generation
-                # token — stale generations returned above and never store.
-                self._store_thumbnail_in_disk_cache(index, pil_image)
+                # P2: store the finished image under the captured key —
+                # stale generations returned above and never store, and a
+                # missing capture fails closed (skip, never a live rebuild).
+                if store:
+                    self._store_thumbnail_in_disk_cache(
+                        index, pil_image, cache=cache, cache_key=cache_key
+                    )
                 data = pil_image.tobytes("raw", "RGBA")
                 qimg = QImage(
                     data,
@@ -716,6 +919,13 @@ class ThumbnailService(QObject):
                 pixmap = QPixmap.fromImage(qimg.copy())
 
                 self._generated_indices.add(index)
+                # Bulk-revive accumulator: the wave completion below emits
+                # the full dict as one atomic generation replace (I4).
+                # Only the live generation accumulates — stale generations
+                # returned above, so anything here belongs to it (or to a
+                # legacy None-generation direct call, which also applies).
+                if generation is None or generation == self._generation:
+                    self._generation_pixmaps[index] = pixmap
                 self.thumbnailReady.emit(index, pixmap)
             except Exception as e:
                 logger.error(f"Error converting thumbnail {index}: {e}")
@@ -743,6 +953,24 @@ class ThumbnailService(QObject):
             except Exception:
                 pass
             self._active_workers = 0
+            # I4 bulk revive: the tracked wave completed — emit the full
+            # dict as one atomic generation replace (Signal(object): a
+            # Signal(dict) would QVariantMap-convert the QPixmap values
+            # away — receivers got ``{}``). The coordinator applies it via
+            # ``timeline.set_thumbnails``. Empty payloads never emit: a
+            # fully-dropped wave must not wipe the strip with ``{}``.
+            # (Additional/idle-track completions keep their own
+            # ``thumbnailReady`` upserts; they never re-emit this finish.)
+            payload = dict(self._generation_pixmaps)
+            self._generation_pixmaps.clear()
+            if payload:
+                try:
+                    from tabs.image_compare.debug import ic_video_debug
+                    ic_video_debug("thumb_svc thumbnailsGenerated emit count=%s", len(payload))
+                except Exception:
+                    pass
+                _thlog.debug("thumbnails_generated_bulk count=%s", len(payload))
+                self.thumbnailsGenerated.emit(payload)
             self.generationFinished.emit()
 
     def cancel(self):
@@ -751,6 +979,8 @@ class ThumbnailService(QObject):
         self._generation += 1
         self._pending_indices.clear()
         self._active_workers = 0
+        self._generation_pixmaps.clear()
+        self._prune_generation_windows(keep=8)
         self._thread_pool.waitForDone(500)
 
     def teardown(self) -> None:
@@ -767,6 +997,8 @@ class ThumbnailService(QObject):
         self._generation += 1
         self._pending_indices.clear()
         self._generated_indices.clear()
+        self._generation_pixmaps.clear()
+        self._generation_windows.clear()
         self._visible_window = None
         self._recording = None
         self._active_workers = 0

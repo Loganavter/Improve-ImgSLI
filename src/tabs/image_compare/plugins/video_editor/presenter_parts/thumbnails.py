@@ -52,6 +52,12 @@ class ThumbnailCoordinator:
         # Read via the public get_pixels_per_second() only — never the
         # toolkit-private _zoom_level.
         self._last_zoom_level: float | None = None
+        # I4 feed generation mirror: the token returned by the service's
+        # ``generate_thumbnails`` (or by ``retire_in_flight_thumbnails`` on
+        # the scroll path). ``on_single_thumbnail_ready`` drops tagged
+        # completions that mismatch it; ``None`` = unknown (service without
+        # the seam, e.g. test doubles) → fail-open, apply everything.
+        self._feed_generation: int | None = None
 
         # Frame-count owner is the editor service (ceil(duration*fps)+1 off
         # its get_duration). Derive through it; the service falls back to
@@ -83,6 +89,7 @@ class ThumbnailCoordinator:
             logger.debug("thumbnail detach cancel skipped", exc_info=True)
         self._last_visible_indices = None
         self._last_zoom_level = None
+        self._feed_generation = None
         self.view = None
 
     def calculate_optimal_thumbnail_count(self) -> int:
@@ -149,13 +156,18 @@ class ThumbnailCoordinator:
             ic_video_debug("thumb_coord generate_thumbnails target=%s vis_len=%s vis=%s fps=%s", cnt, len(vis), vis[:12], self.editor_service.get_fps())
         except Exception:
             pass
-        self.thumbnail_service.generate_thumbnails(
+        # I4: mirror the queued generation so tagged completions can drop
+        # late arrivals. A non-int return (test doubles, legacy services)
+        # leaves the mirror unknown → fail-open.
+        queued_generation = self.thumbnail_service.generate_thumbnails(
             recording,
             target_count=cnt,
             auto_crop=True,
             priority_indices=vis,
             fps=self.editor_service.get_fps(),
         )
+        if isinstance(queued_generation, int):
+            self._feed_generation = queued_generation
         self._last_visible_indices = list(vis)
         self._last_zoom_level = self._read_zoom_level()
         push_window = getattr(
@@ -164,19 +176,68 @@ class ThumbnailCoordinator:
         if callable(push_window):
             push_window(vis)
 
-    def on_single_thumbnail_ready(self, index: int, pixmap: QPixmap):
+    def on_single_thumbnail_ready(
+        self, index: int, pixmap: QPixmap, generation: int | None = None
+    ):
+        """Single-index upsert, tagged with its generation (I4).
+
+        A tagged completion whose generation mismatches the mirrored feed
+        generation is a late arrival from a retired wave and drops here —
+        belt-and-braces behind the service-side token + captured-window
+        filter in ``_on_thumbnail_generated``. ``generation=None`` (today's
+        presenter wiring, which connects the 2-arg ``thumbnailReady``) and
+        an unknown mirror fail open: the pixmap applies. Fail-open for
+        DELIVERY; identity is enforced fail-closed on the service side.
+        """
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord on_single_ready idx=%s has_view=%s", index, bool(self.view))
+            ic_video_debug("thumb_coord on_single_ready idx=%s has_view=%s gen=%s feed=%s", index, bool(self.view), generation, self._feed_generation)
         except Exception:
             pass
+        if (
+            generation is not None
+            and self._feed_generation is not None
+            and generation != self._feed_generation
+        ):
+            try:
+                from tabs.image_compare.debug import ic_video_debug
+                ic_video_debug("thumb_coord on_single_ready DROP stale gen=%s feed=%s idx=%s", generation, self._feed_generation, index)
+            except Exception:
+                pass
+            return
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
             self.view.timeline, "add_thumbnail"
         ):
             self.view.timeline.add_thumbnail(index, pixmap)
 
     def on_thumbnails_generated(self, thumbnails: Dict[int, QPixmap]):
-        self.emit_thumbnails_updated(thumbnails)
+        """Atomic generation replace (I4): apply, then fan out.
+
+        The full dict goes straight to ``timeline.set_thumbnails`` — the
+        single atomic-replace consumer (verified: the only
+        ``presenter.thumbnailsUpdated`` listener is
+        ``shell._on_thumbnails_updated`` → ``set_thumbnails``). The
+        presenter hop is ``Signal(dict)``, which QVariantMap-converts
+        QPixmap values away (receivers get ``{}`` → strip wipe), so the
+        re-emit below is a fallback for headless/no-widget operation only
+        — applied replaces never re-emit. A-shell owns the presenter
+        signal; flipping it to ``Signal(object)`` restores the fanout.
+        """
+        applied = False
+        if (
+            self.view is not None
+            and hasattr(self.view, "timeline")
+            and hasattr(self.view.timeline, "set_thumbnails")
+        ):
+            try:
+                self.view.timeline.set_thumbnails(dict(thumbnails))
+                applied = True
+            except Exception:
+                logger.debug(
+                    "bulk thumbnail replace skipped", exc_info=True
+                )
+        if not applied:
+            self.emit_thumbnails_updated(thumbnails)
 
     def on_thumbnails_generation_finished(self):
         # P3 idle fill: the initial wave covered the visible window only
@@ -333,7 +394,16 @@ class ThumbnailCoordinator:
                         self.thumbnail_service, "retire_in_flight_thumbnails", None
                     )
                     if callable(retire):
-                        retire()
+                        retired_generation = retire()
+                        if isinstance(retired_generation, int):
+                            self._feed_generation = retired_generation
+            # NOTE (rep-remap, I1/I2): a zoom-driven refresh that skips the
+            # retire above keeps the in-flight wave alive while the rep grid
+            # remaps (strip_block_layout recomputes rep frames from geometry
+            # alone). Completions stay index-addressed, so they remain valid
+            # — the widget re-resolves each rep to its pixmap (or the
+            # fail-closed placeholder when absent) on the next paint. Never
+            # rebind a rep to a neighbor: missing is a placeholder.
             self._last_visible_indices = list(visible_indices)
             self._last_zoom_level = current_zoom
             push_window = getattr(
@@ -382,6 +452,7 @@ class ThumbnailCoordinator:
 
     def cleanup(self):
         self._visible_refresh.cancel()
+        self._feed_generation = None
         try:
             teardown = getattr(self.thumbnail_service, "teardown", None)
             if callable(teardown):
