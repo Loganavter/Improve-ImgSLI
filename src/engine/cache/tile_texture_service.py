@@ -2,9 +2,13 @@ from __future__ import annotations
 
 # Audit-Meta: pattern=state-machine size=exempt reason="one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
 
+import logging
+
 from engine.store.regions import UniformTileGrid, build_uniform_tile_grid
 from engine.cache.tile_constants import DEFAULT_TILE_EXTENT
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+
+logger = logging.getLogger("ImproveImgSLI")
 
 __all__ = ["DEFAULT_TILE_EXTENT", "TileIndex", "TileTextureService"]
 
@@ -68,6 +72,15 @@ class _TileSlotAllocator:
                 self._next_layer_in_current_array = 0
             slot = (self._array_count - 1, self._next_layer_in_current_array)
             self._next_layer_in_current_array += 1
+        # Invariant tripwire (phantom-hunt ic-right-image-vanish): two live
+        # keys must never share one slot. Anomaly-gated WARNING — silent
+        # unless the invariant breaks, so zero noise on healthy runs.
+        if slot in self._slot_for_key.values():
+            logger.warning(
+                "[TileArray] alloc DUP key=%s -> slot=%s already held",
+                key,
+                slot,
+            )
         self._slot_for_key[key] = slot
         return slot
 

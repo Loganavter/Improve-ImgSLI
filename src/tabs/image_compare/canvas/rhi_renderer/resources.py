@@ -151,6 +151,24 @@ def pack_array_instance(
     )
 
 
+# Byte offset of the layer2 int inside one packed instance: everything
+# before the 3i group (rects/scales), plus one int for layer1. Derived
+# from the fmt instead of a magic number (phantom-hunt ic-right-image-
+# vanish: the submit-vs-plan discriminator depends on this offset).
+_LAYER2_OFFSET = struct.calcsize("<4f4f4f2f") + 4
+
+
+def unpack_instance_layer2(instance_bytes: bytes, index: int) -> int:
+    """Read back the layer2 field of instance ``index`` from packed
+    ``instance_bytes`` — the submit-vs-plan discriminator: compare against
+    ``plan[index].layer2`` to tell pack-corruption apart from plan-
+    corruption. Read-only inspection, no behavior change."""
+    (layer2,) = struct.unpack_from(
+        "<i", instance_bytes, index * _ARRAY_INSTANCE_STRIDE + _LAYER2_OFFSET
+    )
+    return int(layer2)
+
+
 def _load_shader(name: str) -> QShader:
     shader = QShader.fromSerialized((_SHADER_DIR / name).read_bytes())
     if not shader.isValid():
