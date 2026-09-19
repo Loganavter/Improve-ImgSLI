@@ -349,13 +349,17 @@ def test_refresh_without_retire_seam_stays_visible_only(qapp):
 
 
 def _zoom_coordinator(*, timeline_indices, service, zoom=1.0, total_frames=100):
-    """Coordinator variant with a readable zoom scalar on the timeline."""
+    """Coordinator variant with a readable zoom scalar on the timeline.
+
+    Zoom is driven through the public ``get_pixels_per_second`` API —
+    the coordinator must never read the toolkit-private ``_zoom_level``.
+    """
     coordinator = _coordinator(
         timeline_indices=timeline_indices,
         service=service,
         total_frames=total_frames,
     )
-    coordinator.view.timeline._zoom_level = zoom
+    coordinator.view.timeline.get_pixels_per_second = lambda: zoom
     return coordinator
 
 
@@ -389,7 +393,7 @@ def test_zoom_only_refresh_queues_without_retire(qapp):
     assert pushed == [[4, 8, 12]]
 
     # Zoom-only: same window, new zoom → requeue, in-flight wave intact.
-    coordinator.view.timeline._zoom_level = 1.25
+    coordinator.view.timeline.get_pixels_per_second = lambda: 1.25
     coordinator._refresh_visible_thumbnails()
     assert retires == [], "zoom-driven refresh must not retire in-flight thumbs"
     assert additional == [[4, 8, 12], [4, 8, 12]]
@@ -398,7 +402,7 @@ def test_zoom_only_refresh_queues_without_retire(qapp):
 
     # Zoom + window move together → zoom wins, still no retire, new window queued.
     window[:] = [20, 24]
-    coordinator.view.timeline._zoom_level = 1.5
+    coordinator.view.timeline.get_pixels_per_second = lambda: 1.5
     coordinator._refresh_visible_thumbnails()
     assert retires == [], "zoom change suppresses the retire even as the window moves"
     assert additional[-1] == [20, 24]
@@ -446,7 +450,8 @@ def test_zoom_unreadable_keeps_scroll_cancel(qapp):
     assert retires == [1], "unknown zoom → today's scroll-cancel, no behavior change"
 
 
-def test_read_zoom_level_prefers_scalar_then_pps(qapp):
+def test_read_zoom_level_uses_public_pps_only(qapp):
+    """C-A: zoom reads go through get_pixels_per_second, never _zoom_level."""
     service, _retires, _pushed, _additional = _zoom_service_spy()
     coordinator = _coordinator(timeline_indices=[1], service=service)
 
@@ -456,8 +461,8 @@ def test_read_zoom_level_prefers_scalar_then_pps(qapp):
     assert coordinator._read_zoom_level() == 321.0
 
     coordinator.view.timeline._zoom_level = 2.0
-    assert coordinator._read_zoom_level() == 2.0, (
-        "_zoom_level scalar wins over pps when both are readable"
+    assert coordinator._read_zoom_level() == 321.0, (
+        "toolkit-private _zoom_level must be ignored even when present"
     )
 
 
@@ -479,7 +484,6 @@ def test_generate_thumbnails_snapshots_zoom_and_pushes_window(qapp):
         get_visible_thumbnail_frame_indices=(
             lambda overscan_blocks=0: [1, 2, 3]
         ),
-        _zoom_level=2.0,
     )
     service = SimpleNamespace(
         generate_thumbnails=(
@@ -501,7 +505,7 @@ def test_generate_thumbnails_snapshots_zoom_and_pushes_window(qapp):
 
     coordinator.generate_thumbnails()
 
-    assert coordinator._last_zoom_level == 2.0
+    assert coordinator._last_zoom_level == 100.0
     assert coordinator._last_visible_indices == [1, 2, 3]
     assert pushed == [[1, 2, 3]]
     assert captured["priority_indices"] == [1, 2, 3]
@@ -608,3 +612,452 @@ def test_stale_generation_still_drops_inside_window(qapp, monkeypatch):
         1, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), retired
     )
     assert sorted(emitted) == [1]
+
+
+# ---------------------------------------------------------------------------
+# C-A app wiring: presenter connect/disconnect symmetry, frame-count owner,
+# teardown clearing, detach cancel, viewport-helper optimal count.
+# ---------------------------------------------------------------------------
+
+import ast as _ast
+import re as _re
+from pathlib import Path as _Path
+
+_FROZEN_TIMELINE_SIGNALS = {
+    "viewportChanged",
+    "zoomChanged",
+    "viewportChangedState",
+}
+
+_THIS_DIR = _Path(__file__).resolve().parent
+_SRC_ROOT = _THIS_DIR.parents[3]
+_PRESENTER_PATH = (
+    _SRC_ROOT
+    / "tabs"
+    / "image_compare"
+    / "plugins"
+    / "video_editor"
+    / "presenter.py"
+)
+_THUMB_COORD_PATH = (
+    _SRC_ROOT
+    / "tabs"
+    / "image_compare"
+    / "plugins"
+    / "video_editor"
+    / "presenter_parts"
+    / "thumbnails.py"
+)
+_THUMB_SVC_PATH = (
+    _SRC_ROOT
+    / "tabs"
+    / "image_compare"
+    / "plugins"
+    / "video_editor"
+    / "services"
+    / "thumbnails.py"
+)
+
+
+def _read_source(path):
+    return _Path(path).read_text(encoding="utf-8")
+
+
+def test_view_signal_connect_disconnect_symmetry():
+    """C-A(a): every view/timeline connect has a disconnect; frozen surface.
+
+    Proves the rg-balanced audit structurally: the set of signals connected
+    in ``_connect_view_signals`` is covered by ``_disconnect_view_signals``,
+    the timeline subset is exactly the frozen
+    ``zoomChanged/viewportChanged/viewportChangedState`` surface (no
+    ``resized``/``layoutSettled``), and ``_on_view_destroyed`` disconnects.
+    """
+    src = _read_source(_PRESENTER_PATH)
+    tree = _ast.parse(src)
+    funcs = {
+        node.name: node
+        for node in _ast.walk(tree)
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+    }
+    connect_src = _ast.get_source_segment(src, funcs["_connect_view_signals"])
+    disconnect_src = _ast.get_source_segment(
+        src, funcs["_disconnect_view_signals"]
+    )
+    destroyed_src = _ast.get_source_segment(src, funcs["_on_view_destroyed"])
+    assert connect_src and disconnect_src and destroyed_src
+
+    connected = set(_re.findall(r"\.(\w+)\.connect\(", connect_src))
+    assert connected, "expected view signal connects"
+    missing = {
+        name for name in connected if f'"{name}"' not in disconnect_src
+    }
+    assert not missing, (
+        f"signals connected without a disconnect mirror: {sorted(missing)}"
+    )
+
+    timeline_connected = set(
+        _re.findall(r"timeline\.(\w+)\.connect\(", connect_src)
+    )
+    assert timeline_connected, "expected timeline signal connects"
+    assert timeline_connected <= _FROZEN_TIMELINE_SIGNALS, (
+        f"timeline surface must stay frozen: {sorted(timeline_connected)}"
+    )
+    assert "layoutSettled" not in src
+    assert not _re.search(r"(?<![A-Za-z_])resized", src), (
+        "bare TimelineWidget.resized reference in presenter "
+        "(windowResized/on_window_resized dialog wiring is unrelated)"
+    )
+    assert "_disconnect_view_signals" in destroyed_src, (
+        "_on_view_destroyed must disconnect view signals"
+    )
+
+
+def test_no_deleted_timeline_signals_in_thumbnail_wiring():
+    """C-A(b): coordinator + service never name resized/layoutSettled."""
+    for path in (_THUMB_COORD_PATH, _THUMB_SVC_PATH):
+        text = _read_source(path)
+        assert "layoutSettled" not in text, path
+        assert "resized" not in text, path
+
+
+def _build_wired_presenter(qapp):
+    """Presenter with a fake QObject view; real Qt signals, recorded slots."""
+    from PySide6.QtCore import QObject, Signal
+
+    from tabs.image_compare.plugins.video_editor.presenter import (
+        VideoEditorPresenter,
+    )
+
+    class FakeTimeline(QObject):
+        viewportChanged = Signal()
+        zoomChanged = Signal(float)
+        viewportChangedState = Signal(object)
+
+    class FakeLineEdit(QObject):
+        textChanged = Signal(str)
+        editingFinished = Signal()
+
+    class FakeView(QObject):
+        destroyed = Signal()
+        playClicked = Signal(bool)
+        timelineScrubbed = Signal(int)
+        undoClicked = Signal()
+        redoClicked = Signal()
+        trimClicked = Signal()
+        exportClicked = Signal()
+        stopExportClicked = Signal()
+        widthChanged = Signal(int)
+        heightChanged = Signal(int)
+        fpsChanged = Signal(int)
+        previewScaleChanged = Signal(float)
+        aspectRatioLockChanged = Signal(bool)
+        fitContentChanged = Signal(bool)
+        fitContentFillColorChanged = Signal(object)
+        containerChanged = Signal(str)
+        windowResized = Signal()
+
+        def __init__(self):
+            super().__init__()
+            self.timeline = FakeTimeline()
+            self.edit_output_dir = FakeLineEdit()
+            self.edit_filename = FakeLineEdit()
+
+    calls: list[str] = []
+
+    def _slot(name):
+        def _record(*_args):
+            calls.append(name)
+
+        return _record
+
+    presenter = VideoEditorPresenter.__new__(VideoEditorPresenter)
+    QObject.__init__(presenter)
+    view = FakeView()
+    presenter.view = view
+    presenter.main_controller = None
+    presenter.playback_engine = SimpleNamespace()
+    presenter.thumbnail_service = SimpleNamespace()
+    presenter.playback_coordinator = SimpleNamespace(
+        toggle_playback=_slot("toggle_playback"),
+        seek_to_frame=_slot("seek_to_frame"),
+        undo=_slot("undo"),
+        redo=_slot("redo"),
+        trim_selection=_slot("trim_selection"),
+        on_fps_changed=_slot("on_fps_changed"),
+        on_aspect_ratio_lock_changed=_slot("on_aspect_ratio_lock_changed"),
+        detach_view=_slot("playback.detach"),
+    )
+    presenter.preview_coordinator = SimpleNamespace(
+        on_width_changed=_slot("on_width_changed"),
+        on_height_changed=_slot("on_height_changed"),
+        on_preview_scale_changed=_slot("on_preview_scale_changed"),
+        on_fit_content_changed=_slot("on_fit_content_changed"),
+        on_fit_content_fill_color_changed=_slot(
+            "on_fit_content_fill_color_changed"
+        ),
+        on_window_resized=_slot("on_window_resized"),
+        on_view_destroyed=_slot("preview.destroyed"),
+        detach_view=_slot("preview.detach"),
+    )
+    presenter.output_coordinator = SimpleNamespace(
+        on_container_changed=_slot("on_container_changed"),
+        refresh_unique_output_filename=_slot("refresh_filename"),
+        detach_view=_slot("output.detach"),
+    )
+    presenter.thumbnail_coordinator = SimpleNamespace(
+        on_timeline_viewport_changed=_slot("viewport_changed"),
+        on_timeline_zoom_changed=_slot("zoom_changed"),
+        on_timeline_viewport_state_changed=_slot("viewport_state"),
+        detach_view=_slot("thumbs.detach"),
+    )
+    presenter.export_coordinator = SimpleNamespace(
+        stop_export=_slot("stop_export"),
+        export_video=lambda *_args: calls.append("export_video"),
+        detach_view=_slot("export.detach"),
+    )
+    return presenter, view, calls
+
+
+def _emit_all_view_signals(view):
+    view.playClicked.emit(False)
+    view.timelineScrubbed.emit(3)
+    view.undoClicked.emit()
+    view.redoClicked.emit()
+    view.trimClicked.emit()
+    view.exportClicked.emit()
+    view.stopExportClicked.emit()
+    view.widthChanged.emit(10)
+    view.heightChanged.emit(10)
+    view.fpsChanged.emit(60)
+    view.previewScaleChanged.emit(1.0)
+    view.aspectRatioLockChanged.emit(True)
+    view.fitContentChanged.emit(True)
+    view.fitContentFillColorChanged.emit(object())
+    view.containerChanged.emit("mp4")
+    view.windowResized.emit()
+    view.edit_output_dir.textChanged.emit("x")
+    view.edit_filename.editingFinished.emit()
+    view.timeline.viewportChanged.emit()
+    view.timeline.zoomChanged.emit(1.5)
+    view.timeline.viewportChangedState.emit(object())
+
+
+def test_view_signals_disconnect_stops_all_slots(qapp):
+    """C-A(a) runtime: after disconnect, no view/timeline emit reaches us."""
+    presenter, view, calls = _build_wired_presenter(qapp)
+    presenter._connect_view_signals()
+
+    _emit_all_view_signals(view)
+    assert calls, "connected signals must reach coordinator slots"
+    assert "viewport_changed" in calls
+    assert "zoom_changed" in calls
+    assert "viewport_state" in calls
+
+    calls.clear()
+    presenter._disconnect_view_signals()
+    _emit_all_view_signals(view)
+    assert calls == [], (
+        f"stale slots survived disconnect: {calls}"
+    )
+
+
+def test_view_destroyed_disconnects_view_signals(qapp):
+    """C-A(a) runtime: the destroy path leaves no live slots behind."""
+    presenter, view, calls = _build_wired_presenter(qapp)
+    presenter._connect_view_signals()
+    presenter._on_view_destroyed()
+
+    assert presenter.view is None
+    settled = list(calls)
+    assert "preview.destroyed" in settled
+    _emit_all_view_signals(view)
+    assert calls == settled, (
+        f"destroy path must disconnect everything else: {calls[len(settled):]}"
+    )
+
+
+def test_frame_count_derives_from_editor_owner(qapp, monkeypatch):
+    """C-A(d): service derives through the injected editor-owned provider."""
+    service = _live_service(monkeypatch)
+    service.generate_thumbnails(
+        _FakeRecording(duration=10.5),  # fallback would be ceil(630)+1
+        target_count=50,
+        priority_indices=[0, 1],
+        fps=60,
+    )
+    assert service._get_frame_count() == 631  # recording fallback formula
+
+    service.set_frame_count_source(lambda: 42)
+    assert service._get_frame_count() == 42
+
+    def _boom():
+        raise RuntimeError("editor gone")
+
+    service.set_frame_count_source(_boom)
+    assert service._get_frame_count() == 631, (
+        "provider doubt must fail open to the recording formula"
+    )
+    service.set_frame_count_source(None)
+    assert service._get_frame_count() == 631
+
+
+def test_coordinator_wires_editor_frame_count(qapp):
+    """C-A(d): the coordinator injects editor.get_frame_count as source."""
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    service = SimpleNamespace(
+        set_frame_count_source=lambda provider: setattr(
+            service, "_frame_count_source", provider
+        ),
+    )
+    editor = SimpleNamespace(get_frame_count=lambda: 77)
+    coordinator = ThumbnailCoordinator(
+        view=None,
+        editor_service=editor,
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=service,
+        emit_thumbnails_updated=lambda _thumbnails: None,
+    )
+    assert service._frame_count_source == editor.get_frame_count
+    assert coordinator.view is None
+
+
+def test_teardown_clears_sets_and_releases_recording(qapp, monkeypatch):
+    """C-A(d): teardown clears pending/generated, drops window+recording."""
+    service = _live_service(monkeypatch)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+
+    generation = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0, 1, 2],
+        fps=60,
+    )
+    assert service._pending_indices == {0, 1, 2}
+    assert service._recording is not None
+    service.set_visible_window([0, 1, 2])
+
+    service.teardown()
+
+    assert service._pending_indices == set()
+    assert service._generated_indices == set()
+    assert service._visible_window is None
+    assert service._recording is None
+    assert service._active_workers == 0
+
+    service._on_thumbnail_generated(
+        0, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+    )
+    assert emitted == {}, "post-teardown arrival must drop"
+    assert service._get_frame_count() == 0, (
+        "released recording with no provider reads as empty"
+    )
+
+
+def test_detach_view_cancels_workers_and_clears_baseline(qapp, monkeypatch):
+    """C-A(e): detach retires the wave; late add_thumbnail never storms."""
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    service = _live_service(monkeypatch)
+    service.set_thumbnail_disk_cache(None)
+    added: list[int] = []
+    timeline = SimpleNamespace(
+        height=lambda: 200,
+        RULER_HEIGHT=24,
+        has_snapshots=lambda: True,
+        get_total_duration=lambda: 10.0,
+        get_pixels_per_second=lambda: 100.0,
+        clear_thumbnails=lambda: None,
+        add_thumbnail=lambda idx, _px: added.append(idx),
+        get_visible_thumbnail_frame_indices=(
+            lambda overscan_blocks=0: [0, 1, 2]
+        ),
+    )
+    coordinator = ThumbnailCoordinator(
+        view=SimpleNamespace(timeline=timeline),
+        editor_service=SimpleNamespace(
+            get_current_recording=lambda: _FakeRecording(duration=10.0),
+            get_fps=lambda: 60,
+            get_frame_count=lambda: 601,
+        ),
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=service,
+        emit_thumbnails_updated=lambda _thumbnails: None,
+    )
+    coordinator.generate_thumbnails()
+    assert coordinator._last_visible_indices == [0, 1, 2]
+
+    coordinator.detach_view()
+
+    assert coordinator.view is None
+    assert coordinator._last_visible_indices is None
+    assert coordinator._last_zoom_level is None
+    # Late arrival drops on the retired token; detached view adds nothing.
+    coordinator.on_single_thumbnail_ready(0, object())
+    assert added == []
+
+
+def test_optimal_count_prefers_viewport_helpers(qapp, monkeypatch):
+    """C-A(e): tile/logical width come from the toolkit viewport module."""
+    from tabs.image_compare.plugins.video_editor.presenter_parts import (
+        thumbnails as coord_module,
+    )
+
+    monkeypatch.setattr(
+        coord_module.timeline_viewport,
+        "get_base_tile_width",
+        lambda _tl: 160.0,
+    )
+    monkeypatch.setattr(
+        coord_module.timeline_viewport,
+        "get_logical_width",
+        lambda _tl: 4800.0,
+    )
+    timeline = SimpleNamespace(
+        height=lambda: 200,
+        RULER_HEIGHT=24,
+        has_snapshots=lambda: True,
+    )
+    coordinator = _coordinator(timeline_indices=[], service=SimpleNamespace())
+    coordinator.view = SimpleNamespace(timeline=timeline)
+
+    assert coordinator.calculate_optimal_thumbnail_count() == 32
+
+
+def test_optimal_count_falls_back_without_viewport_helpers(qapp):
+    """C-A(e) fail-open: unreadable viewport helpers keep legacy math."""
+    import tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails as coord_module
+
+    def _boom_base(_tl):
+        raise RuntimeError("no geometry")
+
+    def _zero_logical(_tl):
+        return 0.0
+
+    broken_viewport = SimpleNamespace(
+        get_base_tile_width=_boom_base,
+        get_logical_width=_zero_logical,
+    )
+    timeline = SimpleNamespace(
+        height=lambda: 200,
+        RULER_HEIGHT=24,
+        has_snapshots=lambda: True,
+        get_total_duration=lambda: 100.0,
+        get_pixels_per_second=lambda: 100.0,
+    )
+    original = coord_module.timeline_viewport
+    coord_module.timeline_viewport = broken_viewport
+    try:
+        coordinator = _coordinator(
+            timeline_indices=[], service=SimpleNamespace()
+        )
+        coordinator.view = SimpleNamespace(timeline=timeline)
+        # Legacy math: tile = 176 * 16/9, logical = 100 * 100
+        assert coordinator.calculate_optimal_thumbnail_count() == 33
+    finally:
+        coord_module.timeline_viewport = original

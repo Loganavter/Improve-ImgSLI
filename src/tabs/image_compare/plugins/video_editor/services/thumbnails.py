@@ -60,10 +60,10 @@ def _finish_thumbnail_image(
     scale = max(out_w / float(rendered.width), out_h / float(rendered.height))
     new_w = max(1, int(round(rendered.width * scale)))
     new_h = max(1, int(round(rendered.height * scale)))
-    resized = rendered.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    scaled = rendered.resize((new_w, new_h), Image.Resampling.LANCZOS)
     left = max(0, (new_w - out_w) // 2)
     top = max(0, (new_h - out_h) // 2)
-    return resized.crop((left, top, left + out_w, top + out_h))
+    return scaled.crop((left, top, left + out_w, top + out_h))
 
 
 def _render_thumbnail_using_renderer(
@@ -109,6 +109,12 @@ class ThumbnailService(QObject):
         self._generated_indices = set()
         self._pending_indices = set()
         self._recording = None
+        # Frame-count owner is the editor service (``ceil(duration * fps) + 1``
+        # off its ``get_duration``). When the coordinator injects it via
+        # :meth:`set_frame_count_source`, :meth:`_get_frame_count` derives
+        # through it and never owns a fourth formula; None = fall back to
+        # the recording formula below (fail-open).
+        self._frame_count_source = None
         # Z4 zoom-aware membership: coordinator-pushed snapshot of the
         # current visible window (+margin). Same-generation completions
         # outside it drop on arrival in _on_thumbnail_generated. None =
@@ -321,12 +327,31 @@ class ThumbnailService(QObject):
         )
 
     def _get_frame_count(self) -> int:
+        provider = getattr(self, "_frame_count_source", None)
+        if callable(provider):
+            try:
+                provided = int(provider())
+            except Exception:
+                provided = 0
+            if provided > 0:
+                return provided
         if not self._recording:
             return 0
         duration = self._recording.get_duration()
         if duration <= 0:
             return 1
         return max(1, int(math.ceil(duration * self._fps)) + 1)
+
+    def set_frame_count_source(self, provider) -> None:
+        """Inject the dialog's frame-count owner (the editor service).
+
+        The editor service owns ``ceil(duration * fps) + 1`` off its
+        ``get_duration``; this service only derives through the provider.
+        A None/non-callable provider — or any provider doubt (raising,
+        non-positive) — falls back to the recording formula in
+        :meth:`_get_frame_count` (fail-open, today's behavior).
+        """
+        self._frame_count_source = provider if callable(provider) else None
 
     def set_snapshot_renderer(
         self, renderer: Optional[Callable[..., Optional[Image.Image]]]
@@ -727,3 +752,25 @@ class ThumbnailService(QObject):
         self._pending_indices.clear()
         self._active_workers = 0
         self._thread_pool.waitForDone(500)
+
+    def teardown(self) -> None:
+        """Dialog-lifetime end: retire the live wave and release state.
+
+        Bumps the single generation token (the same cancel source as
+        :meth:`cancel` / :meth:`retire_in_flight_thumbnails` — never a
+        second flag), clears the pending + finished sets so a later dialog
+        starts clean, drops the visible-window filter, and releases the
+        recording reference (``_recording`` lifetime is bound to the dialog
+        lifetime). Blocks briefly for in-flight workers to drain, like
+        :meth:`cancel`.
+        """
+        self._generation += 1
+        self._pending_indices.clear()
+        self._generated_indices.clear()
+        self._visible_window = None
+        self._recording = None
+        self._active_workers = 0
+        try:
+            self._thread_pool.waitForDone(500)
+        except Exception:
+            pass

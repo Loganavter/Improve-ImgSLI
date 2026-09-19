@@ -148,8 +148,8 @@ class VideoEditorDialog(ThemedDialog):
         self._update_settings_panel_width()
         # Register before first show — showEvent may be skipped on reuse/raise.
         self._contribute_find_actions()
-        QTimer.singleShot(0, self.presenter._initialize_output_fields)
-        QTimer.singleShot(1200, self._emit_ready_to_show)
+        QTimer.singleShot(0, self._initialize_output_fields_guarded)
+        QTimer.singleShot(1200, self._emit_ready_to_show_guarded)
 
         logger.warning(
             "DBG-BUG4 VideoEditorDialog.__init__ took %.1f ms (constructor done, about to return/show)",
@@ -338,6 +338,62 @@ class VideoEditorDialog(ThemedDialog):
     def _emit_ready_to_show(self) -> None:
         self.runtime.emit_ready_to_show()
 
+    def _dialog_alive(self) -> bool:
+        """True while the C++ dialog object still exists.
+
+        Fail-open when the binding check itself is unavailable — callers
+        still guard the callback body with try/except RuntimeError.
+        """
+        try:
+            import shiboken6
+
+            return bool(shiboken6.isValid(self))
+        except Exception:
+            return True
+
+    def _initialize_output_fields_guarded(self) -> None:
+        # showEvent/__init__ singleShot target: no work scheduled past close.
+        if not self._dialog_alive():
+            return
+        try:
+            self.presenter._initialize_output_fields()
+        except RuntimeError:
+            pass
+
+    def _emit_ready_to_show_guarded(self) -> None:
+        # __init__ singleShot target: no work scheduled past close.
+        if not self._dialog_alive():
+            return
+        try:
+            self._emit_ready_to_show()
+        except RuntimeError:
+            pass
+
+    def _fit_timeline_if_alive(self) -> None:
+        # showEvent singleShot target: no work scheduled past close.
+        if not self._dialog_alive():
+            return
+        try:
+            timeline = getattr(self, "timeline", None)
+            if timeline is None:
+                return
+            import shiboken6
+
+            if not shiboken6.isValid(timeline):
+                return
+            timeline.fit_view()
+        except RuntimeError:
+            pass
+
+    def _emit_window_signal_if_alive(self) -> None:
+        # showEvent singleShot target: no work scheduled past close.
+        if not self._dialog_alive():
+            return
+        try:
+            self.windowResized.emit()
+        except RuntimeError:
+            pass
+
     def _on_play_toggled(self, checked: bool):
         self.playClicked.emit(checked)
 
@@ -525,7 +581,7 @@ class VideoEditorDialog(ThemedDialog):
         super().showEvent(event)
 
         if hasattr(self, "timeline"):
-            QTimer.singleShot(100, self.timeline.fit_view)
+            QTimer.singleShot(100, self._fit_timeline_if_alive)
         self._position_stop_export_button()
 
         # Prefer timeline over the first settings LineEdit in the focus chain.
@@ -534,7 +590,7 @@ class VideoEditorDialog(ThemedDialog):
         else:
             self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
-        QTimer.singleShot(150, self.windowResized.emit)
+        QTimer.singleShot(150, self._emit_window_signal_if_alive)
         self._contribute_find_actions()
 
     def closeEvent(self, event):

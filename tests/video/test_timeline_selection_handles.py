@@ -1,13 +1,34 @@
-"""Timeline selection edge handles / move (toolkit TimelineWidget)."""
+"""Timeline selection edge handles / move (toolkit TimelineWidget).
+
+Plus C-A app-wiring guards: the video-editor dialog must never schedule
+work past close (every showEvent/__init__ singleShot targets a
+dialog-alive-guarded callback), and the presenter timeline surface stays
+frozen (zoomChanged/viewportChanged/viewportChangedState only).
+"""
 
 from __future__ import annotations
 
+import ast
 import os
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from sli_ui_toolkit.ui.widgets.composite.timeline_widget import interaction as ti
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SHELL_PATH = (
+    _REPO_ROOT
+    / "src"
+    / "tabs"
+    / "image_compare"
+    / "plugins"
+    / "video_editor"
+    / "dialog"
+    / "shell.py"
+)
 
 
 def _fake_widget(*, lo: int, hi: int, total: int = 100, left_gutter: int = 0):
@@ -96,3 +117,38 @@ def test_selection_resize_edges():
         assert (widget._anchor_index, widget._drag_index) == (18, 28)
     finally:
         widget._restore()
+
+
+def test_shell_singleshot_targets_guard_dialog_alive():
+    """C-A(c): no dialog work scheduled past close.
+
+    Every ``QTimer.singleShot`` in the video-editor dialog shell must
+    target a dialog-alive-guarded callback (``*_guarded`` / ``*_if_alive``)
+    that checks ``_dialog_alive`` (shiboken ``isValid``) before touching
+    the timeline/view — a bare ``singleShot(…, self.timeline.fit_view)``
+    would fire against a destroyed widget.
+    """
+    src = _SHELL_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    targets: list[str] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "singleShot"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Attribute)
+        ):
+            targets.append(node.args[1].attr)
+    assert targets, "expected QTimer.singleShot calls in the dialog shell"
+    unguarded = [
+        name
+        for name in targets
+        if not (name.endswith("_guarded") or name.endswith("_if_alive"))
+    ]
+    assert not unguarded, (
+        f"singleShot targets without a dialog-alive guard: {unguarded}"
+    )
+    assert "_dialog_alive" in src
+    assert "isValid" in src

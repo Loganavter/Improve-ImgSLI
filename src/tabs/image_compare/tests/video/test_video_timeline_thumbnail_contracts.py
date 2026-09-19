@@ -210,9 +210,9 @@ def test_timeline_resize_debounces_thumbnail_generation(monkeypatch):
         lambda: pings.append(1),
     )
 
-    coordinator.on_timeline_resized()
+    coordinator.on_timeline_zoom_changed()
     coordinator.on_timeline_viewport_changed()
-    coordinator.on_timeline_resized()
+    coordinator.on_timeline_zoom_changed()
 
     assert pings == [1, 1, 1]
     assert generate_calls == []

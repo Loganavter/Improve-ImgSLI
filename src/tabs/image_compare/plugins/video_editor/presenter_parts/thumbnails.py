@@ -3,6 +3,9 @@ from typing import Callable, Dict, List
 
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.managers import SettleGate
+from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
+    viewport as timeline_viewport,
+)
 
 from .common import VIDEO_EDITOR_AUTO_CROP
 
@@ -46,10 +49,40 @@ class ThumbnailCoordinator:
         # identical) and must NOT retire the in-flight wave — completions are
         # index-addressed (P3), so they stay valid. Scroll/pan (window moved,
         # zoom unchanged) retires as before. None = no baseline yet.
+        # Read via the public get_pixels_per_second() only — never the
+        # toolkit-private _zoom_level.
         self._last_zoom_level: float | None = None
+
+        # Frame-count owner is the editor service (ceil(duration*fps)+1 off
+        # its get_duration). Derive through it; the service falls back to
+        # its recording formula on any doubt (fail-open).
+        try:
+            set_source = getattr(
+                self.thumbnail_service, "set_frame_count_source", None
+            )
+            derive = getattr(self.editor_service, "get_frame_count", None)
+            if callable(set_source) and callable(derive):
+                set_source(derive)
+        except Exception:
+            logger.debug("frame-count source wiring skipped", exc_info=True)
 
     def detach_view(self):
         self._visible_refresh.cancel()
+        # No post-detach add_thumbnail storms: retire the live wave so late
+        # worker completions drop on arrival (fail-open kept — the
+        # generation token and membership filter still apply on doubt).
+        try:
+            teardown = getattr(self.thumbnail_service, "teardown", None)
+            if callable(teardown):
+                teardown()
+            else:
+                cancel = getattr(self.thumbnail_service, "cancel", None)
+                if callable(cancel):
+                    cancel()
+        except Exception:
+            logger.debug("thumbnail detach cancel skipped", exc_info=True)
+        self._last_visible_indices = None
+        self._last_zoom_level = None
         self.view = None
 
     def calculate_optimal_thumbnail_count(self) -> int:
@@ -61,15 +94,26 @@ class ThumbnailCoordinator:
         if content_height <= 0:
             return 50
 
-        aspect_ratio = 16.0 / 9.0
-        tile_width = content_height * aspect_ratio
-
         if not timeline.has_snapshots():
             return 50
 
-        total_duration = timeline.get_total_duration()
-        px_per_sec = timeline.get_pixels_per_second()
-        logical_width = total_duration * px_per_sec
+        # Consume the installed toolkit viewport geometry (single source) —
+        # never a duplicated tile/logical-width formula. Fail-open: any
+        # doubt falls back to the legacy local math below.
+        tile_width = 0.0
+        logical_width = 0.0
+        try:
+            tile_width = float(timeline_viewport.get_base_tile_width(timeline))
+            logical_width = float(timeline_viewport.get_logical_width(timeline))
+        except Exception:
+            tile_width = 0.0
+            logical_width = 0.0
+        if not tile_width > 0 or not logical_width > 0:
+            aspect_ratio = 16.0 / 9.0
+            tile_width = content_height * aspect_ratio
+            total_duration = timeline.get_total_duration()
+            px_per_sec = timeline.get_pixels_per_second()
+            logical_width = total_duration * px_per_sec
         if logical_width <= 0 or tile_width <= 0:
             return 50
 
@@ -176,36 +220,34 @@ class ThumbnailCoordinator:
             pass
         self._visible_refresh.ping()
 
-    def on_timeline_resized(self):
-        # Do not queue GPU thumbnails while the strip is refitting; settle first.
+    def on_timeline_zoom_changed(self, *_args):
+        # Zoom reshuffles geometry, not content — settle first, don't refit.
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord resized ping gate_pending=%s", self._visible_refresh.is_pending())
+            ic_video_debug("thumb_coord zoomChanged ping gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
         self._visible_refresh.ping()
 
-    def on_layout_settled(self):
-        # Toolkit TimelineWidget emits layoutSettled after its own
-        # _layout_settle (fit_view/update_fixed_width) finishes — at that
+    def on_timeline_viewport_state_changed(self, _state=None):
+        # Toolkit TimelineWidget emits viewportChangedState after its own
+        # layout settle (fit_view/update_fixed_width) finishes — at that
         # point get_visible_thumbnail_frame_indices returns a settled window.
-        # Bypass the extra 240ms debounce and refresh immediately.
+        # Bypass the extra debounce and refresh immediately.
         try:
             from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord layoutSettled cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
+            ic_video_debug("thumb_coord viewportChangedState cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
         self._visible_refresh.cancel()
         self._refresh_visible_thumbnails()
 
     def _read_zoom_level(self) -> float | None:
-        """Snapshot the timeline zoom scalar (None when unreadable).
+        """Snapshot the timeline zoom scalar via the public pps API.
 
-        Prefers the ``_zoom_level`` scalar (the Z-T contract surface, stable
-        across old per-tick and new coalesced commits — never assume
-        exactly-1-commit-per-gesture), falling back to
-        ``get_pixels_per_second``. None means "unknown": callers keep
-        today's scroll-cancel behavior (fail-open).
+        Reads ``get_pixels_per_second`` only — never the toolkit-private
+        ``_zoom_level``. None means "unknown": callers keep today's
+        scroll-cancel behavior (fail-open).
         """
         try:
             tl = (
@@ -215,11 +257,6 @@ class ThumbnailCoordinator:
             )
             if tl is None:
                 return None
-            if hasattr(tl, "_zoom_level"):
-                try:
-                    return float(getattr(tl, "_zoom_level"))
-                except (TypeError, ValueError):
-                    pass
             getter = getattr(tl, "get_pixels_per_second", None)
             if callable(getter):
                 try:
@@ -251,9 +288,8 @@ class ThumbnailCoordinator:
         try:
             from tabs.image_compare.debug import ic_video_debug
             tl = getattr(self.view, "timeline", None) if self.view is not None else None
-            zoom = getattr(tl, "_zoom_level", -1) if tl else -1
-            lw = tl.get_pixels_per_second() if tl and hasattr(tl, "get_pixels_per_second") else -1
-            ic_video_debug("thumb_coord _refresh vis_len=%s vis=%s zoom=%s pps=%s total=%s pending=%s generated=%s", len(visible_indices), visible_indices[:12], zoom, lw, self.editor_service.get_frame_count() if self.editor_service else -1, len(getattr(self.thumbnail_service, "_pending_indices", [])), len(getattr(self.thumbnail_service, "_generated_indices", [])))
+            pps = tl.get_pixels_per_second() if tl and hasattr(tl, "get_pixels_per_second") else -1
+            ic_video_debug("thumb_coord _refresh vis_len=%s vis=%s pps=%s total=%s pending=%s generated=%s", len(visible_indices), visible_indices[:12], pps, self.editor_service.get_frame_count() if self.editor_service else -1, len(getattr(self.thumbnail_service, "_pending_indices", [])), len(getattr(self.thumbnail_service, "_generated_indices", [])))
         except Exception:
             pass
         if visible_indices:
@@ -346,4 +382,11 @@ class ThumbnailCoordinator:
 
     def cleanup(self):
         self._visible_refresh.cancel()
-        self.thumbnail_service.cancel()
+        try:
+            teardown = getattr(self.thumbnail_service, "teardown", None)
+            if callable(teardown):
+                teardown()
+            else:
+                self.thumbnail_service.cancel()
+        except Exception:
+            logger.debug("thumbnail cleanup cancel skipped", exc_info=True)

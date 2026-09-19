@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="video editor presenter — dialog/timeline signal connect/disconnect mirror plus coordinator ownership"
 import logging
 import time
 
@@ -291,30 +292,34 @@ class VideoEditorPresenter(QObject):
             self.main_controller.video_export_log.connect(self.exportLog)
 
     def _disconnect_service_signals(self):
-        def _safe_disconnect(signal, slot):
-            try:
-                signal.disconnect(slot)
-            except (TypeError, RuntimeError):
-                pass
         try:
-            _safe_disconnect(self.playback_engine.frameChanged, self.playback_coordinator.on_frame_changed)
-            _safe_disconnect(self.playback_engine.playbackStateChanged, self.playback_coordinator.on_playback_state_changed)
-            _safe_disconnect(self.thumbnail_service.thumbnailReady, self.thumbnail_coordinator.on_single_thumbnail_ready)
-            _safe_disconnect(self.thumbnail_service.thumbnailsGenerated, self.thumbnail_coordinator.on_thumbnails_generated)
-            _safe_disconnect(self.thumbnail_service.generationFinished, self.thumbnail_coordinator.on_thumbnails_generation_finished)
+            self._safe_disconnect(self.playback_engine.frameChanged, self.playback_coordinator.on_frame_changed)
+            self._safe_disconnect(self.playback_engine.playbackStateChanged, self.playback_coordinator.on_playback_state_changed)
+            self._safe_disconnect(self.thumbnail_service.thumbnailReady, self.thumbnail_coordinator.on_single_thumbnail_ready)
+            self._safe_disconnect(self.thumbnail_service.thumbnailsGenerated, self.thumbnail_coordinator.on_thumbnails_generated)
+            self._safe_disconnect(self.thumbnail_service.generationFinished, self.thumbnail_coordinator.on_thumbnails_generation_finished)
         except Exception:
             pass
         if self.main_controller:
             try:
                 if hasattr(self.main_controller, "video_export_progress"):
-                    _safe_disconnect(self.main_controller.video_export_progress, self._on_export_progress)
-                    _safe_disconnect(self.main_controller.video_export_finished, self._on_export_finished)
+                    self._safe_disconnect(self.main_controller.video_export_progress, self._on_export_progress)
+                    self._safe_disconnect(self.main_controller.video_export_finished, self._on_export_finished)
                 if hasattr(self.main_controller, "error_occurred"):
-                    _safe_disconnect(self.main_controller.error_occurred, self.errorOccurred)
+                    self._safe_disconnect(self.main_controller.error_occurred, self.errorOccurred)
                 if hasattr(self.main_controller, "video_export_log"):
-                    _safe_disconnect(self.main_controller.video_export_log, self.exportLog)
+                    self._safe_disconnect(self.main_controller.video_export_log, self.exportLog)
             except Exception:
                 pass
+
+    @staticmethod
+    def _safe_disconnect(signal, slot):
+        if signal is None:
+            return
+        try:
+            signal.disconnect(slot)
+        except (TypeError, RuntimeError):
+            pass
 
     def _connect_view_signals(self):
         self.view.destroyed.connect(self._on_view_destroyed)
@@ -339,27 +344,112 @@ class VideoEditorPresenter(QObject):
             self.preview_coordinator.on_fit_content_fill_color_changed
         )
         self.view.containerChanged.connect(self.output_coordinator.on_container_changed)
+        # Stored (not inline): disconnect needs the identical callable.
+        self._on_output_dir_text_changed = (
+            lambda *_args: self.output_coordinator.refresh_unique_output_filename()
+        )
         if hasattr(self.view, "edit_output_dir"):
             self.view.edit_output_dir.textChanged.connect(
-                lambda *_: self.output_coordinator.refresh_unique_output_filename()
+                self._on_output_dir_text_changed
             )
         if hasattr(self.view, "edit_filename"):
             self.view.edit_filename.editingFinished.connect(
                 self.output_coordinator.refresh_unique_output_filename
             )
         if hasattr(self.view, "timeline"):
+            # Frozen timeline surface: zoom + viewport signals only (the
+            # deprecated toolkit signals are gone toolkit-side).
             self.view.timeline.viewportChanged.connect(
                 self.thumbnail_coordinator.on_timeline_viewport_changed
             )
-            self.view.timeline.resized.connect(self.thumbnail_coordinator.on_timeline_resized)
-            if hasattr(self.view.timeline, "layoutSettled"):
-                self.view.timeline.layoutSettled.connect(
-                    self.thumbnail_coordinator.on_layout_settled
-                )
+            self.view.timeline.zoomChanged.connect(
+                self.thumbnail_coordinator.on_timeline_zoom_changed
+            )
+            self.view.timeline.viewportChangedState.connect(
+                self.thumbnail_coordinator.on_timeline_viewport_state_changed
+            )
         self.view.windowResized.connect(self.preview_coordinator.on_window_resized)
+
+    def _disconnect_view_signals(self):
+        """Mirror of _connect_view_signals: drop every view/timeline slot.
+
+        Every ``connect`` above has exactly one disconnect here, so no stale
+        bound-method slot keeps the dialog alive past close. Safe to call on
+        an already-destroyed view (every lookup/disconnect is guarded).
+        """
+        try:
+            view = self.view
+        except Exception:
+            return
+        if view is None:
+            return
+
+        def _sig(obj, name):
+            try:
+                return getattr(obj, name, None)
+            except Exception:
+                return None
+
+        pairs = [
+            (_sig(view, "destroyed"), self._on_view_destroyed),
+            (_sig(view, "playClicked"), self.playback_coordinator.toggle_playback),
+            (_sig(view, "timelineScrubbed"), self.playback_coordinator.seek_to_frame),
+            (_sig(view, "undoClicked"), self.playback_coordinator.undo),
+            (_sig(view, "redoClicked"), self.playback_coordinator.redo),
+            (_sig(view, "trimClicked"), self.playback_coordinator.trim_selection),
+            (_sig(view, "exportClicked"), self.export_video),
+            (_sig(view, "stopExportClicked"), self.export_coordinator.stop_export),
+            (_sig(view, "widthChanged"), self.preview_coordinator.on_width_changed),
+            (_sig(view, "heightChanged"), self.preview_coordinator.on_height_changed),
+            (_sig(view, "fpsChanged"), self.playback_coordinator.on_fps_changed),
+            (_sig(view, "previewScaleChanged"), self.preview_coordinator.on_preview_scale_changed),
+            (_sig(view, "aspectRatioLockChanged"), self.playback_coordinator.on_aspect_ratio_lock_changed),
+            (_sig(view, "fitContentChanged"), self.preview_coordinator.on_fit_content_changed),
+            (_sig(view, "fitContentFillColorChanged"), self.preview_coordinator.on_fit_content_fill_color_changed),
+            (_sig(view, "containerChanged"), self.output_coordinator.on_container_changed),
+            (_sig(view, "windowResized"), self.preview_coordinator.on_window_resized),
+        ]
+        for signal, slot in pairs:
+            try:
+                self._safe_disconnect(signal, slot)
+            except Exception:
+                pass
+        try:
+            edit_output_dir = _sig(view, "edit_output_dir")
+            if edit_output_dir is not None:
+                self._safe_disconnect(
+                    _sig(edit_output_dir, "textChanged"),
+                    getattr(self, "_on_output_dir_text_changed", None),
+                )
+            edit_filename = _sig(view, "edit_filename")
+            if edit_filename is not None:
+                self._safe_disconnect(
+                    _sig(edit_filename, "editingFinished"),
+                    self.output_coordinator.refresh_unique_output_filename,
+                )
+        except Exception:
+            pass
+        try:
+            timeline = _sig(view, "timeline")
+            if timeline is not None:
+                self._safe_disconnect(
+                    _sig(timeline, "viewportChanged"),
+                    self.thumbnail_coordinator.on_timeline_viewport_changed,
+                )
+                self._safe_disconnect(
+                    _sig(timeline, "zoomChanged"),
+                    self.thumbnail_coordinator.on_timeline_zoom_changed,
+                )
+                self._safe_disconnect(
+                    _sig(timeline, "viewportChangedState"),
+                    self.thumbnail_coordinator.on_timeline_viewport_state_changed,
+                )
+        except Exception:
+            pass
 
     def _on_view_destroyed(self, *_args):
         self._disconnect_service_signals()
+        self._disconnect_view_signals()
         self.preview_coordinator.on_view_destroyed()
         self.output_coordinator.detach_view()
         self.thumbnail_coordinator.detach_view()
@@ -430,6 +520,7 @@ class VideoEditorPresenter(QObject):
 
     def cleanup(self):
         self._disconnect_service_signals()
+        self._disconnect_view_signals()
         self.playback_engine.stop()
         self.thumbnail_coordinator.cleanup()
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
