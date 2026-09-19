@@ -7,6 +7,7 @@ from PIL import Image
 
 from engine.gpu.export_tiling import (
     DEFAULT_EXPORT_TILE_MAX_EXTENT,
+    CanvasGoneError as _EngineCanvasGoneError,
     TiledFramebufferExporter,
     iter_export_tile_rects,
     qimage_to_pil_rgba,
@@ -288,7 +289,8 @@ class GpuExportProxy(QObject):
         except Exception as exc:
             # Degrade for missing canvas is already debug-logged; other failures stay exception.
             # A canvas deleted mid-export is routine (tab closed) — debug, no traceback.
-            if isinstance(exc, _CanvasGoneError):
+            # Both the proxy-level and the engine tiling-level gone markers route here.
+            if isinstance(exc, (_CanvasGoneError, _EngineCanvasGoneError)):
                 logger.debug("GPU export aborted (%s)", exc)
             elif widget is None:
                 logger.debug("GPU export degraded (no canvas): %s", exc)

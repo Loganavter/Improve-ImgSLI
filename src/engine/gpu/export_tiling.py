@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import shiboken6 as sip
 from PIL import Image
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QWidget
@@ -17,6 +18,25 @@ from engine.gpu.offscreen_canvas import (
 )
 
 DEFAULT_EXPORT_TILE_MAX_EXTENT = 4096
+
+
+class CanvasGoneError(RuntimeError):
+    """Export canvas deleted mid-render — quiet abort, not a bug.
+
+    Raised per tile/single so a tab closed mid-export fails the export
+    silently instead of spraying ``already deleted`` tracebacks. The
+    plugin layer maps this to a debug log (see gpu_export_proxy).
+    """
+
+
+def _ensure_live(widget) -> None:
+    """Fail-open liveness probe; raises :class:`CanvasGoneError` when dead."""
+    try:
+        alive = widget is not None and bool(sip.isValid(widget))
+    except Exception:
+        alive = False
+    if not alive:
+        raise CanvasGoneError("export canvas widget deleted mid-render")
 
 
 def iter_export_tile_rects(
@@ -86,6 +106,7 @@ class TiledFramebufferExporter:
         return final_image
 
     def _render_single(self, canvas_w: int, canvas_h: int) -> Image.Image:
+        _ensure_live(self._widget)
         self._set_export_viewport(None)
         target = (canvas_w, canvas_h)
         if self._last_size != target:
@@ -93,7 +114,10 @@ class TiledFramebufferExporter:
             self._last_size = target
         self._prepare_frame()
         render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
+        try:
+            qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
+        except RuntimeError as exc:
+            raise CanvasGoneError(f"export canvas deleted during grab: {exc}") from exc
         image = qimage_to_pil_rgba(qimg)
         if image.size != target:
             image = image.resize(target, Image.Resampling.BILINEAR)
@@ -109,13 +133,17 @@ class TiledFramebufferExporter:
         tile_h: int,
     ) -> Image.Image:
         target = (tile_w, tile_h)
+        _ensure_live(self._widget)
         if self._last_size != target:
             resize_and_show_offscreen_widget(self._widget, target)
             self._last_size = target
         self._set_export_viewport((canvas_w, canvas_h, tile_left, tile_top))
         self._prepare_frame()
         render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
+        try:
+            qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
+        except RuntimeError as exc:
+            raise CanvasGoneError(f"export canvas deleted during tile grab: {exc}") from exc
         tile_image = qimage_to_pil_rgba(qimg)
         if tile_image.size != target:
             tile_image = tile_image.resize(target, Image.Resampling.BILINEAR)

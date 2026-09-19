@@ -14,6 +14,7 @@ from plugins.export.services.gpu_export_proxy import (
     _CanvasGoneError,
     _widget_alive,
 )
+from engine.gpu.export_tiling import CanvasGoneError, TiledFramebufferExporter
 
 
 @pytest.fixture(scope="module")
@@ -77,6 +78,52 @@ def test_render_on_main_thread_routes_quiet_abort(qapp, monkeypatch, caplog):
     monkeypatch.setattr(proxy_mod, "_widget_alive", lambda w: True)
     monkeypatch.setattr(proxy_mod.GpuExportProxy, "_ensure_widget", lambda self: sentinel)
     boom = _CanvasGoneError("canvas widget deleted during export grab: gone")
+
+    def _raise(self, widget, plan, diff_image, timings, store=None):
+        raise boom
+
+    monkeypatch.setattr(proxy_mod.GpuExportProxy, "_render_plan_frame", _raise)
+    box: dict = {}
+    payload = {"mode": "render_plan", "plan": SimpleNamespace(), "result_box": box}
+    try:
+        with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+            p._render_on_main_thread(payload)
+    finally:
+        p.shutdown()
+    assert box["error"] is boom
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+
+
+def _tiler(dead):
+    return TiledFramebufferExporter(
+        dead,
+        set_export_viewport=lambda viewport: None,
+        prepare_frame=lambda: None,
+        query_max_texture_size=lambda: 4096,
+    )
+
+
+def test_tiled_render_dead_widget_aborts_quietly(monkeypatch):
+    from engine.gpu import export_tiling as tiling_mod
+
+    monkeypatch.setattr(tiling_mod.sip, "isValid", lambda w: False)
+    dead = SimpleNamespace(name="dead")
+    with pytest.raises(CanvasGoneError):
+        _tiler(dead).render_rgba(5000, 100, max_extent=64)
+    with pytest.raises(CanvasGoneError):
+        _tiler(dead)._render_tile(5000, 100, 0, 0, 64, 64)
+    with pytest.raises(CanvasGoneError):
+        _tiler(dead)._render_single(64, 64)
+
+
+def test_proxy_routes_engine_gone_error_quietly(qapp, monkeypatch, caplog):
+    import logging
+
+    p = _proxy(qapp)
+    sentinel = SimpleNamespace(name="canvas")
+    monkeypatch.setattr(proxy_mod, "_widget_alive", lambda w: True)
+    monkeypatch.setattr(proxy_mod.GpuExportProxy, "_ensure_widget", lambda self: sentinel)
+    boom = CanvasGoneError("export canvas widget deleted mid-render")
 
     def _raise(self, widget, plan, diff_image, timings, store=None):
         raise boom
