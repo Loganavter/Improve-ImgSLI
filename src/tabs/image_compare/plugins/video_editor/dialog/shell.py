@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QVBoxLayout,
-    QWidget,
 )
 
 from tabs.host_helpers import (
@@ -42,6 +41,7 @@ from sli_ui_toolkit.managers import scaled_px
 from engine.cache.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
+from ui.widgets.themed_surface import ThemedBackgroundContainer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -182,7 +182,7 @@ class VideoEditorDialog(ThemedDialog):
         self.vertical_splitter.setHandleWidth(scaled_px(8))
         self.main_layout.addWidget(self.vertical_splitter, stretch=1)
 
-        self.top_container = QWidget()
+        self.top_container = ThemedBackgroundContainer()
         top_layout = QHBoxLayout(self.top_container)
         top_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
         top_layout.setSpacing(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX)
@@ -218,7 +218,7 @@ class VideoEditorDialog(ThemedDialog):
         top_layout.addWidget(self.settings_panel)
         self.vertical_splitter.addWidget(self.top_container)
 
-        self.bottom_container = QWidget()
+        self.bottom_container = ThemedBackgroundContainer()
         bottom_layout = QVBoxLayout(self.bottom_container)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)

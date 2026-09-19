@@ -40,6 +40,7 @@ from tabs.image_compare.plugins.video_editor.search import (
     TOOLBAR,
 )
 from ui.widgets.form_controls import OutputPathSection
+from ui.widgets.themed_surface import ThemedBackgroundContainer
 
 class _NoWheelEventFilter(QObject):
     def eventFilter(self, obj, event):
@@ -80,7 +81,7 @@ def build_settings_panel(dialog):
 
     dialog._settings_no_wheel_filter = _NoWheelEventFilter(settings_panel)
 
-    static_container = QWidget(settings_panel)
+    static_container = ThemedBackgroundContainer(settings_panel)
     static_layout = QVBoxLayout(static_container)
     static_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(10))
     static_layout.setSpacing(scaled_px(14))
@@ -90,7 +91,7 @@ def build_settings_panel(dialog):
     sp_layout.addWidget(static_container)
     dialog.settings_static_container = static_container
 
-    content_container = QWidget()
+    content_container = ThemedBackgroundContainer()
     content_layout = QVBoxLayout(content_container)
     content_layout.setContentsMargins(scaled_px(12), scaled_px(8), scaled_px(12), 0)
     content_layout.setSpacing(0)
@@ -99,11 +100,11 @@ def build_settings_panel(dialog):
     content_layout.addWidget(dialog.tabs, stretch=1)
     sp_layout.addWidget(content_container, stretch=1)
 
-    footer_gap_top = QWidget(settings_panel)
+    footer_gap_top = ThemedBackgroundContainer(settings_panel)
     footer_gap_top.setFixedHeight(scaled_px(10))
     sp_layout.addWidget(footer_gap_top)
 
-    footer_gap_bottom = QWidget(settings_panel)
+    footer_gap_bottom = ThemedBackgroundContainer(settings_panel)
     footer_gap_bottom.setFixedHeight(scaled_px(12))
     sp_layout.addWidget(footer_gap_bottom)
 
@@ -336,7 +337,7 @@ def _wrap_tab_scroll(content: QWidget) -> QWidget:
             QSizePolicy.Policy.Minimum,
         )
     content.setMinimumWidth(0)
-    scroll_area = SurfaceScrollArea(tab, surface_token=None)
+    scroll_area = SurfaceScrollArea(tab)
     # Host pane already paints rounded chrome; a viewport mask here clips
     # content and can bleed neighbouring framebuffer pixels.
     scroll_area.set_corner_radius(0)

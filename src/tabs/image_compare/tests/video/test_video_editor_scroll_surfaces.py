@@ -17,14 +17,14 @@ from tabs.image_compare.plugins.video_editor.dialog.sections import (
 )
 
 
-def test_tab_scroll_uses_surface_scroll_area_transparent_mode(qapp):
-    """Tab panes already paint their surface — scroll area must not add one."""
+def test_tab_scroll_uses_surface_scroll_area_token_mode(qapp):
+    """Tab panes paint nothing — the scroll area provides the surface fill."""
     content = QWidget()
     tab = _wrap_tab_scroll(content)
     scroll = tab.findChild(SurfaceScrollArea)
     assert scroll is not None
     assert scroll.widget() is content
-    assert scroll._surface_token is None
+    assert scroll._surface_token == "surface.background"
     tab.deleteLater()
 
 
