@@ -204,9 +204,28 @@ def create_fps_settings(dialog):
     dialog.lbl_fps = Label(dialog._tr("image_compare.label.fps") + ":", variant="group-title")
     fps_layout.addWidget(dialog.lbl_fps)
 
-    max_fps = 240
-    initial_fps = 60
+    # Fps single source (A-shell S1): the initial value comes from
+    # resolve_initial_fps — the same function that seeds VideoEditorService
+    # at presenter construction — never a second snapshot/store derivation.
+    # The spinbox max caps at the recording fps when known (same cap
+    # shell.py applies before first show).
+    from tabs.image_compare.plugins.video_editor.presenter_parts.common import (
+        resolve_initial_fps,
+    )
 
+    export_controller = getattr(dialog, "export_controller", None)
+    main_controller = None
+    try:
+        main_controller = getattr(
+            getattr(export_controller, "presenter", None), "main_controller", None
+        )
+    except Exception:
+        main_controller = None
+    initial_fps = resolve_initial_fps(
+        dialog, getattr(dialog, "snapshots", None), main_controller
+    )
+
+    max_fps = initial_fps or 240
     first_snapshot = (
         dialog._get_first_snapshot() if hasattr(dialog, "_get_first_snapshot") else None
     )
@@ -216,21 +235,7 @@ def create_fps_settings(dialog):
         )
         if recording_fps:
             max_fps = recording_fps
-            initial_fps = recording_fps
-
-    if (
-        max_fps == 240
-        and hasattr(dialog, "export_controller")
-        and dialog.export_controller
-    ):
-        if (
-            hasattr(dialog.export_controller, "store")
-            and dialog.export_controller.store
-        ):
-            initial_fps = getattr(
-                dialog.export_controller.store.settings, "video_recording_fps", 60
-            )
-            max_fps = initial_fps
+            initial_fps = min(initial_fps, max_fps) if initial_fps else recording_fps
 
     dialog.edit_fps = SpinBox(default_value=initial_fps)
     dialog.edit_fps.setRange(1, max_fps)

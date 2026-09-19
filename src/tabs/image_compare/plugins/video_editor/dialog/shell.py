@@ -122,8 +122,12 @@ class VideoEditorDialog(ThemedDialog):
         )
         self._connect_presenter_signals()
 
-        if hasattr(self, "edit_fps") and hasattr(self.presenter, "model"):
-
+        if hasattr(self, "edit_fps") and hasattr(self.presenter, "editor_service"):
+            # Fps single source (A-shell S1): editor_service owns frame math;
+            # the spinbox only clamps to the recording cap. model.fps stays a
+            # synced mirror (no frame math reads it). The live fps-change
+            # path (PlaybackCoordinator.on_fps_changed, out-of-scope file)
+            # still writes model-only — see DONE HANDOFF.
             max_fps = 240
             first_snapshot = self._get_first_snapshot()
             if first_snapshot and hasattr(first_snapshot, "settings_state"):
@@ -135,10 +139,17 @@ class VideoEditorDialog(ThemedDialog):
 
             self.edit_fps.blockSignals(True)
             self.edit_fps.setRange(1, max_fps)
-            initial_fps = min(self.presenter.model.fps, max_fps)
+            service_fps = self.presenter.editor_service.get_fps()
+            initial_fps = min(service_fps, max_fps)
             self.edit_fps.setValue(initial_fps)
-            if initial_fps != self.presenter.model.fps:
-                self.presenter.model.fps = initial_fps
+            if initial_fps != service_fps:
+                self.presenter.editor_service.set_fps(initial_fps)
+                self.presenter.model.fps = self.presenter.editor_service.get_fps()
+                logger.debug(
+                    "video editor fps clamped to recording cap: %s -> %s",
+                    service_fps,
+                    initial_fps,
+                )
             self.edit_fps.blockSignals(False)
 
         self._update_preview_palette()
@@ -591,6 +602,17 @@ class VideoEditorDialog(ThemedDialog):
     def closeEvent(self, event):
         self._withdraw_find_actions()
         self.persistence.persist_export_settings()
+        # Dialog side of the bidirectional disconnect (A-shell S1): drop
+        # every presenter→dialog slot BEFORE presenter.cleanup, so no late
+        # async completion lands on widgets mid-teardown. Both sides are
+        # idempotent — cleanup disconnects again harmlessly.
+        try:
+            self.runtime.disconnect_presenter_signals()
+        except Exception:
+            logger.debug(
+                "video editor presenter-signal disconnect skipped",
+                exc_info=True,
+            )
         if hasattr(self, "presenter"):
             self.presenter.cleanup()
         super().closeEvent(event)

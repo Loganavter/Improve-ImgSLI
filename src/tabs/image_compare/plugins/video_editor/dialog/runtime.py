@@ -18,6 +18,28 @@ from ui.theming import polish_themed_dialog
 logger = logging.getLogger("ImproveImgSLI")
 
 
+# Single source for the presenter→dialog wiring (A-shell S1): every
+# (presenter signal, dialog slot) pair connected in
+# ``connect_presenter_signals`` is listed here, and
+# ``disconnect_presenter_signals`` (dialog side) plus
+# ``VideoEditorPresenter._disconnect_presenter_signals`` (presenter side,
+# lazy-imports this table) disconnect exactly these pairs. Add a connect
+# without a table entry and the pairing test in
+# ``test_video_editor_play_shortcut.py`` fails.
+PRESENTER_TO_DIALOG_SLOTS: tuple[tuple[str, str], ...] = (
+    ("previewUpdated", "_on_preview_updated"),
+    ("previewReady", "_emit_ready_to_show"),
+    ("timelinePositionChanged", "_on_timeline_position_changed"),
+    ("playbackStateChanged", "_on_playback_state_changed"),
+    ("buttonsStateChanged", "_on_buttons_state_changed"),
+    ("fitContentAvailableChanged", "_on_fit_content_available_changed"),
+    ("thumbnailsUpdated", "_on_thumbnails_updated"),
+    ("exportStarted", "_on_export_started"),
+    ("exportLog", "_on_export_log"),
+    ("errorOccurred", "_on_error_occurred"),
+)
+
+
 def focused_widget_consumes_space(focused) -> bool:
     """True when bare Space is already handled by the focused control itself.
 
@@ -48,6 +70,34 @@ class VideoEditorDialogRuntime:
         d.presenter.exportStarted.connect(d._on_export_started)
         d.presenter.exportLog.connect(d._on_export_log)
         d.presenter.errorOccurred.connect(d._on_error_occurred)
+
+    def disconnect_presenter_signals(self):
+        """Exact mirror of connect_presenter_signals (A-shell S1).
+
+        Drops every presenter→dialog slot so no late async completion
+        (thumbnail wave, export progress) reaches a closed dialog. Called
+        from ``shell.closeEvent`` AND ``presenter.cleanup`` — idempotent:
+        every lookup/disconnect is guarded, disconnecting twice is a no-op.
+        """
+        d = self.dialog
+        try:
+            presenter = getattr(d, "presenter", None)
+        except Exception:
+            return
+        if presenter is None:
+            return
+        for signal_name, slot_name in PRESENTER_TO_DIALOG_SLOTS:
+            try:
+                signal = getattr(presenter, signal_name, None)
+                slot = getattr(d, slot_name, None)
+            except Exception:
+                continue
+            if signal is None or slot is None:
+                continue
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
 
     def update_settings_panel_width(self):
         d = self.dialog
@@ -185,6 +235,13 @@ class VideoEditorDialogRuntime:
 
     def reset_export_ui_state(self):
         d = self.dialog
+        # Late QTimer callback (2000ms post-export): drop when the dialog
+        # closed meanwhile — no widget touches past close.
+        try:
+            if not d._dialog_alive():
+                return
+        except Exception:
+            pass
         d.export_progress.setVisible(False)
         d.export_progress.setValue(0)
         d.btn_export.set_override_bg_color(None)

@@ -156,7 +156,13 @@ class VideoEditorPresenter(QObject):
     playbackStateChanged = Signal(bool)
     buttonsStateChanged = Signal(bool, bool)
     fitContentAvailableChanged = Signal(bool)
-    thumbnailsUpdated = Signal(dict)
+    # NOTE: Signal(object), not Signal(dict) (HANDOFF-1 from A-feed): a
+    # ``Signal(dict)`` emission converts the payload through QVariantMap,
+    # which drops QPixmap values — receivers got ``{}`` (strip wipe).
+    # ``object`` delivers the pixmap dict intact. The coordinator applies
+    # bulk payloads directly to ``timeline.set_thumbnails`` and re-emits
+    # here only as a no-widget fallback — both paths stay correct.
+    thumbnailsUpdated = Signal(object)
     thumbnailReady = Signal(int, QPixmap)
     exportStarted = Signal()
     exportLog = Signal(str)
@@ -452,6 +458,7 @@ class VideoEditorPresenter(QObject):
     def _on_view_destroyed(self, *_args):
         self._disconnect_service_signals()
         self._disconnect_view_signals()
+        self._disconnect_presenter_signals()
         self.preview_coordinator.on_view_destroyed()
         self.output_coordinator.detach_view()
         self.thumbnail_coordinator.detach_view()
@@ -461,6 +468,42 @@ class VideoEditorPresenter(QObject):
         if self.parent() is None:
             try:
                 self.deleteLater()
+            except Exception:
+                pass
+
+    def _disconnect_presenter_signals(self):
+        """Presenter side of the dialog wiring mirror (A-shell S1).
+
+        Disconnects every own signal listed in
+        ``dialog/runtime.py::PRESENTER_TO_DIALOG_SLOTS`` from the matching
+        view slot. Called from ``cleanup`` and ``_on_view_destroyed``; the
+        dialog side (``runtime.disconnect_presenter_signals``, invoked from
+        ``shell.closeEvent``) covers the close path — both are idempotent,
+        so close→cleanup double-disconnect is a no-op. Safe on a
+        half-built or already-destroyed view (every lookup is guarded).
+        """
+        try:
+            view = self.view
+        except Exception:
+            return
+        if view is None:
+            return
+        try:
+            from tabs.image_compare.plugins.video_editor.dialog.runtime import (
+                PRESENTER_TO_DIALOG_SLOTS,
+            )
+        except Exception:
+            return
+        for signal_name, slot_name in PRESENTER_TO_DIALOG_SLOTS:
+            try:
+                signal = getattr(self, signal_name, None)
+                slot = getattr(view, slot_name, None)
+            except Exception:
+                continue
+            if signal is None or slot is None:
+                continue
+            try:
+                self._safe_disconnect(signal, slot)
             except Exception:
                 pass
 
@@ -523,11 +566,18 @@ class VideoEditorPresenter(QObject):
     def cleanup(self):
         self._disconnect_service_signals()
         self._disconnect_view_signals()
+        self._disconnect_presenter_signals()
         self.playback_engine.stop()
         self.thumbnail_coordinator.cleanup()
+        # Remaining toolkit-private fallback (A-shell S1): no public
+        # stop/teardown API is visible on the timeline widget from this
+        # single-repo cell, so the guarded private-timer stop stays. It
+        # cannot crash (hasattr-guarded) and only fires when the widget
+        # outlives its dialog; logged + listed in DONE when it triggers.
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
             self.view.timeline, "_lerp_timer"
         ):
+            logger.debug("video editor cleanup stopping timeline lerp timer")
             self.view.timeline._lerp_timer.stop()
         self.preview_coordinator.cleanup()
         self.output_coordinator.detach_view()
