@@ -109,6 +109,13 @@ class ThumbnailService(QObject):
         self._generated_indices = set()
         self._pending_indices = set()
         self._recording = None
+        # Z4 zoom-aware membership: coordinator-pushed snapshot of the
+        # current visible window (+margin). Same-generation completions
+        # outside it drop on arrival in _on_thumbnail_generated. None =
+        # unknown → apply everything (fail-open, today's behavior). The
+        # generation token stays the single cancel source — this is an
+        # additional filter, never a replacement.
+        self._visible_window = None
         self._thumbnail_size = (160, 90)
         self._thumbnail_render_scale = DEFAULT_THUMBNAIL_RENDER_SCALE
         self._render_snapshot: Optional[Callable[..., Optional[Image.Image]]] = None
@@ -424,6 +431,21 @@ class ThumbnailService(QObject):
         except Exception:
             pass
 
+    def set_visible_window(self, indices) -> None:
+        """Snapshot the coordinator's current visible window (+margin).
+
+        Pushed by the coordinator on every visible refresh (initial wave
+        and settled refreshes — never the idle-fill path), so
+        :meth:`_on_thumbnail_generated` can drop same-generation
+        completions that scrolled out of view. Empty/unknown input clears
+        to None (fail-open: apply everything, today's behavior).
+        """
+        try:
+            wanted = set(indices) if indices else None
+        except Exception:
+            wanted = None
+        self._visible_window = wanted if wanted else None
+
     def retire_in_flight_thumbnails(self) -> int:
         """Retire in-flight thumbnail workers without blocking.
 
@@ -442,6 +464,10 @@ class ThumbnailService(QObject):
         ``_generated_indices`` and the P2 disk cache are preserved: already
         finished thumbnails stay finished, and cache hits still emit
         instantly with no worker.
+
+        Z4: this stays the ONLY token-bump path. The coordinator calls it
+        on scroll/pan window changes and deliberately skips it on
+        zoom-only refreshes (zoom reshuffles geometry, not content).
         """
         self._generation += 1
         self._pending_indices.clear()
@@ -604,6 +630,24 @@ class ThumbnailService(QObject):
             except Exception:
                 pass
             return
+        # Z4 membership filter (additional to the generation token, never a
+        # replacement): same-generation but outside the coordinator's last
+        # visible window (+margin) — e.g. a zoom-driven refresh kept the
+        # wave alive while the window moved. Fail-open: unknown window or
+        # any doubt → apply (today's behavior).
+        window = getattr(self, "_visible_window", None)
+        if window is not None:
+            try:
+                outside = index not in window
+            except Exception:
+                outside = False
+            if outside:
+                try:
+                    from tabs.image_compare.debug import ic_video_debug
+                    ic_video_debug("thumb_svc _on_generated DROP outside-window idx=%s gen=%s live=%s window=%s", index, generation, self._generation, len(window))
+                except Exception:
+                    pass
+                return
         try:
             from tabs.image_compare.debug import ic_video_debug
             ic_video_debug("thumb_svc _on_generated idx=%s ok=%s pending=%s gen=%s has_pixmap=%s", index, pil_image is not None, len(self._pending_indices), len(self._generated_indices), bool(pil_image))

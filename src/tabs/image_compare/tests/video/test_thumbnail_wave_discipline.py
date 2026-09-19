@@ -346,3 +346,265 @@ def test_refresh_without_retire_seam_stays_visible_only(qapp):
     coordinator._refresh_visible_thumbnails()
 
     assert additional == [[4, 8, 12]]
+
+
+def _zoom_coordinator(*, timeline_indices, service, zoom=1.0, total_frames=100):
+    """Coordinator variant with a readable zoom scalar on the timeline."""
+    coordinator = _coordinator(
+        timeline_indices=timeline_indices,
+        service=service,
+        total_frames=total_frames,
+    )
+    coordinator.view.timeline._zoom_level = zoom
+    return coordinator
+
+
+def _zoom_service_spy():
+    retires: list[int] = []
+    pushed: list[list[int]] = []
+    additional: list[list[int]] = []
+    service = SimpleNamespace(
+        retire_in_flight_thumbnails=lambda: retires.append(1),
+        set_visible_window=lambda indices: pushed.append(list(indices)),
+        generate_additional_thumbnails=(
+            lambda indices, fps=None: additional.append(list(indices))
+        ),
+        _generated_indices=set(),
+        _pending_indices=set(),
+    )
+    return service, retires, pushed, additional
+
+
+def test_zoom_only_refresh_queues_without_retire(qapp):
+    """Z4: zoom reshuffles geometry, not content — no token bump."""
+    window: list[int] = [4, 8, 12]
+    service, retires, pushed, additional = _zoom_service_spy()
+    coordinator = _zoom_coordinator(
+        timeline_indices=window, service=service, zoom=1.0
+    )
+
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [], "first refresh establishes the baseline, no retire"
+    assert coordinator._last_zoom_level == 1.0
+    assert pushed == [[4, 8, 12]]
+
+    # Zoom-only: same window, new zoom → requeue, in-flight wave intact.
+    coordinator.view.timeline._zoom_level = 1.25
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [], "zoom-driven refresh must not retire in-flight thumbs"
+    assert additional == [[4, 8, 12], [4, 8, 12]]
+    assert coordinator._last_zoom_level == 1.25
+    assert pushed[-1] == [4, 8, 12]
+
+    # Zoom + window move together → zoom wins, still no retire, new window queued.
+    window[:] = [20, 24]
+    coordinator.view.timeline._zoom_level = 1.5
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [], "zoom change suppresses the retire even as the window moves"
+    assert additional[-1] == [20, 24]
+    assert coordinator._last_zoom_level == 1.5
+
+
+def test_scroll_with_stable_zoom_still_retires(qapp):
+    """Z4: same zoom + moved window keeps the P3 scroll-cancel."""
+    window: list[int] = [4, 8, 12]
+    service, retires, _pushed, additional = _zoom_service_spy()
+    coordinator = _zoom_coordinator(
+        timeline_indices=window, service=service, zoom=1.0
+    )
+
+    coordinator._refresh_visible_thumbnails()
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [], "unchanged window + unchanged zoom must not churn the token"
+
+    window[:] = [20, 24]
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [1], "scroll/pan (zoom stable) retires as before"
+    assert additional[-1] == [20, 24]
+
+
+def test_zoom_unreadable_keeps_scroll_cancel(qapp):
+    """Z4 fail-open: timelines without a zoom scalar behave as before."""
+    window: list[int] = [4, 8, 12]
+    retires: list[int] = []
+    additional: list[list[int]] = []
+    service = SimpleNamespace(
+        retire_in_flight_thumbnails=lambda: retires.append(1),
+        set_visible_window=lambda indices: None,
+        generate_additional_thumbnails=(
+            lambda indices, fps=None: additional.append(list(indices))
+        ),
+        _generated_indices=set(),
+        _pending_indices=set(),
+    )
+    coordinator = _coordinator(timeline_indices=window, service=service)
+
+    coordinator._refresh_visible_thumbnails()
+    assert coordinator._last_zoom_level is None
+    window[:] = [20, 24]
+    coordinator._refresh_visible_thumbnails()
+    assert retires == [1], "unknown zoom → today's scroll-cancel, no behavior change"
+
+
+def test_read_zoom_level_prefers_scalar_then_pps(qapp):
+    service, _retires, _pushed, _additional = _zoom_service_spy()
+    coordinator = _coordinator(timeline_indices=[1], service=service)
+
+    assert coordinator._read_zoom_level() is None
+
+    coordinator.view.timeline.get_pixels_per_second = lambda: 321.0
+    assert coordinator._read_zoom_level() == 321.0
+
+    coordinator.view.timeline._zoom_level = 2.0
+    assert coordinator._read_zoom_level() == 2.0, (
+        "_zoom_level scalar wins over pps when both are readable"
+    )
+
+
+def test_generate_thumbnails_snapshots_zoom_and_pushes_window(qapp):
+    """Initial wave records the zoom baseline and pushes the window."""
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    captured: dict = {}
+    pushed: list[list[int]] = []
+    timeline = SimpleNamespace(
+        height=lambda: 200,
+        RULER_HEIGHT=24,
+        has_snapshots=lambda: True,
+        get_total_duration=lambda: 10.0,
+        get_pixels_per_second=lambda: 100.0,
+        clear_thumbnails=lambda: None,
+        get_visible_thumbnail_frame_indices=(
+            lambda overscan_blocks=0: [1, 2, 3]
+        ),
+        _zoom_level=2.0,
+    )
+    service = SimpleNamespace(
+        generate_thumbnails=(
+            lambda recording, **kw: captured.update(kw)
+        ),
+        set_visible_window=lambda indices: pushed.append(list(indices)),
+    )
+    coordinator = ThumbnailCoordinator(
+        view=SimpleNamespace(timeline=timeline),
+        editor_service=SimpleNamespace(
+            get_current_recording=lambda: object(),
+            get_fps=lambda: 60,
+            get_frame_count=lambda: 100,
+        ),
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=service,
+        emit_thumbnails_updated=lambda _thumbnails: None,
+    )
+
+    coordinator.generate_thumbnails()
+
+    assert coordinator._last_zoom_level == 2.0
+    assert coordinator._last_visible_indices == [1, 2, 3]
+    assert pushed == [[1, 2, 3]]
+    assert captured["priority_indices"] == [1, 2, 3]
+
+
+def _live_service(monkeypatch):
+    """Real ThumbnailService with a parked pool and no disk cache."""
+    from tabs.image_compare.plugins.video_editor.services.thumbnails import (
+        ThumbnailService,
+    )
+
+    service = ThumbnailService()
+    service.set_thumbnail_disk_cache(None)
+    monkeypatch.setattr(
+        service._thread_pool, "start", lambda worker, priority=0: None
+    )
+    return service
+
+
+def test_same_generation_out_of_window_completion_dropped(
+    qapp, monkeypatch
+):
+    """Z4 membership: scrolled-away index drops, in-window index applies."""
+    service = _live_service(monkeypatch)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+
+    generation = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0, 1, 2],
+        fps=60,
+    )
+    assert service._pending_indices == {0, 1, 2}
+
+    # Zoom path kept the wave alive while the window narrowed to [0].
+    service.set_visible_window([0, 1, 2])
+    service.set_visible_window([0])
+
+    service._on_thumbnail_generated(
+        2, Image.new("RGBA", _THUMB, (9, 9, 9, 255)), generation
+    )
+    assert emitted == {}, "out-of-window completion must drop"
+    assert 2 not in service._generated_indices
+
+    service._on_thumbnail_generated(
+        0, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+    )
+    assert sorted(emitted) == [0]
+    assert 0 in service._generated_indices
+
+
+def test_unknown_window_applies_completion(qapp, monkeypatch):
+    """Z4 fail-open: no window snapshot (or an empty one) applies everything."""
+    for window in (None, []):
+        service = _live_service(monkeypatch)
+        emitted: dict[int, object] = {}
+        service.thumbnailReady.connect(
+            lambda i, px: emitted.__setitem__(i, px)
+        )
+
+        generation = service.generate_thumbnails(
+            _FakeRecording(duration=10.0),
+            target_count=50,
+            priority_indices=[0, 1],
+            fps=60,
+        )
+        if window is None:
+            assert service._visible_window is None
+        else:
+            service.set_visible_window(window)
+            assert service._visible_window is None, (
+                "empty window must clear to unknown, never filter-all"
+            )
+
+        service._on_thumbnail_generated(
+            0, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+        )
+        assert sorted(emitted) == [0], f"window={window!r} must apply"
+
+
+def test_stale_generation_still_drops_inside_window(qapp, monkeypatch):
+    """Z4 guard: the membership filter never rescues a stale generation."""
+    service = _live_service(monkeypatch)
+    emitted: dict[int, object] = {}
+    service.thumbnailReady.connect(lambda i, px: emitted.__setitem__(i, px))
+
+    generation = service.generate_thumbnails(
+        _FakeRecording(duration=10.0),
+        target_count=50,
+        priority_indices=[0, 1, 2],
+        fps=60,
+    )
+    service.set_visible_window([0, 1, 2])
+    retired = service.retire_in_flight_thumbnails()
+
+    service._on_thumbnail_generated(
+        1, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), generation
+    )
+    assert emitted == {}, "stale generation drops even inside the window"
+    assert 1 not in service._generated_indices
+
+    service._on_thumbnail_generated(
+        1, Image.new("RGBA", _THUMB, (1, 2, 3, 255)), retired
+    )
+    assert sorted(emitted) == [1]

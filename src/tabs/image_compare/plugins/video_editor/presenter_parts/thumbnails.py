@@ -41,6 +41,12 @@ class ThumbnailCoordinator:
         # re-settling (e.g. repeated resizes without scrolling) must not
         # bump the generation token. None = no baseline yet (no retire).
         self._last_visible_indices: List[int] | None = None
+        # Z4 zoom-aware refresh: last timeline zoom scalar seen. A refresh
+        # where the zoom changed is zoom-driven (geometry reshuffled, content
+        # identical) and must NOT retire the in-flight wave — completions are
+        # index-addressed (P3), so they stay valid. Scroll/pan (window moved,
+        # zoom unchanged) retires as before. None = no baseline yet.
+        self._last_zoom_level: float | None = None
 
     def detach_view(self):
         self._visible_refresh.cancel()
@@ -107,6 +113,12 @@ class ThumbnailCoordinator:
             fps=self.editor_service.get_fps(),
         )
         self._last_visible_indices = list(vis)
+        self._last_zoom_level = self._read_zoom_level()
+        push_window = getattr(
+            self.thumbnail_service, "set_visible_window", None
+        )
+        if callable(push_window):
+            push_window(vis)
 
     def on_single_thumbnail_ready(self, index: int, pixmap: QPixmap):
         try:
@@ -186,6 +198,38 @@ class ThumbnailCoordinator:
         self._visible_refresh.cancel()
         self._refresh_visible_thumbnails()
 
+    def _read_zoom_level(self) -> float | None:
+        """Snapshot the timeline zoom scalar (None when unreadable).
+
+        Prefers the ``_zoom_level`` scalar (the Z-T contract surface, stable
+        across old per-tick and new coalesced commits — never assume
+        exactly-1-commit-per-gesture), falling back to
+        ``get_pixels_per_second``. None means "unknown": callers keep
+        today's scroll-cancel behavior (fail-open).
+        """
+        try:
+            tl = (
+                getattr(self.view, "timeline", None)
+                if self.view is not None
+                else None
+            )
+            if tl is None:
+                return None
+            if hasattr(tl, "_zoom_level"):
+                try:
+                    return float(getattr(tl, "_zoom_level"))
+                except (TypeError, ValueError):
+                    pass
+            getter = getattr(tl, "get_pixels_per_second", None)
+            if callable(getter):
+                try:
+                    return float(getter())
+                except (TypeError, ValueError):
+                    return None
+            return None
+        except Exception:
+            return None
+
     def _refresh_visible_thumbnails(self):
         # NOTE: TimelineWidget.resizeEvent already updates zoom/logical_width
         # synchronously, so visible window is fresh even while _layout_settle
@@ -221,15 +265,46 @@ class ThumbnailCoordinator:
             # cache hits still emit instantly with no worker. Unchanged
             # window → no bump (debounce re-settles must not churn the
             # token); no baseline yet (None) → nothing to retire.
+            # Z4 zoom-aware: a zoom change reshuffles geometry, not content
+            # — completions are index-addressed (P3), so the in-flight wave
+            # stays valid and must NOT retire (retiring here emptied the
+            # strip on every wheel tick). Zoom-driven refresh requeues the
+            # newly-visible indices and lets the membership filter in
+            # _on_thumbnail_generated drop whatever scrolled out of view.
+            current_zoom = self._read_zoom_level()
+            zoom_changed = (
+                self._last_zoom_level is not None
+                and current_zoom is not None
+                and current_zoom != self._last_zoom_level
+            )
             if self._last_visible_indices is not None and set(
                 visible_indices
             ) != set(self._last_visible_indices):
-                retire = getattr(
-                    self.thumbnail_service, "retire_in_flight_thumbnails", None
-                )
-                if callable(retire):
-                    retire()
+                should_retire = not zoom_changed
+                try:
+                    from tabs.image_compare.debug import ic_video_debug
+                    ic_video_debug(
+                        "thumb_coord _refresh zoom_vs_pan zoom_changed=%s zoom=%s last_zoom=%s retire=%s",
+                        zoom_changed,
+                        current_zoom,
+                        self._last_zoom_level,
+                        should_retire,
+                    )
+                except Exception:
+                    pass
+                if should_retire:
+                    retire = getattr(
+                        self.thumbnail_service, "retire_in_flight_thumbnails", None
+                    )
+                    if callable(retire):
+                        retire()
             self._last_visible_indices = list(visible_indices)
+            self._last_zoom_level = current_zoom
+            push_window = getattr(
+                self.thumbnail_service, "set_visible_window", None
+            )
+            if callable(push_window):
+                push_window(visible_indices)
             self.thumbnail_service.generate_additional_thumbnails(
                 visible_indices,
                 fps=self.editor_service.get_fps(),
