@@ -332,8 +332,12 @@ def _stream_pyvips_to_memmap(
     import pyvips
 
     img = pyvips.Image.new_from_file(path_str, access="sequential")
-    if not img.hasalpha():
-        img = img.bandjoin(255)
+    # Source depth metadata for --debug diagnosis (header-only, no pixel
+    # evaluation — safe on sequential access). A non-uchar format here is
+    # exactly how ic-right-image-vanish hid: healthy RGB, zeroed alpha.
+    _src_format = img.format
+    _src_bands = img.bands
+    _src_hasalpha = img.hasalpha()
     if img.format != "uchar":
         if img.format == "ushort":
             # 16-bit -> 8-bit by scaling, not C truncation (cast("uchar") keeps low byte)
@@ -345,6 +349,11 @@ def _stream_pyvips_to_memmap(
             img = (img * 255).cast("uchar")
         else:
             img = img.cast("uchar")
+    if not img.hasalpha():
+        # AFTER the depth cast: joining 255 into a ushort image stores
+        # alpha=255/65535 (~transparent); the /257 scale then rounds it to
+        # 0 and the whole store renders blank (ic-right-image-vanish).
+        img = img.bandjoin(255)
 
     src_w = img.width
     src_h = img.height
@@ -424,6 +433,30 @@ def _stream_pyvips_to_memmap(
             memmap[y:y+chunk, :, :] = arr
             y += chunk
         memmap.flush()
+        # Depth/alpha audit (debug only): catches depth-induced transparency
+        # regressions without a new repro run — e.g. a 16-bit source whose
+        # alpha collapsed to 0 while RGB stayed healthy. Numpy scan of the
+        # already-written memmap; no extra vips evaluation (sequential
+        # cursor is already consumed). Lazy %s-args: zero cost unless
+        # --debug enables DEBUG.
+        try:
+            _alpha = np.asarray(memmap[:, :, 3])
+            _rgb = np.asarray(memmap[:, :, :3])
+            logger.debug(
+                "[TileStore] stream depth src=%s format=%s bands=%s "
+                "hasalpha=%s out=%dx%d alpha_min=%s alpha_max=%s rgb_mean=%.1f",
+                path_str,
+                _src_format,
+                _src_bands,
+                _src_hasalpha,
+                out_w,
+                out_h,
+                int(_alpha.min()),
+                int(_alpha.max()),
+                float(_rgb.mean()),
+            )
+        except Exception:
+            pass
     except Exception:
         try:
             os.remove(spill_path)
