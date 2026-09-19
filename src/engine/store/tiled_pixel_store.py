@@ -338,6 +338,15 @@ def _stream_pyvips_to_memmap(
     _src_format = img.format
     _src_bands = img.bands
     _src_hasalpha = img.hasalpha()
+    # INFO, not DEBUG: header-only attrs, zero pixel cost, and this is the
+    # line that would have caught ic-right-image-vanish from any old log.
+    logger.info(
+        "[TileStore] stream source %s format=%s bands=%s hasalpha=%s",
+        path_str,
+        _src_format,
+        _src_bands,
+        _src_hasalpha,
+    )
     if img.format != "uchar":
         if img.format == "ushort":
             # 16-bit -> 8-bit by scaling, not C truncation (cast("uchar") keeps low byte)
@@ -455,7 +464,8 @@ def _stream_pyvips_to_memmap(
                 int(_alpha.max()),
                 float(_rgb.mean()),
             )
-        except Exception:
+        except Exception as exc:
+            logger.debug("[TileStore] stream depth audit skipped: %r", exc)
             pass
     except Exception:
         try:
