@@ -5,6 +5,18 @@ Complements the Find Action catalog (``ui/actions/registry.py``), which lists
 widget tree from a running window and cross-references each widget against
 the ``ActionRegistry`` so the output answers both questions in one JSON blob.
 
+Each node also carries a ``colors`` dict answering "what color is this
+widget" from factual Qt state alone — no theme-token guessing: the widget's
+own palette roles (hex), its ``backgroundRole`` name, ``autoFillBackground``
+and the ``WA_TranslucentBackground`` / ``WA_NoSystemBackground`` flags (the
+transparency answer), the first 200 chars of its own ``styleSheet()`` when
+non-empty, and ``windowOpacity()`` when != 1.0. Colors with alpha < 255 are
+reported as ``#rrggbb@<alpha>`` (e.g. ``#112233@128``); fully opaque colors
+are plain ``#rrggbb``. ``colors`` is omitted only when even the flags are
+unreadable. Everything is read-only (no ``setStyleSheet``/polish/update
+calls) and best-effort per field, so the dump never breaks on exotic
+widgets; see ``_colors_of``.
+
 Launch via ``launcher.sh run --dump-ui-layout <path>`` (see ``__main__.py``).
 """
 
@@ -13,10 +25,24 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QRect, QRectF, QSize, QPoint, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.actions.registry import ActionRegistry
+
+
+#: Palette roles reported per node by ``_colors_of``.
+_COLOR_ROLES = (
+    "Window",
+    "WindowText",
+    "Base",
+    "Text",
+    "Button",
+    "ButtonText",
+    "Highlight",
+    "HighlightedText",
+    "AlternateBase",
+)
 
 
 def _jsonable(value):
@@ -174,6 +200,81 @@ def _range_of(widget: QWidget) -> dict[str, int] | None:
     return {"value": value, "min": minimum, "max": maximum}
 
 
+def _color_hex(color: QColor) -> str:
+    """``QColor`` → ``#rrggbb``, with ``@<alpha>`` appended when alpha < 255.
+
+    Plain ``QColor.name()`` drops the alpha channel, so a semi-transparent
+    color would be indistinguishable from its opaque twin in the dump —
+    the ``@128`` suffix keeps that distinction without breaking the common
+    case (fully opaque colors stay plain ``#rrggbb``).
+    """
+    try:
+        name = color.name()
+    except Exception:
+        return "<?>"
+    try:
+        alpha = color.alpha()
+    except Exception:
+        return name
+    if alpha is None or alpha >= 255:
+        return name
+    return f"{name}@{alpha}"
+
+
+def _colors_of(widget: QWidget) -> dict[str, Any] | None:
+    """Factual per-widget color state — read-only, best-effort, JSON-safe.
+
+    Reports only what Qt itself says about the widget (its own palette,
+    background role, fill/transparency flags, own stylesheet snippet,
+    window opacity) — never theme-token guesses. Returns ``None`` when
+    even the cheap flag reads fail, in which case ``_node`` omits the
+    ``colors`` key. Never mutates the widget.
+    """
+    try:
+        auto_fill = bool(widget.autoFillBackground())
+        translucent = bool(widget.testAttribute(Qt.WA_TranslucentBackground))
+        no_system = bool(widget.testAttribute(Qt.WA_NoSystemBackground))
+    except Exception:
+        return None
+    colors: dict[str, Any] = {
+        "auto_fill_background": auto_fill,
+        "translucent_bg": translucent,
+        "no_system_bg": no_system,
+    }
+    try:
+        role = widget.backgroundRole()
+        colors["background_role"] = getattr(role, "name", None) or str(role)
+    except Exception:
+        pass
+    try:
+        palette = widget.palette()
+    except Exception:
+        palette = None
+    if palette is not None:
+        reported: dict[str, str] = {}
+        for role_name in _COLOR_ROLES:
+            try:
+                role = getattr(QPalette.ColorRole, role_name)
+                reported[role_name] = _color_hex(palette.color(role))
+            except Exception:
+                continue
+        if reported:
+            colors["palette"] = reported
+    try:
+        own_sheet = widget.styleSheet()
+    except Exception:
+        own_sheet = ""
+    if own_sheet:
+        colors["stylesheet"] = own_sheet[:200]
+    try:
+        opacity = float(widget.windowOpacity())
+    except Exception:
+        opacity = 1.0
+    if opacity != 1.0:
+        colors["opacity"] = opacity
+    return colors
+
+
 def _node(
     widget: QWidget,
     action_map: dict[int, list[str]],
@@ -199,6 +300,9 @@ def _node(
     layout = widget.layout()
     if layout is not None:
         node["layout"] = type(layout).__name__
+    colors = _colors_of(widget)
+    if colors:
+        node["colors"] = colors
     family, state = _spec_state(widget)
     if family:
         node["family"] = family
