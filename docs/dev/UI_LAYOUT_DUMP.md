@@ -131,6 +131,16 @@ otherwise ignored.
 - Tab actions only appear once the tab has run its `contribute_actions`
   (i.e. once it's the active tab) — a dump taken at the Session Picker will
   show host/platform actions only, not `image_compare.*` / `multi_compare.*`.
+- `colors` answers "what color is this widget" from factual Qt state alone —
+  no theme-token guessing: `palette` maps role names (`Window`, `Base`,
+  `Text`, …) to hex (`#rrggbb`, or `#rrggbb@<alpha>` when alpha < 255),
+  `background_role` is the widget's `backgroundRole()` name,
+  `auto_fill_background` / `translucent_bg` / `no_system_bg` are always
+  present (the transparency answer), `stylesheet` is the widget's own
+  `styleSheet()` truncated to 200 chars (only when non-empty), and `opacity`
+  is `windowOpacity()` (only when != 1.0). Omitted only when even the flags
+  are unreadable; read-only and best-effort per field, so exotic widgets
+  never break the dump.
 - `family` / `state` carry the widget's declared inspector state
   (`InspectSpec.state` / `WidgetDescriptor.inspect.state`), resolved live and
   JSON-sanitized — omitted when the widget declares no spec. This is what
@@ -150,7 +160,9 @@ otherwise ignored.
 | Interactive trigger | `src/devtools/ui_inspector/app_window.py` (Dump widget / Dump window buttons), `app_controller.py` (`_dump_layout`, `_dump_window_layout`, focus tracking) |
 
 No new widget introspection beyond `ActionRegistry.all_actions()` and plain
-`QWidget` geometry/layout — deliberately lighter than `UI Inspector`'s
-`widget_snapshot.py` (no palette/QSS/theme-token diagnostics), since those
-answer a different question ("why does this pixel look wrong") than this
-tool's ("what exists and where").
+`QWidget` geometry/layout/palette reads — deliberately lighter than `UI
+Inspector`'s `widget_snapshot.py` (no font metrics, pixmap grabs, or
+theme-token chain resolution per node — token families still resolve once
+at the top-level `theme` section), since those answer a different question
+("why does this pixel look wrong") than this tool's ("what exists, where,
+and in what color").
