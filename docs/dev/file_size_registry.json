@@ -447,7 +447,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
-      "lines": 696,
+      "lines": 697,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
