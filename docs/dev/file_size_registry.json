@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 389,
+      "lines": 401,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
