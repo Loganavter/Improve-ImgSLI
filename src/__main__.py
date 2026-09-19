@@ -204,7 +204,8 @@ def main():
         "--dump-ui-layout",
         metavar="PATH",
         default=None,
-        help="Dump the live widget tree (geometry + bound Find Action ids) to "
+        help="Dump the live widget tree (geometry + per-widget colors + bound "
+        "Find Action ids) to "
         "PATH as JSON after startup, then exit. PATH is any writable file "
         "path, e.g. /tmp/layout.json (parent dir must exist; overwrites if "
         "present). Startup lands on the Session Picker, so tab actions "
