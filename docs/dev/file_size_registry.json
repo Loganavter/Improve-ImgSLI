@@ -27,7 +27,7 @@
     },
     {
       "path": "src/engine/cache/tile_texture_service.py",
-      "lines": 627,
+      "lines": 640,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
@@ -72,7 +72,7 @@
     },
     {
       "path": "src/engine/store/tiled_pixel_store.py",
-      "lines": 940,
+      "lines": 983,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -307,7 +307,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
-      "lines": 305,
+      "lines": 314,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
@@ -318,7 +318,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 515,
+      "lines": 519,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -353,7 +353,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
-      "lines": 280,
+      "lines": 330,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -365,7 +365,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 389,
+      "lines": 401,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",

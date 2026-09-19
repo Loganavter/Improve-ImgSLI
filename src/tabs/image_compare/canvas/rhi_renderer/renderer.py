@@ -380,21 +380,25 @@ class RhiCanvasRenderer:
                     _dp_sig = (tuple(str(k) for k in texture_keys), len(array_draw_plan), tuple(getattr(it, "layer1", None) for it in array_draw_plan[:2]), tuple(getattr(it, "layer2", None) for it in array_draw_plan[:2]))  # type: ignore[has-type]
                     if _throttle_emit("renderer.draw_plan", _dp_sig):
                         _ic_preview_log(
-                            "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s",
+                            "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s idx1_sample=%s idx2_sample=%s",
                             list(texture_keys),
                             len(array_draw_plan),
                             [getattr(it, "layer1", None) for it in array_draw_plan[:3]],
                             [getattr(it, "layer2", None) for it in array_draw_plan[:3]],
                             [getattr(it, "bbox", None) for it in array_draw_plan[:2]],
+                            [getattr(it, "index1", None) for it in array_draw_plan[:3]],
+                            [getattr(it, "index2", None) for it in array_draw_plan[:3]],
                         )
                 except Exception:
                     _ic_preview_log(
-                        "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s",
+                        "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s idx1_sample=%s idx2_sample=%s",
                         list(texture_keys),
                         len(array_draw_plan),
                         [getattr(it, "layer1", None) for it in array_draw_plan[:3]],
                         [getattr(it, "layer2", None) for it in array_draw_plan[:3]],
                         [getattr(it, "bbox", None) for it in array_draw_plan[:2]],
+                        [getattr(it, "index1", None) for it in array_draw_plan[:3]],
+                        [getattr(it, "index2", None) for it in array_draw_plan[:3]],
                     )
             # coverage gap check: visible rect vs letterbox (see docs)
             # Coverage diagnostics (gap healthy/detected) + first-paint hold — thin delegator (CODE_PATTERNS)

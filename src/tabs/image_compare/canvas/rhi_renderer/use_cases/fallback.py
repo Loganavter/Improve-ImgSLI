@@ -131,14 +131,26 @@ def resolve_fallback_plan(
             )
     _prev_is_same = renderer._prev_sources_is_same
     if current_sources_is_same is False and _prev_is_same is True:
-        _ic_preview_log(
-            "fallback SKIP_DUPLICATE_BASELINE: prev=%s current=%s last_good=%s -> drop baseline",
-            _prev_is_same,
-            current_sources_is_same,
-            last_good_key,
-        )
-        last_good_key = None
-        renderer._content_swap_active = False
+        if _is_rekeyed_content_baseline(last_good_key):
+            # Own stashed preview hold (flip frame): the rekey lookup above
+            # mapped the pair's previous content to _content_stash keys, so
+            # this baseline is the intentional atomic placeholder — NOT a
+            # stale duplicate. Dropping it blanks one frame (flip flicker:
+            # preview -> GAP entries=0 -> store). Spare it; the plain-key
+            # duplicate case below still drops.
+            _ic_preview_log(
+                "fallback SKIP_DUPLICATE_BASELINE spared: last_good=%s is own stashed preview hold, keeping atomic baseline",
+                last_good_key,
+            )
+        else:
+            _ic_preview_log(
+                "fallback SKIP_DUPLICATE_BASELINE: prev=%s current=%s last_good=%s -> drop baseline",
+                _prev_is_same,
+                current_sources_is_same,
+                last_good_key,
+            )
+            last_good_key = None
+            renderer._content_swap_active = False
     elif _prev_is_same is not None or current_sources_is_same is not None:
         try:
             _is_same_sig = (_prev_is_same, current_sources_is_same, str(last_good_key))

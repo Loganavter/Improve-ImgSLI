@@ -251,6 +251,43 @@ def test_duplicate_baseline_dropped_on_single_to_dual():
     assert not r2._content_swap_active, "duplicate baseline must not become atomic"
 
 
+def test_stash_baseline_spared_on_preview_to_store_flip():
+    """Flip frame (shared preview uid -> distinct store uids) must keep the
+    stashed preview baseline atomic instead of blanking one frame.
+
+    Live shape (20:11:26,679): preview baseline rekeyed to _content_stash
+    keys with resident tiles, flip plan partial (entries=11), is_same
+    True->False. Old code dropped the baseline via SKIP_DUPLICATE ->
+    GAP entries=0 for one frame (flip flicker)."""
+    rekeyed = {
+        "stored_0": ("_content_stash", "stored_0", 1),
+        "stored_1": ("_content_stash", "stored_1", 1),
+    }
+    # The harness fake service has no residency for stash keys, so the real
+    # plan builder yields no fallback items here; stand in sentinel
+    # placeholder items to pin the atomic-hold shape (live: 4 resident
+    # preview tiles).
+    with mock.patch(
+        "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback.build_array_draw_plan",
+        return_value=["fb"],
+    ):
+        new_last_good, plan, r = _run_fallback(
+            prev_is_same=True,
+            cur_is_same=False,
+            more_pending=True,
+            current_items=["cur2"],
+            last_good=(("stored_0", "stored_1"), None),
+            rekeyed=rekeyed,
+            source_changed=True,
+        )
+    # baseline spared -> atomic content swap holds the preview placeholder
+    assert r._content_swap_active, "stashed preview baseline must stay atomic across the flip"
+    assert new_last_good == ((rekeyed["stored_0"], rekeyed["stored_1"]), None)
+    # plan is the fallback placeholder only: no blank frame, and the
+    # partial current stays hidden until promotion
+    assert list(plan) == ["fb"], "atomic hold must draw the stash placeholder, not blank or partial current"
+
+
 def test_content_swap_atomic_until_promoted():
     """Atomic holds current hidden while more_pending, then promotes."""
     # content swap with rekeyed marker

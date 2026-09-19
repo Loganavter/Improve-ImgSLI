@@ -84,6 +84,13 @@ class ArrayDrawItem:
     # docs/dev/rendering/qrhi-gotchas.md
     # #ssim-diff-blocky-mosaic-at-coarse-lod.
     rect_diff: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    # Source tile indices that produced this instance (phantom-hunt
+    # ic-right-image-vanish): a repeated layer1 with the SAME index1 is
+    # benign pair fan-out (one side1 tile overlapping two side2 tiles);
+    # a repeat with DIFFERENT index1 is a true duplicate. Carried for
+    # diagnosis only — packing ignores them.
+    index1: tuple[int, int] = (0, 0)
+    index2: tuple[int, int] = (0, 0)
 
 
 def build_array_draw_plan(
@@ -237,6 +244,8 @@ def build_array_draw_plan(
             sampler_name=sampler_name,
             bbox=plan.bbox,
             rect_diff=plan.rect_diff,
+            index1=plan.index1,
+            index2=plan.index2,
         )
         for plan in plans
     ]

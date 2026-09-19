@@ -22,8 +22,30 @@ from PySide6.QtGui import QRhiDepthStencilClearValue, QRhiViewport
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
 
 from engine.frame.context import FrameContext, make_ids
-from ..resources import pack_array_instance
+from ..resources import (
+    _ARRAY_INSTANCE_STRIDE,
+    pack_array_instance,
+    unpack_instance_layer2,
+)
 from ..uniforms import pack_array_uniforms
+
+try:
+    from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
+except Exception:  # pragma: no cover - import-time fallback for tests
+
+    def _throttle_emit(stream: str, sig: object) -> bool:  # type: ignore
+        return True
+
+try:
+    from tabs.image_compare.debug import ic_preview_debug as _draw_preview_log  # type: ignore
+    from tabs.image_compare.debug import ic_preview_debug_enabled as _draw_preview_enabled  # type: ignore
+except Exception:  # pragma: no cover - import-time fallback for tests
+
+    def _draw_preview_log(msg: str, *args, **kwargs) -> None:  # type: ignore
+        return None
+
+    def _draw_preview_enabled() -> bool:  # type: ignore
+        return False
 
 
 def submit_array_draw(
@@ -188,6 +210,34 @@ def submit_array_draw(
             )
             for index, item in enumerate(array_draw_plan)
         )
+        # Phantom-hunt (ic-right-image-vanish): submit-vs-plan discriminator.
+        # Compares the layer2 actually packed into instance_bytes against
+        # plan[i].layer2 over ALL entries (first-3 sampling can miss a dup
+        # in a 2x2x2 plan). match=True -> submit faithful, corruption (if
+        # any) is upstream in the plan; match=False -> pack-corruption.
+        # Change-gated via throttle stream: silent on steady frames.
+        # No behavior change: read-only inspection of already-packed bytes.
+        try:
+            if _draw_preview_enabled() and instance_bytes:
+                _n_inst = len(instance_bytes) // _ARRAY_INSTANCE_STRIDE
+                if _n_inst == len(array_draw_plan) and _n_inst > 0:
+                    _sub_l2 = tuple(
+                        unpack_instance_layer2(instance_bytes, i)
+                        for i in range(_n_inst)
+                    )
+                    _plan_l2 = tuple(item.layer2 for item in array_draw_plan)
+                    if _throttle_emit(
+                        "submit.instance_layer2.full", (_sub_l2, _plan_l2)
+                    ):
+                        _draw_preview_log(
+                            "submit l2 full submitted=%s plan=%s match=%s entries=%d",
+                            list(_sub_l2),
+                            list(_plan_l2),
+                            _sub_l2 == _plan_l2,
+                            _n_inst,
+                        )
+        except Exception:
+            pass
         if updates is not None:
             updates.updateDynamicBuffer(
                 renderer.resources.array_resources.array_instance_buffer, 0, instance_bytes
