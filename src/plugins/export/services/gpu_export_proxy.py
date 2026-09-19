@@ -1,5 +1,6 @@
 import logging
 import time
+import shiboken6 as sip
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 from PIL import Image
@@ -22,6 +23,18 @@ from engine.cache.tab_canvas_services import create_canvas_widget
 logger = logging.getLogger("ImproveImgSLI")
 
 
+class _CanvasGoneError(RuntimeError):
+    """Canvas widget deleted mid-export — quiet abort, not a bug."""
+
+
+def _widget_alive(widget) -> bool:
+    """Fail-open liveness probe (same shiboken idiom as export/dialog.py)."""
+    try:
+        return widget is not None and bool(sip.isValid(widget))
+    except Exception:
+        return False
+
+
 class GpuExportProxy(QObject):
     render_requested = Signal(object)
 
@@ -40,7 +53,15 @@ class GpuExportProxy(QObject):
         if self._shutting_down:
             raise RuntimeError("GpuExportProxy is shut down")
         if self._widget is not None:
-            return self._widget
+            if _widget_alive(self._widget):
+                return self._widget
+            # Stale cache: the tab closed (or the canvas was torn down)
+            # since the last frame. Drop it so this call recreates or
+            # skips quietly instead of grabbing from a deleted C++ object
+            # on every subsequent frame of the plan.
+            logger.debug("GpuExportProxy dropping deleted cached canvas widget")
+            self._widget = None
+            self._last_widget_size = None
 
         widget = create_canvas_widget()
         if widget is None:
@@ -93,6 +114,8 @@ class GpuExportProxy(QObject):
     def _render_plan_frame(self, widget, plan, diff_image, debug_timings, store=None):
         from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
+        if not _widget_alive(widget):
+            raise _CanvasGoneError("canvas widget deleted before export frame")
         canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
         tile_extent = min(
             DEFAULT_EXPORT_TILE_MAX_EXTENT, query_max_texture_size(widget.rhi())
@@ -172,7 +195,12 @@ class GpuExportProxy(QObject):
 
         framebuffer_started = time.perf_counter()
         grab_started = time.perf_counter()
-        qimg = widget.grabFramebuffer()
+        try:
+            qimg = widget.grabFramebuffer()
+        except RuntimeError as exc:
+            # TOCTOU: deleted between the alive-check and the grab (the
+            # main-thread event loop runs closes between plan frames).
+            raise _CanvasGoneError(f"canvas widget deleted during export grab: {exc}") from exc
         debug_timings["grab_raw_ms"] = (time.perf_counter() - grab_started) * 1000.0
 
         convert_started = time.perf_counter()
@@ -259,7 +287,10 @@ class GpuExportProxy(QObject):
                 result_box["debug_timings"] = debug_timings
         except Exception as exc:
             # Degrade for missing canvas is already debug-logged; other failures stay exception.
-            if widget is None:
+            # A canvas deleted mid-export is routine (tab closed) — debug, no traceback.
+            if isinstance(exc, _CanvasGoneError):
+                logger.debug("GPU export aborted (%s)", exc)
+            elif widget is None:
                 logger.debug("GPU export degraded (no canvas): %s", exc)
             else:
                 logger.exception("GPU export rendering failed")
