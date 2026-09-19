@@ -29,7 +29,7 @@ def test_tab_scroll_uses_surface_scroll_area_token_mode(qapp):
 
 
 def test_timeline_scroll_uses_surface_scroll_area_token_mode(qapp):
-    dialog = SimpleNamespace(_on_head_moved=lambda *a: None, _on_trim_clicked=lambda *a: None)
+    dialog = SimpleNamespace(_on_head_moved=lambda *a: None, _on_trim_clicked=lambda *a: None, _on_play_pause_requested=lambda: None)
     scroll = create_timeline_scroll_area(dialog)
     try:
         assert isinstance(scroll, SurfaceScrollArea)

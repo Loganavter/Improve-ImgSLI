@@ -10,9 +10,27 @@ from tabs.image_compare.plugins.video_editor.layout_geometry import (
     apply_top_row_geometry,
     compute_minimum_dialog_width,
 )
+from tabs.image_compare.plugins.video_editor.widgets.timeline import (
+    VideoTimelineWidget,
+)
 from ui.theming import polish_themed_dialog
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def focused_widget_consumes_space(focused) -> bool:
+    """True when bare Space is already handled by the focused control itself.
+
+    The timeline widget accepts bare Space and emits ``playPauseRequested``
+    (wired to the playback toggle), so the dialog-level Space shortcut must
+    stay silent while it has focus — otherwise one press toggles twice.
+    Line edits keep their long-standing exemption (Space types a space).
+    Correct under both Qt behaviors: if an accepted key still reaches the
+    shortcut map, this guard skips the duplicate; if acceptance suppresses
+    the shortcut, the guard never triggers and the widget signal is the
+    single toggle.
+    """
+    return isinstance(focused, (QLineEdit, CustomLineEdit, VideoTimelineWidget))
 
 class VideoEditorDialogRuntime:
     def __init__(self, dialog):
@@ -89,7 +107,7 @@ class VideoEditorDialogRuntime:
 
         def handle_space():
             focused = d.focusWidget()
-            if not isinstance(focused, (QLineEdit, CustomLineEdit)):
+            if not focused_widget_consumes_space(focused):
                 d._on_play_toggled(not d.btn_play.isChecked())
 
         from PySide6.QtGui import QShortcut

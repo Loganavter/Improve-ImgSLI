@@ -324,6 +324,7 @@ class VideoEditorPresenter(QObject):
     def _connect_view_signals(self):
         self.view.destroyed.connect(self._on_view_destroyed)
         self.view.playClicked.connect(self.playback_coordinator.toggle_playback)
+        self.view.playPauseRequested.connect(self.playback_coordinator.toggle_playback)
         self.view.timelineScrubbed.connect(self.playback_coordinator.seek_to_frame)
         self.view.undoClicked.connect(self.playback_coordinator.undo)
         self.view.redoClicked.connect(self.playback_coordinator.redo)
@@ -393,6 +394,7 @@ class VideoEditorPresenter(QObject):
         pairs = [
             (_sig(view, "destroyed"), self._on_view_destroyed),
             (_sig(view, "playClicked"), self.playback_coordinator.toggle_playback),
+            (_sig(view, "playPauseRequested"), self.playback_coordinator.toggle_playback),
             (_sig(view, "timelineScrubbed"), self.playback_coordinator.seek_to_frame),
             (_sig(view, "undoClicked"), self.playback_coordinator.undo),
             (_sig(view, "redoClicked"), self.playback_coordinator.redo),

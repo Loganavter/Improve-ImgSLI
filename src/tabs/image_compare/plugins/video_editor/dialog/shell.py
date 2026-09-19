@@ -50,6 +50,7 @@ class VideoEditorDialog(ThemedDialog):
 
     playClicked = Signal(bool)
     timelineScrubbed = Signal(int)
+    playPauseRequested = Signal()
     undoClicked = Signal()
     redoClicked = Signal()
     trimClicked = Signal()
@@ -416,6 +417,9 @@ class VideoEditorDialog(ThemedDialog):
 
     def _on_head_moved(self, index: int):
         self.timelineScrubbed.emit(index)
+
+    def _on_play_pause_requested(self):
+        self.playPauseRequested.emit()
 
     def _on_width_edited(self):
         try:

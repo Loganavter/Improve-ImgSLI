@@ -693,5 +693,6 @@ def create_timeline_scroll_area(dialog):
 
     dialog.timeline.headMoved.connect(dialog._on_head_moved)
     dialog.timeline.deletePressed.connect(dialog._on_trim_clicked)
+    dialog.timeline.playPauseRequested.connect(dialog._on_play_pause_requested)
 
     return scroll_area

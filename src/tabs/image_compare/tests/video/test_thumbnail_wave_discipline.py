@@ -740,6 +740,7 @@ def _build_wired_presenter(qapp):
     class FakeView(QObject):
         destroyed = Signal()
         playClicked = Signal(bool)
+        playPauseRequested = Signal()
         timelineScrubbed = Signal(int)
         undoClicked = Signal()
         redoClicked = Signal()
@@ -820,6 +821,7 @@ def _build_wired_presenter(qapp):
 
 def _emit_all_view_signals(view):
     view.playClicked.emit(False)
+    view.playPauseRequested.emit()
     view.timelineScrubbed.emit(3)
     view.undoClicked.emit()
     view.redoClicked.emit()
