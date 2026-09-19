@@ -568,15 +568,6 @@ class VideoEditorDialog(ThemedDialog):
             self.timeline.update_layout_width()
         self._position_stop_export_button()
 
-        logger.warning(
-            "DBG-BUG1 dialog=%s preview_label=%s settings_panel=%s tabs=%s top_container=%s",
-            self.geometry(),
-            self.preview_label.geometry(),
-            self.settings_panel.geometry(),
-            self.tabs.geometry() if hasattr(self, "tabs") else None,
-            self.top_container.geometry(),
-        )
-
     def showEvent(self, event):
         super().showEvent(event)
 
