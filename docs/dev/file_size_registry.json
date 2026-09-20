@@ -50,7 +50,7 @@
     },
     {
       "path": "src/engine/gpu/glass_panel.py",
-      "lines": 917,
+      "lines": 937,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",

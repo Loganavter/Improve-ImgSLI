@@ -52,11 +52,10 @@ def resolve_clear_color(widget) -> QColor:
 
 def _log_clear_color(widget, color: QColor, *, source: str) -> None:
     try:
-        # Same gate as tabs/image_compare/first_frame_debug.py's
-        # ic_first_frame_debug_enabled (IMGSLI_IC_FIRST_FRAME_DEBUG via
-        # shared.debug_flags.env_flag) — routed through the shared
-        # predicate so the third inline check can't drift from the
-        # wrapper's own gate.
+        # Same gate as the canvas tab's own first-frame wrapper
+        # (IMGSLI_IC_FIRST_FRAME_DEBUG via shared.debug_flags.env_flag) —
+        # routed through the shared predicate so this inline check can't
+        # drift from the wrapper's own gate.
         if not _env_flag("IMGSLI_IC_FIRST_FRAME_DEBUG"):
             return
         import logging
