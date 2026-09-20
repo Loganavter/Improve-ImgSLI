@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtCore import QObject, QTimer
 
-from shared.debug_flags import env_flag as _env_flag
+from tabs.image_compare.debug import ic_video_debug_enabled as _video_enabled_pred
 
 from tabs.image_compare.plugins.video_editor.services.keyframing import (
     FrameSnapshot,
@@ -17,7 +17,9 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _video_debug(msg: str, *args, **kwargs) -> None:
-    if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+    # Editor-zone gate: canonical ic_video_debug_enabled (VIDEO_EDITOR /
+    # IC_VIDEO umbrella retained; predicate frozen, OR-split deferred).
+    if _video_enabled_pred():
         logger.warning("[video-editor-debug] " + msg, *args, **kwargs)
     else:
         logger.debug("[video-editor-debug] " + msg, *args, **kwargs)

@@ -5,7 +5,7 @@ import threading
 
 from core.events import CoreErrorOccurredEvent
 from sli_ui_toolkit.workers import GenericWorker
-from shared.debug_flags import env_flag as _env_flag
+from tabs.image_compare.debug import ic_video_debug_enabled as _video_enabled_pred
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -20,14 +20,15 @@ def _video_debug(msg: str, *args, **kwargs) -> None:
             Tracer.instance().record("video.editor.debug", msg % args if args else msg, kwargs)
     except Exception:
         pass
-    if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
+    if _video_enabled_pred():
         logger.warning("[video-editor-debug] " + msg, *args, **kwargs)
     else:
         logger.debug("[video-editor-debug] " + msg, *args, **kwargs)
 
 
 def _video_enabled() -> bool:
-    return _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+    # Editor-zone gate: canonical predicate (umbrella retained; frozen).
+    return _video_enabled_pred()
 
 
 class RecordingFlow:

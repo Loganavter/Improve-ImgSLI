@@ -83,6 +83,8 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         except Exception:
             pass
         from shared.debug_flags import env_flag as _env_flag
+        # Platform-local editor-zone gate (no tab import — see
+        # controller.open_video_editor note; umbrella frozen).
         if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
             logger.warning("[video-editor-debug] _ensure_video_editor_plugin -> %s", self.video_editor_plugin)
         return self.video_editor_plugin

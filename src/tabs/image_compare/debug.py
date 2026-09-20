@@ -113,6 +113,12 @@ def ic_label_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_video_debug_enabled() -> bool:
+    # FROZEN OR-semantics (host-dbgflags epic): the VIDEO_EDITOR /
+    # IC_VIDEO umbrella stays — ~30 consumer files outside the epic
+    # scope rely on it (render_flow, loading_pyramid, use_cases/*,
+    # rhi_renderer/*). Narrow per call site (editor-zone callers use
+    # this predicate as-is; thumbnail/timeline zones use their own
+    # gates); the full OR-split is a deferred supervisor phase.
     return _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
 
 
@@ -143,6 +149,12 @@ def ic_perf_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_thumbnail_debug_enabled() -> bool:
+    # FROZEN OR-semantics (host-dbgflags epic): THUMBNAIL /
+    # VIDEO_EDITOR / IC_VIDEO umbrella stays (same consumer freeze as
+    # ic_video_debug_enabled). Thumbnail-zone call sites
+    # (video_editor/services/thumbnails.py pixel dump) gate on this
+    # predicate; narrowing the dump to THUMBNAIL-only is deferred
+    # (would silence it under the umbrella flag alone).
     return _env_flag("IMGSLI_THUMBNAIL_DEBUG") or _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
 
 
