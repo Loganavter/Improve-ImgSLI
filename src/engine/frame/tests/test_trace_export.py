@@ -388,3 +388,35 @@ def test_maybe_dump_trace_early_after_wheel(trace_on, tmp_path):
     assert out.exists()
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert len(payload["traceEvents"]) == n
+
+
+def test_decisions_event_carries_verdicts():
+    from engine.frame.trace_export import build_trace
+
+    ctx = FrameContext()
+    with ctx.span("ic.prepare"):
+        pass
+    ctx.record("fallback", "ran", "fallback atomic=False more_pending=False promoted=True", ids=("frame=1",))
+    events = build_trace([ctx], pid=999)
+    verdicts = [e for e in events if e["name"] == "frame.decisions"]
+    assert len(verdicts) == 1
+    ev = verdicts[0]
+    assert ev["ph"] == "X" and ev["dur"] == 0
+    assert ev["pid"] == 999 and ev["tid"] == ctx.frame_id
+    for key in ("pid", "tid", "ts", "ph"):
+        assert key in ev
+    by_pass = {d["pass"]: d for d in ev["args"]["decisions"]}
+    assert by_pass["fallback"]["verdict"] == "ran"
+    assert "promoted=True" in by_pass["fallback"]["reason"]
+    # Zero-duration verdict event must not pollute aggregates.
+    assert stage_stats(events)["frame.decisions"]["total_ms"] == 0.0
+    assert slow_ticks(events, 25.0) == []
+    assert validate_events(events) == []
+
+
+def test_empty_decisions_emit_nothing():
+    from engine.frame.trace_export import build_trace
+
+    ctx = FrameContext()
+    events = build_trace([ctx], pid=999)
+    assert [e for e in events if e["name"] == "frame.decisions"] == []

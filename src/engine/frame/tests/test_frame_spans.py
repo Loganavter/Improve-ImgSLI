@@ -183,3 +183,15 @@ def test_span_overhead_order_of_magnitude():
     mean_ns = (time.perf_counter_ns() - t0) / reps
     assert mean_ns < 10_000, f"span open/close mean {mean_ns:.0f}ns exceeds 10us budget"
     assert all(s.t1_ns >= s.t0_ns for s in ctx.spans)
+
+
+def test_decisions_property_snapshot():
+    ctx = FrameContext()
+    assert ctx.decisions == ()
+    ctx.record("prepare_frame", "ran", "ok", ids=("frame=1",))
+    snap = ctx.decisions
+    assert len(snap) == 1 and snap[0].pass_name == "prepare_frame"
+    assert isinstance(snap, tuple)
+    ctx.reset()
+    assert ctx.decisions == ()
+    assert len(snap) == 1  # earlier snapshot unaffected by reset

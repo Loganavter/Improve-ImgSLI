@@ -447,6 +447,17 @@ class FrameContext:
             for d in self._decisions
         )
 
+    @property
+    def decisions(self) -> tuple[FrameDecision, ...]:
+        """Immutable snapshot of this frame's decisions (oldest first).
+
+        Read-only view for exporters (trace_export serializes verdicts
+        into the trace so a Perfetto timeline shows not only how long
+        each stage took but what each pass DECIDED: promoted/held,
+        ran/skipped, more_pending). Never mutate the result.
+        """
+        return tuple(self._decisions)
+
     def __len__(self) -> int:
         return len(self._decisions)
 

@@ -28,6 +28,10 @@ Event schema (the Wave B seam — waves C/D consume read-only):
   ``{"name", "ph": "C", "pid", "tid", "ts", "args": {name: value}}``.
 - Metadata (``ph="M"``): one ``process_name`` event plus one
   ``thread_name`` event per distinct lane.
+- One frame's verdicts → one zero-duration ``frame.decisions`` event
+  (``ph="X"``) per sampled context with a non-empty decision list:
+  ``args.decisions`` is ``[{pass, verdict, reason}]`` (dur 0, so
+  stage aggregates and slow-tick accounting are unaffected).
 
 REQUIRED KEYS ``pid``/``tid``/``ts``/``ph`` are present on EVERY event
 (metadata events carry ``ts: 0`` — viewers ignore ``ts`` on ``M``
@@ -249,6 +253,49 @@ def _counter_events(
     return events
 
 
+def _decision_events(
+    contexts: Iterable[Any], pid: int, sample_ts_us: float
+) -> list[dict[str, Any]]:
+    """One zero-duration event per context carrying its frame verdicts.
+
+    Spans say how LONG each stage took; decisions say what each pass
+    DECIDED (fallback promoted/held + why, ran/skipped, more_pending,
+    cascade_pending). Without these a timeline cannot distinguish "tier
+    promoted with a dirty cascade" from "mixed grid under more_pending"
+    — the exact question behind the first-zoom tile seam (2026-09-20).
+    Empty decision lists emit nothing. ``ids`` atoms are repr'd (they
+    may reference engine objects — never interpreted here).
+    """
+    events: list[dict[str, Any]] = []
+    for ctx in contexts:
+        try:
+            frame_id = int(ctx.frame_id)
+        except (TypeError, ValueError, AttributeError):
+            frame_id = 0
+        verdicts = []
+        for decision in getattr(ctx, "decisions", ()):
+            verdicts.append(
+                {
+                    "pass": str(getattr(decision, "pass_name", "?")),
+                    "verdict": str(getattr(decision, "verdict", "?")),
+                    "reason": str(getattr(decision, "reason", "")),
+                }
+            )
+        if verdicts:
+            events.append(
+                {
+                    "name": "frame.decisions",
+                    "ph": "X",
+                    "pid": pid,
+                    "tid": frame_id,
+                    "ts": sample_ts_us,
+                    "dur": 0,
+                    "args": {"frame_id": frame_id, "decisions": verdicts},
+                }
+            )
+    return events
+
+
 def build_trace(frames: Iterable[Any], pid: int | None = None) -> list[dict[str, Any]]:
     """Build the full event list for ``frames`` (pure, gate NOT checked).
 
@@ -288,6 +335,7 @@ def build_trace(frames: Iterable[Any], pid: int | None = None) -> list[dict[str,
         )
     rest = spans_to_events(spans, own_pid)
     rest.extend(_counter_events(contexts, own_pid, sample_ts_us))
+    rest.extend(_decision_events(contexts, own_pid, sample_ts_us))
     rest.sort(key=lambda event: event["ts"])
     events.extend(rest)
     return events
