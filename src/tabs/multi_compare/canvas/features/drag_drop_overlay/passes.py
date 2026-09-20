@@ -38,6 +38,7 @@ from engine.overlay import (
     TexturedOverlayResolver,
     TexturedOverlayShell,
 )
+from engine.frame.context import make_ids
 from tabs.multi_compare.debug import mc_dnd_debug, mc_dnd_debug_enabled
 from tabs.multi_compare.scene.passes.drag_overlay import DragDropOverlaySource
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
@@ -180,7 +181,7 @@ class DragDropOverlayPass(CanvasRenderPass):
     def initialize(self, rhi, target) -> None:
         self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
 
-    def prepare(self, widget, ctx, resource_updates) -> None:
+    def prepare(self, widget, ctx, resource_updates, frame_context=None) -> None:
         self._shell.stage_quad(resource_updates)
         self._shell.stage_clip(resource_updates, ctx.clip_matrix)
         frame = _frame_resolver()(ctx)
@@ -204,7 +205,19 @@ class DragDropOverlayPass(CanvasRenderPass):
                     self._shell.active,
                 )
 
-    def record(self, command_buffer, widget, ctx) -> None:
+    def record(self, command_buffer, widget, ctx, frame_context=None) -> None:
+        # Frame bus: overlay fact (record only, never instead). Verdict
+        # from this pass's own should_paint gate; None-safe (unwired
+        # callers stay silent). Existing mc_dnd_debug logic below stays.
+        if frame_context is not None:
+            _gate = self.should_paint(ctx)
+            _count = 1 if self._shell.active else 0
+            frame_context.record(
+                "overlay.drag",
+                "ran" if _gate else "skipped",
+                f"overlay.drag items={_count}",
+                ids=make_ids(frame_context.frame_id, _count),
+            )
         if getattr(widget, "_mc_overlay_debug", False):
             logger.info(
                 "[mc-overlay-debug] %s.record: active=%s pipeline=%s",

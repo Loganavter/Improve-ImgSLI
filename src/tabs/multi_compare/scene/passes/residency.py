@@ -40,11 +40,16 @@ from engine.store.tiled_pixel_store import TiledPixelStore, pixel_source_size
 from engine.cache.lod import LevelKey
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
+from engine.cache.tile_constants import (
+    TILE_UPLOAD_BUDGET_PER_CALL,
+    TILE_UPLOAD_TIME_BUDGET_MS,
+)
 from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
 from engine.gpu.base_images_pass import (
     BaseImagesPass as EngineBaseImagesPass,
     BaseImagesSpecHooks,
 )
+from engine.frame.context import BudgetStats, make_ids
 from tabs.multi_compare.scene.resources import (
     SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
     SLOT_TILE_CACHE_BUDGET_BYTES,
@@ -203,6 +208,8 @@ def build_slot_specs(
     host-cache work itself. The engine feed (``EngineBaseImagesPass``
     ``realize``) performs those from the returned ``specs``.
     """
+    # Timing var only (lod_commit time side below) -- no behavior change.
+    _t0 = time.perf_counter()
     tile_service = renderer.tile_service
     protected_host: set[str] = set()
 
@@ -329,6 +336,41 @@ def build_slot_specs(
         )
         specs.append(ResidencySpec(key=key, grid=grid, visible_rect=visible_rect, crop_source=pixel_source))
 
+    # Frame bus: LOD-commit fact (record only, never instead -- mirrors
+    # image_compare's lod_commit record). MC resolves each slot's LOD key
+    # exactly once up front, so raw == every resolved key and committed ==
+    # the walked specs; slots held out of the walk (no source/grid) are a
+    # level hold. MC commits immediately (no settle window like IC's
+    # LOD_FETCH_SETTLE_MS), so only the time side is filled. None-safe:
+    # fakes without a renderer context stay silent.
+    _frame_context = getattr(renderer, "frame_context", None)
+    if _frame_context is not None:
+        _raw_keys = tuple(key for _sid, (key, _src) in resolved_lod.items())
+        _committed_keys = tuple(spec.key for spec in specs)
+        _committed = set(_committed_keys)
+        _held_sids = tuple(
+            sid
+            for sid, (key, _src) in resolved_lod.items()
+            if key not in _committed
+        )
+        _build_ms = (time.perf_counter() - _t0) * 1000.0
+        _stats = BudgetStats(time_ms=_build_ms, budget_ms=0.0)
+        _verdict = "ran" if specs else "skipped"
+        _hold = "" if specs else " level hold: no specs committed this frame"
+        _frame_context.record(
+            "lod_commit",
+            _verdict,
+            f"lod_commit raw={[str(k) for k in _raw_keys]}"
+            f" committed={[str(k) for k in _committed_keys]}"
+            f" held={list(_held_sids)}{_hold} {_stats.describe()}",
+            ids=make_ids(
+                _frame_context.frame_id,
+                _raw_keys,
+                _committed_keys,
+                _stats.as_tuple(),
+            ),
+        )
+
     return SlotSpecBuild(
         ctx=ctx,
         specs=specs,
@@ -417,10 +459,15 @@ class _SlotUploadRealizer(TileResidencyRealizerBase):
         self._slot_resources = slot_resources
         self._host_cache = host_cache
         self._use_array = False
+        # Per-call upload count for the realize_slots BudgetStats fact
+        # below (record-only instrumentation, reset at every realize()
+        # entry -- no behavior change).
+        self._uploaded_this_call = 0
 
     def _upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
         row, col = index
         sid = _sid_from_key(key)
+        self._uploaded_this_call += 1
         if tile_dump_enabled():
             dump_name = (
                 f"crop_sid{sid}_{_host_key_repr(key)}_r{row}c{col}_"
@@ -504,6 +551,10 @@ class _SlotUploadRealizer(TileResidencyRealizerBase):
         unsafe)."""
         tile_service = self._renderer.tile_service
         dirty_layers: dict[int, set[int]] = {}
+        # Timing var + counter reset only (realize_slots time/upload side
+        # below) -- no behavior change.
+        _t0 = time.perf_counter()
+        self._uploaded_this_call = 0
 
         # Spec-build half: resolve this call's spec list from the tab's own
         # geometry/LOD model (exactly one `lod_key_and_source` resolution
@@ -566,6 +617,39 @@ class _SlotUploadRealizer(TileResidencyRealizerBase):
             # otherwise trigger another paint, so schedule the next frame
             # ourselves to keep the progressive fill-in moving.
             self._renderer.host.update()
+        # Frame bus: realize fact (record only, never instead -- mirrors
+        # image_compare's realize_main/realize_magnifier records). Skipped
+        # while the budget leaves tiles pending (the re-kick above carries
+        # the fill-in), ran once the target is fully resident. The branch
+        # reason atom names this frame's array-vs-plain draw path. None-safe:
+        # fakes without a renderer context stay silent.
+        _frame_context = getattr(self._renderer, "frame_context", None)
+        if _frame_context is not None:
+            _realize_ms = (time.perf_counter() - _t0) * 1000.0
+            _stats = BudgetStats(
+                budget=int(TILE_UPLOAD_BUDGET_PER_CALL),
+                uploaded=int(self._uploaded_this_call),
+                skipped=sum(
+                    1 for _v in result.key_incomplete_by_key.values() if _v
+                ),
+                time_ms=_realize_ms,
+                budget_ms=float(TILE_UPLOAD_TIME_BUDGET_MS),
+                more_pending=bool(result.more_tiles_pending),
+            )
+            _spec_keys = tuple(spec.key for spec in build.specs)
+            _frame_context.record(
+                "realize_slots",
+                "skipped" if result.more_tiles_pending else "ran",
+                f"realize_slots path={'array' if use_array else 'plain'}"
+                f" specs={len(build.specs)}"
+                f" uploaded_tiles={self._uploaded_this_call}"
+                f" incomplete_keys={_stats.skipped} {_stats.describe()}",
+                ids=make_ids(
+                    _frame_context.frame_id,
+                    _spec_keys,
+                    _stats.as_tuple(),
+                ),
+            )
         return use_array, dirty_layers, result.key_incomplete_by_key, resolved_lod
 
 

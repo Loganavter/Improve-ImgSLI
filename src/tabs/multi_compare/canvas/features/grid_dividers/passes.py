@@ -22,6 +22,7 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QRhiScissor
 
 from engine.cache.uniform_layout import assert_uniform_size
+from engine.frame.context import make_ids
 from engine.overlay import (
     OverlayBinding,
     OverlayResolver,
@@ -122,11 +123,23 @@ class GridDividersPass(CanvasRenderPass):
     def initialize(self, rhi, target) -> None:
         self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
 
-    def prepare(self, widget, ctx, resource_updates) -> None:
+    def prepare(self, widget, ctx, resource_updates, frame_context=None) -> None:
         self._items = list(resolve(ctx))
         self._shell.stage_packed(resource_updates, self._items)
 
-    def record(self, command_buffer, widget, ctx) -> None:
+    def record(self, command_buffer, widget, ctx, frame_context=None) -> None:
+        # Frame bus: overlay fact (record only, never instead). Verdict
+        # from this pass's own should_paint gate; None-safe (unwired
+        # callers stay silent).
+        if frame_context is not None:
+            _gate = self.should_paint(ctx)
+            _count = len(self._items)
+            frame_context.record(
+                "overlay.dividers",
+                "ran" if _gate else "skipped",
+                f"overlay.dividers items={_count}",
+                ids=make_ids(frame_context.frame_id, _count),
+            )
         if not self._items:
             return
         fb_w, fb_h = ctx.framebuffer_size

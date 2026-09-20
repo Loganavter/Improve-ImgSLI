@@ -14,6 +14,7 @@ from PySide6.QtCore import QMimeData, QPoint, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
+from engine.frame.context import make_ids
 from tabs.multi_compare.canvas.features.grid_dividers.input.hit import divider_at
 from tabs.multi_compare.canvas.gesture_resolver import (
     GesturePressContext,
@@ -75,6 +76,19 @@ def _source_for(widget, slot):
         return None
 
 
+def _frame_context_from_widget(widget):
+    """Best-effort live FrameContext via ``widget._renderer``.
+
+    Mirrors image_compare's ``loupe_trace.frame_context_from_widget``
+    (which reads ``widget._rhi_renderer``): lets widget-side writers (the
+    wheel tick below) record into the renderer-owned context without
+    renderer rewiring. ``None`` for fakes/widgets without a renderer --
+    callers then skip the record.
+    """
+    renderer = getattr(widget, "_renderer", None)
+    return getattr(renderer, "frame_context", None)
+
+
 def _cache_generation(cache) -> int:
     try:
         return int(getattr(cache, "generation", 0) or 0)
@@ -109,6 +123,14 @@ def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, flo
             rect.height(),
         )
         hit = store.get(key)
+        # Tick-marker atom: remember whether this lookup hit, so the wheel
+        # path's invalidate.mc_zoom_tick record can carry the fit-cache
+        # hit/miss without recomputing the key (best-effort widget attr,
+        # read back pre-dispatch; stale/absent reads as miss).
+        try:
+            widget._zoom_fit_cache_last_hit = hit is not None
+        except Exception:
+            pass
         if hit is not None:
             return hit
     except Exception:
@@ -120,6 +142,7 @@ def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, flo
             store[key] = value
             while len(store) > _FIT_CACHE_MAX:
                 store.pop(next(iter(store)))
+        widget._zoom_fit_cache_last_hit = False
     except Exception:
         pass
     return value
@@ -231,6 +254,28 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     pre_dispatch_ms = (
         (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
     )
+    # Frame-bus tick marker (record-only, pre-dispatch): joins this wheel
+    # tick to the frame it kicks -- tick id only, no timing (timing belongs
+    # to the perf-debugger epic). None-safe: fakes/widgets without a
+    # renderer-owned context skip the record. The existing mc_dnd_debug tick
+    # log below is untouched.
+    _tick_context = _frame_context_from_widget(widget)
+    if _tick_context is not None:
+        try:
+            _fit_hit = bool(getattr(widget, "_zoom_fit_cache_last_hit", False))
+        except Exception:
+            _fit_hit = False
+        _tick_context.record_invalidation(
+            "mc_zoom_tick",
+            f"wheel tick delta={delta} zoom {z1:.6f}->{z2:.6f}"
+            f" fit_cache={'hit' if _fit_hit else 'miss'}",
+            ids=make_ids(
+                _tick_context.frame_id,
+                delta,
+                (round(z1, 6), round(z2, 6)),
+                "fit-hit" if _fit_hit else "fit-miss",
+            ),
+        )
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
     if debug_ticks:
         mc_dnd_debug(

@@ -23,6 +23,7 @@ from engine.gpu.base_images_pass import (
 )
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.cache.render_debug import rhi_render_debug
+from engine.frame.context import make_ids
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_geometry import _TILE_APRON_PX
 from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
@@ -81,6 +82,22 @@ _ARRAY_CAPACITY = min(
 # (``engine.gpu.base_images_pass``); this module keeps the tab hook impls
 # (resolve/upload/backfill wrappers binding tab state) below. The
 # previous-generation sentinel and spec dataclass retired with the move.
+
+
+def _frame_context_from_widget(widget):
+    """Best-effort live FrameContext via ``widget._renderer``.
+
+    Lets this contract-pinned pass (``prepare``/``record`` shapes mirror
+    image_compare's magnifier and must not gain a ``frame_context`` kwarg)
+    record without renderer rewiring: the context is born on
+    ``MultiCompareRhiRenderer`` and reused per frame, so reading it through
+    the widget is purely additive -- same reach-through as ``prepare()``'s
+    own ``getattr(widget, "_renderer", widget)`` line and IC's
+    ``loupe_trace.frame_context_from_widget``. ``None`` for fakes/widgets
+    without a renderer -- callers then stay silent.
+    """
+    renderer = getattr(widget, "_renderer", None)
+    return getattr(renderer, "frame_context", None)
 
 
 def _pack_array_uniforms(
@@ -646,6 +663,37 @@ class BaseImagesPass(CanvasRenderPass):
             # this slot actually swapped -- see _pending_plain_cleanup).
             self._release_promoted_plain_preview(sid, new_last_good_key, key)
 
+            # Frame bus: fallback + coverage facts (record only, never
+            # instead -- mirrors image_compare's fallback/coverage records).
+            # MC has no blank-white first-paint hold, so coverage is always
+            # ran (covered = resident current tiles over the resident
+            # target incl. fallback). Atomicity is always False here (no
+            # content-swap decision like IC's) -- recorded anyway for grep
+            # parity. None-safe: fakes without a renderer context stay
+            # silent.
+            _frame_context = getattr(renderer, "frame_context", None)
+            if _frame_context is not None:
+                _kept = len(tiles_for_key) - len(current_tiles)
+                _promoted = new_last_good_key == key
+                _frame_context.record(
+                    "fallback",
+                    "ran" if _kept else "skipped",
+                    f"fallback atomic=False more_pending={key_more_pending}"
+                    f" promoted={_promoted} current={len(current_tiles)}"
+                    f" kept={_kept}",
+                    ids=make_ids(_frame_context.frame_id, key, old_key),
+                )
+                _entries = len(tiles_for_key)
+                _covered = (len(current_tiles) / _entries) if _entries else 1.0
+                _frame_context.record(
+                    "coverage",
+                    "ran",
+                    f"coverage covered={_covered:.4f} entries={_entries}",
+                    ids=make_ids(
+                        _frame_context.frame_id, f"{_covered:.4f}", _entries
+                    ),
+                )
+
             rhi_render_debug(
                 "mc-array-plan sid=%s key=%s current_tiles=%s fallback_used=%s "
                 "tiles_for_key=%s slot_rect=%s",
@@ -742,12 +790,22 @@ class BaseImagesPass(CanvasRenderPass):
         if not ctx.projected_layers or not self.slot_resources.slot_vertex_buffers:
             return
         fb_w, fb_h = ctx.framebuffer_size
+        # Contract-pinned shape (no frame_context kwarg): reach the context
+        # through the widget (see _frame_context_from_widget). None-safe.
+        _frame_context = _frame_context_from_widget(widget)
         if self._use_array_this_frame:
             assert self.array_resources is not None
             if (
                 self.array_draw_instance_count <= 0
                 or self.array_resources.array_pipeline is None
             ):
+                if _frame_context is not None:
+                    _frame_context.record(
+                        "submit",
+                        "skipped",
+                        "submit entries=0 path=array",
+                        ids=make_ids(_frame_context.frame_id, 0, True),
+                    )
                 return
             command_buffer.setGraphicsPipeline(self.array_resources.array_pipeline)
             command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
@@ -760,6 +818,18 @@ class BaseImagesPass(CanvasRenderPass):
             )
             command_buffer.setShaderResources(self.array_resources.array_srb)
             command_buffer.draw(4, self.array_draw_instance_count)
+            if _frame_context is not None:
+                _frame_context.record(
+                    "submit",
+                    "ran",
+                    f"submit entries={self.array_draw_instance_count}"
+                    " path=array",
+                    ids=make_ids(
+                        _frame_context.frame_id,
+                        int(self.array_draw_instance_count),
+                        True,
+                    ),
+                )
             return
         command_buffer.setGraphicsPipeline(self.slot_resources.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
@@ -767,6 +837,7 @@ class BaseImagesPass(CanvasRenderPass):
             0, [(self.slot_resources.slot_vertex_buffers[0], 0)]
         )
         stride = self.slot_resources._slot_uniform_stride
+        _draws = 0
         for index in range(len(ctx.projected_layers)):
             srbs = (
                 self._resolved_tile_srbs[index]
@@ -778,6 +849,16 @@ class BaseImagesPass(CanvasRenderPass):
                     continue
                 command_buffer.setShaderResources(srb, 1, (0, item_index * stride))
                 command_buffer.draw(4)
+                _draws += 1
+        # Frame bus: submit fact for the plain path (record only, never
+        # instead -- mirrors image_compare's submit record).
+        if _frame_context is not None:
+            _frame_context.record(
+                "submit",
+                "ran" if _draws else "skipped",
+                f"submit entries={_draws} path=plain",
+                ids=make_ids(_frame_context.frame_id, _draws, False),
+            )
 
     def _release_slot(self, tile_service, sid: int) -> None:
         self.slot_pixel_sources.pop(sid, None)
