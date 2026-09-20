@@ -188,7 +188,7 @@ SPAN_RING_MAX = 1024
 #: Trailing verdict window: how many past frames' decision lists survive
 #: ``reset()`` for exporters (the live frame keeps its own list live).
 #: Sized to cover a zoom burst plus its settle tail at tuple scale.
-PAST_DECISIONS_MAX = 16
+PAST_DECISIONS_MAX = 48
 
 
 @dataclass(frozen=True, slots=True)
