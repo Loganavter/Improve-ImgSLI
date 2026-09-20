@@ -71,6 +71,31 @@ def commit_lod_keys(
     )
     now = time.monotonic()
     if raw_texture_keys != renderer._lod_pending_keys:
+        # Flap diagnostic (plan-atomic-lod-transitions Wave B): pyramid
+        # readiness races make raw keys oscillate A->B->A with quiet gaps
+        # that defeat the settle window (seen: 4.6s pending then forced
+        # commit). Count oscillations; a hot counter justifies future
+        # hysteresis, a cold one closes the case. Behavior unchanged.
+        try:
+            _prev_pending = renderer._lod_pending_keys
+            _flaps = getattr(renderer, "_lod_flap_count", 0)
+            _last_flap = getattr(renderer, "_lod_flap_since", 0.0)
+            if (
+                _prev_pending is not None
+                and raw_texture_keys == getattr(renderer, "_lod_flap_alt", None)
+                and (now - _last_flap) * 1000.0 < 4 * LOD_FETCH_SETTLE_MS
+            ):
+                renderer._lod_flap_count = _flaps + 1  # type: ignore[attr-defined]
+                renderer._lod_flap_since = now  # type: ignore[attr-defined]
+                _ic_preview_log(
+                    "lod_commit flap raw oscillating (count=%d)",
+                    _flaps + 1,
+                )
+            else:
+                renderer._lod_flap_alt = _prev_pending  # type: ignore[attr-defined]
+                renderer._lod_flap_since = now  # type: ignore[attr-defined]
+        except Exception:
+            pass
         renderer._lod_pending_keys = raw_texture_keys
         renderer._lod_pending_since = now
     # image_uid, not id(): id() is a memory address that CPython can

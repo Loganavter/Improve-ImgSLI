@@ -341,6 +341,11 @@ def test_levelkey_stash_unwrap():
 
 def test_lod_churn_progressive_not_atomic():
     """LOD level change on same content must be progressive, not atomic."""
+    # Same-content scope note (plan-atomic-lod-transitions): this case has
+    # an EVICTED baseline (harness fake service yields no fallback items),
+    # so the atomic hold degrades to partial current via fail-open — still
+    # progressive in effect, never blank. Resident-baseline scope is pinned
+    # by test_level_transition_holds_single_tier below.
     # same content, just LOD level change, no rekey, no source_changed
     tex_before = (LevelKey("stored_0", 2), LevelKey("stored_1", 2))
     tex_after = (LevelKey("stored_0", 1), LevelKey("stored_1", 1))
@@ -497,6 +502,77 @@ def test_bbox_width_for_distinct_images():
     # (previous bug made right side sliver-only and left-on-both)
     assert plan[0].layer1 != plan[0].layer2, f"layers duplicate {plan[0].layer1} == {plan[0].layer2} — left-on-both"
     # ensure letterboxes were not forced identical (already asserted)
+
+
+def test_level_transition_holds_single_tier():
+    """Level change with a RESIDENT baseline draws one tier per frame.
+
+    plan-atomic-lod-transitions Wave A: LevelKey key + complete plain
+    last_good + partial current + more_pending -> atomic hold of the old
+    tier whole; partial current stays hidden until promotion (no
+    mixed-grid shimmer frames)."""
+    tex_after = (LevelKey("stored_0", 1), LevelKey("stored_1", 1))
+    with mock.patch(
+        "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback.build_array_draw_plan",
+        return_value=["fb"],
+    ):
+        new_last_good, plan, r = _run_fallback(
+            prev_is_same=False,
+            cur_is_same=False,
+            more_pending=True,
+            current_items=["cur"],
+            last_good=(("stored_0", "stored_1"), None),
+            rekeyed={},
+            texture_keys=tex_after,  # type: ignore
+            source_changed=False,
+        )
+    assert r._fallback_atomic_snapshot is True
+    assert list(plan) == ["fb"]
+    assert new_last_good == (("stored_0", "stored_1"), None)
+
+
+def test_level_transition_fail_open_when_baseline_evicted():
+    """Evicted baseline on a level change degrades to partial current.
+
+    Same setup as above but the old tier has no resident tiles left:
+    atomicity is moot, drawing partial current beats a blank frame
+    (engine fail-open, also covers DPR-backend-change eviction)."""
+    tex_after = (LevelKey("stored_0", 1), LevelKey("stored_1", 1))
+    with mock.patch(
+        "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback.build_array_draw_plan",
+        return_value=[],
+    ):
+        new_last_good, plan, r = _run_fallback(
+            prev_is_same=False,
+            cur_is_same=False,
+            more_pending=True,
+            current_items=["cur"],
+            last_good=(("stored_0", "stored_1"), None),
+            rekeyed={},
+            texture_keys=tex_after,  # type: ignore
+            source_changed=False,
+        )
+    assert r._fallback_atomic_snapshot is True
+    assert list(plan) == ["cur"]
+
+
+def test_mc_default_stays_progressive():
+    """Shared engine default untouched: atomic=False keeps progressive mix.
+
+    multi_compare calls resolve_fallback_lod without atomic (opt-out by
+    default); a LevelKey transition there must still layer partial current
+    over drop-covered fallback. Guards Wave A against changing MC via the
+    shared branch."""
+    new_key, plan = resolve_fallback_lod(
+        key="new",
+        current_items=["cur"],
+        more_pending=True,
+        last_good_key="old",
+        build_fallback_items=lambda _k: ["fb"],
+        drop_covered=lambda fb, cur: fb,
+    )
+    assert new_key == "old"
+    assert plan == ["fb", "cur"]
 
 
 def test_cascade_quiescence_holds_fast_path_promotion():

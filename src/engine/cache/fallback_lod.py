@@ -51,7 +51,8 @@ def resolve_fallback_lod(
     building and filtering a whole extra tile set is wasted work otherwise.
 
     ``atomic=True`` (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up,
-    seventh fix) changes that not-yet-promoted branch: instead of layering
+    seventh fix; extended by plan-atomic-lod-transitions to LOD level
+    changes) changes that not-yet-promoted branch: instead of layering
     ``current_items`` over the dropped-and-covered fallback (which reveals
     the new content tile-by-tile as each one uploads, visible as a
     "streaming in" effect the caller wants to avoid for a genuine content
@@ -63,12 +64,12 @@ def resolve_fallback_lod(
     fallback plan comes back empty (the old content was fully evicted or
     never resident), atomicity is moot -- nothing old is left to hold the
     screen -- so the partial ``current_items`` are drawn rather than a blank
-    frame. Intended for a caller that only sets ``atomic=True`` while
-    ``last_good_key`` is itself a rekeyed same-slot-swap marker (see
-    callers) -- a plain LOD/pyramid-level transition keeps ``atomic=False``
-    and the original progressive reveal, which is the right behavior there
-    (finer detail filling in over an already-visible coarser image, not a
-    content change)."""
+    frame. Callers opt in explicitly: image_compare sets ``atomic=True``
+    for content swaps AND for level transitions with a complete baseline
+    (one tier per frame, no mixed grids — live trace 2026-09-20 showed
+    progressive reveal flashing resolution-step seams at every old/new
+    boundary during sustained zoom); multi_compare keeps the default
+    ``False`` and its progressive reveal."""
     if not more_pending and not cascade_pending and current_items:
         return key, current_items
     if last_good_key is not None and last_good_key != key:

@@ -147,6 +147,10 @@ class TileResidencyRealizerBase:
         key_incomplete_by_key: dict[object, bool] = {}
         deadline = UploadDeadline()
 
+        # Phase 1 (no uploads): resolve + protect + plan each spec's batch.
+        # Batch *selection* stays per-key (center-out order); the *upload*
+        # below interleaves round-robin so no key starves another.
+        _work: list[dict] = []
         for spec in specs:
             target = tile_service.resolve_visible_tiles(
                 spec.key, spec.visible_rect, _TILE_RESIDENCY_MARGIN
@@ -179,33 +183,64 @@ class TileResidencyRealizerBase:
                     len(batch),
                     budget_per_call,
                 )
-            uploaded_this_call: set[tuple[int, int]] = set()
-            for batch_offset, index in enumerate(batch):
-                if deadline.stop_before(batch_offset):
+            _work.append(
+                {
+                    "spec": spec,
+                    "batch": batch,
+                    "offset": 0,
+                    "exhausted": False,
+                    "uploaded": set(),
+                    "incomplete": key_incomplete,
+                }
+            )
+
+        # Phase 2 (uploads): round-robin across specs under the one shared
+        # deadline. Sequential key order let the first key eat the whole
+        # time budget while the second stalled at its guaranteed first
+        # tile (log shape side1=40 side2=1); interleaving fills both sides
+        # together so a content swap promotes both halves the same frame.
+        # Per-key offset preserves the guaranteed-first-tile bypass
+        # (UploadDeadline.stop_before(0)) exactly as before.
+        _max_rounds = max((len(_w["batch"]) for _w in _work), default=0)
+        for _round in range(_max_rounds):
+            _all_done = True
+            for _w in _work:
+                _spec = _w["spec"]
+                _batch = _w["batch"]
+                _offset = _w["offset"]
+                if _w["exhausted"] or _offset >= len(_batch):
+                    continue
+                _all_done = False
+                if deadline.stop_before(_offset):
                     # Time budget exhausted mid-batch: whatever's left in
                     # `batch` stays un-uploaded and gets reconsidered on the
                     # next call via `protected_by_key` (already set to the
                     # full `target` above).
                     more_tiles_pending = True
-                    key_incomplete = True
+                    _w["incomplete"] = True
+                    _w["exhausted"] = True
                     rhi_render_debug(
                         "realize_specs TIME_DEADLINE key=%s uploaded=%d/%d deferred=%d",
-                        spec.key,
-                        batch_offset,
-                        len(batch),
-                        len(batch) - batch_offset,
+                        _spec.key,
+                        _offset,
+                        len(_batch),
+                        len(_batch) - _offset,
                     )
-                    break
-                row, col = index
-                if row < 0 or row >= spec.grid.rows or col < 0 or col >= spec.grid.columns:
                     continue
-                region = spec.grid.region_for(row, col)
+                row, col = _batch[_offset]
+                _w["offset"] = _offset + 1
+                if row < 0 or row >= _spec.grid.rows or col < 0 or col >= _spec.grid.columns:
+                    continue
+                region = _spec.grid.region_for(row, col)
                 tile_image = crop_apron_tile(
-                    spec.crop_source, region.left, region.top, region.right, region.bottom, _TILE_APRON_PX
+                    _spec.crop_source, region.left, region.top, region.right, region.bottom, _TILE_APRON_PX
                 )
-                self._upload_tile(tile_service, spec.key, index, tile_image, updates, dirty_layers, region)
-                uploaded_this_call.add(index)
-            key_incomplete_by_key[spec.key] = key_incomplete
+                self._upload_tile(tile_service, _spec.key, _batch[_offset], tile_image, updates, dirty_layers, region)
+                _w["uploaded"].add(_batch[_offset])
+            if _all_done:
+                break
+        for _w in _work:
+            key_incomplete_by_key[_w["spec"].key] = _w["incomplete"]
 
             # Warm, off-thread, the pages of whatever's still in `target`
             # but didn't get uploaded this call (budget/deadline deferred,
@@ -220,21 +255,24 @@ class TileResidencyRealizerBase:
             # memmap read competing for the GIL/CPU with the render thread,
             # and firing them all at once measurably stalled the very
             # activation that triggered them.
-            if spec.crop_source is not None:
+            if _w["spec"].crop_source is not None:
+                _spec = _w["spec"]
+                _uploaded_this_call = _w["uploaded"]
+                _target = protected_by_key[_spec.key]
                 prefetch_budget = _TILE_PREFETCH_BUDGET_PER_CALL
-                for index in target:
+                for index in _target:
                     if prefetch_budget <= 0:
                         break
-                    if index in uploaded_this_call:
+                    if index in _uploaded_this_call:
                         continue
                     row, col = index
-                    if row < 0 or row >= spec.grid.rows or col < 0 or col >= spec.grid.columns:
+                    if row < 0 or row >= _spec.grid.rows or col < 0 or col >= _spec.grid.columns:
                         continue
-                    if tile_service.is_resident(spec.key, index):
+                    if tile_service.is_resident(_spec.key, index):
                         continue
-                    region = spec.grid.region_for(row, col)
+                    region = _spec.grid.region_for(row, col)
                     if self._prefetcher.warm(
-                        spec.key, index, spec.crop_source, region, _TILE_APRON_PX
+                        _spec.key, index, _spec.crop_source, region, _TILE_APRON_PX
                     ):
                         prefetch_budget -= 1
 

@@ -337,11 +337,18 @@ def test_same_slot_swap_commits_in_one_frame_once_resident():
     assert _covered_visible_fraction(plan, base_image) >= 0.999
 
 
-def test_lod_level_churn_stays_progressive():
-    """Regression guard: a plain LOD/pyramid-level transition (same source,
-    coarser -> finer LevelKey) must NOT become atomic -- the finer level's
-    tiles keep revealing progressively over the coarser level's resident
-    tiles, and ``_content_swap_active`` stays False throughout."""
+def test_lod_level_transition_holds_atomic_tier():
+    """Level transition with a complete baseline holds ONE tier per frame.
+
+    Supersedes the old progressive-reveal guard: plan-atomic-lod-transitions
+    made LOD level changes atomic (same source, coarser -> finer LevelKey
+    with a resident baseline holds the old tier whole instead of layering
+    partial grids — live trace 2026-09-20 showed progressive reveal
+    flashing resolution-step seams at every old/new boundary during zoom).
+    Progressive reveal survives ONLY for the fail-open path (evicted
+    baseline) and for multi_compare (engine default atomic=False).
+    ``_content_swap_active`` stays False throughout (a level hold is not
+    a content swap)."""
     renderer = RhiCanvasRenderer()
     tile_service = TileTextureService(max_tile_extent=512)
     base_image = _base_image()
@@ -382,11 +389,11 @@ def test_lod_level_churn_stays_progressive():
         rekeyed={},
     )
 
-    # Progressive reveal preserved: the partially-uploaded fine level IS in
-    # the plan alongside the coarse fallback, and nothing was flagged as a
-    # content swap.
-    assert _plan_binds_only(tile_service, plan, coarse, fine) is False
-    assert any(
+    # Atomic-tier hold: the partially-uploaded fine level stays hidden;
+    # the plan binds the coarse baseline only, and nothing is flagged as
+    # a content swap (a level hold is not a swap).
+    assert _plan_binds_only(tile_service, plan, coarse, fine) is True
+    assert not any(
         item.layer1 in _layers(tile_service, fine[0])
         or item.layer2 in _layers(tile_service, fine[1])
         for item in plan

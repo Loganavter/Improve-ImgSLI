@@ -191,22 +191,38 @@ def resolve_fallback_plan(
     decision_is_content_swap = is_content_swap
     decision_content_swap_flag = renderer._content_swap_active
     decision_last_good_has_marker = _is_rekeyed_content_baseline(last_good_key)
-    _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
+    # Atomic-tier invariant (plan-atomic-lod-transitions): one tier per
+    # frame also for LOD level changes, not just content swaps. A level
+    # transition key carries LevelKey entries while the last-good baseline
+    # is a complete older tier — hold the old tier whole until the new one
+    # promotes instead of layering partial grids (shimmer/seams). Opt-in at
+    # this IC call site only: engine default stays atomic=False so
+    # multi_compare rendering is unchanged. Fail-open preserved in the
+    # engine (empty fallback -> partial current, never blank).
+    _atomic_level_hold = (
+        not is_content_swap
+        and last_good_key is not None
+        and last_good_key != key
+        and any(isinstance(k, LevelKey) for k in texture_keys)
+    )
+    decision_atomic = decision_is_content_swap or _atomic_level_hold
+    _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, decision_atomic, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
     _should_emit_fallback = _throttle_emit("fallback.decision", _fallback_sig)
     if _should_emit_fallback:
         _ic_preview_log(
-            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s",
+            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s level_hold=%s",
             source_changed,
             last_good_key,
             key,
             dict(rekeyed) if rekeyed else None,
             decision_is_content_swap,
-            decision_is_content_swap,
+            decision_atomic,
             main_more_pending,
             len(current_array_plan),
             decision_last_good_has_marker,
             decision_content_swap_flag,
-            decision_is_content_swap,
+            decision_atomic,
+            _atomic_level_hold,
         )
         if _gap_enabled():
             try:
@@ -226,7 +242,7 @@ def resolve_fallback_plan(
                 )
             except Exception:
                 pass
-    renderer._fallback_atomic_snapshot = decision_is_content_swap
+    renderer._fallback_atomic_snapshot = decision_atomic
     renderer._fallback_more_pending_snapshot = main_more_pending
     fallback_diag: dict[str, int] = {}
     if last_good_key is None and main_more_pending and current_array_plan:
@@ -325,7 +341,7 @@ def resolve_fallback_plan(
             last_good_key=last_good_key,
             build_fallback_items=_build_fallback_items,
             drop_covered=_drop_covered,
-            atomic=is_content_swap,
+            atomic=decision_atomic,
             cascade_pending=_cascade_pending,
         )
     if new_last_good_key == key:
@@ -354,7 +370,7 @@ def resolve_fallback_plan(
     if _should_emit_fallback:
         _ic_preview_log(
             "fallback result: atomic=%s fallback_raw=%s fallback_kept=%s resolved=%d current=%d more_pending=%s last_good=%s new_last_good=%s promoted=%s decision_atomic=%s",
-            decision_is_content_swap,
+            decision_atomic,
             fallback_diag.get("raw"),
             fallback_diag.get("kept"),
             len(array_draw_plan),
@@ -400,7 +416,7 @@ def resolve_fallback_plan(
             fallback_active=bool(fallback_diag),
             rekeyed_same_slot_swap={str(k): str(v) for k, v in rekeyed.items()} if rekeyed else None,
             content_swap_active=decision_is_content_swap,
-            decision_atomic=decision_is_content_swap,
+            decision_atomic=decision_atomic,
             decision_flag=decision_content_swap_flag,
         )
     # P1A frame-context pilot: record the final decision IN ADDITION to the
@@ -412,7 +428,7 @@ def resolve_fallback_plan(
         frame_context.record(
             "fallback",
             "ran" if fallback_diag else "skipped",
-            f"fallback atomic={decision_is_content_swap}"
+            f"fallback atomic={decision_atomic}"
             f" more_pending={main_more_pending} promoted={_promoted}"
             f" cascade_pending={_cascade_pending}"
             f" uploaded={_cascade_uploaded}"

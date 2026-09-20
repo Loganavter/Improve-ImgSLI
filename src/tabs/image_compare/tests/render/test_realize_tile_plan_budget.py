@@ -488,3 +488,61 @@ def test_upload_source_rekeys_old_multi_tile_content_before_reregistering():
     assert tile_service.resident_tiles(prev_key) == resident
     # "diff" itself was reset for the new content.
     assert tile_service.resident_tiles("diff") == set()
+
+
+def test_shared_deadline_fills_both_keys_round_robin(tmp_path, monkeypatch):
+    """Round-robin fairness under one shared time budget (Wave C).
+
+    Sequential key order let stored_0 eat the whole time budget while
+    stored_1 stalled at its guaranteed first tile (log shape side1=40
+    side2=1). Interleaved upload must advance both keys together: with a
+    clock that blows the deadline after two further uploads, each key
+    lands exactly 2 tiles (|diff| <= 1); sequential order would land
+    (3, 1) on the same clock.
+    """
+    from engine.cache import tile_upload_budget as residency_module
+
+    store = _tps(Image.new("RGBA", (1200, 800), "blue"), tmp_path)
+    update_calls: list = []
+    widget = _widget(stored0=store, update_calls=update_calls)
+    resources = _resources()
+    tile_service = TileTextureService(max_tile_extent=512)
+    updates = MagicMock()
+
+    base_image = SimpleNamespace(
+        letterbox1=(0.0, 0.0, 1.0, 1.0),
+        letterbox2=(0.0, 0.0, 1.0, 1.0),
+        zoom=1.0,
+        pan_offset_x=0.0,
+        pan_offset_y=0.0,
+    )
+
+    # Construction reads (fresh deadline) + two allowed upload reads,
+    # then blown: offset-0 calls short-circuit without reading the clock.
+    calls = {"n": 0}
+
+    def _clock():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return [0.0, 0.001][calls["n"] - 1]
+        if calls["n"] <= 4:
+            return 0.005
+        return 1000.0
+
+    monkeypatch.setattr(residency_module.time, "monotonic", _clock)
+    resources.residency.realize_tile_plan(
+        tile_service, widget, ("stored_0", "stored_1"), base_image, updates
+    )
+
+    def _resident(key):
+        return {
+            index
+            for index in tile_service.visible_tiles(key)
+            if tile_service.is_resident(key, index)
+        }
+
+    resident_0, resident_1 = _resident("stored_0"), _resident("stored_1")
+    assert len(resident_1) >= 2, f"stored_1 stalled: {len(resident_0)=} {len(resident_1)=}"
+    assert abs(len(resident_0) - len(resident_1)) <= 1, (
+        f"unfair fill: {len(resident_0)=} {len(resident_1)=}"
+    )
