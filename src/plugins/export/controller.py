@@ -58,10 +58,10 @@ class ExportController(QObject):
 
     def open_video_editor(self, checked: bool = False):
         from shared.debug_flags import env_flag as _env_flag
-        # Editor-zone gate, platform-local copy: this file is
-        # tab-agnostic platform code (tests/contracts/test_platform_isolation.py)
-        # and must NOT import tabs.image_compare.debug — keep the inline
-        # VIDEO_EDITOR / IC_VIDEO umbrella (frozen semantics).
+        # Editor-zone gate, platform-local copy: this file is tab-agnostic
+        # platform code (see test_platform_isolation) and must NOT import
+        # any tab debug module — keep the inline VIDEO_EDITOR / IC_VIDEO
+        # umbrella (frozen semantics).
         if _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG"):
             logger.warning("[video-editor-debug] ExportController.open_video_editor checked=%s has_recording=%s", checked, self.recorder.has_recording_data() if self.recorder else None)
         else:
