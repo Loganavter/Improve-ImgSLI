@@ -193,7 +193,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py",
-      "lines": 480,
+      "lines": 482,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "flat per-field viewport setters sharing one guard/emit",
@@ -969,7 +969,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 798,
+      "lines": 800,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

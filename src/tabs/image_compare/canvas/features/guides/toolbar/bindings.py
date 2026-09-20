@@ -48,6 +48,8 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
             from shared.debug_flags import env_flag as _env_flag
 
             _lg = logging.getLogger("ImproveImgSLI")
+            # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
+            # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
             if _env_flag("IMGSLI_LASER_DEBUG"):
                 prefix = "[laser-debug]"
                 stack = "".join(traceback.format_stack(limit=15)[:-1])
@@ -112,6 +114,8 @@ def _laser_trace_underline(source: str, raw_col, qcolor) -> None:
         from shared.debug_flags import env_flag as _env_flag
 
         _lg = logging.getLogger("ImproveImgSLI")
+        # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
+        # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
         if not _env_flag("IMGSLI_LASER_DEBUG"):
             return
         prefix = "[laser-debug]"
@@ -132,6 +136,8 @@ def sync_guides_toolbar_state(presenter) -> None:
         from shared.debug_flags import env_flag as _env_flag
 
         _lg = logging.getLogger("ImproveImgSLI")
+        # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
+        # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
         if _env_flag("IMGSLI_LASER_DEBUG"):
             prefix = "[laser-debug]"
             msg = "sync_guides_toolbar_state called state.enabled=%s thickness=%s color=%r"
