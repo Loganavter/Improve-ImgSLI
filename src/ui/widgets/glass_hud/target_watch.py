@@ -8,6 +8,14 @@ Functions here take the owning ``GlassHUD`` instance as their first
 argument and read/write its instance state directly -- same shape as
 ``ui/drag_drop.py``'s split off ``MultiCompareWidget``, see that pattern's
 reference table.
+
+Debug-flag note: frame-rate tracing here gates on ``IMGSLI_FLYOUT_DEBUG``
+(via ``flyout_debug`` helpers), NOT on the ``IMGSLI_GLASS_PANEL_*`` matrix
+(see ``engine/gpu/glass_panel.py``'s header comment for the five flags:
+DEBUG log, DEBUG_TINT visual replace, DEBUG_DUMP=<dir> readback path,
+DEBUG_SIZE truthy stdout print in ``panel_display.py``, SYNC_PROBE
+historical name). The two families stay separate: flyout wiring questions
+("is the canvas spinning at idle") vs. backdrop-pixel questions.
 """
 
 from __future__ import annotations

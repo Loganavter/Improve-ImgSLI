@@ -50,7 +50,7 @@
     },
     {
       "path": "src/engine/gpu/glass_panel.py",
-      "lines": 917,
+      "lines": 937,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
@@ -193,7 +193,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py",
-      "lines": 480,
+      "lines": 482,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "flat per-field viewport setters sharing one guard/emit",
@@ -458,7 +458,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
-      "lines": 657,
+      "lines": 663,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
@@ -502,7 +502,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
-      "lines": 1008,
+      "lines": 1011,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard\"",
@@ -547,7 +547,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
-      "lines": 665,
+      "lines": 666,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
@@ -880,7 +880,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/panel.py",
-      "lines": 590,
+      "lines": 565,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",
@@ -969,7 +969,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 798,
+      "lines": 800,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

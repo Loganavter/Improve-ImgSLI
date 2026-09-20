@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
-
 from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QWidget
+
+from shared.debug_flags import env_flag as _env_flag
 
 from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 
@@ -53,7 +53,7 @@ class GlassPanelDisplayWidget(QWidget):
         # already carries the correct devicePixelRatio (set alongside its
         # readback, see GlassPanelRenderer.render_backdrops), so Qt
         # places it 1:1 in device pixels here.
-        if os.environ.get("IMGSLI_GLASS_PANEL_DEBUG_SIZE"):
+        if _env_flag("IMGSLI_GLASS_PANEL_DEBUG_SIZE"):
             print(
                 f"[glass_panel_display size] widget_logical={self.size()} "
                 f"widget_dpr={self.devicePixelRatioF()} image_px={image.size()} "

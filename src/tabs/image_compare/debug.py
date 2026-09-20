@@ -113,6 +113,12 @@ def ic_label_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_video_debug_enabled() -> bool:
+    # FROZEN OR-semantics (host-dbgflags epic): the VIDEO_EDITOR /
+    # IC_VIDEO umbrella stays — ~30 consumer files outside the epic
+    # scope rely on it (render_flow, loading_pyramid, use_cases/*,
+    # rhi_renderer/*). Narrow per call site (editor-zone callers use
+    # this predicate as-is; thumbnail/timeline zones use their own
+    # gates); the full OR-split is a deferred supervisor phase.
     return _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
 
 
@@ -143,7 +149,13 @@ def ic_perf_debug(msg: str, *args, **kwargs) -> None:
 
 
 def ic_thumbnail_debug_enabled() -> bool:
-    return _env_flag("IMGSLI_THUMBNAIL_DEBUG") or _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+    # NARROW semantics (host-dbgflags W5): THUMBNAIL-only. The former
+    # VIDEO_EDITOR / IC_VIDEO umbrella disjuncts were re-zoned per call
+    # site — thumbnail-pipeline sites (video_editor/services/thumbnails.py,
+    # video_editor/presenter_parts/thumbnails.py) now call ic_thumbnail_debug
+    # directly, so the editor umbrella no longer implies pipeline noise.
+    # Predicate set == emit set (see ic_thumbnail_debug below).
+    return _env_flag("IMGSLI_THUMBNAIL_DEBUG")
 
 
 def ic_thumbnail_debug(msg: str, *args, **kwargs) -> None:
@@ -152,7 +164,7 @@ def ic_thumbnail_debug(msg: str, *args, **kwargs) -> None:
             "[thumbnail-debug]",
             msg,
             *args,
-            env_flags=("IMGSLI_THUMBNAIL_DEBUG", "IMGSLI_VIDEO_EDITOR_DEBUG", "IMGSLI_IC_VIDEO_DEBUG"),
+            env_flags=("IMGSLI_THUMBNAIL_DEBUG",),
             **kwargs,
         )
 

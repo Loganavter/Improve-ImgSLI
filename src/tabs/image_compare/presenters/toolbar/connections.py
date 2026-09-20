@@ -13,6 +13,7 @@ from plugins.export.events import (
     ExportToggleRecordingEvent,
 )
 from tabs.image_compare.canvas.registry import registry
+from tabs.image_compare.debug import ic_video_debug_enabled as _video_dbg_enabled
 from tabs.image_compare.presenters.toolbar.orientation import (
     on_interpolation_combo_clicked,
     on_orientation_right_clicked,
@@ -470,8 +471,8 @@ def _connect_session_comboboxes(presenter):
         lambda data: event_bus.emit(AnalysisSetChannelViewModeEvent(data))
     )
     def _ensure_deferred():
-        from shared.debug_flags import env_flag as _env_flag
-        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        # Editor-zone gate: canonical predicate (umbrella retained; frozen).
+        _dbg = _video_dbg_enabled()
         try:
             ctx = getattr(presenter.main_controller, "context", None)
             if ctx is not None and hasattr(ctx, "ensure_deferred_plugins_loaded"):
@@ -499,9 +500,9 @@ def _connect_session_comboboxes(presenter):
                 logger.warning("[video-editor-debug] ensure_deferred failed: %s", exc)
 
     def _emit_with_ensure(event_factory, name: str):
-        from shared.debug_flags import env_flag as _env_flag
         from PySide6.QtCore import QTimer
-        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        # Editor-zone gate: canonical predicate (umbrella retained; frozen).
+        _dbg = _video_dbg_enabled()
         subs = len(getattr(event_bus, "_subscribers", {}).get(event_factory, [])) if event_bus else 0
         if _dbg:
             logger.warning("[video-editor-debug] CLICK %s subscribers=%s", name, subs)
@@ -519,7 +520,6 @@ def _connect_session_comboboxes(presenter):
     ui.btn_record.toggled.connect(lambda checked: _emit_with_ensure(ExportToggleRecordingEvent, "ExportToggleRecordingEvent"))
     ui.btn_pause.toggled.connect(lambda checked: _emit_with_ensure(ExportTogglePauseRecordingEvent, "ExportTogglePauseRecordingEvent"))
     def _emit_open_editor():
-        from shared.debug_flags import env_flag as _env_flag
         from PySide6.QtCore import QTimer
         try:
             from core.tracing.tracer import Tracer
@@ -528,7 +528,8 @@ def _connect_session_comboboxes(presenter):
         except Exception:
             pass
         _has_subs = len(getattr(event_bus, "_subscribers", {}).get(ExportOpenVideoEditorEvent, [])) if event_bus else 0
-        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        # Editor-zone gate: canonical predicate (umbrella retained; frozen).
+        _dbg = _video_dbg_enabled()
         if _dbg:
             logger.warning("[video-editor-debug] CLICK btn_video_editor -> ExportOpenVideoEditorEvent bus=%s subscribers=%s has_recorder=%s", event_bus, _has_subs, getattr(getattr(presenter, "main_controller", None), "_recorder", None) is not None)
         else:

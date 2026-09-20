@@ -19,6 +19,16 @@ _RESIZE_SHIELD_ATTR = "_imgsli_resize_shield"
 _MAIN_WINDOW_RESIZE_SETTLE_MS = 150
 
 
+# Resize-debug связка (three flags, one family — do not merge):
+# * IMGSLI_RESIZE_DEBUG — text log gate ([resize-debug] lines).
+# * IMGSLI_RESIZE_DEBUG_VISUAL — red "RESIZE SHIELD" overlay styling; implies
+#   the log gate too (visual shield events are untraceable without the log),
+#   hence _resize_debug_enabled() is the OR of both.
+# * IMGSLI_RESIZE_SHIELD — opt-in behavior change (freeze GPU color buffers +
+#   QLabel shields during the burst). Independent of the two debug flags:
+#   shields run silently unless logging is also enabled.
+# All three parse via shared.debug_flags.env_flag (permissive: any non-empty
+# value except 0/false/no/off).
 def _resize_debug_enabled() -> bool:
     return _env_flag("IMGSLI_RESIZE_DEBUG") or _env_flag("IMGSLI_RESIZE_DEBUG_VISUAL")
 

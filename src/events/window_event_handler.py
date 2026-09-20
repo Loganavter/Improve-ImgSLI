@@ -1,15 +1,16 @@
 import logging
-import os
 import traceback
 
 from PySide6.QtCore import QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
+from shared.debug_flags import env_flag as _env_flag
+
 logger = logging.getLogger("ImproveImgSLI")
 
 def _dnd_debug(msg, *args, stack=False, **kwargs):
     # Gated by same flag as [ic-dnd] but also IMGSLI_DND_DEBUG for window-level
-    if os.environ.get("IMGSLI_DND_DEBUG") or os.environ.get("IMGSLI_IMAGE_COMPARE_DEBUG") or os.environ.get("IMGSLI_IC_DEBUG"):
+    if _env_flag("IMGSLI_DND_DEBUG") or _env_flag("IMGSLI_IMAGE_COMPARE_DEBUG") or _env_flag("IMGSLI_IC_DEBUG"):
         # Use WARNING so visible without --debug, like ic_dnd_debug
         logger.warning("[dnd-window] " + msg, *args, **kwargs)
         if stack:
@@ -331,7 +332,7 @@ class WindowEventHandler(QObject):
         # DEBUG post-drop checks (50/200/500/1000ms) — gated behind IMGSLI_DND_DEBUG
         # to avoid timer spam and log noise in prod. Phase 1 cleanup: keep
         # diagnosis aid but do not schedule by default.
-        if os.environ.get("IMGSLI_DND_DEBUG"):
+        if _env_flag("IMGSLI_DND_DEBUG"):
             def _post_drop_check(delay_ms: int):
                 def _check():
                     vis = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()

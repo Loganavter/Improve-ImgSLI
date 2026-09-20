@@ -125,8 +125,9 @@ class ExportPresenter(QObject):
             ui.btn_pause.setChecked(is_paused)
 
     def open_video_editor(self, snapshots, export_controller, video_editor_plugin):
-        from shared.debug_flags import env_flag as _env_flag
-        _dbg = _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG") or _env_flag("IMGSLI_IC_VIDEO_DEBUG")
+        # Editor-zone gate: canonical predicate (umbrella retained; frozen).
+        from tabs.image_compare.debug import ic_video_debug_enabled as _video_dbg_enabled
+        _dbg = _video_dbg_enabled()
         if _dbg:
             logger.warning("[video-editor-debug] ExportPresenter.open_video_editor snapshots=%s plugin=%s", bool(snapshots), video_editor_plugin)
         else:

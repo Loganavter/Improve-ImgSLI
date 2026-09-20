@@ -20,6 +20,8 @@ from tabs.image_compare.canvas.features.guides.state.feature_state import get_gu
 _laser_logger = logging.getLogger("ImproveImgSLI")
 
 
+# LOG gate predicate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
+# UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
 def _laser_debug_enabled() -> bool:
     return _env_flag("IMGSLI_LASER_DEBUG")
 
@@ -30,6 +32,7 @@ def _log_laser_disable(reason: str) -> None:
     try:
         stack = "".join(traceback.format_stack(limit=15)[:-1])
         prefix = "[laser-debug]"
+        # LOG gate (same flag as _laser_debug_enabled above, not a UI gate).
         if _env_flag("IMGSLI_LASER_DEBUG"):
             _laser_logger.warning("%s LASER DISABLE [%s]\n%s", prefix, reason, stack)
         else:

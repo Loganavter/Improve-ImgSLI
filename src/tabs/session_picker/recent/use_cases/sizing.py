@@ -9,12 +9,12 @@ Wayland, where the maximized state is applied asynchronously).
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
+from shared.debug_flags import env_flag as _env_flag
 from sli_ui_toolkit.managers import scaled_px
 
 from tabs.host_helpers import estimate_prelayout_width
@@ -30,8 +30,10 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _shelf_resize_debug(message: str, *args) -> None:
-    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
-    if flag in ("", "0", "false", "no", "off"):
+    # Single canonical helper for IMGSLI_SHELF_RESIZE_DEBUG in this area:
+    # RecentProjectsPanel (panel.py) reuses this via ``sizing`` instead of
+    # keeping its own copies.
+    if not _env_flag("IMGSLI_SHELF_RESIZE_DEBUG"):
         return
     try:
         logger.info(

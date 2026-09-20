@@ -130,9 +130,9 @@ class ThumbnailCoordinator:
     def generate_thumbnails(self):
         self._visible_refresh.cancel()
         try:
-            from tabs.image_compare.debug import ic_video_debug
+            from tabs.image_compare.debug import ic_thumbnail_debug
             tl = getattr(self.view, "timeline", None) if self.view is not None else None
-            ic_video_debug("thumb_coord generate_thumbnails view=%s timeline=%s h=%s has_snapshots=%s total_frames=%s", bool(self.view), bool(tl), getattr(tl, "height", lambda: -1)() if tl else -1, bool(getattr(tl, "has_snapshots", lambda: False)() if tl else False), self.editor_service.get_frame_count() if self.editor_service else -1)
+            ic_thumbnail_debug("thumb_coord generate_thumbnails view=%s timeline=%s h=%s has_snapshots=%s total_frames=%s", bool(self.view), bool(tl), getattr(tl, "height", lambda: -1)() if tl else -1, bool(getattr(tl, "has_snapshots", lambda: False)() if tl else False), self.editor_service.get_frame_count() if self.editor_service else -1)
         except Exception:
             pass
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
@@ -143,8 +143,8 @@ class ThumbnailCoordinator:
         recording = self.editor_service.get_current_recording()
         if not recording:
             try:
-                from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_coord generate_thumbnails ABORT no recording")
+                from tabs.image_compare.debug import ic_thumbnail_debug
+                ic_thumbnail_debug("thumb_coord generate_thumbnails ABORT no recording")
             except Exception:
                 pass
             return
@@ -152,8 +152,8 @@ class ThumbnailCoordinator:
         vis = self.get_visible_frame_indices()
         cnt = self.calculate_optimal_thumbnail_count()
         try:
-            from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord generate_thumbnails target=%s vis_len=%s vis=%s fps=%s", cnt, len(vis), vis[:12], self.editor_service.get_fps())
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            ic_thumbnail_debug("thumb_coord generate_thumbnails target=%s vis_len=%s vis=%s fps=%s", cnt, len(vis), vis[:12], self.editor_service.get_fps())
         except Exception:
             pass
         # I4: mirror the queued generation so tagged completions can drop
@@ -190,8 +190,8 @@ class ThumbnailCoordinator:
         DELIVERY; identity is enforced fail-closed on the service side.
         """
         try:
-            from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord on_single_ready idx=%s has_view=%s gen=%s feed=%s", index, bool(self.view), generation, self._feed_generation)
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            ic_thumbnail_debug("thumb_coord on_single_ready idx=%s has_view=%s gen=%s feed=%s", index, bool(self.view), generation, self._feed_generation)
         except Exception:
             pass
         if (
@@ -200,8 +200,8 @@ class ThumbnailCoordinator:
             and generation != self._feed_generation
         ):
             try:
-                from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_coord on_single_ready DROP stale gen=%s feed=%s idx=%s", generation, self._feed_generation, index)
+                from tabs.image_compare.debug import ic_thumbnail_debug
+                ic_thumbnail_debug("thumb_coord on_single_ready DROP stale gen=%s feed=%s idx=%s", generation, self._feed_generation, index)
             except Exception:
                 pass
             return
@@ -275,8 +275,8 @@ class ThumbnailCoordinator:
 
     def on_timeline_viewport_changed(self):
         try:
-            from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord viewportChanged ping gate_pending=%s", self._visible_refresh.is_pending())
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            ic_thumbnail_debug("thumb_coord viewportChanged ping gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
         self._visible_refresh.ping()
@@ -284,8 +284,8 @@ class ThumbnailCoordinator:
     def on_timeline_zoom_changed(self, *_args):
         # Zoom reshuffles geometry, not content — settle first, don't refit.
         try:
-            from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord zoomChanged ping gate_pending=%s", self._visible_refresh.is_pending())
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            ic_thumbnail_debug("thumb_coord zoomChanged ping gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
         self._visible_refresh.ping()
@@ -296,8 +296,8 @@ class ThumbnailCoordinator:
         # point get_visible_thumbnail_frame_indices returns a settled window.
         # Bypass the extra debounce and refresh immediately.
         try:
-            from tabs.image_compare.debug import ic_video_debug
-            ic_video_debug("thumb_coord viewportChangedState cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
+            from tabs.image_compare.debug import ic_thumbnail_debug
+            ic_thumbnail_debug("thumb_coord viewportChangedState cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
         self._visible_refresh.cancel()
@@ -339,18 +339,18 @@ class ThumbnailCoordinator:
             settle = getattr(tl, "_layout_settle", None) if tl is not None else None
             if settle is not None and hasattr(settle, "is_pending") and settle.is_pending():
                 try:
-                    from tabs.image_compare.debug import ic_video_debug
-                    ic_video_debug("thumb_coord _refresh layout_settle pending but proceed anyway (resizeEvent already fresh)")
+                    from tabs.image_compare.debug import ic_thumbnail_debug
+                    ic_thumbnail_debug("thumb_coord _refresh layout_settle pending but proceed anyway (resizeEvent already fresh)")
                 except Exception:
                     pass
         except Exception:
             pass
         visible_indices = self.get_visible_frame_indices()
         try:
-            from tabs.image_compare.debug import ic_video_debug
+            from tabs.image_compare.debug import ic_thumbnail_debug
             tl = getattr(self.view, "timeline", None) if self.view is not None else None
             pps = tl.get_pixels_per_second() if tl and hasattr(tl, "get_pixels_per_second") else -1
-            ic_video_debug("thumb_coord _refresh vis_len=%s vis=%s pps=%s total=%s pending=%s generated=%s", len(visible_indices), visible_indices[:12], pps, self.editor_service.get_frame_count() if self.editor_service else -1, len(getattr(self.thumbnail_service, "_pending_indices", [])), len(getattr(self.thumbnail_service, "_generated_indices", [])))
+            ic_thumbnail_debug("thumb_coord _refresh vis_len=%s vis=%s pps=%s total=%s pending=%s generated=%s", len(visible_indices), visible_indices[:12], pps, self.editor_service.get_frame_count() if self.editor_service else -1, len(getattr(self.thumbnail_service, "_pending_indices", [])), len(getattr(self.thumbnail_service, "_generated_indices", [])))
         except Exception:
             pass
         if visible_indices:
@@ -379,8 +379,8 @@ class ThumbnailCoordinator:
             ) != set(self._last_visible_indices):
                 should_retire = not zoom_changed
                 try:
-                    from tabs.image_compare.debug import ic_video_debug
-                    ic_video_debug(
+                    from tabs.image_compare.debug import ic_thumbnail_debug
+                    ic_thumbnail_debug(
                         "thumb_coord _refresh zoom_vs_pan zoom_changed=%s zoom=%s last_zoom=%s retire=%s",
                         zoom_changed,
                         current_zoom,
@@ -417,8 +417,8 @@ class ThumbnailCoordinator:
             )
         else:
             try:
-                from tabs.image_compare.debug import ic_video_debug
-                ic_video_debug("thumb_coord _refresh EMPTY no indices queued")
+                from tabs.image_compare.debug import ic_thumbnail_debug
+                ic_thumbnail_debug("thumb_coord _refresh EMPTY no indices queued")
             except Exception:
                 pass
 

@@ -24,9 +24,9 @@ def _dbg_unrouted_drag_target(watched_obj, event: QEvent) -> None:
     routed chain never restores the DnD tiles. This logging identifies the
     thief widget directly.
     """
-    import os
+    from shared.debug_flags import env_flag as _env_flag
 
-    if not os.environ.get("IMGSLI_DND_DEBUG"):
+    if not _env_flag("IMGSLI_DND_DEBUG"):
         return
     event_type = event.type()
     watched_type = type(watched_obj).__name__
