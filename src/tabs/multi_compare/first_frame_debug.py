@@ -1,6 +1,6 @@
 """Multi Compare first-frame timeline (thin wrapper).
 
-See ``shared/rendering/first_frame_debug.py`` for the shared
+See ``engine.cache.first_frame_debug`` for the shared
 implementation; this module binds it to Multi Compare's env gate
 (``IMGSLI_MC_FIRST_FRAME_DEBUG``), log tag and renderer attributes so both
 canvas tabs share one code path while keeping their own env flags and

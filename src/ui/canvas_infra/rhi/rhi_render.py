@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtGui import QColor, QPalette
 
+from shared.debug_flags import env_flag as _env_flag
+
 
 def resolve_clear_color(widget) -> QColor:
     plan = getattr(widget, "_active_render_plan", None)
@@ -50,15 +52,12 @@ def resolve_clear_color(widget) -> QColor:
 
 def _log_clear_color(widget, color: QColor, *, source: str) -> None:
     try:
-        import os
-
-        if os.environ.get("IMGSLI_IC_FIRST_FRAME_DEBUG", "").strip().lower() in (
-            "",
-            "0",
-            "false",
-            "no",
-            "off",
-        ):
+        # Same gate as tabs/image_compare/first_frame_debug.py's
+        # ic_first_frame_debug_enabled (IMGSLI_IC_FIRST_FRAME_DEBUG via
+        # shared.debug_flags.env_flag) — routed through the shared
+        # predicate so the third inline check can't drift from the
+        # wrapper's own gate.
+        if not _env_flag("IMGSLI_IC_FIRST_FRAME_DEBUG"):
             return
         import logging
 
