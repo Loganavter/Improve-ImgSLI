@@ -329,15 +329,27 @@ def maybe_dump_trace(
     every: int = TRACE_DUMP_EVERY_N_FRAMES,
     path: str | None = None,
 ) -> int:
-    """Serialize the context ring every ``every`` frames (gated).
+    """Serialize the context ring periodically + shortly after wheel input.
 
     Call unconditionally at the end of every render: bumps the context's
-    ``perf_trace_tick`` counter and, each Nth tick, delegates to
-    :func:`write_trace` (which checks the ``IMGSLI_PERF_TRACE`` gate —
-    off means no file, return 0). Returns the event count written
-    (0 off-schedule or gated off). Open the result in Perfetto UI.
+    ``perf_trace_tick`` counter and delegates to :func:`write_trace`
+    (which checks the ``IMGSLI_PERF_TRACE`` gate — off means no file,
+    return 0) when either the N-frame schedule hits OR a wheel tick
+    arrived since the last dump and at least 3 frames have passed (so
+    short open-zoom-close sessions still leave a file: the ring holds
+    the burst frames). Returns the event count written (0 off-schedule
+    or gated off). Open the result in Perfetto UI.
     """
     tick = frame_context.bump("perf_trace_tick")
-    if tick % every != 0:
-        return 0
-    return write_trace(path or default_trace_path(), [frame_context])
+    wheel = frame_context.count("ic.wheel_tick") + frame_context.count(
+        "mc.wheel_tick"
+    )
+    last_tick = frame_context.counters.get("perf_trace_dump_tick", 0)
+    last_wheel = frame_context.counters.get("perf_trace_dump_wheel", 0)
+    if tick - last_tick >= every or (
+        wheel > last_wheel and tick - last_tick >= 3
+    ):
+        frame_context.counters["perf_trace_dump_tick"] = tick
+        frame_context.counters["perf_trace_dump_wheel"] = wheel
+        return write_trace(path or default_trace_path(), [frame_context])
+    return 0

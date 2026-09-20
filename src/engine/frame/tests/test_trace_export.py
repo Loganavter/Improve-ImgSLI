@@ -375,3 +375,16 @@ def test_maybe_dump_trace_writes_every_nth(trace_on, tmp_path):
     assert payload["displayTimeUnit"] == "ms"
     assert ctx.count("perf_trace_tick") == 2
     assert TRACE_DUMP_EVERY_N_FRAMES == 30
+
+
+def test_maybe_dump_trace_early_after_wheel(trace_on, tmp_path):
+    ctx = FrameContext()
+    out = tmp_path / "w.json"
+    assert maybe_dump_trace(ctx, every=1000, path=str(out)) == 0
+    ctx.bump("ic.wheel_tick")
+    assert maybe_dump_trace(ctx, every=1000, path=str(out)) == 0
+    n = maybe_dump_trace(ctx, every=1000, path=str(out))
+    assert n > 0
+    assert out.exists()
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert len(payload["traceEvents"]) == n
