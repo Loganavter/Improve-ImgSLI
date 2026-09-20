@@ -627,3 +627,34 @@ def test_cascade_quiescence_holds_fast_path_promotion():
     new_last_good, plan = _run(False, 0)
     assert new_last_good == _new, plan
     assert plan == _items
+
+
+def test_hires_flip_holds_single_tier():
+    """stored_* -> source_* flip with a resident baseline draws one tier.
+
+    Same atomic rationale as a LevelKey transition: the hires flip swaps
+    the whole tier while the new one streams in partial (live trace
+    2026-09-20 frame 90: 33 current + 7 fallback on the flip frame).
+    First paint (last_good None) stays fail-open via the engine.
+    Symmetric: source_* -> stored_* holds identically."""
+    for old_keys, new_keys in (
+        (("stored_0", "stored_1"), ("source_0", "source_1")),
+        (("source_0", "source_1"), ("stored_0", "stored_1")),
+    ):
+        with mock.patch(
+            "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback.build_array_draw_plan",
+            return_value=["fb"],
+        ):
+            new_last_good, plan, r = _run_fallback(
+                prev_is_same=False,
+                cur_is_same=False,
+                more_pending=True,
+                current_items=["cur"],
+                last_good=(old_keys, None),
+                rekeyed={},
+                texture_keys=new_keys,  # type: ignore
+                source_changed=False,
+            )
+        assert r._fallback_atomic_snapshot is True
+        assert list(plan) == ["fb"]
+        assert new_last_good == (old_keys, None)

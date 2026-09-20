@@ -65,6 +65,29 @@ def _is_rekeyed_content_baseline(last_good_key) -> bool:
     return any(_is_rekeyed_content_key(k) for k in texture_keys) or _is_rekeyed_content_key(diff_key)
 
 
+def _is_hires_flip_baseline(last_good_key, key) -> bool:
+    """stored_* <-> source_* tier switch = hires flip (use_hires path).
+
+    Same atomic rationale as a LevelKey transition: the old tier is a
+    complete resident image while the new one streams in partial, so the
+    old tier held whole for 1-3 frames beats a mixed sharp/stretched grid
+    (live trace 2026-09-20 frame 90: 33 current + 7 fallback drawn on the
+    flip frame). Symmetric in both directions (zoom across 1.0, diff-mode
+    toggles); first paint (last_good None) stays fail-open downstream.
+    Name-based (frame_setup mints exactly stored_N/source_N); anything
+    else fails closed to False.
+    """
+    try:
+        old_tex = (last_good_key or (None,))[0] or ()
+        new_tex = (key or (None,))[0] or ()
+        old = {str(getattr(k, "base", k)) for k in old_tex}
+        new = {str(getattr(k, "base", k)) for k in new_tex}
+    except Exception:
+        return False
+    _flips = ({"stored_0", "stored_1"}, {"source_0", "source_1"})
+    return (old, new) in (_flips, _flips[::-1]) and old != new
+
+
 def resolve_fallback_plan(
     renderer,
     *,
@@ -192,8 +215,9 @@ def resolve_fallback_plan(
     decision_content_swap_flag = renderer._content_swap_active
     decision_last_good_has_marker = _is_rekeyed_content_baseline(last_good_key)
     # Atomic-tier invariant (plan-atomic-lod-transitions): one tier per
-    # frame also for LOD level changes, not just content swaps. A level
-    # transition key carries LevelKey entries while the last-good baseline
+    # frame also for LOD level changes AND hires flips, not just content
+    # swaps. A level transition key carries LevelKey entries, a hires flip
+    # switches stored_*<->source_* keys, while the last-good baseline
     # is a complete older tier — hold the old tier whole until the new one
     # promotes instead of layering partial grids (shimmer/seams). Opt-in at
     # this IC call site only: engine default stays atomic=False so
@@ -205,12 +229,20 @@ def resolve_fallback_plan(
         and last_good_key != key
         and any(isinstance(k, LevelKey) for k in texture_keys)
     )
-    decision_atomic = decision_is_content_swap or _atomic_level_hold
+    _hires_flip_hold = (
+        not is_content_swap
+        and last_good_key is not None
+        and last_good_key != key
+        and _is_hires_flip_baseline(last_good_key, key)
+    )
+    decision_atomic = (
+        decision_is_content_swap or _atomic_level_hold or _hires_flip_hold
+    )
     _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, decision_atomic, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
     _should_emit_fallback = _throttle_emit("fallback.decision", _fallback_sig)
     if _should_emit_fallback:
         _ic_preview_log(
-            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s level_hold=%s",
+            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s level_hold=%s hires_hold=%s",
             source_changed,
             last_good_key,
             key,
@@ -223,6 +255,7 @@ def resolve_fallback_plan(
             decision_content_swap_flag,
             decision_atomic,
             _atomic_level_hold,
+            _hires_flip_hold,
         )
         if _gap_enabled():
             try:
@@ -432,6 +465,7 @@ def resolve_fallback_plan(
             f" more_pending={main_more_pending} promoted={_promoted}"
             f" cascade_pending={_cascade_pending}"
             f" uploaded={_cascade_uploaded}"
+            f" hires_hold={_hires_flip_hold}"
             f" current={len(current_array_plan)}"
             f" kept={fallback_diag.get('kept')} raw={fallback_diag.get('raw')}",
             ids=make_ids(
