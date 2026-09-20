@@ -241,9 +241,8 @@ class VideoEditorDialog(ThemedDialog):
         self.scroll_area = create_timeline_scroll_area(self)
         try:
             # Timeline-zone gate (debug_timeline.timeline_debug_enabled):
-            # permissive env_flag over IMGSLI_VIDEO_EDITOR_DEBUG /
-            # IMGSLI_TIMELINE_DEBUG — replaces the legacy strict == "1"
-            # parse. Umbrella disjunct retained (OR-split deferred).
+            # IMGSLI_TIMELINE_DEBUG-only (host-dbgflags W5 narrow; the
+            # former VIDEO_EDITOR umbrella now belongs to the editor zone).
             from tabs.image_compare.plugins.video_editor.debug_timeline import (
                 timeline_debug_enabled,
             )

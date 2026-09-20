@@ -110,7 +110,10 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_MULTI_COMPARE_DEBUG` / `IMGSLI_MC_DEBUG` | log | `env_flag` (aliases, same gate) | `src/tabs/multi_compare/debug.py` |
 | `IMGSLI_IC_PREVIEW_DEBUG`, `IMGSLI_IC_GAP_DEBUG`, `IMGSLI_IC_LABEL_DEBUG`, `IMGSLI_IC_LOUPE_DEBUG`, `IMGSLI_IC_INVALIDATE_DEBUG`, `IMGSLI_MAGNIFIER_DEBUG` | log | `env_flag` | `src/tabs/image_compare/debug.py` |
 | `IMGSLI_IC_FIRST_FRAME_DEBUG` / `IMGSLI_MC_FIRST_FRAME_DEBUG` | log | `env_flag` (thin wrappers, shared body) | `src/tabs/*/first_frame_debug.py`, `src/ui/canvas_infra/rhi/rhi_render.py` |
-| `IMGSLI_VIDEO_EDITOR_DEBUG` / `IMGSLI_IC_VIDEO_DEBUG`, `IMGSLI_TIMELINE_DEBUG`, `IMGSLI_THUMBNAIL_DEBUG`, `IMGSLI_VIDEO_PERF_DEBUG` / `IMGSLI_IC_PERF_DEBUG` | log | `env_flag` (umbrella OR frozen — see note) | `src/tabs/image_compare/debug.py`, `plugins/video_editor/*`, `src/plugins/export/*` |
+| `IMGSLI_VIDEO_EDITOR_DEBUG` / `IMGSLI_IC_VIDEO_DEBUG` | log | `env_flag` (aliases, editor zone) | `src/tabs/image_compare/debug.py:ic_video_debug`, `plugins/video_editor/*` (editor sites), `src/plugins/export/*` (platform-local inline gates) |
+| `IMGSLI_TIMELINE_DEBUG` | log | `env_flag` (timeline zone only) | `plugins/video_editor/debug_timeline.py:timeline_debug_enabled`, dialog `shell.py` |
+| `IMGSLI_THUMBNAIL_DEBUG` | log + dump | `env_flag` (pipeline zone only) | `src/tabs/image_compare/debug.py:ic_thumbnail_debug`, thumbnail pipeline (`services/thumbnails.py`, `presenter_parts/thumbnails.py`) |
+| `IMGSLI_VIDEO_PERF_DEBUG` / `IMGSLI_IC_PERF_DEBUG` | log | `env_flag` (aliases) | `src/tabs/image_compare/debug.py:ic_perf_debug` |
 | `IMGSLI_LASER_DEBUG` | log | `env_flag` (all 14 sites verified log-only 2026-09-20) | guides/magnifier/scroll/pickers (5 files) |
 | `IMGSLI_LASER_UI_DEBUG` | reserved | `env_flag` (read nowhere yet) | convention only — mandatory gate for any future laser UI-visibility use |
 | `IMGSLI_AUTOCROP_DEBUG` | log | `env_flag` | `src/shared/image_processing/autocrop/debug.py` |
@@ -133,10 +136,12 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_ACTIVATION_PROBE` | removed | deleted 2026-09-20 (was TEMPORARY in `src/__main__.py`) | — |
 | `IMGSLI_TOAST_DEBUG` | removed | deleted earlier (no `src/` refs; docs residue cleaned 2026-09-20) | — |
 
-Notes: video-family umbrella OR (`VIDEO_EDITOR` implying thumbnail/timeline
-predicates) is intentionally FROZEN — ~30 consumers outside the reorg scope
-rely on it; the full OR-split is a separate phase with full-tree audit.
-`IMPROVE_IMGSLI_*` vs `IMGSLI_*` prefix duality is historical; both spellings
+Notes: video-family flags are NARROW since 2026-09-20 (host-dbgflags W5):
+`VIDEO_EDITOR`/`IC_VIDEO` gate the editor zone only (`ic_video_debug`),
+`TIMELINE` the timeline zone only (`timeline_debug_enabled`), `THUMBNAIL`
+the pipeline zone only (`ic_thumbnail_debug` + pixel dump gate). Migration:
+set `IMGSLI_THUMBNAIL_DEBUG=1` for pipeline, `IMGSLI_TIMELINE_DEBUG=1` for
+timeline. `IMPROVE_IMGSLI_*` vs `IMGSLI_*` prefix duality is historical; both spellings
 are honored only where listed above.
 
 ## Startup trace
