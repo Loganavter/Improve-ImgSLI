@@ -91,6 +91,26 @@ blits it on its own, entirely outside the canvas's render pipeline.
 Audit-Meta: pattern=state-machine reason="single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
 """
 
+# Glass debug-flag matrix (five flags, deliberately NOT merged — each gates
+# an orthogonal diagnostic; collapsing them would couple GPU readbacks to
+# log spam or change opt-in behavior. Quoted by the W4 debug registry):
+# * IMGSLI_GLASS_PANEL_DEBUG — text log gate ([glass-panel-debug] lines:
+#   per-panel GPU object identities + geometry per render_backdrops call).
+#   Permissive env_flag-style predicate (any non-empty except 0/false/no/off).
+# * IMGSLI_GLASS_PANEL_DEBUG_TINT — visual replace: each panel's composite
+#   output becomes a flat distinct color (screenshot-level "whose texture
+#   shows where" test). Same permissive predicate. Log + tint compose.
+# * IMGSLI_GLASS_PANEL_DEBUG_DUMP=<dir> — GPU readback path: every Nth frame
+#   dumps each panel's crop/blur/composite textures + an annotated full
+#   colorTexture() capture. Value is a directory, not a bool — never feed it
+#   through a boolean predicate.
+# * IMGSLI_GLASS_PANEL_DEBUG_SIZE — truthy os.environ.get check in
+#   ui/widgets/glass_hud/panel_display.py (ANY non-empty value, even "0",
+#   enables the stdout size print). Owned by wave W1 — do not touch here.
+# * IMGSLI_GLASS_PANEL_SYNC_PROBE — historical only: named in comments for
+#   the rhi.finish() cost measurement (799/799 sampled calls); no live
+#   os.environ read remains. Kept as a name so old logs stay searchable.
+
 from __future__ import annotations
 
 import logging

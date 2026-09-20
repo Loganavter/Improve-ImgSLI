@@ -15,6 +15,14 @@ from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
 from ui.widgets.glass_hud import target_watch
 from ui.widgets.glass_hud.panel_display import create_glass_panel_display_widget
 
+# Glass backdrop diagnostics live in engine/gpu/glass_panel.py — see its
+# header comment for the full 5-flag matrix (DEBUG log / DEBUG_TINT visual
+# replace / DEBUG_DUMP=<dir> readback path / DEBUG_SIZE truthy stdout print
+# in panel_display.py / SYNC_PROBE historical name). This HUD module itself
+# only gates on IMGSLI_FLYOUT_DEBUG (via flyout_debug helpers); it never
+# reads the IMGSLI_GLASS_PANEL_* vars directly — backdrop pixels are the
+# canvas renderer's business, this widget just registers its rect.
+
 _BLUR_RADIUS_PX = 16.0
 
 
