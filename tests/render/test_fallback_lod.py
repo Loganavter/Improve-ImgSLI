@@ -84,3 +84,60 @@ def test_atomic_promotes_once_fully_resident():
 
     assert new_key == "new"
     assert plan == current_items
+
+def _noop_build(prior_key):
+    raise AssertionError("must not build fallback on promotion path")
+
+
+def _noop_drop(items, current):
+    raise AssertionError("must not filter on promotion path")
+
+
+def test_cascade_pending_holds_promotion():
+    """Freshly uploaded tiles have no coarse mips yet: a complete tier
+    (not more_pending) must NOT promote while cascade_pending, even with
+    a full current plan. Live trace 2026-09-20 frames 85-86."""
+    current_items = ["current_a", "current_b"]
+    new_key, plan = resolve_fallback_lod(
+        key="new",
+        current_items=current_items,
+        more_pending=False,
+        last_good_key="old",
+        build_fallback_items=lambda prior_key: ["fallback_a"],
+        drop_covered=lambda items, current: [],
+        atomic=True,
+        cascade_pending=True,
+    )
+    assert new_key == "old"
+    assert plan == ["fallback_a"]
+
+
+def test_cascade_quiescent_promotes_immediately():
+    new_key, plan = resolve_fallback_lod(
+        key="new",
+        current_items=["current_a"],
+        more_pending=False,
+        last_good_key="old",
+        build_fallback_items=_noop_build,
+        drop_covered=_noop_drop,
+        atomic=True,
+        cascade_pending=False,
+    )
+    assert new_key == "new"
+    assert plan == ["current_a"]
+
+
+def test_cascade_pending_defaults_to_old_behavior():
+    """Default cascade_pending=False keeps every pre-existing call site
+    (multi_compare progressive reveal) byte-identical in behavior."""
+    new_key, plan = resolve_fallback_lod(
+        key="new",
+        current_items=["current_a"],
+        more_pending=False,
+        last_good_key="old",
+        build_fallback_items=_noop_build,
+        drop_covered=_noop_drop,
+        atomic=False,
+    )
+    assert new_key == "new"
+    assert plan == ["current_a"]

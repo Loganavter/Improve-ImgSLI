@@ -243,6 +243,22 @@ def resolve_fallback_plan(
         fallback_diag["held_first_paint"] = 1
         return None, []
     _narrow_blocked = False
+    # Cascade-quiescence gate (tile-seam fix 2026-09-20): freshly uploaded
+    # tiles sample stale coarse mips at their edges for 1-2 frames, so a
+    # tier must not promote the same frame its uploads land. Previous
+    # frames' leftovers live in renderer._pending_dirty_layers; this
+    # frame's uploads in the realizer's stashed count (main path only —
+    # magnifier captures are excluded at the stash site). None-safe:
+    # missing attrs read as quiescent (fail-open, old behavior).
+    _cascade_leftover = bool(getattr(renderer, "_pending_dirty_layers", None))
+    try:
+        _cascade_uploaded = int(
+            getattr(renderer.resources.residency, "last_uploaded_count", 0)
+            or 0
+        )
+    except Exception:
+        _cascade_uploaded = 0
+    _cascade_pending = _cascade_leftover or _cascade_uploaded > 0
     if not main_more_pending and current_array_plan:
         try:
             _narrow_cnt = sum(1 for _it in current_array_plan if _it.bbox[2] < 0.001 or _it.bbox[3] < 0.001)
@@ -261,7 +277,12 @@ def resolve_fallback_plan(
                         pass
         except Exception:
             _narrow_blocked = False
-    if not main_more_pending and current_array_plan and not _narrow_blocked:
+    if (
+        not main_more_pending
+        and not _cascade_pending
+        and current_array_plan
+        and not _narrow_blocked
+    ):
         new_last_good_key, array_draw_plan = key, current_array_plan
     else:
 
@@ -305,6 +326,7 @@ def resolve_fallback_plan(
             build_fallback_items=_build_fallback_items,
             drop_covered=_drop_covered,
             atomic=is_content_swap,
+            cascade_pending=_cascade_pending,
         )
     if new_last_good_key == key:
         if decision_content_swap_flag:
@@ -392,6 +414,8 @@ def resolve_fallback_plan(
             "ran" if fallback_diag else "skipped",
             f"fallback atomic={decision_is_content_swap}"
             f" more_pending={main_more_pending} promoted={_promoted}"
+            f" cascade_pending={_cascade_pending}"
+            f" uploaded={_cascade_uploaded}"
             f" current={len(current_array_plan)}"
             f" kept={fallback_diag.get('kept')} raw={fallback_diag.get('raw')}",
             ids=make_ids(

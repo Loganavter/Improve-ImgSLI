@@ -497,3 +497,57 @@ def test_bbox_width_for_distinct_images():
     # (previous bug made right side sliver-only and left-on-both)
     assert plan[0].layer1 != plan[0].layer2, f"layers duplicate {plan[0].layer1} == {plan[0].layer2} — left-on-both"
     # ensure letterboxes were not forced identical (already asserted)
+
+
+def test_cascade_quiescence_holds_fast_path_promotion():
+    """Tile-seam fix 2026-09-20: a complete tier (more_pending False) with
+    a full current plan must NOT fast-promote while the mip cascade is
+    still dirty — neither from previous-frame leftovers nor from this
+    frame's uploads. Live trace frames 85-86: 51 dirty layers, full
+    40-entry plan, seam flashed for exactly the drain window."""
+    from engine.cache.lod import LevelKey as _LK
+
+    _new = ((_LK("src", 1), _LK("src", 1)), None)
+    _old = (("stored_0", "stored_1"), None)
+    _items = ["current_a", "current_b"]
+
+    def _run(cascade_leftover, uploaded):
+        r = RhiCanvasRenderer()
+        r._last_good_texture_keys, r._last_good_diff_key = _old
+        r._content_swap_active = False
+        r._prev_sources_is_same = False
+        if cascade_leftover:
+            r._pending_dirty_layers = {0: {7}}
+        else:
+            r._pending_dirty_layers = {}
+        r.resources.residency.last_uploaded_count = uploaded
+        with mock.patch(
+            "tabs.image_compare.canvas.rhi_renderer.renderer.build_array_draw_plan",
+            side_effect=lambda *a, **k: ["fallback_a"],
+        ):
+            new_last_good, plan = r._resolve_fallback_plan(
+                tile_service=_fake_tile_service(),
+                texture_keys=_new[0],
+                diff_source_key=None,
+                base_image=_base_image(),
+                sampler_name="linear",
+                viewport_zoom=(1.0, 1.0),
+                viewport_offset=(0.0, 0.0),
+                main_more_pending=False,
+                current_array_plan=list(_items),
+                source_changed=False,
+                rekeyed={},
+                current_sources_is_same=False,
+            )
+        return new_last_good, plan
+
+    # Leftover cascade from the previous frame holds promotion.
+    new_last_good, plan = _run(True, 0)
+    assert new_last_good == _old, plan
+    # This frame's uploads hold promotion even with a clean leftover.
+    new_last_good, plan = _run(False, 12)
+    assert new_last_good == _old, plan
+    # Quiescent cascade promotes immediately (old fast path preserved).
+    new_last_good, plan = _run(False, 0)
+    assert new_last_good == _new, plan
+    assert plan == _items

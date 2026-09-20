@@ -25,6 +25,7 @@ def resolve_fallback_lod(
     build_fallback_items: Callable[[object], list[_T]],
     drop_covered: Callable[[list[_T], list[_T]], list[_T]],
     atomic: bool = False,
+    cascade_pending: bool = False,
 ) -> tuple[object | None, list[_T]]:
     """Decides this frame's draw plan and whether to promote ``key`` as the
     new fallback baseline.
@@ -35,9 +36,14 @@ def resolve_fallback_lod(
     the caller stores it back into its own dict/attribute.
 
     Promotion happens once ``key``'s own tile set is fully uploaded
-    (``not more_pending``) and non-empty; at that point the new level needs
-    no fallback of its own, so ``current_items`` alone is the draw plan and
-    ``build_fallback_items``/``drop_covered`` are not called at all. If not
+    (``not more_pending``), its mip cascade has drained (``not
+    cascade_pending`` — freshly uploaded tiles sample stale coarse mips
+    at their edges for 1-2 frames, visible as a tile seam; live trace
+    2026-09-20: 51 dirty layers draining over exactly frames 85-86 while
+    the plan drew a full 40 entries), and the set is non-empty; at that
+    point the new level needs no fallback of its own, so ``current_items``
+    alone is the draw plan and ``build_fallback_items``/``drop_covered``
+    are not called at all. If not
     promoted this frame and a different key is tracked as the last good
     baseline, that old key's still-resident footprint (``build_fallback_items``)
     is drawn underneath wherever ``current_items`` doesn't already cover it
@@ -63,7 +69,7 @@ def resolve_fallback_lod(
     and the original progressive reveal, which is the right behavior there
     (finer detail filling in over an already-visible coarser image, not a
     content change)."""
-    if not more_pending and current_items:
+    if not more_pending and not cascade_pending and current_items:
         return key, current_items
     if last_good_key is not None and last_good_key != key:
         fallback_items = build_fallback_items(last_good_key)

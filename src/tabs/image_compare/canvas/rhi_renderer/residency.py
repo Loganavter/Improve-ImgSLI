@@ -287,6 +287,16 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         self._array_resources = array_resources
         self._evict_stale_tiles = evict_stale_tiles
         self._prev_key_counter = itertools.count()
+        # Uploaded-tile count from the most recent `realize_tile_plan` call
+        # (resident-after minus resident-before, summed over specs; 0 when
+        # nothing was missing). Read by the fallback-LOD plan the same frame
+        # to gate tier promotion on mip-cascade quiescence: freshly uploaded
+        # tiles have no coarse mips until `generate_all_dirty_mips` runs
+        # post-submit, so promoting a tier the same frame it finished
+        # uploading flashes a stale-mip edge seam for 1-2 frames (live
+        # trace: 51 dirty layers draining over exactly frames 85-86).
+        # Same pass-through precedent as `last_rekeyed_keys` below.
+        self.last_uploaded_count: int = 0
         # Populated by the most recent `realize_tile_plan` call: maps a
         # texture key that got re-registered this call (its live source
         # object changed size, e.g. an image swap into an already-loaded
@@ -797,9 +807,9 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # Phase-B2 frame bus: realize budget/deadline/residency fact
         # (record only -- the loop above is behavior-identical).
         _frame_context = frame_context_from_widget(widget)
+        _uploaded = 0
         if _frame_context is not None:
             _realize_ms = (time.perf_counter() - ctx.realize_t0) * 1000.0
-            _uploaded = 0
             _skipped = 0
             for _spec in ctx.specs:
                 _after = tile_service.resident_tiles(_spec.key)
@@ -828,6 +838,14 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     _stats.as_tuple(),
                 ),
             )
+        # Stash for the same-frame fallback-LOD plan (cascade-quiescence
+        # gate): counts tiles whose coarse mips don't exist yet. Runs
+        # unconditionally (not only when a context is wired) so fakes and
+        # context-less callers report honestly. Main path only: magnifier
+        # captures (capture_uv_rect set) upload into their own lens grid
+        # and must not gate main-tier promotion.
+        if capture_uv_rect is None:
+            self.last_uploaded_count = int(_uploaded)
 
         if owns_dirty_layers:
             # No caller-supplied dict: nobody downstream will call
