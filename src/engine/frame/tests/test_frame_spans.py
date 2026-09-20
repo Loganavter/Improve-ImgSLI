@@ -195,3 +195,29 @@ def test_decisions_property_snapshot():
     ctx.reset()
     assert ctx.decisions == ()
     assert len(snap) == 1  # earlier snapshot unaffected by reset
+
+
+def test_past_decisions_window_bounded():
+    from engine.frame.context import PAST_DECISIONS_MAX
+
+    ctx = FrameContext()
+    for n in range(PAST_DECISIONS_MAX + 5):
+        ctx.record("fallback", "ran", f"r{n}", ids=(f"frame={n}",))
+        ctx.reset()
+    past = ctx.past_decisions
+    assert len(past) == PAST_DECISIONS_MAX
+    assert [fid for fid, _ in past] == list(
+        range(5, 5 + PAST_DECISIONS_MAX)
+    )
+    assert past[0][1][0].reason == "r5"
+    assert isinstance(past, tuple)
+
+
+def test_empty_frames_skip_window():
+    ctx = FrameContext()
+    ctx.reset()
+    ctx.reset()
+    assert ctx.past_decisions == ()
+    ctx.record("prepare_frame", "skipped", "x", ids=("frame=2",))
+    ctx.reset()
+    assert [fid for fid, _ in ctx.past_decisions] == [2]

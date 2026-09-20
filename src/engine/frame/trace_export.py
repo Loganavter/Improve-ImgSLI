@@ -272,27 +272,34 @@ def _decision_events(
             frame_id = int(ctx.frame_id)
         except (TypeError, ValueError, AttributeError):
             frame_id = 0
-        verdicts = []
-        for decision in getattr(ctx, "decisions", ()):
-            verdicts.append(
-                {
-                    "pass": str(getattr(decision, "pass_name", "?")),
-                    "verdict": str(getattr(decision, "verdict", "?")),
-                    "reason": str(getattr(decision, "reason", "")),
-                }
-            )
-        if verdicts:
-            events.append(
-                {
-                    "name": "frame.decisions",
-                    "ph": "X",
-                    "pid": pid,
-                    "tid": frame_id,
-                    "ts": sample_ts_us,
-                    "dur": 0,
-                    "args": {"frame_id": frame_id, "decisions": verdicts},
-                }
-            )
+        windows: list[tuple[int, Any]] = [(frame_id, getattr(ctx, "decisions", ()))]
+        for past_id, past_ds in getattr(ctx, "past_decisions", ()):
+            try:
+                windows.append((int(past_id), past_ds))
+            except (TypeError, ValueError):
+                continue
+        for window_id, window_ds in windows:
+            verdicts = []
+            for decision in window_ds or ():
+                verdicts.append(
+                    {
+                        "pass": str(getattr(decision, "pass_name", "?")),
+                        "verdict": str(getattr(decision, "verdict", "?")),
+                        "reason": str(getattr(decision, "reason", "")),
+                    }
+                )
+            if verdicts:
+                events.append(
+                    {
+                        "name": "frame.decisions",
+                        "ph": "X",
+                        "pid": pid,
+                        "tid": window_id,
+                        "ts": sample_ts_us,
+                        "dur": 0,
+                        "args": {"frame_id": window_id, "decisions": verdicts},
+                    }
+                )
     return events
 
 

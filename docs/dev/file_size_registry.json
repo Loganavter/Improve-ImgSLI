@@ -39,7 +39,7 @@
     },
     {
       "path": "src/engine/frame/context.py",
-      "lines": 480,
+      "lines": 506,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",

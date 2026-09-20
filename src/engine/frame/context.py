@@ -90,6 +90,7 @@ from typing import Any, Callable
 __all__ = [
     "IDS_SCHEMA_VERSION",
     "INVALIDATE_PREFIX",
+    "PAST_DECISIONS_MAX",
     "SPAN_RING_MAX",
     "VERDICT_RAN",
     "VERDICT_SKIPPED",
@@ -183,6 +184,11 @@ def frame_tag(frame_id: int) -> str:
 #: frames (oldest evicted first); ``reset()`` never clears it. Sized for a
 #: zoom-burst window (a few frames × tens of spans) at tuple scale.
 SPAN_RING_MAX = 1024
+
+#: Trailing verdict window: how many past frames' decision lists survive
+#: ``reset()`` for exporters (the live frame keeps its own list live).
+#: Sized to cover a zoom burst plus its settle tail at tuple scale.
+PAST_DECISIONS_MAX = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,13 +319,16 @@ def viewport_hash(
 class FrameContext:
     """Collector for the current frame's decisions. Reused per frame."""
 
-    __slots__ = ("_counters", "_decisions", "_frame_id", "_spans")
+    __slots__ = ("_counters", "_decisions", "_frame_id", "_past", "_spans")
 
     def __init__(self) -> None:
         self._decisions: list[FrameDecision] = []
         self._frame_id: int = 0
         self._spans: deque[FrameSpan] = deque(maxlen=SPAN_RING_MAX)
         self._counters: dict[str, int] = {}
+        self._past: deque[tuple[int, tuple[FrameDecision, ...]]] = deque(
+            maxlen=PAST_DECISIONS_MAX
+        )
 
     @property
     def frame_id(self) -> int:
@@ -384,10 +393,14 @@ class FrameContext:
         the top of every ``render()`` (including the early-skip path), so
         the counter advances per frame with no renderer rewiring.
 
-        Decisions only: the span ring and ``counters`` are cumulative and
-        survive ``reset()`` (spans carry their birth ``frame_id``; the
-        ring evicts the oldest past ``SPAN_RING_MAX``).
+        Decisions only: the span ring, ``counters`` and the trailing
+        verdict window (``past_decisions``) are cumulative and survive
+        ``reset()`` (spans carry their birth ``frame_id``; the ring evicts
+        the oldest past ``SPAN_RING_MAX``; the window keeps the last
+        ``PAST_DECISIONS_MAX`` frames).
         """
+        if self._decisions:
+            self._past.append((self._frame_id, tuple(self._decisions)))
         del self._decisions[:]
         self._frame_id += 1
 
@@ -457,6 +470,19 @@ class FrameContext:
         ran/skipped, more_pending). Never mutate the result.
         """
         return tuple(self._decisions)
+
+    @property
+    def past_decisions(
+        self,
+    ) -> tuple[tuple[int, tuple[FrameDecision, ...]], ...]:
+        """Trailing verdict window: ``(frame_id, decisions)`` per past
+        frame, oldest first, at most ``PAST_DECISIONS_MAX`` entries.
+
+        Archived by ``reset()`` (empty frames skipped); lets a periodic
+        trace dump carry the burst frames' verdicts, not just the dump
+        frame's. Read-only view — never mutate the result.
+        """
+        return tuple(self._past)
 
     def __len__(self) -> int:
         return len(self._decisions)

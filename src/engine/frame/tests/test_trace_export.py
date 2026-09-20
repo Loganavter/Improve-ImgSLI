@@ -420,3 +420,19 @@ def test_empty_decisions_emit_nothing():
     ctx = FrameContext()
     events = build_trace([ctx], pid=999)
     assert [e for e in events if e["name"] == "frame.decisions"] == []
+
+
+def test_decisions_window_exports_burst_frames():
+    from engine.frame.trace_export import build_trace
+
+    ctx = FrameContext()
+    for n in range(3):
+        ctx.record("fallback", "ran", f"promoted={n == 2}", ids=(f"frame={n}",))
+        ctx.reset()
+    ctx.record("fallback", "skipped", "held", ids=("frame=3",))
+    events = build_trace([ctx], pid=7)
+    verdicts = [e for e in events if e["name"] == "frame.decisions"]
+    assert sorted(e["tid"] for e in verdicts) == [0, 1, 2, 3]
+    by_tid = {e["tid"]: e for e in verdicts}
+    assert "promoted=True" in by_tid[2]["args"]["decisions"][0]["reason"]
+    assert validate_events(events) == []
