@@ -881,9 +881,15 @@ class ThumbnailService(QObject):
         if pil_image:
             try:
                 # Debug dump first thumbnail to verify not black/null — gated
+                # Thumbnail-zone gate: permissive env_flag over
+                # IMGSLI_THUMBNAIL_DEBUG / IMGSLI_VIDEO_EDITOR_DEBUG
+                # (replaces the legacy strict == "1" parse; safe
+                # widening). Umbrella disjunct retained (OR-split
+                # deferred); IC_VIDEO intentionally not added here —
+                # the ic_thumbnail_debug emit below already covers it.
                 try:
-                    import os
-                    if os.getenv("IMGSLI_THUMBNAIL_DEBUG") == "1" or os.getenv("IMGSLI_VIDEO_EDITOR_DEBUG") == "1":
+                    from shared.debug_flags import env_flag as _env_flag
+                    if _env_flag("IMGSLI_THUMBNAIL_DEBUG") or _env_flag("IMGSLI_VIDEO_EDITOR_DEBUG"):
                         from tabs.image_compare.debug import ic_thumbnail_debug
                         ext = pil_image.getextrema() if hasattr(pil_image, "getextrema") else None
                         is_trans = False

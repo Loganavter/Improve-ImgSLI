@@ -240,8 +240,15 @@ class VideoEditorDialog(ThemedDialog):
 
         self.scroll_area = create_timeline_scroll_area(self)
         try:
-            import os, logging
-            if os.getenv("IMGSLI_VIDEO_EDITOR_DEBUG") == "1" or os.getenv("IMGSLI_TIMELINE_DEBUG") == "1":
+            # Timeline-zone gate (debug_timeline.timeline_debug_enabled):
+            # permissive env_flag over IMGSLI_VIDEO_EDITOR_DEBUG /
+            # IMGSLI_TIMELINE_DEBUG — replaces the legacy strict == "1"
+            # parse. Umbrella disjunct retained (OR-split deferred).
+            from tabs.image_compare.plugins.video_editor.debug_timeline import (
+                timeline_debug_enabled,
+            )
+
+            if timeline_debug_enabled():
                 logging.getLogger("ImproveImgSLI").warning("[timeline-debug] create_timeline_scroll_area timeline_id=%s scroll_id=%s viewport_id=%s", id(self.timeline) if hasattr(self, 'timeline') else -1, id(self.scroll_area), id(self.scroll_area.viewport()))
         except Exception:
             pass
