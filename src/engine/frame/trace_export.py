@@ -79,7 +79,11 @@ from typing import Any, Iterable, Mapping
 
 __all__ = [
     "PERF_TRACE_ENV",
+    "TRACE_DUMP_EVERY_N_FRAMES",
+    "TRACE_PATH_ENV",
     "build_trace",
+    "default_trace_path",
+    "maybe_dump_trace",
     "perf_trace_enabled",
     "spans_to_events",
     "write_trace",
@@ -87,6 +91,14 @@ __all__ = [
 
 #: Env var gating trace serialization (checked at the export boundary).
 PERF_TRACE_ENV = "IMGSLI_PERF_TRACE"
+
+#: Optional override for the dump location used by :func:`maybe_dump_trace`.
+TRACE_PATH_ENV = "IMGSLI_PERF_TRACE_PATH"
+
+#: Dump the ring every N rendered frames (steady-state cost: one counter
+#: bump per frame; one ``json.dump`` of at most ``SPAN_RING_MAX`` spans
+#: every Nth frame — debug-gated path only, never production).
+TRACE_DUMP_EVERY_N_FRAMES = 30
 
 #: Off-values mirror ``shared.debug_flags.env_flag`` (permissive flag).
 _OFF_VALUES = ("", "0", "false", "no", "off")
@@ -298,3 +310,34 @@ def write_trace(path: Any, frames: Iterable[Any]) -> int:
         json.dump(payload, handle)
         handle.write("\n")
     return len(events)
+
+
+def default_trace_path() -> str:
+    """Where :func:`maybe_dump_trace` writes (override via env).
+
+    Default is pid-suffixed in ``/tmp`` so concurrent app instances never
+    clobber each other; set ``IMGSLI_PERF_TRACE_PATH`` for a fixed path.
+    """
+    override = os.environ.get(TRACE_PATH_ENV)
+    if override:
+        return override
+    return f"/tmp/imgsli-perf-trace-{os.getpid()}.json"
+
+
+def maybe_dump_trace(
+    frame_context: Any,
+    every: int = TRACE_DUMP_EVERY_N_FRAMES,
+    path: str | None = None,
+) -> int:
+    """Serialize the context ring every ``every`` frames (gated).
+
+    Call unconditionally at the end of every render: bumps the context's
+    ``perf_trace_tick`` counter and, each Nth tick, delegates to
+    :func:`write_trace` (which checks the ``IMGSLI_PERF_TRACE`` gate —
+    off means no file, return 0). Returns the event count written
+    (0 off-schedule or gated off). Open the result in Perfetto UI.
+    """
+    tick = frame_context.bump("perf_trace_tick")
+    if tick % every != 0:
+        return 0
+    return write_trace(path or default_trace_path(), [frame_context])

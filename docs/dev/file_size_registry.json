@@ -318,7 +318,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 533,
+      "lines": 538,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RhiCanvasRenderer thin owner delegates to use_cases/* per CODE_PATTERNS — frame sequencing only\"",
@@ -798,6 +798,17 @@
         "pattern": "tile-residency",
         "size": "exempt",
         "reason": "viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/renderer.py",
+      "lines": 504,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"MultiCompareRhiRenderer thin owner delegates to scene/passes/* + canvas/features/* per CODE_PATTERNS — frame sequencing only\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "MultiCompareRhiRenderer thin owner delegates to scene/passes/* + canvas/features/* per CODE_PATTERNS — frame sequencing only"
       }
     },
     {

@@ -31,6 +31,7 @@ from engine.frame.context import (
     make_ids,
     snapshot_last_frame,
 )
+from engine.frame.trace_export import maybe_dump_trace
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
@@ -530,4 +531,8 @@ class RhiCanvasRenderer:
             widget._glass_panel_images = self.glass_panel_renderer.ready_images
 
         snapshot_last_frame(self.frame_context)
+        # Perf trace dump (gated inside): serializes the span ring every
+        # Nth frame so IMGSLI_PERF_TRACE=1 runs leave a Perfetto-openable
+        # trace behind. Off means no file, return 0 — zero prod impact.
+        maybe_dump_trace(self.frame_context)
         return True

@@ -29,7 +29,11 @@ from devtools.analyze_perf_trace import (
 from engine.frame.context import FrameContext
 from engine.frame.trace_export import (
     PERF_TRACE_ENV,
+    TRACE_DUMP_EVERY_N_FRAMES,
+    TRACE_PATH_ENV,
     build_trace,
+    default_trace_path,
+    maybe_dump_trace,
     perf_trace_enabled,
     spans_to_events,
     write_trace,
@@ -333,3 +337,41 @@ def test_gate_env_name_and_os_level_semantics(monkeypatch):
     monkeypatch.delenv(PERF_TRACE_ENV, raising=False)
     assert not perf_trace_enabled()
     assert os.environ.get(PERF_TRACE_ENV, "") == ""
+
+
+def test_default_trace_path_override(monkeypatch, tmp_path):
+    custom = tmp_path / "custom.json"
+    monkeypatch.setenv(TRACE_PATH_ENV, str(custom))
+    assert default_trace_path() == str(custom)
+    monkeypatch.delenv(TRACE_PATH_ENV, raising=False)
+    default = default_trace_path()
+    assert default.startswith("/tmp/imgsli-perf-trace-")
+    assert default.endswith(".json")
+
+
+def test_maybe_dump_trace_gated_off_writes_nothing(trace_off, tmp_path):
+    ctx = FrameContext()
+    out = tmp_path / "t.json"
+    # Off-schedule ticks bump the counter but write nothing.
+    assert maybe_dump_trace(ctx, every=3, path=str(out)) == 0
+    assert maybe_dump_trace(ctx, every=3, path=str(out)) == 0
+    # On-schedule tick still writes nothing while gated off.
+    assert maybe_dump_trace(ctx, every=1, path=str(out)) == 0
+    assert not out.exists()
+    assert ctx.count("perf_trace_tick") == 3
+
+
+def test_maybe_dump_trace_writes_every_nth(trace_on, tmp_path):
+    ctx = FrameContext()
+    with ctx.span("ic.prepare", detail={"trace_id": "wheel-1-1"}):
+        pass
+    out = tmp_path / "t.json"
+    assert maybe_dump_trace(ctx, every=2, path=str(out)) == 0
+    assert not out.exists()
+    n = maybe_dump_trace(ctx, every=2, path=str(out))
+    assert n > 0
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert len(payload["traceEvents"]) == n
+    assert payload["displayTimeUnit"] == "ms"
+    assert ctx.count("perf_trace_tick") == 2
+    assert TRACE_DUMP_EVERY_N_FRAMES == 30

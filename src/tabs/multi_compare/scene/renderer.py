@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="MultiCompareRhiRenderer thin owner delegates to scene/passes/* + canvas/features/* per CODE_PATTERNS — frame sequencing only"
 """QRhi renderer orchestration for the multi-compare scene.
 
 The widget owns interaction and state.  The renderer owns QRhi resources,
@@ -32,6 +33,7 @@ from engine.frame.context import (
     snapshot_last_frame,
     viewport_hash,
 )
+from engine.frame.trace_export import maybe_dump_trace
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
 from tabs.multi_compare.scene.passes import RENDER_PASSES, BaseImagesPass
@@ -496,4 +498,7 @@ class MultiCompareRhiRenderer:
             self.host._glass_panel_images = self.glass_panel_renderer.ready_images
 
         snapshot_last_frame(self.frame_context)
+        # Perf trace dump (gated inside, mirrors IC renderer): serializes
+        # the span ring every Nth frame. Off means no file — zero impact.
+        maybe_dump_trace(self.frame_context)
         return True
