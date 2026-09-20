@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Callable, cast
 
 from PySide6.QtCore import QEvent, QPoint, QTimer, Qt
@@ -51,18 +50,6 @@ from ui.widgets.shelf import (
 )
 
 
-def _shelf_resize_debug(message: str, *args) -> None:
-    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
-    if flag in ("", "0", "false", "no", "off"):
-        return
-    try:
-        logging.getLogger("ImproveImgSLI").info(
-            "[shelf-resize] " + (message % args if args else message)
-        )
-    except Exception:
-        pass
-
-
 # Root layout margins/spacing (design px) for the shelf content — re-applied
 # on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
 # share these so they can never drift apart.
@@ -106,18 +93,6 @@ from tabs.session_picker.recent.items_view import (
 from tabs.session_picker.recent.use_cases import refresh as refresh_use_cases
 from tabs.session_picker.recent.use_cases import selection_ops
 from tabs.session_picker.recent.use_cases import sizing
-
-
-def _shelf_resize_debug(message: str, *args) -> None:
-    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
-    if flag in ("", "0", "false", "no", "off"):
-        return
-    try:
-        logging.getLogger("ImproveImgSLI").info(
-            "[shelf-resize] " + (message % args if args else message)
-        )
-    except Exception:
-        pass
 
 
 # Root layout margins/spacing (design px) for the shelf content — re-applied
@@ -190,7 +165,7 @@ class RecentProjectsPanel(ShelfWidget):
         self._on_open = handler
 
     def resizeEvent(self, event) -> None:  # noqa: N802
-        _shelf_resize_debug(
+        sizing._shelf_resize_debug(
             "panel.resizeEvent size=%s -> %s scroll=%d",
             event.oldSize(),
             event.size(),
@@ -222,7 +197,7 @@ class RecentProjectsPanel(ShelfWidget):
             and watched is self.window()
             and self.isVisible()
         ):
-            _shelf_resize_debug(
+            sizing._shelf_resize_debug(
                 "window resizeEvent size=%s (panel=%d scroll=%d)",
                 event.size(),
                 self.height(),
@@ -262,7 +237,7 @@ class RecentProjectsPanel(ShelfWidget):
         if not hasattr(self, "_paint_count"):
             self._paint_count = 0
         self._paint_count += 1
-        _shelf_resize_debug(
+        sizing._shelf_resize_debug(
             "paint #%d panel=%dx%d scroll_h=%d cols=%d visible=%s",
             self._paint_count,
             self.width(),

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
+
+from shared.debug_flags import env_flag as _env_flag
 
 logger = logging.getLogger("ImproveImgSLI.startup")
 
@@ -13,7 +14,7 @@ _last: float | None = None
 
 
 def is_startup_trace_enabled() -> bool:
-    return os.getenv("IMGSLI_STARTUP_TRACE", "0") == "1"
+    return _env_flag("IMGSLI_STARTUP_TRACE")
 
 
 def startup_mark(phase: str) -> None:

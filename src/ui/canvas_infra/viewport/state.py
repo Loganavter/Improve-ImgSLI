@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 
-_PAN_DEBUG = bool(os.environ.get("IMGSLI_RESIZE_DEBUG"))
+from shared.debug_flags import env_flag as _env_flag
+
+_PAN_DEBUG = _env_flag("IMGSLI_RESIZE_DEBUG")
 
 def _pan_debug(host, kind: str, old: tuple[float, float], new: tuple[float, float]) -> None:
     if abs(new[0] - old[0]) < 0.02 and abs(new[1] - old[1]) < 0.02:

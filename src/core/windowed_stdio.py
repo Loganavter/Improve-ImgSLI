@@ -11,6 +11,8 @@ import faulthandler
 import os
 import sys
 
+from shared.debug_flags import env_flag as _env_flag
+
 
 def ensure_stdio() -> None:
     if sys.stdin is None:
@@ -24,14 +26,20 @@ def ensure_stdio() -> None:
 def enable_faulthandler() -> None:
     # Opt-in hang dumps: set IMGSLI_FAULT_DUMP=1 (optional IMGSLI_FAULT_DUMP_FILE /
     # IMGSLI_FAULT_DUMP_INTERVAL).
-    if os.environ.get("IMGSLI_FAULT_DUMP"):
+    if _env_flag("IMGSLI_FAULT_DUMP"):
         fault_dump_path = os.environ.get(
             "IMGSLI_FAULT_DUMP_FILE", "/tmp/imgsli_fault_dump.log"
         )
         fault_dump_file = open(fault_dump_path, "w")
         faulthandler.enable(file=fault_dump_file, all_threads=True)
+        try:
+            fault_dump_interval = int(
+                os.environ.get("IMGSLI_FAULT_DUMP_INTERVAL", "15")
+            )
+        except (TypeError, ValueError):
+            fault_dump_interval = 15
         faulthandler.dump_traceback_later(
-            int(os.environ.get("IMGSLI_FAULT_DUMP_INTERVAL", "15")),
+            fault_dump_interval,
             repeat=True,
             file=fault_dump_file,
         )

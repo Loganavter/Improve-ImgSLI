@@ -880,7 +880,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/panel.py",
-      "lines": 590,
+      "lines": 565,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",
