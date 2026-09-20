@@ -11,6 +11,7 @@ the owner keeps construction/wiring + instance state
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.frame.context import BudgetStats, make_ids
@@ -88,18 +89,31 @@ def realize_main_tiles(
     )
     _debug_timing = tile_dump_enabled()
     _t0 = time.perf_counter() if _debug_timing else 0.0
-    main_more_pending = renderer.resources.residency.realize_tile_plan(
-        renderer.tile_service,
-        widget,
-        texture_keys,
-        base_image,
-        updates,
-        diff_key=diff_key,
-        viewport_zoom=viewport_zoom,
-        viewport_offset=viewport_offset,
-        extra_protect_keys=fallback_protect_keys,
-        dirty_layers=dirty_layers,
+    # Perf spans (Wave C): realize-main hop of the wheel-to-photon chain.
+    # Span/record only — the realize call below is unchanged. None-safe:
+    # fakes/widgets without a renderer skip the span, not the work.
+    _frame_context = frame_context_from_widget(widget)
+    _realize_cm = (
+        _frame_context.span(
+            "ic.realize_main",
+            detail=lambda: {"keys": [str(k) for k in texture_keys]},
+        )
+        if _frame_context is not None
+        else nullcontext()
     )
+    with _realize_cm:
+        main_more_pending = renderer.resources.residency.realize_tile_plan(
+            renderer.tile_service,
+            widget,
+            texture_keys,
+            base_image,
+            updates,
+            diff_key=diff_key,
+            viewport_zoom=viewport_zoom,
+            viewport_offset=viewport_offset,
+            extra_protect_keys=fallback_protect_keys,
+            dirty_layers=dirty_layers,
+        )
     # Phase-B2 frame bus: branch duration reuses the gated measurement
     # above (existing tile_dump_enabled pattern only -- 0.0 when the gate
     # is off, never a new unconditional clock on this path).
@@ -112,7 +126,7 @@ def realize_main_tiles(
                 "realize_tile_plan.timing", which="main", duration_s=_dt
             )
     # Phase-B2 frame bus: main-branch budget/deadline fact (record only).
-    _frame_context = frame_context_from_widget(widget)
+    # (``_frame_context`` was fetched above for the ic.realize_main span.)
     if _frame_context is not None:
         _stats = BudgetStats(
             budget=int(_engine_residency.TILE_UPLOAD_BUDGET_PER_CALL),
@@ -273,16 +287,29 @@ def realize_magnifier_tiles(
             and ctx.diff_source_texture_id
             else None
         )
-        mag_more_pending = renderer.resources.residency.realize_tile_plan(
-            renderer.tile_service,
-            widget,
-            tuple(ctx.source_texture_ids),
-            base_image,
-            updates,
-            diff_key=_mag_diff_key,
-            capture_uv_rect=_cap_uv,
-            dirty_layers=dirty_layers,
+        # Perf spans (Wave C): magnifier-residency hop (span/record only).
+        _mag_frame_context = frame_context_from_widget(widget)
+        _mag_cm = (
+            _mag_frame_context.span(
+                "ic.realize_magnifier",
+                detail=lambda: {
+                    "keys": [str(k) for k in tuple(ctx.source_texture_ids)]
+                },
+            )
+            if _mag_frame_context is not None
+            else nullcontext()
         )
+        with _mag_cm:
+            mag_more_pending = renderer.resources.residency.realize_tile_plan(
+                renderer.tile_service,
+                widget,
+                tuple(ctx.source_texture_ids),
+                base_image,
+                updates,
+                diff_key=_mag_diff_key,
+                capture_uv_rect=_cap_uv,
+                dirty_layers=dirty_layers,
+            )
         # Coarsest LOD stays pinned against eviction: each source's deepest
         # pyramid level is the fallback-LOD baseline and the loupe's low-res
         # sampling source -- finer levels filling in around it must never
@@ -306,7 +333,7 @@ def realize_magnifier_tiles(
         )
         # Phase-B2 frame bus: magnifier-branch budget/deadline fact
         # (record only; duration reuses the gated measurement above).
-        _mag_frame_context = frame_context_from_widget(widget)
+        # (``_mag_frame_context`` was fetched above for ic.realize_magnifier.)
         if _mag_frame_context is not None:
             _mag_stats = BudgetStats(
                 budget=int(_engine_residency.TILE_UPLOAD_BUDGET_PER_CALL),

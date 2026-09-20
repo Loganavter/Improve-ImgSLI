@@ -38,21 +38,65 @@ Pilot writers (additive only — existing logs are never removed):
 ``render_gate.py`` mag-gate and ``rhi_renderer/use_cases/fallback.py``
 record into the context passed in as ``frame_context`` (``None`` by
 default, so all existing call sites are behavior-identical).
+
+Perf spans (Wave A, plan-engine-perf-debugger-2026-09-20 Phase 1):
+
+- ``FrameSpan`` — one CPU span: ``name`` (stage, e.g. ``"ic.prepare"``),
+  ``t0_ns``/``t1_ns`` (``time.perf_counter_ns`` wall readings, monotonic
+  within a process — NOT wall-clock, never compare across processes),
+  ``frame_id`` (birth frame: the context's counter at span *entry*), and
+  ``detail`` (lazy payload — a plain value or a zero-arg callable
+  factory; callables are materialized only at export via
+  ``resolved_detail``, never at record time).
+- ``FrameContext.span(name, detail=None)`` — context manager recording
+  one ``FrameSpan`` on exit. Exception-safe (records then re-raises),
+  nestable (inner spans close first; siblings share the birth
+  ``frame_id`` when no ``reset()`` intervenes).
+- ``counters`` dict + ``bump()``/``count()`` — cumulative per-context
+  integer tallies (span-open counts, dedup acks, …). Cumulative across
+  ``reset()`` by design (per-frame attribution comes from spans, which
+  carry ``frame_id``).
+- Retention: spans live in a bounded ring (``SPAN_RING_MAX`` entries,
+  oldest evicted first) that SURVIVES ``reset()`` — decisions are
+  per-frame, spans are a trailing window for the exporter. ``reset()``
+  semantics for decisions/``frame_id`` are unchanged.
+
+Span event schema (what wave B's ``trace_export.write_trace`` consumes):
+
+- One span → one Chrome Trace Complete event (``ph="X"``):
+  ``name`` → event name, ``frame_id`` → thread/id join key,
+  ``t0_ns``/``t1_ns`` → ``ts``/``dur`` (ns → µs at export),
+  ``resolved_detail`` → event ``args`` (must be JSON-shaped by then —
+  factories MUST return plain data, never Qt/GPU objects).
+- One counter → one Counter event (``ph="C"``) per sampled frame.
+
+Overhead budget (steady state, tracing always collectable): two
+``perf_counter_ns`` calls + one small frozen-dataclass append per span —
+order of ``10^-7`` s per open/close pair, no formatting, no logging, no
+dict-building at record time. Detail factories MUST stay behind the
+callable (building strings/dicts eagerly in the render path defeats the
+budget). Export is env-gated (``IMGSLI_PERF_TRACE``); when off, spans
+are collected but never serialized (the ring is simply overwritten).
 """
 
 from __future__ import annotations
 
 import hashlib
+import time
+from collections import deque
 from dataclasses import dataclass
+from typing import Any, Callable
 
 __all__ = [
     "IDS_SCHEMA_VERSION",
     "INVALIDATE_PREFIX",
+    "SPAN_RING_MAX",
     "VERDICT_RAN",
     "VERDICT_SKIPPED",
     "BudgetStats",
-    "FrameDecision",
     "FrameContext",
+    "FrameDecision",
+    "FrameSpan",
     "frame_tag",
     "last_frame_snapshot",
     "make_ids",
@@ -134,6 +178,93 @@ def frame_tag(frame_id: int) -> str:
     return f"frame={int(frame_id)}"
 
 
+#: Bounded retention for perf spans (Wave A, plan-engine-perf-debugger).
+#: The per-context span ring holds at most this many trailing spans across
+#: frames (oldest evicted first); ``reset()`` never clears it. Sized for a
+#: zoom-burst window (a few frames × tens of spans) at tuple scale.
+SPAN_RING_MAX = 1024
+
+
+@dataclass(frozen=True, slots=True)
+class FrameSpan:
+    """One CPU span within (or across) frames (Wave A, additive).
+
+    ``t0_ns``/``t1_ns`` are ``time.perf_counter_ns`` readings (monotonic,
+    process-local — never wall-clock, never cross-process). ``frame_id``
+    is the birth frame (context counter at span *entry*). ``detail`` is
+    the lazy payload: ``None``, a plain value, or a zero-arg callable
+    factory materialized only at export via ``resolved_detail`` — a
+    callable stored here is NEVER invoked at record time. Factories must
+    return JSON-shaped plain data (wave B serializes it into trace-event
+    ``args``); any callable placed here is treated as a factory, so a
+    genuinely-callable payload value cannot be stored — wrap it in a
+    plain container instead.
+    """
+
+    name: str
+    t0_ns: int
+    t1_ns: int
+    frame_id: int
+    detail: object = None
+
+    @property
+    def duration_ns(self) -> int:
+        """Wall time inside the span (``t1_ns - t0_ns``)."""
+        return self.t1_ns - self.t0_ns
+
+    @property
+    def resolved_detail(self) -> Any:
+        """Materialize ``detail``: call it when callable, else as-is.
+
+        The single choke point wave B's exporter uses — record-time code
+        never touches this, so steady-state cost stays at tuple scale.
+        """
+        if callable(self.detail):
+            return self.detail()  # type: ignore[operator]
+        return self.detail
+
+
+class _SpanGuard:
+    """Context manager behind ``FrameContext.span()`` (not public API).
+
+    Deliberately a tiny ``__slots__`` class, not ``contextlib``: record
+    cost is two ``perf_counter_ns`` calls + one ring append, with no
+    generator frame and no formatting/logging at record time.
+    """
+
+    __slots__ = ("_ctx", "_detail", "_frame_id", "_name", "_t0")
+
+    def __init__(
+        self,
+        ctx: FrameContext,
+        name: str,
+        detail: object = None,
+    ) -> None:
+        self._ctx = ctx
+        self._name = name
+        self._detail = detail
+        self._frame_id = 0
+        self._t0 = 0
+
+    def __enter__(self) -> _SpanGuard:
+        self._frame_id = self._ctx._frame_id
+        self._t0 = time.perf_counter_ns()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        t1 = time.perf_counter_ns()
+        self._ctx._spans.append(
+            FrameSpan(
+                name=self._name,
+                t0_ns=self._t0,
+                t1_ns=t1,
+                frame_id=self._frame_id,
+                detail=self._detail,
+            )
+        )
+        return False
+
+
 def make_ids(frame_id: int, *parts: object) -> tuple:
     """Build a schema-v1 ``ids`` tuple: frame tag first, then atoms.
 
@@ -182,11 +313,13 @@ def viewport_hash(
 class FrameContext:
     """Collector for the current frame's decisions. Reused per frame."""
 
-    __slots__ = ("_decisions", "_frame_id")
+    __slots__ = ("_counters", "_decisions", "_frame_id", "_spans")
 
     def __init__(self) -> None:
         self._decisions: list[FrameDecision] = []
         self._frame_id: int = 0
+        self._spans: deque[FrameSpan] = deque(maxlen=SPAN_RING_MAX)
+        self._counters: dict[str, int] = {}
 
     @property
     def frame_id(self) -> int:
@@ -250,6 +383,10 @@ class FrameContext:
         Also bumps ``frame_id``: the renderer calls ``reset()`` once at
         the top of every ``render()`` (including the early-skip path), so
         the counter advances per frame with no renderer rewiring.
+
+        Decisions only: the span ring and ``counters`` are cumulative and
+        survive ``reset()`` (spans carry their birth ``frame_id``; the
+        ring evicts the oldest past ``SPAN_RING_MAX``).
         """
         del self._decisions[:]
         self._frame_id += 1
@@ -258,6 +395,49 @@ class FrameContext:
         """Explicit ``reset()`` + the new frame's id (future callers)."""
         self.reset()
         return self._frame_id
+
+    def span(
+        self,
+        name: str,
+        detail: Callable[[], Any] | Any = None,
+    ) -> _SpanGuard:
+        """Open a CPU span recorded into the ring on block exit.
+
+        Usage: ``with ctx.span("ic.prepare", detail=lambda: {...}):``.
+        Records one ``FrameSpan`` even when the block raises (the
+        exception propagates — the guard never swallows). Nestable:
+        inner spans close before outer ones. Record cost is two
+        ``perf_counter_ns`` + one ring append; ``detail`` callables run
+        only at export (see ``FrameSpan.resolved_detail``), so pass
+        factories for anything costlier than a reference. Store/event
+        guards: spans are frame-local facts, never state — no dispatch,
+        no emit, no decode, no single-flight involved.
+        """
+        return _SpanGuard(self, name, detail)
+
+    @property
+    def spans(self) -> tuple[FrameSpan, ...]:
+        """Immutable snapshot of the trailing span ring (oldest first)."""
+        return tuple(self._spans)
+
+    def spans_for_frame(self, frame_id: int) -> list[FrameSpan]:
+        """Ring spans born in ``frame_id`` (insertion order)."""
+        return [s for s in self._spans if s.frame_id == frame_id]
+
+    @property
+    def counters(self) -> dict[str, int]:
+        """Live cumulative tallies (name → int). Prefer ``bump()``."""
+        return self._counters
+
+    def bump(self, name: str, amount: int = 1) -> int:
+        """Add ``amount`` to counter ``name``; return the new total."""
+        total = self._counters.get(name, 0) + amount
+        self._counters[name] = total
+        return total
+
+    def count(self, name: str) -> int:
+        """Current total for counter ``name`` (0 when never bumped)."""
+        return self._counters.get(name, 0)
 
     def dump(self) -> str:
         """Grep-friendly single line per decision: verdict + reason + ids."""

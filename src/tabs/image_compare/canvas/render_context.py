@@ -465,7 +465,28 @@ def request_update(widget):
     if state._update_batch_depth > 0:
         state._update_pending = True
         return
-    widget.update()
+    # Perf spans (Wave C, plan-engine-perf-debugger-2026-09-20): the
+    # enqueue hop of the wheel-to-photon chain (span/record only — the
+    # update() call below is unchanged).
+    try:
+        from contextlib import nullcontext as _nullcontext
+
+        from tabs.image_compare.canvas.loupe_trace import (
+            frame_context_from_widget as _fcw,
+        )
+
+        _fc = _fcw(widget)
+        _enqueue_cm = (
+            _fc.span("ic.enqueue", detail=lambda: {"source": "request_update"})
+            if _fc is not None
+            else _nullcontext()
+        )
+    except Exception:
+        from contextlib import nullcontext as _nullcontext
+
+        _enqueue_cm = _nullcontext()
+    with _enqueue_cm:
+        widget.update()
     _schedule_glass_settle_frame(widget)
 
 

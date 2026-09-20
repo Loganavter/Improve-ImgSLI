@@ -235,8 +235,29 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         Immediate ``update()`` plus a next-tick pass so overlay hide/show in
         the same stack frame (zoom-reset chip) cannot leave a stale frame.
+
+        Perf spans (Wave D, plan-engine-perf-debugger-2026-09-20): the
+        enqueue hop of the wheel-to-photon chain (mirrors IC's
+        ``ic.enqueue`` in ``render_context.request_update``) — span/record
+        only, the ``update()`` call below is unchanged. None-safe: fakes
+        without a renderer-owned context skip the span, not the update.
         """
-        self.update()
+        try:
+            from contextlib import nullcontext as _nullcontext
+
+            _renderer = getattr(self, "_renderer", None)
+            _fc = getattr(_renderer, "frame_context", None)
+            _enqueue_cm = (
+                _fc.span("mc.enqueue", detail=lambda: {"source": "request_view_update"})
+                if _fc is not None
+                else _nullcontext()
+            )
+        except Exception:
+            from contextlib import nullcontext as _nullcontext
+
+            _enqueue_cm = _nullcontext()
+        with _enqueue_cm:
+            self.update()
         if self._view_update_pending:
             return
         self._view_update_pending = True

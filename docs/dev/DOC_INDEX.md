@@ -43,7 +43,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`

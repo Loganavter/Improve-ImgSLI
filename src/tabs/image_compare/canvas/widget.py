@@ -783,7 +783,37 @@ class CanvasWidget(QRhiWidget):
             self.firstVisualFrameReady.emit()
 
     def _request_update(self):
-        request_update(self)
+        """Enqueue-side present proxy (Wave C, plan-engine-perf-debugger).
+
+        The ``ic.present_proxy`` span opens around ``request_update()``
+        (which calls ``widget.update()``) and closes when it returns, so
+        compositor/present time is EXCLUDED by construction — this span
+        measures enqueue cost only and must never be read as photon
+        timing (see H4 in the Wave C verdict: a small proxy with a
+        visible stutter points at the compositor, not the CPU path).
+        """
+        try:
+            from contextlib import nullcontext as _nullcontext
+
+            from tabs.image_compare.canvas.loupe_trace import (
+                frame_context_from_widget as _fcw,
+            )
+
+            _fc = _fcw(self)
+            _cm = (
+                _fc.span(
+                    "ic.present_proxy",
+                    detail=lambda: {"source": "widget._request_update"},
+                )
+                if _fc is not None
+                else _nullcontext()
+            )
+        except Exception:
+            from contextlib import nullcontext as _nullcontext
+
+            _cm = _nullcontext()
+        with _cm:
+            request_update(self)
 
     def _schedule_source_preload(self):
         schedule_source_preload(self)

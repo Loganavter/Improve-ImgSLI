@@ -258,12 +258,18 @@ class MultiCompareRhiRenderer:
                     self.initialized,
                     self.rhi is not None,
                 )
-            self.frame_context.record(
-                "prepare_frame",
-                "skipped",
-                "render skipped: renderer not initialized",
-                ids=make_ids(self.frame_context.frame_id, "no-init"),
-            )
+            # Perf spans (Wave D): the prepare hop of the wheel-to-photon
+            # chain also covers the early-skip paths (mirrors IC's
+            # skip-path ic.prepare) — span/record only.
+            with self.frame_context.span(
+                "mc.prepare", detail=lambda: {"skipped": "not-initialized"}
+            ):
+                self.frame_context.record(
+                    "prepare_frame",
+                    "skipped",
+                    "render skipped: renderer not initialized",
+                    ids=make_ids(self.frame_context.frame_id, "no-init"),
+                )
             snapshot_last_frame(self.frame_context)
             return False
         target = self.host.renderTarget()
@@ -274,12 +280,15 @@ class MultiCompareRhiRenderer:
                     self.host, "renderer.render SKIPPED: renderTarget() is None"
                 )
                 logger.warning("[mc-renderer] render() aborted: renderTarget() is None")
-            self.frame_context.record(
-                "prepare_frame",
-                "skipped",
-                "render skipped: renderTarget() is None",
-                ids=make_ids(self.frame_context.frame_id, "no-target"),
-            )
+            with self.frame_context.span(
+                "mc.prepare", detail=lambda: {"skipped": "no-target"}
+            ):
+                self.frame_context.record(
+                    "prepare_frame",
+                    "skipped",
+                    "render skipped: renderTarget() is None",
+                    ids=make_ids(self.frame_context.frame_id, "no-target"),
+                )
             snapshot_last_frame(self.frame_context)
             return False
         target_size = target.pixelSize()
@@ -294,48 +303,62 @@ class MultiCompareRhiRenderer:
             if callable(ensure):
                 ensure(target)
 
-        updates = self.rhi.nextResourceUpdateBatch()
-        self.host._sync_textures()
-        self.image_pass.apply_pending_texture_ops(self, updates)
+        # Perf spans (Wave D, plan-engine-perf-debugger-2026-09-20): the
+        # prepare hop of the wheel-to-photon chain (span/record only —
+        # every call below is unchanged; mirrors IC's ic.prepare).
+        with self.frame_context.span(
+            "mc.prepare",
+            detail=lambda: {"framebuffer": [fb_w, fb_h]},
+        ):
+            updates = self.rhi.nextResourceUpdateBatch()
+            self.host._sync_textures()
+            self.image_pass.apply_pending_texture_ops(self, updates)
 
-        composition = self.host._active_composition
-        ctx = build_render_context(
-            composition=composition,
-            framebuffer_size=(fb_w, fb_h),
-            clip_matrix=tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data()),
-            available_slot_ids=set(self.image_pass.slot_texture_ids()),
-            widget=self.host,
-        )
-        # Frame bus: prepare fact (record only, never instead). Canvas size
-        # comes from the composition when one is resolved, else None (which
-        # viewport_hash renders as "none" -- same as IC early-skip atoms).
-        try:
-            _canvas_size: tuple[float, float] | None = (
-                float(composition.canvas_w),
-                float(composition.canvas_h),
+            composition = self.host._active_composition
+            ctx = build_render_context(
+                composition=composition,
+                framebuffer_size=(fb_w, fb_h),
+                clip_matrix=tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data()),
+                available_slot_ids=set(self.image_pass.slot_texture_ids()),
+                widget=self.host,
             )
-        except (AttributeError, TypeError, ValueError):
-            _canvas_size = None
-        self.frame_context.record(
-            "prepare_frame",
-            "ran",
-            f"prepare_frame scale={ctx.scale:.6f}"
-            f" layers={len(ctx.projected_layers)}",
-            ids=make_ids(
-                self.frame_context.frame_id,
-                viewport_hash(
-                    (ctx.scale, ctx.scale),
-                    tuple(ctx.offset),
-                    _canvas_size,
+            # Frame bus: prepare fact (record only, never instead). Canvas size
+            # comes from the composition when one is resolved, else None (which
+            # viewport_hash renders as "none" -- same as IC early-skip atoms).
+            try:
+                _canvas_size: tuple[float, float] | None = (
+                    float(composition.canvas_w),
+                    float(composition.canvas_h),
+                )
+            except (AttributeError, TypeError, ValueError):
+                _canvas_size = None
+            self.frame_context.record(
+                "prepare_frame",
+                "ran",
+                f"prepare_frame scale={ctx.scale:.6f}"
+                f" layers={len(ctx.projected_layers)}",
+                ids=make_ids(
+                    self.frame_context.frame_id,
+                    viewport_hash(
+                        (ctx.scale, ctx.scale),
+                        tuple(ctx.offset),
+                        _canvas_size,
+                    ),
                 ),
-            ),
-        )
+            )
         # NOTE: no frame_context= kwarg on image_pass calls -- BaseImagesPass
         # keeps its exact contract shapes (test_mc_pass_contract_shape.py
         # pins prepare/record; D2/D3 consume). Wave B reaches the context via
         # widget._renderer (same reach-through as prepare()'s own
         # `getattr(widget, "_renderer", widget)` line).
-        self.image_pass.prepare(self.host, ctx, updates)
+        # Perf spans (Wave D): the realize hop (mirrors IC's
+        # ic.realize_main) — span/record only, the prepare call below is
+        # unchanged.
+        with self.frame_context.span(
+            "mc.realize_slots",
+            detail=lambda: {"layers": len(ctx.projected_layers)},
+        ):
+            self.image_pass.prepare(self.host, ctx, updates)
 
         # Submit this frame's tile uploads now (rather than folding them into
         # the main pass's own resourceUpdates below) so generate_all_dirty_mips
@@ -369,9 +392,15 @@ class MultiCompareRhiRenderer:
             mips_cascade_ms = 0.0
         else:
             mips_cascade_start = time.monotonic()
-            self._pending_dirty_layers = self.image_pass.generate_all_dirty_mips(
-                self, command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
-            )
+            # Perf spans (Wave D): the mips hop (mirrors IC's ic.mips) —
+            # span/record only, the cascade call below is unchanged.
+            with self.frame_context.span(
+                "mc.mips",
+                detail=lambda: {"dirty_layers": dirty_layer_count},
+            ):
+                self._pending_dirty_layers = self.image_pass.generate_all_dirty_mips(
+                    self, command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
+                )
             mips_cascade_ms = (time.monotonic() - mips_cascade_start) * 1000.0
         deferred_count = sum(
             len(layers) for layers in self._pending_dirty_layers.values()
@@ -428,18 +457,26 @@ class MultiCompareRhiRenderer:
                 self.host, ctx, updates, frame_context=self.frame_context
             )
 
-        command_buffer.beginPass(
-            target,
-            self.host._theme_or_palette_bg(),
-            QRhiDepthStencilClearValue(1.0, 0),
-            updates,
-        )
-        self.image_pass.record(command_buffer, self.host, ctx)
-        for render_pass in active_feature_passes:
-            render_pass.record(
-                command_buffer, self.host, ctx, frame_context=self.frame_context
+        # Perf spans (Wave D): the submit hop of the wheel-to-photon chain
+        # (span/record only — every QRhi call below is unchanged; mirrors
+        # IC's ic.submit). None-safe by construction: the context is
+        # renderer-owned, never None here.
+        with self.frame_context.span(
+            "mc.submit",
+            detail=lambda: {"entries": len(ctx.projected_layers)},
+        ):
+            command_buffer.beginPass(
+                target,
+                self.host._theme_or_palette_bg(),
+                QRhiDepthStencilClearValue(1.0, 0),
+                updates,
             )
-        command_buffer.endPass()
+            self.image_pass.record(command_buffer, self.host, ctx)
+            for render_pass in active_feature_passes:
+                render_pass.record(
+                    command_buffer, self.host, ctx, frame_context=self.frame_context
+                )
+            command_buffer.endPass()
 
         # Mirrors image_compare's RhiCanvasRenderer.render() tail: draws
         # every GlassHUD (ZoomIndicator) registered on `self.host.glass_panels`

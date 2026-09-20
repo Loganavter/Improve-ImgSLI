@@ -288,7 +288,17 @@ class RhiCanvasRenderer:
         # P1A frame-context is born here: reset the reused collector so every
         # frame starts empty; pilot points below record into it additively.
         self.frame_context.reset()
-        _frame = _prepare_frame_impl(self, widget, command_buffer, clear_color)
+        # Perf spans (Wave C, plan-engine-perf-debugger-2026-09-20):
+        # wheel-to-photon sub-spans live on this owner context (the IC
+        # FrameContext owner); lazy detail factories only, no draw change.
+        with self.frame_context.span(
+            "ic.prepare",
+            detail=lambda: {
+                "widget": type(widget).__name__,
+                "size": [widget.width(), widget.height()],
+            },
+        ):
+            _frame = _prepare_frame_impl(self, widget, command_buffer, clear_color)
         if _frame is None:
             snapshot_last_frame(self.frame_context)
             return False
@@ -442,9 +452,13 @@ class RhiCanvasRenderer:
             dirty_layers.setdefault(array_index, set()).update(layers)
         dirty_layer_count = sum(len(layers) for layers in dirty_layers.values())
         mips_cascade_start = time.monotonic()
-        self._pending_dirty_layers = self.resources.generate_all_dirty_mips(
-            command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
-        )
+        with self.frame_context.span(
+            "ic.mips",
+            detail=lambda: {"dirty_layers": dirty_layer_count},
+        ):
+            self._pending_dirty_layers = self.resources.generate_all_dirty_mips(
+                command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
+            )
         mips_cascade_ms = (time.monotonic() - mips_cascade_start) * 1000.0
         if dirty_layer_count:
             deferred_count = sum(

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 
 from PySide6.QtCore import QPoint, QPointF, Qt
 
@@ -408,41 +409,78 @@ def handle_wheel_event(widget, event):
         cur_zoom = get_zoom_level(widget)
         cur_pan_x = get_pan_offset_x(widget)
         cur_pan_y = get_pan_offset_y(widget)
-        result = compute_wheel_zoom_transform(
-            WheelZoomRequest(
-                widget_width=widget.width(),
-                widget_height=widget.height(),
-                mouse_x=float(event.position().x()),
-                mouse_y=float(event.position().y()),
-                current_zoom=cur_zoom,
-                current_pan_x=cur_pan_x,
-                current_pan_y=cur_pan_y,
-                angle_delta_y=angle_delta_y,
+        # Perf spans (Wave C, plan-engine-perf-debugger-2026-09-20): the
+        # wheel-to-photon chain opens here. ``trace_id`` carries the
+        # ``wheel-<id>`` join atom so Perfetto can join this tick with its
+        # downstream ic.enqueue/prepare/realize/submit spans.
+        _fc = frame_context_from_widget(widget)
+        if _fc is not None:
+            _fc.bump("ic.wheel_tick")
+            _wheel_id = f"wheel-{_fc.frame_id}-{_fc.count('ic.wheel_tick')}"
+            _wheel_cm = _fc.span(
+                "ic.wheel_tick",
+                detail=lambda: {
+                    "trace_id": _wheel_id,
+                    "angle_delta_y": angle_delta_y,
+                    "zoom": [cur_zoom, new_zoom],
+                    "pan": [[cur_pan_x, cur_pan_y], [new_pan_x, new_pan_y]],
+                },
             )
-        )
-        if result is not None:
-            new_zoom, new_pan_x, new_pan_y = result
-            rhi_render_debug(
-                "wheel_zoom APPLIED angle_delta_y=%d zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f)",
-                angle_delta_y,
-                cur_zoom,
-                new_zoom,
-                cur_pan_x,
-                cur_pan_y,
-                new_pan_x,
-                new_pan_y,
-            )
-            update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
-            set_pan_offsets(widget, new_pan_x, new_pan_y)
-            set_zoom_level(widget, new_zoom)
-            widget.zoomChanged.emit(get_zoom_level(widget))
-            widget.update()
         else:
-            rhi_render_debug(
-                "wheel_zoom REJECTED (transform returned None) angle_delta_y=%d cur_zoom=%.3f",
-                angle_delta_y,
-                cur_zoom,
+            _wheel_id = None
+            _wheel_cm = nullcontext()
+        new_zoom: float | None = None
+        new_pan_x: float | None = None
+        new_pan_y: float | None = None
+        with _wheel_cm:
+            result = compute_wheel_zoom_transform(
+                WheelZoomRequest(
+                    widget_width=widget.width(),
+                    widget_height=widget.height(),
+                    mouse_x=float(event.position().x()),
+                    mouse_y=float(event.position().y()),
+                    current_zoom=cur_zoom,
+                    current_pan_x=cur_pan_x,
+                    current_pan_y=cur_pan_y,
+                    angle_delta_y=angle_delta_y,
+                )
             )
+            if result is not None:
+                new_zoom, new_pan_x, new_pan_y = result
+                rhi_render_debug(
+                    "wheel_zoom APPLIED angle_delta_y=%d zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f)",
+                    angle_delta_y,
+                    cur_zoom,
+                    new_zoom,
+                    cur_pan_x,
+                    cur_pan_y,
+                    new_pan_x,
+                    new_pan_y,
+                )
+                update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
+                set_pan_offsets(widget, new_pan_x, new_pan_y)
+                set_zoom_level(widget, new_zoom)
+                widget.zoomChanged.emit(get_zoom_level(widget))
+                # Present proxy (enqueue-side ONLY): this update() call is
+                # what schedules the compositor present; the span stops when
+                # update() returns, so compositor time is EXCLUDED by
+                # construction — never read this as photon timing.
+                _pfc = frame_context_from_widget(widget)
+                with (
+                    _pfc.span(
+                        "ic.present_proxy",
+                        detail=lambda: {"trace_id": _wheel_id, "source": "wheel"},
+                    )
+                    if _pfc is not None
+                    else nullcontext()
+                ):
+                    widget.update()
+            else:
+                rhi_render_debug(
+                    "wheel_zoom REJECTED (transform returned None) angle_delta_y=%d cur_zoom=%.3f",
+                    angle_delta_y,
+                    cur_zoom,
+                )
 
         event.accept()
         return

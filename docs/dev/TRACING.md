@@ -259,3 +259,23 @@ Qt event ──> patched handler ──> Tracer.begin_trace("mpress")
   calls. Use `RenderDoc` (backend-agnostic), or `apitrace`/`qt.qpa.gl=true`
   when the active QRhi backend is OpenGL (`IMPROVE_IMGSLI_RHI_BACKEND`,
   see `ui/canvas_infra/rhi/rhi_backend.py`; platform-default otherwise).
+
+## Related: frame perf spans (IC + MC zoom timing)
+
+For "which stage costs the frame" (zoom stutters on either canvas),
+use the frame perf spans instead of this causal tracer:
+`FrameContext.span()` stages — IC (`ic.wheel_tick` → `ic.enqueue` →
+`ic.prepare` → `ic.realize_main` / `ic.realize_magnifier` → `ic.mips`
+→ `ic.submit`, plus enqueue-side `ic.present_proxy`) and its MC
+mirror (`mc.wheel_tick` → `mc.enqueue` → `mc.prepare` →
+`mc.realize_slots` → `mc.mips` → `mc.submit`, plus enqueue-side
+`mc.present_proxy`) — exported as Chrome Trace JSON for Perfetto,
+gated by `IMGSLI_PERF_TRACE=1` at the export boundary. Owner modules:
+`src/engine/frame/trace_export.py` (writer), `src/devtools/analyze_perf_trace.py`
+(validator/pre-agg), hooks in `src/tabs/image_compare/canvas/`
+(interaction, render_context, rhi_renderer, widget) and
+`src/tabs/multi_compare/` (scene/renderer, canvas/interaction,
+ui/canvas_widget). Env-flag registry
+and the zoom-burst repro live in [LOGGING.md](LOGGING.md) ("Frame perf
+spans"). One Perfetto lane per `frame_id` merges both tabs' same-tick
+spans by design.

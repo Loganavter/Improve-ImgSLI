@@ -17,6 +17,8 @@ preserved verbatim so divider/filename still suppress until
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 from PySide6.QtGui import QRhiDepthStencilClearValue, QRhiViewport
 
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
@@ -249,19 +251,21 @@ def submit_array_draw(
     # Main pass — exactly as before
     # Phase-2 frame bus: begin/end fact flags (assignments only — control
     # flow and exception behavior below are byte-identical to before).
+    # Perf spans (Wave C): the submit hop of the wheel-to-photon chain
+    # (span/record only — every QRhi call below is unchanged). None-safe:
+    # callers without a frame_context skip the span, not the draw.
+    _submit_cm = (
+        frame_context.span(
+            "ic.submit",
+            detail=lambda: {"entries": len(array_draw_plan)},
+        )
+        if frame_context is not None
+        else nullcontext()
+    )
     _began = False
     _ended = False
-    if target is not None and clear_color is not None and updates is not None:
-        command_buffer.beginPass(
-            target,
-            clear_color,
-            QRhiDepthStencilClearValue(1.0, 0),
-            updates,
-        )
-        _began = True
-    else:
-        # Fallback: try to beginPass with whatever we have (tests may mock)
-        try:
+    with _submit_cm:
+        if target is not None and clear_color is not None and updates is not None:
             command_buffer.beginPass(
                 target,
                 clear_color,
@@ -269,50 +273,60 @@ def submit_array_draw(
                 updates,
             )
             _began = True
-        except Exception:
-            # If command_buffer is a mock, just proceed
-            pass
-
-    if array_draw_plan:
-        # docs/dev/rendering/tile-array-atlas-plan.md Phase 2: the whole
-        # multi-tile scene in one instanced draw call, instead of one
-        # draw call per (image1 tile, image2 tile) pair -- the
-        # draw-call-count fix this plan exists for.
-        try:
-            size = target.pixelSize() if target is not None else widget.renderTarget().pixelSize()
-        except Exception:
-            size = None
-        if size is not None:
-            command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
-            command_buffer.setViewport(
-                QRhiViewport(0.0, 0.0, float(size.width()), float(size.height()))
-            )
-            command_buffer.setVertexInput(
-                0,
-                [
-                    (renderer.resources.vertex_buffer, 0),
-                    (renderer.resources.array_resources.array_instance_buffer, 0),
-                ],
-            )
-            command_buffer.setShaderResources(array_srb)
-            command_buffer.draw(4, len(array_draw_plan))
         else:
-            # No size — still attempt draw
+            # Fallback: try to beginPass with whatever we have (tests may mock)
             try:
-                command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
-                command_buffer.setShaderResources(array_srb)
-                command_buffer.draw(4, len(array_draw_plan))
+                command_buffer.beginPass(
+                    target,
+                    clear_color,
+                    QRhiDepthStencilClearValue(1.0, 0),
+                    updates,
+                )
+                _began = True
             except Exception:
+                # If command_buffer is a mock, just proceed
                 pass
 
-    for render_pass in active_feature_passes:
-        render_pass.record(command_buffer, widget, ctx)
+        if array_draw_plan:
+            # docs/dev/rendering/tile-array-atlas-plan.md Phase 2: the whole
+            # multi-tile scene in one instanced draw call, instead of one
+            # draw call per (image1 tile, image2 tile) pair -- the
+            # draw-call-count fix this plan exists for.
+            try:
+                size = target.pixelSize() if target is not None else widget.renderTarget().pixelSize()
+            except Exception:
+                size = None
+            if size is not None:
+                command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
+                command_buffer.setViewport(
+                    QRhiViewport(0.0, 0.0, float(size.width()), float(size.height()))
+                )
+                command_buffer.setVertexInput(
+                    0,
+                    [
+                        (renderer.resources.vertex_buffer, 0),
+                        (renderer.resources.array_resources.array_instance_buffer, 0),
+                    ],
+                )
+                command_buffer.setShaderResources(array_srb)
+                command_buffer.draw(4, len(array_draw_plan))
+            else:
+                # No size — still attempt draw
+                try:
+                    command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
+                    command_buffer.setShaderResources(array_srb)
+                    command_buffer.draw(4, len(array_draw_plan))
+                except Exception:
+                    pass
 
-    try:
-        command_buffer.endPass()
-        _ended = True
-    except Exception:
-        pass
+        for render_pass in active_feature_passes:
+            render_pass.record(command_buffer, widget, ctx)
+
+        try:
+            command_buffer.endPass()
+            _ended = True
+        except Exception:
+            pass
 
     # Phase-2 frame bus: submit gate + begin/end fact (record only).
     if frame_context is not None:

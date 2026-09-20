@@ -9,6 +9,7 @@ Feature-specific gestures (dividers, slot drag) stay in
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 
 from PySide6.QtCore import QMimeData, QPoint, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
@@ -215,81 +216,125 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     cell_u = (pos.x() - rect.x()) / rect.width()
     cell_v = (pos.y() - rect.y()) / rect.height()
 
-    # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
-    # just sign -- see docs/dev/rendering/tile-array-atlas-plan.md Findings
-    # (image_compare's compute_zoom_wheel_transform had the same fixed-step-
-    # per-event bug: a coalesced multi-notch burst produced the same tiny
-    # step as a single click).
-    notches = delta / 120.0
-    factor = widget.ZOOM_STEP**notches
+    # Perf spans (Wave D, plan-engine-perf-debugger-2026-09-20): the
+    # wheel-to-photon chain opens here, mirroring IC's ``ic.wheel_tick``.
+    # ``trace_id`` carries the ``wheel-<id>`` join atom so Perfetto can
+    # join this tick with its downstream mc.enqueue/prepare/realize_slots/
+    # mips/submit spans. Span/record only — the math and dispatch below
+    # are unchanged. None-safe: fakes/widgets without a renderer-owned
+    # context skip the span, not the zoom.
     z1 = widget.state.zoom
-    z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
-    if abs(z2 - z1) <= _ZOOM_IDENTICAL_EPS:
-        # IC parity (``compute_zoom_wheel_transform`` swallows <= 1e-6):
-        # invisible change -- skip the whole dispatch fan-out (reducer,
-        # subscribers, composition rebuild, uploads check, LOD switch).
-        event.accept()
-        return
-
-    if z2 <= widget.ZOOM_MIN:
-        # At the zoom floor there's no meaningful cursor-anchored offset left
-        # (the whole cell is in view) -- snap pan to origin instead of
-        # carrying over the last wheel step's clamped remainder, which would
-        # otherwise leave a tiny nonzero pan that keeps the zoom indicator
-        # visible even though zoom is back at its default.
-        new_pan_x, new_pan_y = 0.0, 0.0
-    else:
-        new_pan_x = widget.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
-            1.0 / z2 - 1.0 / z1
-        )
-        new_pan_y = widget.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
-            1.0 / z2 - 1.0 / z1
-        )
-        new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
-    # IC parity: the wheel path never kicks window activation (no per-tick
-    # raise/activate round-trip). That storm is what Mutter answers with
-    # busy-cursor feedback; the Wayland/Vulkan stale-canvas catch-up is
-    # handled on gesture settle by the debounced compositor sync
-    # (see divider_sync) instead.
-    pre_dispatch_ms = (
-        (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
-    )
-    # Frame-bus tick marker (record-only, pre-dispatch): joins this wheel
-    # tick to the frame it kicks -- tick id only, no timing (timing belongs
-    # to the perf-debugger epic). None-safe: fakes/widgets without a
-    # renderer-owned context skip the record. The existing mc_dnd_debug tick
-    # log below is untouched.
+    _pan_before_x = widget.state.pan_x
+    _pan_before_y = widget.state.pan_y
     _tick_context = _frame_context_from_widget(widget)
     if _tick_context is not None:
-        try:
-            _fit_hit = bool(getattr(widget, "_zoom_fit_cache_last_hit", False))
-        except Exception:
-            _fit_hit = False
-        _tick_context.record_invalidation(
-            "mc_zoom_tick",
-            f"wheel tick delta={delta} zoom {z1:.6f}->{z2:.6f}"
-            f" fit_cache={'hit' if _fit_hit else 'miss'}",
-            ids=make_ids(
-                _tick_context.frame_id,
+        _tick_context.bump("mc.wheel_tick")
+        _wheel_id = (
+            f"wheel-{_tick_context.frame_id}"
+            f"-{_tick_context.count('mc.wheel_tick')}"
+        )
+        _wheel_cm = _tick_context.span(
+            "mc.wheel_tick",
+            detail=lambda: {
+                "trace_id": _wheel_id,
+                "angle_delta_y": delta,
+                "zoom": [z1, z2],
+                "pan": [[_pan_before_x, _pan_before_y], [new_pan_x, new_pan_y]],
+            },
+        )
+    else:
+        _wheel_id = None
+        _wheel_cm = nullcontext()
+    z2: float | None = None
+    new_pan_x: float | None = None
+    new_pan_y: float | None = None
+    with _wheel_cm:
+        # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
+        # just sign -- see docs/dev/rendering/tile-array-atlas-plan.md Findings
+        # (image_compare's compute_zoom_wheel_transform had the same fixed-step-
+        # per-event bug: a coalesced multi-notch burst produced the same tiny
+        # step as a single click).
+        notches = delta / 120.0
+        factor = widget.ZOOM_STEP**notches
+        z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
+        if abs(z2 - z1) <= _ZOOM_IDENTICAL_EPS:
+            # IC parity (``compute_zoom_wheel_transform`` swallows <= 1e-6):
+            # invisible change -- skip the whole dispatch fan-out (reducer,
+            # subscribers, composition rebuild, uploads check, LOD switch).
+            event.accept()
+            return
+
+        if z2 <= widget.ZOOM_MIN:
+            # At the zoom floor there's no meaningful cursor-anchored offset left
+            # (the whole cell is in view) -- snap pan to origin instead of
+            # carrying over the last wheel step's clamped remainder, which would
+            # otherwise leave a tiny nonzero pan that keeps the zoom indicator
+            # visible even though zoom is back at its default.
+            new_pan_x, new_pan_y = 0.0, 0.0
+        else:
+            new_pan_x = widget.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
+                1.0 / z2 - 1.0 / z1
+            )
+            new_pan_y = widget.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
+                1.0 / z2 - 1.0 / z1
+            )
+            new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
+        # IC parity: the wheel path never kicks window activation (no per-tick
+        # raise/activate round-trip). That storm is what Mutter answers with
+        # busy-cursor feedback; the Wayland/Vulkan stale-canvas catch-up is
+        # handled on gesture settle by the debounced compositor sync
+        # (see divider_sync) instead.
+        pre_dispatch_ms = (
+            (time.perf_counter() - tick_t0) * 1000.0 if debug_ticks else 0.0
+        )
+        # Frame-bus tick marker (record-only, pre-dispatch): joins this wheel
+        # tick to the frame it kicks -- tick id only, no timing (timing belongs
+        # to the perf-debugger epic). None-safe: fakes/widgets without a
+        # renderer-owned context skip the record. The existing mc_dnd_debug tick
+        # log below is untouched.
+        if _tick_context is not None:
+            try:
+                _fit_hit = bool(getattr(widget, "_zoom_fit_cache_last_hit", False))
+            except Exception:
+                _fit_hit = False
+            _tick_context.record_invalidation(
+                "mc_zoom_tick",
+                f"wheel tick delta={delta} zoom {z1:.6f}->{z2:.6f}"
+                f" fit_cache={'hit' if _fit_hit else 'miss'}",
+                ids=make_ids(
+                    _tick_context.frame_id,
+                    delta,
+                    (round(z1, 6), round(z2, 6)),
+                    "fit-hit" if _fit_hit else "fit-miss",
+                ),
+            )
+        # Present proxy (enqueue-side ONLY, mirrors IC's ic.present_proxy):
+        # this dispatch is what schedules the compositor present; the span
+        # stops when dispatch returns, so compositor time is EXCLUDED by
+        # construction — never read this as photon timing.
+        _pfc = _frame_context_from_widget(widget)
+        with (
+            _pfc.span(
+                "mc.present_proxy",
+                detail=lambda: {"trace_id": _wheel_id, "source": "wheel"},
+            )
+            if _pfc is not None
+            else nullcontext()
+        ):
+            widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+        if debug_ticks:
+            mc_dnd_debug(
+                "[mc-zoom] tick delta=%d zoom=%.6f->%.6f pan=(%.4f,%.4f) "
+                "pre_dispatch_ms=%.3f dispatch_ms=%.3f",
                 delta,
-                (round(z1, 6), round(z2, 6)),
-                "fit-hit" if _fit_hit else "fit-miss",
-            ),
-        )
-    widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
-    if debug_ticks:
-        mc_dnd_debug(
-            "[mc-zoom] tick delta=%d zoom=%.6f->%.6f pan=(%.4f,%.4f) "
-            "pre_dispatch_ms=%.3f dispatch_ms=%.3f",
-            delta,
-            z1,
-            z2,
-            new_pan_x,
-            new_pan_y,
-            pre_dispatch_ms,
-            (time.perf_counter() - tick_t0) * 1000.0 - pre_dispatch_ms,
-        )
-    event.accept()
+                z1,
+                z2,
+                new_pan_x,
+                new_pan_y,
+                pre_dispatch_ms,
+                (time.perf_counter() - tick_t0) * 1000.0 - pre_dispatch_ms,
+            )
+        event.accept()
 
 
 def _rmb_surface_override():
