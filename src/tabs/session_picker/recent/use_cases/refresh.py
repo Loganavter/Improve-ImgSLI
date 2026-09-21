@@ -22,6 +22,44 @@ monkeypatch e.g. ``"tabs.session_picker.recent.panel.list_recent_projects"``
 
 from __future__ import annotations
 
+import os
+
+
+def _disk_fingerprint(path: str) -> tuple[bool, int | None]:
+    """On-disk presence + mtime for a recent record.
+
+    Fail-open (``(False, None)``) when the path cannot be stated — an
+    unstatable file counts as changed, never as silently fresh.
+    """
+    try:
+        return (True, int(os.stat(path).st_mtime_ns))
+    except OSError:
+        try:
+            # Deleted externally (or never existed): presence is the signal.
+            return (os.path.exists(path), None)
+        except Exception:
+            return (False, None)
+
+
+def _record_signature(records) -> list[tuple]:
+    """Stored-field identity per record (prefs-level change detection)."""
+    return [
+        (r.path, r.opened_at, r.display_name, r.session_types)
+        for r in records
+    ]
+
+
+def _live_state(records) -> list[tuple]:
+    """Live on-disk state per record — compared against the panel's last-seen
+    snapshot, not against the fresh list.
+
+    Comparing old-vs-fresh record *fields* can never catch an external delete:
+    both sides come from the same store file, so both still claim the project
+    exists. Only a snapshot of what the disk looked like at the last refresh
+    makes deletes/mtime edits visible.
+    """
+    return [(r.path, *_disk_fingerprint(r.path)) for r in records]
+
 
 def refresh(panel) -> None:
     from tabs.session_picker.recent import panel as _panel_mod
@@ -37,6 +75,7 @@ def refresh(panel) -> None:
     )
     alive = {r.path for r in panel._records}
     panel._selected_paths &= alive
+    panel._disk_snapshot = _live_state(panel._records)
     panel._rebuild_items()
     panel._sync_header_controls()
     panel._sync_opaque_fills()
@@ -61,20 +100,19 @@ def soft_refresh(panel) -> None:
         and sort_mode == panel._sort_mode
         and sort_order == panel._sort_order
     )
-    same_records = [
-        (r.path, r.opened_at, r.display_name, r.session_types)
-        for r in panel._records
-    ] == [
-        (r.path, r.opened_at, r.display_name, r.session_types)
-        for r in records
-    ]
-    if same_prefs and same_records:
+    same_records = _record_signature(panel._records) == _record_signature(records)
+    live_now = _live_state(records)
+    prev_live = getattr(panel, "_disk_snapshot", None)
+    disk_changed = prev_live is not None and prev_live != live_now
+    if same_prefs and same_records and not disk_changed:
         panel._sync_header_controls()
+        panel._disk_snapshot = live_now
         return
     panel._view_mode = view_mode
     panel._sort_mode = sort_mode
     panel._sort_order = sort_order
     panel._records = records
+    panel._disk_snapshot = live_now
     panel._selected_paths &= {r.path for r in records}
     panel._rebuild_items()
     panel._sync_header_controls()

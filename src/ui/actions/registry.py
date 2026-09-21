@@ -314,18 +314,35 @@ def _best_match_rank(action: ActionDescriptor, needle: str) -> int | None:
     return action_query_rank(needle, haystacks=_haystacks(action))
 
 
+def _humanize_key(key: str) -> str:
+    """Human-readable fallback for an untranslated i18n key (no raw keys)."""
+    tail = (key or "").rsplit(".", 1)[-1].replace("_", " ").strip()
+    return tail.title() if tail else ""
+
+
 def action_breadcrumb_text(
     action: ActionDescriptor,
     query: str = "",
     *,
     active_tab: str | None = None,
 ) -> str:
-    """Palette breadcrumb from the descriptor (Settings groups are own rows)."""
+    """Palette breadcrumb from the descriptor (Settings groups are own rows).
+
+    Every segment falls back to a humanized label when the i18n key has no
+    translation, and an action with no breadcrumb falls back to its own
+    humanized id tail — callers never see a raw ``dotted.key`` or an empty
+    string.
+    """
     del query, active_tab
     segments: list[str] = []
     for segment in action.breadcrumb or ():
-        if segment:
-            segments.append(_display_text(segment))
+        if not segment:
+            continue
+        text = _display_text(segment)
+        segments.append(text if text != segment else _humanize_key(segment))
+    if not segments:
+        fallback = _humanize_key(action.action_id)
+        return fallback
     return " ▸ ".join(segments)
 
 

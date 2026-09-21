@@ -360,7 +360,39 @@ class HelpDialog(ThemedDialog):
 
     def deleteLater(self) -> None:
         self._remove_mouse_nav_filter()
+        self._unregister_help_navigation()
         super().deleteLater()
+
+    def _unregister_help_navigation(self) -> None:
+        """Withdraw this dialog's sections from the shared NavigationManager.
+
+        Sections hold strong refs to dialog-owned widgets; without an
+        explicit unregister a destroyed dialog leaves stale owners in the
+        global registry (focus can be routed into dead widgets).
+        Idempotent — safe to call from both close and destroy paths.
+        """
+        if not getattr(self, "_help_navigation_installed", None):
+            return
+        self._help_navigation_installed = False
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            mgr = NavigationManager.get_instance()
+        except Exception:
+            return
+        owners = [
+            getattr(self, "_back_bar", None),
+            getattr(getattr(self, "shell", None), "sidebar_column", None)
+            or getattr(self, "nav_widget", None),
+            getattr(self, "_content_host", None),
+        ]
+        for owner in owners:
+            if owner is None:
+                continue
+            try:
+                mgr.unregister(owner)
+            except Exception:
+                pass
 
     def _install_mouse_nav_filter(self) -> None:
         if self._mouse_nav_filter is not None:

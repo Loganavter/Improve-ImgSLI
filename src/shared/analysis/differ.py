@@ -7,7 +7,10 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
-from shared.analysis.output import finalize_diff_output
+from shared.analysis.output import (
+    open_streaming_output,
+    to_u8_rgb,
+)
 from engine.store.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -16,6 +19,32 @@ SSIM_DEFAULT_WIN_SIZE = 7
 SSIM_TILE_MAX_EXTENT = 1536
 SSIM_MAX_WORKERS = 8
 DIFF_TILE_MAX_EXTENT = 1536
+
+
+def resample_second_to_first(image1: Image.Image, image2: Image.Image):
+    """ONE size-mismatch policy for maps and scalars (metrics.py shares it).
+
+    Resample-and-record: ``image2`` is LANCZOS-resampled onto
+    ``image1.size`` and the resample is recorded via ``logger.debug`` so a
+    scalar computed over resampled pixels is auditable against the map
+    computed over the same pixels. Returns
+    ``(image1, aligned_image2, did_resample)``. A failed resample returns
+    the original pair unaligned (callers still refuse later, as before).
+    """
+    if image2 is None:
+        return image1, None, False
+    if image2.size == image1.size:
+        return image1, image2, False
+    try:
+        aligned = image2.resize(image1.size, Image.Resampling.LANCZOS)
+    except Exception:
+        return image1, image2, False
+    logger.debug(
+        "[ANALYSIS_ALIGN] resampled image2 %s -> %s (LANCZOS; map+scalar policy)",
+        image2.size,
+        image1.size,
+    )
+    return image1, aligned, True
 
 def _resolve_ssim_win_size(width: int, height: int) -> int:
     win_size = min(SSIM_DEFAULT_WIN_SIZE, width, height)
@@ -100,7 +129,9 @@ def _compute_tiled_grayscale_diff(
     tile_grid, tile_jobs = _build_diff_tile_jobs(width, height)
     total_tiles = len(tile_jobs)
     workers = _resolve_ssim_workers(total_tiles)
-    gray_tiles: dict[int, tuple] = {}
+    # Pass 1 scans tile extrema only (tiles are discarded, never stored):
+    # the global linear normalize needs min/max before any tile can be
+    # scaled, and holding every tile in a dict is a full frame in RAM.
     global_min = 255
     global_max = 0
 
@@ -120,7 +151,6 @@ def _compute_tiled_grayscale_diff(
     if workers <= 1:
         for tile_index, region in tile_jobs:
             result = _compute_grayscale_tile(tile_index, total_tiles, region, arr1, arr2)
-            gray_tiles[tile_index] = result
             completed_tiles += 1
             global_min = min(global_min, result[4])
             global_max = max(global_max, result[5])
@@ -146,7 +176,6 @@ def _compute_tiled_grayscale_diff(
             for future in as_completed(futures):
                 result = future.result()
                 region = result[2]
-                gray_tiles[result[0]] = result
                 completed_tiles += 1
                 global_min = min(global_min, result[4])
                 global_max = max(global_max, result[5])
@@ -164,17 +193,24 @@ def _compute_tiled_grayscale_diff(
                 )
                 _emit_tiled_progress(progress_callback, "grayscale_tiles", completed_tiles, total_tiles)
 
-    result = np.empty((height, width), dtype=np.uint8)
+    # Pass 2 recomputes each tile (cheap numpy kernels over caller-owned
+    # arrays) and streams it scaled into the output writer: peak RAM stays
+    # at tile scale instead of holding every tile plus the full result.
     scale = None if global_max <= global_min else 255.0 / float(global_max - global_min)
+    writer = open_streaming_output(width, height, channels=1)
     for tile_index, region in tile_jobs:
-        _, _, _, gray_tile, _, _, _ = gray_tiles[tile_index]
+        _, _, _, gray_tile, _, _, _ = _compute_grayscale_tile(
+            tile_index, total_tiles, region, arr1, arr2
+        )
         if scale is not None:
             tile_out = np.clip((gray_tile.astype(np.float32) - global_min) * scale, 0.0, 255.0)
             tile_out = tile_out.astype(np.uint8, copy=False)
         else:
             tile_out = gray_tile
-        result[region.top:region.bottom, region.left:region.right] = tile_out
-    return result
+        writer.write_tile(
+            (region.left, region.top, region.right, region.bottom), tile_out
+        )
+    return writer.finalize()
 
 def _compute_highlight_tile(
     tile_index: int,
@@ -210,7 +246,10 @@ def _compute_tiled_highlight_diff(
     tile_grid, tile_jobs = _build_diff_tile_jobs(width, height)
     total_tiles = len(tile_jobs)
     workers = _resolve_ssim_workers(total_tiles)
-    result = np.empty((height, width, 3), dtype=np.uint8)
+    # Tile-streamed: each finished tile lands in the output writer (RAM
+    # buffer when small, spill store when large) instead of a full-frame
+    # result — order-independent, explicit boxes.
+    writer = open_streaming_output(width, height, channels=3)
 
     logger.debug(
         "[HIGHLIGHT_TILES] size=%sx%s grid=%sx%s tile=%sx%s workers=%s parallel=%s",
@@ -231,7 +270,11 @@ def _compute_tiled_highlight_diff(
                 tile_index, total_tiles, region, arr1, arr2, threshold
             )
             completed_tiles += 1
-            result[region.top:region.bottom, region.left:region.right] = result_tuple[3]
+            region = result_tuple[2]
+            writer.write_tile(
+                (region.left, region.top, region.right, region.bottom),
+                result_tuple[3],
+            )
             logger.debug(
                 "[HIGHLIGHT_TILE] %s/%s completed=%s/%s region=(%s,%s,%s,%s) elapsed_ms=%.1f",
                 result_tuple[0],
@@ -262,23 +305,27 @@ def _compute_tiled_highlight_diff(
             for future in as_completed(futures):
                 result_tuple = future.result()
                 region = result_tuple[2]
-                completed_tiles += 1
-                result[region.top:region.bottom, region.left:region.right] = result_tuple[3]
-                logger.debug(
-                    "[HIGHLIGHT_TILE] %s/%s completed=%s/%s region=(%s,%s,%s,%s) elapsed_ms=%.1f",
-                    result_tuple[0],
-                    result_tuple[1],
-                    completed_tiles,
-                    total_tiles,
-                    region.left,
-                    region.top,
-                    region.width,
-                    region.height,
-                    result_tuple[4],
-                )
-                _emit_tiled_progress(progress_callback, "highlight_tiles", completed_tiles, total_tiles)
+            completed_tiles += 1
+            region = result_tuple[2]
+            writer.write_tile(
+                (region.left, region.top, region.right, region.bottom),
+                result_tuple[3],
+            )
+            logger.debug(
+                "[HIGHLIGHT_TILE] %s/%s completed=%s/%s region=(%s,%s,%s,%s) elapsed_ms=%.1f",
+                result_tuple[0],
+                result_tuple[1],
+                completed_tiles,
+                total_tiles,
+                region.left,
+                region.top,
+                region.width,
+                region.height,
+                result_tuple[4],
+            )
+            _emit_tiled_progress(progress_callback, "highlight_tiles", completed_tiles, total_tiles)
 
-    return result
+    return writer.finalize()
 
 def _compute_ssim_tile_patch(
     arr1: np.ndarray,
@@ -340,9 +387,11 @@ def _compute_ssim_diff_gray_tiled(
         max_tile_width=SSIM_TILE_MAX_EXTENT,
         max_tile_height=SSIM_TILE_MAX_EXTENT,
     )
-    result = np.empty((height, width), dtype=np.uint8)
     total_tiles = tile_grid.rows * tile_grid.columns
     workers = _resolve_ssim_workers(total_tiles)
+    # Tile-streamed (no full-frame result): each patch lands in the output
+    # writer as it completes, RAM or spill store as decided by size.
+    writer = open_streaming_output(width, height, channels=1)
 
     logger.debug(
         "[SSIM_TILES] size=%sx%s grid=%sx%s tile=%sx%s win=%s overlap=%s workers=%s parallel=%s",
@@ -385,7 +434,9 @@ def _compute_ssim_diff_gray_tiled(
                 win_size=win_size,
             )
             completed_tiles += 1
-            result[region.top:region.bottom, region.left:region.right] = tile_patch
+            writer.write_tile(
+                (region.left, region.top, region.right, region.bottom), tile_patch
+            )
 
             logger.debug(
                 "[SSIM_TILE] %s/%s completed=%s/%s region=(%s,%s,%s,%s) elapsed_ms=%.1f",
@@ -434,7 +485,9 @@ def _compute_ssim_diff_gray_tiled(
                     tile_elapsed_ms,
                 ) = future.result()
                 completed_tiles += 1
-                result[region.top:region.bottom, region.left:region.right] = tile_patch
+                writer.write_tile(
+                    (region.left, region.top, region.right, region.bottom), tile_patch
+                )
 
                 logger.debug(
                     "[SSIM_TILE] %s/%s completed=%s/%s region=(%s,%s,%s,%s) elapsed_ms=%.1f",
@@ -463,7 +516,7 @@ def _compute_ssim_diff_gray_tiled(
         workers,
         (time.perf_counter() - tiles_started_at) * 1000.0,
     )
-    return result
+    return writer.finalize()
 
 def create_highlight_diff(
     image1: Image.Image,
@@ -478,22 +531,18 @@ def create_highlight_diff(
     if not image1 or not image2:
         return None
 
-    if image1.size != image2.size:
-        try:
-            image2 = image2.resize(image1.size, Image.Resampling.LANCZOS)
-        except Exception:
-            return None
+    image1, image2, _ = resample_second_to_first(image1, image2)
 
     try:
-        arr1 = np.asarray(image1.convert("RGB"))
-        arr2 = np.asarray(image2.convert("RGB"))
-        result = _compute_tiled_highlight_diff(
+        arr1 = np.asarray(to_u8_rgb(image1))
+        arr2 = np.asarray(to_u8_rgb(image2))
+        # Tiled kernels finalize through the streaming writer themselves.
+        return _compute_tiled_highlight_diff(
             arr1,
             arr2,
             threshold=threshold,
             progress_callback=progress_callback,
         )
-        return finalize_diff_output(result, channels=3)
     except Exception as e:
         logger.error(f"Error creating highlight diff: {e}", exc_info=True)
         return None
@@ -511,21 +560,17 @@ def create_grayscale_diff(
     if not image1 or not image2:
         return None
 
-    if image1.size != image2.size:
-        try:
-            image2 = image2.resize(image1.size, Image.Resampling.LANCZOS)
-        except Exception:
-            return None
+    image1, image2, _ = resample_second_to_first(image1, image2)
 
     try:
-        arr1 = np.asarray(image1.convert("RGB"))
-        arr2 = np.asarray(image2.convert("RGB"))
-        diff_gray = _compute_tiled_grayscale_diff(
+        arr1 = np.asarray(to_u8_rgb(image1))
+        arr2 = np.asarray(to_u8_rgb(image2))
+        # Tiled kernels finalize through the streaming writer themselves.
+        return _compute_tiled_grayscale_diff(
             arr1,
             arr2,
             progress_callback=progress_callback,
         )
-        return finalize_diff_output(diff_gray, channels=1)
     except Exception as e:
         logger.error(f"Error creating grayscale diff: {e}", exc_info=True)
         return None
@@ -542,17 +587,13 @@ def create_ssim_map(
     if not image1 or not image2:
         return None
 
-    if image1.size != image2.size:
-        try:
-            image2 = image2.resize(image1.size, Image.Resampling.LANCZOS)
-        except Exception:
-            return None
+    image1, image2, _ = resample_second_to_first(image1, image2)
 
     total_started_at = time.perf_counter()
     try:
         convert_started_at = time.perf_counter()
-        arr1 = np.asarray(image1.convert("RGB"))
-        arr2 = np.asarray(image2.convert("RGB"))
+        arr1 = np.asarray(to_u8_rgb(image1))
+        arr2 = np.asarray(to_u8_rgb(image2))
         convert_elapsed_ms = (time.perf_counter() - convert_started_at) * 1000.0
 
         ssim_started_at = time.perf_counter()
@@ -577,7 +618,8 @@ def create_ssim_map(
             total_elapsed_ms,
         )
 
-        return finalize_diff_output(heatmap_gray, channels=1)
+        # Tiled kernel finalizes through the streaming writer itself.
+        return heatmap_gray
 
     except Exception as e:
         logger.error(f"Error creating SSIM map: {e}", exc_info=True)

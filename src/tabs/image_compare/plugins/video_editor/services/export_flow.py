@@ -11,6 +11,37 @@ from sli_ui_toolkit.workers import GenericWorker
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _schedule_temp_delete(path: str | None, delay_ms: int = 60000) -> None:
+    """Best-effort delayed unlink of a temp preview file (fail-open).
+
+    The notify path used to reference this helper without defining it
+    (NameError on success-with-preview). Deletion failure never blocks
+    the notification — the OS temp cleaner reaps leftovers.
+    """
+    if not path:
+        return
+
+    def _unlink() -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+    try:
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(max(0, int(delay_ms)), _unlink)
+    except Exception:
+        try:
+            import threading
+
+            timer = threading.Timer(max(0.0, delay_ms / 1000.0), _unlink)
+            timer.daemon = True
+            timer.start()
+        except Exception:
+            pass
+
+
 def build_video_notification_preview(
     video_exporter,
     frames,
@@ -47,7 +78,25 @@ def build_video_notification_preview(
 
         global_bounds = None
         if fit_content:
-            global_bounds = video_exporter.get_cached_global_bounds(recording, False)
+            # GUI-thread-safe read only: get_cached_global_bounds()
+            # recomputes synchronously on a hash miss (decode/measure
+            # work) and must never run on the notify path's thread.
+            # Peek here; a None peek renders without bounds (fail-open)
+            # instead of blocking — the background recalculate worker
+            # republishes via store_cached_global_bounds.
+            peek = getattr(video_exporter, "peek_cached_global_bounds", None)
+            if callable(peek):
+                try:
+                    global_bounds = peek()
+                except Exception:
+                    global_bounds = None
+            else:
+                try:
+                    global_bounds = video_exporter.get_cached_global_bounds(
+                        recording, False
+                    )
+                except Exception:
+                    global_bounds = None
 
         frame = video_exporter.render_snapshot_thumbnail_to_pil(
             snapshot,
@@ -149,36 +198,42 @@ class VideoExportFlow:
                     controller.presenter.main_window_app,
                     "actions",
                 ):
-                    preview = build_video_notification_preview(
-                        controller.video_exporter,
-                        frames,
-                        safe_resolution,
-                        options,
-                    )
-                    lang = get_current_language()
-                    try:
-                        store_lang = getattr(getattr(controller.main_controller, "store", None), "settings", None)
-                        if store_lang is not None:
-                            lang = getattr(store_lang, "current_language", lang) or lang
-                    except Exception:
-                        pass
-                    title = tr("video.video_exported", lang)
-                    if title == "video.video_exported":
-                        title = "Video Exported"
-                    saved_tpl = tr("video.saved_to", lang)
-                    if saved_tpl == "video.saved_to":
-                        saved_tpl = "Saved to: {path}"
-                    try:
-                        msg = saved_tpl.format(path=path) if "{path}" in saved_tpl else f"{saved_tpl} {path}"
-                    except Exception:
-                        msg = f"Saved to: {path}"
-                    controller.presenter.main_window_app.actions.notify_system(
-                        title,
-                        msg,
-                        image_path=preview,
-                    )
-                    if preview:
-                        _schedule_temp_delete(preview, delay_ms=10000)
+                    # The notification preview is a full-res render — it
+                    # must not run on the GUI thread (this slot fires via
+                    # the worker result signal). Build it on the shared
+                    # thread pool; the result signal marshals the notify
+                    # back to the GUI thread. No pool → notify imageless
+                    # immediately (fail-open) rather than blocking.
+                    pool = getattr(controller, "thread_pool", None)
+                    if pool is None or not hasattr(pool, "start"):
+                        self._notify_export_success(path, None)
+                    else:
+                        try:
+                            preview_worker = GenericWorker(
+                                build_video_notification_preview,
+                                controller.video_exporter,
+                                frames,
+                                safe_resolution,
+                                options,
+                            )
+                            preview_worker.signals.result.connect(
+                                lambda preview, p=path: self._notify_export_success(
+                                    p, preview
+                                )
+                            )
+                            preview_worker.signals.error.connect(
+                                lambda _err, p=path: self._notify_export_success(
+                                    p, None
+                                )
+                            )
+                            pool.start(preview_worker)
+                        except Exception:
+                            logger.warning(
+                                "video notify preview dispatch failed; "
+                                "notifying without thumbnail",
+                                exc_info=True,
+                            )
+                            self._notify_export_success(path, None)
             else:
                 self._emit_export_finished(False)
 
@@ -213,6 +268,54 @@ class VideoExportFlow:
         if exporter is None:
             return False
         return bool(exporter.is_cancel_requested())
+
+    def _notify_export_success(self, path: str, preview: str | None) -> None:
+        """GUI-thread notify for a finished export (preview may be None).
+
+        Runs on the GUI thread — either directly (no thread pool) or via
+        the preview worker's result signal. Never renders; the preview
+        file (if any) was built off-thread by
+        :func:`build_video_notification_preview`.
+        """
+        controller = self.controller
+        try:
+            lang = get_current_language()
+            try:
+                store_lang = getattr(
+                    getattr(controller.main_controller, "store", None),
+                    "settings",
+                    None,
+                )
+                if store_lang is not None:
+                    lang = getattr(store_lang, "current_language", lang) or lang
+            except Exception:
+                pass
+            title = tr("video.video_exported", lang)
+            if title == "video.video_exported":
+                title = "Video Exported"
+            saved_tpl = tr("video.saved_to", lang)
+            if saved_tpl == "video.saved_to":
+                saved_tpl = "Saved to: {path}"
+            try:
+                msg = (
+                    saved_tpl.format(path=path)
+                    if "{path}" in saved_tpl
+                    else f"{saved_tpl} {path}"
+                )
+            except Exception:
+                msg = f"Saved to: {path}"
+            controller.presenter.main_window_app.actions.notify_system(
+                title,
+                msg,
+                image_path=preview,
+            )
+        except Exception:
+            logger.warning(
+                "video export success notification failed",
+                exc_info=True,
+            )
+        if preview:
+            _schedule_temp_delete(preview, delay_ms=10000)
 
     def _emit_export_finished(self, success: bool) -> None:
         controller = self.controller

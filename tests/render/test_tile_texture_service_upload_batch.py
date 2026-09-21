@@ -56,6 +56,38 @@ def test_unregistered_source_falls_back_to_deterministic_order():
     assert batch == [(0, 0)]
 
 
+def test_under_budget_returns_center_out_order_not_set_order():
+    """The under-budget fast path used to return raw set-iteration order
+    (hash-based, varying call to call). It must use the same deterministic
+    center-out order as the budgeted path: nearest tile first, (row, col)
+    tie-break for equidistant tiles."""
+    service = _service()
+    visible_rect = (1024.0, 0.0, 2048.0, 1024.0)
+    first = service.select_upload_batch(
+        "src", {(0, 0), (0, 1), (0, 2)}, visible_rect, budget=5
+    )
+    assert first == [(0, 1), (0, 0), (0, 2)]
+    # Rebuilt in a different insertion order: same answer.
+    rebuilt = set()
+    for index in [(0, 2), (0, 0), (0, 1)]:
+        rebuilt.add(index)
+    assert service.select_upload_batch("src", rebuilt, visible_rect, budget=5) == first
+
+
+def test_under_budget_order_is_stable_across_build_orders():
+    service = _service(width=5 * 1024, height=3 * 1024, max_tile_extent=1024)
+    visible_rect = (2048.0, 1024.0, 3072.0, 2048.0)
+    orders = set()
+    for _ in range(10):
+        missing = set()
+        for index in [(2, 2), (0, 0), (1, 3), (0, 2), (1, 1)]:
+            missing.add(index)
+        orders.add(
+            tuple(service.select_upload_batch("src", missing, visible_rect, budget=10))
+        )
+    assert len(orders) == 1
+
+
 def test_does_not_mark_anything_resident():
     service = _service()
     missing = {(0, 0), (0, 1)}
@@ -71,10 +103,8 @@ def test_equal_distance_ties_break_by_index_not_set_hash_order():
     made the fill order look random from call to call even though each
     individual call was internally deterministic -- see docs/dev/rendering/
     tile-rendering-system.md. `budget` is kept below `len(missing)` so this
-    exercises the distance-sorted path (the `len(missing) <= budget` fast
-    path in `select_upload_batch` returns everything unsorted, which is
-    fine there since every tile uploads in the same call regardless of
-    order)."""
+    exercises the truncation path; the under-budget path uses the same
+    ordering (see test_under_budget_returns_center_out_order_not_set_order)."""
     service = _service(width=5 * 1024, height=3 * 1024, max_tile_extent=1024)
     # Center tile is (1, 2); the 4 orthogonal neighbors are all equidistant,
     # plus one far-away tile that must always lose to all four.

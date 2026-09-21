@@ -15,7 +15,9 @@ from plugins.export.actions import (
 )
 
 EXPORT_OWNER = "image_compare"
-EXPORT_PREFIX = f"{EXPORT_OWNER}.export_dialog."
+# Stable prefix (task-fix-settings-ux-p2-2026-09-20): export dialog ids no
+# longer embed the opening tab — attribution travels in owner_tab metadata.
+EXPORT_PREFIX = "export_dialog."
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
 from ui.actions.registry import ActionRegistry
 from ui.actions.search_index import PROP_MEMBER, group

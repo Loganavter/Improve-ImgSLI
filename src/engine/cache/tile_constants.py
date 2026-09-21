@@ -51,6 +51,12 @@ TILE_APRON_PX = 1
 # here would now be the actual (and needlessly slow) fill-rate bottleneck.
 # Tiles left over stay in the caller's `target` set and get reconsidered
 # (nearest-first) on the next call -- no separate queue needed.
+#
+# Scope: PER KEY, not per call. A residency call resolves one spec per
+# image key and passes this same count budget to each key's batch
+# selection (see TileTextureService.select_upload_batch), so a 2-key call
+# uploads up to 2x this many tiles in total. The per-CALL shared bound is
+# the wall-clock budget below (one UploadDeadline across every spec).
 TILE_UPLOAD_BUDGET_PER_CALL = 64
 
 # Wall-clock budget (milliseconds) for tile uploads within a single

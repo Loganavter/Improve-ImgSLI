@@ -60,9 +60,9 @@ def load_images(controller, paths) -> int:
     of planned ``AddSlot`` actions (A3: 1 dispatch / 1 emit for the whole
     confirm — same end state as N sequential ``load_single_auto`` calls);
     loading toast + preview worker stay per created slot, and files past
-    capacity surface one error-toast each via the bus like the single-add
-    path does. A grid that is already full short-circuits to a single
-    error-toast instead of one per file.
+    capacity surface one summary error-toast per confirm (never one dialog
+    per file). A grid that is already full short-circuits to a single
+    summary error-toast instead of one per file.
 
     Returns the number of slots created synchronously.
 
@@ -97,7 +97,7 @@ def load_images(controller, paths) -> int:
         full = False
     if full:
         logger.warning("load_images: grid full, rejecting %d file(s)", len(valid))
-        _loading._emit_mc_load_error(controller, valid[0], _grid_full_reason(controller))
+        _loading._emit_mc_overflow_summary(controller, valid)
         return 0
     widget = controller.widget
     scratch = widget.state
@@ -152,8 +152,7 @@ def load_images(controller, paths) -> int:
         last_added = scratch.slots[-1].id
         planned.append((scratch.slots[-1].id, path))
     if not built:
-        for path in overflow:
-            _loading._emit_mc_load_error(controller, path, _grid_full_reason(controller))
+        _loading._emit_mc_overflow_summary(controller, overflow)
         return 0
     store = widget.store
     transact = getattr(store, "transact", None)
@@ -172,7 +171,7 @@ def load_images(controller, paths) -> int:
         _preview.load_preview_async(controller, path, sid)
     for path in overflow:
         logger.warning("load_images: no slot created for %s (grid full?)", path)
-        _loading._emit_mc_load_error(controller, path, _grid_full_reason(controller))
+    _loading._emit_mc_overflow_summary(controller, overflow)
     return created
 
 

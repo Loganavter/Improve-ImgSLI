@@ -141,7 +141,16 @@ class Recorder(QObject):
 
         vp_snapshot = self.store.viewport.freeze_for_export()
         st_snapshot = self.store.settings.freeze_for_export()
-        doc = self.store.get_session_state_slot("document")
+        try:
+            doc = self.store.get_session_state_slot("document")
+        except Exception:
+            doc = None
+        if doc is None:
+            # Clean miss: no document slot (tab torn down / session
+            # cleared mid-record). Skipping the frame keeps the timeline
+            # gapless-by-absence instead of dereferencing None below.
+            _video_debug("capture_frame SKIP no document slot")
+            return
 
         def get_path_at_index(img_list, index):
             if 0 <= index < len(img_list):

@@ -3,8 +3,19 @@
   "_policy": "docs/dev/FILE_SIZE_POLICY.md",
   "entries": [
     {
+      "path": "src/core/state_management/reducers.py",
+      "lines": 552,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single reducer machine — viewport/settings/slot/transaction reduction scanned by settings-scalar AST dogma, must stay one file\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single reducer machine — viewport/settings/slot/transaction reduction scanned by settings-scalar AST dogma, must stay one file"
+      }
+    },
+    {
       "path": "src/devtools/context_cloc.py",
-      "lines": 786,
+      "lines": 810,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single devtools report generator — cloc + shader + tests aggregation\"",
@@ -27,7 +38,7 @@
     },
     {
       "path": "src/engine/cache/tile_texture_service.py",
-      "lines": 640,
+      "lines": 679,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns\"",
@@ -39,7 +50,7 @@
     },
     {
       "path": "src/engine/frame/context.py",
-      "lines": 506,
+      "lines": 590,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=leaf-collector reason=\"P1A render-core consolidation scaffold: per-frame decision collector, stdlib-only leaf, no timers/threads\"",
@@ -83,7 +94,7 @@
     },
     {
       "path": "src/plugins/export/dialog.py",
-      "lines": 733,
+      "lines": 758,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
@@ -94,7 +105,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 881,
+      "lines": 913,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -105,7 +116,7 @@
     },
     {
       "path": "src/plugins/settings/dialog.py",
-      "lines": 649,
+      "lines": 669,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
@@ -138,7 +149,7 @@
     },
     {
       "path": "src/shared/analysis/differ.py",
-      "lines": 584,
+      "lines": 626,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tiled-pipeline reason=\"stateless tiled diff kernels highlight/grayscale/ssim sharing workers\"",
@@ -341,7 +352,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py",
-      "lines": 513,
+      "lines": 586,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"coverage+first_paint_hold extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -353,7 +364,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py",
-      "lines": 344,
+      "lines": 387,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"draw submit extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -365,7 +376,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py",
-      "lines": 475,
+      "lines": 464,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"fallback LOD extracted from RhiCanvasRenderer — see renderer.py Audit-Meta state-machine\"",
@@ -377,7 +388,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/use_cases/frame_setup.py",
-      "lines": 300,
+      "lines": 323,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"frame setup extracted from RhiCanvasRenderer — see renderer.py Audit-Meta thin-owner\"",
@@ -502,7 +513,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/thumbnails.py",
-      "lines": 1011,
+      "lines": 1040,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one thumbnail pipeline — queue/worker/convert/emit share one generation token + pending guard\"",
@@ -514,7 +525,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
-      "lines": 928,
+      "lines": 965,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",
@@ -547,7 +558,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
-      "lines": 666,
+      "lines": 735,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
@@ -580,8 +591,20 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/state/reducers.py",
+      "lines": 512,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=reducer-bundle size=exempt reason=\"four cohesive session/render/pipeline/cache reducers share ImageSession/RenderCache/PipelineCache shapes — splitting per class triples cross-imports for no isolation gain\"",
+      "parsed": {
+        "pattern": "reducer-bundle",
+        "size": "exempt",
+        "reason": "four cohesive session/render/pipeline/cache reducers share ImageSession/RenderCache/PipelineCache shapes — splitting per class triples cross-imports for no isolation gain"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/ui/context_menu.py",
-      "lines": 599,
+      "lines": 610,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located\"",
@@ -593,7 +616,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 754,
+      "lines": 790,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",
@@ -605,7 +628,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 679,
+      "lines": 718,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
@@ -616,7 +639,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 859,
+      "lines": 916,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
@@ -650,7 +673,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 794,
+      "lines": 933,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -733,7 +756,7 @@
     },
     {
       "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 512,
+      "lines": 525,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
@@ -745,7 +768,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 859,
+      "lines": 903,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -768,7 +791,7 @@
     },
     {
       "path": "src/tabs/multi_compare/controller.py",
-      "lines": 497,
+      "lines": 519,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)\"",
@@ -779,7 +802,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
-      "lines": 1112,
+      "lines": 1144,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",
@@ -813,7 +836,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 786,
+      "lines": 801,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
@@ -835,7 +858,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 943,
+      "lines": 1058,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites\"",
@@ -846,7 +869,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 575,
+      "lines": 613,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -856,8 +879,19 @@
       }
     },
     {
+      "path": "src/tabs/multi_compare/use_cases/persistence.py",
+      "lines": 505,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate"
+      }
+    },
+    {
       "path": "src/tabs/multi_compare/use_cases/preview_decode.py",
-      "lines": 824,
+      "lines": 866,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)\"",
@@ -868,7 +902,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/cards.py",
-      "lines": 538,
+      "lines": 605,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"grid+list card factory with hover/selection/cover handling — single widget family\"",
@@ -880,7 +914,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/items_view.py",
-      "lines": 683,
+      "lines": 738,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single virtualized grid view — grid_columns/visible_window/acquire/place pipeline\"",
@@ -891,7 +925,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/panel.py",
-      "lines": 565,
+      "lines": 567,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",
@@ -902,7 +936,7 @@
     },
     {
       "path": "src/tabs/session_picker/widget.py",
-      "lines": 566,
+      "lines": 554,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel\"",
@@ -947,7 +981,7 @@
     },
     {
       "path": "src/ui/main_window/menu_controller.py",
-      "lines": 504,
+      "lines": 528,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single menu controller — platform menu assembly\"",

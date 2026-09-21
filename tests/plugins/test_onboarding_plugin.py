@@ -19,6 +19,7 @@ class _FakeSettingsManager:
     def __init__(self, *, first_run: bool = True) -> None:
         self._first_run = first_run
         self.saved: dict[str, object] = {}
+        self.persisted_stores: list = []
 
     def is_first_run(self) -> bool:
         return self._first_run
@@ -28,6 +29,9 @@ class _FakeSettingsManager:
 
     def _save_setting(self, key: str, value: object) -> None:
         self.saved[key] = value
+
+    def schedule_persist(self, store) -> None:
+        self.persisted_stores.append(store)
 
 
 class _FakeEventBus:
@@ -46,14 +50,17 @@ class _FakeEventBus:
 
 
 def _make_plugin(*, first_run: bool = True):
+    from core.state_management.dispatcher import Dispatcher
+    from core.store import Store
+
     plugin = OnboardingPlugin()
+    store = Store()
+    store.set_dispatcher(Dispatcher(store))
     plugin.initialize(
         SimpleNamespace(
-            store=SimpleNamespace(
-                settings=SimpleNamespace(
-                    current_language="en", ui_mode="beginner"
-                )
-            ),
+            # Real Store + Dispatcher: the mode write must go through
+            # dispatch (SetUIModeAction), not a fake-settings setattr.
+            store=store,
             settings_manager=_FakeSettingsManager(first_run=first_run),
             event_bus=_FakeEventBus(),
         )
@@ -127,7 +134,11 @@ def test_present_mounts_and_completed_dismisses(qtbot) -> None:
     assert emitted == ["advanced"]
     assert plugin.is_active() is False
     assert onboarding_host.is_active(window) is False
-    assert settings.saved.get("ui_mode") == "advanced"
+    # Single channel: dispatch (store updated via SetUIModeAction) plus
+    # scheduled persist — no incremental per-key _save_setting write.
+    # Two persists: overlay finish + host apply_ui_mode completion.
+    assert "ui_mode" not in settings.saved
+    assert settings.persisted_stores == [store, store]
     assert settings.is_first_run() is False
     assert store.settings.ui_mode == "advanced"
     assert any(isinstance(e, SettingsUIModeChangedEvent) for e in bus.events)

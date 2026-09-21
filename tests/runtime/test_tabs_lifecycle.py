@@ -111,9 +111,14 @@ def test_registry_deactivates_previous_tab_before_activating_next():
     assert second.lifecycle_calls == ["activated"]
 
 def test_registry_forwards_appearance_and_shutdown_hooks():
+    from types import SimpleNamespace
+
     tab = _RecordingTab(accept=True)
     registry = _registry_with(tab)
-    host = object()
+    # New stale-flush contract: pageless tabs defer appearance until materialize.
+    registry._pages.pop("recording", None)
+    registry._appearance_stale.discard("recording")
+    host = SimpleNamespace(ui=None)
 
     tab.apply_appearance = lambda window: tab.lifecycle_calls.append(
         "appearance" if window is host else "wrong"
@@ -122,7 +127,22 @@ def test_registry_forwards_appearance_and_shutdown_hooks():
         "shutdown" if window is host else "wrong"
     )
 
+    # Pageless -> marked stale, not applied immediately.
     registry.apply_appearance(host)
+    assert tab.lifecycle_calls == []
+    assert "recording" in registry._appearance_stale
+
+    # Materialize the page as visible, then flush delivers the deferred call.
+    page = object()
+    registry._pages["recording"] = page
+    host.ui = SimpleNamespace(
+        workspace_stack=SimpleNamespace(currentWidget=lambda: page)
+    )
+    registry.flush_stale_appearance(host)
+    assert tab.lifecycle_calls == ["appearance"]
+    assert "recording" not in registry._appearance_stale
+
     registry.notify_window_shutdown(host)
 
     assert tab.lifecycle_calls == ["appearance", "shutdown"]
+    registry._pages.pop("recording", None)

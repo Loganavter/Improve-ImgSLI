@@ -18,6 +18,10 @@ def test_document_active_display_name_does_not_stick_after_slot_clear():
     assert document.get_current_display_name(1) == "Left.png"
     assert document.get_active_display_name(1) == "Left.png"
 
+    # P2 hygiene: the getter is a pure read — the empty-slot fallback only
+    # replays the last explicitly remembered pin.
+    assert document.remember_current_display_name(1) == "Left.png"
+
     document.image_list1 = []
     document.current_index1 = -1
 

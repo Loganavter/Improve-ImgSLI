@@ -139,6 +139,16 @@ class MainController(QObject):
         return self._layout_plugin
 
     def attach_window_shell(self, window_shell):
+        """Wire plugins to the single main-window shell for the app lifetime.
+
+        Single-window assumption (verdict, not a TODO): the app owns exactly
+        one window shell from startup to shutdown, so there is deliberately
+        no detach/teardown path here. Plugins keep their shell references
+        until ``ApplicationContext.shutdown`` tears down the whole process;
+        adding a detach would only serve a multi-window future that does not
+        exist — if it ever does, detach must unwind both
+        ``configure_controller`` and ``bind_window_shell`` per plugin.
+        """
         self.window_shell = window_shell
         self.refresh_runtime_bindings()
         for plugin_name in ("comparison", "export", "settings", "onboarding"):

@@ -58,8 +58,10 @@ def _on_record(rec: TraceRecord) -> None:
     assert handle is not None
     with _FILE_LOCK:
         try:
-            handle.write(line)
-            handle.write("\n")
+            # Single append write: the previous two-write sequence (line,
+            # then newline) left a crash window that produced a newline-less
+            # partial tail line — the corrupt lines print_tree skips.
+            handle.write(line + "\n")
         except (OSError, ValueError):
             global _WRITE_FAILURE_LOGGED
             if not _WRITE_FAILURE_LOGGED:
@@ -68,3 +70,27 @@ def _on_record(rec: TraceRecord) -> None:
                     "trace file sink writes failing; trace output paused: %s",
                     _FILE_PATH,
                 )
+
+
+def read_trace_records(path: str) -> tuple[list[dict], int]:
+    """Read a trace.jsonl file, flagging corrupt lines.
+
+    Returns ``(records, corrupt_count)`` — corrupt lines (partial crash
+    tails, interleaved garbage) are counted, not silently swallowed, so
+    callers can surface truncation instead of debugging phantom gaps.
+    """
+    records: list[dict] = []
+    corrupt = 0
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    corrupt += 1
+    except OSError:
+        return [], corrupt
+    return records, corrupt

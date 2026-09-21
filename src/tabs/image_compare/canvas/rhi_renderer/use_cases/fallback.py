@@ -291,7 +291,6 @@ def resolve_fallback_plan(
             pass
         fallback_diag["held_first_paint"] = 1
         return None, []
-    _narrow_blocked = False
     # Cascade-quiescence gate (tile-seam fix 2026-09-20): freshly uploaded
     # tiles sample stale coarse mips at their edges for 1-2 frames, so a
     # tier must not promote the same frame its uploads land. Previous
@@ -299,6 +298,15 @@ def resolve_fallback_plan(
     # frame's uploads in the realizer's stashed count (main path only —
     # magnifier captures are excluded at the stash site). None-safe:
     # missing attrs read as quiescent (fail-open, old behavior).
+    #
+    # NOTE (task-fix-export-lod-parity-2026-09-20): no narrow-bbox
+    # promotion gate here anymore. Sliver filtering is engine-owned —
+    # build_compare_pair_plan drops intersections below SLIVER_MIN=0.002
+    # before the bbox expand (which only grows), so no plan item can carry
+    # a bbox side below 0.001; the old 0.001/0.3 gate could never fire, and
+    # a geometry-proxy gate must never pin the stale tier ahead of the
+    # residency-signal guards above. Sliver invariant owner:
+    # test_gap_mixed_size_no_sliver.py.
     _cascade_leftover = bool(getattr(renderer, "_pending_dirty_layers", None))
     try:
         _cascade_uploaded = int(
@@ -308,29 +316,10 @@ def resolve_fallback_plan(
     except Exception:
         _cascade_uploaded = 0
     _cascade_pending = _cascade_leftover or _cascade_uploaded > 0
-    if not main_more_pending and current_array_plan:
-        try:
-            _narrow_cnt = sum(1 for _it in current_array_plan if _it.bbox[2] < 0.001 or _it.bbox[3] < 0.001)
-            if _narrow_cnt / len(current_array_plan) > 0.3:
-                _narrow_blocked = True
-                if _gap_enabled():
-                    try:
-                        _gap_log(
-                            "gap promotion_blocked narrow=%d/%d ratio=%.2f entries=%d more_pending=False",
-                            _narrow_cnt,
-                            len(current_array_plan),
-                            _narrow_cnt / len(current_array_plan),
-                            len(current_array_plan),
-                        )
-                    except Exception:
-                        pass
-        except Exception:
-            _narrow_blocked = False
     if (
         not main_more_pending
         and not _cascade_pending
         and current_array_plan
-        and not _narrow_blocked
     ):
         new_last_good_key, array_draw_plan = key, current_array_plan
     else:

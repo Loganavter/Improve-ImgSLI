@@ -42,7 +42,9 @@ class ImagePropertiesDialog(ThemedDialog):
         super().__init__(parent)
         self.properties = properties
         self.current_language = current_language or get_current_language() or "en"
-        self.tr = tr_func if callable(tr_func) else app_tr
+        # Never assign to ``self.tr`` — QObject.tr() is Qt's own API and
+        # shadowing it makes translations look like raw keys.
+        self._tr_func = tr_func if callable(tr_func) else app_tr
         self.theme_manager = ThemeManager.get_instance()
 
         self.setObjectName("ImagePropertiesDialog")
@@ -194,5 +196,5 @@ class ImagePropertiesDialog(ThemedDialog):
         )
 
     def _tr(self, key: str, default: str) -> str:
-        text = self.tr(key, self.current_language)
+        text = self._tr_func(key, self.current_language)
         return default if text == key else text

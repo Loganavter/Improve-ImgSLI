@@ -80,18 +80,68 @@ def activate_default(registry: "TabRegistry") -> None:
 
 
 def activate(registry: "TabRegistry", session_type: str) -> None:
-    if session_type != registry._active_session_type:
-        if registry._active_session_type is not None:
-            deactivate(registry, registry._active_session_type)
-        pages._ensure_page(registry, session_type)
-        tab = registry._tabs.get(session_type)
-        if tab and registry._context:
-            try:
-                tab.on_activated(registry._context)
-                registry._active_session_type = session_type
-            except Exception as e:
-                logger.error(f"Tab activate error ({session_type}): {e}")
+    if session_type == registry._active_session_type:
+        _sync_active_session_for_type(registry, session_type)
+        return
+    previous = registry._active_session_type
+    tab = registry._tabs.get(session_type)
+    if tab is None:
+        # Fail-closed: unknown tab — never deactivate the previous tab into
+        # a None limbo for a target that cannot be shown.
+        logger.error(
+            "Tab activate aborted (%s): unknown tab — staying on %s",
+            session_type,
+            previous,
+        )
+        return
+    page = pages._ensure_page(registry, session_type)
+    if page is None and getattr(registry, "_stack", None) is not None:
+        # Fail-closed: page creation failed while a live stack is installed,
+        # so the visible page still shows the previous tab — keep it active
+        # instead of diverging active-type from visible page. (No stack yet
+        # means startup/test seeding: the page is built later, proceed.)
+        logger.error(
+            "Tab activate aborted (%s): page unavailable — staying on %s",
+            session_type,
+            previous,
+        )
+        return
+    if previous is not None:
+        deactivate(registry, previous)
+    if registry._context is not None:
+        try:
+            tab.on_activated(registry._context)
+        except Exception as e:
+            logger.error(f"Tab activate error ({session_type}): {e}")
+            _rollback_activation(registry, session_type, previous)
+            return
+    registry._active_session_type = session_type
     _sync_active_session_for_type(registry, session_type)
+
+
+def _rollback_activation(
+    registry: "TabRegistry", session_type: str, previous: str | None
+) -> None:
+    """Restore the previous active tab after ``on_activated`` raised.
+
+    The previous tab already received ``on_deactivated``; re-issue
+    ``on_activated`` so its lifecycle is symmetric and never leave
+    ``_active_session_type`` as ``None`` (the limbo the old code produced
+    by clearing-then-never-setting). The failed tab was never active, so
+    it gets no ``on_deactivated``.
+    """
+    if previous is None:
+        return
+    registry._active_session_type = previous
+    prev_tab = registry._tabs.get(previous)
+    if prev_tab is not None and registry._context is not None:
+        try:
+            prev_tab.on_activated(registry._context)
+        except Exception:
+            logger.exception(
+                "Tab re-activate error during rollback (%s)", previous
+            )
+    _sync_active_session_for_type(registry, previous)
 
 
 def _sync_active_session_for_type(registry: "TabRegistry", session_type: str) -> None:

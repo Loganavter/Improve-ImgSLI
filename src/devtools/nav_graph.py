@@ -30,7 +30,29 @@ def _load_nav_graph():
         sys.exit(1)
 
 
-def main() -> None:
+def evaluate_check(graph, validate) -> tuple[int, str]:
+    """Non-vacuous check verdict for a nav graph snapshot.
+
+    Returns ``(exit_code, message)``: 2 when the graph is empty (refusing a
+    vacuous "OK" — an unregistered graph proves nothing), 1 on violations,
+    0 when clean. Factored out of :func:`main` for unit testing.
+    """
+    nodes = getattr(graph, "nodes", None) or []
+    if not nodes:
+        return (
+            2,
+            "nav_graph EMPTY — no sections registered; refusing vacuous OK "
+            "(run inside the app with UI open)",
+        )
+    violations = validate(graph)
+    if not violations:
+        return 0, "nav_graph OK — no violations"
+    lines = [f"nav_graph violations ({len(violations)}):"]
+    lines.extend(f"  - {v}" for v in violations)
+    return 1, "\n".join(lines)
+
+
+def main() -> int:
     ap = argparse.ArgumentParser(description="Navigation graph dump/validate")
     ap.add_argument("--dump", action="store_true", help="Human dump")
     ap.add_argument("--json", action="store_true", help="JSON dump (with --dump)")
@@ -41,14 +63,10 @@ def main() -> None:
     snapshot, validate, focus_reason = _load_nav_graph()
 
     if args.check:
-        violations = validate()
-        if not violations:
-            print("nav_graph OK — no violations")
-            sys.exit(0)
-        print(f"nav_graph violations ({len(violations)}):")
-        for v in violations:
-            print(f"  - {v}")
-        sys.exit(1)
+        graph = snapshot()
+        code, message = evaluate_check(graph, validate)
+        print(message, file=sys.stderr if code else sys.stdout)
+        return code
 
     if args.write_snapshot:
         graph = snapshot()
@@ -61,7 +79,7 @@ def main() -> None:
         }
         args.write_snapshot.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         print(f"Wrote {args.write_snapshot} ({len(data['nodes'])} nodes)")
-        return
+        return 0
 
     # default dump
     graph = snapshot()
@@ -76,12 +94,12 @@ def main() -> None:
         }
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
-        return
+        return 0
 
     print(f"Focus reason (current input): {reason.name} ({'keyboard' if reason.name != 'MouseFocusReason' else 'mouse'})")
     if not graph.nodes:
         print("(no sections registered — run inside app or with QApplication)")
-        return
+        return 0
     print(f"Graph nodes ({len(graph.nodes)}):")
     for i, n in enumerate(graph.nodes):
         vis = "visible" if n.visible else "hidden"
@@ -94,7 +112,8 @@ def main() -> None:
             print(f"  - {v}")
     else:
         print("\nNo violations")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

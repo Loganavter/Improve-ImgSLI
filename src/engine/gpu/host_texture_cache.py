@@ -37,12 +37,53 @@ def qimage_from_pil(pil_image) -> QImage:
 
 
 class HostTextureUploadCache:
-    """LRU byte-budget cache of full-resolution QImages keyed by texture role."""
+    """LRU byte-budget cache of full-resolution QImages keyed by texture role.
+
+    Aliasing contract (audited): ``_uid_cache`` owns one canonical QImage
+    per content uid and ``_cache`` holds a second reference to the *same*
+    object for the texture-role lookup -- not a copy, so a decode serves
+    every role without re-decoding. Consequences, both enforced here:
+
+    - Callers must treat the returned QImage as read-only. Mutating it
+      (paint, convert in place) would corrupt every role sharing that
+      uid. Upload paths only sample from it.
+    - Byte accounting dedupes by object identity (``_cache_bytes``): the
+      shared image is charged once no matter how many role keys point at
+      it. Evicting a role key drops only that reference; the canonical
+      entry's own bytes are released only when the uid entry itself is
+      evicted, and each release subtracts exactly once in both
+      directions (role-evict and uid-evict never double-subtract a still-
+      referenced image).
+    """
 
     def __init__(self, budget_bytes: int):
         self._budget_bytes = budget_bytes
         self._cache: OrderedDict[str, QImage] = OrderedDict()
         self._uid_cache: OrderedDict[int, QImage] = OrderedDict()
+        # Live byte total, charged once per unique QImage object even when
+        # it is referenced from both dicts (see class docstring). Updated
+        # incrementally on store/evict so eviction never has to re-scan.
+        self._cache_bytes = 0
+
+    @staticmethod
+    def _image_bytes(image: QImage) -> int:
+        try:
+            return int(image.sizeInBytes())
+        except Exception:
+            return 0
+
+    def _total_bytes(self) -> int:
+        # Recomputed (not trusted blindly from the incremental counter)
+        # because QImages can detach/reallocate under implicit sharing;
+        # cheap: both dicts are tiny (roles + <=cap uid entries).
+        seen: set[int] = set()
+        total = 0
+        for image in list(self._cache.values()) + list(self._uid_cache.values()):
+            if id(image) in seen:
+                continue
+            seen.add(id(image))
+            total += self._image_bytes(image)
+        return total
 
     def touch(self, texture_key: str) -> QImage | None:
         image = self._cache.get(texture_key)
@@ -51,15 +92,19 @@ class HostTextureUploadCache:
         return image
 
     def store(self, texture_key: str, image: QImage) -> None:
+        old = self._cache.get(texture_key)
+        if old is not None and old is image:
+            self._cache.move_to_end(texture_key)
+            return
         self._cache[texture_key] = image
         self._cache.move_to_end(texture_key)
+        self._cache_bytes = self._total_bytes()
 
     def evict_over_budget(self, protected: set[str], budget_bytes: int | None = None) -> None:
         budget = self._budget_bytes if budget_bytes is None else budget_bytes
-        total_bytes = sum(image.sizeInBytes() for image in self._cache.values()) + sum(
-            image.sizeInBytes() for image in self._uid_cache.values()
-        )
+        total_bytes = self._total_bytes()
         if total_bytes <= budget:
+            self._cache_bytes = total_bytes
             return
         for texture_key in list(self._cache.keys()):
             if total_bytes <= budget:
@@ -68,7 +113,7 @@ class HostTextureUploadCache:
                 continue
             evicted = self._cache.pop(texture_key, None)
             if evicted is not None:
-                total_bytes -= evicted.sizeInBytes()
+                total_bytes = self._total_bytes()
         # If still over budget after draining _cache, evict oldest UID entries.
         if total_bytes > budget:
             for uid in list(self._uid_cache.keys()):
@@ -76,7 +121,8 @@ class HostTextureUploadCache:
                     break
                 evicted = self._uid_cache.pop(uid, None)
                 if evicted is not None:
-                    total_bytes -= evicted.sizeInBytes()
+                    total_bytes = self._total_bytes()
+        self._cache_bytes = total_bytes
 
     def qimage_from_source(self, pil_image, texture_key: str) -> QImage:
         uid = image_uid(pil_image)
@@ -89,6 +135,7 @@ class HostTextureUploadCache:
             if len(self._uid_cache) > _QIMAGE_BY_UID_CACHE_CAPACITY:
                 self._uid_cache.popitem(last=False)
         self.store(texture_key, image)
+        self._cache_bytes = self._total_bytes()
         return image
 
     @property

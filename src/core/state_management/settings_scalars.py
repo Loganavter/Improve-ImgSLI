@@ -42,6 +42,7 @@ SETTINGS_SCALARS: tuple[ScalarSpec, ...] = (
     ScalarSpec("debug_mode_enabled", "debug_mode_enabled", "SET_DEBUG_MODE_ENABLED", "SetDebugModeEnabledAction", "enabled"),
     ScalarSpec("system_notifications_enabled", "system_notifications_enabled", "SET_SYSTEM_NOTIFICATIONS_ENABLED", "SetSystemNotificationsEnabledAction", "enabled"),
     ScalarSpec("video_recording_fps", "video_recording_fps", "SET_VIDEO_RECORDING_FPS", "SetVideoRecordingFpsAction", "fps"),
+    ScalarSpec("rhi_backend", "rhi_backend", "SET_RHI_BACKEND", "SetRhiBackendAction", "backend"),
     ScalarSpec("window_x", "window_x", "SET_WINDOW_GEOMETRY", "SetWindowGeometryAction", "x"),
     ScalarSpec("window_y", "window_y", "SET_WINDOW_GEOMETRY", "SetWindowGeometryAction", "y"),
     ScalarSpec("window_width", "window_width", "SET_WINDOW_GEOMETRY", "SetWindowGeometryAction", "width"),

@@ -158,14 +158,14 @@ def _populate_interpolation_combos(dialog, p):
         "EWA_LANCZOS": "magnifier.ewa_lanczos",
     }
     for key in AppConstants.INTERPOLATION_METHODS_MAP.keys():
-        text = dialog.tr(interp_map.get(key, key), dialog.current_language)
+        text = dialog._tr(interp_map.get(key, key), dialog.current_language)
         dialog.combo_mag_interp.addItem(text, key)
         dialog.combo_laser_interp.addItem(text, key)
     dialog.combo_zoom_interp.addItem(
-        dialog.tr(interp_map["NEAREST"], dialog.current_language), "NEAREST"
+        dialog._tr(interp_map["NEAREST"], dialog.current_language), "NEAREST"
     )
     dialog.combo_zoom_interp.addItem(
-        dialog.tr(interp_map["BILINEAR"], dialog.current_language), "BILINEAR"
+        dialog._tr(interp_map["BILINEAR"], dialog.current_language), "BILINEAR"
     )
 
     store_obj = p.store

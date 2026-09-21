@@ -108,6 +108,11 @@ class PyramidBuildCoordinator:
         self._pyramid_builds: set[int] = set()
         # uid -> slot_id / image_number
         self._pyramid_toast_slot: dict[int, int] = {}
+        self._pyramid_toast_live: dict[int, bool] = {}
+        # uid -> toast_live pinned at start_build time. A preview-tier race
+        # (decode still in flight) must never finish/dismiss a toast whose
+        # real decode is still pending — the pin carries the start-time
+        # decision to the async finish paths below.
 
     # --- compat properties (tests peek at controller sets) ---
     @property
@@ -117,6 +122,11 @@ class PyramidBuildCoordinator:
     @property
     def pyramid_toast_slot(self) -> dict[int, int]:
         return self._pyramid_toast_slot
+
+    @property
+    def pyramid_toast_live(self) -> dict[int, bool]:
+        """Pinned per-uid toast liveness (mirrors ``pyramid_toast_slot``)."""
+        return self._pyramid_toast_live
 
     # Back-compat alias used by IC ( _loading_toast_uid_slot )
     @property
@@ -218,8 +228,11 @@ class PyramidBuildCoordinator:
             # Always map (keep-first): a later complete must find its toast
             # even when the decode was still in flight at start time. Two
             # slots sharing one store keep the first mapping (same as before
-            # for the second slot — rare, documented).
+            # for the second slot — rare, documented). The toast_live pin
+            # follows the same keep-first rule so the finish/dismiss paths
+            # below honor the first starter's liveness decision.
             self._pyramid_toast_slot.setdefault(uid, slot_id)
+            self._pyramid_toast_live.setdefault(uid, toast_live)
             if toast_live and self._toast is not None:
                 try:
                     self._toast.bump_pyramid_started(slot_id)
@@ -252,11 +265,14 @@ class PyramidBuildCoordinator:
 
         If the uid→slot mapping is still present here, no complete payload
         ever arrived (abort / stalled loop) — dismiss the slot's toast so it
-        cannot hang forever.
+        cannot hang forever. The dismiss honors the start-time toast_live
+        pin: a non-live build (preview-tier race, decode still pending)
+        drops its mapping without touching the decode's toast.
         """
         self._pyramid_builds.discard(uid)
+        live = self._pyramid_toast_live.pop(uid, True)
         slot_id = self._pyramid_toast_slot.pop(uid, None)
-        if slot_id is not None and self._toast is not None:
+        if slot_id is not None and live and self._toast is not None:
             try:
                 dismiss = getattr(self._toast, "dismiss", None)
                 if callable(dismiss):
@@ -315,14 +331,23 @@ class PyramidBuildCoordinator:
         if self._toast is None:
             if complete:
                 self._pyramid_toast_slot.pop(uid, None)
+                self._pyramid_toast_live.pop(uid, None)
             return
         if complete:
+            # Pinned liveness: a non-live build (preview-tier race) must not
+            # finish a toast whose real decode is still pending — the decode
+            # path owns that toast. Drop the mapping either way.
+            live = self._pyramid_toast_live.pop(uid, True)
             self._pyramid_toast_slot.pop(uid, None)
+            if not live:
+                return
             try:
                 self._toast.finish(slot_id)
             except Exception:
                 pass
         else:
+            if not self._pyramid_toast_live.get(uid, True):
+                return
             fraction = level_count / max(total_levels, 1)
             percent = PYRAMID_START_PROGRESS + int(fraction * (100 - PYRAMID_START_PROGRESS))
             try:

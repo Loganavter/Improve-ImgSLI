@@ -9,6 +9,26 @@ from tabs.image_compare.plugins.video_editor.services.keyframing import FrameSna
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
+def frame_count_for_duration(duration: float, fps: int) -> int:
+    """Single frame-count source for editor/export/playback.
+
+    ``ceil(duration * fps) + 1``: frame indices ``0..count-1`` sample times
+    ``i / fps`` with the tail frame landing exactly on ``duration``, so the
+    export stream keeps the recording's last instant instead of dropping it
+    (the old floor split lost the tail frame on non-integer
+    ``duration * fps``). Non-positive durations read as one frame (fail-open;
+    empty recordings are guarded by callers via ``get_frame_count``/``bool``).
+    """
+    fps = max(1, int(fps))
+    try:
+        seconds = float(duration)
+    except (TypeError, ValueError):
+        return 1
+    if seconds <= 0:
+        return 1
+    return max(1, int(math.ceil(seconds * fps)) + 1)
+
 class VideoEditorService:
     """Frame-math service over the current recording.
 
@@ -67,7 +87,7 @@ class VideoEditorService:
         if duration <= 0:
             snapshots = self._current_snapshots
             return 0 if not snapshots else 1
-        return max(1, int(math.ceil(duration * self._fps)) + 1)
+        return frame_count_for_duration(duration, self._fps)
 
     def get_snapshot_at(self, index):
         timestamp = self.get_time_for_frame(index)

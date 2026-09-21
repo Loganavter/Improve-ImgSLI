@@ -39,6 +39,13 @@ class ImageSizeLimitError(ValueError):
     pass
 
 
+# JXL header-only dimensions live in ``jxl_header`` (split per the file-size
+# policy: the codestream SizeHeader parse is a cohesive unit of its own).
+# Re-exported here so existing ``progressive_loader.read_jxl_header_dimensions``
+# callers keep working.
+from shared.image_processing.jxl_header import read_jxl_header_dimensions
+
+
 def _ensure_supported_dimensions(width: int, height: int, image_path: str, ignore_limit: bool = False) -> None:
     if ignore_limit:
         return
@@ -99,6 +106,11 @@ def should_use_progressive_load(
     # 0 / always-True. Keep decode-backend bound check so oversized
     # non-streamable files still raise early.
     try:
+        if str(file_path).lower().endswith(".jxl"):
+            dims = read_jxl_header_dimensions(file_path)
+            if dims is not None:
+                _ensure_supported_dimensions(dims[0], dims[1], file_path, ignore_limit=pyvips_can_stream(file_path))
+                return True
         with Image.open(file_path) as img:
             width, height = img.size
             _ensure_supported_dimensions(width, height, file_path, ignore_limit=pyvips_can_stream(file_path))
@@ -149,6 +161,13 @@ def load_preview_image(
 
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
             logger.info(f"Loading JXL preview for: {image_path}")
+            # Header-first bound: the dims check must precede the
+            # full-frame ``imread`` (which would OOM on an oversized file
+            # before any post-decode check could fire). The post-decode
+            # check stays as a consistency backstop.
+            header_dims = read_jxl_header_dimensions(image_path)
+            if header_dims is not None:
+                _ensure_supported_dimensions(header_dims[0], header_dims[1], image_path)
             decoded = imagecodecs.imread(image_path)
             img = Image.fromarray(decoded)
 
@@ -298,6 +317,18 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
         raise
     except Exception:
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
+            # Header first: answer from the codestream SizeHeader with no
+            # decode at all. Full-decode stays as a last resort only when
+            # the header is unreadable.
+            try:
+                header_dims = read_jxl_header_dimensions(image_path)
+                if header_dims is not None:
+                    _ensure_supported_dimensions(header_dims[0], header_dims[1], image_path, ignore_limit=pyvips_can_stream(image_path))
+                    return (header_dims[0], header_dims[1])
+            except ImageSizeLimitError:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to read JXL header dimensions {image_path}: {e}")
             try:
                 decoded = imagecodecs.imread(image_path)
                 height, width = decoded.shape[:2]

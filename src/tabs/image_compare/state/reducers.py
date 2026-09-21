@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=reducer-bundle size=exempt reason="four cohesive session/render/pipeline/cache reducers share ImageSession/RenderCache/PipelineCache shapes — splitting per class triples cross-imports for no isolation gain"
 """Reducers for the ``session_data`` / ``render_config`` fields of
 ``ViewportState``.
 
@@ -11,6 +12,8 @@ registered against core's generic extension-reducer registry
 """
 
 from dataclasses import replace
+
+import logging
 
 from core.state_management.actions import (
     Action,
@@ -46,6 +49,9 @@ from tabs.image_compare.state.models import (
     SessionData,
 )
 from tabs.image_compare.canvas.registry import registry
+
+
+_log = logging.getLogger("ImproveImgSLI.session_data")
 
 
 class ImageSessionReducer:
@@ -103,7 +109,21 @@ class SessionDataReducer:
 
     def reduce(self, session_data: SessionData, action: Action) -> SessionData:
         if session_data.render_cache is None:
-            return session_data
+            # Missing render_cache must not swallow image actions (e.g. slot
+            # image sets during startup before the cache exists): log loudly
+            # and still reduce the image state.
+            _log.warning(
+                "SessionDataReducer: render_cache is None; reducing image_state only for %s",
+                type(action).__name__,
+            )
+            new_image_state = self.image_session_reducer.reduce(
+                session_data.image_state, action
+            )
+            if new_image_state is session_data.image_state:
+                return session_data
+            return SessionData(
+                image_state=new_image_state, render_cache=None
+            )
         new_image_state = self.image_session_reducer.reduce(
             session_data.image_state, action
         )

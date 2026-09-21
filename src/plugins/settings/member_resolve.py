@@ -74,25 +74,55 @@ def activate_member_control(widget, combo_index: int | None = None) -> bool:
 
 
 def _looks_like_radio(widget) -> bool:
+    """Structural radio detection first, class-name sniff last.
+
+    ``autoExclusive`` / button-group membership are the real exclusivity
+    signals; the ``"radio" in class-name`` fallback only covers toolkit
+    widgets that expose neither (kept for compat, not trusted first).
+    """
+    auto_exclusive = getattr(widget, "autoExclusive", None)
+    if callable(auto_exclusive):
+        try:
+            if bool(auto_exclusive()):
+                return True
+        except Exception:
+            pass
+    group = getattr(widget, "group", None)
+    group = group() if callable(group) else group
+    if group is not None:
+        return True
     name = type(widget).__name__.lower()
     return "radio" in name
+
+
+def _scoped_roots(dialog: QWidget, group_key: str) -> list[QWidget]:
+    """Group-scoped search roots: the group alone when it resolves.
+
+    A member key is only meaningful inside its own group — falling through
+    to a dialog-wide search when the group exists risks activating a
+    same-key member from another group. Dialog-wide search applies solely
+    when the group itself is missing (legacy dialogs without grouping).
+    """
+    group = None
+    find_group = getattr(dialog, "group_widget_for", None)
+    if callable(find_group):
+        try:
+            group = find_group(group_key)
+        except Exception:
+            group = None
+    if isinstance(group, QWidget):
+        return [group]
+    if isinstance(dialog, QWidget):
+        return [dialog]
+    return []
 
 
 def activate_member_in_dialog(dialog: QWidget, group_key: str, member_key: str) -> bool:
     """Find and activate a tagged member under ``dialog``. Does not show UI."""
     if not member_key:
         return False
-    group = None
-    find_group = getattr(dialog, "group_widget_for", None)
-    if callable(find_group):
-        group = find_group(group_key)
-    roots: list[QWidget] = []
-    if isinstance(group, QWidget):
-        roots.append(group)
-    if isinstance(dialog, QWidget):
-        roots.append(dialog)
     seen: set[int] = set()
-    for root in roots:
+    for root in _scoped_roots(dialog, group_key):
         root_id = id(root)
         if root_id in seen:
             continue
@@ -133,17 +163,8 @@ def resolve_member_widget(
     member_key: str,
 ) -> QWidget | None:
     """Resolve a settings member for Find Action reveal/pulse."""
-    group = None
-    find_group = getattr(dialog, "group_widget_for", None)
-    if callable(find_group):
-        group = find_group(group_key)
-    roots: list[QWidget] = []
-    if isinstance(group, QWidget):
-        roots.append(group)
-    if isinstance(dialog, QWidget):
-        roots.append(dialog)
     seen: set[int] = set()
-    for root in roots:
+    for root in _scoped_roots(dialog, group_key):
         root_id = id(root)
         if root_id in seen:
             continue

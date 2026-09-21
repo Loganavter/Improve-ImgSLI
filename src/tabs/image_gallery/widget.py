@@ -323,44 +323,88 @@ class ImageGalleryWidget(QWidget):
         # Thin owner: delegate to filtering/sorting helper if available, else sort items in place.
         try:
             key = str(text or "").lower()
-            items = list(self._items or [])
-            if "name" in key:
-                items.sort(key=lambda it: it.path.name.lower())
-            elif "date" in key:
-                # Newest first: use mtime_ns descending
-                items.sort(key=lambda it: int(getattr(it, "mtime_ns", 0)), reverse=True)
-            elif "rank" in key:
-                # Rank 1 first, then embedding distance
-                def _rank_key(it: GalleryItem):
-                    r = getattr(it, "rank", None) or getattr(it, "crown_rank", None)
-                    try:
-                        rk = int(r) if r is not None else 999
-                    except Exception:
-                        rk = 999
-                    d = it.metrics.get("embedding_dist_to_centroid") if isinstance(it.metrics, dict) else None
-                    try:
-                        df = float(d) if d is not None else 1e9
-                    except Exception:
-                        df = 1e9
-                    return (rk, df)
-
-                items.sort(key=_rank_key)
-            else:
+            keyfunc = self._sort_keyfunc(key)
+            if keyfunc is None:
                 return
+            items = list(self._items or [])
             # Rebuild grid preserving series grouping if active
             if self._series:
-                # Keep series grouping but reorder within each series by same key
-                # Simplest: rebuild flat then re-apply series via set_triage (series already stored)
-                self._grid_view.rebuild_grid(items)
-                # Restore collapsed + hub_names
+                # Sort applies to grouped series: members within each
+                # cluster AND cluster order (by first member), then ONE
+                # rebuild via set_triage (stats/hubs recomputed there).
+                # The old flat rebuild_grid first was a wasted pass whose
+                # order set_triage discarded anyway.
+                sorted_series = []
+                for cl in self._series:
+                    try:
+                        sorted_series.append(sorted(cl, key=keyfunc))
+                    except Exception:
+                        sorted_series.append(list(cl))
                 try:
-                    self.set_triage(self._series, self._mode, self._source_path)
+                    sorted_series.sort(key=lambda cl: keyfunc(cl[0]))
+                except Exception:
+                    pass
+                try:
+                    member_paths = {
+                        str(it.path) for cl in sorted_series for it in cl
+                    }
+                except Exception:
+                    member_paths = set()
+                try:
+                    ungrouped = sorted(
+                        (
+                            it for it in (self._items or [])
+                            if str(it.path) not in member_paths
+                        ),
+                        key=keyfunc,
+                    )
+                except Exception:
+                    ungrouped = [
+                        it for it in (self._items or [])
+                        if str(it.path) not in member_paths
+                    ]
+                self._items = [it for cl in sorted_series for it in cl] + ungrouped
+                try:
+                    self.set_triage(sorted_series, self._mode, self._source_path)
                 except Exception:
                     pass
             else:
+                try:
+                    items.sort(key=keyfunc)
+                except Exception:
+                    pass
                 self.rebuild_grid(items)
         except Exception:
             pass
+
+    @staticmethod
+    def _sort_keyfunc(key: str):
+        """Sort key for a toolbar sort label, or None for unknown labels."""
+        if "name" in key:
+            return lambda it: (
+                getattr(getattr(it, "path", None), "name", "") or ""
+            ).lower()
+        if "date" in key:
+            # Newest first: use mtime_ns descending
+            return lambda it: -int(getattr(it, "mtime_ns", 0) or 0)
+        if "rank" in key:
+            # Rank 1 first, then embedding distance
+            def _rank_key(it):
+                r = getattr(it, "rank", None) or getattr(it, "crown_rank", None)
+                try:
+                    rk = int(r) if r is not None else 999
+                except Exception:
+                    rk = 999
+                metrics = getattr(it, "metrics", None)
+                d = metrics.get("embedding_dist_to_centroid") if isinstance(metrics, dict) else None
+                try:
+                    df = float(d) if d is not None else 1e9
+                except Exception:
+                    df = 1e9
+                return (rk, df)
+
+            return _rank_key
+        return None
 
     def _on_view_toggled(self, checked: bool) -> None:
         # View switch toggle (grid/list) — currently only grid exists; keep state for future parity.

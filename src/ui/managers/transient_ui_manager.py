@@ -34,6 +34,25 @@ class TransientUIManager:
         self._service_miss_session: dict[str, tuple[tuple[str | None, frozenset[str]], float]] = {}
         self.closing = PopupClosingController(self)
 
+    def _miss_key(self, registry) -> tuple[str | None, frozenset[str]]:
+        """Cache key for negative service lookups (public API first).
+
+        Active session type comes from the public ``get_active_tab()``;
+        discovery tiers have no public accessor, so they are read via a
+        guarded ``getattr`` with a fail-open empty default (see
+        ``tests/.../test_chrome_lifetime.py``).
+        """
+        try:
+            tab = registry.get_active_tab()
+            active = getattr(tab, "session_type", None) if tab is not None else None
+        except Exception:
+            active = None
+        try:
+            tiers = frozenset(getattr(registry, "_discovered_tiers", None) or ())
+        except Exception:
+            tiers = frozenset()
+        return (active, tiers)
+
     def _get_service(self, attr: str):
         """Lazily resolve a tab-owned service."""
         cached = self._services.get(attr)
@@ -42,9 +61,7 @@ class TransientUIManager:
         from tabs.registry import TabRegistry
 
         registry = TabRegistry()
-        active = registry._active_session_type
-        tiers = frozenset(registry._discovered_tiers)
-        miss_key = (active, tiers)
+        miss_key = self._miss_key(registry)
         # If we already probed and found nothing for this exact active
         # session + discovery state, return cached miss without re-discovering
         # or logging — but expire after TTL so a later widget creation while

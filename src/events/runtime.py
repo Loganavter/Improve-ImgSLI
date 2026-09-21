@@ -37,29 +37,33 @@ class _LazyKeyboardMovementController:
     def _resolve(self):
         session = self._store.get_active_workspace_session()
         session_type = session.session_type if session is not None else None
-        cached = self._built_by_session_type.get(session_type)
-        if cached is not None:
-            return cached
+        if session_type in self._built_by_session_type:
+            return self._built_by_session_type[session_type]
         build = get_canvas_registry(session_type).get_feature_command_by_alias(
             "keyboard_movement.build_controller"
         )
         if build is None:
+            # Stable fallback, not an error: this session type never provides
+            # the alias (e.g. the session-picker placeholder). Cache it.
             controller = NullKeyboardMovementController()
-        else:
-            try:
-                controller = build(
-                    self._store,
-                    presenter_provider=self._presenter_provider,
-                    parent=self._parent,
-                )
-            except Exception:
-                logger.error(
-                    "keyboard_movement controller build failed for session %r; "
-                    "falling back to no-op controller",
-                    session_type,
-                    exc_info=True,
-                )
-                controller = NullKeyboardMovementController()
+            self._built_by_session_type[session_type] = controller
+            return controller
+        try:
+            controller = build(
+                self._store,
+                presenter_provider=self._presenter_provider,
+                parent=self._parent,
+            )
+        except Exception:
+            # Build failure must not poison the cache: return a fresh no-op
+            # and retry on the next resolve (loud every time until fixed).
+            logger.error(
+                "keyboard_movement controller build failed for session %r; "
+                "falling back to no-op controller",
+                session_type,
+                exc_info=True,
+            )
+            return NullKeyboardMovementController()
         self._built_by_session_type[session_type] = controller
         return controller
 

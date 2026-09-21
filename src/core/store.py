@@ -122,11 +122,21 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         Reads inside the block still see the mutated store immediately; only
         the change notifications are deferred. Scopes are flushed once each, in
         first-emitted order.
+
+        Flush-on-success only: if the block raises, the queued scopes are
+        discarded (never flushed) and the exception propagates — emitting a
+        "coherent final state" that was never reached would sync listeners
+        to a half-applied transition.
         """
         self._change_batch_depth += 1
         try:
             yield
-        finally:
+        except BaseException:
+            self._change_batch_depth -= 1
+            if self._change_batch_depth == 0:
+                self._change_batch_scopes = []
+            raise
+        else:
             self._change_batch_depth -= 1
             if self._change_batch_depth == 0:
                 scopes = list(self._change_batch_scopes)
@@ -147,13 +157,22 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         """
         dispatcher = self.get_dispatcher()
         if dispatcher is None:
-            # fake store in tests — apply via set_session_state_slot fallback
-            for a in actions:
-                try:
-                    dispatcher.dispatch(a, scope=scope)  # type: ignore[union-attr]
-                except Exception:
-                    pass
-            return
+            # Fail LOUD, never silent-drop: without a dispatcher there is no
+            # reducer run, no history, and no emit — swallowing the actions
+            # would leave Store and UI diverged with zero log lines. Fake
+            # stores in tests must wire a dispatcher (real or double) before
+            # calling transact.
+            logger.error(
+                "Store.transact dropped %d action(s): no dispatcher wired "
+                "(scope=%r). Wire set_dispatcher() before transact.",
+                len(actions),
+                scope,
+            )
+            raise RuntimeError(
+                f"Store.transact requires a dispatcher (got None); "
+                f"refusing to silently drop {len(actions)} action(s) "
+                f"(scope={scope!r})"
+            )
         # fast path: single action → direct dispatch (avoid wrapping)
         if len(actions) == 1:
             dispatcher.dispatch(actions[0], scope=scope)
@@ -163,19 +182,36 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
 
             dispatcher.dispatch(TransactionAction(actions), scope=scope)
         except Exception:
-            # fallback: sequential
+            # fallback: sequential — each failure is logged loudly, never
+            # skipped in silence.
+            logger.exception(
+                "Store.transact TransactionAction failed; falling back to "
+                "sequential dispatch of %d action(s) (scope=%r)",
+                len(actions),
+                scope,
+            )
             for a in actions:
                 try:
                     dispatcher.dispatch(a, scope=scope)
                 except Exception:
-                    continue
+                    logger.exception(
+                        "Store.transact sequential fallback failed for "
+                        "action %r (scope=%r)",
+                        getattr(a, "type", a),
+                        scope,
+                    )
+                    raise
 
     def publish(self, scope: str) -> None:
-        """Best-effort publish for LOD / non-document scopes (phase 4: lod_available)."""
+        """Best-effort publish for LOD / non-document scopes (phase 4: lod_available).
+
+        Best-effort means delivery is still attempted — emit errors are
+        logged loudly (never swallowed) so a broken subscriber is visible.
+        """
         try:
             self.emit_state_change(scope)
         except Exception:
-            pass
+            logger.exception("Store.publish failed for scope %r", scope)
 
     def emit_viewport_change(self, subdomain: str | None = None) -> None:
         scope = "viewport"

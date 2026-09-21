@@ -72,12 +72,60 @@ def chord_conflicts(
 
 
 def _binding_priority(action_id: str, *, owner_tab: str | None) -> tuple:
-    """Lower sorts first and wins chord conflicts (platform before tab)."""
+    return binding_priority(action_id, owner_tab=owner_tab)
+
+
+def binding_priority(action_id: str, *, owner_tab: str | None) -> tuple:
+    """Shared chord-winner order for binder, keymap, and Settings display.
+
+    Lower sorts first and wins chord conflicts (platform before tab).
+    Single source of truth — :mod:`ui.actions.binder` and
+    :func:`exclusive_overrides` must both rank through this function so the
+    live shortcut, the stored overrides, and the Settings page agree.
+    """
     if action_id == "platform.settings":
         return (0, "")
     if owner_tab is None:
         return (1, action_id)
     return (2, f"{owner_tab}:{action_id}")
+
+
+# Alias chords that live outside the one-shortcut-per-action registry row
+# (e.g. Ctrl+Y as a second redo chord next to Ctrl+Shift+Z). Aliases compete
+# in conflict detection exactly like primary chords so stealing/allocation
+# UIs and the live binder see the same occupancy.
+ACTION_ALIAS_CHORDS: dict[str, tuple[str, ...]] = {
+    "platform.redo": ("Ctrl+Y",),
+}
+
+
+def aliases_for(action_id: str) -> tuple[str, ...]:
+    """Normalized alias chords registered for ``action_id`` (possibly empty)."""
+    return tuple(
+        chord
+        for chord in (
+            normalize_sequence(raw)
+            for raw in ACTION_ALIAS_CHORDS.get(action_id, ())
+        )
+        if chord
+    )
+
+
+def all_effective_chords(
+    action_id: str,
+    *,
+    default: str | None,
+    overrides: Mapping[str, str] | None,
+) -> tuple[str, ...]:
+    """Primary effective chord plus registered aliases (deduped, in order)."""
+    primary = effective_shortcut_for_id(
+        action_id, default=default, overrides=overrides
+    )
+    chords = [primary] if primary else []
+    for alias in aliases_for(action_id):
+        if alias not in chords:
+            chords.append(alias)
+    return tuple(chords)
 
 
 def exclusive_overrides(
@@ -96,18 +144,21 @@ def exclusive_overrides(
         key: normalize_sequence(value) if value else ""
         for key, value in (overrides or {}).items()
     }
-    # action_id → effective chord
-    effective: dict[str, str] = {}
+    # action_id → (primary chord, alias chords). Primaries outrank aliases:
+    # an alias never steals a chord from a primary holder — it simply stays
+    # uninstalled while occupied. Alias collisions therefore never mutate
+    # overrides; only primary-vs-primary losers are explicitly unbound.
+    primaries: dict[str, str] = {}
     for action_id, (default, _owner) in defaults.items():
-        chord = effective_shortcut_for_id(
+        primary = effective_shortcut_for_id(
             action_id, default=default, overrides=result
         )
-        if chord:
-            effective[action_id] = chord
+        if primary:
+            primaries[action_id] = primary
 
     by_chord: dict[str, list[str]] = {}
-    for action_id, chord in effective.items():
-        by_chord.setdefault(chord, []).append(action_id)
+    for action_id, primary in primaries.items():
+        by_chord.setdefault(primary, []).append(action_id)
 
     for chord, action_ids in by_chord.items():
         if len(action_ids) < 2:
@@ -116,13 +167,55 @@ def exclusive_overrides(
             action_ids,
             key=lambda aid: (
                 0 if prefer_action_id and aid == prefer_action_id else 1,
-                _binding_priority(aid, owner_tab=defaults[aid][1]),
+                binding_priority(aid, owner_tab=defaults[aid][1]),
             ),
         )
         for action_id in ranked[1:]:
             # Explicitly unbind losers so defaults cannot keep the chord.
             result[action_id] = ""
     return result
+
+
+def resolve_chord_winners(
+    defaults: Mapping[str, tuple[str | None, str | None]],
+    overrides: Mapping[str, str] | None,
+    *,
+    prefer_action_id: str | None = None,
+) -> dict[str, str]:
+    """Map every occupied chord → winning ``action_id`` (primaries + aliases).
+
+    Primary holders outrank alias holders on the same chord; ties break by
+    :func:`binding_priority` (``prefer_action_id`` first). Shared by the live
+    binder and conflict UIs so all three sides agree on the winner.
+    """
+    primaries: dict[str, str] = {}
+    for action_id, (default, _owner) in defaults.items():
+        primary = effective_shortcut_for_id(
+            action_id, default=default, overrides=overrides
+        )
+        if primary:
+            primaries[action_id] = primary
+
+    def _rank(aid: str) -> tuple:
+        return (
+            0 if prefer_action_id and aid == prefer_action_id else 1,
+            binding_priority(aid, owner_tab=defaults[aid][1]),
+        )
+
+    winners: dict[str, str] = {}
+    # Primaries claim first, in rank order.
+    for action_id in sorted(primaries, key=_rank):
+        winners.setdefault(primaries[action_id], action_id)
+    # Aliases fill only chords no primary holds.
+    alias_holders: dict[str, list[str]] = {}
+    for action_id in defaults:
+        for alias in aliases_for(action_id):
+            alias_holders.setdefault(alias, []).append(action_id)
+    for chord, action_ids in alias_holders.items():
+        if chord in winners:
+            continue
+        winners[chord] = sorted(action_ids, key=_rank)[0]
+    return winners
 
 
 def steal_chord_in_overrides(

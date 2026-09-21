@@ -976,7 +976,17 @@ class ThumbnailService(QObject):
                 self.thumbnailsGenerated.emit(payload)
             self.generationFinished.emit()
 
-    def cancel(self):
+    def cancel(self, timeout_ms: int = 500) -> bool:
+        """Join-or-cancel: bounded join, explicit abandon on timeout.
+
+        Bumps the single generation token FIRST so every worker that
+        finishes after this point drops its result on arrival (pixmap in
+        :meth:`_on_thumbnail_generated`, counter in
+        :meth:`_on_worker_finished`). Then joins up to ``timeout_ms``.
+        On timeout the stragglers are abandoned, not leaked — the token
+        already retired them, so their late completions are no-ops.
+        Returns True when the pool drained within the bound.
+        """
         # Retire the live wave: bump the token so any worker that finishes
         # after this point drops its result on arrival.
         self._generation += 1
@@ -984,18 +994,30 @@ class ThumbnailService(QObject):
         self._active_workers = 0
         self._generation_pixmaps.clear()
         self._prune_generation_windows(keep=8)
-        self._thread_pool.waitForDone(500)
+        try:
+            drained = bool(self._thread_pool.waitForDone(max(0, int(timeout_ms))))
+        except Exception:
+            drained = True
+        if not drained:
+            _thlog.debug(
+                "thumbnail cancel: pool past %sms abandoned; "
+                "generation token drops stragglers",
+                timeout_ms,
+            )
+        return drained
 
-    def teardown(self) -> None:
+    def teardown(self, timeout_ms: int = 500) -> bool:
         """Dialog-lifetime end: retire the live wave and release state.
 
-        Bumps the single generation token (the same cancel source as
-        :meth:`cancel` / :meth:`retire_in_flight_thumbnails` — never a
-        second flag), clears the pending + finished sets so a later dialog
-        starts clean, drops the visible-window filter, and releases the
-        recording reference (``_recording`` lifetime is bound to the dialog
-        lifetime). Blocks briefly for in-flight workers to drain, like
-        :meth:`cancel`.
+        Same join-or-cancel policy as :meth:`cancel`: bump the single
+        generation token (the same cancel source as
+        :meth:`retire_in_flight_thumbnails` — never a second flag), clear
+        the pending + finished sets so a later dialog starts clean, drop
+        the visible-window filter, and release the recording reference
+        (``_recording`` lifetime is bound to the dialog lifetime). Then
+        join up to ``timeout_ms``; stragglers abandoned past the bound
+        are already retired by the token, so late completions drop.
+        Returns True when the pool drained within the bound.
         """
         self._generation += 1
         self._pending_indices.clear()
@@ -1006,6 +1028,13 @@ class ThumbnailService(QObject):
         self._recording = None
         self._active_workers = 0
         try:
-            self._thread_pool.waitForDone(500)
+            drained = bool(self._thread_pool.waitForDone(max(0, int(timeout_ms))))
         except Exception:
-            pass
+            drained = True
+        if not drained:
+            _thlog.debug(
+                "thumbnail teardown: pool past %sms abandoned; "
+                "generation token drops stragglers",
+                timeout_ms,
+            )
+        return drained

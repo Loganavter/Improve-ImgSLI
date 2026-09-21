@@ -455,6 +455,28 @@ class MultiCompareController:
     def _dismiss_loading_toast(self, slot_id: int) -> None:
         self._loading_toast_coordinator.dismiss(slot_id)
 
+    def report_user_error(self, message: str) -> None:
+        """User-visible failure signal for menu/dnd paths (P2 hygiene).
+
+        Single channel for duplicate-full, carry-miss, and queue-overflow
+        summaries: ``CoreErrorOccurredEvent`` on the tab bus (→ warning
+        dialog by house policy, same as MC load errors). Falls back to a
+        loud log when no bus is reachable — never silent, never raising.
+        """
+        try:
+            event_bus = loading_use_cases._resolve_mc_event_bus(self)
+        except Exception:
+            event_bus = None
+        if event_bus is None:
+            logger.warning("mc: %s", message)
+            return
+        try:
+            from core.events import CoreErrorOccurredEvent
+
+            event_bus.emit(CoreErrorOccurredEvent(message))
+        except Exception:
+            logger.exception("mc: failed to emit user error: %s", message)
+
     def _load_full_resolution_async(
         self, path: Path, slot_id: int, *, keep_slot_on_error: bool = False
     ) -> None:

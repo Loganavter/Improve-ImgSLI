@@ -7,6 +7,8 @@ more fixed-capacity texture arrays, with free-list reuse on eviction.
 
 from engine.cache.tile_texture_service import TileTextureService
 
+import pytest
+
 
 def _service(max_array_size=2, width=3 * 1024, height=1024, max_tile_extent=1024):
     service = TileTextureService(
@@ -87,3 +89,55 @@ def test_invalidate_tiles_frees_the_slot():
 
     service.mark_resident("src", (0, 2), byte_size=100)
     assert service.slot_for("src", (0, 2)) == (0, 0)
+
+def test_alloc_dup_is_fail_closed_not_silent_alias():
+    """A freed slot that is still held (double-free bookkeeping bug) must
+    raise instead of aliasing two live keys onto one layer. The free-list
+    entry is restored so an evict-and-retry caller can make progress, and
+    the original occupant keeps its slot."""
+    from engine.cache.tile_texture_service import _TileSlotAllocator
+
+    allocator = _TileSlotAllocator(4)
+    held = allocator.allocate("victim")
+    # Simulate an upstream double-free: the held slot re-enters the pool.
+    allocator._free_slots.append(held)
+    with pytest.raises(RuntimeError):
+        allocator.allocate("intruder")
+    assert allocator.slot_for("victim") == held
+    assert allocator.slot_for("intruder") is None
+
+
+def test_rekey_onto_occupied_key_raises_and_keeps_both():
+    """Rekeying onto an occupied key used to silently orphan the
+    occupant's slot (leaked layer). Now fail-closed with both mappings
+    intact."""
+    from engine.cache.tile_texture_service import _TileSlotAllocator
+
+    allocator = _TileSlotAllocator(4)
+    slot_a = allocator.allocate("a")
+    slot_b = allocator.allocate("b")
+    with pytest.raises(RuntimeError):
+        allocator.rekey("a", "b")
+    assert allocator.slot_for("a") == slot_a
+    assert allocator.slot_for("b") == slot_b
+
+
+def test_rekey_source_evicts_stale_target_before_moving():
+    """Service-level rekey onto an occupied target frees the target's old
+    content first (evict-plus-realloc): no silent overwrite, no leaked
+    layer -- the freed slot is reusable and the moved content is intact."""
+    service = _service(max_array_size=4)
+    service.mark_resident("src", (0, 0), byte_size=100)
+    service.mark_resident("stale", (0, 0), byte_size=100)
+    stale_slot = service.slot_for("stale", (0, 0))
+    assert stale_slot is not None
+
+    service.rekey_source("src", "stale")
+
+    assert service.resident_tiles("stale") == {(0, 0)}
+    assert service.slot_for("stale", (0, 0)) is not None
+    assert service.slot_for("src", (0, 0)) is None
+    # The stale target's freed layer is reusable, not leaked.
+    service.register_source("fresh", (3 * 1024, 1024))
+    service.mark_resident("fresh", (0, 0), byte_size=100)
+    assert service.slot_for("fresh", (0, 0)) == stale_slot

@@ -38,8 +38,86 @@ def _contain_resize_rgba(
 
 
 class VideoRenderLoop:
+    # Bounded rendezvous: a wedged ffmpeg past cancel must hang neither the
+    # producer (blocking ``queue.put`` on a full queue) nor teardown
+    # (unbounded ``Thread.join``). Slow-encoder backpressure still retries --
+    # only a dead writer, a dead process, or a cancel breaks the wait.
+    _ENQUEUE_TIMEOUT_S = 1.0
+    _WRITER_JOIN_TIMEOUT_S = 10.0
+    # Skip accounting: dropped frames shorten the stream. Past this many the
+    # export aborts loudly instead of producing a short video: 5% of the job
+    # with a floor so tiny jobs still tolerate a burst of bad frames.
+    _MIN_MAX_SKIPS = 10
+    _MAX_SKIP_FRACTION = 0.05
+
     def __init__(self, exporter_service):
         self.exporter = exporter_service
+        # Frames dropped by ``_render_frame`` returning falsy in the last
+        # ``render()`` call (0 before the first run). Survives the return so
+        # tests and the summary log can account every skip, not just aborts.
+        self.skipped_frames = 0
+
+    @staticmethod
+    def _max_skips(total_frames: int) -> int:
+        try:
+            total = max(0, int(total_frames))
+        except (TypeError, ValueError):
+            total = 0
+        return max(
+            VideoRenderLoop._MIN_MAX_SKIPS,
+            int(total * VideoRenderLoop._MAX_SKIP_FRACTION),
+        )
+
+    def _enqueue(self, frame_queue, payload, process, writer_error) -> str:
+        """Bounded put: ``"ok"`` | ``"cancel"`` | ``"failed"``.
+
+        Retries through slow-encoder backpressure; breaks the wait on
+        cancel, writer failure, or a dead ffmpeg instead of wedging.
+        """
+        while True:
+            try:
+                frame_queue.put(payload, timeout=self._ENQUEUE_TIMEOUT_S)
+                return "ok"
+            except queue.Full:
+                if self.exporter.is_cancel_requested():
+                    return "cancel"
+                if writer_error:
+                    return "failed"
+                try:
+                    if process.poll() is not None:
+                        return "failed"
+                except Exception:
+                    return "failed"
+
+    def _close_stream(self, frame_queue, end_marker, writer_thread, writer_error) -> None:
+        """Offer the end marker on a deadline, then join on a timeout.
+
+        A live-but-stuck writer (hung ffmpeg past cancel) must not wedge
+        teardown: the marker offer and the join are both bounded, and the
+        writer thread is daemonic so abandoning it is safe.
+        """
+        import time as _time
+
+        deadline = _time.monotonic() + self._WRITER_JOIN_TIMEOUT_S
+        while True:
+            try:
+                frame_queue.put(end_marker, timeout=self._ENQUEUE_TIMEOUT_S)
+                break
+            except queue.Full:
+                if writer_error or not writer_thread.is_alive():
+                    break
+                if _time.monotonic() >= deadline:
+                    logger.warning(
+                        "ffmpeg-writer unresponsive; abandoning end-of-stream marker"
+                    )
+                    break
+        remaining = max(0.0, deadline - _time.monotonic())
+        writer_thread.join(timeout=remaining)
+        if writer_thread.is_alive():
+            logger.warning(
+                "ffmpeg-writer thread still alive after %.1fs; leaving it (daemon)",
+                self._WRITER_JOIN_TIMEOUT_S,
+            )
 
     def render(self, process, job: VideoExportJob, progress_callback=None) -> bool:
         """Pipelined render/write:
@@ -90,6 +168,9 @@ class VideoRenderLoop:
         )
         writer_thread.start()
 
+        max_skips = self._max_skips(job.total_frames)
+        skipped = 0
+        self.skipped_frames = 0
         try:
             for frame_idx in range(job.total_frames):
                 if self.exporter.is_cancel_requested():
@@ -116,6 +197,24 @@ class VideoRenderLoop:
 
                 frame_pil, timings = self._render_frame(frame_idx, job)
                 if not frame_pil:
+                    # Loud skip: a silent ``continue`` here shortens the
+                    # stream with no trace. Count every drop and abort past
+                    # the budget instead of producing a short video.
+                    skipped += 1
+                    self.skipped_frames = skipped
+                    logger.warning(
+                        "Video export skipped frame %s/%s (skipped=%s/%s)",
+                        frame_idx + 1,
+                        job.total_frames,
+                        skipped,
+                        max_skips,
+                    )
+                    if skipped > max_skips:
+                        raise RuntimeError(
+                            f"Video export aborted: {skipped} frames failed to "
+                            f"render (limit {max_skips} for {job.total_frames} "
+                            "frames); refusing to produce a short stream"
+                        )
                     continue
 
                 # See note on _raw_rgba_bytes in gpu_export_proxy: when no
@@ -130,8 +229,15 @@ class VideoRenderLoop:
                 # should be ~0; under encoder backpressure it converges to the
                 # ffmpeg-bound write time.
                 enqueue_started = time.perf_counter()
-                frame_queue.put(payload)
+                enqueue_status = self._enqueue(
+                    frame_queue, payload, process, writer_error
+                )
                 enqueue_ms = (time.perf_counter() - enqueue_started) * 1000.0
+                if enqueue_status == "cancel":
+                    logger.info("Video export canceled by user (bounded rendezvous)")
+                    return True
+                if enqueue_status == "failed":
+                    return False
 
                 total_ms = (
                     timings["evaluate_ms"]
@@ -154,12 +260,13 @@ class VideoRenderLoop:
             if progress_callback and not self.exporter.is_cancel_requested():
                 progress_callback.emit(100)
         finally:
-            frame_queue.put(END_OF_STREAM)
-            writer_thread.join()
+            # Bounded teardown: never wedge past a stuck writer (the join
+            # without a timeout used to hang here forever after a cancel).
+            self._close_stream(frame_queue, END_OF_STREAM, writer_thread, writer_error)
 
         if writer_error:
             return False
-        self._log_summary(stats, writer_write_times)
+        self._log_summary(stats, writer_write_times, skipped=skipped)
         return False
 
     def _render_frame(self, frame_idx: int, job: VideoExportJob):
@@ -249,7 +356,7 @@ class VideoRenderLoop:
                 breakdown_suffix,
             )
 
-    def _log_summary(self, stats: FrameTimingStats, writer_write_times=None):
+    def _log_summary(self, stats: FrameTimingStats, writer_write_times=None, *, skipped: int = 0):
         if not stats.frames:
             return
         # In pipelined mode `ffmpeg_write_ms` reports the producer's enqueue
@@ -261,10 +368,11 @@ class VideoRenderLoop:
         if writer_write_times:
             writer_avg = sum(writer_write_times) / float(len(writer_write_times))
         logger.info(
-            "Video export summary | frames=%s avg_eval=%.1fms avg_render=%.1fms "
+            "Video export summary | frames=%s skipped=%s avg_eval=%.1fms avg_render=%.1fms "
             "avg_resize=%.1fms avg_enqueue=%.1fms avg_ffmpeg_write=%.1fms "
             "avg_total=%.1fms backend=%s",
             stats.frames,
+            skipped,
             stats.avg(stats.evaluate_ms),
             stats.avg(stats.render_ms),
             stats.avg(stats.resize_ms),

@@ -764,6 +764,21 @@ class MultiCompareStore:
                     dispatcher.dispatch(
                         TransactionAction(pending), scope="multi_compare"
                     )
+                else:
+                    # LOUD fallback: no batch API and no dispatcher — the
+                    # actions would vanish silently. Error-log (not debug)
+                    # and funnel through the standard single-action path so
+                    # the failure is observable and behavior matches the
+                    # sequential fallback in use_cases.loading.
+                    logger.error(
+                        "multi_compare transact dropped (%d actions): "
+                        "core store has neither transact nor dispatcher",
+                        len(pending),
+                    )
+                    self._dispatching = False
+                    for sub in pending:
+                        self.dispatch(sub)
+                    return self._read_slot()
         except Exception:
             logger.exception(
                 "multi_compare transact failed (%d actions)", len(pending)

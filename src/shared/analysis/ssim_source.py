@@ -18,7 +18,9 @@ from shared.analysis.differ import (
     _prepare_ssim_tile_for_output,
     _resolve_ssim_win_size,
     _resolve_ssim_workers,
+    resample_second_to_first,
 )
+from shared.analysis.output import open_streaming_output, to_u8_rgb
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -28,7 +30,8 @@ def _rgb_array_from_source(source, box: tuple[int, int, int, int]) -> np.ndarray
         pil = source.crop(box)
     else:
         pil = source.crop(box)
-    return np.asarray(pil.convert("RGB"))
+    # 16-bit PIL sources scale //257 here, never clip/truncate.
+    return np.asarray(to_u8_rgb(pil))
 
 
 def _align_source2(source1, source2):
@@ -39,8 +42,15 @@ def _align_source2(source1, source2):
     if isinstance(source2, TiledPixelStore):
         from engine.store.pixel_ops.downscale import downscale_source_to_pil
 
+        logger.debug(
+            "[ANALYSIS_ALIGN] resampled store source2 %s -> %s (downscale; map+scalar policy)",
+            source2.size,
+            source1.size,
+        )
         return downscale_source_to_pil(source2, source1.size)
-    return source2.resize(source1.size, Image.Resampling.LANCZOS)
+    # PIL leg shares the ONE map+scalar policy (resample-and-record).
+    _, aligned, _ = resample_second_to_first(source1, source2)
+    return aligned
 
 
 def create_ssim_map_from_sources(
@@ -69,7 +79,9 @@ def create_ssim_map_from_sources(
         max_tile_width=SSIM_TILE_MAX_EXTENT,
         max_tile_height=SSIM_TILE_MAX_EXTENT,
     )
-    result = np.empty((height, width), dtype=np.uint8)
+    # Tile-streamed output (no full-frame result): patches land in the
+    # writer as they complete, RAM or spill store as decided by size.
+    writer = open_streaming_output(width, height, channels=1)
     total_tiles = tile_grid.rows * tile_grid.columns
     workers = _resolve_ssim_workers(total_tiles)
     total_started_at = time.perf_counter()
@@ -115,7 +127,9 @@ def create_ssim_map_from_sources(
             if patch_result is None:
                 return None
             region, tile_patch = patch_result
-            result[region.top : region.bottom, region.left : region.right] = tile_patch
+            writer.write_tile(
+                (region.left, region.top, region.right, region.bottom), tile_patch
+            )
     else:
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ssim-src") as pool:
             futures = {
@@ -127,7 +141,9 @@ def create_ssim_map_from_sources(
                 if patch_result is None:
                     return None
                 region, tile_patch = patch_result
-                result[region.top : region.bottom, region.left : region.right] = tile_patch
+                writer.write_tile(
+                    (region.left, region.top, region.right, region.bottom), tile_patch
+                )
 
     logger.debug(
         "[SSIM_SRC] size=%sx%s elapsed_ms=%.1f",
@@ -136,6 +152,4 @@ def create_ssim_map_from_sources(
         (time.perf_counter() - total_started_at) * 1000.0,
     )
     _ = font_path
-    from shared.analysis.output import finalize_diff_output
-
-    return finalize_diff_output(result, channels=1)
+    return writer.finalize()

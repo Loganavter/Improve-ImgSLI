@@ -72,7 +72,6 @@ def command_build_export_overlay(
     content_width: float,
     content_height: float,
 ) -> dict[str, Any]:
-    del scale_x, scale_y
     viewport = getattr(store, "viewport", None)
     if viewport is None:
         return {"visible": False, "thickness": 0}
@@ -80,15 +79,22 @@ def command_build_export_overlay(
     divider_state = get_divider_widget_state(view)
     is_horizontal = bool(view.is_horizontal)
     thickness = int(divider_state.thickness)
+    # Export renders content_width/height display-px scaled by the
+    # export/display ratio (compute_export_stroke_scales): the axis position
+    # must be scaled by the same factor, otherwise the export divider sits
+    # up to ~1px off per HiDPI step from the live line.
+    axis_scale = float(scale_y) if is_horizontal else float(scale_x)
     split_pos = int(
         round(
             resolve_axis_position(
                 content_offset_y, content_height, view.split_position_visual
             )
+            * axis_scale
             if is_horizontal
             else resolve_axis_position(
                 content_offset_x, content_width, view.split_position_visual
             )
+            * axis_scale
         )
     )
     return {

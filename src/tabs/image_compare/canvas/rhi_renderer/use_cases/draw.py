@@ -50,6 +50,36 @@ except Exception:  # pragma: no cover - import-time fallback for tests
         return False
 
 
+#: ``base_array.frag`` diff-mode index whose sampling is clamp-based, not
+#: discard-gated: mode 4 (SSIM/diff-source) skips the ``inTile1``/``inTile2``
+#: discard and clamps out-of-tile UVs instead. A fullscreen instance-0 then
+#: samples ClampToEdge-smeared edge texels across the whole canvas instead
+#: of being clipped to its own tile.
+_SSIM_CLAMP_SAMPLING_MODE = 4
+
+
+def resolve_instance_bbox(
+    index: int,
+    item_bbox: tuple[float, float, float, float],
+    *,
+    clamp_sampling: bool,
+) -> tuple[float, float, float, float]:
+    """Instance ``index``'s geometry clip: fullscreen for the fill instance.
+
+    Index 0 is forced fullscreen so ``canvasLetterbox``/``letterboxFill``'s
+    pillarbox background-fill (uniforms-only, no per-instance data) still
+    paints — every other instance keeps its real footprint and relies on the
+    fragment shader's per-pixel tileUV discard to clip down. The exception
+    is clamp sampling (SSIM mode): with no discard to clip it, a fullscreen
+    instance-0 would smear, so it keeps its real bbox there too (pillarbox
+    fill in that mode falls back to the clear color — correct content wins
+    over fill). Pure over inputs.
+    """
+    if index == 0 and not clamp_sampling:
+        return (0.0, 0.0, 1.0, 1.0)
+    return item_bbox
+
+
 def submit_array_draw(
     renderer,
     widget,
@@ -178,6 +208,16 @@ def submit_array_draw(
     # inside an open pass.
     array_srb = None
     if array_draw_plan:
+        # SSIM clamp-sampling mode (diff_mode 4 + diff source ready): the
+        # frag skips the inTile discard, so only discard-gated modes may
+        # widen instance 0 to fullscreen — see resolve_instance_bbox.
+        _diff_mode_int = 0
+        if _base_image is not None:
+            try:
+                _diff_mode_int = int(getattr(_base_image, "diff_mode_int", 0) or 0)
+            except (TypeError, ValueError):
+                _diff_mode_int = 0
+        _clamp_sampling = _diff_mode_int == _SSIM_CLAMP_SAMPLING_MODE and bool(_diff_ready)
         # Use target for pipeline creation; original used widget.renderTarget()
         # which is the same object as ``target`` captured at render start.
         _target_for_pipeline = target if target is not None else widget.renderTarget()
@@ -206,8 +246,11 @@ def submit_array_draw(
                 # background-fill depends only on uniforms (not any
                 # instance's own tile rect), so it still needs at least
                 # one fullscreen instance to paint it -- index 0 is
-                # forced full regardless of its real footprint.
-                bbox=(0.0, 0.0, 1.0, 1.0) if index == 0 else item.bbox,
+                # forced full regardless of its real footprint, except in
+                # SSIM clamp-sampling mode where the frag has no discard
+                # to clip a fullscreen instance back down (see
+                # resolve_instance_bbox).
+                bbox=resolve_instance_bbox(index, item.bbox, clamp_sampling=_clamp_sampling),
                 rect_diff=item.rect_diff,
             )
             for index, item in enumerate(array_draw_plan)

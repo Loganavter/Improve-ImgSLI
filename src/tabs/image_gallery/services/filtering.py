@@ -83,3 +83,72 @@ def filter_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
         # but VLM haystack is independent.
         _ = hay_found
     return matched
+
+
+def match_fast_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
+    """Filename + in-memory analysis match only — no disk IO, safe on UI thread.
+
+    The VLM brief disk lookup (``find_briefs_for_path`` globs the brief cache
+    per item) stays off the UI thread: callers run :func:`match_brief_items`
+    in a worker and merge the two sets (see controller filter debounce).
+    """
+    query = query.strip().lower()
+    if not query:
+        return list(items)
+    matched: list[GalleryItem] = []
+    for item in items:
+        if query in item.name.lower() or query in item.path.name.lower():
+            matched.append(item)
+            continue
+        if item.analysis_status == AnalysisStatus.DONE and item.analysis is not None:
+            haystack = item.analysis.description.lower() + " " + " ".join(item.analysis.tags).lower()
+            if query in haystack:
+                matched.append(item)
+                continue
+        brief = getattr(item, "vlm_brief", None)
+        tie = getattr(item, "vlm_tie_result", None)
+        if brief is not None or tie is not None:
+            try:
+                parts: list[str] = []
+                if brief is not None:
+                    parts.append(str(getattr(brief, "summary", "")))
+                    parts.extend(list(getattr(brief, "differences", ()) or ()))
+                    parts.extend(list(getattr(brief, "tags", ()) or ()))
+                if tie is not None:
+                    parts.append(str(getattr(tie, "reason", "")))
+                if query in " ".join(parts).lower():
+                    matched.append(item)
+            except Exception:
+                pass
+    return matched
+
+
+def match_brief_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
+    """Disk-brief match for a query — worker thread only (does cache-dir IO).
+
+    The mtime check inside ``find_briefs_for_path`` drops stale briefs, so a
+    renamed-over/edited file never matches another file's old brief text.
+    Returns the subset of *items* whose on-disk briefs contain *query*.
+    """
+    query = query.strip().lower()
+    if not query:
+        return []
+    try:
+        from tabs.image_gallery.services.vlm_cache import find_briefs_for_path
+    except Exception:
+        return []
+    matched: list[GalleryItem] = []
+    for item in items:
+        try:
+            briefs = find_briefs_for_path(item.path, getattr(item, "mtime_ns", 0))
+        except Exception:
+            continue
+        for b in briefs:
+            try:
+                hay = (b.summary + " " + " ".join(b.differences) + " " + " ".join(b.tags)).lower()
+            except Exception:
+                continue
+            if query in hay:
+                matched.append(item)
+                break
+    return matched

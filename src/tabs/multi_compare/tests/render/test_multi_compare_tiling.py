@@ -205,10 +205,35 @@ def test_host_cache_evicts_when_over_budget():
     cache = render_pass._host_cache(renderer)
     from PySide6.QtGui import QImage
 
+    # Identity-deduped byte accounting (host_texture_cache class docstring):
+    # the same QImage object stored under two role keys is charged once, so
+    # over-budget eviction needs two *distinct* images to trigger.
+    img_a = QImage(512, 512, QImage.Format.Format_RGBA8888)
+    img_a.fill(0xFF112233)
+    img_b = QImage(512, 512, QImage.Format.Format_RGBA8888)
+    img_b.fill(0xFF445566)
+    assert img_a is not img_b
+    per = img_a.sizeInBytes()
+    cache.store("slot_a", img_a)
+    cache.store("slot_b", img_b)
+    cache.evict_over_budget({"slot_a"}, budget_bytes=per)
+    assert "slot_a" in cache.entries
+    assert "slot_b" not in cache.entries
+
+
+def test_host_cache_charges_shared_image_once():
+    """Same QImage under two keys counts once toward the budget: protecting
+    one key keeps both entries when the budget covers a single image."""
+    host = SimpleNamespace()
+    renderer = SimpleNamespace(host=host)
+    render_pass = BaseImagesPass()
+    cache = render_pass._host_cache(renderer)
+    from PySide6.QtGui import QImage
+
     big = QImage(512, 512, QImage.Format.Format_RGBA8888)
     per = big.sizeInBytes()
     cache.store("slot_a", big)
     cache.store("slot_b", big)
     cache.evict_over_budget({"slot_a"}, budget_bytes=per)
     assert "slot_a" in cache.entries
-    assert "slot_b" not in cache.entries
+    assert "slot_b" in cache.entries

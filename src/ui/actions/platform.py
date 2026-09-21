@@ -327,6 +327,10 @@ def register_platform_actions(
                 help_page="file_management",
                 run=redo,
                 target=None,
+                # Registered alias (see keymap.ACTION_ALIAS_CHORDS): the
+                # binder installs Ctrl+Y for redo and conflict detection
+                # sees the chord, so it is searchable here too.
+                search_terms=("Ctrl+Y",),
             ),
         )
     for action in specs:
@@ -441,6 +445,7 @@ def contribute_platform_keymap_defaults(
             None,
             ("menu.edit",),
             description_key="action.platform.redo_desc",
+            search_terms=("Ctrl+Y",),
         ),
         KeymapDefaultEntry(
             "platform.quit",

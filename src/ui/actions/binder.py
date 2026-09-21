@@ -16,7 +16,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui.actions.keymap import effective_shortcut, normalize_sequence
+from ui.actions.keymap import (
+    aliases_for,
+    binding_priority,
+    effective_shortcut,
+    normalize_sequence,
+    resolve_chord_winners,
+)
 from ui.actions.registry import ActionRegistry, get_action_registry
 
 if TYPE_CHECKING:
@@ -65,14 +71,26 @@ def resync_action_shortcuts(
         overrides=store_overrides,
         active_tab=active_tab,
     )
+    try:
+        from ui.actions.palette.common import set_keyboard_overrides
+
+        set_keyboard_overrides(dict(store_overrides or {}))
+    except Exception:
+        pass
 
 
 class ActionShortcutBinder:
-    """First-registered chord wins; later conflicts are skipped and logged."""
+    """Install one live shortcut per winning chord (shared priority scheme).
+
+    Winners come from :func:`ui.actions.keymap.resolve_chord_winners` — the
+    same ranking Settings → Keyboard uses — so the live binding, the stored
+    overrides, and the Settings display agree on every conflict.
+    """
 
     def __init__(self) -> None:
         self._shortcuts: list = []
         self._claimed: dict[str, str] = {}
+        self._entries: list[tuple[str, object]] = []
 
     def clear(self) -> None:
         for shortcut in self._shortcuts:
@@ -92,6 +110,42 @@ class ActionShortcutBinder:
                 pass
         self._shortcuts.clear()
         self._claimed.clear()
+        self._entries.clear()
+
+    def drop_prefix(self, prefix: str) -> None:
+        """Delete live shortcuts whose action id starts with ``prefix``.
+
+        Used after catalog withdraw (dialog teardown) when no full-window
+        resync is available — drops stale chords without rebuilding the
+        whole binder.
+        """
+        if not prefix:
+            return
+        doomed = [
+            index
+            for index, (_chord, action_id) in enumerate(self._entries)
+            if isinstance(action_id, str) and action_id.startswith(prefix)
+        ]
+        for index in reversed(doomed):
+            shortcut = self._shortcuts.pop(index)
+            self._entries.pop(index)
+            try:
+                shortcut.activated.disconnect()
+            except Exception:
+                pass
+            try:
+                shortcut.setEnabled(False)
+                shortcut.setKey(QKeySequence())
+                shortcut.setParent(None)
+                shortcut.deleteLater()
+            except Exception:
+                pass
+        if doomed:
+            self._claimed = {
+                chord: action_id
+                for chord, action_id in self._claimed.items()
+                if not action_id.startswith(prefix)
+            }
 
     def resync(
         self,
@@ -101,35 +155,75 @@ class ActionShortcutBinder:
         overrides: Mapping[str, str] | None,
         active_tab: str | None,
     ) -> None:
-        from PySide6.QtGui import QShortcut
-
         self.clear()
         actions = registry.list_for(active_tab=active_tab)
-        for action in actions:
+        # Rank through the shared scheme so the winner matches keymap /
+        # Settings even when registration order disagrees with priority.
+        ranked = sorted(
+            enumerate(actions),
+            key=lambda item: (
+                binding_priority(
+                    item[1].action_id, owner_tab=item[1].owner_tab
+                ),
+                item[0],
+            ),
+        )
+        # chord → winning action_id across primaries and registered aliases.
+        defaults = {
+            action.action_id: (action.shortcut, action.owner_tab)
+            for action in actions
+        }
+        winners = resolve_chord_winners(defaults, overrides)
+        for _index, action in ranked:
             chord = effective_shortcut(action, overrides)
             if not chord or action.run is None:
                 continue
             portable = normalize_sequence(chord)
             if not portable:
                 continue
-            if portable in self._claimed:
+            if winners.get(portable) != action.action_id:
                 logger.warning(
-                    "Shortcut conflict: %s already claimed by %s; skipping %s",
+                    "Shortcut conflict: %s owned by %s; skipping %s",
                     portable,
-                    self._claimed[portable],
+                    winners.get(portable),
                     action.action_id,
                 )
                 continue
-            shortcut = QShortcut(QKeySequence(portable), window)
-            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-            shortcut.setAutoRepeat(False)
-            run = action.run
-            action_id = action.action_id
-            shortcut.activated.connect(
-                lambda checked=False, r=run, aid=action_id: self._invoke(r, aid)
+            self._install(action, portable, window)
+            for alias in aliases_for(action.action_id):
+                if winners.get(alias) != action.action_id:
+                    continue
+                if alias == portable:
+                    continue
+                self._install(action, alias, window, alias_of=portable)
+
+    def _install(self, action, portable: str, window, *, alias_of: str | None = None) -> None:
+        from PySide6.QtGui import QShortcut
+
+        # The legacy redo side-installer (main-window platform actions) owns
+        # Ctrl+Y when present — installing our alias as well would fire redo
+        # twice. Skip only that chord, not the whole action.
+        if alias_of is not None and getattr(window, "_imgsli_redo_alt_shortcut", None) is not None:
+            return
+        if portable in self._claimed:
+            logger.warning(
+                "Shortcut conflict: %s already claimed by %s; skipping %s",
+                portable,
+                self._claimed[portable],
+                action.action_id,
             )
-            self._shortcuts.append(shortcut)
-            self._claimed[portable] = action_id
+            return
+        shortcut = QShortcut(QKeySequence(portable), window)
+        shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.setAutoRepeat(False)
+        run = action.run
+        action_id = action.action_id
+        shortcut.activated.connect(
+            lambda checked=False, r=run, aid=action_id: self._invoke(r, aid)
+        )
+        self._shortcuts.append(shortcut)
+        self._entries.append((portable, action_id))
+        self._claimed[portable] = action_id
 
     @staticmethod
     def _invoke(run, action_id: str) -> None:

@@ -68,6 +68,29 @@ class DocumentReducer:
                 return replace(document, image_list2=list(action.items))
         except Exception:
             pass
-        # deprecated pixel/path actions are no-ops — SlotSource is list+index only
-        # (derived path). Keep for compat: return same document.
+        # Deprecated pixel/path actions: explicit no-ops, never silent.
+        # Pixels are owned by PipelineCache — publishers must send
+        # PutPixelAction / PutPreviewAction with scope="pipeline" (see
+        # use_cases/document_slot.py); the document path is derived from
+        # list+index and has no setter. Returning the SAME document keeps
+        # a stale publish a no-change (no history entry, no emit) instead
+        # of a publish the caller believed landed.
+        try:
+            from core.state_management.document_actions import (
+                SetFullResImageAction,
+                SetImagePathAction,
+                SetPreviewImageAction,
+            )
+
+            if isinstance(
+                action,
+                (
+                    SetFullResImageAction,
+                    SetPreviewImageAction,
+                    SetImagePathAction,
+                ),
+            ):
+                return document
+        except Exception:
+            pass
         return document

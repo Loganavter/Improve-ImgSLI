@@ -78,9 +78,6 @@ _MOCK_ROOTS = frozenset({"monkeypatch", "mock", "mocker", "patch"})
 #: Migrate a site to ``dispatch(Set*Action)`` and drop its entry (a stale
 #: entry fails the test).
 ALLOWLIST: frozenset[str] = frozenset({
-    "src/plugins/onboarding/plugin.py:195",
-    "src/plugins/onboarding/plugin.py:197",
-    "src/plugins/settings/application_service.py:336",
     "src/plugins/settings/manager.py:143",
     "src/plugins/settings/manager.py:144",
     "src/plugins/settings/manager.py:145",
@@ -120,7 +117,6 @@ ALLOWLIST: frozenset[str] = frozenset({
     "src/plugins/settings/manager.py:236",
     "src/plugins/settings/manager.py:239",
     "src/plugins/settings/manager.py:242",
-    "src/plugins/settings/mutations.py:93",
     "src/tabs/image_compare/plugins/video_editor/presenter_parts/output_paths.py:108",
     "src/tabs/image_compare/services/image_export/state.py:115",
     "src/tabs/image_compare/services/image_export/state.py:116",

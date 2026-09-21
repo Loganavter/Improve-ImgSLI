@@ -50,16 +50,6 @@ from ui.widgets.shelf import (
 )
 
 
-# Root layout margins/spacing (design px) for the shelf content — re-applied
-# on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
-# share these so they can never drift apart.
-_PANEL_MARGIN_LEFT = 16
-_PANEL_MARGIN_TOP = 14
-_PANEL_MARGIN_RIGHT = 16
-_PANEL_MARGIN_BOTTOM = 14
-_PANEL_SPACING = 10
-
-
 # get_recent_sort_mode/get_recent_view_mode/list_recent_projects/
 # record_recent_project/remove_recent_project/sort_recent_projects are not
 # called directly in this file -- use_cases/refresh.py and
@@ -93,16 +83,6 @@ from tabs.session_picker.recent.items_view import (
 from tabs.session_picker.recent.use_cases import refresh as refresh_use_cases
 from tabs.session_picker.recent.use_cases import selection_ops
 from tabs.session_picker.recent.use_cases import sizing
-
-
-# Root layout margins/spacing (design px) for the shelf content — re-applied
-# on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
-# share these so they can never drift apart.
-_PANEL_MARGIN_LEFT = 16
-_PANEL_MARGIN_TOP = 14
-_PANEL_MARGIN_RIGHT = 16
-_PANEL_MARGIN_BOTTOM = 14
-_PANEL_SPACING = 10
 
 
 class RecentProjectsPanel(ShelfWidget):
@@ -357,6 +337,7 @@ class RecentProjectsPanel(ShelfWidget):
             self,
             on_paths=self._pin_dropped_paths,
             on_active_changed=self._on_drag_active_changed,
+            on_empty_drop=self._note_empty_drop,
         )
         self._drop.install(
             (
@@ -383,6 +364,25 @@ class RecentProjectsPanel(ShelfWidget):
 
     def _pin_dropped_paths(self, paths: list[str]) -> None:
         refresh_use_cases.pin_dropped_paths(self, paths)
+
+    def _note_empty_drop(self) -> None:
+        """Toast hint for a consumed-but-empty project drop (never silent)."""
+        try:
+            window = self.window()
+            toast = getattr(window, "toast_manager", None)
+            show = getattr(toast, "show_toast", None)
+            if callable(show):
+                show(
+                    self._tr(
+                        "recent.empty_hint",
+                        "Drop a .imgsli file here to pin it",
+                    ),
+                    duration=5000,
+                )
+                return
+        except Exception:
+            pass
+        logger.debug("recent shelf: empty project drop (no toast channel)")
 
     def _retranslate(self) -> None:
         self.set_title(self._tr("recent.title", "Recent"))
@@ -552,7 +552,9 @@ class RecentProjectsPanel(ShelfWidget):
         if getattr(self, "_items", None) is not None:
             self._items._keyboard_handoff = callback
 
-    def _activate(self, record: RecentProjectRecord, missing: bool) -> None:
+    def _activate(
+        self, record: RecentProjectRecord, missing: bool | None = None
+    ) -> None:
         selection_ops.activate(self, record, missing)
 
     def _show_context_menu(self, record: RecentProjectRecord) -> None:

@@ -214,7 +214,9 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
         module_name = f"tabs.{name}.tab"
         try:
             mod = importlib.import_module(module_name)
-        except ImportError:
+        except Exception:
+            # One broken tab (including a contract-level TypeError from a
+            # bad startup_tier) hides only itself, never the whole tier.
             logger.exception("Import-based tab discovery failed for %s", module_name)
             continue
 
@@ -229,6 +231,12 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
                 raw = getattr(obj, "startup_tier", "deferred")
                 if raw in ("bootstrap", "deferred"):
                     tier = raw  # type: ignore[assignment]
+                else:
+                    logger.warning(
+                        "%s: invalid startup_tier %r; treating as 'deferred'",
+                        module_name,
+                        raw,
+                    )
                 break
 
         module_file = getattr(mod, "__file__", None)
@@ -329,17 +337,33 @@ def _parse_tab_startup_tier(tab_py: Path) -> StartupTier:
         if not _inherits_tab_contract(node):
             continue
         for stmt in node.body:
+            found = False
+            raw: str | None = None
             if isinstance(stmt, ast.Assign):
-                for target in stmt.targets:
-                    if isinstance(target, ast.Name) and target.id == "startup_tier":
-                        value = _const_str(stmt.value)
-                        if value in ("bootstrap", "deferred"):
-                            return value  # type: ignore[return-value]
-            if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-                if stmt.target.id == "startup_tier" and stmt.value is not None:
-                    value = _const_str(stmt.value)
-                    if value in ("bootstrap", "deferred"):
-                        return value  # type: ignore[return-value]
+                if any(
+                    isinstance(t, ast.Name) and t.id == "startup_tier"
+                    for t in stmt.targets
+                ):
+                    found = True
+                    raw = _const_str(stmt.value)
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                if stmt.target.id == "startup_tier":
+                    found = True
+                    raw = _const_str(stmt.value) if stmt.value is not None else None
+            if not found:
+                continue
+            if raw in ("bootstrap", "deferred"):
+                return raw  # type: ignore[return-value]
+            # Present but invalid (typo or non-literal): fail loud here at
+            # scan time; the contract-level __init_subclass__ check raises
+            # again at import time so the typo can never slip into a tier.
+            logger.warning(
+                "%s: invalid startup_tier %r (expected 'bootstrap' or "
+                "'deferred'); treating as 'deferred'",
+                tab_py,
+                raw,
+            )
+            return "deferred"
     return "deferred"
 
 

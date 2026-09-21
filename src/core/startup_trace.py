@@ -37,3 +37,15 @@ def startup_mark(phase: str) -> None:
         delta_ms,
         phase,
     )
+
+
+def reset_startup_trace() -> None:
+    """Clear the timing origin so a fresh startup can be measured in-process.
+
+    Without this, ``_origin`` from a previous ``initialize()`` (or a test)
+    leaks into the next run and every delta/total is measured against a
+    stale clock. Primary use: tests and re-initialization.
+    """
+    global _origin, _last
+    _origin = None
+    _last = None

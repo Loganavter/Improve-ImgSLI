@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import weakref
+from collections import OrderedDict
 from dataclasses import fields, is_dataclass
 from typing import Any
 
@@ -241,6 +243,37 @@ def _patch_widget_registry() -> None:
         registry.get_feature_command_by_alias = traced_cmd_alias
 
 _LAST_PLAN_BY_CANVAS: "dict[int, dict]" = {}
+# id(canvas) -> weakref keeping the baseline alive only while the canvas is.
+# A raw id-keyed dict outlives its canvas: after GC the id can be reused by
+# an unrelated object, which would then diff against a stranger's baseline.
+# Entries are evicted by the weakref callback on canvas GC; canvases that
+# cannot be weak-referenced (test fakes) fall back to a bounded FIFO cap.
+_CANVAS_BASELINE_REFS: "dict[int, weakref.ReferenceType]" = {}
+_PLAN_BASELINE_CAP = 64
+
+
+def _get_plan_baseline(canvas) -> dict | None:
+    return _LAST_PLAN_BY_CANVAS.get(id(canvas))
+
+
+def _remember_plan_baseline(canvas, snapshot: dict) -> None:
+    canvas_key = id(canvas)
+    _LAST_PLAN_BY_CANVAS[canvas_key] = snapshot
+    try:
+        ref = weakref.ref(canvas, lambda _ref, key=canvas_key: _evict_plan_baseline(key))
+        _CANVAS_BASELINE_REFS[canvas_key] = ref
+    except TypeError:
+        # Not weak-referenceable: bound the dict so id-keyed entries from
+        # dead objects cannot grow without limit; oldest go first.
+        while len(_LAST_PLAN_BY_CANVAS) > _PLAN_BASELINE_CAP:
+            oldest = next(iter(_LAST_PLAN_BY_CANVAS))
+            _LAST_PLAN_BY_CANVAS.pop(oldest, None)
+            _CANVAS_BASELINE_REFS.pop(oldest, None)
+
+
+def _evict_plan_baseline(canvas_key: int) -> None:
+    _LAST_PLAN_BY_CANVAS.pop(canvas_key, None)
+    _CANVAS_BASELINE_REFS.pop(canvas_key, None)
 
 def _patch_render_plan() -> None:
     try:
@@ -258,9 +291,9 @@ def _patch_render_plan() -> None:
                               clip_overlays_to_image_bounds=clip_overlays_to_image_bounds)
         new_snapshot = _plan_snapshot(plan)
         canvas_key = id(canvas)
-        prev_snapshot = _LAST_PLAN_BY_CANVAS.get(canvas_key)
+        prev_snapshot = _get_plan_baseline(canvas)
         changed = _snapshot_diff(prev_snapshot, new_snapshot) if prev_snapshot else {"<first>": True}
-        _LAST_PLAN_BY_CANVAS[canvas_key] = new_snapshot
+        _remember_plan_baseline(canvas, new_snapshot)
         span_id = f"sp{tracer.next_span_id()}"
         t0 = time.monotonic()
         tracer.record(

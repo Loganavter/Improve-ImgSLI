@@ -92,6 +92,13 @@ def set_pixmap(widget, pixmap: QPixmap | None):
         overlay._centers = []
         overlay._radius = 0
         state._content_rect_px = (0, 0, max(1, pixmap.width()), max(1, pixmap.height()))
+        # Single-pixmap (preview) upload replaces the pair: any inner content
+        # rect / split left over from the previous image pair would keep
+        # clipping overlays (divider frag clip, content scissor) to a stale
+        # box while export recomputes from overlay_clip_rect — clear both so
+        # live and export clip against the same fresh content rect.
+        state._inner_content_rect_px = None
+        state._inner_split_position = None
         state._clip_overlays_to_content_rect = False
     else:
         set_layers(widget, None, None, None, None)

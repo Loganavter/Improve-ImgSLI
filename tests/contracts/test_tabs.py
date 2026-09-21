@@ -33,14 +33,31 @@ def test_every_tab_is_a_filled_contract():
     assert not problems, "\n  - " + "\n  - ".join(problems)
 
 def test_session_type_is_unique():
-    seen: dict[str, str] = {}
+    # Uniqueness covers sources too: each session_type must trace back to
+    # exactly one (class, module) origin, so a duplicate registration can
+    # never silently shadow another tab's routing key.
+    seen: dict[str, tuple[str, str]] = {}
     collisions: list[str] = []
     for tab in _discover():
         st = tab.session_type
+        origin = (type(tab).__name__, type(tab).__module__)
         if st in seen:
+            prev_cls, prev_mod = seen[st]
             collisions.append(
-                f"session_type '{st}' used by {seen[st]} and {type(tab).__name__}"
+                f"session_type '{st}' used by {prev_cls} ({prev_mod}) "
+                f"and {origin[0]} ({origin[1]})"
             )
         else:
-            seen[st] = type(tab).__name__
+            seen[st] = origin
     assert not collisions, "\n  - " + "\n  - ".join(collisions)
+
+
+def test_startup_tier_is_a_valid_literal():
+    problems: list[str] = []
+    for tab in _discover():
+        tier = getattr(tab, "startup_tier", "deferred")
+        if tier not in ("bootstrap", "deferred"):
+            problems.append(
+                f"{type(tab).__name__} ({type(tab).__module__}).startup_tier={tier!r}"
+            )
+    assert not problems, "\n  - " + "\n  - ".join(problems)

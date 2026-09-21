@@ -8,9 +8,11 @@ from core.state_management.actions import (
     SetFontSizePercentAction,
     SetFontWeightAction,
     SetIncludeFileNamesInSavedAction,
+    SetLanguageAction,
     SetMaxNameLengthAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
+    SetUIModeAction,
 )
 from domain.qt_adapters import color_to_hex
 from ui.canvas_infra.scene.property_access import (
@@ -43,6 +45,16 @@ VIEWPORT_ACTIONS = {
     "text_placement_mode": SetTextPlacementModeAction,
     "text_alpha_percent": SetTextAlphaPercentAction,
     "max_name_length": SetMaxNameLengthAction,
+}
+
+#: Store-settings attribute -> (action class, payload field). Every settings
+#: write goes through the Dispatcher via one of these actions — a direct
+#: ``store.settings.<attr> = value`` bypass is forbidden (contract dogma:
+#: test_no_direct_settings_mutation). An unmapped attribute is a fail-loud
+#: ValueError, never a silent setattr.
+SETTINGS_ACTIONS = {
+    "current_language": (SetLanguageAction, "language"),
+    "ui_mode": (SetUIModeAction, "mode"),
 }
 
 class SettingsMutationService:
@@ -90,7 +102,16 @@ class SettingsMutationService:
         if getattr(self.store.settings, attr) == value:
             return False
 
-        setattr(self.store.settings, attr, value)
+        try:
+            action_cls, field_name = SETTINGS_ACTIONS[attr]
+        except KeyError:
+            raise ValueError(
+                f"No dispatch action mapped for settings attribute {attr!r}; "
+                "add it to SETTINGS_ACTIONS instead of setattr "
+                f"({type(self).__name__}.set_settings_value)"
+            ) from None
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(action_cls(**{field_name: value}))
         if setting_key is not None:
             self.settings_manager._save_setting(setting_key, value)
         self.notifier.emit_state_change(emit_scope)
@@ -128,7 +149,15 @@ class SettingsMutationService:
         request_core_update: bool = False,
     ) -> bool:
         session = self.store.get_active_workspace_session()
-        session_type = session.session_type if session is not None else None
+        if session is None:
+            # Clean error, never an assert: canvas feature keys are resolved
+            # per session_type, and without an active session there is
+            # nothing to resolve against.
+            raise RuntimeError(
+                f"Cannot apply canvas feature setting {setting_key!r} "
+                "with no active workspace session"
+            )
+        session_type = session.session_type
         prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
         if prop is None:
             raise KeyError(f"Unknown canvas feature setting key: {setting_key}")
@@ -138,13 +167,20 @@ class SettingsMutationService:
         if current_channels == next_channels:
             return False
 
+        # Generic property path: no per-feature Redux action exists here and
+        # this layer must not import tab internals, so the write stays on
+        # the property writer. Tab-owned widgets dispatch their own
+        # undoable actions through tab reducers; this path announces the
+        # tweak through the Dispatcher (traced) and persists + emits.
         write_canvas_feature_property(self.store.viewport, prop, next_channels)
         self.settings_manager._save_setting(
             setting_key,
             serialize_canvas_feature_setting(prop, next_channels),
         )
         if invalidate_render_cache:
-            self.notifier.invalidate_render_cache()
+            self.store.get_dispatcher().dispatch(
+                InvalidateRenderCacheAction(), scope="viewport"
+            )
         self.notifier.emit_state_change(emit_scope)
         if request_core_update:
             self.notifier.request_core_update()

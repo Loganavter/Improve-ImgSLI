@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional, Tuple
 
 from PIL import Image
@@ -55,51 +56,59 @@ def resample_image_subpixel(
     if not pil_image or target_size[0] <= 0 or target_size[1] <= 0:
         return pil_image
 
-    left = crop_box_float[0]
-    top = crop_box_float[1]
-    right = crop_box_float[2]
-    bottom = crop_box_float[3]
-
-    crop_w = right - left
-    crop_h = bottom - top
-
-    expand_pixels = 2
-
-    expanded_left = max(0, int(left - expand_pixels))
-    expanded_top = max(0, int(top - expand_pixels))
-    expanded_right = min(pil_image.width, int(right + expand_pixels))
-    expanded_bottom = min(pil_image.height, int(bottom + expand_pixels))
-
-    if expanded_right <= expanded_left or expanded_bottom <= expanded_top:
+    left, top, right, bottom = (float(v) for v in crop_box_float)
+    crop_w, crop_h = right - left, bottom - top
+    if crop_w <= 0 or crop_h <= 0:
         return Image.new(pil_image.mode, target_size)
 
-    expanded_cropped = pil_image.crop(
-        (expanded_left, expanded_top, expanded_right, expanded_bottom)
-    )
+    # Honest subpixel crop: the old code truncated every coordinate with
+    # int(), so boxes differing only fractionally (10.2 vs 10.7) produced
+    # byte-identical output. Here the POSITION is subpixel-exact — the
+    # expanded integer crop is translated by the fractional remainder
+    # (BICUBIC ≈ ideal sinc shift) so an integer window aligns with the
+    # float box — while the SIZE stays whole-px (the resize to target_size
+    # absorbs the <1px rounding, same as any crop→resize step).
+    pad = 2
+    img_w, img_h = pil_image.width, pil_image.height
+    ex0 = max(0, int(math.floor(left)) - pad)
+    ey0 = max(0, int(math.floor(top)) - pad)
+    ex1 = min(img_w, int(math.ceil(right)) + pad)
+    ey1 = min(img_h, int(math.ceil(bottom)) + pad)
 
-    subpixel_offset_x = left - expanded_left
-    subpixel_offset_y = top - expanded_top
+    if ex1 <= ex0 or ey1 <= ey0:
+        return Image.new(pil_image.mode, target_size)
 
-    final_left = int(subpixel_offset_x)
-    final_top = int(subpixel_offset_y)
-    final_right = int(subpixel_offset_x + crop_w)
-    final_bottom = int(subpixel_offset_y + crop_h)
+    expanded = pil_image.crop((ex0, ey0, ex1, ey1))
 
-    compensate = 1
-    cropped = expanded_cropped.crop(
-        (
-            max(0, final_left - compensate),
-            max(0, final_top - compensate),
-            min(expanded_cropped.width, final_right + compensate),
-            min(expanded_cropped.height, final_bottom + compensate),
+    fx0, fy0 = left - ex0, top - ey0
+    frac_x = fx0 - math.floor(fx0)
+    frac_y = fy0 - math.floor(fy0)
+    if frac_x or frac_y:
+        shift_filter = (
+            Image.Resampling.NEAREST
+            if str(method_name).upper() == "NEAREST"
+            else Image.Resampling.BICUBIC
         )
-    )
+        # Output (x, y) samples input (x + frac, y + frac): content moves
+        # up-left by the fraction, landing the float origin on an integer.
+        expanded = expanded.transform(
+            expanded.size,
+            Image.Transform.AFFINE,
+            (1, 0, frac_x, 0, 1, frac_y),
+            shift_filter,
+        )
 
-    result = resample_image(
-        cropped, target_size, method_name, is_interactive_render, diff_mode_active
-    )
+    wx0, wy0 = int(math.floor(fx0)), int(math.floor(fy0))
+    wx1, wy1 = int(math.ceil(fx0 + crop_w)), int(math.ceil(fy0 + crop_h))
+    wx0c, wy0c = max(0, wx0), max(0, wy0)
+    wx1c, wy1c = min(expanded.width, wx1), min(expanded.height, wy1)
+    if wx1c <= wx0c or wy1c <= wy0c:
+        return Image.new(pil_image.mode, target_size)
+    window = expanded.crop((wx0c, wy0c, wx1c, wy1c))
 
-    return result
+    return resample_image(
+        window, target_size, method_name, is_interactive_render, diff_mode_active
+    )
 
 def resize_images_processor(
     original_image1: Image.Image | None,

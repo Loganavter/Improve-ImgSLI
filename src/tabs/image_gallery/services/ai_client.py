@@ -55,6 +55,20 @@ class AiNetworkError(AiClientError):
     """Connection failure, timeout, DNS error, etc."""
 
 
+class AiServerError(AiNetworkError):
+    """5xx — the API host answered but failed (overloaded / broken deploy).
+
+    Subclasses :class:`AiNetworkError` so legacy ``except AiNetworkError``
+    handlers keep working; callers that need the distinction catch this type
+    first. A 5xx is *not* proof the network is down — surfacing it as a plain
+    network error sends users to check their Wi-Fi instead of retrying later.
+    """
+
+    def __init__(self, message: str, retry_after: str | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class AiResponseError(AiClientError):
     """Malformed/unexpected response body."""
 
@@ -81,8 +95,30 @@ def build_request(image_path: Path, *, model: str, prompt: str = PROMPT_TEMPLATE
     }
 
 
+# Retry policy for overloaded servers (429 / 5xx): honor Retry-After, else
+# short exponential backoff. Worker thread only — never sleep on the UI thread.
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_S = 1.0
+_RETRY_MAX_DELAY_S = 30.0
+
+
+def _retry_delay_s(retry_after: str | None, attempt: int) -> float:
+    """Delay before retrying attempt ``attempt`` (1-based)."""
+    if retry_after:
+        try:
+            # Retry-After is usually delta-seconds; HTTP-dates fall back below.
+            delay = float(str(retry_after).strip())
+            if delay >= 0:
+                return min(delay, _RETRY_MAX_DELAY_S)
+        except (TypeError, ValueError):
+            pass
+    return min(_RETRY_BASE_DELAY_S * (2.0 ** max(0, attempt - 1)), _RETRY_MAX_DELAY_S)
+
+
 def call_sync(base_url: str, api_key: str, payload: dict, *, timeout: float = 30.0) -> dict:
     """Blocking HTTP POST — call only from a worker thread."""
+    import time
+
     url = base_url.rstrip("/") + "/chat/completions"
     request = urllib.request.Request(
         url,
@@ -93,24 +129,38 @@ def call_sync(base_url: str, api_key: str, payload: dict, *, timeout: float = 30
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read()
-    except urllib.error.HTTPError as exc:
-        body = ""
+    attempt = 0
+    while True:
+        attempt += 1
         try:
-            body = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
-        if exc.code in (401, 403):
-            raise AiAuthError(f"HTTP {exc.code}: {body}") from exc
-        if exc.code == 429:
-            raise AiRateLimitError(f"HTTP 429: {body}", retry_after=exc.headers.get("Retry-After")) from exc
-        raise AiNetworkError(f"HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise AiNetworkError(str(exc.reason)) from exc
-    except TimeoutError as exc:
-        raise AiNetworkError("request timed out") from exc
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            if exc.code in (401, 403):
+                raise AiAuthError(f"HTTP {exc.code}: {body}") from exc
+            if exc.code == 429:
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                if attempt < _RETRY_MAX_ATTEMPTS:
+                    time.sleep(_retry_delay_s(retry_after, attempt))
+                    continue
+                raise AiRateLimitError(f"HTTP 429: {body}", retry_after=retry_after) from exc
+            if exc.code is not None and 500 <= exc.code <= 599:
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                if attempt < _RETRY_MAX_ATTEMPTS:
+                    time.sleep(_retry_delay_s(retry_after, attempt))
+                    continue
+                raise AiServerError(f"HTTP {exc.code}: {body}", retry_after=retry_after) from exc
+            raise AiNetworkError(f"HTTP {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise AiNetworkError(str(exc.reason)) from exc
+        except TimeoutError as exc:
+            raise AiNetworkError("request timed out") from exc
+        break
 
     try:
         return json.loads(raw)

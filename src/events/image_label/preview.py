@@ -22,6 +22,7 @@ class OverlayPreviewController:
         self.handler = handler
         self._quick_preview_active = False
         self._snapshot: dict | None = None
+        self._session_id = None
 
     def log_preview_debug(self, message: str, **extra) -> None:
         pass
@@ -29,6 +30,20 @@ class OverlayPreviewController:
     @property
     def is_active(self) -> bool:
         return self._quick_preview_active
+
+    def _active_session_id(self):
+        """Fail-open session identity (None when the store cannot say)."""
+        try:
+            session = self.handler.store.get_active_workspace_session()
+            return getattr(session, "id", None)
+        except Exception:
+            return None
+
+    def _unwind(self) -> None:
+        """Discard the gesture state without applying anything."""
+        self._quick_preview_active = False
+        self._snapshot = None
+        self._session_id = None
 
     def begin(self) -> None:
         command = get_canvas_registry(_session_type(self.handler.store)).get_feature_command_by_alias(
@@ -41,22 +56,38 @@ class OverlayPreviewController:
             return
         self._quick_preview_active = True
         self._snapshot = dict(result)
+        self._session_id = self._active_session_id()
         self.log_preview_debug("begin_shift_preview")
 
     def restore(self) -> None:
         if not self._quick_preview_active:
             return
+        if self._active_session_id() != self._session_id:
+            # Cross-session Shift: the snapshot belongs to another tab —
+            # discard without applying (fail-closed) and unwind the gesture.
+            logger.warning(
+                "OverlayPreviewController.restore: session changed since "
+                "begin — discarding snapshot without applying"
+            )
+            self._unwind()
+            return
 
         snapshot = self._snapshot or {}
-        self._quick_preview_active = False
-        self._snapshot = None
-
         command = get_canvas_registry(_session_type(self.handler.store)).get_feature_command_by_alias(
             "preview.restore"
         )
         if command is None:
+            self._unwind()
             return
-        changed = command(self.handler.store, **snapshot)
+        try:
+            changed = command(self.handler.store, **snapshot)
+        except Exception:
+            # Fail-closed: never let a half-applied restore propagate — log,
+            # discard the snapshot, and unwind the gesture.
+            logger.exception("OverlayPreviewController.restore failed")
+            self._unwind()
+            return
+        self._unwind()
         if changed:
             self.log_preview_debug("restore_shift_preview")
             self._notify_state_change()

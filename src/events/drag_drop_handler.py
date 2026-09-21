@@ -2,6 +2,7 @@ import logging
 
 import shiboken6 as sip
 from PySide6.QtCore import QObject, QPointF, QTimer
+from PySide6.QtWidgets import QApplication
 from ui.widgets.drag_ghost_widget import DragGhostWidget, make_count_slot_pixmap
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
@@ -73,6 +74,18 @@ class DragAndDropService(QObject):
     def start_drag(self, source_widget, event):
         if self._is_dragging:
             return
+
+        # Symmetric precedence with ImageCarryService.begin (which cancels an
+        # in-flight row-drag): starting a row-drag cancels an active carry so
+        # carry can never starve row-drag initiation.
+        try:
+            from events.image_carry import ImageCarryService
+
+            carry = ImageCarryService._instance
+            if carry is not None and carry.is_active():
+                carry.cancel()
+        except Exception:
+            pass
 
         try:
             from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
@@ -206,13 +219,9 @@ class DragAndDropService(QObject):
                 f"[DragAndDrop] update_drag_position: исключение при проверке переключения в DOUBLE режим: {e}"
             )
 
-        new_target = None
-        for target in reversed(self._drop_targets):
-            if target.isVisible():
-                local_pos = target.mapFromGlobal(current_pos_global.toPoint())
-                if target.rect().contains(local_pos):
-                    new_target = target
-                    break
+        new_target = self._topmost_drop_target_at(current_pos_global)
+        if new_target is None:
+            new_target = self._registered_drop_target_at(current_pos_global)
 
         if self._current_target != new_target:
             if self._current_target and hasattr(
@@ -230,7 +239,66 @@ class DragAndDropService(QObject):
                 if hasattr(self._current_target, "clear_drop_indicator"):
                     self._current_target.clear_drop_indicator()
 
-    def finish_drag(self, event):
+    def _topmost_drop_target_at(self, global_pos: QPointF):
+        """Resolve the drop target by visual stacking (z-order), not by
+        registration order.
+
+        ``QApplication.widgetAt`` returns the topmost widget under the cursor;
+        the first registered drop target found walking up its parent chain is
+        the one the user actually sees on top. Dead targets are skipped, never
+        selected. Returns ``None`` when no target is on top (e.g. headless —
+        callers fall back to registration-order containment).
+        """
+        try:
+            probe = QApplication.widgetAt(global_pos.toPoint())
+        except Exception:
+            return None
+        widget = probe
+        while widget is not None:
+            try:
+                if self._is_live_drop_target_registered(widget):
+                    return widget
+            except RuntimeError:
+                pass
+            try:
+                widget = widget.parentWidget()
+            except Exception:
+                break
+        return None
+
+    def _registered_drop_target_at(self, global_pos: QPointF):
+        """Legacy containment scan in registration order (fallback only)."""
+        for target in reversed(self._drop_targets):
+            try:
+                if not target.isVisible():
+                    continue
+                local_pos = target.mapFromGlobal(global_pos.toPoint())
+                if target.rect().contains(local_pos):
+                    return target
+            except RuntimeError:
+                # Dead QObject target — skip, never select.
+                continue
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _is_live_drop_target(candidate) -> bool:
+        try:
+            visible = candidate.isVisible()
+        except RuntimeError:
+            return False
+        return bool(visible)
+
+    def _is_live_drop_target_registered(self, candidate) -> bool:
+        """Identity match against registered targets (dead-safe)."""
+        for target in self._drop_targets:
+            try:
+                if target is candidate:
+                    return self._is_live_drop_target(candidate)
+            except RuntimeError:
+                continue
+        return False
         if not self._is_dragging:
             return
 

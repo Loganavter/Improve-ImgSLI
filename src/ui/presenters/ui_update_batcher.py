@@ -2,6 +2,15 @@ from PySide6.QtCore import QTimer
 
 from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
 
+import logging
+
+logger = logging.getLogger("ImproveImgSLI")
+
+# A branch that keeps failing is requeued at most this many consecutive
+# flushes, then dropped with an error log — unbounded requeue would reschedule
+# a flush every tick forever (flush live-lock).
+_MAX_BRANCH_RETRIES = 3
+
 
 def _log_schedule_caller(update_types) -> None:
     if not flyout_debug_enabled():
@@ -24,6 +33,7 @@ class UIUpdateBatcher:
         self._presenter = presenter
         self._pending_updates = set()
         self._flush_scheduled = False
+        self._branch_failures: dict[str, int] = {}
 
     def schedule_update(self, update_type: str):
         _log_schedule_caller(update_type)
@@ -67,41 +77,69 @@ class UIUpdateBatcher:
             pass
 
         if "combobox" in updates:
-            try:
-                self._presenter._do_update_combobox_displays()
-            except RuntimeError:
-                pass
-
+            self._run_branch("combobox", self._do_combobox)
         if "file_names" in updates:
-            try:
-                self._presenter._do_update_file_names_display()
-            except RuntimeError:
-                pass
-            try:
-                self._presenter.schedule_canvas_update()
-            except RuntimeError:
-                pass
-
+            self._run_branch("file_names", self._do_file_names)
         if "resolution" in updates:
-            try:
-                self._presenter._do_update_resolution_labels()
-            except RuntimeError:
-                pass
-
+            self._run_branch("resolution", self._do_resolution)
         if "zoom_indicator" in updates:
-            try:
-                self._presenter._do_sync_zoom_indicator()
-            except RuntimeError:
-                pass
-
+            self._run_branch("zoom_indicator", self._do_zoom_indicator)
         if "ratings" in updates:
-            try:
-                self._presenter._do_update_rating_displays()
-            except RuntimeError:
-                pass
-
+            self._run_branch("ratings", self._do_ratings)
         if "window_schedule" in updates:
-            try:
-                self._presenter.main_window_app.schedule_update()
-            except RuntimeError:
-                pass
+            self._run_branch("window_schedule", self._do_window_schedule)
+
+        requeued = sorted(self._pending_updates)
+        if requeued and not self._flush_scheduled:
+            self._flush_scheduled = True
+            QTimer.singleShot(0, self._flush_updates)
+
+    def _run_branch(self, update_type: str, runner) -> None:
+        """Run one branch; on failure requeue it (bounded) instead of dropping.
+
+        The pending set is already drained when branches run, so a raising
+        branch must put its update type back — otherwise every update behind
+        the failure is silently lost. Non-Qt errors (deleted C++ objects)
+        stay silent; anything else logs.
+        """
+        try:
+            runner()
+        except RuntimeError:
+            self._requeue_branch(update_type)
+        except Exception:
+            logger.exception("UIUpdateBatcher branch %r failed", update_type)
+            self._requeue_branch(update_type)
+        else:
+            self._branch_failures.pop(update_type, None)
+
+    def _requeue_branch(self, update_type: str) -> None:
+        failures = self._branch_failures.get(update_type, 0) + 1
+        if failures > _MAX_BRANCH_RETRIES:
+            logger.error(
+                "UIUpdateBatcher dropping branch %r after %d failures",
+                update_type,
+                failures - 1,
+            )
+            self._branch_failures.pop(update_type, None)
+            return
+        self._branch_failures[update_type] = failures
+        self._pending_updates.add(update_type)
+
+    def _do_combobox(self) -> None:
+        self._presenter._do_update_combobox_displays()
+
+    def _do_file_names(self) -> None:
+        self._presenter._do_update_file_names_display()
+        self._presenter.schedule_canvas_update()
+
+    def _do_resolution(self) -> None:
+        self._presenter._do_update_resolution_labels()
+
+    def _do_zoom_indicator(self) -> None:
+        self._presenter._do_sync_zoom_indicator()
+
+    def _do_ratings(self) -> None:
+        self._presenter._do_update_rating_displays()
+
+    def _do_window_schedule(self) -> None:
+        self._presenter.main_window_app.schedule_update()

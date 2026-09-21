@@ -16,8 +16,19 @@ class PluginLifecycleManager:
 
     def register(self, plugin: Plugin) -> None:
         name = self._plugin_name(plugin)
-        if name not in self._plugins:
-            self._plugins[name] = plugin
+        if name in self._plugins:
+            # Duplicate isolation: keep the first registration so a second
+            # plugin with the same name cannot steal the slot — but say so
+            # loudly instead of silently dropping it.
+            logger.warning(
+                "Plugin '%s' (%s) already registered; keeping the first "
+                "registration and ignoring %s",
+                name,
+                type(self._plugins[name]).__name__,
+                type(plugin).__name__,
+            )
+            return
+        self._plugins[name] = plugin
 
     def get(self, name: str) -> Plugin | None:
         return self._plugins.get(name)
@@ -83,6 +94,20 @@ class PluginLifecycleManager:
                 "Plugin %s failed during %s: %s", plugin_name, method_name, err
             )
             plugin._set_state(PluginState.ERROR)
+            return
+        # Post-condition: the lifecycle call must leave the plugin in the
+        # expected state. Base Plugin methods set it themselves; an override
+        # that skips super() (or an early-return skip like activate() without
+        # context) leaves a stale state — warn instead of crashing startup.
+        actual = getattr(plugin, "_state", None)
+        if actual is not expected_state:
+            logger.warning(
+                "Plugin %s after %s in state %s, expected %s",
+                plugin_name,
+                method_name,
+                getattr(actual, "value", actual),
+                expected_state.value,
+            )
 
     def _plugin_name(self, plugin: Plugin) -> str:
         meta = getattr(plugin, "_plugin_meta", {})

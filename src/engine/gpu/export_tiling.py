@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from engine.store.regions import build_uniform_tile_grid
 from engine.gpu.offscreen_canvas import (
     configure_offscreen_widget,
+    pump_offscreen_to_quiescence,
     render_widget_frame,
     resize_and_show_offscreen_widget,
 )
@@ -114,6 +115,10 @@ class TiledFramebufferExporter:
             self._last_size = target
         self._prepare_frame()
         render_widget_frame(self._widget)
+        # Cold-tier first frame: residency uploads are budget-limited per
+        # frame, so a single grab can read back a partial tier. Pump to
+        # quiescence (no-op when already resident) before the grab.
+        pump_offscreen_to_quiescence(self._widget)
         try:
             qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         except RuntimeError as exc:
@@ -140,6 +145,9 @@ class TiledFramebufferExporter:
         self._set_export_viewport((canvas_w, canvas_h, tile_left, tile_top))
         self._prepare_frame()
         render_widget_frame(self._widget)
+        # Same cold-tier rationale as _render_single: the first tile of a
+        # fresh tier is the likeliest partial grab; pump before reading.
+        pump_offscreen_to_quiescence(self._widget)
         try:
             qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         except RuntimeError as exc:

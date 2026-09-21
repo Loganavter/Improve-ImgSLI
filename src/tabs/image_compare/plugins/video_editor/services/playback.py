@@ -65,10 +65,33 @@ class PlaybackEngine(QObject):
         self._timer.setInterval(max(1, int(1000 / effective_fps)))
 
     def set_total_frames(self, total_frames):
-        self._total_frames = max(0, total_frames)
+        self._total_frames = max(0, int(total_frames))
+        # A shortened timeline must pull the range and position back inside:
+        # a stale end past the new total would otherwise play wrong-time
+        # frames (time math clamps to duration, repeating the tail).
+        self._range = self._clamp_range(self._range)
+        self._current_frame = max(
+            0, min(self._current_frame, max(0, self._total_frames - 1))
+        )
+
+    def _clamp_range(self, rng):
+        try:
+            start, end = int(rng[0]), int(rng[1])
+        except (TypeError, ValueError):
+            start, end = 0, 0
+        start, end = max(0, start), max(0, end)
+        if end < start:
+            start, end = end, start
+        if self._total_frames > 0:
+            hi = self._total_frames - 1
+            start, end = min(start, hi), min(end, hi)
+        return (start, end)
 
     def set_range(self, start, end):
-        self._range = (max(0, start), max(0, end))
+        # Never address frames past the owned total: view selections go
+        # stale after trims, and an unclamped end silently plays wrong-time
+        # frames instead of stopping at the tail.
+        self._range = self._clamp_range((start, end))
 
     def set_current_frame(self, frame):
         self._current_frame = max(0, min(frame, self._total_frames - 1))

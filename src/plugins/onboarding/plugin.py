@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QStackedWidget
 
 from core.events import WorkspaceSessionActivatedEvent
 from core.plugin_system import Plugin, plugin
-from plugins.onboarding.overlay import OnboardingOverlay
+from plugins.onboarding.overlay import OnboardingOverlay, write_onboarding_ui_mode
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -191,10 +191,15 @@ class OnboardingPlugin(Plugin):
     def _apply_ui_mode(self, mode_key: str) -> None:
         window = self._window
         store = self.store
-        if store is not None and getattr(store, "settings", None) is not None:
-            store.settings.ui_mode = mode_key
-        if window is not None and getattr(window, "store", None) is not None:
-            window.store.settings.ui_mode = mode_key
+        if store is None and window is not None:
+            store = getattr(window, "store", None)
+        settings_manager = self.settings_manager
+        if settings_manager is None and window is not None:
+            settings_manager = getattr(window, "settings_manager", None)
+        # Single channel: dispatch + scheduled persist (see
+        # plugins.onboarding.overlay.write_onboarding_ui_mode). No direct
+        # store.settings writes here — the contract dogma forbids them.
+        write_onboarding_ui_mode(store, settings_manager, mode_key)
 
         event_bus = self.event_bus
         if event_bus is None and window is not None:

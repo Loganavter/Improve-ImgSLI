@@ -26,14 +26,26 @@ def open_image_dialog(presenter, image_number: int):
         delay = 100 if getattr(presenter, "_first_dialog_load_pending", True) else 0
         from PySide6.QtCore import QTimer
 
+        # Pin the session object across the dialog defer: the lambda runs up
+        # to 100ms later, by which time main_controller.sessions may have
+        # been rebound (tab switch / session rebuild) — loading into the
+        # live attribute then would target the wrong session or crash on
+        # None. The pinned ref always targets the session that owned the
+        # dialog; a dead session is a guarded no-op via load_images...
+        # failure paths, never a misdirected load.
+        main_controller = presenter.main_controller
+        sessions = (
+            getattr(main_controller, "sessions", None)
+            if main_controller is not None
+            else None
+        )
+        pinned_paths = list(paths)
+
         QTimer.singleShot(
             delay,
             lambda: (
-                presenter.main_controller.sessions.load_images_from_paths(
-                    paths, image_number
-                )
-                if presenter.main_controller is not None
-                and presenter.main_controller.sessions is not None
+                sessions.load_images_from_paths(pinned_paths, image_number)
+                if sessions is not None
                 else None
             ),
         )

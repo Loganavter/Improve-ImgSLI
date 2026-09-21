@@ -89,13 +89,38 @@ def drag_leave_event(owner, event) -> None:
         pass
 
 
+def _note(owner, text: str) -> None:
+    """User-visible one-line note on the gallery folder label.
+
+    Lightweight feedback channel for drop paths that otherwise end
+    silently (no paths extracted, missing/empty files): the folder label
+    is the gallery's status line and ``set_folder_label`` is its public
+    API (controller-owned), so notes never touch card internals.
+    """
+    try:
+        label = getattr(owner, "set_folder_label", None)
+        if callable(label):
+            label(Path(text))
+    except Exception:
+        pass
+
+
 def on_empty_file_dropped(owner, path_str: str) -> None:
     """Empty-state ``fileDropped`` handler — file vs folder."""
     try:
         p = Path(path_str)
         _dnd_log("on_empty_file_dropped: %s is_dir=%s is_file=%s suffix=%s", p, p.is_dir(), p.is_file(), p.suffix.lower())
         if not p.exists():
+            _note(owner, f"Nothing to show — {p.name or path_str} was removed or is unreachable.")
             return
+        if p.is_file():
+            try:
+                empty = p.stat().st_size == 0
+            except Exception:
+                empty = False
+            if empty:
+                _note(owner, f"Empty file — {p.name} is 0 bytes, nothing to show.")
+                return
         # Directory → open folder (triage 1037)
         if p.is_dir():
             try_open_folder(owner, p)
@@ -151,6 +176,7 @@ def drop_event(owner, event) -> None:
         paths = _extract_paths(event.mimeData())
         if not paths:
             _dnd_log("dropEvent: no paths extracted from mime")
+            _note(owner, "Nothing to show — the dropped items held no images or folders.")
             return
         _dnd_log("dropEvent: %d paths %r", len(paths), paths[:5])
         from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTS2
@@ -205,6 +231,24 @@ def drop_event(owner, event) -> None:
             folder = first.parent if first.is_file() or first.suffix else first.parent
         if folder and folder.is_dir():
             _dbg("dropEvent folder %s", folder)
+            dropped_files = [
+                p for p in paths
+                if p.is_file() and p.suffix.lower() in _EXTS2
+            ]
+            if dropped_files and ctrl is not None and hasattr(ctrl, "open_paths"):
+                # Mixed file-plus-folder drop: open_paths scans the dir AND
+                # lists the dropped files (label names them) — open_folder
+                # alone would swallow the files silently.
+                _dnd_log(
+                    "dropEvent mixed folder+files -> open_paths (dir %s + %d files)",
+                    folder, len(dropped_files),
+                )
+                try:
+                    ctrl.open_paths(paths)
+                    event.accept()
+                    return
+                except Exception:
+                    _dnd_log("open_paths (mixed) failed", exc_info=True)
             if ctrl is not None and hasattr(ctrl, "open_folder"):
                 try:
                     ctrl.open_folder(folder)

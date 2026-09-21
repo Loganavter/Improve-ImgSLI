@@ -109,40 +109,12 @@ def find_path(node: LayoutNode | None, slot_id: int) -> list[int] | None:
     return None
 
 
-def remove_leaf(node: LayoutNode | None, slot_id: int) -> LayoutNode | None:
-    """Remove a leaf and collapse single-child splits."""
-    if node is None:
-        return None
-    if isinstance(node, LeafNode):
-        return None if node.slot_id == slot_id else node
-    new_children: list = []
-    new_weights: list[float] = []
-    for child, w in zip(node.children, node.weights):
-        result = remove_leaf(child, slot_id)
-        if result is not None:
-            new_children.append(result)
-            new_weights.append(w)
-    if not new_children:
-        return None
-    if len(new_children) == 1:
-        return new_children[0]
-    node.children = new_children
-    node.weights = new_weights
-    return node
+# NOTE (P2 hygiene): the mutating tree helpers (remove_leaf, swap_slot_ids,
+# insert_beside_path, insert_beside) used to live here beside the frozen
+# ``MultiCompareState`` — mutating a tree owned by a frozen state is a
+# frozen-violation. The pure path is :mod:`tabs.multi_compare.scene.tree_ops`
+# (fresh trees, never in-place); this module keeps data + pure readers only.
 
-
-def swap_slot_ids(node: LayoutNode | None, sid_a: int, sid_b: int) -> LayoutNode | None:
-    """Swap the slot_ids of two leaves in-place (by identity rewrite)."""
-    if node is None or sid_a == sid_b:
-        return node
-    if isinstance(node, LeafNode):
-        if node.slot_id == sid_a:
-            return LeafNode(sid_b)
-        if node.slot_id == sid_b:
-            return LeafNode(sid_a)
-        return node
-    node.children = [swap_slot_ids(c, sid_a, sid_b) for c in node.children]
-    return node
 
 
 def node_at_path(node: LayoutNode | None, path: tuple[int, ...]) -> LayoutNode | None:
@@ -152,97 +124,6 @@ def node_at_path(node: LayoutNode | None, path: tuple[int, ...]) -> LayoutNode |
             return None
         cur = cur.children[i]
     return cur
-
-
-def _wrap_node(node: LayoutNode, side: str, new_slot_id: int) -> SplitNode:
-    direction = "h" if side in ("left", "right") else "v"
-    new_leaf = LeafNode(new_slot_id)
-    children = [new_leaf, node] if side in ("left", "top") else [node, new_leaf]
-    return SplitNode(direction=direction, children=children, weights=[1.0, 1.0])
-
-
-def insert_beside_path(
-    root: LayoutNode | None,
-    path: tuple[int, ...],
-    side: str,
-    new_slot_id: int,
-) -> LayoutNode | None:
-    """Insert a new leaf beside the node at `path`. Path may point to a SplitNode.
-
-    If the target's immediate parent split runs in the same direction as the
-    requested side, the new leaf is added as a sibling there. Otherwise the
-    target node is wrapped in a new orthogonal split.
-    """
-    if root is None:
-        return LeafNode(new_slot_id)
-    if not path:
-
-        return _wrap_node(root, side, new_slot_id)
-
-    parent = root
-    for i in path[:-1]:
-        assert isinstance(parent, SplitNode)
-        parent = parent.children[i]
-    assert isinstance(parent, SplitNode)
-    idx = path[-1]
-    target = parent.children[idx]
-    wanted_dir = "h" if side in ("left", "right") else "v"
-
-    if wanted_dir == parent.direction:
-        avg_w = sum(parent.weights) / len(parent.weights) if parent.weights else 1.0
-        ins_at = idx if side in ("left", "top") else idx + 1
-        parent.children.insert(ins_at, LeafNode(new_slot_id))
-        parent.weights.insert(ins_at, avg_w)
-        return root
-
-    parent.children[idx] = _wrap_node(target, side, new_slot_id)
-    return root
-
-
-def insert_beside(
-    node: LayoutNode | None,
-    target_slot_id: int,
-    side: str,
-    new_slot_id: int,
-) -> LayoutNode | None:
-    """Insert a new leaf beside the leaf with target_slot_id.
-
-    side: "left" | "right" | "top" | "bottom".
-
-    If the immediate parent split already runs in the same direction, the new
-    leaf is added as a sibling in that split instead of nesting another split.
-    """
-    if node is None:
-        return LeafNode(new_slot_id)
-
-    if isinstance(node, LeafNode):
-        if node.slot_id != target_slot_id:
-            return node
-        direction = "h" if side in ("left", "right") else "v"
-        new_leaf = LeafNode(new_slot_id)
-        children = [new_leaf, node] if side in ("left", "top") else [node, new_leaf]
-        return SplitNode(direction=direction, children=children, weights=[1.0, 1.0])
-
-    for i, child in enumerate(node.children):
-        if find_path(child, target_slot_id) is None:
-            continue
-
-        if isinstance(child, LeafNode) and child.slot_id == target_slot_id:
-            wanted_dir = "h" if side in ("left", "right") else "v"
-            if wanted_dir == node.direction:
-
-                avg_w = sum(node.weights) / len(node.weights)
-                if side in ("left", "top"):
-                    node.children.insert(i, LeafNode(new_slot_id))
-                    node.weights.insert(i, avg_w)
-                else:
-                    node.children.insert(i + 1, LeafNode(new_slot_id))
-                    node.weights.insert(i + 1, avg_w)
-                return node
-
-        node.children[i] = insert_beside(child, target_slot_id, side, new_slot_id)
-        return node
-    return node
 
 
 @dataclass(frozen=True)

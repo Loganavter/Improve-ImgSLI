@@ -44,6 +44,7 @@ class ApplicationContext:
         self._initialized = False
         self._deferred_plugins_loaded = False
         self._is_shutting_down = False
+        self._logging_ready_marked = False
 
     def initialize(self):
         if self._initialized:
@@ -208,6 +209,16 @@ class ApplicationContext:
         )
         setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")
 
+        # Logger-ready mark: startup marks emitted before this point went to
+        # an unconfigured logger and were silently dropped — this mark is the
+        # first one guaranteed visible. Emitted once (this runs twice: before
+        # and after the persisted-settings load).
+        if not self._logging_ready_marked:
+            self._logging_ready_marked = True
+            from core.startup_trace import startup_mark
+
+            startup_mark("ctx.logging_ready")
+
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
             from core.state_management.actions import SetDebugModeEnabledAction
             self.store.get_dispatcher().dispatch(SetDebugModeEnabledAction(True))
@@ -307,10 +318,6 @@ class ApplicationContext:
         from ui.context_menu.line_edit_menu import install_line_edit_context_menu_policy
         install_line_edit_context_menu_policy(app)
         self.theme_manager.apply_theme_to_app(app)
-        self.theme_manager.theme_changed.connect(self._on_theme_changed)
-
-    def _on_theme_changed(self):
-        pass
 
     def shutdown(self):
         self._is_shutting_down = True

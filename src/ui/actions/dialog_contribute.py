@@ -61,6 +61,11 @@ def contribute_dialog_search_actions(
                     if w is not None:
                         group_widget = w
                         break
+            if group_widget is None:
+                # Unresolvable chrome registers no row: a group row with no
+                # widget and a noop run is a dead entry in Find Action and a
+                # chord squatter in the binder. Members below still register.
+                continue
             reg.register(
                 ActionDescriptor(
                     action_id=group_action_id,
@@ -70,14 +75,8 @@ def contribute_dialog_search_actions(
                     topic=topic,
                     help_page=help_page,
                     sort_key=(group_order, 0),
-                    run=_noop if group_widget is None else (
-                        lambda w=group_widget: _activate_widget(w)  # type: ignore[misc]  # widget type is dynamic
-                    ),
-                    target=(
-                        ActionTarget(widget=group_widget)
-                        if group_widget is not None
-                        else None
-                    ),
+                    run=lambda w=group_widget: _activate_widget(w),  # type: ignore[misc]  # widget type is dynamic
+                    target=ActionTarget(widget=group_widget),
                 )
             )
             registered.append(group_action_id)
@@ -132,7 +131,14 @@ def withdraw_dialog_search_actions(
     prefix: str,
     *,
     registry: ActionRegistry | None = None,
+    window=None,
 ) -> None:
+    """Withdraw dialog chrome and resync live shortcuts.
+
+    Drops the binder's live shortcuts for ``prefix`` so withdrawn actions
+    stop firing; when ``window`` is given, runs a full binder resync so
+    surviving actions reclaim freed chords.
+    """
     reg = registry if registry is not None else get_action_registry()
     before = len(reg.all_actions())
     if prefix:
@@ -143,10 +149,18 @@ def withdraw_dialog_search_actions(
         before,
         len(reg.all_actions()),
     )
+    try:
+        from ui.actions.binder import (
+            get_action_shortcut_binder,
+            resync_action_shortcuts,
+        )
 
-
-def _noop() -> None:
-    return None
+        if window is not None:
+            resync_action_shortcuts(window, registry=reg)
+        elif prefix:
+            get_action_shortcut_binder().drop_prefix(prefix)
+    except Exception:
+        logger.debug("dialog withdraw binder resync failed", exc_info=True)
 
 
 def _activate_widget(widget) -> None:

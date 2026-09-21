@@ -89,6 +89,21 @@ class EventHandler(QObject):
         super().__init__()
         self.store = store
         self.presenter = presenter_ref
+        # Mouse-press/release fan-out dedup: the same QMouseEvent is
+        # delivered to every installEventFilter target (app + window +
+        # image_label), so each physical press/release must emit once.
+        # Dedup compares event *identity* (``is``) against the last emitted
+        # event, held by strong reference so the object cannot be GC'd and
+        # its address reused between deliveries — ``id()`` keys would
+        # collide with a dead object after collection. The monotonic
+        # sequence counters below tag each distinct physical press/release
+        # (1, 2, 3, …) for trace/debug correlation; they are the dedup
+        # generation, never an address.
+        self._last_mouse_press_event = None
+        self._last_mouse_press_seq = 0
+        self._last_mouse_release_event = None
+        self._last_mouse_release_seq = 0
+        self._mouse_event_seq = 0
         self.runtime = build_event_handler_runtime(
             store,
             presenter_provider=lambda: self.presenter,
@@ -159,20 +174,24 @@ class EventHandler(QObject):
             if watched_obj is self.presenter.main_window_app or watched_obj is active_window:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.FocusOut:
-            if watched_obj is self.presenter.main_window_app:
-                self._reset_keyboard_state(f"event:{int(event_type)}")
+            # Any focus loss (panel/tab-switch included) resets held keys.
+            self._reset_keyboard_state(f"event:{int(event_type)}")
 
         if event_type == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
             # Same QMouseEvent is delivered to every installEventFilter target
-            # (app + window + image_label). Emit once per physical press.
-            press_key = (id(event), event.button(), event.timestamp())
-            if press_key != getattr(self, "_last_mouse_press_key", None):
-                self._last_mouse_press_key = press_key
+            # (app + window + image_label). Emit once per physical press:
+            # identity against the pinned last event, tagged with the next
+            # monotonic sequence number on first delivery.
+            if event is not self._last_mouse_press_event:
+                self._mouse_event_seq += 1
+                self._last_mouse_press_event = event
+                self._last_mouse_press_seq = self._mouse_event_seq
                 self.mouse_press_event_signal.emit(event)
         elif event_type == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
-            release_key = (id(event), event.button(), event.timestamp())
-            if release_key != getattr(self, "_last_mouse_release_key", None):
-                self._last_mouse_release_key = release_key
+            if event is not self._last_mouse_release_event:
+                self._mouse_event_seq += 1
+                self._last_mouse_release_event = event
+                self._last_mouse_release_seq = self._mouse_event_seq
                 self.mouse_release_event_signal.emit(event)
 
         if route_global_keyboard_event(self, watched_obj, event):

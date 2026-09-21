@@ -350,6 +350,12 @@ def _first_tab_answering_result(
     would build a duplicate instance and re-run its side effects
     (e.g. re-registering a context menu provider → duplicated menu
     sections). See docs/dev/tabs/capability-mechanisms.md.
+
+    A raising tab is isolated, not fatal: the exception is logged and the
+    probe continues with the next tab, so one broken tab cannot veto an
+    unrelated tab's capability. (Direct active-tab calls — ``create_service``
+    / ``create_service_for`` — still re-raise; only the capability probe
+    skips.)
     """
     for tab in registry._tabs.values():
         method = getattr(tab, method_name, None)
@@ -359,12 +365,12 @@ def _first_tab_answering_result(
             result = method(*args, **kwargs)
         except Exception:
             logger.exception(
-                "Tab %s probe failed for %r on %s",
+                "Tab %s probe failed for %r on %s — skipping tab",
                 method_name,
                 args[0] if args else kwargs,
                 tab.session_type,
             )
-            raise
+            continue
         if result is not None:
             return tab, result
     return None

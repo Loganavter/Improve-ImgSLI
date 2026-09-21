@@ -23,6 +23,69 @@ from tabs.image_compare.presenters.toolbar.state import check_name_lengths
 logger = logging.getLogger("ImproveImgSLI")
 _WARNED_UNAVAILABLE_TOOLBAR_CONTROLS: set[str] = set()
 
+# Connection ownership for the disconnect mirror below: every widget-signal
+# connect in this module routes via _track (enforced by
+# test_toolbar_connections_pairing), which records the QMetaObject.Connection
+# on the presenter. disconnect_signals drops exactly those — the video-editor
+# precedent (PRESENTER_TO_DIALOG_SLOTS + disconnect_presenter_signals):
+# table-driven pairing, guarded lookups, idempotent, safe to call twice.
+_CONNS_ATTR = "_ic_toolbar_conns"
+
+
+def _track(presenter, signal, slot):
+    """Connect ``slot`` to ``signal`` and record it for :func:`disconnect_signals`.
+
+    Returns the ``QMetaObject.Connection`` (or ``None`` when the connect
+    itself failed). Only bookkeeping lives here — failures to record never
+    break the connect.
+    """
+    try:
+        conn = signal.connect(slot)
+    except Exception:
+        return None
+    try:
+        conns = getattr(presenter, _CONNS_ATTR, None)
+        if conns is None:
+            conns = []
+            setattr(presenter, _CONNS_ATTR, conns)
+        conns.append(conn)
+    except Exception:
+        pass
+    return conn
+
+
+def disconnect_signals(presenter) -> int:
+    """Exact mirror of :func:`connect_signals` (video-presenter precedent).
+
+    Drops every toolbar widget→presenter/controller slot recorded by
+    ``_track`` so no late queued signal (deferred editor attach, flyout
+    close, color-button hover) reaches a torn-down presenter. Called from
+    presenter teardown (and safe before ``connect_signals`` re-wire:
+    disconnecting twice is a no-op). Returns the number disconnected.
+    """
+    try:
+        conns = getattr(presenter, _CONNS_ATTR, None)
+    except Exception:
+        return 0
+    if not conns:
+        return 0
+    try:
+        setattr(presenter, _CONNS_ATTR, [])
+    except Exception:
+        pass
+    try:
+        from PySide6.QtCore import QObject
+    except Exception:
+        return 0
+    dropped = 0
+    for conn in list(conns):
+        try:
+            if QObject.disconnect(conn):
+                dropped += 1
+        except Exception:
+            continue
+    return dropped
+
 def _show_unavailable_toolbar_capability(presenter, control_id: str) -> None:
     if control_id in _WARNED_UNAVAILABLE_TOOLBAR_CONTROLS:
         return
@@ -67,6 +130,12 @@ def _resolve_interpolation_handler(controller):
     return None
 
 def connect_signals(presenter):
+    # Fresh ownership ledger: a re-wire after disconnect_signals starts
+    # clean instead of accumulating dead connections.
+    try:
+        setattr(presenter, _CONNS_ATTR, [])
+    except Exception:
+        pass
     _connect_session_actions(presenter)
     _connect_name_editing(presenter)
     _connect_viewport_controls(presenter)
@@ -87,18 +156,18 @@ def _connect_session_actions(presenter):
         return
 
     ui = presenter.widget
-    ui.btn_swap.shortClicked.connect(controller.sessions.swap_current_images)
-    ui.btn_swap.longPressed.connect(controller.sessions.swap_entire_lists)
-    ui.btn_clear_list1.shortClicked.connect(
+    _track(presenter, ui.btn_swap.shortClicked, controller.sessions.swap_current_images)
+    _track(presenter, ui.btn_swap.longPressed, controller.sessions.swap_entire_lists)
+    _track(presenter, ui.btn_clear_list1.shortClicked,
         lambda: controller.sessions.remove_current_image_from_list(1)
     )
-    ui.btn_clear_list1.longPressed.connect(
+    _track(presenter, ui.btn_clear_list1.longPressed,
         lambda: controller.sessions.clear_image_list(1)
     )
-    ui.btn_clear_list2.shortClicked.connect(
+    _track(presenter, ui.btn_clear_list2.shortClicked,
         lambda: controller.sessions.remove_current_image_from_list(2)
     )
-    ui.btn_clear_list2.longPressed.connect(
+    _track(presenter, ui.btn_clear_list2.longPressed,
         lambda: controller.sessions.clear_image_list(2)
     )
 
@@ -106,21 +175,21 @@ def _connect_name_editing(presenter):
     controller = presenter.main_controller
     ui = presenter.widget
     if controller is not None and controller.sessions is not None:
-        ui.edit_name1.editingFinished.connect(
+        _track(presenter, ui.edit_name1.editingFinished,
             lambda: controller.sessions.on_edit_name_changed(1, ui.edit_name1.text())
         )
-        ui.edit_name2.editingFinished.connect(
+        _track(presenter, ui.edit_name2.editingFinished,
             lambda: controller.sessions.on_edit_name_changed(2, ui.edit_name2.text())
         )
-        ui.edit_name1.textEdited.connect(
+        _track(presenter, ui.edit_name1.textEdited,
             lambda text: controller.sessions.on_edit_name_changed(1, text)
         )
-        ui.edit_name2.textEdited.connect(
+        _track(presenter, ui.edit_name2.textEdited,
             lambda text: controller.sessions.on_edit_name_changed(2, text)
         )
 
-    ui.edit_name1.textChanged.connect(lambda: check_name_lengths(presenter))
-    ui.edit_name2.textChanged.connect(lambda: check_name_lengths(presenter))
+    _track(presenter, ui.edit_name1.textChanged, lambda: check_name_lengths(presenter))
+    _track(presenter, ui.edit_name2.textChanged, lambda: check_name_lengths(presenter))
 
 def _connect_viewport_controls(presenter):
     controller = presenter.main_controller
@@ -129,7 +198,7 @@ def _connect_viewport_controls(presenter):
     interpolation_handler = _resolve_interpolation_handler(controller)
 
     if controller:
-        ui.btn_orientation.toggled.connect(
+        _track(presenter, ui.btn_orientation.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "divider.orientation",
                 "on_toggled",
@@ -137,7 +206,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.btn_orientation.valueChanged.connect(
+        _track(presenter, ui.btn_orientation.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "divider.orientation",
                 "on_value_changed",
@@ -145,7 +214,7 @@ def _connect_viewport_controls(presenter):
                 value,
             )
         )
-        ui.btn_magnifier_orientation.toggled.connect(
+        _track(presenter, ui.btn_magnifier_orientation.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.orientation",
                 "on_toggled",
@@ -153,7 +222,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.btn_magnifier_orientation.valueChanged.connect(
+        _track(presenter, ui.btn_magnifier_orientation.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "magnifier.divider.thickness",
                 "on_value_changed",
@@ -161,7 +230,7 @@ def _connect_viewport_controls(presenter):
                 value,
             )
         )
-        ui.btn_magnifier.toggled.connect(
+        _track(presenter, ui.btn_magnifier.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.enabled",
                 "on_toggled",
@@ -170,7 +239,7 @@ def _connect_viewport_controls(presenter):
             )
         )
         if hasattr(ui, "btn_magnifier_instances"):
-            ui.btn_magnifier_instances.addClicked.connect(
+            _track(presenter, ui.btn_magnifier_instances.addClicked,
                 lambda: _invoke_toolbar_binding(
                     "magnifier.instances.add",
                     "on_toggled",
@@ -178,7 +247,7 @@ def _connect_viewport_controls(presenter):
                     True,
                 )
             )
-            ui.btn_magnifier_instances.removeClicked.connect(
+            _track(presenter, ui.btn_magnifier_instances.removeClicked,
                 lambda: _invoke_toolbar_binding(
                     "magnifier.instances.remove",
                     "on_toggled",
@@ -186,7 +255,7 @@ def _connect_viewport_controls(presenter):
                     True,
                 )
             )
-        ui.btn_file_names.toggled.connect(
+        _track(presenter, ui.btn_file_names.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "filename_overlay.visible",
                 "on_toggled",
@@ -194,7 +263,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.btn_freeze.toggled.connect(
+        _track(presenter, ui.btn_freeze.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.freeze",
                 "on_toggled",
@@ -202,7 +271,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.slider_size.valueChanged.connect(
+        _track(presenter, ui.slider_size.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "magnifier.size",
                 "on_value_changed",
@@ -210,7 +279,7 @@ def _connect_viewport_controls(presenter):
                 value,
             )
         )
-        ui.slider_capture.valueChanged.connect(
+        _track(presenter, ui.slider_capture.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "capture.size",
                 "on_value_changed",
@@ -218,28 +287,28 @@ def _connect_viewport_controls(presenter):
                 value,
             )
         )
-        ui.slider_size.sliderPressed.connect(
+        _track(presenter, ui.slider_size.sliderPressed,
             lambda: _invoke_toolbar_binding(
                 "magnifier.size",
                 "on_pressed",
                 presenter,
             )
         )
-        ui.slider_size.sliderReleased.connect(
+        _track(presenter, ui.slider_size.sliderReleased,
             lambda: _invoke_toolbar_binding(
                 "magnifier.size",
                 "on_released",
                 presenter,
             )
         )
-        ui.slider_capture.sliderPressed.connect(
+        _track(presenter, ui.slider_capture.sliderPressed,
             lambda: _invoke_toolbar_binding(
                 "capture.size",
                 "on_pressed",
                 presenter,
             )
         )
-        ui.slider_capture.sliderReleased.connect(
+        _track(presenter, ui.slider_capture.sliderReleased,
             lambda: _invoke_toolbar_binding(
                 "capture.size",
                 "on_released",
@@ -259,17 +328,17 @@ def _connect_viewport_controls(presenter):
                 settings_manager = getattr(controller, "settings_manager", None) if controller is not None else None
                 if settings_manager is not None:
                     settings_manager._save_setting("movement_speed_per_sec", speed)
-            ui.slider_speed.valueChanged.connect(on_speed_changed)
+            _track(presenter, ui.slider_speed.valueChanged, on_speed_changed)
 
         if interpolation_handler is not None:
-            ui.combo_interpolation.currentIndexChanged.connect(interpolation_handler)
+            _track(presenter, ui.combo_interpolation.currentIndexChanged, interpolation_handler)
 
 def _connect_orientation_controls(presenter):
     ui = presenter.widget
-    ui.btn_orientation.rightClicked.connect(
+    _track(presenter, ui.btn_orientation.rightClicked,
         lambda: on_orientation_right_clicked(presenter)
     )
-    ui.btn_magnifier_orientation.rightClicked.connect(
+    _track(presenter, ui.btn_magnifier_orientation.rightClicked,
         lambda: _invoke_toolbar_binding(
             "magnifier.orientation",
             "on_right_clicked",
@@ -278,7 +347,7 @@ def _connect_orientation_controls(presenter):
     )
 
     if hasattr(ui.btn_orientation, "middleClicked"):
-        ui.btn_orientation.middleClicked.connect(
+        _track(presenter, ui.btn_orientation.middleClicked,
             lambda: _invoke_toolbar_binding(
                 "divider.orientation",
                 "on_middle_clicked",
@@ -286,7 +355,7 @@ def _connect_orientation_controls(presenter):
             )
         )
     if hasattr(ui.btn_magnifier_orientation, "middleClicked"):
-        ui.btn_magnifier_orientation.middleClicked.connect(
+        _track(presenter, ui.btn_magnifier_orientation.middleClicked,
             lambda: _invoke_toolbar_binding(
                 "magnifier.orientation",
                 "on_middle_clicked",
@@ -294,7 +363,7 @@ def _connect_orientation_controls(presenter):
             )
         )
     if hasattr(ui.btn_magnifier, "rightClicked"):
-        ui.btn_magnifier.rightClicked.connect(
+        _track(presenter, ui.btn_magnifier.rightClicked,
             lambda: _invoke_toolbar_binding(
                 "magnifier.enabled",
                 "on_right_clicked",
@@ -310,7 +379,7 @@ def _connect_mode_specific_controls(presenter):
         return
 
     if hasattr(ui, "btn_orientation_simple"):
-        ui.btn_orientation_simple.toggled.connect(
+        _track(presenter, ui.btn_orientation_simple.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "divider.orientation_simple",
                 "on_toggled",
@@ -319,7 +388,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_divider_visible"):
-        ui.btn_divider_visible.toggled.connect(
+        _track(presenter, ui.btn_divider_visible.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "divider.visible",
                 "on_toggled",
@@ -328,7 +397,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_divider_color"):
-        ui.btn_divider_color.clicked.connect(
+        _track(presenter, ui.btn_divider_color.clicked,
             lambda: _invoke_toolbar_binding(
                 "divider.color",
                 "on_right_clicked",
@@ -336,7 +405,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_divider_width"):
-        ui.btn_divider_width.valueChanged.connect(
+        _track(presenter, ui.btn_divider_width.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "divider.width",
                 "on_value_changed",
@@ -345,7 +414,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_orientation_simple"):
-        ui.btn_magnifier_orientation_simple.toggled.connect(
+        _track(presenter, ui.btn_magnifier_orientation_simple.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.orientation",
                 "on_toggled",
@@ -354,7 +423,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_divider_visible"):
-        ui.btn_magnifier_divider_visible.toggled.connect(
+        _track(presenter, ui.btn_magnifier_divider_visible.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.divider.visibility",
                 "on_toggled",
@@ -363,7 +432,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_divider_width"):
-        ui.btn_magnifier_divider_width.valueChanged.connect(
+        _track(presenter, ui.btn_magnifier_divider_width.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "magnifier.divider.thickness",
                 "on_value_changed",
@@ -372,7 +441,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_guides_simple"):
-        ui.btn_magnifier_guides_simple.toggled.connect(
+        _track(presenter, ui.btn_magnifier_guides_simple.toggled,
             lambda checked: _invoke_toolbar_binding(
                 "guides.enabled_simple",
                 "on_toggled",
@@ -381,7 +450,7 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_guides_width"):
-        ui.btn_magnifier_guides_width.valueChanged.connect(
+        _track(presenter, ui.btn_magnifier_guides_width.valueChanged,
             lambda value: _invoke_toolbar_binding(
                 "guides.thickness",
                 "on_value_changed",
@@ -401,17 +470,17 @@ def _connect_ui_manager_controls(presenter):
         and ui.btn_file_names is not None
         and hasattr(ui.btn_file_names, "rightClicked")
     ):
-        ui.btn_file_names.rightClicked.connect(
+        _track(presenter, ui.btn_file_names.rightClicked,
             lambda: ui_manager.transient.toggle_font_settings_flyout(anchor_widget=ui.btn_file_names)
         )
 
-    ui.combo_interpolation.clicked.connect(
+    _track(presenter, ui.combo_interpolation.clicked,
         lambda: on_interpolation_combo_clicked(presenter)
     )
 
     if ui_manager:
-        ui.combo_image1.clicked.connect(lambda: ui_manager.show_flyout(1))
-        ui.combo_image2.clicked.connect(lambda: ui_manager.show_flyout(2))
+        _track(presenter, ui.combo_image1.clicked, lambda: ui_manager.show_flyout(1))
+        _track(presenter, ui.combo_image2.clicked, lambda: ui_manager.show_flyout(2))
     else:
         logger.warning("ToolbarPresenter: ui_manager not set, flyout connections skipped")
 
@@ -433,7 +502,7 @@ def _connect_topic_palette_entry_points(presenter):
     def _bind(button, topic: str) -> None:
         if button is None or not hasattr(button, "middleClicked"):
             return
-        button.middleClicked.connect(lambda t=topic: _open_topic_palette(presenter, t))
+        _track(presenter, button.middleClicked, lambda t=topic: _open_topic_palette(presenter, t))
 
     _bind(getattr(ui, "btn_freeze", None), "magnifier")
     _bind(getattr(ui, "btn_save", None), "export")
@@ -451,23 +520,23 @@ def _connect_session_comboboxes(presenter):
     if controller is None or session_handler is None:
         return
 
-    ui.combo_image1.wheelScrolledToIndex.connect(
+    _track(presenter, ui.combo_image1.wheelScrolledToIndex,
         lambda index: session_handler.on_combobox_changed(1, index)
     )
-    ui.combo_image2.wheelScrolledToIndex.connect(
+    _track(presenter, ui.combo_image2.wheelScrolledToIndex,
         lambda index: session_handler.on_combobox_changed(2, index)
     )
     if interpolation_handler is not None:
-        ui.combo_interpolation.wheelScrolledToIndex.connect(interpolation_handler)
+        _track(presenter, ui.combo_interpolation.wheelScrolledToIndex, interpolation_handler)
 
     event_bus = presenter.event_bus or getattr(controller, "event_bus", None)
     if event_bus is None:
         return
 
-    ui.btn_diff_mode_picker.selected.connect(
+    _track(presenter, ui.btn_diff_mode_picker.selected,
         lambda data: event_bus.emit(AnalysisSetDiffModeEvent(data))
     )
-    ui.btn_channel_mode_picker.selected.connect(
+    _track(presenter, ui.btn_channel_mode_picker.selected,
         lambda data: event_bus.emit(AnalysisSetChannelViewModeEvent(data))
     )
     def _ensure_deferred():
@@ -517,8 +586,8 @@ def _connect_session_comboboxes(presenter):
             return
         event_bus.emit(event_factory())
 
-    ui.btn_record.toggled.connect(lambda checked: _emit_with_ensure(ExportToggleRecordingEvent, "ExportToggleRecordingEvent"))
-    ui.btn_pause.toggled.connect(lambda checked: _emit_with_ensure(ExportTogglePauseRecordingEvent, "ExportTogglePauseRecordingEvent"))
+    _track(presenter, ui.btn_record.toggled, lambda checked: _emit_with_ensure(ExportToggleRecordingEvent, "ExportToggleRecordingEvent"))
+    _track(presenter, ui.btn_pause.toggled, lambda checked: _emit_with_ensure(ExportTogglePauseRecordingEvent, "ExportTogglePauseRecordingEvent"))
     def _emit_open_editor():
         from PySide6.QtCore import QTimer
         try:
@@ -559,15 +628,15 @@ def _connect_session_comboboxes(presenter):
             return
         _do_emit()
 
-    ui.btn_video_editor.clicked.connect(_emit_open_editor)
+    _track(presenter, ui.btn_video_editor.clicked, _emit_open_editor)
 
 def _connect_image_load_buttons(presenter):
     from tabs.image_compare.presenters.toolbar.actions import open_image_dialog
-    presenter.widget.btn_image1.clicked.connect(lambda: open_image_dialog(presenter, 1))
-    presenter.widget.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
+    _track(presenter, presenter.widget.btn_image1.clicked, lambda: open_image_dialog(presenter, 1))
+    _track(presenter, presenter.widget.btn_image2.clicked, lambda: open_image_dialog(presenter, 2))
 
 def _connect_text_settings_button(presenter):
-    presenter.widget.btn_text_settings.clicked.connect(
+    _track(presenter, presenter.widget.btn_text_settings.clicked,
         lambda: presenter.ui_manager.transient.toggle_font_settings_flyout(
             anchor_widget=presenter.widget.btn_text_settings
         )
@@ -593,8 +662,8 @@ def _connect_save_buttons(presenter):
         if export_presenter is not None:
             export_presenter.save_result()
 
-    presenter.widget.btn_quick_save.clicked.connect(_on_quick_save)
-    presenter.widget.btn_save.clicked.connect(_on_save)
+    _track(presenter, presenter.widget.btn_quick_save.clicked, _on_quick_save)
+    _track(presenter, presenter.widget.btn_save.clicked, _on_save)
 
 def _connect_font_flyout(presenter):
     from domain.qt_adapters import qcolor_to_color
@@ -603,7 +672,7 @@ def _connect_font_flyout(presenter):
     flyout = getattr(transient, "font_settings_flyout", None)
     if flyout is None:
         return
-    flyout.closed.connect(lambda: _on_font_flyout_closed(presenter))
+    _track(presenter, flyout.closed, lambda: _on_font_flyout_closed(presenter))
 
     def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
         args = (
@@ -616,7 +685,7 @@ def _connect_font_flyout(presenter):
         elif presenter.main_controller is not None:
             presenter.main_controller.apply_font_settings(*args)
 
-    flyout.settings_changed.connect(_emit_font_settings)
+    _track(presenter, flyout.settings_changed, _emit_font_settings)
 
 def _on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()
@@ -644,23 +713,23 @@ def _connect_magnifier_color_controls(presenter):
             if settings_presenter is not None:
                 settings_presenter.apply_smart_magnifier_colors()
 
-        button.smartColorSetRequested.connect(_apply_smart_colors)
-        button.colorOptionClicked.connect(
+        _track(presenter, button.smartColorSetRequested, _apply_smart_colors)
+        _track(presenter, button.colorOptionClicked,
             lambda option: on_color_option_clicked(presenter, option)
         )
-        button.elementHovered.connect(
+        _track(presenter, button.elementHovered,
             lambda element_name: on_magnifier_element_hovered(presenter, element_name)
         )
-        button.elementHoverEnded.connect(
+        _track(presenter, button.elementHoverEnded,
             lambda: on_magnifier_element_hover_ended(presenter)
         )
 
     _wire(getattr(widget, "btn_magnifier_color_settings", None))
     _wire(getattr(widget, "btn_magnifier_color_settings_beginner", None))
 
-    widget.btn_magnifier_guides.toggled.connect(
+    _track(presenter, widget.btn_magnifier_guides.toggled,
         lambda checked: on_magnifier_guides_toggled(presenter, not checked)
     )
-    widget.btn_magnifier_guides.valueChanged.connect(
+    _track(presenter, widget.btn_magnifier_guides.valueChanged,
         lambda value: on_magnifier_guides_thickness_changed(presenter, value)
     )

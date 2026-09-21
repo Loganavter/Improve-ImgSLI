@@ -9,7 +9,9 @@ bullet lists that silently rot when a file moves, this script:
 1. Parses every relative markdown link (``[text](path#anchor)``) in every
    doc, resolves it against the linking file's directory, and reports any
    that don't point at a real file/dir on disk (a moved/renamed doc breaks
-   this immediately instead of quietly).
+   this immediately instead of quietly). ``#anchor`` jumps are validated
+   separately against the target file's headings (``broken_anchors``) —
+   same-file ``#anchor`` links included.
 2. Regenerates ``docs/dev/DOC_INDEX.md``: every doc in scope, grouped by
    directory, each with a "Referenced by" backlink list computed from the
    link graph — so nobody hand-maintains which docs point at which.
@@ -48,6 +50,12 @@ class DocsLinkReport:
     docs: tuple[str, ...]  # repo-relative paths, sorted
     broken: tuple[BrokenLink, ...]
     backlinks: dict[str, tuple[str, ...]]  # doc -> sorted docs that link to it
+    # Anchor drift (``path#missing-heading`` / ``#missing-heading``) is
+    # tracked separately from ``broken``: a moved file breaks the whole
+    # reference, a renamed heading only the jump. ``--strict`` fails on
+    # either; the ``test_real_repo_has_no_broken_doc_links`` dogma pins
+    # only ``broken`` (file-level), so anchor cleanup can land incrementally.
+    broken_anchors: tuple[BrokenLink, ...] = ()
 
 
 def default_repo_root() -> Path:
@@ -66,6 +74,41 @@ def discover_doc_files(repo_root: Path) -> list[Path]:
             if tab_docs.is_dir():
                 out.extend(sorted(tab_docs.rglob("*.md")))
     return [p for p in out if "__pycache__" not in p.parts]
+
+
+def _heading_slugs(text: str) -> set[str]:
+    """GitHub-style heading anchors present in a markdown document.
+
+    ``## Foo Bar`` → ``foo-bar`` (lowercase, punctuation dropped,
+    whitespace runs collapsed to one hyphen). Fenced code blocks are not
+    headings. Best-effort: custom ``{#anchor}`` suffixes are not parsed.
+    """
+    slugs: set[str] = set()
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = re.match(r"#{1,6}\s+(.*)", stripped)
+        if not match:
+            continue
+        heading = re.sub(r"`([^`]*)`", r"\1", match.group(1)).strip().lower()
+        heading = re.sub(r"[^\w\s-]", "", heading)
+        slug = re.sub(r"\s+", "-", heading).strip("-")
+        if slug:
+            slugs.add(slug)
+    return slugs
+
+
+def _split_anchor(target: str) -> tuple[str, str]:
+    """Split a raw link target into ``(path_part, anchor)`` (either may be empty)."""
+    if "#" not in target:
+        return target, ""
+    path_part, anchor = target.split("#", 1)
+    return path_part, anchor
 
 
 def _rel(path: Path, *, repo_root: Path) -> str:
@@ -106,7 +149,20 @@ def analyze_docs(*, repo_root: Path | None = None) -> DocsLinkReport:
     doc_rels = {_rel(p, repo_root=root) for p in doc_paths}
 
     broken: list[BrokenLink] = []
+    broken_anchors: list[BrokenLink] = []
     backlinks: dict[str, set[str]] = {rel: set() for rel in doc_rels}
+    # Cache heading slugs per doc so each target file is scanned once.
+    slug_cache: dict[str, set[str]] = {}
+
+    def _slugs_of(doc_rel: str) -> set[str]:
+        if doc_rel not in slug_cache:
+            try:
+                slug_cache[doc_rel] = _heading_slugs(
+                    (root / doc_rel).read_text(encoding="utf-8")
+                )
+            except OSError:
+                slug_cache[doc_rel] = set()
+        return slug_cache[doc_rel]
 
     for doc_path in doc_paths:
         source_rel = _rel(doc_path, repo_root=root)
@@ -120,6 +176,14 @@ def analyze_docs(*, repo_root: Path | None = None) -> DocsLinkReport:
                 continue
             for match in _LINK_RE.finditer(line):
                 link_text, target = match.group(1), match.group(2)
+                path_part, anchor = _split_anchor(target.strip())
+                if not path_part:
+                    # Same-file anchor (``#heading``): validate the jump.
+                    if anchor and anchor not in _slugs_of(source_rel):
+                        broken_anchors.append(
+                            BrokenLink(source=source_rel, line=lineno, text=link_text, target=target)
+                        )
+                    continue
                 resolved = _resolve_link(target, doc_path=doc_path, repo_root=root)
                 if resolved is None:
                     continue
@@ -128,6 +192,12 @@ def analyze_docs(*, repo_root: Path | None = None) -> DocsLinkReport:
                         BrokenLink(source=source_rel, line=lineno, text=link_text, target=target)
                     )
                     continue
+                if anchor:
+                    target_rel = _rel(resolved, repo_root=root)
+                    if target_rel in doc_rels and anchor not in _slugs_of(target_rel):
+                        broken_anchors.append(
+                            BrokenLink(source=source_rel, line=lineno, text=link_text, target=target)
+                        )
                 target_rel = _rel(resolved, repo_root=root)
                 # DOC_INDEX.md is generated and links every doc by
                 # construction, so its own links would add meaningless
@@ -147,6 +217,7 @@ def analyze_docs(*, repo_root: Path | None = None) -> DocsLinkReport:
         docs=tuple(sorted(doc_rels)),
         broken=tuple(broken),
         backlinks={k: tuple(sorted(v)) for k, v in backlinks.items()},
+        broken_anchors=tuple(broken_anchors),
     )
 
 
@@ -213,14 +284,20 @@ def _print_report(report: DocsLinkReport) -> int:
         print("Broken links:")
         for b in report.broken:
             print(f"  - {b.source}:{b.line} [{b.text}]({b.target})")
-    return len(report.broken)
+    print(f"Broken anchors: {len(report.broken_anchors)}")
+    if report.broken_anchors:
+        print()
+        print("Broken anchors (file exists, #heading missing):")
+        for b in report.broken_anchors:
+            print(f"  - {b.source}:{b.line} [{b.text}]({b.target})")
+    return len(report.broken) + len(report.broken_anchors)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true", help="Exit 1 on any broken link.")
+    parser.add_argument("--strict", action="store_true", help="Exit 1 on any broken link or anchor.")
     parser.add_argument(
         "--write-index",
         action="store_true",
@@ -247,12 +324,16 @@ def main(argv: Iterable[str] | None = None) -> int:
                 {"source": b.source, "line": b.line, "text": b.text, "target": b.target}
                 for b in report.broken
             ],
+            "broken_anchors": [
+                {"source": b.source, "line": b.line, "text": b.text, "target": b.target}
+                for b in report.broken_anchors
+            ],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         _print_report(report)
 
-    if args.strict and report.broken:
+    if args.strict and (report.broken or report.broken_anchors):
         return 1
     return 0
 

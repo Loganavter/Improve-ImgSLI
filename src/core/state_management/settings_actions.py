@@ -66,6 +66,15 @@ class SetVideoRecordingFpsAction(Action):
     def get_payload(self): return {"fps": self.fps}
 
 @dataclass
+class SetRhiBackendAction(Action):
+    backend: str
+    type: str = field(default=ActionType.SET_RHI_BACKEND.value, kw_only=True)
+    def __post_init__(self):
+        super().__post_init__()
+        self.backend = (self.backend or "default").strip().lower() or "default"
+    def get_payload(self): return {"backend": self.backend}
+
+@dataclass
 class SetWindowWasMaximizedAction(Action):
     was_maximized: bool
     type: str = field(default=ActionType.SET_WINDOW_WAS_MAXIMIZED.value, kw_only=True)

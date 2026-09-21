@@ -375,9 +375,14 @@ class RecentItemsView(QWidget):
                 return
 
             if mode_changed:
+                # Capture focus before the teardown so it can land on the
+                # nearest rebuilt card instead of resetting to the top.
+                doomed_focus = self._focused_record_index()
                 self._destroy_all_cards()
                 self._clear_pool()
                 self._window = (0, -1)
+            else:
+                doomed_focus = None
 
             if self._view_mode == VIEW_LIST:
                 self._grid_columns = 1
@@ -386,6 +391,8 @@ class RecentItemsView(QWidget):
 
             self.sync_scroll_viewport_height()
             self._refresh_visible_window(force=True)
+            if doomed_focus is not None:
+                self._restore_focus_after_recycle(doomed_focus)
         finally:
             _restore_updates(updates_owner, was_updating)
 
@@ -543,6 +550,10 @@ class RecentItemsView(QWidget):
             return
         self._window = (first, last)
         wanted = set(self._paths_for_window(first, last))
+        # Focus-preserving recycle: if the focused card scrolls out, remember
+        # its record index so focus moves to the nearest still-live card —
+        # never teleports to index 0 and never drops to no-focus.
+        focused_index = self._focused_record_index()
 
         for path in list(self._cards_by_path):
             if path not in wanted:
@@ -563,6 +574,50 @@ class RecentItemsView(QWidget):
 
         self._place_live_cards(first, last)
         self.apply_selection()
+        self._restore_focus_after_recycle(focused_index)
+
+    def _focused_record_index(self) -> int | None:
+        """Record index of the currently focused live card, if any."""
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            focused = QApplication.focusWidget()
+        except Exception:
+            return None
+        if focused is None:
+            return None
+        for index, record in enumerate(self._records):
+            card = self._cards_by_path.get(record.path)
+            if card is not None and card is focused:
+                return index
+        return None
+
+    def _restore_focus_after_recycle(self, focused_index: int | None) -> None:
+        """Move focus to the nearest live card when recycling stole it."""
+        if focused_index is None:
+            return
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            focused = QApplication.focusWidget()
+        except Exception:
+            return
+        live = set(self._cards_by_path.values())
+        if focused is not None and focused in live:
+            return  # focus survived on a live card — nothing to do
+        # Nearest live record to the old index (outward search, not 0).
+        total = len(self._records)
+        for step in range(total):
+            for candidate in (focused_index + step, focused_index - step):
+                if 0 <= candidate < total:
+                    card = self._cards_by_path.get(self._records[candidate].path)
+                    if card is not None:
+                        try:
+                            card.setFocus(Qt.FocusReason.OtherFocusReason)
+                        except Exception:
+                            pass
+                        return
+        # No live cards at all — leave focus alone.
 
     def _place_live_cards(self, first_row: int, last_row: int) -> None:
         if last_row < first_row:

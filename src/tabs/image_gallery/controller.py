@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
 
@@ -62,6 +62,15 @@ class GalleryController:
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._context = context
         self._ai_settings_store = AiSettingsStore()
+        # Generation tokens against async races: bumped on every folder switch
+        # (open_folder/open_paths). Late triage/artifact/thumbnail/VLM results
+        # carrying a stale generation are dropped, never applied to the new
+        # folder's items. Filter keystrokes get their own token so a slow
+        # brief-disk worker cannot resurrect an outdated query.
+        self._folder_gen = 0
+        self._filter_gen = 0
+        self._pending_filter_text = ""
+        self._filter_timer = None
 
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
@@ -95,6 +104,14 @@ class GalleryController:
         except Exception:
             pass
 
+    def _next_folder_gen(self) -> int:
+        """Bump the folder generation: all in-flight workers go stale."""
+        self._folder_gen += 1
+        return self._folder_gen
+
+    def _is_current_folder_gen(self, gen: int) -> bool:
+        return gen == self._folder_gen
+
     # -- folder loading ----------------------------------------------------
 
     def open_folder(self, folder: Path) -> None:
@@ -102,6 +119,8 @@ class GalleryController:
 
         t0 = time.perf_counter()
         folder = Path(folder)
+        gen = self._next_folder_gen()
+        _ = gen  # sync scan below replaces state immediately; gen guards workers
         _dnd_log("open_folder: ENTER %s is_file=%s is_dir=%s", folder, folder.is_file(), folder.is_dir())
         # If a single image file was passed (user dropped one image), don't scan its parent
         # — show just that image. Previously we scanned parent and fed entire folder (1037 items).
@@ -154,6 +173,8 @@ class GalleryController:
 
         t0 = time.perf_counter()
         _dnd_log("open_paths: ENTER %d paths %r", len(paths), paths[:3])
+        # Folder switch cancels everything in flight from the previous folder.
+        self._next_folder_gen()
         # Filter to images that exist
         from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
 
@@ -246,16 +267,23 @@ class GalleryController:
 
     def _load_thumbnail(self, item: GalleryItem) -> None:
         item.thumbnail_status = ThumbnailStatus.LOADING
+        gen = self._folder_gen
         worker = GenericWorker(render_and_cache_thumbnail, item.path, item.mtime_ns)
         worker.signals.result.connect(
-            lambda cache_path, path=item.path: self._on_thumbnail_ready(path, cache_path)
+            lambda cache_path, path=item.path, g=gen: self._on_thumbnail_ready(path, cache_path, g)
         )
         worker.signals.error.connect(
-            lambda err, path=item.path: self._on_thumbnail_error(path)
+            lambda err, path=item.path, g=gen: self._on_thumbnail_error(path, g)
         )
-        self._thread_pool.start(worker)
+        # Thumbnails are lowest priority: triage/artifact/VLM workers jump ahead.
+        try:
+            self._thread_pool.start(worker, 0)
+        except TypeError:
+            self._thread_pool.start(worker)
 
-    def _on_thumbnail_ready(self, path: Path, cache_path: Path | None) -> None:
+    def _on_thumbnail_ready(self, path: Path, cache_path: Path | None, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched mid-flight — late thumbnail dropped
         item = self._find_item(path)
         if item is None:
             return
@@ -270,7 +298,9 @@ class GalleryController:
                 item.thumbnail_status = ThumbnailStatus.LOADED
         self.widget.refresh_card(item)
 
-    def _on_thumbnail_error(self, path: Path) -> None:
+    def _on_thumbnail_error(self, path: Path, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return
         item = self._find_item(path)
         if item is None:
             return
@@ -321,17 +351,20 @@ class GalleryController:
             api_key=settings.api_key,
             model=settings.model,
         )
+        gen = self._folder_gen
         worker.signals.result.connect(
-            lambda result, path=item.path, mtime_ns=item.mtime_ns: self._on_analysis_ready(
-                path, mtime_ns, result
+            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen: self._on_analysis_ready(
+                path, mtime_ns, result, g
             )
         )
         worker.signals.error.connect(
-            lambda err, path=item.path: self._on_analysis_error(path, err)
+            lambda err, path=item.path, g=gen: self._on_analysis_error(path, err, g)
         )
         self._thread_pool.start(worker)
 
-    def _on_analysis_ready(self, path: Path, mtime_ns: int, result) -> None:
+    def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late analysis dropped
         item = self._find_item(path)
         if item is None:
             return
@@ -341,7 +374,9 @@ class GalleryController:
         item.analysis_error = None
         self.widget.refresh_card(item)
 
-    def _on_analysis_error(self, path: Path, error_info) -> None:
+    def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return
         item = self._find_item(path)
         if item is None:
             return
@@ -390,9 +425,14 @@ class GalleryController:
         except Exception:
             logger.debug("widget.set_scanning failed", exc_info=True)
         worker = GenericWorker(self._run_triage_sync, list(items))
-        worker.signals.result.connect(self._on_triage_ready)
-        worker.signals.error.connect(self._on_triage_error)
-        self._thread_pool.start(worker)
+        gen = self._folder_gen
+        worker.signals.result.connect(lambda res, g=gen: self._on_triage_ready(res, g))
+        worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
+        # Triage outranks thumbnails so the grid labels settle first.
+        try:
+            self._thread_pool.start(worker, 2)
+        except TypeError:
+            self._thread_pool.start(worker)
 
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""
@@ -414,14 +454,20 @@ class GalleryController:
             return
         # Run in background via GenericWorker (never UI-blocking).
         try:
+            gen = self._folder_gen
             worker = GenericWorker(self._run_artifacts_sync, list(items), source_path)
-            worker.signals.result.connect(self._on_artifacts_ready)
+            worker.signals.result.connect(lambda res, g=gen: self._on_artifacts_ready(res, g))
             worker.signals.error.connect(self._on_artifacts_error)
-            self._thread_pool.start(worker)
+            try:
+                self._thread_pool.start(worker, 1)
+            except TypeError:
+                self._thread_pool.start(worker)
         except Exception:
             logger.debug("artifact worker start failed", exc_info=True)
 
-    def _on_artifacts_ready(self, result: object) -> None:
+    def _on_artifacts_ready(self, result: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late artifact catalog dropped
         # result: dict[str(path), dict[Artifact, Severity]]
         if not isinstance(result, dict):
             return
@@ -470,7 +516,10 @@ class GalleryController:
     def _on_artifacts_error(self, error_info: object) -> None:
         logger.debug("artifact worker error: %r", error_info, exc_info=True)
 
-    def _on_triage_ready(self, result: object) -> None:
+    def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            logger.debug("triage result dropped: stale folder generation")
+            return
         try:
             series, source, mode = result  # type: ignore[misc]
         except Exception:
@@ -506,7 +555,9 @@ class GalleryController:
         except Exception:
             logger.debug("tie-break auto-run failed", exc_info=True)
 
-    def _on_triage_error(self, error_info: object) -> None:
+    def _on_triage_error(self, error_info: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return
         logger.debug("triage worker error: %r", error_info, exc_info=True)
         self.state.triage_state = TriageState.ERROR
         try:
@@ -645,7 +696,9 @@ class GalleryController:
             source=source,
         )
 
-        def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime):
+        def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime, gen=self._folder_gen):
+            if not self._is_current_folder_gen(gen):
+                return  # folder switched mid-VLM — late tie-break dropped
             try:
                 if save_tie_break is not None:
                     save_tie_break(a_path, a_mtime, b_path, b_mtime, result, _src_mtime)
@@ -658,7 +711,9 @@ class GalleryController:
                 return
             self._apply_tie_break_result(item_a, item_b, result)
 
-        def _on_error(error_info, top2_paths=(a.path, b.path)):
+        def _on_error(error_info, top2_paths=(a.path, b.path), gen=self._folder_gen):
+            if not self._is_current_folder_gen(gen):
+                return
             logger.debug("tie-break worker error: %r", error_info, exc_info=True)
             # Silent-but-visible degrade: clear pending badge, keep local ranking
             for p in top2_paths:
@@ -731,7 +786,9 @@ class GalleryController:
                 except Exception:
                     pass
 
-    def _apply_brief_result(self, pa: Path, pb: Path, result) -> None:
+    def _apply_brief_result(self, pa: Path, pb: Path, result, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late brief dropped
         try:
             # Persist in state (one per pair)
             try:
@@ -785,10 +842,92 @@ class GalleryController:
         except Exception:
             pass
 
-    # -- filtering --------------------------------------------------------
+    # -- filtering (debounced; brief-disk match off UI thread) --------
+
+    #: Keystroke coalescing window — rapid typing applies once, not per char.
+    FILTER_DEBOUNCE_MS = 120
 
     def set_filter_text(self, text: str) -> None:
+        self._pending_filter_text = text or ""
+        timer = self._filter_timer
+        if timer is None:
+            try:
+                timer = QTimer()
+                timer.setSingleShot(True)
+                timer.timeout.connect(self._apply_pending_filter)
+                self._filter_timer = timer
+            except Exception:
+                timer = None
+        if timer is None:
+            # No Qt event loop (headless unit context) — apply synchronously.
+            self._apply_filter(self._pending_filter_text, self._filter_gen + 1)
+            return
+        try:
+            timer.stop()
+            timer.start(self.FILTER_DEBOUNCE_MS)
+        except Exception:
+            self._apply_filter(self._pending_filter_text, self._filter_gen + 1)
+
+    def apply_pending_filter(self) -> None:
+        """Flush a debounced keystroke synchronously (tests / teardown)."""
+        timer = self._filter_timer
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        self._apply_pending_filter()
+
+    def _apply_pending_filter(self) -> None:
+        self._filter_gen += 1
+        self._apply_filter(self._pending_filter_text, self._filter_gen)
+
+    def _apply_filter(self, text: str, filter_gen: int) -> None:
+        from tabs.image_gallery.services.filtering import match_brief_items, match_fast_items
+
+        self._filter_gen = max(self._filter_gen, filter_gen)
+        gen = self._filter_gen
         self.state.filter_text = text
-        visible_paths = {item.path for item in filter_items(self.state.items, text)}
+        # Fast pass on the UI thread: filename + in-memory tags only, no disk.
+        fast = {item.path for item in match_fast_items(self.state.items, text)}
+        if not (text or "").strip():
+            fast = {item.path for item in self.state.items}
         for item in self.state.items:
-            self.widget.set_card_visible(item.path, item.path in visible_paths)
+            try:
+                self.widget.set_card_visible(item.path, item.path in fast)
+            except Exception:
+                pass
+        if not (text or "").strip():
+            return
+        # Slow pass off the UI thread: brief-cache disk match, mtime-honored.
+        # Merged on arrival only if no newer keystroke/folder switch landed.
+        snapshot = list(self.state.items)
+
+        def _slow() -> set:
+            try:
+                return {item.path for item in match_brief_items(snapshot, text)}
+            except Exception:
+                return set()
+
+        folder_gen = self._folder_gen
+        worker = GenericWorker(_slow)
+        worker.signals.result.connect(
+            lambda extra, g=gen, fg=folder_gen: self._on_brief_filter_ready(extra, g, fg)
+        )
+        worker.signals.error.connect(lambda _err: None)
+        try:
+            self._thread_pool.start(worker, 0)
+        except TypeError:
+            self._thread_pool.start(worker)
+
+    def _on_brief_filter_ready(self, extra_paths: set, filter_gen: int, folder_gen: int) -> None:
+        if filter_gen != self._filter_gen or not self._is_current_folder_gen(folder_gen):
+            return  # stale query or folder switch — never resurrect old matches
+        if not extra_paths:
+            return
+        for item in self.state.items:
+            if item.path in extra_paths:
+                try:
+                    self.widget.set_card_visible(item.path, True)
+                except Exception:
+                    pass

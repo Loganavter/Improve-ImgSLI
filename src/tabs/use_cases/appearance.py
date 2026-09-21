@@ -12,18 +12,28 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def apply_appearance(registry: "TabRegistry", host_window) -> None:
-    """Refresh theme-owned chrome; skip hidden workspace pages.
+    """Refresh theme-owned chrome; skip hidden/pending workspace pages.
 
     Hidden tabs (e.g. Image Compare while the session picker is up) are
     marked stale and flushed on the next ``flush_stale_appearance`` /
     session switch — theme flips stay responsive.
+
+    Pending tabs (no page yet — lazy ``_pending_pages`` not yet
+    materialized by ``_ensure_page``) are likewise marked stale, *not*
+    applied: their widgets do not exist yet, so applying now styles
+    nothing and the marker would be lost. When the page later
+    materializes, ``sync_session_mode`` runs ``flush_stale_appearance``
+    right after ``activate`` and applies the current theme.
     """
     ui = getattr(host_window, "ui", None)
     stack = getattr(ui, "workspace_stack", None)
     current = stack.currentWidget() if stack is not None else None
     for session_type, tab in registry._tabs.items():
         page = registry._pages.get(session_type)
-        if current is not None and page is not None and page is not current:
+        if page is None:
+            registry._appearance_stale.add(session_type)
+            continue
+        if current is not None and page is not current:
             registry._appearance_stale.add(session_type)
             continue
         try:

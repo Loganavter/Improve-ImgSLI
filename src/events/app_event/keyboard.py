@@ -42,6 +42,23 @@ class GlobalKeyboardHandler:
         }
 
     def should_route_globally(self, event: QKeyEvent, watched_obj: QObject) -> bool:
+        """Decide whether a key event belongs to the global handler.
+
+        Shift/Space ordering contract: Shift is deliberately NOT a managed
+        key in ``KeyboardStateService`` — modifier state is sampled from
+        ``event.modifiers()`` at gesture time (see magnifier
+        ``_matches_side_preview``), never tracked as held state. Preview
+        *begin* is owned solely by the magnifier gesture bindings
+        (space + shift + click → ``preview.start_side_preview``); this
+        handler never begins preview — it only tracks ``space_bar_pressed``
+        and deactivates single-image mode on Space release. Pressing Shift
+        before Space is therefore equivalent to pressing it after: the
+        Shift press itself is untracked by design, and only the
+        space-held + shift-modifier + click combination matters.
+        The Shift branch below preserves press/release routing symmetry
+        while space is held (so the global release path still sees the
+        matching release), not because Shift carries state here.
+        """
         active_tab = get_shared_tab_registry().get_active_tab()
         if active_tab is not None and active_tab.owns_widget(watched_obj):
             return False
@@ -59,7 +76,7 @@ class GlobalKeyboardHandler:
             return True
         if key == Qt.Key.Key_Shift and self.store.viewport.interaction_state.space_bar_pressed:
             return True
-        return key in self.OVERLAY_MOVEMENT_KEYS
+        return False
 
     def handle_key_press(self, event: QKeyEvent) -> None:
         key_code = event.key()

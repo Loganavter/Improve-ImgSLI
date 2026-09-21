@@ -15,9 +15,11 @@ def _document(store):
     return store.get_session_state_slot("document")
 
 
-# Original-file dimension memo: path -> (mtime, (w, h)). Pure-read cache so
-# repeated HUD refreshes don't hit disk; validated by mtime each call.
-_original_dims_cache: dict[str, tuple[float, tuple[int, int]]] = {}
+# Original-file dimension memo: path -> (mtime_ns, size, (w, h)). Pure-read
+# cache so repeated HUD refreshes don't hit disk; validated by the
+# fail-closed (mtime+size) identity each call — an overwrite changing either
+# re-probes instead of serving pre-overwrite dims.
+_original_dims_cache: dict[str, tuple[int, int, tuple[int, int]]] = {}
 
 
 def _probe_original_dimensions(path: str | None) -> tuple[int, int] | None:
@@ -32,20 +34,19 @@ def _probe_original_dimensions(path: str | None) -> tuple[int, int] | None:
     try:
         import os
 
-        try:
-            mtime = os.path.getmtime(path)
-        except OSError:
+        identity = _current_file_identity(path)
+        if identity is None:
             return None
         cached = _original_dims_cache.get(path)
-        if cached is not None and cached[0] == mtime:
-            return cached[1]
+        if cached is not None and (cached[0], cached[1]) == identity:
+            return cached[2]
         from shared.image_processing import progressive_loader as _pl
 
         dims = _pl.get_image_dimensions(path)
         if dims is None:
             return None
         result = (int(dims[0]), int(dims[1]))
-        _original_dims_cache[path] = (mtime, result)
+        _original_dims_cache[path] = (identity[0], identity[1], result)
         return result
     except Exception:
         return None
@@ -99,6 +100,22 @@ def get_current_score(store, image_number: int) -> int | None:
     return None
 
 
+def _current_file_identity(path: str) -> tuple[int, int] | None:
+    """Fail-closed (mtime_ns, size) identity for *path* — None on any doubt.
+
+    Cache keys carry (path, mtime_ns, size); an entry is only the file's
+    pixels when its identity matches the file on disk NOW. A missing file
+    or failed stat returns None so callers skip rather than serve stale.
+    """
+    try:
+        import os
+
+        st = os.stat(path)
+        return (int(st.st_mtime_ns), int(st.st_size))
+    except Exception:
+        return None
+
+
 def _peek_via_pipeline_state(store, path: str | None):
     if not path:
         return None
@@ -129,8 +146,27 @@ def _peek_via_pipeline_state(store, path: str | None):
                     pass
                 try:
                     norm = os.path.normpath(path)
+                    # Fail-closed identity: the exact-key lookup above is
+                    # self-validating (key_fn stats the live file), but this
+                    # path-prefix scan matches on path alone — an overwrite
+                    # keeps the path while changing dims. Only serve entries
+                    # whose key (mtime_ns, size) still matches the file on
+                    # disk; stale entries skip so the HUD never shows
+                    # pre-overwrite dims.
+                    identity = _current_file_identity(path)
+                    if identity is None:
+                        continue
                     for kk, vv in cache_dict.items():
                         if kk[0] == norm:
+                            try:
+                                if (
+                                    len(kk) < 3
+                                    or int(kk[1]) != identity[0]
+                                    or int(kk[2]) != identity[1]
+                                ):
+                                    continue
+                            except Exception:
+                                continue
                             if hasattr(vv, "is_open") and not vv.is_open:
                                 continue
                             if hasattr(vv, "isNull") and vv.isNull():

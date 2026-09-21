@@ -124,13 +124,28 @@ class DocumentModel:
         return display_name_or_fallback(items[idx])
 
     def get_current_display_name(self, slot: int) -> str:
+        """Pure read — never writes ``_last_display_name{1,2}``.
+
+        Pinning is explicit via :meth:`remember_current_display_name`
+        (called on display/dispatch paths); the fallback below only
+        returns the last explicitly remembered value.
+        """
         idx = self.current_index1 if slot == 1 else self.current_index2
         items = self.image_list1 if slot == 1 else self.image_list2
         if 0 <= idx < len(items):
-            name = display_name_or_fallback(items[idx])
-            if slot == 1:
-                self._last_display_name1 = name
-            else:
-                self._last_display_name2 = name
-            return name
+            return display_name_or_fallback(items[idx])
         return self._last_display_name1 if slot == 1 else self._last_display_name2
+
+    def remember_current_display_name(self, slot: int) -> str:
+        """Explicit write side of the display-name pin (was inside the getter).
+
+        Resolves the live name (or the previous pin when the slot is
+        empty) and stores it into ``_last_display_name{1,2}``. Returns
+        the pinned value.
+        """
+        name = self.get_current_display_name(slot)
+        if slot == 1:
+            self._last_display_name1 = name
+        else:
+            self._last_display_name2 = name
+        return name

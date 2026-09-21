@@ -29,15 +29,32 @@ class PluginRegistry:
     ) -> Iterable[Plugin]:
         if tier == "all":
             if "all" not in self._discovered_tiers:
-                from core.plugin_system.discovery_scan import iter_plugin_entry_points
+                try:
+                    from core.plugin_system.discovery_scan import (
+                        iter_plugin_entry_points,
+                    )
 
-                for entry in iter_plugin_entry_points():
+                    entries = iter_plugin_entry_points()
+                except Exception:
+                    # One bad module (e.g. a plugin.py whose decorator AST
+                    # cannot be parsed) must not abort the whole tier.
+                    logger.exception("Plugin entry-point scan failed; skipping tier")
+                    entries = ()
+                for entry in entries:
                     self._import_plugin_module(entry.module_name)
                 self._discovered_tiers.add("all")
         else:
             if tier in self._discovered_tiers:
                 return ()
-            modules = plugin_modules_for_tier(tier)
+            try:
+                modules = plugin_modules_for_tier(tier)
+            except Exception:
+                # Fail-open per tier: a single bad entry must not prevent
+                # the remaining tiers from loading.
+                logger.exception(
+                    "Plugin module scan failed for tier %s; skipping tier", tier
+                )
+                modules = ()
             for module_name in modules:
                 self._import_plugin_module(module_name)
             self._discovered_tiers.add(tier)
@@ -55,7 +72,15 @@ class PluginRegistry:
             if tier in ("bootstrap", "deferred"):
                 if meta.get("startup_tier", "deferred") != tier:
                     continue
-            plugin_instance = plugin_cls()
+            try:
+                plugin_instance = plugin_cls()
+            except Exception:
+                # A throwing plugin constructor must not abort discovery
+                # of the remaining plugins in the tier.
+                logger.exception(
+                    "Failed to instantiate plugin %s; skipping", plugin_name
+                )
+                continue
             self._plugins[plugin_name] = plugin_instance
             created.append(plugin_instance)
 
@@ -69,7 +94,10 @@ class PluginRegistry:
     def _import_plugin_module(self, module_name: str) -> None:
         try:
             importlib.import_module(module_name)
-        except ImportError:
+        except Exception:
+            # Broad per-entry guard: one bad module (broken import,
+            # runtime error at module top level, missing optional dep)
+            # must not abort discovery of the rest of the tier.
             logger.exception("Failed to import plugin module %s", module_name)
             return
         self._register_i18n_for_module(module_name)
@@ -89,7 +117,7 @@ class PluginRegistry:
             return
         try:
             package = importlib.import_module(".".join(pkg_parts))
-        except ImportError:
+        except Exception:
             return
         pkg_path = Path(package.__path__[0])
         i18n = pkg_path / "resources" / "i18n"

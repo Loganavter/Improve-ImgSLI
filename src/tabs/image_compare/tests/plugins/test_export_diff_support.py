@@ -481,6 +481,12 @@ def test_image_export_save_context_uses_video_style_fit_content_bounds():
     document.image_list2 = [ImageItem(path="/tmp/b.png", display_name="b")]
     document.current_index1 = 0
     document.current_index2 = 0
+    # Fail-loud transact (task-fix-store-silent-2026-09-20) requires a wired
+    # dispatcher — same bootstrap as the render-contract siblings.
+    import tabs.image_compare.bootstrap_reducers  # noqa: F401
+    from core.state_management.dispatcher import Dispatcher
+
+    store.set_dispatcher(Dispatcher(store))
     store.transact([PutPixelAction(path="/tmp/a.png", store=img1)], scope="pipeline")
     store.transact([PutPixelAction(path="/tmp/b.png", store=img2)], scope="pipeline")
     # also need to set viewport image_state for export context builder fallback

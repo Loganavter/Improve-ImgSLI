@@ -18,6 +18,13 @@ calls) and best-effort per field, so the dump never breaks on exotic
 widgets; see ``_colors_of``.
 
 Launch via ``launcher.sh run --dump-ui-layout <path>`` (see ``__main__.py``).
+
+Geometry convention (documented here AND in the JSON itself): every node's
+``geometry`` is ``[x, y, width, height]`` from ``QWidget.geometry()`` —
+parent-local coordinates (position relative to the parent widget). Only
+top-level windows are screen-relative (they have no parent widget). The
+dump root carries a ``geometry_space`` key stating this so headless
+consumers never mistake child offsets for screen positions.
 """
 
 from __future__ import annotations
@@ -29,6 +36,11 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.actions.registry import ActionRegistry
+
+#: Geometry coordinate space declared on every dump root (see module doc).
+#: ``QWidget.geometry()`` is parent-local for child widgets; top-level
+#: windows (no parent widget) report screen-relative geometry instead.
+GEOMETRY_SPACE = "parent-local"
 
 
 #: Palette roles reported per node by ``_colors_of``.
@@ -394,6 +406,7 @@ def dump_ui_layout(root: QWidget, registry: ActionRegistry) -> dict[str, Any]:
     """
     used_families: dict[str, tuple] = {}
     node = _node(root, _widget_action_map(registry), used_families)
+    node["geometry_space"] = GEOMETRY_SPACE
     theme = _resolve_theme_tokens(used_families)
     if theme:
         node["theme"] = theme
@@ -414,7 +427,7 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []  # ALLOWED: devtools dump — enumerates all top-level windows generically, not tab-specific
     used_families: dict[str, tuple] = {}
     nodes = [_node(w, action_map, used_families) for w in windows]
-    out: dict[str, Any] = {"windows": nodes}
+    out: dict[str, Any] = {"windows": nodes, "geometry_space": GEOMETRY_SPACE}
     theme = _resolve_theme_tokens(used_families)
     if theme:
         out["theme"] = theme

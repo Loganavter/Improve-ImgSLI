@@ -109,4 +109,7 @@ def test_display_name_or_fallback():
     )
     assert doc.get_active_display_name(1) == "b"
     assert doc.get_current_display_name(1) == "b"
+    # P2 hygiene: the getter is a pure read — pinning is explicit.
+    assert doc._last_display_name1 == ""
+    assert doc.remember_current_display_name(1) == "b"
     assert doc._last_display_name1 == "b"

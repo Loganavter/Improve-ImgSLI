@@ -33,13 +33,66 @@ def _belongs_to_canvas(event_handler, watched_obj) -> bool:
         return False
     return tab.owns_widget(watched_obj)
 
+def _cancel_carry_quiet() -> None:
+    """Best-effort carry unwind for the row-drag Escape path (fail-open)."""
+    try:
+        from events.image_carry import ImageCarryService
+
+        carry = ImageCarryService._instance
+        if carry is not None and carry.is_active():
+            carry.cancel()
+    except Exception:
+        pass
+
+
+def _cancel_drag_quiet(dnd_service) -> None:
+    """Best-effort row-drag unwind for the carry Escape path (fail-open)."""
+    try:
+        if dnd_service is not None and dnd_service.is_dragging():
+            dnd_service.cancel_drag()
+    except Exception:
+        pass
+
+
 def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> bool:
     event_type = event.type()
 
     from events.image_carry import ImageCarryService
 
     carry = ImageCarryService._instance
-    if carry is not None and carry.is_active():
+    carry_active = carry is not None and carry.is_active()
+
+    if dnd_service.is_dragging():
+        # Symmetric precedence: an established row-drag keeps the gesture
+        # (a newly-begun carry can never hijack it mid-drag — begin already
+        # cancels drags, and start_drag now cancels carries).
+        if event_type == QEvent.Type.MouseMove:
+            dnd_service.update_drag_position(event)
+            logger.debug("[dnd-override] dnd=dragging MouseMove -> update_drag_position")
+            return True
+        if event_type == QEvent.Type.MouseButtonRelease:
+            dnd_service.finish_drag(event)
+            logger.debug("[dnd-override] dnd=dragging Release -> finish_drag")
+            return True
+        if (
+            event_type == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Escape
+        ):
+            dnd_service.cancel_drag()
+            _cancel_carry_quiet()
+            logger.debug("[dnd-override] dnd=dragging Escape -> cancel_drag (+carry)")
+            return True
+        if event_type in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.Enter,
+            QEvent.Type.Leave,
+        ):
+            logger.debug("[dnd-override] dnd=dragging %s -> swallow", event_type.name)
+            return True
+        return False
+
+    if carry_active:
         if event_type == QEvent.Type.MouseMove:
             carry.update_position(event)
             logger.debug("[dnd-override] carry=active MouseMove -> update_position")
@@ -59,7 +112,8 @@ def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> b
             and event.key() == Qt.Key.Key_Escape
         ):
             carry.cancel()
-            logger.debug("[dnd-override] carry=active Escape -> cancel")
+            _cancel_drag_quiet(dnd_service)
+            logger.debug("[dnd-override] carry=active Escape -> cancel (+drag)")
             return True
         if event_type in (
             QEvent.Type.MouseButtonPress,
@@ -69,31 +123,6 @@ def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> b
             logger.debug("[dnd-override] carry=active %s -> swallow", event_type.name)
             return True
 
-    if not dnd_service.is_dragging():
-        return False
-    if event_type == QEvent.Type.MouseMove:
-        dnd_service.update_drag_position(event)
-        logger.debug("[dnd-override] dnd=dragging MouseMove -> update_drag_position")
-        return True
-    if event_type == QEvent.Type.MouseButtonRelease:
-        dnd_service.finish_drag(event)
-        logger.debug("[dnd-override] dnd=dragging Release -> finish_drag")
-        return True
-    if (
-        event_type == QEvent.Type.KeyPress
-        and isinstance(event, QKeyEvent)
-        and event.key() == Qt.Key.Key_Escape
-    ):
-        dnd_service.cancel_drag()
-        logger.debug("[dnd-override] dnd=dragging Escape -> cancel_drag")
-        return True
-    if event_type in (
-        QEvent.Type.MouseButtonPress,
-        QEvent.Type.Enter,
-        QEvent.Type.Leave,
-    ):
-        logger.debug("[dnd-override] dnd=dragging %s -> swallow", event_type.name)
-        return True
     return False
 
 def route_global_keyboard_event(event_handler, watched_obj, event: QEvent) -> bool:

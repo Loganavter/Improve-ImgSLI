@@ -49,7 +49,11 @@ class SessionPickerTab(TabContract):
         return TabTransitionHint(cover_on_enter=False)
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
-        return SessionPickerWidget(parent, context=context)
+        page = SessionPickerWidget(parent, context=context)
+        # T-fw handoff: the tab owns the page pointer from creation so
+        # on_host_revealed/dispose never race a half-constructed page.
+        self._widget = page
+        return page
 
     def create_service(self, service_id: str, *args, **kwargs):
         if service_id == "contribute_help":
@@ -77,7 +81,9 @@ class SessionPickerTab(TabContract):
 
     def on_host_revealed(self) -> None:
         """Refresh opaque fills and recent panel after host becomes visible."""
-        page = self._widget
+        # Guard hook: page may be gone (disposed before first reveal) — a
+        # missing hook must no-op, never throw past the host transition.
+        page = getattr(self, "_widget", None)
         if page is None:
             from tabs.registry import TabRegistry
 
@@ -102,4 +108,9 @@ class SessionPickerTab(TabContract):
         page.update()
 
     def dispose(self) -> None:
-        self._widget = None
+        # Guard hook pairs with create_page ownership: safe to call twice or
+        # before create_page (getattr — never assume the hook ran).
+        try:
+            self._widget = None
+        except Exception:
+            pass

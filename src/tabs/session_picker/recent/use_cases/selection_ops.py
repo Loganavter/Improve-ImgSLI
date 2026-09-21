@@ -70,9 +70,21 @@ def on_card_activate(
     panel._activate(record, missing)
 
 
-def activate(panel, record: RecentProjectRecord, missing: bool) -> None:
+def activate(
+    panel, record: RecentProjectRecord, missing: bool | None = None
+) -> None:
+    """Open *record* unless its file is gone.
+
+    ``missing`` is the card's (possibly stale) flag; ``None`` resolves it
+    live from disk — callers without card state must not hardcode False.
+    The open decision is always the live ``exists`` check; the stale flag
+    only decides whether a refresh (rebuild into the missing state) is
+    needed when a card still looked alive.
+    """
     # Re-check on disk: cards can stay "alive" after the file was deleted.
     exists = Path(record.path).is_file()
+    if missing is None:
+        missing = not exists
     if missing or not exists:
         # Keep the pinned entry. Removal is only via the context menu.
         # If the card still looked "alive", rebuild into the missing state.
@@ -94,7 +106,9 @@ def show_context_menu(panel, record: RecentProjectRecord) -> None:
         source_widget=panel.window() or panel,
         record=record,
         tr=panel._tr,
-        on_open=lambda r: panel._activate(r, missing=False),
+        # Live missing flag: the menu already gates Open on its own check,
+        # and activate() re-resolves from disk — no hardcoded False.
+        on_open=lambda r: panel._activate(r),
         on_remove=panel._remove_record,
         selected_paths=selected,
         on_remove_selected=panel._remove_selected_paths,

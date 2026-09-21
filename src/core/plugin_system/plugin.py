@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger("ImproveImgSLI.plugin.base")
 
 class PluginState(Enum):
     CREATED = "created"
@@ -25,6 +28,15 @@ class Plugin(ABC):
 
     def activate(self) -> None:
         if self._state in {PluginState.SHUTDOWN, PluginState.ERROR}:
+            return
+        if self.context is None:
+            # Activation requires an initialized context: a plugin that was
+            # never initialized (no context) must not go ACTIVE. Log and
+            # skip instead of silently entering a half-wired state.
+            logger.warning(
+                "%s.activate() without initialized context; skipping",
+                type(self).__name__,
+            )
             return
         self._set_state(PluginState.ACTIVE)
 

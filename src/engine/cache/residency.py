@@ -110,7 +110,10 @@ class TileResidencyRealizerBase:
         """For each spec, crops+uploads whichever tiles ``tile_service``
         decides should be resident (its visible rect plus a
         ``_TILE_RESIDENCY_MARGIN`` ring) and aren't already, budgeted by a
-        shared ``UploadDeadline`` across every spec in this call. Evicts
+        shared ``UploadDeadline`` across every spec in this call (the count
+        budget ``budget_per_call`` is per spec/key -- see
+        ``TILE_UPLOAD_BUDGET_PER_CALL`` -- while the wall-clock deadline is
+        the one bound shared by the whole call). Evicts
         whatever ``tile_service.evict_over_budget`` decides to reclaim from
         the GPU tile cache (host-side cache eviction is each tab's own
         concern -- see module docstring). Reads residency decisions from

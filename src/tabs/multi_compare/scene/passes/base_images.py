@@ -214,6 +214,29 @@ def _pack_slot_uniforms(
     )
 
 
+def _is_level_hold(old_key: object, key: object) -> bool:
+    """Same-slot LOD tier change -> hold the old tier whole (IC parity).
+
+    Mirrors image_compare's ``_atomic_level_hold`` (``use_cases/fallback.py``):
+    a pyramid-boundary zoom swaps the whole tier while the new one streams in
+    partial, so the old tier held whole for 1-3 frames beats a mixed
+    sharp/stretched grid. ``True`` when both keys share one slot's lineage
+    (``LevelKey.base`` unwrapped, bare ``sid`` as its own base), differ, and
+    at least one side is a ``LevelKey``. ``None`` old (first paint) and equal
+    keys (promotion path) stay ``False`` -- atomicity is moot there and the
+    engine fails open downstream.
+    """
+    if old_key is None or old_key == key:
+        return False
+    old_is_level = isinstance(old_key, LevelKey)
+    new_is_level = isinstance(key, LevelKey)
+    if not (old_is_level or new_is_level):
+        return False
+    old_base = old_key.base if old_is_level else old_key
+    new_base = key.base if new_is_level else key
+    return bool(old_base == new_base)
+
+
 class BaseImagesPass(CanvasRenderPass):
     """Owns image textures, tile pipeline, uniforms, and draw recording.
 
@@ -648,6 +671,14 @@ class BaseImagesPass(CanvasRenderPass):
                 kept = drop_covered_fallback_tiles(fallback_tiles, current_rects)
                 return [(_old_key, tile) for tile in kept]
 
+            # Atomic-tier invariant (IC parity: fallback._atomic_level_hold):
+            # a same-slot LOD level change holds the old tier whole until the
+            # new one promotes instead of layering a partial grid over it
+            # (shimmer/seams at every old/new boundary during sustained
+            # zoom). Fail-open preserved in the engine (empty fallback ->
+            # partial current, never blank).
+            _atomic_level_hold = _is_level_hold(old_key, key)
+
             new_last_good_key, tiles_for_key = resolve_fallback_lod(
                 key=key,
                 current_items=current_items,
@@ -655,6 +686,7 @@ class BaseImagesPass(CanvasRenderPass):
                 last_good_key=old_key,
                 build_fallback_items=_build_fallback_items,
                 drop_covered=_drop_covered,
+                atomic=_atomic_level_hold,
             )
             self._last_good_key[sid] = new_last_good_key
             # A4 swap hardening: a promoted (fully uploaded) new key covers
@@ -667,8 +699,8 @@ class BaseImagesPass(CanvasRenderPass):
             # instead -- mirrors image_compare's fallback/coverage records).
             # MC has no blank-white first-paint hold, so coverage is always
             # ran (covered = resident current tiles over the resident
-            # target incl. fallback). Atomicity is always False here (no
-            # content-swap decision like IC's) -- recorded anyway for grep
+            # target incl. fallback). Atomicity is the level-hold decision
+            # above (no content-swap branch like IC's) -- recorded for grep
             # parity. None-safe: fakes without a renderer context stay
             # silent.
             _frame_context = getattr(renderer, "frame_context", None)
@@ -678,7 +710,7 @@ class BaseImagesPass(CanvasRenderPass):
                 _frame_context.record(
                     "fallback",
                     "ran" if _kept else "skipped",
-                    f"fallback atomic=False more_pending={key_more_pending}"
+                    f"fallback atomic={_atomic_level_hold} more_pending={key_more_pending}"
                     f" promoted={_promoted} current={len(current_tiles)}"
                     f" kept={_kept}",
                     ids=make_ids(_frame_context.frame_id, key, old_key),

@@ -161,6 +161,7 @@ class SaveFlowCoordinator(SaveToastMixin):
         save_task_id: int,
         cancel_event: threading.Event,
         out_path: str | None,
+        final_path_for_display: str | None = None,
     ) -> None:
         try:
             if cancel_event.is_set():
@@ -175,6 +176,23 @@ class SaveFlowCoordinator(SaveToastMixin):
         except Exception:
             pass
         if not out_path:
+            # Falsy result with no error signal: the worker died silently
+            # or returned nothing. Fail loud with an error toast — never
+            # leave the "Saving" toast (duration=0) stuck on screen.
+            # (Canceled is already handled above; re-check here in case
+            # the first is_set() raised.)
+            try:
+                is_canceled = cancel_event.is_set()
+            except Exception:
+                is_canceled = False
+            if not is_canceled:
+                display = final_path_for_display or self._tr("msg.saving", "Saving")
+                self._update_toast_safe(
+                    save_task_id,
+                    f"{self._tr('msg.error_saving', 'Error saving')} {display}",
+                    success=False,
+                    duration=5000,
+                )
             self._finalize_save_worker(save_task_id)
             return
         success_message = f"{self._tr('msg.saved', 'Saved')} {os.path.basename(out_path)}"
@@ -270,7 +288,9 @@ class SaveFlowCoordinator(SaveToastMixin):
                 lambda value: self._on_save_worker_progress(save_task_id, final_path_for_display, value)
             )
             worker.signals.result.connect(
-                lambda out_path: self._on_save_worker_done(save_task_id, cancel_event, out_path)
+                lambda out_path: self._on_save_worker_done(
+                    save_task_id, cancel_event, out_path, final_path_for_display
+                )
             )
             worker.signals.error.connect(
                 lambda err_tuple: self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, err_tuple)
@@ -305,7 +325,9 @@ class SaveFlowCoordinator(SaveToastMixin):
                     self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, (type(exc), exc, exc.__traceback__))
                     return
                 # success — reuse async done path (handles cancel flag, toast, on_success_notify, finalize)
-                self._on_save_worker_done(save_task_id, cancel_event, out_path)
+                self._on_save_worker_done(
+                    save_task_id, cancel_event, out_path, final_path_for_display
+                )
                 return
             logger.error("No thread_pool available and sync_fallback disabled; save aborted")
             self._update_toast_safe(

@@ -16,6 +16,7 @@ to ``dialog.pages_stack`` (mirroring the existing ``init_*_page`` signatures).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -23,6 +24,8 @@ from PySide6.QtGui import QIcon
 
 from plugins.settings.search import SearchIndex
 from ui.icon_manager import AppIcon
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 SectionReader = Callable[[object], dict[str, Any]]
@@ -125,6 +128,11 @@ class SettingsRegistry:
 
     def add(self, section: SettingsSection) -> None:
         if any(s.section_id == section.section_id for s in self._sections):
+            logger.warning(
+                "SettingsRegistry.add: duplicate section_id %r — keeping the "
+                "first registration, ignoring the later one",
+                section.section_id,
+            )
             return
         self._sections.append(section)
 

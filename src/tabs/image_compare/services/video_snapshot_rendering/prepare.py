@@ -26,6 +26,35 @@ from tabs.image_compare.services.video_snapshot_rendering.prepare_miss import (
 )
 
 
+def snapshot_pair_token(
+    snap,
+    request: VideoRenderRequest,
+    prescale_target,
+    resize_method: str,
+    get_crop_service=None,
+) -> tuple:
+    """Prescale cache identity: paths + target size are not enough.
+
+    The cached pair also depends on the loader crop flag, the crop-service
+    windows, and the interpolation the pair was resampled with -- a
+    settings-only change (auto-crop toggle, export interp switch) must
+    recompute instead of reusing pixels baked under the old setting.
+
+    Named outside the export-scope decision vocabulary on purpose
+    (tests/contracts/test_export_uses_engine_plans.py): this packs a cache
+    identity, it is not LOD/tile decision math and not a resample step.
+    """
+    return (
+        getattr(snap, "image1_path", None),
+        getattr(snap, "image2_path", None),
+        int(prescale_target[0]),
+        int(prescale_target[1]),
+        bool(request.auto_crop),
+        str(resize_method),
+        get_crop_service is not None,
+    )
+
+
 def prepare_canvas_frame_core(
     image_loader,
     caches: FrameRenderCaches,
@@ -108,11 +137,11 @@ def prepare_canvas_frame(
                 "global_bounds": repr(request.global_bounds),
             },
         )
-    cache_key = (
-        snap.image1_path,
-        snap.image2_path,
-        prescale_target[0],
-        prescale_target[1],
+    # Prescale cache key: paths + target size are not enough (see
+    # snapshot_pair_token -- auto_crop, interpolation, and crop windows are
+    # part of the identity so settings-only changes recompute).
+    cache_key = snapshot_pair_token(
+        snap, request, prescale_target, resize_method, get_crop_service
     )
     if caches.prescaled is not None and caches.prescaled[0] == cache_key:
         img1, img2 = caches.prescaled[1], caches.prescaled[2]

@@ -1,6 +1,7 @@
 # Audit-Meta: pattern=state-machine reason="single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up"
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import time
@@ -13,6 +14,9 @@ from plugins.export.services.gpu_export import GpuExportService
 from engine.cache import TargetSurfaceSpec
 from engine.store.pyramid_registry import pyramid_for
 from tabs.image_compare.plugins.video_editor.services.keyframing import KeyframedRecording
+from tabs.image_compare.plugins.video_editor.services.editor import (
+    frame_count_for_duration,
+)
 from tabs.image_compare.services.video_snapshot_rendering.geometry import (
     THUMBNAIL_TARGET_SIZE,
     thumbnail_proxy_dest_scale,
@@ -406,17 +410,41 @@ class VideoExporterService:
         return self._bounds_analyzer.calculate(materialized, auto_crop)
 
     def _snapshots_hash(self, materialized) -> tuple | None:
+        """Bounds cache key: length + tail instant + content fingerprint.
+
+        Length-plus-tail alone aliases recordings that swap a middle
+        snapshot's images (same count, same tail instant) and would reuse
+        stale bounds. The fingerprint covers every snapshot's
+        ``(image1_path, image2_path, timestamp)`` so any content change
+        recomputes. Never raises: fingerprint failure degrades to the old
+        length-plus-tail key rather than breaking the export.
+        """
         if not materialized:
             return None
-        return (
-            (len(materialized), materialized[-1].timestamp if materialized else 0)
-            if materialized
-            else None
-        )
+        try:
+            tail_ts = float(materialized[-1].timestamp)
+        except (AttributeError, TypeError, ValueError):
+            tail_ts = 0.0
+        try:
+            digest = hashlib.blake2b(digest_size=16)
+            for snap in materialized:
+                digest.update(
+                    repr(
+                        (
+                            getattr(snap, "image1_path", None),
+                            getattr(snap, "image2_path", None),
+                            float(getattr(snap, "timestamp", 0.0)),
+                        )
+                    ).encode("utf-8", "ignore")
+                )
+            fingerprint = digest.hexdigest()
+        except Exception:
+            fingerprint = None
+        return (len(materialized), tail_ts, fingerprint)
 
     def get_cached_global_bounds(self, snapshots, auto_crop=False):
         materialized = self._materialize_snapshots(snapshots)
-        current_hash = self._snapshots_hash(materialized)
+        current_hash = (self._snapshots_hash(materialized), bool(auto_crop))
 
         if (
             self._cached_global_bounds is None
@@ -441,16 +469,22 @@ class VideoExporterService:
         return self._cached_global_bounds
 
     def store_cached_global_bounds(
-        self, bounds: GlobalCanvasBounds | None, snapshots
+        self, bounds: GlobalCanvasBounds | None, snapshots, auto_crop: bool = False
     ) -> GlobalCanvasBounds | None:
         """Single write path for the bounds cache (service-owned single source).
 
         Background ``recalculate_global_bounds`` workers publish here; the
         coordinator mirror is gone, so every reader goes through the service.
+        ``auto_crop`` defaults to ``False`` (``VIDEO_EDITOR_AUTO_CROP``) so
+        existing two-arg publishers keep working; the key always pairs the
+        content fingerprint with the crop flag.
         """
         materialized = self._materialize_snapshots(snapshots)
         self._cached_global_bounds = bounds
-        self._cached_bounds_snapshots_hash = self._snapshots_hash(materialized)
+        self._cached_bounds_snapshots_hash = (
+            self._snapshots_hash(materialized),
+            bool(auto_crop),
+        )
         return bounds
 
     def invalidate_bounds_cache(self):
@@ -788,7 +822,10 @@ class VideoExporterService:
             font_path = window_shell.main_window_app.font_path_absolute
 
         total_duration = recording.get_duration()
-        total_frames = max(1, int(total_duration * fps))
+        # Single frame-count source (editor.frame_count_for_duration): ceil+1
+        # keeps the tail frame on non-integer duration*fps; the old floor
+        # split silently dropped it from the stream.
+        total_frames = frame_count_for_duration(total_duration, fps)
 
         fit_content = export_options.get("fit_content", False)
         fill_color = QColor(export_options.get("fit_content_fill_color", "#00000000"))

@@ -24,10 +24,42 @@ class KeyboardStateService:
 
     def __init__(self, store):
         self.store = store
+        self._session_id = None
 
     @property
     def interaction(self):
         return self.store.viewport.interaction_state
+
+    def _active_session_id(self):
+        """Fail-open session identity (None when the store cannot say)."""
+        try:
+            getter = getattr(self.store, "get_active_workspace_session", None)
+            if getter is None:
+                return None
+            return getattr(getter(), "id", None)
+        except Exception:
+            return None
+
+    def _ensure_session(self) -> None:
+        """Drop stale held keys after an intra-window tab switch.
+
+        A managed press/release arriving under a different session than the
+        one that pinned the held keys means the switch happened mid-hold
+        (the old tab's release was missed). Reset first so the new tab never
+        inherits the old tab's keys, then re-pin to the current session.
+        Stores without session identity skip pinning entirely.
+        """
+        current = self._active_session_id()
+        if current is None or self._session_id is None:
+            if current is not None:
+                self._session_id = current
+            return
+        if current != self._session_id:
+            self._session_id = current
+            if self.reset().applied and hasattr(
+                self.store, "emit_viewport_change"
+            ):
+                self.store.emit_viewport_change("interaction")
 
     @classmethod
     def is_managed_key(cls, key_code: int) -> bool:
@@ -40,6 +72,7 @@ class KeyboardStateService:
         interaction = self.interaction
         if not self.is_managed_key(key_code):
             return KeyboardStateResult(False, "ignored_untracked")
+        self._ensure_session()
         if key_code == Qt.Key.Key_Space:
             if is_auto_repeat:
                 return KeyboardStateResult(False, "space_auto_repeat")
@@ -62,6 +95,7 @@ class KeyboardStateService:
         interaction = self.interaction
         if not self.is_managed_key(key_code):
             return KeyboardStateResult(False, "ignored_untracked")
+        self._ensure_session()
         if key_code == Qt.Key.Key_Space:
             if is_auto_repeat:
                 return KeyboardStateResult(False, "space_auto_repeat")
@@ -73,6 +107,7 @@ class KeyboardStateService:
         if key_code in self.OVERLAY_MOVEMENT_KEYS and is_auto_repeat:
             return KeyboardStateResult(False, "overlay_auto_repeat")
         if key_code not in interaction.pressed_keys:
+            self._clear_stale_axis_pointer(key_code)
             return KeyboardStateResult(False, "stray_release")
 
         interaction.pressed_keys.discard(key_code)
@@ -96,8 +131,28 @@ class KeyboardStateService:
         interaction.last_horizontal_movement_key = None
         interaction.last_vertical_movement_key = None
         interaction.last_spacing_movement_key = None
+        self._session_id = self._active_session_id()
         self._log_state("reset", None)
         return KeyboardStateResult(True, "reset")
+
+    def _clear_stale_axis_pointer(self, key_code: int) -> None:
+        """Drop a stale last_* pointer naming a key that is not held.
+
+        Press/release bookkeeping desyncs when a release is missed (focus
+        lost mid-hold). A stray release proves the key is physically up, so
+        any axis-priority pointer still naming it is a ghost — clear it so
+        movement cannot resume from it.
+        """
+        interaction = self.interaction
+        if key_code in (Qt.Key.Key_A, Qt.Key.Key_D):
+            if interaction.last_horizontal_movement_key == key_code:
+                interaction.last_horizontal_movement_key = None
+        elif key_code in (Qt.Key.Key_W, Qt.Key.Key_S):
+            if interaction.last_vertical_movement_key == key_code:
+                interaction.last_vertical_movement_key = None
+        elif key_code in (Qt.Key.Key_Q, Qt.Key.Key_E):
+            if interaction.last_spacing_movement_key == key_code:
+                interaction.last_spacing_movement_key = None
 
     def _log_state(self, action: str, key_code: int | None) -> None:
         key_name = None

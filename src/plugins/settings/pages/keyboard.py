@@ -37,7 +37,7 @@ SEARCH = SearchIndex.of(KEYBOARD, KEYBOARD_PLATFORM, KEYBOARD_IC, KEYBOARD_MC)
 
 
 def _tr(dialog, key: str, fallback: str) -> str:
-    text = dialog.tr(key, dialog.current_language)
+    text = dialog._tr(key, dialog.current_language)
     return fallback if text == key else text
 
 

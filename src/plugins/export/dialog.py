@@ -109,8 +109,20 @@ class ExportDialog(ThemedDialog):
         self._suggest_default_filename()
         self._update_controls_visity_by_format()
 
-        for line_edit in (self.edit_dir, self.edit_name, self.edit_comment):
-            line_edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        # Line edits stay TabFocus-capable: keyboard users must be able to
+        # Tab through directory / name / resolution / comment fields. (ClickFocus
+        # alone drops them from the focus chain entirely.)
+        line_edits = [
+            self.edit_dir,
+            self.edit_name,
+            self.edit_comment,
+            getattr(self, "edit_width", None),
+            getattr(self, "edit_height", None),
+        ]
+        for line_edit in line_edits:
+            if line_edit is None:
+                continue
+            line_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             line_edit.returnPressed.connect(line_edit.clearFocus)
         self.setFocus()
 
@@ -138,6 +150,21 @@ class ExportDialog(ThemedDialog):
 
     def _apply_dialog_geometry(self) -> None:
         apply_export_dialog_geometry(self)
+        self._pin_window_minimum()
+
+    def _pin_window_minimum(self) -> None:
+        """Re-pin the QWindow minimum to the current widget minimum.
+
+        Visibility toggles (format rows, metadata block) change
+        ``minimumSize()`` after show; the platform window keeps the stale
+        value, so CSD resizes can crush the form. Re-pin after every apply.
+        """
+        try:
+            handle = self.windowHandle()
+        except RuntimeError:
+            return
+        if handle is not None:
+            handle.setMinimumSize(self.minimumSize())
 
     def changeEvent(self, event):
         handle_application_font_change(self, event)
@@ -469,9 +496,7 @@ class ExportDialog(ThemedDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        handle = self.windowHandle()
-        if handle is not None:
-            handle.setMinimumSize(self.minimumSize())
+        self._pin_window_minimum()
         try:
             from sli_ui_toolkit.ui.windows.csd_helpers import sync_csd_chrome
 

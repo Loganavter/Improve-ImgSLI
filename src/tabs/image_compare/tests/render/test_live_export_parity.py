@@ -127,6 +127,61 @@ def test_same_snapshot_same_level_and_tiles(canvas, zoom, letterboxes, rect):
         s2.close()
 
 
+def test_zoomed_out_large_export_tier_equals_live():
+    """Task 3 (task-fix-export-lod-parity-2026-09-20) verification: a
+    zoomed-out large export (big canvas, small zoom) resolves the same LOD
+    tier — and the same tile set — as the live path on matched inputs.
+
+    Same-snapshot-in -> same-level-plus-same-tiles-out, through the live
+    entry (``resolve_lod_texture_keys``) and the export entry
+    (``snapshot_lod_tiles_for_sources``): any live-only or export-only
+    fudge in scale handling (e.g. a tile-surface DPR leaking into the
+    whole-canvas LOD input) fails here.
+    """
+    s1 = _store()
+    s2 = _store()
+    try:
+        canvas = (4096.0, 3072.0)
+        zoom = 0.25
+        live_levels, live_tiles = _live_levels_and_tiles(
+            (s1, s2), canvas_size_px=canvas, zoom=zoom, letterboxes=(_FULL, _FULL),
+        )
+        export = snapshot_lod_tiles_for_sources(
+            (s1, s2),
+            canvas_size_px=canvas,
+            zoom=zoom,
+            letterboxes=(_FULL, _FULL),
+            tile_service=TileTextureService(max_tile_extent=512),
+        )
+        assert export.levels == live_levels
+        assert export.tile_sets == live_tiles
+        # Zoomed out on a large canvas must sit on a coarse tier (not base):
+        # otherwise the case would pass vacuously without exercising LOD.
+        assert export.levels[0] > 0
+    finally:
+        s1.close()
+        s2.close()
+
+
+def test_export_scale_px_ignores_tile_surface():
+    """Task 3 (frame_setup scale_px tile-vs-DPR meaning): on the export
+    surface the LOD multiplier is 1.0 by construction even when the tile
+    surface reports a HiDPI-style target/widget ratio; live render keeps
+    measuring the surface (DPR)."""
+    from types import SimpleNamespace as _NS
+
+    from tabs.image_compare.canvas.rhi_renderer.use_cases.frame_setup import (
+        resolve_canvas_scale_px,
+    )
+
+    export_widget = _NS(objectName=lambda: "gpu_export_canvas", width=lambda: 1024)
+    hidpi_target = _NS(width=lambda: 2048)
+    assert resolve_canvas_scale_px(export_widget, hidpi_target) == 1.0
+
+    live_widget = _NS(objectName=lambda: "live_canvas", width=lambda: 1024)
+    assert resolve_canvas_scale_px(live_widget, hidpi_target) == 2.0
+
+
 def test_harness_is_not_vacuous_across_snapshots():
     s1 = _store()
     s2 = _store()

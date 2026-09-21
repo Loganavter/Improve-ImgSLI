@@ -184,11 +184,78 @@ def format_session_types(session_types: tuple[str, ...], tr: Callable[..., str])
     return ", ".join(localize_session_type(st, tr) for st in session_types)
 
 
+# Capped in-memory cover store: path -> (mtime_ns, pixmap-or-None).
+# Insertion-ordered dict doubles as the eviction queue (oldest first).
+PREVIEW_CACHE_CAP = 1000
+_preview_cache: dict[str, tuple[int | None, QPixmap | None]] = {}
+
+
 def preview_for_record(record: RecentProjectRecord) -> QPixmap | None:
+    """Cover preview with a capped in-memory cache (cold-cache budget).
+
+    Card builds happen on the UI thread, and scroll recycling rebuilds covers
+    constantly — decoding the preview zip member per build janks scrolling.
+    This cache (insertion-ordered, capped at ``PREVIEW_CACHE_CAP``) keeps the
+    cold-cache batch bounded: at most ``PREVIEW_CACHE_CAP`` decoded pixmaps
+    are ever held, oldest evicted first. Keyed by path + mtime so an
+    overwritten project never shows a stale cover.
+    """
+    key = str(record.path)
     try:
-        return peek_project_preview(record.path)
+        mtime_ns: int | None = Path(record.path).stat().st_mtime_ns
+    except OSError:
+        mtime_ns = None
+    hit = _preview_cache.get(key)
+    if hit is not None and hit[0] == mtime_ns:
+        return hit[1]
+    try:
+        pix = peek_project_preview(record.path)
     except Exception:
-        return None
+        pix = None
+    _preview_cache[key] = (mtime_ns, pix)
+    while len(_preview_cache) > PREVIEW_CACHE_CAP:
+        try:
+            _preview_cache.pop(next(iter(_preview_cache)))
+        except (StopIteration, RuntimeError):
+            break
+    return pix
+
+
+def prefetch_previews(records, *, budget: int = PREVIEW_CACHE_CAP) -> int:
+    """Batch-warm the cover cache for up to ``budget`` records.
+
+    Call once per refresh (not per card) so the first scroll pass hits warm
+    cache instead of decoding on the UI thread card-by-card. Returns the
+    number of records actually decoded (cache hits don't count).
+    """
+    warmed = 0
+    for record in records:
+        if warmed >= max(0, int(budget)):
+            break
+        try:
+            key = str(record.path)
+            try:
+                mtime_ns: int | None = Path(record.path).stat().st_mtime_ns
+            except OSError:
+                mtime_ns = None
+            hit = _preview_cache.get(key)
+            if hit is not None and hit[0] == mtime_ns:
+                continue
+            preview_for_record(record)
+            warmed += 1
+        except Exception:
+            continue
+    return warmed
+
+
+def preview_cache_size() -> int:
+    """Current in-memory cover count (tests / diagnostics)."""
+    return len(_preview_cache)
+
+
+def clear_preview_cache() -> None:
+    """Drop all cached covers (theme change, tests)."""
+    _preview_cache.clear()
 
 
 def _attach_record(

@@ -84,6 +84,16 @@ def _discover_tab_module(
             ):
                 instance = obj()
                 if instance.session_type in registry._tabs:
+                    # Fail loud: two tabs claiming one routing key means one
+                    # of them is unreachable. Keep the first (stable routing),
+                    # but log at error so the collision cannot hide.
+                    existing = registry._tabs[instance.session_type]
+                    logger.error(
+                        "Duplicate session_type '%s': %s ignored, %s kept",
+                        instance.session_type,
+                        type(instance).__name__,
+                        type(existing).__name__,
+                    )
                     continue
                 try:
                     instance.register_canvas_features()
@@ -116,7 +126,11 @@ def _discover_tab_module(
                         e,
                     )
                 registry._tabs[instance.session_type] = instance
-    except (ImportError, AttributeError):
+    except Exception:
+        # Per-module containment: one broken tab (bad import, bad ctor, bad
+        # tier) hides only itself. Catching Exception — not just
+        # (ImportError, AttributeError) — keeps a single tab's RuntimeError
+        # from aborting the whole tier loop and hiding every later tab.
         logger.exception(
             "TabRegistry: failed to import/register tabs.%s.tab",
             module_name,

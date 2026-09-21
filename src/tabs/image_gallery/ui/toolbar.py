@@ -170,6 +170,13 @@ class GalleryToolbar(QWidget):
         # Sort combo — 140×33 bg.band custom dropdown
         self._sort_combo = ScrollableComboBox(self)
         self._sort_combo.setObjectName("gallery_toolbar_sort")
+        # Same thief as the filter edit above: combo popups accept drags by
+        # default and would steal the drop target from the gallery routing
+        # whenever the cursor crosses the toolbar.
+        try:
+            self._sort_combo.setAcceptDrops(False)
+        except Exception:
+            pass
         try:
             self._sort_combo.setFixedWidth(scaled_px(140))
         except Exception:
@@ -346,6 +353,11 @@ class GalleryToolbar(QWidget):
         if with_mode_combo:
             self._mode_combo = ScrollableComboBox(self)
             self._mode_combo.setObjectName("gallery_toolbar_mode_combo")
+            # Same drop-thief rationale as sort combo / filter edit above.
+            try:
+                self._mode_combo.setAcceptDrops(False)
+            except Exception:
+                pass
             for label in ("All", "Fidelity", "Camera", "Batch"):
                 self._mode_combo.addItem(label)
             if self._mode_combo.count() > 0:

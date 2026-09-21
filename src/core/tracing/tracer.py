@@ -26,11 +26,14 @@ class Tracer:
 
     def __init__(self, ring_size: int = _DEFAULT_RING_SIZE):
         self._lock = threading.Lock()
+        self._ring_size = ring_size
         self._buffer: deque[TraceRecord] = deque(maxlen=ring_size)
+        self._dropped = 0
         self._seq = 0
         self._enabled = True
         self._depth = threading.local()
         self._trace_id = threading.local()
+        self._trace_stack = threading.local()
         self._subscribers: list = []
         self._allow_kinds: tuple[str, ...] | None = None
         self._skip_kinds: tuple[str, ...] = ()
@@ -88,9 +91,28 @@ class Tracer:
         with self._lock:
             self._buffer.clear()
             self._seq = 0
+            self._dropped = 0
+
+    @property
+    def dropped_records(self) -> int:
+        """Records evicted by ring overflow since construction/clear."""
+        with self._lock:
+            return self._dropped
 
     def subscribe(self, callback) -> None:
         self._subscribers.append(callback)
+
+    def unsubscribe(self, callback) -> bool:
+        """Remove a subscriber added via :meth:`subscribe`.
+
+        Returns True iff the callback was present. Missing callbacks are
+        a no-op (fail-open) so teardown order never raises.
+        """
+        try:
+            self._subscribers.remove(callback)
+            return True
+        except ValueError:
+            return False
 
     def _current_depth(self) -> int:
         return getattr(self._depth, "value", 0)
@@ -104,13 +126,59 @@ class Tracer:
     def current_trace_id(self) -> str | None:
         return getattr(self._trace_id, "value", None)
 
+    def _trace_stack_list(self) -> list:
+        stack = getattr(self._trace_stack, "value", None)
+        if stack is None:
+            stack = []
+            self._trace_stack.value = stack
+        return stack
+
     def begin_trace(self, label: str | None = None) -> str:
+        # Save-restore nesting: an inner chain (canvas input inside a
+        # dispatch, an event emit inside a handler) pushes the outer id so
+        # end_trace restores it instead of dropping the outer chain.
+        self._trace_stack_list().append(self.current_trace_id())
         tid = (label + "-" if label else "") + uuid.uuid4().hex[:8]
         self._trace_id.value = tid
         return tid
 
     def end_trace(self) -> None:
-        self._trace_id.value = None
+        stack = self._trace_stack_list()
+        if stack:
+            self._trace_id.value = stack.pop()
+        else:
+            # Unbalanced end (foreign begin or double end): fail open.
+            self._trace_id.value = None
+
+    def rank_traces(self, top: int = 0) -> list[dict[str, Any]]:
+        """Rank buffered traces slowest-first (print_tree --top equivalent).
+
+        Each entry carries ``trace_id`` / ``total_ms`` / ``records`` plus
+        the global ``dropped`` count so callers can see ring-overflow
+        eviction alongside the ranks. ``top`` limits to the N slowest
+        (0 = all).
+        """
+        with self._lock:
+            groups: dict[str, list[TraceRecord]] = {}
+            for rec in self._buffer:
+                groups.setdefault(rec.trace_id or "<no-trace>", []).append(rec)
+            dropped = self._dropped
+        items: list[dict[str, Any]] = []
+        for tid, recs in groups.items():
+            first = recs[0].ts if recs else 0.0
+            last = recs[-1].ts if recs else 0.0
+            items.append(
+                {
+                    "trace_id": tid,
+                    "total_ms": (last - first) * 1000.0,
+                    "records": len(recs),
+                    "dropped": dropped,
+                }
+            )
+        items.sort(key=lambda e: -e["total_ms"])
+        if top > 0:
+            items = items[:top]
+        return items
 
     def record(
         self,
@@ -136,6 +204,9 @@ class Tracer:
                 caller=caller,
                 payload=payload or {},
             )
+            if len(self._buffer) >= self._ring_size:
+                # deque(maxlen=..) would silently evict: account it first.
+                self._dropped += 1
             self._buffer.append(rec)
         for cb in list(self._subscribers):
             try:

@@ -22,7 +22,7 @@ def setup_dialog_shell(dialog):
 
     dialog.search_field = CustomLineEdit()
     dialog.search_field.setPlaceholderText(
-        dialog.tr("settings.search_placeholder", dialog.current_language)
+        dialog._tr("settings.search_placeholder", dialog.current_language)
     )
     dialog.search_field.setClearButtonEnabled(True)
     dialog.search_field.setObjectName("SettingsSearchField")
@@ -49,8 +49,8 @@ def setup_dialog_shell(dialog):
     dialog.pages_stack = dialog.shell.pages_stack
 
     dialog.action_bar = DialogActionBar(
-        dialog.tr("common.ok", dialog.current_language),
-        dialog.tr("common.cancel", dialog.current_language),
+        dialog._tr("common.ok", dialog.current_language),
+        dialog._tr("common.cancel", dialog.current_language),
     )
     dialog.ok_button = dialog.action_bar.primary_button
     dialog.cancel_button = dialog.action_bar.secondary_button
@@ -65,16 +65,16 @@ def setup_sidebar_items(dialog):
     sections = getattr(dialog, "_active_sections", None)
     if sections:
         dialog._sidebar_items_data = [
-            (dialog.tr(s.title_key, dialog.current_language), s.icon)
+            (dialog._tr(s.title_key, dialog.current_language), s.icon)
             for s in sections
         ]
     else:
         dialog._sidebar_items_data = [
-            (dialog.tr("settings.appearance", dialog.current_language), AppIcon.SETTINGS),
-            (dialog.tr("label.view", dialog.current_language), AppIcon.TEXT_MANIPULATOR),
-            (dialog.tr("settings.optimization", dialog.current_language), AppIcon.PLAY),
+            (dialog._tr("settings.appearance", dialog.current_language), AppIcon.SETTINGS),
+            (dialog._tr("label.view", dialog.current_language), AppIcon.TEXT_MANIPULATOR),
+            (dialog._tr("settings.optimization", dialog.current_language), AppIcon.PLAY),
             (
-                dialog.tr("label.details", dialog.current_language),
+                dialog._tr("label.details", dialog.current_language),
                 AppIcon.HIGHLIGHT_DIFFERENCES,
             ),
         ]

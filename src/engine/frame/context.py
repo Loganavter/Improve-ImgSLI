@@ -31,8 +31,12 @@ correlation atoms — texture-key tuples, diff keys, ``viewport_hash()``
 strings, ``BudgetStats.as_tuple()`` tuples. Atoms are stored by reference
 and never interpreted (``LevelKey`` and other engine objects flow through
 today), so ``record()`` does not enforce the schema — ``make_ids()``
-builds it. ``BudgetStats`` is the canonical carrier for count/time budget
-facts (upload-loop budget, LOD settle window, mips cascade).
+builds it. ``record()`` is a RECORD-ONLY bus: it validates the envelope
+(``pass_name`` non-empty, ``verdict`` in vocabulary) and never interprets
+or validates ``ids`` — a non-schema ``ids`` tuple is stored verbatim
+(pinned precedent: frame-context pilot tests record ``ids=("id1",)``).
+``BudgetStats`` is the canonical carrier for count/time budget facts
+(upload-loop budget, LOD settle window, mips cascade).
 
 Pilot writers (additive only — existing logs are never removed):
 ``render_gate.py`` mag-gate and ``rhi_renderer/use_cases/fallback.py``
@@ -56,6 +60,13 @@ Perf spans (Wave A, plan-engine-perf-debugger-2026-09-20 Phase 1):
   integer tallies (span-open counts, dedup acks, …). Cumulative across
   ``reset()`` by design (per-frame attribution comes from spans, which
   carry ``frame_id``).
+- Per-frame counter semantics (additive): ``bump()`` also stamps the live
+  frame's delta; ``reset()`` archives every frame's delta map — INCLUDING
+  empty frames — into a bounded ``_past_counts`` window so joiners get a
+  continuous frame-id sequence (``archived_frame_ids``) that ``past_decisions``
+  deliberately skips (empty verdict frames carry no decisions, but their
+  counter row still joins). ``count()`` stays cumulative; ``count_frame()`` /
+  ``counts_for_frame()`` read the per-frame view.
 - Retention: spans live in a bounded ring (``SPAN_RING_MAX`` entries,
   oldest evicted first) that SURVIVES ``reset()`` — decisions are
   per-frame, spans are a trailing window for the exporter. ``reset()``
@@ -319,7 +330,15 @@ def viewport_hash(
 class FrameContext:
     """Collector for the current frame's decisions. Reused per frame."""
 
-    __slots__ = ("_counters", "_decisions", "_frame_id", "_past", "_spans")
+    __slots__ = (
+        "_counters",
+        "_decisions",
+        "_frame_counts",
+        "_frame_id",
+        "_past",
+        "_past_counts",
+        "_spans",
+    )
 
     def __init__(self) -> None:
         self._decisions: list[FrameDecision] = []
@@ -327,6 +346,12 @@ class FrameContext:
         self._spans: deque[FrameSpan] = deque(maxlen=SPAN_RING_MAX)
         self._counters: dict[str, int] = {}
         self._past: deque[tuple[int, tuple[FrameDecision, ...]]] = deque(
+            maxlen=PAST_DECISIONS_MAX
+        )
+        # Live frame's counter deltas (bump() writes here AND into
+        # _counters); archived per reset() below, including empty maps.
+        self._frame_counts: dict[str, int] = {}
+        self._past_counts: deque[tuple[int, dict[str, int]]] = deque(
             maxlen=PAST_DECISIONS_MAX
         )
 
@@ -344,11 +369,16 @@ class FrameContext:
     ) -> FrameDecision:
         """Append one decision. Stores ``ids`` by reference (no formatting).
 
-        ``ids`` follows the schema-v1 layout (``make_ids()`` builds it:
-        frame tag first, then correlation atoms) but is not enforced
-        here — engine objects such as ``LevelKey`` flow through by
-        reference exactly as before.
+        Record-only bus: the envelope is enforced (non-empty ``pass_name``,
+        ``verdict`` in vocabulary) but ``ids`` is never interpreted or
+        validated here — ``ids`` follows the schema-v1 layout
+        (``make_ids()`` builds it: frame tag first, then correlation atoms)
+        as a writer-side convention only; engine objects such as
+        ``LevelKey`` and ad-hoc test atoms flow through by reference
+        exactly as before.
         """
+        if not isinstance(pass_name, str) or not pass_name:
+            raise ValueError(f"pass_name must be a non-empty str, got {pass_name!r}")
         if verdict not in _VERDICTS:
             raise ValueError(f"verdict must be one of {_VERDICTS}, got {verdict!r}")
         decision = FrameDecision(
@@ -398,9 +428,18 @@ class FrameContext:
         ``reset()`` (spans carry their birth ``frame_id``; the ring evicts
         the oldest past ``SPAN_RING_MAX``; the window keeps the last
         ``PAST_DECISIONS_MAX`` frames).
+
+        Counter deltas differ from decisions on purpose: EVERY frame's
+        delta map is archived into ``_past_counts`` — including empty maps
+        (a frame with no bumps still archives ``{}``) — so
+        ``archived_frame_ids`` is a continuous join key across frames that
+        ``past_decisions`` skips. The live delta map is then cleared; the
+        cumulative ``counters`` are never cleared by ``reset()``.
         """
         if self._decisions:
             self._past.append((self._frame_id, tuple(self._decisions)))
+        self._past_counts.append((self._frame_id, dict(self._frame_counts)))
+        self._frame_counts.clear()
         del self._decisions[:]
         self._frame_id += 1
 
@@ -443,14 +482,59 @@ class FrameContext:
         return self._counters
 
     def bump(self, name: str, amount: int = 1) -> int:
-        """Add ``amount`` to counter ``name``; return the new total."""
+        """Add ``amount`` to counter ``name``; return the new total.
+
+        Cumulative total (survives ``reset()``) AND the live frame's delta
+        (archived by ``reset()``, read via ``count_frame()`` /
+        ``counts_for_frame()``) advance together — one dict op each, no
+        formatting, no logging.
+        """
         total = self._counters.get(name, 0) + amount
         self._counters[name] = total
+        self._frame_counts[name] = self._frame_counts.get(name, 0) + amount
         return total
 
     def count(self, name: str) -> int:
-        """Current total for counter ``name`` (0 when never bumped)."""
+        """Current cumulative total for counter ``name`` (0 when never bumped)."""
         return self._counters.get(name, 0)
+
+    def count_frame(self, name: str) -> int:
+        """Live frame's delta for counter ``name`` (0 when never bumped
+        since the last ``reset()``). Per-frame view; ``count()`` stays
+        cumulative."""
+        return self._frame_counts.get(name, 0)
+
+    def counts_for_frame(self, frame_id: int) -> dict[str, int]:
+        """Delta map for ``frame_id`` (copy, never the live dict).
+
+        The live frame reads live; archived frames read the ``reset()``
+        snapshot (``{}`` for frames with no bumps — still joinable via
+        ``archived_frame_ids``); unknown ids read ``{}``.
+        """
+        if int(frame_id) == self._frame_id:
+            return dict(self._frame_counts)
+        for fid, counts in reversed(self._past_counts):
+            if fid == int(frame_id):
+                return dict(counts)
+        return {}
+
+    @property
+    def archived_frame_ids(self) -> tuple[int, ...]:
+        """Every frame id passed through ``reset()``, oldest first.
+
+        Continuous join key: unlike ``past_decisions`` (which skips empty
+        verdict frames), this includes frames with no decisions and no
+        bumps, so a joiner can tell "empty frame" apart from "missing".
+        Bounded to the last ``PAST_DECISIONS_MAX`` frames.
+        """
+        return tuple(fid for fid, _ in self._past_counts)
+
+    def has_frame(self, frame_id: int) -> bool:
+        """True when ``frame_id`` is the live frame or an archived one."""
+        fid = int(frame_id)
+        if fid == self._frame_id:
+            return True
+        return any(f == fid for f, _ in self._past_counts)
 
     def dump(self) -> str:
         """Grep-friendly single line per decision: verdict + reason + ids."""

@@ -41,6 +41,25 @@ def _format_worker_error(err) -> str:
     return str(err)
 
 
+def _resolve_mc_event_bus(controller):
+    """Shared EventBus resolution for MC load-error reporting (IC parity).
+
+    Prefers the TabContext bus; falls back to the main window presenter's
+    bus (kept for controllers without TabContext, e.g. tests). None when
+    neither is reachable — callers stay silent then, never raise.
+    """
+    try:
+        event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
+        if event_bus is not None:
+            return event_bus
+        main_window = getattr(controller.context, "main_window", None) if getattr(controller, "context", None) else None
+        presenter = getattr(main_window, "presenter", None) if main_window else None
+        fallback_bus = getattr(presenter, "event_bus", None) if presenter else None
+        return fallback_bus
+    except Exception:
+        return None
+
+
 def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     """Surface a failed MC load via the shared EventBus plumbing (IC parity).
 
@@ -52,24 +71,44 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     toast; see plan §3.3).
     """
     try:
-        event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
         # controller.translate is TabContext.tr wrapper (already language-aware)
         try:
             prefix = controller.translate("msg.failed_to_load_image", "Failed to load image")
         except Exception:
             prefix = "Failed to load image"
         message = f"{prefix}:\n{path}\n\n{_format_worker_error(err)}"
+        event_bus = _resolve_mc_event_bus(controller)
         if event_bus is not None:
             event_bus.emit(CoreErrorOccurredEvent(message))
-        else:
-            # Fallback: try main_window's presenter error pathway (kept for tests without TabContext)
-            main_window = getattr(controller.context, "main_window", None) if getattr(controller, "context", None) else None
-            presenter = getattr(main_window, "presenter", None) if main_window else None
-            fallback_bus = getattr(presenter, "event_bus", None) if presenter else None
-            if fallback_bus is not None:
-                fallback_bus.emit(CoreErrorOccurredEvent(message))
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
+
+
+def _emit_mc_overflow_summary(controller, overflow: list) -> None:
+    """One summary event per gesture for grid-full overflow (no dialog flood).
+
+    A 100-file drop onto a nearly-full grid used to emit one
+    ``CoreErrorOccurredEvent`` (→ ``AppMessageDialog.warning``) PER skipped
+    file. Now the whole gesture surfaces exactly one dialog with the count
+    plus the first few skipped names; per-file detail stays in the log.
+    A single overflow still names its file, so 1-file callers read the same
+    message they did before.
+    """
+    if not overflow:
+        return
+    try:
+        reason = _grid_full_reason(controller)
+        count = len(overflow)
+        count_word = "1 file" if count == 1 else f"{count} files"
+        shown = [Path(p).name if not isinstance(p, Path) else p.name for p in overflow[:5]]
+        extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
+        names = ", ".join(shown)
+        message = f"{reason}: {count_word} not added — {names}{extra}"
+        event_bus = _resolve_mc_event_bus(controller)
+        if event_bus is not None:
+            event_bus.emit(CoreErrorOccurredEvent(message))
+    except Exception:
+        logger.exception("Failed to emit MC overflow summary for %d file(s)", len(overflow))
 
 def _grid_full_reason(controller) -> str:
     """Grid-full error detail, mirroring ``dialog_add._grid_full_reason``.
@@ -554,8 +593,7 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
         last_added = scratch.slots[-1].id
         planned.append((last_added, path))
     if not built:
-        for path in overflow:
-            _emit_mc_load_error(controller, path, _grid_full_reason(controller))
+        _emit_mc_overflow_summary(controller, overflow)
         return
     store = widget.store
     transact = getattr(store, "transact", None)
@@ -572,4 +610,4 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
         _preview.load_preview_async(controller, path, sid)
     for path in overflow:
         logger.warning("on_images_dropped: no slot created for %s (grid full?)", path)
-        _emit_mc_load_error(controller, path, _grid_full_reason(controller))
+    _emit_mc_overflow_summary(controller, overflow)

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from core.constants import AppConstants
+
+logger = logging.getLogger("ImproveImgSLI")
 
 _INTERPOLATION_KEY_MAP = {
     "NEAREST": "magnifier.nearest_neighbor",
@@ -14,7 +18,7 @@ _THEME_KEYS = ("auto", "light", "dark")
 
 
 def apply_translations(dialog, lang: str) -> None:
-    title = dialog.tr("misc.settings", lang)
+    title = dialog._tr("misc.settings", lang)
     dialog.setWindowTitle(title)
     title_bar = getattr(dialog, "_csd_title_bar", None)
     set_title = getattr(title_bar, "set_title", None) if title_bar is not None else None
@@ -31,8 +35,8 @@ def apply_translations(dialog, lang: str) -> None:
 
 
 def _apply_buttons(dialog, lang: str) -> None:
-    dialog.ok_button.setText(dialog.tr("common.ok", lang))
-    dialog.cancel_button.setText(dialog.tr("common.cancel", lang))
+    dialog.ok_button.setText(dialog._tr("common.ok", lang))
+    dialog.cancel_button.setText(dialog._tr("common.cancel", lang))
 
 
 def _apply_simple_texts(dialog, lang: str) -> None:
@@ -68,7 +72,7 @@ def _apply_simple_texts(dialog, lang: str) -> None:
     for attr, key in candidates:
         widget = getattr(dialog, attr, None)
         if widget is not None:
-            widget.setText(dialog.tr(key, lang))
+            widget.setText(dialog._tr(key, lang))
 
 
 def _apply_group_titles(dialog, lang: str) -> None:
@@ -89,13 +93,13 @@ def _apply_group_titles(dialog, lang: str) -> None:
     for attr_name, key in groups:
         group = getattr(dialog, attr_name, None)
         if group is not None:
-            group.set_title(dialog.tr(key, lang))
+            group.set_title(dialog._tr(key, lang))
 
 
 def _apply_label_with_colon(dialog, lang: str) -> None:
     rhi_label = getattr(dialog, "lbl_rhi_backend", None)
     if rhi_label is not None:
-        rhi_label.setText(dialog.tr("settings.render_backend_label", lang) + ":")
+        rhi_label.setText(dialog._tr("settings.render_backend_label", lang) + ":")
 
 
 _RHI_BACKEND_KEY_MAP = {
@@ -106,6 +110,28 @@ _RHI_BACKEND_KEY_MAP = {
     "d3d12": "settings.render_backend_d3d12",
     "metal": "settings.render_backend_metal",
 }
+
+
+def _restore_combo_selection(combo, current, combo_name: str) -> None:
+    """Restore ``current`` after a language rebuild, or signal the reset.
+
+    Rebuilding clears the combo, so a value with no matching entry would
+    silently reset the field to its first item. When the value survives,
+    selection is preserved; otherwise a warning names the lost value so the
+    reset is visible instead of silent.
+    """
+    if current is None:
+        return
+    idx = combo.findData(current)
+    if idx != -1:
+        combo.setCurrentIndex(idx)
+        return
+    logger.warning(
+        "settings translations: %s lost selection %r on language rebuild — "
+        "reset to first item",
+        combo_name,
+        current,
+    )
 
 
 def _rebuild_rhi_backend_combo(dialog, lang: str) -> None:
@@ -119,11 +145,9 @@ def _rebuild_rhi_backend_combo(dialog, lang: str) -> None:
     ]
     combo.clear()
     for value, key in items:
-        text = dialog.tr(key, lang) if key else str(value)
+        text = dialog._tr(key, lang) if key else str(value)
         combo.addItem(text, userData=value)
-    idx = combo.findData(current)
-    if idx != -1:
-        combo.setCurrentIndex(idx)
+    _restore_combo_selection(combo, current, "combo_rhi_backend")
 
 
 def _rebuild_theme_combo(dialog, lang: str) -> None:
@@ -133,10 +157,8 @@ def _rebuild_theme_combo(dialog, lang: str) -> None:
     current = combo.currentData()
     combo.clear()
     for key in _THEME_KEYS:
-        combo.addItem(dialog.tr(f"settings.{key}", lang), key)
-    idx = combo.findData(current)
-    if idx != -1:
-        combo.setCurrentIndex(idx)
+        combo.addItem(dialog._tr(f"settings.{key}", lang), key)
+    _restore_combo_selection(combo, current, "combo_theme")
 
 
 def _rebuild_font_family_combo(dialog, lang: str) -> None:
@@ -149,9 +171,7 @@ def _rebuild_font_family_combo(dialog, lang: str) -> None:
     combo.clear()
     for fam in QFontDatabase.families():
         combo.addItem(fam, fam)
-    idx = combo.findData(current or "")
-    if idx != -1:
-        combo.setCurrentIndex(idx)
+    _restore_combo_selection(combo, current or "", "combo_font_family")
 
 
 def _rebuild_interpolation_combos(dialog, lang: str) -> None:
@@ -167,21 +187,19 @@ def _rebuild_interpolation_combos(dialog, lang: str) -> None:
     dialog.combo_mag_interp.clear()
     dialog.combo_laser_interp.clear()
     for key in AppConstants.INTERPOLATION_METHODS_MAP.keys():
-        text = dialog.tr(_INTERPOLATION_KEY_MAP.get(key, key), lang)
+        text = dialog._tr(_INTERPOLATION_KEY_MAP.get(key, key), lang)
         dialog.combo_mag_interp.addItem(text, key)
         dialog.combo_laser_interp.addItem(text, key)
 
     dialog.combo_zoom_interp.clear()
     for key in ("NEAREST", "BILINEAR"):
         dialog.combo_zoom_interp.addItem(
-            dialog.tr(_INTERPOLATION_KEY_MAP[key], lang), key
+            dialog._tr(_INTERPOLATION_KEY_MAP[key], lang), key
         )
 
-    for combo, value in (
-        (dialog.combo_mag_interp, current_mag),
-        (dialog.combo_laser_interp, current_laser),
-        (dialog.combo_zoom_interp, current_zoom),
+    for combo, value, name in (
+        (dialog.combo_mag_interp, current_mag, "combo_mag_interp"),
+        (dialog.combo_laser_interp, current_laser, "combo_laser_interp"),
+        (dialog.combo_zoom_interp, current_zoom, "combo_zoom_interp"),
     ):
-        idx = combo.findData(value)
-        if idx != -1:
-            combo.setCurrentIndex(idx)
+        _restore_combo_selection(combo, value, name)

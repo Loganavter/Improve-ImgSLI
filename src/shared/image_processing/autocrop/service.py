@@ -17,6 +17,12 @@ from .debug import autocrop_debug
 from .model import CropBox, CropConfig, CropResult
 from .pil import find_box_pil
 from .vips import find_box_vips
+from shared.image_processing.progressive_loader import (
+    ImageSizeLimitError,
+    _ensure_supported_dimensions,
+    pyvips_can_stream,
+    read_jxl_header_dimensions,
+)
 
 import logging
 
@@ -117,6 +123,23 @@ class CropService:
         )
         return None
 
+    def _probe_bound_ok(self, path_str: str, width: int, height: int) -> bool:
+        """Backend bound for a probe: header dims in, decode/no-decode out.
+
+        ``True`` → the probe may decode (bounded or streamable). ``False`` →
+        oversized on the full-frame backend: skip the probe without decoding
+        (the decode entry point still raises ``ImageSizeLimitError`` itself).
+        """
+        try:
+            _ensure_supported_dimensions(
+                int(width), int(height), path_str,
+                ignore_limit=bool(pyvips_can_stream(path_str)),
+            )
+        except ImageSizeLimitError:
+            logger.debug("CropService skipping oversized %s", path_str)
+            return False
+        return True
+
     def _box_for_threshold(self, path_str: str, thr: int) -> CropBox | None:
         """Одна попытка для заданного thr — открыть, сделать зонд, vips→pil, отскейлить."""
         try:
@@ -124,6 +147,13 @@ class CropService:
             # Для parity открываем PIL напрямую; если PIL не умеет (JXL без плагина),
             # пробуем imagecodecs как fallback (сохраняя parity с _auto_crop_box_from_ndarray).
             if path_str.lower().endswith(".jxl"):
+                # Header-first: never full-decode an oversized file just to
+                # probe it for margins.
+                header_dims = read_jxl_header_dimensions(path_str)
+                if header_dims is not None and not self._probe_bound_ok(
+                    path_str, header_dims[0], header_dims[1]
+                ):
+                    return None
                 try:
                     import imagecodecs  # type: ignore
 
@@ -132,6 +162,10 @@ class CropService:
                 except Exception:
                     pass
             with Image.open(path_str) as im:
+                # Header dims are known before any pixel decode — enforce
+                # the backend bound here, not after ``load()``.
+                if not self._probe_bound_ok(path_str, int(im.width), int(im.height)):
+                    return None
                 im.load()
                 rgba = im.convert("RGBA")
                 return self._box_from_rgba(rgba, thr)

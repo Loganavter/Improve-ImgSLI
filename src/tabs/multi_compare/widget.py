@@ -308,6 +308,24 @@ class MultiCompareWidget(QWidget):
         return placement.pick_auto_target(self, leaf_entries=leaf_entries)
 
     def remove_slot(self, slot_id: int) -> None:
+        """Remove a slot, preferring the controller's cancel-aware path.
+
+        ``controller.remove_slot`` aborts inflight preview/full decodes
+        first (``preview_decode.remove_slot_with_cancel``); the direct
+        ``placement.remove_slot`` dispatch below is the headless/fake
+        fallback (no controller bound yet) — same end state, no cancel.
+        """
+        try:
+            ctrl = getattr(self, "_controller", None)
+        except Exception:
+            ctrl = None
+        remove = getattr(ctrl, "remove_slot", None)
+        if callable(remove):
+            try:
+                remove(slot_id)
+                return
+            except Exception:
+                pass
         placement.remove_slot(self, slot_id)
 
     def reset_view(self) -> None:

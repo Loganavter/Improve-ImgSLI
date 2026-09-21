@@ -7,6 +7,7 @@ mirroring the ``use_cases`` split applied to image_compare's own
 ``TabContract`` method names (or called directly from one), so ``tab.py``
 keeps thin delegators of those exact names; everything else here is private
 and only ever called from those delegators.
+Audit-Meta: pattern=thin-owner-target reason="TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate"
 """
 
 from __future__ import annotations
@@ -106,15 +107,33 @@ def _serialize_layout_node(node) -> dict | None:
 def _deserialize_layout_node(data: dict | None):
     from tabs.multi_compare.models import LeafNode, SplitNode
 
-    if data is None:
+    if data is None or not isinstance(data, dict):
         return None
     if data.get("type") == "leaf":
-        return LeafNode(slot_id=data["slot_id"])
-    return SplitNode(
-        direction=data.get("direction", "h"),
-        children=[_deserialize_layout_node(c) for c in data.get("children", [])],
-        weights=list(data.get("weights", [])),
-    )
+        try:
+            slot_id = data["slot_id"]
+            if isinstance(slot_id, bool) or not isinstance(slot_id, int):
+                return None
+            return LeafNode(slot_id=slot_id)
+        except Exception:
+            logger.warning("mc: deserialize_session skipping malformed leaf %r", data)
+            return None
+    try:
+        children_raw = data.get("children", [])
+        if not isinstance(children_raw, (list, tuple)):
+            children_raw = []
+        children = [_deserialize_layout_node(c) for c in children_raw]
+        children = [c for c in children if c is not None]
+        weights_raw = data.get("weights", [])
+        weights = list(weights_raw) if isinstance(weights_raw, (list, tuple)) else []
+        return SplitNode(
+            direction=data.get("direction", "h"),
+            children=children,
+            weights=weights,
+        )
+    except Exception:
+        logger.warning("mc: deserialize_session skipping malformed split %r", data)
+        return None
 
 
 def _save_last_settings(divider, label) -> None:
@@ -287,7 +306,7 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     if state is None:
         return None
     return {
-        "version": 1,
+        "version": _SESSION_VERSION,
         # `image=None` is not persisted — pixel arrays are reloaded from
         # `path` on demand, same rationale as image_compare's ImageItem.
         "slots": [
@@ -385,28 +404,99 @@ def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
         tab._widget.refresh_from_session()
 
 
+_SESSION_VERSION = 1
+
+
+def _coerce_label(value) -> str:
+    try:
+        if value is None:
+            return ""
+        return value if isinstance(value, str) else str(value)
+    except Exception:
+        return ""
+
+
+def _coerce_number(value, default):
+    try:
+        number = float(value)
+        if number != number:  # NaN guard — never restore NaN zoom/pan
+            return default
+        return number
+    except Exception:
+        return default
+
+
+def _valid_slot_entry(e) -> dict | None:
+    """Validate one persisted slot entry — ``None`` means skip-and-log.
+
+    A single malformed entry (missing ``id``, non-int ``id``, non-str
+    ``path``) must not abort the whole restore: the caller drops it with a
+    warning and keeps the well-formed siblings, so ``project_io``'s
+    per-session loop continues past bad sessions instead of dying mid-file.
+    """
+    if not isinstance(e, dict):
+        logger.warning("mc: deserialize_session skipping non-dict slot entry %r", e)
+        return None
+    slot_id = e.get("id")
+    if isinstance(slot_id, bool) or not isinstance(slot_id, int):
+        logger.warning("mc: deserialize_session skipping slot entry with bad id %r", e)
+        return None
+    raw_path = e.get("path")
+    if raw_path is not None and not isinstance(raw_path, str):
+        logger.warning("mc: deserialize_session skipping slot entry with bad path %r", e)
+        return None
+    return {
+        "id": slot_id,
+        "path": Path(raw_path) if raw_path else None,
+        "label": _coerce_label(e.get("label", "")),
+    }
+
+
 def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -> None:
     store = getattr(context, "store", None)
     if store is None or not data:
         return
+    if not isinstance(data, dict):
+        logger.warning("mc: deserialize_session skipping non-dict payload %r", data)
+        return
     from tabs.multi_compare.models import CompareSlot, MultiCompareState
 
-    slots = [
-        CompareSlot(
-            id=e["id"],
-            path=Path(e["path"]) if e.get("path") else None,
-            label=e.get("label", ""),
+    try:
+        version = data.get("version", _SESSION_VERSION)
+    except Exception:
+        version = _SESSION_VERSION
+    if version != _SESSION_VERSION:
+        logger.info(
+            "mc: deserialize_session version %r (current %r) — restoring known fields",
+            version,
+            _SESSION_VERSION,
         )
-        for e in data.get("slots", [])
-    ]
+    slots = []
+    for e in data.get("slots", []) or []:
+        try:
+            valid = _valid_slot_entry(e)
+        except Exception:
+            logger.warning("mc: deserialize_session skipping unreadable slot entry %r", e)
+            continue
+        if valid is None:
+            continue
+        try:
+            slots.append(CompareSlot(**valid))
+        except Exception:
+            logger.warning("mc: deserialize_session skipping unbuildable slot entry %r", e)
+            continue
+    try:
+        max_slots = int(data.get("max_slots", 12))
+    except Exception:
+        max_slots = 12
     state = MultiCompareState(
         slots=slots,
         root=_deserialize_layout_node(data.get("root")),
         focused_slot_id=data.get("focused_slot_id"),
-        zoom=data.get("zoom", 1.0),
-        pan_x=data.get("pan_x", 0.0),
-        pan_y=data.get("pan_y", 0.0),
-        max_slots=data.get("max_slots", 12),
+        zoom=_coerce_number(data.get("zoom", 1.0), 1.0),
+        pan_x=_coerce_number(data.get("pan_x", 0.0), 0.0),
+        pan_y=_coerce_number(data.get("pan_y", 0.0), 0.0),
+        max_slots=max_slots,
         label_settings=_label_from_dict(data.get("label_settings") or {}),
         divider_settings=_divider_from_dict(data.get("divider_settings") or {}),
     )

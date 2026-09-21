@@ -36,8 +36,32 @@ class MainWindowMenuController:
         self._menu_strip: CsdMenuStrip | None = None
         self._find_action_shortcut = None
         self._contextual_palette_shortcut = None
+        self._language_connected = False
         self.project_io = MainWindowProjectIo(window, tr=self._tr)
         translation_events().language_changed.connect(self._on_language_changed)
+        self._language_connected = True
+        # Lifetime: the global signal keeps this controller alive and firing
+        # into deleted C++ children after teardown. Drop the subscription
+        # when the window dies (fail-open: window may be a stub in tests).
+        try:
+            destroyed = getattr(window, "destroyed", None)
+            if callable(getattr(destroyed, "connect", None)):
+                destroyed.connect(self.shutdown)
+        except Exception:
+            pass
+
+    def shutdown(self, *args: object) -> None:
+        """Disconnect global signals so a dead controller never fires."""
+        del args
+        if not self._language_connected:
+            return
+        try:
+            translation_events().language_changed.disconnect(
+                self._on_language_changed
+            )
+        except Exception:
+            pass
+        self._language_connected = False
 
     def _language(self) -> str:
         try:

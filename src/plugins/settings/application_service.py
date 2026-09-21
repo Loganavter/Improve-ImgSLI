@@ -13,7 +13,9 @@ from core.state_management.actions import (
     SetAutoCropBlackBordersAction,
     SetDebugModeEnabledAction,
     SetKeyboardOverridesAction,
+    SetLanguageAction,
     SetMaxNameLengthAction,
+    SetRhiBackendAction,
     SetSystemNotificationsEnabledAction,
     SetThemeAction,
     SetUIFontFamilyAction,
@@ -128,6 +130,10 @@ class SettingsApplicationService(QObject):
     def _apply_language_settings(self, data: SettingsDialogData) -> None:
         if data.language == self.store.settings.current_language:
             return
+        # Real call site for SetLanguageAction: the Store is mutated via
+        # dispatch (tracer-visible, history-recorded), then the event bus
+        # notifies live UI to retranslate.
+        self.store.get_dispatcher().dispatch(SetLanguageAction(data.language))
         if self.event_bus is not None:
             self.event_bus.emit(SettingsChangeLanguageEvent(data.language))
         elif (
@@ -333,7 +339,11 @@ class SettingsApplicationService(QObject):
         prev_backend = getattr(self.store.settings, "rhi_backend", "default") or "default"
         new_backend = (data.rhi_backend or "default").strip().lower()
         if new_backend != prev_backend:
-            self.store.settings.rhi_backend = new_backend
+            # Dispatched (reducer-owned, tracer-visible) plus emitted: no
+            # direct store.settings write. Takes effect after restart —
+            # the notice below tells the user.
+            dispatcher.dispatch(SetRhiBackendAction(new_backend))
+            self.store.emit_state_change("settings")
             self._notify_render_backend_restart_required(new_backend)
 
         self._apply_keyboard_overrides(data)

@@ -37,6 +37,28 @@ except Exception:  # pragma: no cover
 # centralized throttle store (stream "frame_setup.sources_raw").
 
 
+def resolve_canvas_scale_px(widget, target_size) -> float:
+    """Device px per logical px for the LOD canvas-size input.
+
+    Live render measures the surface (``target`` vs widget width == DPR).
+    Export must NOT measure the tile surface: during tiled export the
+    widget is sized to one tile's footprint while the canvas stays the
+    full export size, so target/widget is tile geometry, not DPR — feeding
+    it into the LOD input would resolve a per-tile level (seams: all tiles
+    of one export must sample one level). Export canvas px are device px by
+    construction (the exporter explicitly resizes the widget in those px),
+    so the multiplier is 1.0. Same ``gpu_export_canvas`` objectName signal
+    ``build_render_runtime_context`` uses for its export mode; unknown
+    widgets fall through to the measured ratio (old behavior).
+    """
+    try:
+        if str(widget.objectName()) == "gpu_export_canvas":
+            return 1.0
+    except Exception:
+        pass
+    return target_size.width() / float(max(1, widget.width()))
+
+
 def prepare_frame(
     renderer,
     widget,
@@ -265,9 +287,10 @@ def prepare_frame(
                 [image_uid(s) if s is not None else None for s in getattr(widget.runtime_state, "_source_pil_images", ())],
                 (len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]),
             )
-    # Device px per logical px: DPR in live render, 1.0 during tiled
-    # export (widget is sized to the tile's pixel footprint).
-    scale_px = target_size.width() / float(max(1, widget.width()))
+    # Device px per logical px — export pins 1.0 by construction (see
+    # resolve_canvas_scale_px: the tile surface must not leak into the
+    # whole-canvas LOD decision).
+    scale_px = resolve_canvas_scale_px(widget, target_size)
     texture_keys, source_changed = commit_lod_keys(
         renderer,
         texture_keys,

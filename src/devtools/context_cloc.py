@@ -77,6 +77,16 @@ LANG_DIR_RE = re.compile(
     r"/(ar|bg|cs|da|de|el|es|et|fa|fi|fr|he|hi|hu|id|it|ja|ko|lt|nl|no|"
     r"pl|pt_BR|pt|ro|ru|sk|sl|sv|th|tr|uk|zh)/"
 )
+
+#: Human-readable summary of the localized-docs exclusion above, surfaced in
+#: ``--help`` so the bundle's language scope is explicit, not tribal.
+LANG_EXCLUSION_DOC = (
+    "Localized docs exclusion: context bundles collect English docs only. "
+    "Skipped: files ending _<lang>.md/.txt (ar bg cs da de el es et fa fi fr "
+    "he hi hu id it ja ko lt nl no pl pt ro ru sk sl sv th tr uk zh) and any "
+    "path under a /<lang>/ directory (incl. pt_BR). English help "
+    "(resources/help/en) is always collected first as priority content."
+)
 TREE_IGNORE = (
     "*.git|.venv|venv|__pycache__|.pytest_cache|.mypy_cache|.ruff_cache|"
     "build|dist|Cache|blob_storage|.idea|.vscode|.codex|.agents|.claude|"
@@ -611,7 +621,8 @@ def build_parser() -> argparse.ArgumentParser:
             "the full tree is replaced by unlimited cloc expansion):\n"
             "  python src/devtools/context_cloc.py\n\n"
             "Old bundle layout (full tree + thresholded cloc):\n"
-            "  python src/devtools/context_cloc.py --stats-threshold 8000"
+            "  python src/devtools/context_cloc.py --stats-threshold 8000\n\n"
+            + LANG_EXCLUSION_DOC
         ),
     )
     parser.add_argument(
@@ -772,6 +783,19 @@ def main(argv: list[str] | None = None) -> int:
         stats_threshold = args.stats_threshold if args.stats_threshold is not None else 0
 
     toolkit_dir = resolve_toolkit_dir(args.toolkit_dir or os.environ.get("SLI_TOOLKIT_DIR"))
+    explicit_toolkit = args.toolkit_dir or os.environ.get("SLI_TOOLKIT_DIR")
+    if explicit_toolkit and (
+        toolkit_dir is None or toolkit_dir != Path(explicit_toolkit).resolve(strict=False)
+    ):
+        # An explicitly requested toolkit dir that did not resolve is a
+        # caller error, not a "not found, skipping" situation: error out
+        # instead of silently bundling a fallback checkout (or nothing).
+        print(
+            f"ERROR: toolkit dir not found: {explicit_toolkit} "
+            f"(use --toolkit-dir DIR)",
+            file=sys.stderr,
+        )
+        return 2
     cloc_bin = os.environ.get("CLOC_BIN", "cloc")
 
     if cloc_only:

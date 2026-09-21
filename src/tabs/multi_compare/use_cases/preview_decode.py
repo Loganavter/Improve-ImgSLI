@@ -36,6 +36,12 @@ logger = logging.getLogger("ImproveImgSLI")
 #: one multi-add cannot storm the pool while previews still land fast.
 _FULL_MAX_CONCURRENT = 2
 
+#: Cap on the full-stage FIFO backlog (P2 hygiene). Entries past this are
+#: dropped with one summary (never silent): a slot whose full-res entry
+#: was shed keeps its fast preview tier and still converges via demand
+#: fill — the cap only sheds backlog, never pixels.
+_FULL_QUEUE_MAX = 64
+
 
 class _AbortSignal:
     """Cancellation token, ``AbortSignal``-style (IC ``pipeline/abort`` parity).
@@ -479,7 +485,9 @@ def queue_full_resolution(
     the lifecycle and stale deliveries never close a cached entry (only
     worker-fresh orphans are closed). At most ``_FULL_MAX_CONCURRENT``
     decodes run at once; the rest wait in ``_mc_full_queue`` and start as
-    workers finish.
+    workers finish. The backlog itself is capped at ``_FULL_QUEUE_MAX`` —
+    entries past the cap are shed oldest-first with one summary (the slot
+    keeps its preview tier; demand fill still converges it later).
     """
     try:
         queue = _full_queue(controller)
@@ -488,7 +496,41 @@ def queue_full_resolution(
     except Exception:
         logger.exception("Failed to queue full-res load for %s", path)
         return
+    _cap_full_queue(controller)
     _pump_full_stage(controller)
+
+
+def _cap_full_queue(controller) -> None:
+    """Shed backlog past ``_FULL_QUEUE_MAX`` oldest-first, with one summary."""
+    try:
+        queue = _full_queue(controller)
+    except Exception:
+        return
+    overflow = len(queue) - _FULL_QUEUE_MAX
+    if overflow <= 0:
+        return
+    dropped = queue[:overflow]
+    del queue[:overflow]
+    try:
+        names = ", ".join(Path(p).name for _, p, _ in dropped[:5])
+    except Exception:
+        names = ""
+    extra = f" (+{len(dropped) - min(len(dropped), 5)} more)" if len(dropped) > 5 else ""
+    logger.warning(
+        "mc full-res queue cap (%d): shed %d oldest %s — %s%s",
+        _FULL_QUEUE_MAX, len(dropped),
+        "entry" if len(dropped) == 1 else "entries", names, extra,
+    )
+    try:
+        report = getattr(controller, "report_user_error", None)
+        if callable(report):
+            report(
+                f"Full-resolution backlog is full ({_FULL_QUEUE_MAX} pending max): "
+                f"{len(dropped)} slot{'s' if len(dropped) != 1 else ''} "
+                f"stay on preview for now — {names}{extra}"
+            )
+    except Exception:
+        pass
 
 
 def _pump_full_stage(controller) -> None:

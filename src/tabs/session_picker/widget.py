@@ -418,18 +418,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 )
             card.update_region("text", rows=rows)
 
-    def _clear_cards(self) -> None:
-        if self._cards_layout is None:
-            return
-        self._cards_by_type.clear()
-        while self._cards_layout.count():
-            item = self._cards_layout.takeAt(0)
-            widget = item.widget()  # type: ignore[union-attr]  # takeAt result is a layout item
-            if widget is not None:
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
-
     def _icon_for_session_type(self, session_type: str):
         try:
             icon = self._context.call_service("get_tab_icon", session_type)

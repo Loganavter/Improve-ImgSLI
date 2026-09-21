@@ -30,6 +30,40 @@ def _format_worker_error(err) -> str:
     return str(err)
 
 
+def _remove_failed_item_via_dispatch(
+    controller, image_number: int, index_in_list: int, path: str
+) -> bool:
+    """Drop a failed-decode list item dispatch-first (undoable, no aliasing).
+
+    The old ``target_list.pop`` mutated the Store's live list in place:
+    no dispatch, no history entry for undo, and every snapshot holding the
+    same list object silently lost the item too. Dispatching
+    ``SetImageListAction`` with the filtered list replaces the document
+    (copy-on-write) so undo restores the item. Falls back to the legacy
+    in-place pop only when no dispatcher exists (fake stores).
+    """
+    try:
+        dispatcher = getattr(controller.store, "get_dispatcher", lambda: None)()
+    except Exception:
+        dispatcher = None
+    if dispatcher is not None:
+        try:
+            from core.state_management.document_actions import SetImageListAction
+
+            document = controller.store.get_session_state_slot("document")
+            lst = document.image_list1 if image_number == 1 else document.image_list2
+            if 0 <= index_in_list < len(lst) and lst[index_in_list].path == path:
+                remaining = [it for i, it in enumerate(lst) if i != index_in_list]
+                controller.store.transact(
+                    [SetImageListAction(slot=image_number, items=remaining)],
+                    scope="document",
+                )
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _dismiss_ic_loading_toast(controller, image_number) -> None:
     """Close a slot's loading toast on decode failure (MC parity: dismiss+emit).
 
@@ -219,8 +253,13 @@ def on_image_loaded(controller, result):
     if not pil_img:
         ic_preview_debug("on_image_loaded slot=%s -> pil_img None, pop if needed", image_number)
         if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
-            target_list.pop(index_in_list)
             current_app_index = document.current_index1 if image_number == 1 else document.current_index2
+            removed_via_dispatch = _remove_failed_item_via_dispatch(
+                controller, image_number, index_in_list, path
+            )
+            if not removed_via_dispatch:
+                # Fail-open legacy for dispatcher-less (fake) stores only.
+                target_list.pop(index_in_list)
             if index_in_list == current_app_index:
                 controller.set_current_image(image_number)
             if controller.presenter:

@@ -26,6 +26,7 @@ def load_pixel_store(
     ``shared.image_processing.embedded_pixel_cache`` (без импорта ``tabs``).
     """
     from shared.image_processing.autocrop.debug import autocrop_debug
+    from shared.image_processing.embedded_pixel_cache import _UNSET
     from engine.store.tiled_pixel_store import TiledPixelStore
 
     # Нормализация deprecated auto_crop → crop_service
@@ -82,29 +83,102 @@ def load_pixel_store(
     if cached is None:
         from shared.image_processing import embedded_pixel_cache as _emb
 
-        cached = _emb.lookup(key)
+        # Validated host lookup: stat-checked (replaced-file evicts loudly)
+        # and, when a crop_service is in play, crop-checked (the buffer's
+        # recorded crop must equal the currently-computed box, else the hit
+        # would serve wrongly-cropped pixels). No crop requested → legacy
+        # serve-as-saved behavior.
+        _requested_box = _UNSET
+        if crop_service is not None:
+            try:
+                _live_box = crop_service.get(key)
+                _requested_box = (
+                    _live_box.to_tuple() if _live_box is not None else None
+                )
+            except Exception:
+                _requested_box = _UNSET
+                autocrop_debug(
+                    "embedded verdict=SKIP reason=%s path=%s "
+                    "(crop probe failed; serving as-saved)",
+                    "crop-probe-failed", key,
+                )
+        detail = _emb.lookup_detail(key, crop_box=_requested_box)
+        cached = detail.entry
+        if detail.status and detail.status.startswith("miss"):
+            autocrop_debug(
+                "embedded verdict=MISS status=%s path=%s crop_service=%s",
+                detail.status, key, bool(crop_service),
+            )
+            if detail.status == _emb.STATUS_MISS_REPLACED_FILE and crop_service is not None:
+                # The file changed under a cached crop verdict: drop the
+                # crop service's stale entry (sticky-None fix at the shared
+                # entry point) so the from_path decode below recomputes
+                # instead of serving the old file's verdict.
+                try:
+                    crop_service.invalidate(key)
+                except Exception:
+                    pass
         if cached is None:
             try:
                 import os as _os2
 
                 norm2 = _os2.path.normpath(key)
                 if norm2 != key:
-                    cached = _emb.lookup(norm2)
+                    detail2 = _emb.lookup_detail(norm2, crop_box=_requested_box)
+                    cached = detail2.entry
+                    if detail2.status and detail2.status.startswith("miss"):
+                        autocrop_debug(
+                            "embedded verdict=MISS status=%s path=%s crop_service=%s",
+                            detail2.status, norm2, bool(crop_service),
+                        )
             except Exception:
                 pass
     if cached is not None:
         cache_path, width, height = cached
-        autocrop_debug(
-            "cache-hit path=%s -> from_embedded_cache %dx%d (crop_service=%s NOT applied)",
-            key, width, height, bool(crop_service),
-        )
+        if crop_service is not None:
+            autocrop_debug(
+                "embedded verdict=HIT path=%s -> from_embedded_cache %dx%d "
+                "(recorded crop == current box)",
+                key, width, height,
+            )
+        else:
+            autocrop_debug(
+                "cache-hit path=%s -> from_embedded_cache %dx%d (crop_service=%s NOT applied)",
+                key, width, height, bool(crop_service),
+            )
         return TiledPixelStore.from_embedded_cache(cache_path, width, height)
     autocrop_debug("from_path path=%s crop_service=%s", key, bool(crop_service))
     # Пробуем новый путь, fallback на legacy сигнатуру
     try:
-        return TiledPixelStore.from_path(key, crop_service=crop_service)
+        store = TiledPixelStore.from_path(key, crop_service=crop_service)
     except TypeError:
         # Fallback для очень старых моков
         if crop_service is not None:
-            return TiledPixelStore.from_path(key, auto_crop=True)
-        return TiledPixelStore.from_path(key)
+            store = TiledPixelStore.from_path(key, auto_crop=True)
+        else:
+            store = TiledPixelStore.from_path(key)
+    except Exception as exc:
+        autocrop_debug(
+            "load verdict=SKIP reason=%s path=%s error=%s",
+            "undecodable", key, exc,
+        )
+        raise
+    if crop_service is not None:
+        try:
+            _box_now = crop_service.get(key)
+        except Exception:
+            _box_now = "undecodable"
+        if _box_now == "undecodable":
+            autocrop_debug(
+                "load verdict=SKIP reason=%s path=%s", "undecodable", key,
+            )
+        elif _box_now is None:
+            autocrop_debug(
+                "load verdict=SKIP reason=%s path=%s", "borderless", key,
+            )
+        else:
+            autocrop_debug(
+                "load verdict=APPLIED box=%s path=%s",
+                _box_now.to_tuple(), key,
+            )
+    return store

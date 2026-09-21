@@ -8,8 +8,13 @@ root.
 Usage:
     python src/devtools/check_translations.py
     python src/devtools/check_translations.py --root src/resources/i18n --reference en
+    python src/devtools/check_translations.py --root src/resources/i18n --root src/tabs/image_compare/resources/i18n
     python src/devtools/check_translations.py --json     # machine-readable output
     python src/devtools/check_translations.py --strict   # exit 1 if any gap found
+
+With no ``--root``, every ``resources/i18n`` tree under ``src/`` is checked
+(host + tabs + plugins fan-out); each root is compared against its own
+reference locale independently.
 """
 
 from __future__ import annotations
@@ -53,6 +58,26 @@ def _list_locales(root: Path) -> list[str]:
     return sorted(
         p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")
     )
+
+
+def discover_i18n_roots(src_root: Path | None = None) -> list[Path]:
+    """Every ``resources/i18n`` tree under ``src/`` (host + tabs + plugins).
+
+    i18n files are scattered (``src/resources/i18n`` plus per-tab and
+    per-plugin ``resources/i18n`` trees, including nested ones such as the
+    magnifier feature's) — checking only the host root silently misses
+    tab/plugin gaps. The host root sorts first; the rest follow in path
+    order for stable reports.
+    """
+    base = src_root if src_root is not None else Path(__file__).resolve().parents[1]
+    found = sorted(
+        (p for p in base.rglob("resources/i18n") if p.is_dir()),
+        key=lambda p: p.as_posix(),
+    )
+    host = base / "resources" / "i18n"
+    ordered = [host] if host in found else []
+    ordered.extend(p for p in found if p != host)
+    return ordered
 
 
 def _is_empty(value: str) -> bool:
@@ -182,8 +207,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=here / "src" / "resources" / "i18n",
-        help="Path to the i18n root directory.",
+        action="append",
+        default=None,
+        help=(
+            "i18n root to check (repeatable). When omitted, every "
+            "resources/i18n tree under src/ is checked (host + tabs + "
+            "plugins fan-out)."
+        ),
     )
     parser.add_argument(
         "--reference",
@@ -198,14 +228,44 @@ def main(argv: Iterable[str] | None = None) -> int:
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    if not args.root.is_dir():
-        print(f"ERROR: i18n root not found: {args.root}", file=sys.stderr)
-        return 2
+    roots = list(args.root) if args.root else discover_i18n_roots(here / "src")
+    for root in roots:
+        if not root.is_dir():
+            print(f"ERROR: i18n root not found: {root}", file=sys.stderr)
+            return 2
 
-    report = _analyze(args.root, args.reference)
-    total = _print_json(report) if args.json else _print_report(report, args.reference)
+    multi = len(roots) > 1
+    grand_total = 0
+    json_payload: dict[str, Any] = {}
+    for root in roots:
+        report = _analyze(root, args.reference)
+        if multi and not args.json:
+            print(f"== {root} ==")
+        if args.json:
+            serializable = {
+                locale: {
+                    "missing": [{"file": rel, "key": key} for rel, key in payload["missing"]],
+                    "empty": [{"file": rel, "key": key} for rel, key in payload["empty"]],
+                    "extra": [{"file": rel, "key": key} for rel, key in payload["extra"]],
+                    "missing_files": payload["missing_files"],
+                }
+                for locale, payload in report.items()
+            }
+            if multi:
+                json_payload[str(root)] = serializable
+            else:
+                json_payload = serializable
+            grand_total += sum(
+                len(payload["missing"]) + len(payload["empty"])
+                for payload in report.values()
+            )
+        else:
+            grand_total += _print_report(report, args.reference)
 
-    if args.strict and total > 0:
+    if args.json:
+        print(json.dumps(json_payload, ensure_ascii=False, indent=2))
+
+    if args.strict and grand_total > 0:
         return 1
     return 0
 

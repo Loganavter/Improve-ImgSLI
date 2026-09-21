@@ -383,6 +383,52 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     ic_preview_debug("load_images_from_paths slot=%s _finalize done t=%.3f total=%.3f", image_number, _t.monotonic() - _t1, _t.monotonic() - _t0)
 
 
+def _dispatch_target_index(controller, target_slot: int, idx: int) -> None:
+    """Set a slot's current index dispatch-first (no setattr fallback).
+
+    Dispatcher dispatch is the primary path. Dispatcher-less (fake) stores
+    reduce + write back through the real ``DocumentReducer`` — still
+    copy-on-write, never an in-place ``setattr`` on Store state (the
+    setattr contract forbids Store bypasses outside Dispatcher/Reducer).
+    A store with neither dispatcher nor write-back API (bare test fakes)
+    cannot be updated cleanly — that is logged and skipped instead of
+    bypassing.
+    """
+    try:
+        d = getattr(controller.store, "get_dispatcher", lambda: None)()
+    except Exception:
+        d = None
+    if d is not None:
+        try:
+            d.dispatch(
+                SetCurrentIndexAction(slot=target_slot, index=idx),
+                scope="document",
+            )
+            return
+        except Exception:
+            pass
+    try:
+        from tabs.image_compare.state.reducer import DocumentReducer
+
+        doc = controller.store.get_session_state_slot("document")
+        new_doc = DocumentReducer.reduce(
+            doc, SetCurrentIndexAction(slot=target_slot, index=idx)
+        )
+        if new_doc is not doc:
+            controller.store.set_session_state_slot(
+                "document", new_doc, emit_scope="document"
+            )
+            return
+    except Exception:
+        pass
+    logger.debug(
+        "duplicate index update skipped: no dispatcher or write-back API "
+        "(slot=%s idx=%s)",
+        target_slot,
+        idx,
+    )
+
+
 def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> None:
     if source_slot not in (1, 2) or target_slot not in (1, 2):
         return
@@ -400,17 +446,7 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
     t_lst = document.image_list1 if target_slot == 1 else document.image_list2
     for idx, ex in enumerate(t_lst):
         if ex.path == path:
-            d = getattr(controller.store, "get_dispatcher", lambda: None)()
-            if d:
-                try:
-                    d.dispatch(SetCurrentIndexAction(slot=target_slot, index=idx), scope="document")
-                except Exception:
-                    pass
-            else:
-                try:
-                    setattr(document, f"current_index{target_slot}", idx)
-                except Exception:
-                    pass
+            _dispatch_target_index(controller, target_slot, idx)
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
             try:
@@ -422,8 +458,31 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
     cached = pl.peek(path) if pl else None
     if cached is not None and not bool(getattr(cached, "is_open", True)):
         cached = None
-    # SlotSource only — no image on item, cache holds pixels
-    t_lst.append(ImageItem(path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0)))
+    # SlotSource only — no image on item, cache holds pixels.
+    # Dispatch-first: the old direct t_lst.append bypassed the Dispatcher,
+    # so the append had no history entry — an unrelated undo restored a
+    # snapshot without the item and it vanished. AppendImageItemsAction
+    # replaces the document (copy-on-write) and records the mutation.
+    new_item = ImageItem(path=path, display_name=s_item.display_name, rating=int(getattr(s_item, "rating", 0) or 0))
+    appended_via_dispatch = False
+    try:
+        append_dispatcher = getattr(controller.store, "get_dispatcher", lambda: None)()
+    except Exception:
+        append_dispatcher = None
+    if append_dispatcher is not None:
+        try:
+            from core.state_management.document_actions import AppendImageItemsAction
+
+            controller.store.transact(
+                [AppendImageItemsAction(slot=target_slot, items=[new_item])],
+                scope="document",
+            )
+            appended_via_dispatch = True
+        except Exception:
+            appended_via_dispatch = False
+    if not appended_via_dispatch:
+        # Fail-open legacy for dispatcher-less (fake) stores only.
+        t_lst.append(new_item)
     # ensure cache has entry if we had one (Bucket C via transact)
     if cached is not None:
         try:
@@ -443,18 +502,16 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
                     getattr(pl.cache, "put_" + "pixel")(path, store=cached)
             except Exception:
                 pass
-    new_index = len(t_lst) - 1
-    d = getattr(controller.store, "get_dispatcher", lambda: None)()
-    if d:
-        try:
-            d.dispatch(SetCurrentIndexAction(slot=target_slot, index=new_index), scope="document")
-        except Exception:
-            pass
-    else:
-        try:
-            setattr(document, f"current_index{target_slot}", new_index)
-        except Exception:
-            pass
+    # Re-fetch: a dispatched append replaced the document, so the live
+    # list (and its length) must come from the current state, not the
+    # pre-append `t_lst` reference (detached after replace()).
+    try:
+        _dup_doc = controller.store.get_session_state_slot("document")
+        _dup_lst = _dup_doc.image_list1 if target_slot == 1 else _dup_doc.image_list2
+        new_index = len(_dup_lst) - 1
+    except Exception:
+        new_index = len(t_lst) - 1
+    _dispatch_target_index(controller, target_slot, new_index)
     if controller.presenter:
         try:
             flyout = getattr(getattr(controller.presenter, "ui_manager", None), "transient", None)

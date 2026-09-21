@@ -173,9 +173,19 @@ def find_briefs_for_path(path: Path, mtime_ns: int) -> list[CompareBrief]:
     Scans ``vlm_cache_dir`` — cheap for typical folder sizes (dozens of briefs).
     Used by filtering to make semantic search hit brief tags even when the
     controller hasn't yet loaded them into ``GalleryItem.vlm_brief``.
+
+    The ``mtime_ns`` lookup is mtime-honoring: when the file still exists on
+    disk but its current mtime differs, stale briefs for the old content are
+    skipped instead of matching another file's text.
     """
     wanted = str(Path(path).resolve())
     out: list[CompareBrief] = []
+    try:
+        current_mtime: int | None = Path(path).stat().st_mtime_ns
+    except OSError:
+        current_mtime = None
+    if current_mtime is not None and int(mtime_ns or 0) and current_mtime != int(mtime_ns):
+        return out
     try:
         cache_dir = vlm_cache_dir()
     except Exception:

@@ -61,6 +61,41 @@ def parse_log(path: Path | None, stdin: bool = False) -> list[dict]:
     return lines
 
 
+def parse_trace(path: Path | None) -> list[dict]:
+    """Parse ``trace.jsonl`` for gap-related spans (the ``--trace`` input).
+
+    Fail-open like :func:`parse_log`: a missing/unreadable file yields no
+    events plus a stderr note, never an exception. A line counts when its
+    raw text mentions "gap" (case-insensitive); JSON fields (``ts``,
+    ``kind``, ``message``) are picked up best-effort when the line parses.
+    """
+    if path is None:
+        return []
+    if not path.exists():
+        print(f"trace not found: {path}", file=sys.stderr)
+        return []
+    events: list[dict] = []
+    try:
+        raw = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        print(f"trace unreadable: {path}: {exc}", file=sys.stderr)
+        return []
+    for idx, line in enumerate(raw):
+        if "gap" not in line.lower():
+            continue
+        entry: dict = {"line_no": idx + 1, "raw": line[:300], "kind": "trace_gap"}
+        try:
+            payload = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("ts", "timestamp", "name", "message"):
+                if payload.get(key) is not None:
+                    entry[key] = str(payload[key])[:200]
+        events.append(entry)
+    return events
+
+
 def classify(events: list[dict]) -> list[dict]:
     out = []
     for ev in events:
@@ -86,7 +121,7 @@ def classify(events: list[dict]) -> list[dict]:
     return out
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Analyze IC gap logs")
     ap.add_argument("--log", type=Path, default=Path.home() / ".local/share/ImproveImgSLI/log.txt", help="path to log.txt")
     ap.add_argument("--trace", type=Path, default=None, help="path to trace.jsonl (optional)")
@@ -94,10 +129,15 @@ def main():
     ap.add_argument("--json", type=Path, default=None, help="write timeline JSON")
     ap.add_argument("--stdin", action="store_true", help="read log from stdin")
     ap.add_argument("--bug-only", action="store_true", help="only show SEVERE_BUG gaps")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     events = parse_log(args.log if not args.stdin else None, stdin=args.stdin)
     events = classify(events)
+
+    # --trace is wired (not decorative): trace spans mentioning "gap" join
+    # the timeline and the --json output below.
+    trace_events = parse_trace(args.trace)
+    events = events + trace_events
 
     if args.bug_only:
         events = [e for e in events if e.get("is_bug") or e.get("narrow_bug")]
@@ -105,7 +145,8 @@ def main():
     # Print timeline
     bug_count = sum(1 for e in events if e.get("is_bug"))
     narrow_count = sum(1 for e in events if e.get("narrow_bug"))
-    print(f"Parsed {len(events)} gap-related events | SEVERE_BUG gaps: {bug_count} | narrow bbox events: {narrow_count}")
+    trace_count = sum(1 for e in events if e.get("kind") == "trace_gap")
+    print(f"Parsed {len(events)} gap-related events | SEVERE_BUG gaps: {bug_count} | narrow bbox events: {narrow_count} | trace_gap spans: {trace_count}")
     print("-" * 80)
     for ev in events[-200:]:
         sev = ev.get("severity", "") or ("NARROW" if ev.get("narrow_bug") else "")

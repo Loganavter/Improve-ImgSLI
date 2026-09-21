@@ -46,6 +46,16 @@ class _Store:
         assert name == "document"
         return self.document
 
+    def set_session_state_slot(self, name, value, emit_scope=None, **_kwargs):
+        # Dispatch-first write-back: swap the document slot copy-on-write,
+        # mirroring DocumentReducer semantics in production (the reducer
+        # returns a new DocumentModel via dataclasses.replace; callers
+        # re-fetch via get_session_state_slot, as duplicate_image_to_slot
+        # itself does after a dispatched append).
+        assert name == "document"
+        self.document = value
+        return value
+
     def get_dispatcher(self):
         return None
 
@@ -94,6 +104,10 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
 
     loading.duplicate_image_to_slot(controller, source_slot=1, target_slot=2)
 
+    # Dispatch-first path replaces the document copy-on-write: re-fetch the
+    # current slot value exactly as production readers do.
+    document = store.get_session_state_slot("document")
+
     assert len(document.image_list2) == 1
     assert document.image_list2[0].path == "/a.png"
     assert document.current_index2 == 0
@@ -116,7 +130,8 @@ def test_duplicate_image_to_slot_selects_existing_path_on_target(monkeypatch):
         current_index1=0,
         current_index2=0,
     )
-    controller = _Controller(_Store(document))
+    store = _Store(document)
+    controller = _Controller(store)
     monkeypatch.setattr(
         loading,
         "QTimer",
@@ -124,6 +139,10 @@ def test_duplicate_image_to_slot_selects_existing_path_on_target(monkeypatch):
     )
 
     loading.duplicate_image_to_slot(controller, source_slot=1, target_slot=2)
+
+    # Dispatch-first path replaces the document copy-on-write: re-fetch the
+    # current slot value exactly as production readers do.
+    document = store.get_session_state_slot("document")
 
     assert len(document.image_list2) == 2
     assert document.current_index2 == 1

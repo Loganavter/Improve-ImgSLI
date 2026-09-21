@@ -148,14 +148,35 @@ class DialogManager:
             Qt.WidgetAttribute.WA_DeleteOnClose, True
         )
         self.host._settings_dialog.settings_confirmed.connect(
-            lambda: self.host._settings_application_service.apply(
-                self.host._settings_dialog.get_settings()
-            )
+            self._on_settings_confirmed
         )
         self.host._settings_dialog.destroyed.connect(
             lambda: setattr(self.host, "_settings_dialog", None)
         )
         return self.host._settings_dialog
+
+    def _on_settings_confirmed(self) -> None:
+        """Apply confirmed settings, then re-pin the QWindow minimum.
+
+        Applies can toggle row visibility (format-dependent rows, search
+        state), which changes ``minimumSize()`` while the platform window
+        keeps the stale value — re-pin so CSD resizes cannot crush the form.
+        """
+        service = self.host._settings_application_service
+        dialog = self.host._settings_dialog
+        if service is None or dialog is None:
+            return
+        service.apply(dialog.get_settings())
+        self._pin_dialog_minimum(dialog)
+
+    @staticmethod
+    def _pin_dialog_minimum(dialog) -> None:
+        try:
+            handle = dialog.windowHandle()
+        except RuntimeError:
+            return
+        if handle is not None:
+            handle.setMinimumSize(dialog.minimumSize())
 
     def show_settings_dialog(self, *, section_id: str | None = None):
         import traceback
@@ -213,6 +234,7 @@ class DialogManager:
         if activated and service is not None:
             try:
                 service.apply(dialog.get_settings())
+                self._pin_dialog_minimum(dialog)
             except Exception:
                 logger.exception(
                     "apply_settings_member failed section=%s group=%s member=%s",
@@ -237,7 +259,10 @@ class DialogManager:
 
         dialog = ExportDialog(
             dialog_state=dialog_state,
-            parent=None,
+            # Parented to the shell so the window stacks, centers, and
+            # activates with the main window (unparented export dialogs can
+            # open behind the shell on some compositors).
+            parent=self.host.parent_widget,
             tr_func=tr,
             preview_image=preview_image,
             suggested_filename=suggested_filename,

@@ -91,7 +91,7 @@ class MultiCompareContextMenuProvider:
             self._begin_carry(slot)
             return True
         if action_id == "multi_compare.remove_slot":
-            self.widget.remove_slot(slot.id)
+            self._remove_slot(slot)
             return True
         return False
 
@@ -127,6 +127,61 @@ class MultiCompareContextMenuProvider:
         except Exception:
             return None
 
+    def _remove_slot(self, slot: CompareSlot) -> None:
+        """Removal via the controller path so inflight decodes cancel first.
+
+        ``controller.remove_slot`` → ``preview_decode.remove_slot_with_cancel``
+        (AbortSignal-style cancel-on-remove); the widget's direct dispatch
+        is the headless fallback (same end state, no cancel).
+        """
+        try:
+            ctrl = getattr(self.widget, "_controller", None)
+        except Exception:
+            ctrl = None
+        remove = getattr(ctrl, "remove_slot", None)
+        if callable(remove):
+            try:
+                remove(slot.id)
+                return
+            except Exception:
+                pass
+        self.widget.remove_slot(slot.id)
+
+    def _fail(self, message: str) -> None:
+        """User-visible failure signal (toast/bus, never silent, never raising).
+
+        Routes through the controller's single error channel
+        (``CoreErrorOccurredEvent`` → warning dialog by house policy);
+        falls back to a loud log when no controller/bus is reachable
+        (headless fakes).
+        """
+        try:
+            ctrl = getattr(self.widget, "_controller", None)
+        except Exception:
+            ctrl = None
+        report = getattr(ctrl, "report_user_error", None)
+        if callable(report):
+            try:
+                report(message)
+                return
+            except Exception:
+                pass
+        import logging as _logging
+
+        _logging.getLogger("ImproveImgSLI").warning("mc menu: %s", message)
+
+    def _grid_full_message(self) -> str:
+        try:
+            max_slots = self.widget.state.max_slots
+        except Exception:
+            max_slots = None
+        default = (
+            f"Comparison grid is full ({max_slots} images max)"
+            if max_slots is not None
+            else "Comparison grid is full"
+        )
+        return self._tr("msg.compare_grid_full", default)
+
     def _rename_slot(self, slot: CompareSlot) -> None:
         text, ok = AppTextInputDialog.get_text(
             self.widget,
@@ -139,11 +194,33 @@ class MultiCompareContextMenuProvider:
 
     def _duplicate_slot(self, slot: CompareSlot) -> None:
         if not self._has_pixels(slot) or self.widget.state.root is None:
+            self._fail(
+                self._tr(
+                    "msg.compare_nothing_to_duplicate",
+                    "Nothing to duplicate — this slot has no loaded image.",
+                )
+            )
+            return
+        try:
+            full = len(self.widget.state.slots) >= self.widget.state.max_slots
+        except Exception:
+            full = False
+        if full:
+            # entries_for disables the action when full, but palette/keyboard
+            # invocation bypasses `enabled` — signal instead of arming a
+            # duplicate that begin_pending_duplicate would silently drop.
+            self._fail(self._grid_full_message())
             return
         self.widget.begin_pending_duplicate(slot.id)
 
     def _begin_carry(self, slot: CompareSlot) -> None:
         if not slot.path:
+            self._fail(
+                self._tr(
+                    "msg.compare_nothing_to_carry",
+                    "Nothing to carry — this slot is empty.",
+                )
+            )
             return
         from events.image_carry import begin_image_carry
 

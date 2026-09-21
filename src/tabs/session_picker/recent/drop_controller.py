@@ -34,12 +34,20 @@ class RecentDropController(QObject):
         *,
         on_paths: Callable[[list[str]], None],
         on_active_changed: Callable[[bool], None],
+        on_empty_drop: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(host)
         self._host = host
         self._on_paths = on_paths
         self._on_active_changed = on_active_changed
+        self._on_empty_drop = on_empty_drop
         self.drag_active = False
+        # Nested enter/leave balance: one controller is installed on the
+        # panel AND its children (scroll, host, empty zone), so crossing a
+        # child boundary fires leave+enter pairs mid-gesture. A plain bool
+        # would flicker the highlight (or freeze it stuck) — active while
+        # the depth is positive.
+        self._drag_depth = 0
 
     def install(self, widgets: Iterable[QWidget | None]) -> None:
         for widget in widgets:
@@ -55,13 +63,18 @@ class RecentDropController(QObject):
         self.drag_active = active
         self._on_active_changed(active)
 
+    def _sync_drag_active(self) -> None:
+        """Apply the nested depth to the public flag (single change point)."""
+        self.set_drag_active(self._drag_depth > 0)
+
     def handle_drag_enter(self, event: QDragEnterEvent) -> None:
         if not mime_has_external_project(event):
             event.ignore()
             return
         event.acceptProposedAction()
         event.accept()
-        self.set_drag_active(True)
+        self._drag_depth += 1
+        self._sync_drag_active()
 
     def handle_drag_move(self, event: QDragMoveEvent) -> None:
         if not mime_has_external_project(event):
@@ -71,10 +84,12 @@ class RecentDropController(QObject):
         event.accept()
 
     def handle_drag_leave(self, event: QDragLeaveEvent) -> None:
-        self.set_drag_active(False)
+        self._drag_depth = max(0, self._drag_depth - 1)
+        self._sync_drag_active()
         event.accept()
 
     def handle_drop(self, event: QDropEvent) -> None:
+        self._drag_depth = 0
         self.set_drag_active(False)
         if not mime_has_external_project(event):
             event.ignore()
@@ -83,6 +98,13 @@ class RecentDropController(QObject):
         event.acceptProposedAction()
         event.accept()
         if not paths:
+            # Consumed but empty: never silent — the shelf reports the miss
+            # (toast hint) instead of swallowing the gesture.
+            try:
+                if self._on_empty_drop is not None:
+                    self._on_empty_drop()
+            except Exception:
+                pass
             return
         # Defer pin+refresh so the drop source is released first. The
         # singleShot is not parented to this controller: guard against the

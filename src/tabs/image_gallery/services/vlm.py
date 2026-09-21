@@ -56,10 +56,42 @@ _EXT_TO_MIME = {
 }
 
 
+# API payload budget: full-resolution images are never uploaded. The VLM judges
+# sharpness/artifacts fine at preview size; downscaling keeps requests small
+# and latency predictable. Fail-open: if Pillow is missing or the file is not
+# decodable, the original bytes go out rather than failing the request.
+VLM_MAX_EDGE_PX = 1024
+
+
 def _encode_image(path: Path) -> tuple[str, str]:
     p = Path(path)
     mime = _EXT_TO_MIME.get(p.suffix.lower(), "png")
-    data = base64.b64encode(p.read_bytes()).decode("ascii")
+    try:
+        raw = p.read_bytes()
+    except OSError:
+        raise
+    try:
+        from PIL import Image
+
+        import io
+
+        with Image.open(p) as im:
+            w, h = im.size
+            edge = max(w, h)
+            if edge > VLM_MAX_EDGE_PX and edge > 0:
+                scale = VLM_MAX_EDGE_PX / float(edge)
+                im = im.convert("RGB")
+                im.thumbnail((VLM_MAX_EDGE_PX, VLM_MAX_EDGE_PX), Image.LANCZOS)
+                _ = scale
+                buf = io.BytesIO()
+                fmt = "JPEG" if mime == "jpeg" else "PNG"
+                im.save(buf, format=fmt)
+                raw = buf.getvalue()
+                mime = "jpeg" if fmt == "JPEG" else "png"
+    except Exception:
+        # Fail-open: send original bytes (any PIL/import/decode problem).
+        pass
+    data = base64.b64encode(raw).decode("ascii")
     return mime, data
 
 
@@ -113,6 +145,19 @@ def build_compare_brief_request(
     }
 
 
+# Confidence gate: a tie-break below this confidence must not crown — the
+# caller degrades to the local ranking instead (badge cleared, no winner).
+TIE_BREAK_MIN_CONFIDENCE = 0.5
+
+
+def is_decisive_tie_break(result: TieBreakResult) -> bool:
+    """True when ``result`` is decisive enough to crown a winner."""
+    try:
+        return bool(result.winner_path) and float(result.confidence) >= TIE_BREAK_MIN_CONFIDENCE
+    except Exception:
+        return False
+
+
 def parse_tie_break_response(raw: dict, *, model: str, path_a: Path, path_b: Path) -> TieBreakResult:
     try:
         content = raw["choices"][0]["message"]["content"]
@@ -122,11 +167,13 @@ def parse_tie_break_response(raw: dict, *, model: str, path_a: Path, path_b: Pat
         raise AiResponseError("empty tie-break response")
 
     winner = None
-    confidence = 0.6
+    saw_winner = False
+    confidence: float | None = None
     reason = content.strip().splitlines()[0].strip() if content else ""
     for line in content.splitlines():
         line = line.strip()
         if line.upper().startswith("WINNER:"):
+            saw_winner = True
             val = line.split(":", 1)[1].strip().upper()
             if val.startswith("A"):
                 winner = Path(path_a)
@@ -140,9 +187,17 @@ def parse_tie_break_response(raw: dict, *, model: str, path_a: Path, path_b: Pat
         elif line.upper().startswith("REASON:"):
             reason = line.split(":", 1)[1].strip()
 
-    # Default to A if ambiguous — caller treats low confidence as silent degrade
-    if winner is None:
-        winner = Path(path_a)
+    # Ambiguous output must not crown: no WINNER line, an unparseable winner,
+    # a missing confidence, or confidence below the gate all raise, so the
+    # caller keeps the local ranking (silent-but-visible degrade) instead of
+    # fabricating a winner. Previously this defaulted to A at 0.6.
+    if not saw_winner or winner is None:
+        raise AiResponseError("ambiguous tie-break response: no WINNER line")
+    if confidence is None:
+        raise AiResponseError("ambiguous tie-break response: no CONFIDENCE value")
+    confidence = max(0.0, min(1.0, float(confidence)))
+    if confidence < TIE_BREAK_MIN_CONFIDENCE:
+        raise AiResponseError(f"indecisive tie-break response: confidence {confidence:.2f} below gate")
     loser = Path(path_b) if winner == Path(path_a) else Path(path_a)
     return TieBreakResult(
         winner_path=str(winner.resolve()) if winner.exists() else str(winner),
@@ -206,7 +261,10 @@ def tie_break_sync(
     """Blocking tie-break: compare top-2. Call only from GenericWorker."""
     payload = build_tie_break_request(Path(path_a), Path(path_b), source, model=model)
     raw = call_sync(base_url, api_key, payload)
-    return parse_tie_break_response(raw, model=model, path_a=Path(path_a), path_b=Path(path_b))
+    result = parse_tie_break_response(raw, model=model, path_a=Path(path_a), path_b=Path(path_b))
+    if not is_decisive_tie_break(result):
+        raise AiResponseError("indecisive tie-break result: must not crown")
+    return result
 
 
 def compare_brief_sync(

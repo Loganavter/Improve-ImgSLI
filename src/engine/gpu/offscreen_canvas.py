@@ -50,6 +50,48 @@ def render_widget_frame(widget: QWidget) -> None:
     QApplication.processEvents()
 
 
+def export_widget_more_pending(widget: object) -> bool:
+    """Fail-open quiescence query for offscreen export widgets.
+
+    The live tile-residency pass publishes its budget-limited progress on
+    the widget every frame (``runtime_state._tile_more_pending`` plus the
+    fallback-LOD snapshot on the renderer); an export grab must wait for
+    both to drain or it reads back a partial tier (blank/previous-content
+    tiles on a cold first frame). Unknown widgets (fakes, non-canvas
+    surfaces) read as quiescent so callers keep today's single-grab
+    behavior bit-identically.
+    """
+    try:
+        state = getattr(widget, "runtime_state", None)
+        if bool(getattr(state, "_tile_more_pending", False)):
+            return True
+        renderer = getattr(widget, "_rhi_renderer", None)
+        if bool(getattr(renderer, "_fallback_more_pending_snapshot", False)):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def pump_offscreen_to_quiescence(widget: QWidget, *, max_frames: int = 10) -> int:
+    """Pump progressive tile residency to quiescence before a grab.
+
+    Each pumped frame is one ``render_widget_frame`` (the residency pass
+    uploads its next budget slice and re-arms via ``widget.update()`` while
+    work remains). Returns the number of extra frames pumped (0 when the
+    widget was already quiescent). Bounded by ``max_frames`` — pyramid
+    builds are asynchronous with no progress signal here, so an unbounded
+    loop could spin; the caller still grabs whatever is resident.
+    """
+    pumped = 0
+    for _ in range(max(0, int(max_frames))):
+        if not export_widget_more_pending(widget):
+            break
+        render_widget_frame(widget)
+        pumped += 1
+    return pumped
+
+
 def shutdown_offscreen_widget(widget: QWidget | None) -> None:
     """Best-effort teardown of an offscreen canvas widget."""
     if widget is None:

@@ -47,6 +47,79 @@ except Exception:  # pragma: no cover
 # store — owned here via streams "coverage.healthy" + "coverage.first_paint_hold".
 
 
+def _exact_covered_fraction(
+    rect: tuple[float, float, float, float],
+    others: list[tuple[float, float, float, float]],
+    *,
+    max_pieces: int = 256,
+) -> float | None:
+    """Exact union coverage of ``rect`` by ``others`` via rect subtraction.
+
+    The shared 9x9 point sampler (``engine.cache.tile_coverage``) is biased
+    toward "covered": a hole narrower than a sample cell and sitting between
+    sample points reports 1.0, so the first-paint hold releases on a lie and
+    gap detection stays silent. Subtraction is exact in both directions —
+    full coverage returns exactly 1.0, any real hole (however thin) lowers
+    the result — and early-exits as soon as nothing is left uncovered, which
+    is the common full-coverage case. Caller-supplied rects are clipped to
+    ``rect`` and deduped first (pair fan-out repeats identical rects).
+
+    Returns ``None`` when the uncovered-piece count explodes past
+    ``max_pieces`` (adversarial fragmentation); the caller then falls back
+    to the sampled estimate instead of burning frame time. Pure over inputs.
+    """
+    x0, y0, w, h = (float(v) for v in rect)
+    if w <= 0.0 or h <= 0.0:
+        return 1.0
+    x1, y1 = x0 + w, y0 + h
+    seen: set[tuple[float, float, float, float]] = set()
+    clips: list[tuple[float, float, float, float]] = []
+    for ox, oy, ow, oh in others:
+        cx0, cy0 = max(x0, float(ox)), max(y0, float(oy))
+        cx1, cy1 = min(x1, float(ox) + float(ow)), min(y1, float(oy) + float(oh))
+        if cx1 > cx0 and cy1 > cy0 and (cx0, cy0, cx1, cy1) not in seen:
+            seen.add((cx0, cy0, cx1, cy1))
+            clips.append((cx0, cy0, cx1, cy1))
+    if not clips:
+        return 0.0
+    clips.sort(key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), reverse=True)
+    uncovered = [(x0, y0, x1, y1)]
+    for cx0, cy0, cx1, cy1 in clips:
+        remaining: list[tuple[float, float, float, float]] = []
+        for ux0, uy0, ux1, uy1 in uncovered:
+            ix0, iy0 = max(ux0, cx0), max(uy0, cy0)
+            ix1, iy1 = min(ux1, cx1), min(uy1, cy1)
+            if ix1 <= ix0 or iy1 <= iy0:
+                remaining.append((ux0, uy0, ux1, uy1))
+                continue
+            if ux0 < ix0:
+                remaining.append((ux0, uy0, ix0, uy1))
+            if ix1 < ux1:
+                remaining.append((ix1, uy0, ux1, uy1))
+            if uy0 < iy0:
+                remaining.append((ix0, uy0, ix1, iy0))
+            if iy1 < uy1:
+                remaining.append((ix0, iy1, ix1, uy1))
+            if len(remaining) > max_pieces:
+                return None
+        uncovered = remaining
+        if not uncovered:
+            return 1.0
+    uncovered_area = sum((ax1 - ax0) * (ay1 - ay0) for ax0, ay0, ax1, ay1 in uncovered)
+    return max(0.0, 1.0 - uncovered_area / (w * h))
+
+
+def _coverage_union(
+    rect: tuple[float, float, float, float],
+    others: list[tuple[float, float, float, float]],
+) -> float:
+    """Exact-first coverage: subtraction, sampled estimate only on fallback."""
+    exact = _exact_covered_fraction(rect, others)
+    if exact is not None:
+        return exact
+    return _covered_fraction(rect, others)
+
+
 def _record_coverage_fact(
     frame_context: FrameContext,
     covered1: float,
@@ -126,11 +199,11 @@ def evaluate_coverage(
         (visible2[0], visible2[1], visible2[2] - visible2[0], visible2[3] - visible2[1]),
         letterbox2,
     )
-    covered1 = _covered_fraction(
+    covered1 = _coverage_union(
         visible1_common,
         [_to_common_space(item.rect1, letterbox1) for item in array_draw_plan],
     )
-    covered2 = _covered_fraction(
+    covered2 = _coverage_union(
         visible2_common,
         [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
     )
@@ -150,7 +223,7 @@ def evaluate_coverage(
             _bbox_narrow = sum(1 for w in _bws if w < 0.01)
             if _rects_overlap(visible1_common, visible2_common):
                 _overlap = _intersection_rect(visible1_common, visible2_common)
-                _bbox_cov = _covered_fraction(_overlap, [it.bbox for it in array_draw_plan])
+                _bbox_cov = _coverage_union(_overlap, [it.bbox for it in array_draw_plan])
             else:
                 _bbox_cov = 0.0
             if _bbox_narrow > 0 or _bbox_cov < 0.999:
@@ -197,7 +270,7 @@ def evaluate_coverage(
             try:
                 if _rects_overlap(visible1_common, visible2_common):
                     _overlap = _intersection_rect(visible1_common, visible2_common)
-                    _bbox_cov = _covered_fraction(_overlap, [it.bbox for it in array_draw_plan])
+                    _bbox_cov = _coverage_union(_overlap, [it.bbox for it in array_draw_plan])
                 else:
                     _bbox_cov = 0.0
             except Exception:
@@ -419,15 +492,15 @@ def apply_first_paint_hold(
                 _v2 = _visible_side_image_rect(base_image, _lb2, _ug, viewport_zoom=viewport_zoom, viewport_offset=viewport_offset)
                 _v1c = _to_common_space((_v1[0], _v1[1], _v1[2] - _v1[0], _v1[3] - _v1[1]), _lb1)
                 _v2c = _to_common_space((_v2[0], _v2[1], _v2[2] - _v2[0], _v2[3] - _v2[1]), _lb2)
-                _hold_cov1 = _covered_fraction(_v1c, [_to_common_space(it.rect1, _lb1) for it in array_draw_plan])
-                _hold_cov2 = _covered_fraction(_v2c, [_to_common_space(it.rect2, _lb2) for it in array_draw_plan])
+                _hold_cov1 = _coverage_union(_v1c, [_to_common_space(it.rect1, _lb1) for it in array_draw_plan])
+                _hold_cov2 = _coverage_union(_v2c, [_to_common_space(it.rect2, _lb2) for it in array_draw_plan])
                 if _hold_bbox is None:
                     # bbox cov not recomputed in original cheap fallback; keep 1.0 or derive
                     _hold_bbox = 1.0
                     try:
                         if _rects_overlap(_v1c, _v2c):
                             _overlap = _intersection_rect(_v1c, _v2c)
-                            _hold_bbox = _covered_fraction(_overlap, [it.bbox for it in array_draw_plan])
+                            _hold_bbox = _coverage_union(_overlap, [it.bbox for it in array_draw_plan])
                         else:
                             _hold_bbox = 0.0
                     except Exception:

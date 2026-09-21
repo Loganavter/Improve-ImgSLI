@@ -52,7 +52,10 @@ class ImageCompareContextMenuProvider:
             return self._execute_list_item(action_id, request, data)
         slot = self._slot_number(request, data)
         if slot is None:
-            return True
+            # Fail-closed: an unresolvable slot is NOT handled — report False
+            # so the menu host can try the next provider instead of
+            # swallowing the action as done.
+            return False
         if action_id == "image_compare.copy_path":
             QApplication.clipboard().setText(self._path_for(slot) or "")
             return True
@@ -173,7 +176,9 @@ class ImageCompareContextMenuProvider:
     ) -> bool:
         list_num, index = self._list_item_ref(request, data)
         if list_num is None or index is None:
-            return True
+            # Fail-closed (same contract as execute()): unresolvable ref
+            # reports unhandled, never silently consumed.
+            return False
         if action_id == "image_compare.rename_list_item":
             self._rename_list_item(list_num, index)
             return True
@@ -408,6 +413,12 @@ class ImageCompareContextMenuProvider:
     def _display_name_for(self, slot: int) -> str:
         document = self.store.get_session_state_slot("document")
         try:
+            remember = getattr(document, "remember_current_display_name", None)
+            if callable(remember):
+                # Explicit pin (getter is a pure read since the P2 hygiene
+                # pass) — keeps the empty-slot fallback fresh on this
+                # display path.
+                return remember(slot)
             return document.get_current_display_name(slot)
         except Exception:
             path = self._path_for(slot)

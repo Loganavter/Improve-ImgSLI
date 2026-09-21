@@ -26,6 +26,17 @@ _REDO_STACK_SLOT = "redo_stack"
 #   (the host tab re-loads the entry on the "document" scope emit that
 #   undo/redo produces — path+reload, since the snapshot's pixels may
 #   reference the closed store).
+# - TRANSACTION batches: a transaction commits atomically *outside* undo
+#   (consumers such as the multi_compare scene facade document this: batched
+#   multi-add is one atomic commit, single-add dispatch stays undoable).
+#   Transactions routinely wrap pixel-bearing inner actions (e.g.
+#   set_current_image → SET_FULL_RES_IMAGE), which must never be snapshotted
+#   for the closed-store reason above. Emit accounting: one TRANSACTION
+#   dispatch records one action-history entry and produces exactly one
+#   ``emit_state_change`` for the dispatch scope (commit), never one per
+#   inner action. Gesture coalescing only applies to consecutive same-type
+#   entries already on the undo stack, so a burst of transactions never
+#   merges — each commit stays a separately accountable unit.
 _UNDOABLE_TYPES = frozenset(
     {
         "SET_SPLIT_POSITION",
@@ -339,9 +350,16 @@ class Dispatcher:
                 except Exception as e:
                     logger.error(f"Error emitting state change {emit_scope}: {e}", exc_info=True)
             return
-        # Optimistic retries exhausted — extremely rare; give up (single-threaded
-        # callers already succeeded on first attempt, so this path is never hit
-        # in tests).
+        # Optimistic retries exhausted — extremely rare; log loudly instead
+        # of silently dropping the update (a dropped dispatch with zero log
+        # lines leaves Store and UI diverged invisibly).
+        logger.error(
+            "Dispatcher.dispatch exhausted 5 optimistic retries for action "
+            "%r (scope=%r) — update dropped, store left at pre-dispatch state",
+            getattr(action, "type", action),
+            scope,
+        )
+        return
 
     def subscribe(self, callback: Callable[[Action], None]) -> None:
         with self._lock:
@@ -384,6 +402,11 @@ class Dispatcher:
             return bool(self._redo_stack) and not self._busy_loading()
 
     def undo(self) -> None:
+        # Lock discipline mirrors dispatch: mutate + snapshot under the lock,
+        # emit outside it. Emitting inside the lock deadlocks a re-entrant
+        # on_change subscriber that dispatches (Lock is not re-entrant) and
+        # lets an emit exception corrupt the stacks mid-restore.
+        scopes: list[str] | None = None
         with self._lock:
             if self._busy_loading() or not self._undo_stack:
                 return
@@ -392,15 +415,19 @@ class Dispatcher:
             _type, before, _after = entry
             viewport, slots = before
             self._restore_session_state(viewport, slots)
-            self._store.emit_state_change("viewport")
             # The restored snapshot covers every registered slot — notify the
             # consumers that those scopes changed too (tabs use e.g. the
             # "document" scope to re-sync state that the reference snapshot
             # cannot carry, like a closed pixel store).
-            for name in slots:
-                self._store.emit_state_change(name)
+            scopes = ["viewport", *slots]
+        for scope in scopes:
+            try:
+                self._store.emit_state_change(scope)
+            except Exception as e:
+                logger.error(f"Error emitting state change {scope}: {e}", exc_info=True)
 
     def redo(self) -> None:
+        scopes: list[str] | None = None
         with self._lock:
             if self._busy_loading() or not self._redo_stack:
                 return
@@ -409,9 +436,12 @@ class Dispatcher:
             _type, _before, after = entry
             viewport, slots = after
             self._restore_session_state(viewport, slots)
-            self._store.emit_state_change("viewport")
-            for name in slots:
-                self._store.emit_state_change(name)
+            scopes = ["viewport", *slots]
+        for scope in scopes:
+            try:
+                self._store.emit_state_change(scope)
+            except Exception as e:
+                logger.error(f"Error emitting state change {scope}: {e}", exc_info=True)
 
     def _restore_session_state(self, viewport, slots) -> None:
         """Re-point the active session at a snapshot (mirrors dispatch's

@@ -2,13 +2,9 @@ from __future__ import annotations
 
 # Audit-Meta: pattern=state-machine size=exempt reason="one residency bookkeeping lifecycle — grids/residency/slots/interest share one (source_id, index) key space; request_level/interest are additive methods on it, not new concerns"
 
-import logging
-
 from engine.store.regions import UniformTileGrid, build_uniform_tile_grid
 from engine.cache.tile_constants import DEFAULT_TILE_EXTENT
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
-
-logger = logging.getLogger("ImproveImgSLI")
 
 __all__ = ["DEFAULT_TILE_EXTENT", "TileIndex", "TileTextureService"]
 
@@ -73,13 +69,16 @@ class _TileSlotAllocator:
             slot = (self._array_count - 1, self._next_layer_in_current_array)
             self._next_layer_in_current_array += 1
         # Invariant tripwire (phantom-hunt ic-right-image-vanish): two live
-        # keys must never share one slot. Anomaly-gated WARNING — silent
-        # unless the invariant breaks, so zero noise on healthy runs.
+        # keys must never share one slot. Fail-closed: a freed slot that is
+        # still held means a double-free/evict bookkeeping bug upstream, and
+        # silently aliasing two tiles onto one layer corrupts the frame with
+        # no log trail. The free-list entry is restored before raising so a
+        # caller that catches, evicts, and retries can make progress.
         if slot in self._slot_for_key.values():
-            logger.warning(
-                "[TileArray] alloc DUP key=%s -> slot=%s already held",
-                key,
-                slot,
+            self._free_slots.append(slot)
+            raise RuntimeError(
+                f"[TileArray] alloc DUP key={key!r} -> slot={slot!r} already held; "
+                "refusing to alias two live keys onto one layer"
             )
         self._slot_for_key[key] = slot
         return slot
@@ -93,7 +92,19 @@ class _TileSlotAllocator:
     def rekey(self, old_key: object, new_key: object) -> None:
         """Renames an already-allocated slot's key without freeing it --
         the GPU layer keeps whatever content it holds. See
-        ``TileTextureService.rekey_source``."""
+        ``TileTextureService.rekey_source``.
+
+        Fail-closed when ``new_key`` is already occupied: silently
+        overwriting it would orphan the occupant's slot (leaked layer, two
+        keys resolving to one) with no trail. Callers rekey onto fresh
+        keys (the old content's fallback/stash label); a collision means
+        the caller forgot to invalidate the target first.
+        """
+        if new_key in self._slot_for_key:
+            raise RuntimeError(
+                f"[TileArray] rekey {old_key!r} -> {new_key!r} refused: "
+                "target key already holds a slot (invalidate it first)"
+            )
         slot = self._slot_for_key.pop(old_key, None)
         if slot is not None:
             self._slot_for_key[new_key] = slot
@@ -213,7 +224,26 @@ class TileTextureService:
         *identity* change, and is blind to a same-key content swap. Calling
         this first lets the caller keep the old content reachable under a
         distinct fallback key (protected from eviction, drawable as a
-        fallback) before reusing the original id for the new source."""
+        fallback) before reusing the original id for the new source.
+
+        Evict-plus-realloc when ``new_source_id`` already has bookkeeping
+        (a stale stash/restore target): its old grid, residency, LRU state
+        and array slots are explicitly freed first via
+        ``invalidate_source`` -- never silently overwritten (which used to
+        orphan the occupant's slot mapping and leak the layer). Callers
+        rekey onto fresh keys; the eviction only fires for a genuinely
+        stale target."""
+        if (
+            new_source_id in self._grids
+            or new_source_id in self._resident
+            or new_source_id in self._interest_rects
+            or new_source_id in self._pinned
+            or any(
+                cache_key[0] == new_source_id
+                for cache_key in self._tile_byte_sizes
+            )
+        ):
+            self.invalidate_source(new_source_id)
         grid = self._grids.pop(old_source_id, None)
         if grid is not None:
             self._grids[new_source_id] = grid
@@ -312,11 +342,20 @@ class TileTextureService:
         other missing tiles (nearest-interest-center first within each
         group), so the magnifier's capture window fills in before
         surrounding margin tiles instead of competing with them under one
-        shared budget."""
+        shared budget.
+
+        ``budget`` is per key (per ``source_id``): a residency call with N
+        specs passes the same per-call count budget to each key, so one
+        call uploads up to N * ``budget`` tiles in total. The *time* budget
+        (``UploadDeadline``) is the shared one across the whole call. Both
+        paths -- under and over budget -- return tiles in the same
+        deterministic center-out order (distance from the visible-rect
+        center, ``(row, col)`` tie-break), never raw set-iteration order:
+        ``missing`` is a set whose iteration order is hash-based, so an
+        unsorted under-budget return would fill in a different-looking
+        random order from call to call."""
         if budget <= 0 or not missing:
             return []
-        if len(missing) <= budget:
-            return list(missing)
         grid = self._grids.get(source_id)
         if interest_rect is None:
             interest_rect = self._interest_rects.get(source_id)

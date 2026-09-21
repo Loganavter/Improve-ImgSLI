@@ -21,6 +21,34 @@ from plugins.onboarding.pages import build_modes, create_slide_for_mode, scale_a
 from ui.theming import resolve_theme_color
 
 
+def write_onboarding_ui_mode(store, settings_manager, mode_key: str) -> bool:
+    """Single mode-write channel for first-run onboarding.
+
+    Both ``OnboardingOverlay._finish`` and ``OnboardingPlugin._apply_ui_mode``
+    funnel here: the Store is mutated via ``Dispatcher`` (``SetUIModeAction``,
+    tracer-visible and history-recorded) and the file is written as a
+    debounced full snapshot via ``schedule_persist`` — never an incremental
+    per-key write. Returns True when the dispatch path was taken.
+
+    Degenerate hosts (unit-test doubles, teardown races) without a live
+    dispatcher fall back to persisting the raw value so the choice is not
+    lost; there is no live Store to dispatch to in that case.
+    """
+    from core.state_management.actions import SetUIModeAction
+
+    get_dispatcher = getattr(store, "get_dispatcher", None)
+    dispatcher = get_dispatcher() if callable(get_dispatcher) else None
+    if dispatcher is None or settings_manager is None:
+        if settings_manager is not None:
+            settings_manager._save_setting("ui_mode", mode_key)
+        return False
+    dispatcher.dispatch(SetUIModeAction(mode_key))
+    schedule = getattr(settings_manager, "schedule_persist", None)
+    if callable(schedule):
+        schedule(store)
+    return True
+
+
 class OnboardingOverlay(QWidget):
     completed = Signal(str)
 
@@ -405,7 +433,7 @@ class OnboardingOverlay(QWidget):
 
     def _finish(self):
         key = self.modes[self._current_index]["key"]
+        write_onboarding_ui_mode(self.store, self.settings_manager, key)
         if self.settings_manager:
-            self.settings_manager._save_setting("ui_mode", key)
             self.settings_manager.set_first_run_completed()
         self.completed.emit(key)

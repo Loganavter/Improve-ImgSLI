@@ -211,6 +211,7 @@ def make_best(owner, path: Path) -> bool:
                     it.triage_best = True
                     it.is_best = True
                     it.crown_rank = 1
+                    it.triage_rank = 1
                     it.rank = 1
                     _refresh_owner_grid(owner)
                     return True
@@ -222,8 +223,12 @@ def make_best(owner, path: Path) -> bool:
             is_target = Path(it.path) == target
             it.triage_best = bool(is_target)
             it.is_best = bool(is_target)
+            # Winner invariant (same as keep_best and VLM crowning): rank,
+            # crown_rank and triage_rank are all 1 for the winner, sequential
+            # from 2 for the rest. Never leave rank None on a crowned item.
             it.crown_rank = 1 if is_target else None
-            it.rank = None
+            it.triage_rank = 1 if is_target else None
+            it.rank = 1 if is_target else None
         except Exception:
             pass
     # Assign ranks: best =1, others = sequential
@@ -447,21 +452,29 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
                     break
             if _keeper is None:
                 _keeper = _members[0]
-            # Mark keeper best, others rejected
+            # Mark keeper best, others rejected — winner invariant: rank,
+            # crown_rank and triage_rank all 1 for the keeper (same as
+            # make_best/keep_best/VLM crowning), sequential from 2 below.
+            _rank = 2
             for _m in _members:
                 try:
                     is_k = _m is _keeper
                     _m.is_best = bool(is_k)
                     _m.triage_best = bool(is_k)  # type: ignore[attr-defined]
-                    _m.crown_rank = 1 if is_k else None
-                    _m.triage_rank = 1 if is_k else None  # type: ignore[attr-defined]
                     if is_k:
+                        _m.crown_rank = 1
+                        _m.triage_rank = 1  # type: ignore[attr-defined]
+                        _m.rank = 1
                         _m.rejected = False
                         try:
                             _m.triage_rejected = False  # type: ignore[attr-defined]
                         except Exception:
                             pass
                     else:
+                        _m.crown_rank = _rank
+                        _m.triage_rank = _rank  # type: ignore[attr-defined]
+                        _m.rank = _rank
+                        _rank += 1
                         _m.rejected = True
                         try:
                             _m.triage_rejected = True  # type: ignore[attr-defined]

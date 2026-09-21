@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
@@ -31,6 +31,11 @@ class TabTransitionHint:
 
 
 _DEFAULT_TRANSITION_HINT = TabTransitionHint()
+
+StartupTier = Literal["bootstrap", "deferred"]
+"""Valid ``TabContract.startup_tier`` values (mirrors discovery_scan.StartupTier)."""
+
+_VALID_STARTUP_TIERS = frozenset({"bootstrap", "deferred"})
 
 
 class TabContract(ABC):
@@ -90,8 +95,21 @@ class TabContract(ABC):
         """
         return False
 
-    startup_tier: str = "deferred"
+    startup_tier: StartupTier = "deferred"
     """When ``TabRegistry.discover(tier=...)`` imports this tab: ``bootstrap`` or ``deferred``."""
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        # Contract-level validation: a typo ("bootstarp") must fail loud at
+        # import time, not silently degrade to deferred discovery. Only the
+        # subclass's own assignment is checked — inheriting the default or a
+        # parent's valid tier is always fine.
+        tier = cls.__dict__.get("startup_tier", "deferred")
+        if tier not in _VALID_STARTUP_TIERS:
+            raise TypeError(
+                f"{cls.__name__}.startup_tier={tier!r} is invalid: "
+                "expected 'bootstrap' or 'deferred'"
+            )
 
     @property
     def resources_dir(self) -> Path | None:
@@ -163,6 +181,21 @@ class TabContract(ABC):
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         """Called when a session of this tab's type is closed."""
+
+    def can_close_session(self, session_id: str, context: TabContext) -> bool:
+        """Pre-close dirty gate: return False to veto closing *session_id*.
+
+        Verdict: this hook is the gate, but host close paths
+        (``SessionManager.close_session`` → ``Store.close_workspace_session``)
+        currently notify post-facto via ``on_session_closed`` and do not
+        consult it yet — wiring the consult through the registry is future
+        work. Rationale for adding the hook now rather than deferring it:
+        tabs already hold losable in-memory edits (video-editor keyframe
+        channels), so the contract must name the veto point before the
+        host can route through it. Default True (fail-open): tabs without
+        unsaved state close exactly as before.
+        """
+        return True
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         """Called when the active workspace session id changes while this tab's

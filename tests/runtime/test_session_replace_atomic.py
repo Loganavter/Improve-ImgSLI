@@ -41,7 +41,7 @@ def test_store_batch_defers_and_flushes_changes_once():
     assert final == ["image_compare"]
 
 
-def test_batch_flushes_even_when_inner_op_raises():
+def test_batch_discards_when_inner_op_raises():
     store = Store()
     changes: list[str] = []
     store.on_change(lambda scope: changes.append(scope))
@@ -59,9 +59,12 @@ def test_batch_flushes_even_when_inner_op_raises():
     except RuntimeError:
         pass
 
-    # The mutation that happened before the raise is still announced; the
-    # batch must not swallow the flush on the exception path.
-    assert changes == ["workspace", "document", "viewport"]
+    # Flush-on-success only (task-fix-store-silent-2026-09-20): a raising
+    # block discards its queued scopes instead of announcing a "coherent
+    # final state" that was never reached — listeners must not sync to a
+    # half-applied transition. (Mutations before the raise still stand;
+    # the batch defers notifications, not mutations.)
+    assert changes == []
 
 
 class _FakeSessionManager:

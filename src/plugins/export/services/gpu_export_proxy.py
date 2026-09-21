@@ -14,14 +14,122 @@ from engine.gpu.export_tiling import (
 )
 from engine.gpu.offscreen_canvas import (
     configure_offscreen_widget,
+    pump_offscreen_to_quiescence,
     render_widget_frame,
     resize_and_show_offscreen_widget,
     show_offscreen_widget,
     shutdown_offscreen_widget,
 )
+from engine.cache.image_identity import image_uid
 from engine.cache.tab_canvas_services import create_canvas_widget
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _freeze_key_component(value, _depth: int = 0):
+    """Recursive hashable freeze for throttle-key components.
+
+    Scalars pass through; containers freeze element-wise; pixel sources
+    contribute their stable ``image_uid`` (never reused, unlike ``id()``)
+    plus type/size; anything else falls back to a capped ``repr``. The
+    fallback may miss a throttle hit but can never alias two distinct
+    contents to one key.
+    """
+    if value is None or isinstance(value, (bool, int, float, str, bytes)):
+        return value
+    if isinstance(value, (tuple, list)):
+        if _depth > 4:
+            return ("len", len(value))
+        return tuple(_freeze_key_component(v, _depth + 1) for v in value)
+    if isinstance(value, dict):
+        if _depth > 4:
+            return ("len", len(value))
+        return tuple(
+            sorted(
+                (
+                    (_freeze_key_component(k, _depth + 1), _freeze_key_component(v, _depth + 1))
+                    for k, v in value.items()
+                ),
+                key=repr,
+            )
+        )
+    size = getattr(value, "size", None)
+    if size is not None or hasattr(value, "tobytes") or hasattr(value, "constBits"):
+        try:
+            uid = image_uid(value)
+        except Exception:
+            uid = None
+        try:
+            frozen_size = _freeze_key_component(
+                tuple(size) if not isinstance(size, tuple) else size, _depth + 1
+            ) if size is not None else None
+        except Exception:
+            frozen_size = None
+        return ("pixels", type(value).__name__, uid, frozen_size)
+    try:
+        return ("repr", type(value).__name__, repr(value)[:256])
+    except Exception:
+        return ("repr", type(value).__name__)
+
+
+_RENDER_SCENE_KEY_FIELDS = (
+    "blank_white",
+    "single_image_preview",
+    "clip_overlays_to_image_bounds",
+    "is_horizontal",
+    "split_position_visual",
+    "overlay_clip_rect",
+    "channel_mode_int",
+    "diff_mode_active",
+    "diff_mode_int",
+    "zoom_interpolation_method",
+    "feature_overrides",
+)
+
+
+def _render_scene_signature(scene) -> tuple:
+    if scene is None:
+        return (None,)
+    return tuple(
+        (name, _freeze_key_component(getattr(scene, name, None)))
+        for name in _RENDER_SCENE_KEY_FIELDS
+    )
+
+
+def export_grab_content_key(plan, diff_image) -> tuple:
+    """Content-identity throttle key for one export grab.
+
+    Never uses ``id()``: CPython reuses addresses after GC, so an
+    ``id(plan)`` key aliases a new same-size plan to the previous frame's
+    pixels across the 50 ms throttle window (silent wrong-image export in
+    batch runs). Every component here is content-derived (keys, sizes,
+    stable image uids, render-scene scalars).
+    """
+    try:
+        size = (int(plan.canvas_w), int(plan.canvas_h))
+    except Exception:
+        size = (0, 0)
+    return (
+        size,
+        _freeze_key_component(getattr(plan, "source_key", None)),
+        _freeze_key_component(getattr(plan, "display_cache_key", None)),
+        image_uid(getattr(plan, "image1", None)),
+        image_uid(getattr(plan, "image2", None)),
+        image_uid(getattr(plan, "source_image1", None)),
+        image_uid(getattr(plan, "source_image2", None)),
+        image_uid(diff_image),
+        _render_scene_signature(getattr(plan, "render_scene", None)),
+        _freeze_key_component(
+            (
+                getattr(plan, "output_scale", 1.0),
+                getattr(plan, "fill_rgba", None),
+                getattr(plan, "capture_visible", None),
+                getattr(plan, "guides_enabled", None),
+                getattr(plan, "guides_thickness", None),
+                getattr(plan, "preserve_zoom", None),
+            )
+        ),
+    )
 
 
 class _CanvasGoneError(RuntimeError):
@@ -157,9 +265,12 @@ class GpuExportProxy(QObject):
     ):
         from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
 
-        # Throttle duplicate grabs for identical plan within short window
+        # Throttle duplicate grabs for identical plan within short window.
+        # The key is content-identity (never id()): id() addresses are
+        # recycled after GC, so a fresh same-size plan could alias the
+        # previous frame's pixels and export the wrong image silently.
         target_widget_size = (int(plan.canvas_w), int(plan.canvas_h))
-        grab_key = (target_widget_size, id(plan), id(diff_image) if diff_image is not None else None)
+        grab_key = export_grab_content_key(plan, diff_image)
         now = time.perf_counter()
         if grab_key == self._last_grab_key and (now - self._last_grab_ts) < 0.05 and self._last_grab_image is not None:
             debug_timings["grab_throttled"] = 1.0
@@ -188,6 +299,14 @@ class GpuExportProxy(QObject):
 
         paint_started = time.perf_counter()
         self._render_widget_frame(widget)
+        # Cold-tier first frame: tile uploads are budget-limited per frame,
+        # so the grab below would read a partial tier. Pump residency to
+        # quiescence (engine primitive; no-op when already resident).
+        try:
+            pumped = pump_offscreen_to_quiescence(widget)
+        except Exception:
+            pumped = 0
+        debug_timings["export_pump_frames"] = float(pumped)
         debug_timings["rhi_render_ms"] = (
             time.perf_counter() - paint_started
         ) * 1000.0

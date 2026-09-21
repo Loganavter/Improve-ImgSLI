@@ -195,6 +195,246 @@ def test_jxl_probe_consistent_with_suffixes():
     assert pl.pyvips_can_stream("sample.jpg") == (".jpg" in pl._vips_suffixes())
 
 
+# ---------------------------------------------------------------------------
+# Task 2 (task-fix-decode-bounds-2026-09-20): JXL dims come from the header,
+# and the backend bound fires BEFORE any full-frame decode. The codestream
+# prefixes below are real ``cjxl`` output bytes (not synthesised), pinning
+# the small/big x square/rect/ratio SizeHeader paths.
+# ---------------------------------------------------------------------------
+
+_RAW_SMALL_SQUARE = bytes.fromhex("ff0a4f060013080100")  # 64x64
+_RAW_SMALL_RECT = bytes.fromhex("ff0a07c20013080100")  # 16x32 (ratio 0)
+_RAW_BIG_RECT = bytes.fromhex("ff0a2802c60c001308")  # 100x70 (ratio 0)
+_RAW_BIG_SQUARE = bytes.fromhex("ff0a3a9c1900130801")  # 5000x5000 (ratio 1)
+_RAW_BIG_641 = bytes.fromhex("ff0af08e00c5001308")  # 641x479
+
+
+def _write_jxl(path, payload: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(payload + bytes(64))
+
+
+def _box(box_type: bytes, payload: bytes) -> bytes:
+    return (len(payload) + 8).to_bytes(4, "big") + box_type + payload
+
+
+def _jxl_container(codestream: bytes, *, progressive: bool = False) -> bytes:
+    ftyp = _box(b"ftyp", b"jxl ")
+    if progressive:
+        return ftyp + _box(b"jxlp", (0).to_bytes(4, "big") + codestream)
+    return ftyp + _box(b"jxlc", codestream)
+
+
+class _BitWriter:
+    def __init__(self):
+        self._bits: list[int] = []
+
+    def write(self, count: int, value: int) -> None:
+        for i in range(count):
+            self._bits.append((value >> i) & 1)
+
+    def bytes(self) -> bytes:
+        out = bytearray((len(self._bits) + 7) // 8)
+        for i, bit in enumerate(self._bits):
+            out[i >> 3] |= bit << (i & 7)
+        return bytes(out)
+
+
+def _synth_jxl_codestream(width: int, height: int) -> bytes:
+    """Spec-mirror SizeHeader synthesis (encoder selection per libjxl Set)."""
+    ratios = ((1, 1), (12, 10), (4, 3), (3, 2), (16, 9), (5, 4), (2, 1))
+    ratio = 0
+    for index, (num, den) in enumerate(ratios, start=1):
+        if width == (height * num) // den and (height * num) % den == 0:
+            ratio = index
+            break
+    small = (
+        height <= 256
+        and height % 8 == 0
+        and (ratio != 0 or (width <= 256 and width % 8 == 0))
+    )
+    writer = _BitWriter()
+    writer.write(8, 0xFF)
+    writer.write(8, 0x0A)
+    writer.write(1, 1 if small else 0)
+    if small:
+        writer.write(5, height // 8 - 1)
+    else:
+        value = height - 1
+        widths = (9, 13, 18, 30)
+        selector = next(
+            s for s in range(4) if value < (1 << widths[s])
+        )
+        writer.write(2, selector)
+        writer.write(widths[selector], value)
+    writer.write(3, ratio)
+    if ratio == 0:
+        if small:
+            writer.write(5, width // 8 - 1)
+        else:
+            value = width - 1
+            widths = (9, 13, 18, 30)
+            selector = next(
+                s for s in range(4) if value < (1 << widths[s])
+            )
+            writer.write(2, selector)
+            writer.write(widths[selector], value)
+    return writer.bytes()
+
+
+def test_jxl_header_dimensions_from_real_cjxl_bytes(tmp_path):
+    cases = [
+        (_RAW_SMALL_SQUARE, (64, 64)),
+        (_RAW_SMALL_RECT, (16, 32)),
+        (_RAW_BIG_RECT, (100, 70)),
+        (_RAW_BIG_SQUARE, (5000, 5000)),
+        (_RAW_BIG_641, (641, 479)),
+    ]
+    for index, (prefix, dims) in enumerate(cases):
+        raw = tmp_path / f"real_raw_{index}.jxl"
+        _write_jxl(str(raw), prefix)
+        assert pl.read_jxl_header_dimensions(str(raw)) == dims
+        boxed = tmp_path / f"real_box_{index}.jxl"
+        _write_jxl(str(boxed), _jxl_container(prefix))
+        assert pl.read_jxl_header_dimensions(str(boxed)) == dims
+        partial = tmp_path / f"real_jxlp_{index}.jxl"
+        _write_jxl(str(partial), _jxl_container(prefix, progressive=True))
+        assert pl.read_jxl_header_dimensions(str(partial)) == dims
+
+
+def test_jxl_header_synth_roundtrip(tmp_path):
+    for dims in [(8, 8), (256, 256), (257, 257), (70000, 70000), (70000, 100)]:
+        stream = _synth_jxl_codestream(*dims)
+        path = tmp_path / f"synth_{dims[0]}x{dims[1]}.jxl"
+        _write_jxl(str(path), _jxl_container(stream))
+        assert pl.read_jxl_header_dimensions(str(path)) == dims
+
+
+def test_jxl_header_unreadable_returns_none(tmp_path):
+    garbage = tmp_path / "garbage.jxl"
+    garbage.write_bytes(bytes(128))
+    assert pl.read_jxl_header_dimensions(str(garbage)) is None
+    truncated = tmp_path / "truncated.jxl"
+    truncated.write_bytes(b"\xff\x0a\x28")
+    assert pl.read_jxl_header_dimensions(str(truncated)) is None
+
+
+def _install_fake_imagecodecs(monkeypatch, calls: dict):
+    import sys
+    import types
+
+    fake = types.ModuleType("imagecodecs")
+
+    def _imread(path):
+        calls["n"] += 1
+        raise AssertionError("full JXL decode must not run before the bound check")
+
+    fake.imread = _imread
+    monkeypatch.setitem(sys.modules, "imagecodecs", fake)
+    monkeypatch.setattr(pl, "JXL_SUPPORTED", True)
+    monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
+    pl._vips_suffixes_cache = frozenset()
+    return fake
+
+
+def _oversized_jxl(tmp_path, name="huge.jxl"):
+    path = tmp_path / name
+    _write_jxl(str(path), _jxl_container(_synth_jxl_codestream(70000, 70000)))
+    return str(path)
+
+
+def test_oversized_jxl_without_pyvips_raises_before_decode(monkeypatch, tmp_path):
+    """P0 repro: oversized JXL on a backend without streaming decode must
+    raise ImageSizeLimitError from the header — never reach imread (OOM)."""
+    calls = {"n": 0}
+    _install_fake_imagecodecs(monkeypatch, calls)
+    path = _oversized_jxl(tmp_path)
+
+    try:
+        pl.load_preview_image(path)
+    except pl.ImageSizeLimitError:
+        pass
+    else:
+        raise AssertionError("oversized JXL preview must raise ImageSizeLimitError")
+    assert calls["n"] == 0
+
+    try:
+        pl.get_image_dimensions(path)
+    except pl.ImageSizeLimitError:
+        pass
+    else:
+        raise AssertionError("oversized JXL dimensions must raise ImageSizeLimitError")
+    assert calls["n"] == 0
+
+    try:
+        pl.should_use_progressive_load(path)
+    except pl.ImageSizeLimitError:
+        pass
+    else:
+        raise AssertionError("oversized JXL probe must raise ImageSizeLimitError")
+
+
+def test_small_jxl_still_decodes_when_bounded(monkeypatch, tmp_path):
+    """A bounded JXL still reaches the decoder (the bound gates, not bans)."""
+    import numpy as np
+
+    calls = {"n": 0}
+    fake = _install_fake_imagecodecs(monkeypatch, calls)
+    arr = np.zeros((70, 100, 3), dtype=np.uint8)
+    arr[:, :, 0] = 200
+    fake.imread = lambda _path: (calls.__setitem__("n", calls["n"] + 1), arr)[1]
+
+    path = tmp_path / "small.jxl"
+    _write_jxl(str(path), _jxl_container(_synth_jxl_codestream(100, 70)))
+    dims = pl.get_image_dimensions(str(path))
+    assert dims == (100, 70)
+    assert calls["n"] == 0, "header dims must answer with no decode at all"
+
+
+def test_autocrop_probe_honors_bound_without_decode(monkeypatch, tmp_path):
+    """The autocrop probe must not full-decode an oversized file to look for
+    margins; a bounded file still probes normally."""
+    import sys
+    import types
+
+    import numpy as np
+
+    from shared.image_processing.autocrop import CropService
+
+    calls = {"n": 0}
+    fake = types.ModuleType("imagecodecs")
+
+    def _imread(path):
+        calls["n"] += 1
+        return np.zeros((70, 100, 3), dtype=np.uint8)
+
+    fake.imread = _imread
+    monkeypatch.setitem(sys.modules, "imagecodecs", fake)
+    monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
+    pl._vips_suffixes_cache = frozenset()
+
+    huge = _oversized_jxl(tmp_path, name="huge_crop.jxl")
+    assert CropService().get(huge) is None
+    assert calls["n"] == 0
+
+    small = tmp_path / "small_crop.jxl"
+    _write_jxl(str(small), _jxl_container(_synth_jxl_codestream(100, 70)))
+
+    bordered = np.zeros((70, 100, 3), dtype=np.uint8)
+    bordered[15:55, 20:80, :] = 200
+
+    def _imread_small(path):
+        calls["n"] += 1
+        return bordered
+
+    fake.imread = _imread_small
+    box = CropService().get(str(small))
+    assert box is not None
+    left, top, right, bottom = box.to_tuple()
+    assert left >= 15 and top >= 10 and right <= 85 and bottom <= 60
+    assert calls["n"] == 1
+
+
 def test_auto_crop_end_to_end_streaming_matches_pil(monkeypatch, tmp_path):
     """Auto-crop through the pyvips streaming path and the PIL fallback must
     agree on the crop box for the same source (the two paths use different

@@ -10,6 +10,11 @@ from core.events import (
 class WorkspaceSessionActions:
     def __init__(self, controller):
         self.controller = controller
+        # Negative cache for session types proven unknown. Safe because the
+        # type set only grows via the deferred-plugin load below (once), and
+        # entries are added only after that load has been attempted — a
+        # cached miss can never shadow a type that loads later.
+        self._unknown_session_types: set[str] = set()
 
     def list_session_blueprints(self):
         if not self.controller.session_manager:
@@ -26,6 +31,8 @@ class WorkspaceSessionActions:
     ):
         if not self.controller.session_manager:
             raise RuntimeError("SessionManager is not available")
+        if session_type in self._unknown_session_types:
+            raise ValueError(f"Session type '{session_type}' is not registered")
         # Session picker may offer deferred types before their plugins load.
         if self.controller.session_manager.get_session_blueprint(session_type) is None:
             context = getattr(self.controller, "context", None)
@@ -34,6 +41,9 @@ class WorkspaceSessionActions:
             from tabs.registry import TabRegistry
 
             TabRegistry().discover(tier="deferred")
+            if self.controller.session_manager.get_session_blueprint(session_type) is None:
+                self._unknown_session_types.add(session_type)
+                raise ValueError(f"Session type '{session_type}' is not registered")
         previous = self.controller.session_manager.get_active_session()
         previous_id = previous.id if previous is not None else None
         session = self.controller.session_manager.create_session(

@@ -264,7 +264,30 @@ def grid_content_width(panel: RecentProjectsPanel) -> int:
             width,
             int(window.width()) if window is not None else -1,
         )
-    return max(width - horizontal_margins, SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
+    return scaled_px(
+        max(_descale_px(width - horizontal_margins), SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
+    )
+
+
+def _descale_px(value: int) -> int:
+    """Device px → design px via the live UiScale factor (fail-open 1.0).
+
+    The content-width floor (``SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR``)
+    is design px; the measured width above is device px. Comparing them
+    directly under-floors at scale > 1 (device px are larger), so de-scale
+    first, floor in design space, and re-scale on return — the consumer
+    (``items_view.resolve_grid_columns``) de-scales device px back to
+    design px for the design-px card metrics. Identity at factor 1.0.
+    """
+    try:
+        from sli_ui_toolkit.managers import UiScale
+
+        factor = float(UiScale.get_instance().factor())
+    except Exception:
+        factor = 1.0
+    if not factor or factor == 1.0:
+        return int(value)
+    return int(int(value) / factor)
 
 
 def on_ui_scale_changed(panel: RecentProjectsPanel, _factor: float) -> None:

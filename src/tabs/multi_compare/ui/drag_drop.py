@@ -65,6 +65,11 @@ class DropQueue:
     :func:`drop_event`).
     """
 
+    #: Cap on total pending paths (queued + inflight). A pathological drop
+    #: (or rapid-fire drops) must not pile unbounded worker intake; the
+    #: trimmed tail is reported via the queue-full summary, never silent.
+    MAX_PENDING_PATHS = 128
+
     def __init__(self) -> None:
         from collections import deque as _dq
 
@@ -72,6 +77,16 @@ class DropQueue:
         self._inflight_slots: set[int] = set()
         self._queued_keys: set[tuple[int, str]] = set()
         self._inflight_keys: set[tuple[int, str]] = set()
+
+    def _pending_path_count(self) -> int:
+        try:
+            queued = sum(len(paths) for _, paths, _, _, _ in self._queue)
+        except Exception:
+            queued = len(self._queue)
+        try:
+            return queued + len(self._inflight_keys)
+        except Exception:
+            return queued
 
     def enqueue(self, anchor_slot: int | None, paths, widget, target, side) -> bool:
         slot = int(anchor_slot) if anchor_slot is not None else 0
@@ -87,6 +102,19 @@ class DropQueue:
         if not uniq:
             _dnd_log("DropQueue enqueue slot=%s -> all deduped, skip", slot)
             return False
+        budget = self.MAX_PENDING_PATHS - self._pending_path_count()
+        if budget < len(uniq):
+            dropped = uniq[max(budget, 0):]
+            uniq = uniq[:max(budget, 0)]
+            for raw in dropped:
+                self._queued_keys.discard((slot, _normpath_str(raw)))
+            _dnd_log(
+                "DropQueue cap slot=%s: queued %d, dropped %d (max %d)",
+                slot, len(uniq), len(dropped), self.MAX_PENDING_PATHS,
+            )
+            _emit_dnd_overflow_summary(widget, dropped, reason="queue_full")
+            if not uniq:
+                return False
         self._queue.append((slot, uniq, widget, target, side))
         _dnd_log(
             "DropQueue enqueue slot=%s paths=%s queued=%s inflight=%s",
@@ -151,6 +179,79 @@ _drop_queue = DropQueue()
 
 def get_drop_queue() -> DropQueue:
     return _drop_queue
+
+
+def _dnd_grid_full_message(widget, overflow) -> str:
+    """Grid-full summary wording (house shape, ``loading`` parity).
+
+    Reads capacity off the widget state drag_drop always has (never the
+    controller's widget — menu/dnd fakes may lack it); prefers the
+    widget's own translator for the ``msg.compare_grid_full`` key.
+    """
+    try:
+        max_slots = widget.state.max_slots
+    except Exception:
+        max_slots = None
+    default = (
+        f"Comparison grid is full ({max_slots} images max)"
+        if max_slots is not None
+        else "Comparison grid is full"
+    )
+    try:
+        translate = getattr(widget, "_translate", None)
+        reason = translate("msg.compare_grid_full", default) if callable(translate) else default
+    except Exception:
+        reason = default
+    count = len(overflow)
+    count_word = "1 file" if count == 1 else f"{count} files"
+    shown = [
+        Path(p).name if not isinstance(p, Path) else p.name
+        for p in list(overflow)[:5]
+    ]
+    extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
+    names = ", ".join(shown)
+    return f"{reason}: {count_word} not added — {names}{extra}"
+
+
+def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "grid_full") -> None:
+    """One summary per gesture for capped/dropped DnD intake (no dialog flood).
+
+    Single channel: the controller's ``report_user_error`` (bus dialog by
+    house policy, loud-log fallback inside). No controller (headless
+    fakes) → loud log here, never silent, never raising.
+    """
+    if not overflow:
+        return
+    try:
+        ctrl = getattr(widget, "_controller", None)
+    except Exception:
+        ctrl = None
+    report = getattr(ctrl, "report_user_error", None)
+    if not callable(report):
+        logger.warning(
+            "mc dnd %s overflow: %d file(s) not queued", reason, len(overflow)
+        )
+        return
+    try:
+        if reason == "grid_full":
+            message = _dnd_grid_full_message(widget, overflow)
+        else:
+            count = len(overflow)
+            shown = [
+                Path(p).name if not isinstance(p, Path) else p.name
+                for p in list(overflow)[:5]
+            ]
+            extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
+            names = ", ".join(shown)
+            message = (
+                f"Drop queue is full ({DropQueue.MAX_PENDING_PATHS} pending max): "
+                f"{count} file{'s' if count != 1 else ''} not queued — {names}{extra}"
+            )
+        report(message)
+    except Exception:
+        logger.exception(
+            "mc dnd %s overflow summary failed for %d file(s)", reason, len(overflow)
+        )
 
 
 def has_image_urls(mime) -> bool:
@@ -641,16 +742,30 @@ def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop:
         )
         _timing_emit(widget, "drop")
         if paths:
-            # Pure-placement anchor for the DropQueue slot key: first leaf
-            # under the resolved target (0 for root/empty) — tree data in,
-            # no live-canvas read. A rapid double-drop of the same file
-            # dedups on (anchor, normpath) instead of double-loading.
-            anchor = _placement.anchor_slot_for_path(widget.state.root, tgt_path)
-            queued = get_drop_queue().enqueue(
-                anchor, paths, widget, (tgt_path, root_tgt), side
-            )
-            if not queued:
-                _dnd_log("drop external deduped (all files already queued/inflight)")
+            try:
+                _state = widget.state
+                _remaining = _state.max_slots - len(_state.slots)
+            except Exception:
+                _remaining = None
+            if _remaining is not None and _remaining <= 0:
+                # Grid already full: don't enqueue work the planner will
+                # reject file-by-file — one summary now instead of N
+                # downstream no-ops.
+                _dnd_log(
+                    "drop external ignored (grid full, %d files)", len(paths)
+                )
+                _emit_dnd_overflow_summary(widget, paths, reason="grid_full")
+            else:
+                # Pure-placement anchor for the DropQueue slot key: first leaf
+                # under the resolved target (0 for root/empty) — tree data in,
+                # no live-canvas read. A rapid double-drop of the same file
+                # dedups on (anchor, normpath) instead of double-loading.
+                anchor = _placement.anchor_slot_for_path(widget.state.root, tgt_path)
+                queued = get_drop_queue().enqueue(
+                    anchor, paths, widget, (tgt_path, root_tgt), side
+                )
+                if not queued:
+                    _dnd_log("drop external deduped (all files already queued/inflight)")
         else:
             _dnd_log("drop external ignored (no supported image files)")
     except Exception:

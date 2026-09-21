@@ -1,4 +1,5 @@
 import logging
+import os
 import traceback
 
 from PySide6.QtCore import QObject, QPoint, Qt, QTimer
@@ -47,6 +48,13 @@ def _dbg_overlay_state(widget) -> str:
         return f"canvas_vis={c_vis} widget_vis={w_vis} canvas_geom={c_geom}"
     except Exception as e:
         return f"err:{e}"
+
+def _active_session_id_quiet(store):
+    try:
+        return getattr(store.get_active_workspace_session(), "id", None)
+    except Exception:
+        return None
+
 
 class WindowEventHandler(QObject):
     def __init__(self, store, main_controller, widget, parent=None):
@@ -148,6 +156,29 @@ class WindowEventHandler(QObject):
         except Exception:
             pass
 
+    def _tab_accepts_drop(self, event) -> bool | None:
+        """Active-tab consent: True / False (declined — do not accept) /
+        None (indeterminate — fail-open, legacy path decides)."""
+        try:
+            mime = event.mimeData()
+            if mime is None or not mime.hasUrls():
+                return None
+            urls = mime.urls()
+            paths = [u.toLocalFile() for u in urls if u.isLocalFile()]
+            paths = [p for p in paths if p]
+            session = self.store.get_active_workspace_session()
+            if session is None:
+                return None
+            registry = getattr(getattr(self.main_window, "ui", None), "_tab_registry", None)
+            tab = registry.get_tab(session.session_type) if registry else None
+            if tab is None:
+                return None
+            from pathlib import Path
+            return bool(tab.accepts_drop([Path(p) for p in paths]))
+        except Exception:
+            logger.exception("WindowEventHandler._tab_accepts_drop probe failed")
+            return None
+
     def handle_drag_enter(self, event: QDragEnterEvent):
         # DEBUG: log every enter with full overlay state to diagnose "still blocks"
         _dnd_debug(
@@ -157,15 +188,13 @@ class WindowEventHandler(QObject):
             self._drag_leave_timer.isActive(),
             stack=True,
         )
-        # Phase-alignment probe (IMGSLI_DND_ENTER_DELAY_MS): with DND_DEBUG
-        # the enter path spends ~15 ms in traceback.format_stack and display
-        # goes instant; without it the first commit races mutter's grab setup
-        # and loses (~350 ms stall). A calibrated synchronous delay tests
-        # whether timing alone (no logs) reproduces the instant case.
+        # DEBUG-ONLY phase probe, honored under IMGSLI_DND_DEBUG (prod never sleeps).
         try:
-            import os as _os2
-
-            _enter_delay = float(_os2.environ.get("IMGSLI_DND_ENTER_DELAY_MS", "0") or 0)
+            _enter_delay = (
+                float(os.environ.get("IMGSLI_DND_ENTER_DELAY_MS", "0") or 0)
+                if _env_flag("IMGSLI_DND_DEBUG")
+                else 0.0
+            )
         except Exception:
             _enter_delay = 0.0
         if _enter_delay > 0:
@@ -176,6 +205,10 @@ class WindowEventHandler(QObject):
             except Exception:
                 pass
         if event.mimeData().hasUrls():
+            if self._tab_accepts_drop(event) is False:
+                _dnd_debug("handle_drag_enter IGNORE active tab declined drop")
+                event.ignore()
+                return
             was_visible = getattr(self.widget, "is_drag_overlay_visible", lambda: "?")()
             self._drag_leave_timer.stop()
             event.setDropAction(Qt.DropAction.CopyAction)
@@ -269,6 +302,10 @@ class WindowEventHandler(QObject):
 
     def handle_drag_move(self, event: QDragMoveEvent):
         if event.mimeData().hasUrls():
+            if self._tab_accepts_drop(event) is False:
+                _dnd_debug("handle_drag_move IGNORE active tab declined drop")
+                event.ignore()
+                return
             self._drag_leave_timer.stop()
             # DEBUG: log if overlay should be visible but isn't (input blocked)
             try:
@@ -374,16 +411,27 @@ class WindowEventHandler(QObject):
 
             event.acceptProposedAction()
 
-            QTimer.singleShot(
-                150,
-                lambda: (
-                    self.main_controller.sessions.load_images_from_paths(
-                        image_paths, slot
-                    )
-                    if self.main_controller and self.main_controller.sessions
-                    else None
-                ),
-            )
+            # Pin drop-time session id: no cross-session load after a switch.
+            drop_session_id = _active_session_id_quiet(self.store)
+
+            def _fallback_load() -> None:
+                try:
+                    controller = self.main_controller
+                    try:
+                        sessions = getattr(controller, "sessions", None)
+                    except RuntimeError:
+                        sessions = None  # dead QObject controller
+                    if sessions is None:
+                        return
+                    current_id = _active_session_id_quiet(self.store)
+                    if drop_session_id is not None and current_id != drop_session_id:
+                        _dnd_debug("drop fallback skipped: switched %s->%s", drop_session_id, current_id)
+                        return
+                    sessions.load_images_from_paths(image_paths, slot)
+                except Exception:
+                    logger.exception("WindowEventHandler drop fallback failed")
+
+            QTimer.singleShot(150, _fallback_load)
         else:
             event.ignore()
 

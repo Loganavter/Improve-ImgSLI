@@ -74,7 +74,9 @@ class SettingsDialog(ThemedDialog):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
         self.setObjectName("SettingsDialog")
-        self.tr = tr_func if callable(tr_func) else app_tr
+        # Never assign to ``self.tr`` — QObject.tr() is Qt's own API and
+        # shadowing it makes translations look like raw keys.
+        self._tr_func = tr_func if callable(tr_func) else app_tr
         self.current_language = current_language
         self.theme_manager = ThemeManager.get_instance()
         self.context = SettingsDialogContext(
@@ -85,7 +87,7 @@ class SettingsDialog(ThemedDialog):
             max_limit=max_limit,
             debug_mode_enabled=debug_mode_enabled,
             system_notifications_enabled=system_notifications_enabled,
-            tr_func=self.tr,
+            tr_func=self._tr_func,
             current_ui_font_mode=current_ui_font_mode,
             current_ui_font_family=current_ui_font_family,
             current_ui_scale_factor=current_ui_scale_factor,
@@ -112,7 +114,7 @@ class SettingsDialog(ThemedDialog):
         )
         self._custom_group_widget_cls = CustomGroupWidget
 
-        self.setWindowTitle(self.tr("misc.settings", self.current_language))
+        self.setWindowTitle(self._tr("misc.settings", self.current_language))
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowTitleHint
@@ -125,7 +127,7 @@ class SettingsDialog(ThemedDialog):
         self.main_layout = QHBoxLayout(self)
         setup_dialog_shell(self)
         from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
-        decorate_dialog(self, title=self.tr("misc.settings", self.current_language))
+        decorate_dialog(self, title=self._tr("misc.settings", self.current_language))
         install_dialog_help_menu(self, page="settings")
         self.active_tab = active_tab
         self._search_mode = False
@@ -145,6 +147,10 @@ class SettingsDialog(ThemedDialog):
 
         # Stay open after Apply — retranslate chrome when language is confirmed.
         translation_events().language_changed.connect(self.update_language)
+
+    def _tr(self, key: str, language: str | None = None) -> str:
+        """Instance translator that never shadows ``QObject.tr``."""
+        return self._tr_func(key, language or self.current_language)
 
     def select_section(self, section_id: str) -> None:
         """Select a sidebar page by ``SettingsSection.section_id``."""
@@ -246,7 +252,7 @@ class SettingsDialog(ThemedDialog):
         self._search_clear_timer.timeout.connect(self.clear_search)
         self.search_field.textChanged.connect(self._on_search_text_changed)
         self.sidebar.set_no_results_text(
-            self.tr("settings.search_no_results", self.current_language)
+            self._tr("settings.search_no_results", self.current_language)
         )
         self._search_escape = QShortcut(
             QKeySequence(Qt.Key.Key_Escape), self.search_field
@@ -470,10 +476,10 @@ class SettingsDialog(ThemedDialog):
         except Exception:
             logger.exception("Settings keyboard page retranslation failed")
         self.search_field.setPlaceholderText(
-            self.tr("settings.search_placeholder", self.current_language)
+            self._tr("settings.search_placeholder", self.current_language)
         )
         self.sidebar.set_no_results_text(
-            self.tr("settings.search_no_results", self.current_language)
+            self._tr("settings.search_no_results", self.current_language)
         )
         self._setup_sidebar_items()
         curr = self.sidebar.currentRow()
@@ -613,12 +619,26 @@ class SettingsDialog(ThemedDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._pin_window_minimum()
         # Retry once after the Wayland configure round-trip: the first call
         # may run before the native window is mapped. Guards inside
         # ``focus_initial_widget`` keep pending ticks from a dialog that was
         # deleteLater'd safe (the field may already be gone).
         QTimer.singleShot(0, self.focus_initial_widget)
         QTimer.singleShot(60, self.focus_initial_widget)
+
+    def _pin_window_minimum(self) -> None:
+        """Re-pin the QWindow minimum to the current widget minimum.
+
+        Post-apply re-pins are issued by the dialog manager (see
+        ``DialogManager._pin_dialog_minimum``); this covers the show path.
+        """
+        try:
+            handle = self.windowHandle()
+        except RuntimeError:
+            return
+        if handle is not None:
+            handle.setMinimumSize(self.minimumSize())
 
     def clear_input_focus(self):
         focused_widget = self.focusWidget()
