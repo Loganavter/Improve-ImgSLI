@@ -295,6 +295,14 @@ class MainWindowStartupController:
             window.size().toTuple(),
             window.isMaximized(),
         )
+        # SLI_FOCUS_DEBUG=1: trace every focus transition from here on,
+        # including the initial focus move below.
+        try:
+            from ui.focus_debug import install_focus_tracer
+        except Exception:
+            pass
+        else:
+            install_focus_tracer()
         # Ensure initial focus lands on the tab strip add button, not on a
         # CSD menu trigger (which is now StrongFocus after keyboard nav was
         # added to the title bar).
