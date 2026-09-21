@@ -79,6 +79,18 @@ def _app_snapshot() -> str:
         return "app_active=? app_modal=? app_focus=?"
 
 
+def _state_value(state) -> str:
+    """Hex of a Qt state flag. PySide6 flag enums reject plain int()."""
+    try:
+        return f"0x{int(state):x}"
+    except Exception:
+        pass
+    try:
+        return f"0x{int(state.value):x}"
+    except Exception:
+        return "?"
+
+
 def _state_bits(window) -> str:
     """Compact ``windowState`` bits; supplements the lagging ``isMinimized`` poll."""
     if Qt is None:
@@ -106,7 +118,13 @@ def _state_bits(window) -> str:
                 bits.append("active")
         except Exception:
             pass
-        return f"state=0x{int(state):x}[{'+'.join(bits) if bits else 'normal'}]"
+        return f"state={_state_value(state)}[{'+'.join(bits) if bits else 'normal'}]"
+    except Exception:
+        pass
+    try:  # QWindow and friends expose visibility() instead of windowState().
+        vis = window.visibility()
+        name = vis.name if hasattr(vis, "name") else vis
+        return f"vis={name}"
     except Exception:
         return "state=?"
 
@@ -119,7 +137,13 @@ def _describe(widget) -> str:
         name = widget.objectName() or "<noname>"
         wid = f"0x{id(widget):x}"
         stamp = f"{time.monotonic():.3f}"
-        window = widget.window()
+        window = None
+        try:
+            window = widget.window()
+        except Exception:
+            window = None
+        if window is None and hasattr(widget, "isVisible"):
+            window = widget  # top-level QWindow and friends have no .window().
         if window is None:
             return f"{cls}#{name} id={wid} (no-window) {_app_snapshot()} t={stamp}"
         try:
@@ -166,8 +190,7 @@ if QObject is not None and QEvent is not None:
             try:
                 if event.type() == QEvent.Type.WindowStateChange:
                     try:
-                        old = event.oldState()
-                        old_txt = f"0x{int(old):x}"
+                        old_txt = _state_value(event.oldState())
                     except Exception:
                         old_txt = "?"
                     focus_debug(
