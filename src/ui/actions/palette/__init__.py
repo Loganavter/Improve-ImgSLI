@@ -55,11 +55,13 @@ def show_command_palette(
     auto_pulse: bool = False,
     active_tab: str | None = None,
 ) -> None:
-    # ``parent`` is only a geometry hint (center on its screen); ownership stays
-    # with a root-level window so the palette is not a child/transient popup.
+    # Transient-parent to the focused/main window (not a root-level orphan):
+    # an attached dialog of the focused window activates freely under
+    # xdg-activation; ``parent`` doubles as the centering reference.
     # Prefer the parent dialog's tab override when opening from Video/Export.
     if active_tab is None and parent is not None:
         active_tab = getattr(parent, "_find_action_owner_tab", None)
+    owner = _transient_owner(parent)
     refresh_open_dialog_find_actions()
     if parent is not None:
         contribute = getattr(parent, "_contribute_find_actions", None)
@@ -73,7 +75,7 @@ def show_command_palette(
                     exc_info=True,
                 )
     dialog = FindActionDialog(
-        None,
+        owner,
         query=query,
         topic=topic,
         preselect_action_id=preselect_action_id,
@@ -82,6 +84,25 @@ def show_command_palette(
     )
     center_on_reference(dialog, parent)
     dialog.exec()
+
+
+def _transient_owner(reference: QWidget | None) -> QWidget | None:
+    """Resolve the palette's transient parent: reference window, else active."""
+    if reference is not None:
+        try:
+            window = reference.window()
+        except RuntimeError:
+            window = None
+        return window if window is not None else reference
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            return app.activeWindow()
+    except RuntimeError:
+        pass
+    return None
 
 
 def center_on_reference(dialog: QWidget, reference: QWidget | None) -> None:

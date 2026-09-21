@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
@@ -21,6 +21,18 @@ from tabs.image_compare.plugins.video_editor.services.recorder import Recorder
 from tabs.image_compare.plugins.video_editor.services.recording_flow import RecordingFlow
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _transient_parent_for(main_window_app: Any) -> Any:
+    """Resolve the transient parent: main window, else the active window."""
+    if isinstance(main_window_app, QWidget):
+        return main_window_app
+    try:
+        app = QApplication.instance()
+        active = app.activeWindow() if app is not None else None
+    except RuntimeError:
+        active = None
+    return active
 
 
 @plugin(name="video_editor", version="1.0", startup_tier="deferred", startup_order=0)
@@ -77,7 +89,10 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
                 snapshots,
                 export_controller,
                 main_window_app,
-                parent=None,
+                # Transient-parent to the main window (Export dialog pattern):
+                # an attached dialog of the focused window activates freely,
+                # a parentless top-level mapped a turn later is denied.
+                parent=_transient_parent_for(main_window_app),
             )
             self._editor_dialog = dialog
             dialog.destroyed.connect(self._forget_editor)

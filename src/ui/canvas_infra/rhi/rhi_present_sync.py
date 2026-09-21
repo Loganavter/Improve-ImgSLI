@@ -76,20 +76,22 @@ def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
 
 
 def flush_qrhi_compositor(
-    widget: QWidget | None, *, reason: str = "", activate: bool = True,
+    widget: QWidget | None, *, reason: str = "", activate: bool = False,
     chrome: bool = True,
 ) -> None:
     """One-shot present + window update mirroring the first-flyout restack.
 
-    ``activate=False`` skips the ``ensure_window_active_for_qrhi`` kick
-    (``raise_`` + ``activateWindow``) — mandatory on reactive paths where
-    the user is interacting with *another* app, e.g. an external drag
-    whose pointer/keyboard focus belongs to the file manager. On Wayland
-    such a kick is a guaranteed-denied xdg-activation request: Mutter
-    marks our (obscured) window demanding-attention and pops the
-    «Окно "Improve-ImgSLI" ожидает» banner instead of activating
-    (see internal-docs ``inv-flyout-wayland`` rule: never restore focus
-    outside a genuine user interaction with our own window).
+    ``activate`` defaults to ``False``: the kick (``raise_`` +
+    ``activateWindow``) is an xdg-activation request that goes stale across
+    event-loop turns — on reactive paths (gesture settle, first-present,
+    drag restack) the token postdates the user gesture, so Wayland denies it
+    and marks our window demanding-attention instead of activating. Pass
+    ``activate=True`` only on a genuine user-gesture path with our window
+    focused (e.g. an RMB context-menu open), mirroring the mandatory
+    ``activate=False`` on external-drag paths where pointer/keyboard focus
+    belongs to the file manager (see below).
+
+    ``chrome=False`` skips the full-window/parent/overlay repaints and
 
     ``chrome=False`` skips the full-window/parent/overlay repaints and
     keeps only the window-handle ``requestUpdate`` + widget update — the

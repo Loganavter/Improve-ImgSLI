@@ -104,6 +104,12 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "entirely when values are unchanged), image_compare magnifier "
         "geometry as the exercised call site"
     ),
+    "tests/runtime/test_dialog_activation_parenting.py": (
+        "cross-cutting Wayland activation contract (transient parents, no "
+        "deferred activation ticks) spanning host plugins, palette, and the "
+        "image_compare video editor; splitting per-tab would defeat the "
+        "single-contract purpose"
+    ),
 }
 
 

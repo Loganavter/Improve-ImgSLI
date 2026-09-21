@@ -306,12 +306,10 @@ class HelpDialog(ThemedDialog):
                         pass
                     target.setFocus(Qt.FocusReason.OtherFocusReason)
                 elif win is not None and _isValid(win):
-                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
-                        request_window_activation,
-                    )
-
-                    request_window_activation(win, reason="help-hide-restore")
-                    # Фолбэк — последний клавиатурный фокус внутри окна
+                    # Widget-level setFocus only — no request_window_activation:
+                    # a hide-time activation tick lands a turn after the user
+                    # gesture, its xdg token is stale, and the compositor
+                    # parks the host as demanding-attention instead.
                     try:
                         from sli_ui_toolkit.managers import NavigationManager
 
@@ -323,20 +321,16 @@ class HelpDialog(ThemedDialog):
                     except Exception:
                         win.setFocus(Qt.FocusReason.OtherFocusReason)
                 else:
-                    # Последний фолбэк — первое topLevel MainWindow
-                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
-                        request_window_activation,
-                    )
-
+                    # Последний фолбэк — первое topLevel MainWindow (setFocus —
+                    # виджетный фокус без токена активации, без тиков).
                     for w in QApplication.topLevelWidgets():  # ALLOWED: focus-fallback — generic top-level MainWindow activation, not tab-specific
                         if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
-                            request_window_activation(w, reason="help-hide-fallback")
                             w.setFocus(Qt.FocusReason.OtherFocusReason)
                             break
                     else:
                         aw = QApplication.activeWindow()
                         if aw is not None and _isValid(aw):
-                            request_window_activation(aw, reason="help-hide-fallback")
+                            aw.setFocus(Qt.FocusReason.OtherFocusReason)
         except Exception:
             pass
         super().hideEvent(event)

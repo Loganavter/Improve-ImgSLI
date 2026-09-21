@@ -100,8 +100,10 @@ def open_help_page(
 class FindActionDialog(ThemedDialog):
     """Searchable action palette — Enter runs, Esc closes, ↑↓ moves selection.
 
-    Always a top-level ``Window`` (no parent / no Dialog·Popup·Tool hints) so
-    the compositor does not treat it as a transient popup of the main window.
+    A top-level ``Window`` (never Dialog·Popup·Tool hints) transient-parented
+    to the focused/main window, so the compositor activates it freely under
+    xdg-activation instead of denying a parentless top-level mapped a turn
+    after the user gesture.
     """
 
     def __init__(
@@ -114,9 +116,10 @@ class FindActionDialog(ThemedDialog):
         auto_pulse: bool = False,
         active_tab: str | None = None,
     ) -> None:
-        # Keep parentless so Wayland/X11 do not create a transient-for link.
-        del parent
-        super().__init__(None)
+        # Keep the transient parent (Window flag stays — not a popup); only
+        # the Dialog/Sheet/Tool/Popup bits are stripped in
+        # _apply_independent_window_flags.
+        super().__init__(parent)
         self._find_action_nav_section = None
         self._topic = topic
         self._preselect_action_id = preselect_action_id

@@ -197,8 +197,8 @@ class DialogManager:
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
-        # The dialog itself requests Wayland activation + search-field focus
-        # in showEvent (deferred until the native window is mapped) — see
+        # The dialog itself moves widget focus to the search field
+        # synchronously in showEvent (no deferred activation ticks) — see
         # SettingsDialog.showEvent / focus_initial_widget.
         if section_id:
             dialog.select_section(section_id)

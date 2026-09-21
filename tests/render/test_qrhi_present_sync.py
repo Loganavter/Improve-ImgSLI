@@ -52,16 +52,17 @@ def test_ensure_window_active_noop_when_already_active(qapp, monkeypatch):
     widget.close()
 
 
-def test_flush_skips_activation_kick_when_activate_false(qapp, monkeypatch):
-    """Drag-safe flush must not raise_/activateWindow (Wayland banner).
+def test_flush_skips_activation_kick_by_default(qapp, monkeypatch):
+    """Flush must not raise_/activateWindow unless asked (Wayland banner).
 
-    Regression for the IC DnD show edge: ``flush_qrhi_compositor`` with
-    the default ``activate=True`` kicked ``ensure_window_active_for_qrhi``
-    while the drag source owned pointer/keyboard focus — a
-    guaranteed-denied xdg-activation request that Mutter answers with
+    Regression for the IC DnD show edge and the gesture-settle path:
+    ``flush_qrhi_compositor`` kicking ``ensure_window_active_for_qrhi``
+    while the drag source (or a past gesture) owns pointer/keyboard focus
+    is a guaranteed-denied xdg-activation request that Mutter answers with
     the «Окно "Improve-ImgSLI" ожидает» banner (internal-docs
-    inv-flyout-wayland rule). ``activate=False`` keeps the
-    present + update churn but drops the kick.
+    inv-flyout-wayland rule). The default keeps the present + update churn
+    but drops the kick; only an explicit ``activate=True`` on a genuine
+    user-gesture path kicks.
     """
     from PySide6.QtCore import Qt
 
@@ -83,5 +84,8 @@ def test_flush_skips_activation_kick_when_activate_false(qapp, monkeypatch):
     assert kicks == []
 
     sync.flush_qrhi_compositor(widget, reason="ic-zoom")
+    assert kicks == []
+
+    sync.flush_qrhi_compositor(widget, reason="mc-rmb-menu", activate=True)
     assert kicks == [True]
     widget.close()

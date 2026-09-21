@@ -318,7 +318,21 @@ def open_non_modal_message(
     text: str,
     ok_text: str = "OK",
 ) -> AppMessageDialog:
-    """Show a non-blocking alert; caller may track lifetime if needed."""
+    """Show a non-blocking alert; caller may track lifetime if needed.
+
+    Never maps parentless: a ``None`` parent falls back to the active window
+    so the dialog stays transient of the focused window (xdg-activation
+    grants attached dialogs freely; parentless top-levels mapped off-gesture
+    are denied and park the host as demanding-attention).
+    """
+    if parent is None:
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            parent = app.activeWindow() if app is not None else None
+        except RuntimeError:
+            parent = None
     dialog = AppMessageDialog(
         parent,
         kind=kind,

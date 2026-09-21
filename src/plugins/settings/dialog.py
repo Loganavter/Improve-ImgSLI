@@ -586,12 +586,13 @@ class SettingsDialog(ThemedDialog):
         super().mousePressEvent(event)
 
     def focus_initial_widget(self) -> None:
-        """Give keyboard focus to the search field once the window is mapped.
+        """Give keyboard focus to the search field (widget-level only).
 
-        Called deferred (``QTimer.singleShot(0, …)``) from the show path:
-        Wayland compositors fire a "window opened" notification when a window
-        appears without keyboard focus, and ``setFocus`` on an unmapped
-        window is silently dropped.
+        Synchronous ``setFocus`` on the field consumes no xdg-activation
+        token, so this runs inline from the show path — no ``requestActivate``
+        and no ``singleShot`` retry ticks. Deferred window activation goes
+        stale across event-loop turns on Wayland and the compositor answers
+        with a demanding-attention banner instead of focus.
         """
         try:
             from shiboken6 import isValid  # type: ignore[attr-defined]
@@ -603,29 +604,17 @@ class SettingsDialog(ThemedDialog):
                 return
         except ImportError:
             field = getattr(self, "search_field", None)
-        # The native-handle activation request is what Wayland composites
-        # (KDE: the "window opened" notification fires when a window maps
-        # without one). ``activateWindow()`` alone can be a no-op while the
-        # platform window is still being mapped.
-        handle = self.windowHandle()
-        if handle is not None:
-            try:
-                if isValid(handle):
-                    handle.requestActivate()
-            except RuntimeError:
-                pass
         if field is not None and self.isVisible():
             field.setFocus()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._pin_window_minimum()
-        # Retry once after the Wayland configure round-trip: the first call
-        # may run before the native window is mapped. Guards inside
-        # ``focus_initial_widget`` keep pending ticks from a dialog that was
-        # deleteLater'd safe (the field may already be gone).
-        QTimer.singleShot(0, self.focus_initial_widget)
-        QTimer.singleShot(60, self.focus_initial_widget)
+        # Synchronous widget focus only — widget ``setFocus`` needs no
+        # compositor round-trip, so no deferred ticks here. (Window
+        # activation for the show itself is the caller's synchronous
+        # show/raise/activateWindow on the user gesture.)
+        self.focus_initial_widget()
 
     def _pin_window_minimum(self) -> None:
         """Re-pin the QWindow minimum to the current widget minimum.

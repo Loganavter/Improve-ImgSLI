@@ -41,16 +41,25 @@ class HelpPlugin(Plugin, IControllablePlugin):
         video_url: str | None = None,
         learn_more_url: str | None = None,
     ) -> None:
-        # Never Qt-parent Help to the main window. A transient-for link makes
-        # the WM raise the whole main-window group when Help activates, which
-        # buries independent top-levels like Video Editor / Export.
-        # ``parent`` is kept as a geometry hint only (centering).
-        del parent
+        # Transient-parent Help to the calling window (Export dialog pattern:
+        # parent=self.host.parent_widget in dialog_manager). An attached
+        # dialog of the focused window activates freely under xdg-activation,
+        # while a parentless top-level reached a turn later is denied and the
+        # compositor parks the host as demanding-attention.
+        host = parent
+        if host is None:
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                app = QApplication.instance()
+                host = app.activeWindow() if app is not None else None
+            except RuntimeError:
+                host = None
         if self._dialog is None:
             self._dialog = HelpDialog(
                 current_language=language,
                 app_name="Improve-ImgSLI",
-                parent=None,
+                parent=host,
             )
             self._dialog.destroyed.connect(self._on_dialog_destroyed)
 
