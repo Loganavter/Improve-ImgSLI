@@ -106,6 +106,7 @@ class RecentItemsView(QWidget):
         root.setSpacing(0)
 
         scroll = OverlayScrollArea(self)
+        scroll.setObjectName("recent-scroll-area")
         scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         scroll.setFixedHeight(
             scroll_viewport_height(content_rows=1, card_h=GRID_CARD_H)
@@ -118,6 +119,7 @@ class RecentItemsView(QWidget):
         self.scroll_area = scroll
 
         self.items_host = OpaqueFillHost()
+        self.items_host.setObjectName("recent-items-host")
         self.items_host.setAcceptDrops(True)
         self.items_host.setMouseTracking(True)
         self.items_host.installEventFilter(self)

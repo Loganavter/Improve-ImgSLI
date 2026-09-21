@@ -97,6 +97,10 @@ class ExportDialog(ThemedDialog):
                     self._preview_source_pixmap = None
 
         self._init_ui()
+        # Stable focus-attribution names (focus-debug tracer): override the
+        # shared OutputPathSection generics with export-specific names.
+        self.edit_dir.setObjectName("export-dir")
+        self.edit_name.setObjectName("export-name")
         self._bind_translations()
         self._reapply_bound_texts()
         self.install_dialog_geometry(self._apply_dialog_geometry)

@@ -159,6 +159,8 @@ class ShelfWidget(QWidget):
         super().__init__(parent)
         self._surface_token = surface_token
         self._content_well = bool(content_well)
+        if not self.objectName():
+            self.setObjectName("shelf-widget")
         self._theme_manager = ThemeManager.get_instance()
         self._theme_manager.theme_changed.connect(self._on_shelf_theme_changed)
 
@@ -188,6 +190,7 @@ class ShelfWidget(QWidget):
         self._root.setSpacing(scaled_px(SHELF_SPACING))
 
         self._header_host = QWidget(self)
+        self._header_host.setObjectName("shelf-header-host")
         self._header_host.setAutoFillBackground(False)
         self._header_layout = QHBoxLayout(self._header_host)
         self._header_layout.setContentsMargins(0, 0, 0, 0)
@@ -196,6 +199,7 @@ class ShelfWidget(QWidget):
         self._root.addWidget(self._header_host)
 
         self._content_host = QWidget(self)
+        self._content_host.setObjectName("shelf-content-host")
         self._content_host.setAutoFillBackground(False)
         self._content_layout = QVBoxLayout(self._content_host)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
@@ -213,6 +217,7 @@ class ShelfWidget(QWidget):
             self._shelf_title_label = Label(
                 text, self._header_host, pixel_size=16, bold=True
             )
+            self._shelf_title_label.setObjectName("shelf-title")
             self._header_layout.insertWidget(0, self._shelf_title_label)
         else:
             self._shelf_title_label.setText(text)

@@ -456,12 +456,14 @@ class HelpDialog(ThemedDialog):
         )
         self.nav_widget = self.shell.sidebar
         self.nav_widget.enable_minimal_scrollbar()
+        self.nav_widget.setObjectName("help-nav-list")
         self.nav_widget.setMinimumWidth(scaled_px(HELP_SIDEBAR_MIN_WIDTH))
         self.nav_widget.setMaximumWidth(scaled_px(HELP_SIDEBAR_MAX_WIDTH))
         if self.shell.sidebar_column is not None:
             # The shell pins the whole column to sidebar_width (280); lower
             # it to the same minimum as the nav list so the splitter can
             # actually shrink the sidebar (the field's own minimum is ~0).
+            self.shell.sidebar_column.setObjectName("help-sidebar-column")
             self.shell.sidebar_column.setMinimumWidth(
                 scaled_px(HELP_SIDEBAR_MIN_WIDTH)
             )
@@ -494,6 +496,7 @@ class HelpDialog(ThemedDialog):
         content_layout.addWidget(self._scroll, 1)
 
         self._content_host = QWidget()
+        self._content_host.setObjectName("help-content-host")
         self._content_host.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )

@@ -62,6 +62,7 @@ class RecentHeaderBar(QWidget):
             size=(168, 28),
             corner_radius=8,
         )
+        self.sort_button.setObjectName("recent-sort-button")
         self.sort_button.clicked.connect(self._on_sort_clicked)
         layout.addWidget(self.sort_button)
 
@@ -71,6 +72,7 @@ class RecentHeaderBar(QWidget):
             size=(28, 28),
             corner_radius=8,
         )
+        self.sort_order_button.setObjectName("recent-sort-order-button")
         self.sort_order_button.clicked.connect(self._toggle_sort_order)
         layout.addWidget(self.sort_order_button)
 
@@ -80,6 +82,7 @@ class RecentHeaderBar(QWidget):
             size=(28, 28),
             corner_radius=8,
         )
+        self.view_button.setObjectName("recent-view-button")
         self.view_button.clicked.connect(self._toggle_view)
         layout.addWidget(self.view_button)
 

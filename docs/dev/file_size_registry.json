@@ -94,7 +94,7 @@
     },
     {
       "path": "src/plugins/export/dialog.py",
-      "lines": 758,
+      "lines": 762,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
@@ -105,7 +105,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 913,
+      "lines": 916,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -902,7 +902,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/cards.py",
-      "lines": 605,
+      "lines": 618,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"grid+list card factory with hover/selection/cover handling — single widget family\"",
@@ -914,7 +914,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/items_view.py",
-      "lines": 738,
+      "lines": 740,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single virtualized grid view — grid_columns/visible_window/acquire/place pipeline\"",
@@ -947,7 +947,7 @@
     },
     {
       "path": "src/ui/actions/palette/dialog.py",
-      "lines": 559,
+      "lines": 560,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring size=exempt reason=\"one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px\"",

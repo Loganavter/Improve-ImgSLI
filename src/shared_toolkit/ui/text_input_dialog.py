@@ -76,6 +76,7 @@ class AppTextInputDialog(ThemedDialog):
         root.addWidget(self._prompt_label)
 
         self._line_edit = CustomLineEdit(parent=self)
+        self._line_edit.setObjectName("text-input-field")
         self._line_edit.setText(self._initial_text)
         self._line_edit.selectAll()
         self._line_edit.returnPressed.connect(self.accept)
@@ -90,12 +91,14 @@ class AppTextInputDialog(ThemedDialog):
         self._cancel_button = Button(
             text=self._cancel_text, variant="surface", parent=actions
         )
+        self._cancel_button.setObjectName("text-input-cancel")
         self._cancel_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._cancel_button.clicked.connect(self.reject)
 
         self._ok_button = Button(
             text=self._ok_text, variant="surface", parent=actions
         )
+        self._ok_button.setObjectName("text-input-ok")
         self._ok_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._ok_button.clicked.connect(self.accept)
 

@@ -79,6 +79,7 @@ class HelpBackBar(QWidget):
             size=(36, 28),
             parent=self,
         )
+        self._back.setObjectName("help-nav-back")
         self._back.clicked.connect(self.backRequested.emit)
         self._layout.addWidget(self._back, 0)
 
@@ -140,6 +141,9 @@ class HelpBackBar(QWidget):
             is_current = index == len(crumbs) - 1
             btn = _crumb_button(
                 title, bold=is_current, parent=self._crumbs_host
+            )
+            btn.setObjectName(
+                f"help-nav-crumb-{index}" if not is_current else "help-nav-crumb-current"
             )
             if not is_current:
                 btn.clicked.connect(

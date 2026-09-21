@@ -82,3 +82,54 @@ def test_install_drops_logger_level_to_debug(qapp, _flag_on):
         assert conventional.getEffectiveLevel() <= logging.DEBUG
     finally:
         conventional.setLevel(logging.NOTSET)
+
+
+def test_describe_carries_v2_fields(qapp, _flag_on):
+    from ui.focus_debug import _describe
+
+    widget = QLineEdit()
+    widget.setObjectName("v2-field")
+    widget.show()
+    qapp.processEvents()
+    text = _describe(widget)
+    assert "v2-field" in text
+    assert "id=0x" in text
+    assert "state=" in text
+    assert "app_active=" in text
+    assert "app_focus=" in text
+    assert "t=" in text
+    assert _describe(None).startswith("None")
+
+
+def test_window_state_change_logged_synchronously(qapp, _flag_on, caplog):
+    from PySide6.QtCore import QEvent
+
+    from ui.focus_debug import _state_filters, _WindowStateFilter
+
+    assert install_focus_tracer(qapp) is True
+    assert id(qapp) in _state_filters
+    filt = _state_filters[id(qapp)]
+    assert isinstance(filt, _WindowStateFilter)
+
+    widget = QLineEdit()
+    widget.setObjectName("state-field")
+    widget.show()
+    qapp.processEvents()
+
+    class _FakeStateEvent:
+        def type(self):
+            return QEvent.Type.WindowStateChange
+
+        def oldState(self):
+            from PySide6.QtCore import Qt
+
+            return Qt.WindowState.WindowNoState
+
+    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+        assert filt.eventFilter(widget, _FakeStateEvent()) is False
+    lines = [
+        r.getMessage() for r in caplog.records if "[focus-debug]" in r.getMessage()
+    ]
+    assert any(
+        "window-state" in line and "state-field" in line for line in lines
+    ), "expected a synchronous window-state line for the minimized-now path"

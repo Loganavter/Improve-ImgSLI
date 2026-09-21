@@ -479,6 +479,7 @@ def update_grid_card(
 ) -> None:
     missing = not Path(record.path).is_file()
     _attach_record(card, record, missing=missing)
+    card.setObjectName(_card_object_name(record))
     cover = _cover_region(
         record,
         missing=missing,
@@ -501,12 +502,22 @@ def update_list_card(
     del context  # list cards have no cover icon
     missing = not Path(record.path).is_file()
     _attach_record(card, record, missing=missing)
+    card.setObjectName(_card_object_name(record))
     card.update_region("text", rows=list_text_rows(record, missing=missing, tr=tr))
     card.update_region("meta", rows=list_meta_rows(record, tr=tr))
     if missing:
         card.set_override_bg_color(_opaque(_missing_list_bg()))
     else:
         card.set_override_bg_color(None)
+
+
+def _card_object_name(record: RecentProjectRecord) -> str:
+    """Stable per-record objectName, unique within the picker window."""
+    import re
+
+    stem = Path(record.path).stem or "project"
+    safe = re.sub(r"[^a-zA-Z0-9]+", "-", stem).strip("-").lower() or "project"
+    return f"recent-card-{safe[:48]}"
 
 
 def build_grid_card(
@@ -552,6 +563,7 @@ def build_grid_card(
     # Stack title/subtitle by font metrics + gap (ratio mode collides in a
     # short bottom strip once content_padding is applied to every region).
     card._rows_compact = True
+    card.setObjectName(_card_object_name(record))
     apply_fixed_card_size(card, GRID_CARD_W, GRID_CARD_H)
     _attach_record(card, record, missing=missing)
     bind_card(card, on_activate=on_activate, on_context_menu=on_context_menu)
@@ -596,6 +608,7 @@ def build_list_card(
         parent=parent,
     )
     card._rows_compact = True
+    card.setObjectName(_card_object_name(record))
     apply_list_card_size(card, LIST_CARD_H)
     if missing:
         # Missing stays an explicit pastel signal; healthy cards keep default tint.

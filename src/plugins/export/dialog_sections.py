@@ -125,11 +125,13 @@ def build_resolution_row(dialog) -> None:
     )
     res_layout.addWidget(dialog.resolution_label)
     dialog.edit_width = CustomLineEdit()
+    dialog.edit_width.setObjectName("export-width")
     _max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
     dialog.edit_width.setValidator(QIntValidator(1, _max_dim))
     dialog.edit_width.setFixedWidth(scaled_px(72))
     dialog.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.edit_height = CustomLineEdit()
+    dialog.edit_height.setObjectName("export-height")
     dialog.edit_height.setValidator(QIntValidator(1, _max_dim))
     dialog.edit_height.setFixedWidth(scaled_px(72))
     dialog.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -242,6 +244,7 @@ def build_metadata_block(dialog) -> None:
 
     dialog.comment_label = Label(dialog._tr("export.comment", "Comment") + ":")
     dialog.edit_comment = CustomLineEdit()
+    dialog.edit_comment.setObjectName("export-comment")
     dialog.checkbox_comment_default = CheckBox(
         dialog._tr("export.remember_by_default", "Remember by default")
     )

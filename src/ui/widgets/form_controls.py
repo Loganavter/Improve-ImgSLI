@@ -126,6 +126,7 @@ class OutputPathSection(QWidget):
         dir_layout.setSpacing(scaled_px(6))
 
         self.edit_dir = CustomLineEdit(self) if use_custom_line_edit else QLineEdit(self)
+        self.edit_dir.setObjectName("output-dir")
         self.btn_browse_dir = Button(
             text=browse_text,
             variant="surface",
@@ -167,6 +168,7 @@ class OutputPathSection(QWidget):
 
         self.filename_label = Label(filename_label_text, self)
         self.filename_edit = filename_editor_factory()
+        self.filename_edit.setObjectName("output-filename")
 
         layout.addWidget(self.dir_label)
         layout.addWidget(self.dir_picker_row)

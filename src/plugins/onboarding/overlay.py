@@ -56,6 +56,7 @@ class OnboardingOverlay(QWidget):
         super().__init__(parent)
         self.settings_manager = settings_manager
         self.store = store
+        self.setObjectName("onboarding-overlay")
         self.theme_manager = ThemeManager.get_instance()
         self._current_index = 0
         self._scaling = False
@@ -218,6 +219,7 @@ class OnboardingOverlay(QWidget):
         self.mode_buttons = []
         for i, mode in enumerate(self.modes):
             btn = Button(text=mode["name"], variant="surface", corner_radius=8)
+            btn.setObjectName(f"onboarding-mode-{mode.get('key', i)}")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             # Avoid QWidget's default 640x480 sizeHint before the first _scale_all.
             btn.setFixedSize(scaled_px(150), scaled_px(42))
@@ -250,6 +252,7 @@ class OnboardingOverlay(QWidget):
 
         start_text = tr("onboarding.start_button", current_lang)
         self.btn_start = Button(text=start_text, variant="surface")
+        self.btn_start.setObjectName("onboarding-start")
         self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_start.setFixedSize(scaled_px(200), scaled_px(48))
         self.btn_start.clicked.connect(self._finish)

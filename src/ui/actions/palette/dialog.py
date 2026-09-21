@@ -300,6 +300,7 @@ class FindActionDialog(ThemedDialog):
         root.addSpacing(scaled_px(8))
 
         self._search = CustomLineEdit(parent=self)
+        self._search.setObjectName("palette-search")
         self._search.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._search.setPlaceholderText(
             tr_action("action.palette.search_placeholder", "Search actions…")
