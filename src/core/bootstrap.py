@@ -10,6 +10,7 @@ from core.runtime_flags import RuntimeFlags
 from core.session_manager import SessionManager
 from core.plugin_system import EventBus, PluginRegistry
 from core.store import Store
+from core.system_theme import resolve_theme
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from plugins.settings.manager import SettingsManager
 from services.system.notifications import NotificationService
@@ -236,10 +237,10 @@ class ApplicationContext:
         # later (to also push QSS/palette onto the QApplication instance),
         # this call only needs to fix is_dark() early.
         theme_from_env = os.getenv("APP_THEME", "auto").lower()
-        initial_theme = (
+        theme_setting = (
             theme_from_env if theme_from_env != "auto" else self.store.settings.theme
         )
-        self.theme_manager.set_theme(initial_theme)
+        self.theme_manager.set_theme(resolve_theme(theme_setting))
 
     def _configure_flyout_manager(self):
         from ui.flyout_policy import install_flyout_show_policy
