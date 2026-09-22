@@ -29,9 +29,13 @@ seconds.
 from __future__ import annotations
 
 import ast
+
+import pytest
 import re
 
 from ._framework import ROOT, iter_py, read, rel
+
+pytestmark = pytest.mark.slow
 
 ENGINE_DRAW_PLANS = ROOT / "src" / "engine" / "cache" / "draw_plans.py"
 IC_DRAW_PLAN = (

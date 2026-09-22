@@ -21,9 +21,13 @@ is intentionally *not* UI-scaled — it is allowlisted below.
 from __future__ import annotations
 
 import ast
+
+import pytest
 from pathlib import Path
 
 from tests.contracts._framework import SRC
+
+pytestmark = pytest.mark.slow
 
 _SCALE_FONT_HELPERS = ("ui_font", "paint_font", "rebase_family", "rebase_font", "apply_ui_font")
 _PAINT_FONT_HELPERS = ("paint_font", "rebase_font")

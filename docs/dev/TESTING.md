@@ -15,6 +15,34 @@ pytest -k divider                        # all tests whose name contains divider
 pytest tests/runtime/test_event_bus_depth.py::TestEventBusDepth
 ```
 
+## Tiers (fast PR vs full nightly)
+
+Markers are registered in `pytest.ini` (`slow`, `gui`, `flaky`). No `addopts`
+— default runs are unchanged; tiers are opt-in via `-m`:
+
+```bash
+pytest tests -m "not slow" -n auto -q     # fast tier: everything except the ~13
+                                          # whole-tree scans (43 tests); PR/iteration default
+pytest tests -n auto -q                   # full suite (nightly / pre-merge)
+pytest -m "slow" -q                       # slow scans only
+```
+
+`slow` is assigned per-file (`pytestmark`) to whole-tree scans taking
+20 s+ (durations 2026-09-22: settings-mutation 64 s, paint-scale, i18n,
+upload-queue, geometry, fullscreen, capability-ids, store-mutation,
+draw-plan-math, widget-ownership, settings-persistence, activation,
+viewport-slots). A new test that scans all of `src/` and exceeds ~20 s
+must carry the mark.
+
+### Quarantine (`flaky`)
+
+Timing-sensitive tests that fail only under parallel load are marked
+`flaky` and stay in the suite (no skipping — visibility over silence):
+
+| Test | Symptom |
+|---|---|
+| `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `docs/dev/KNOWN_BUGS.md` Qt quirks). |
+
 ## Static type checking (mypy)
 
 `mypy` is wired in as a dev dependency (`requirements-dev.txt`) with
@@ -54,8 +82,9 @@ as an external dependency from `requirements-gui.txt`; there is no local
 fallback path to a vendored toolkit. App tests cover app integration with the
 toolkit, not the external library's public API.
 
-The repository does not use a pytest config file (`pytest.ini` /
-`pyproject.toml` are absent) — discovery follows pytest defaults.
+The repository uses a minimal `pytest.ini` (marker registration only —
+no `addopts`, so default runs are unchanged) — discovery follows pytest
+defaults.
 
 ## Layout
 

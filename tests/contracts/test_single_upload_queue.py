@@ -33,7 +33,11 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from ._framework import ROOT, iter_py, read, rel
+
+pytestmark = pytest.mark.slow
 
 IC_UPLOAD_QUEUE = (
     ROOT

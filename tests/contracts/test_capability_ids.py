@@ -8,10 +8,14 @@ test time.  See spec in plan ``help-settings-isolation``.
 from __future__ import annotations
 
 import ast
+
+import pytest
 import re
 from pathlib import Path
 
 from tests.contracts._framework import ROOT, SRC
+
+pytestmark = pytest.mark.slow
 
 _CONTRIBUTE_RE = re.compile(r"^contribute_")
 _CALL_NAMES = {"create_service", "create_startup_service", "notify_all", "create_service_for", "create_main_window_feature"}

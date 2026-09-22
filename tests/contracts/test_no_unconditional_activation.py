@@ -23,10 +23,14 @@ Adding a new raw call fails loudly: route it via (a)/(b), or justify it in
 from __future__ import annotations
 
 import ast
+
+import pytest
 import os
 from pathlib import Path
 
 from tests.contracts._framework import ROOT
+
+pytestmark = pytest.mark.slow
 
 APP_SRC = ROOT / "src"
 

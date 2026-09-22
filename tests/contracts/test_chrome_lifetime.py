@@ -123,6 +123,7 @@ def test_reveal_dead_target_never_raises(qapp):
     reveal_module.reveal_action_target(target3, delay_ms=0)
 
 
+@pytest.mark.flaky
 def test_reveal_pulse_exception_swallowed(qapp, monkeypatch):
     from PySide6.QtWidgets import QWidget
 

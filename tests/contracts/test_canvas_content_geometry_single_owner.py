@@ -39,7 +39,11 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from ._framework import SRC, iter_py, read, rel
+
+pytestmark = pytest.mark.slow
 
 _DOC = "docs/dev/QRHI_CANVAS_FEATURES.md"
 

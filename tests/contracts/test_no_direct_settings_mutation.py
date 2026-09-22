@@ -61,12 +61,16 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from ._framework import SRC, iter_py, read, rel
 from .test_no_direct_store_mutation import (
     EXEMPT,
     _collect_transients,
     _get_chain,
 )
+
+pytestmark = pytest.mark.slow
 
 #: Names that identify the Store at the root of an attribute chain.
 STORE_NAMES = frozenset({"store", "_store", "Store"})

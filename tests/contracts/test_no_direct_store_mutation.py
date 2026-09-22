@@ -21,9 +21,13 @@ are exempted via data-flow tracking of ``Store()``-derived variables.
 from __future__ import annotations
 
 import ast
+
+import pytest
 from pathlib import Path
 
 from ._framework import SRC, iter_py, read, rel
+
+pytestmark = pytest.mark.slow
 
 # Intermediate attributes that denote Store-owned state — generated from real
 # Store/ViewportState/SessionData shape + Store top-level fields, not hard-coded

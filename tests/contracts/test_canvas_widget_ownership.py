@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from ._framework import SRC, iter_py, read, rel
+
+pytestmark = pytest.mark.slow
 
 
 def test_pair_canvas_modules_live_under_image_compare_tab():
