@@ -18,7 +18,51 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QDialog, QHBoxLayout
 
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.slider_hint import SliderHintFlyout, ValueSlider
+
+
+def _settle_dialog(dialog: QDialog, slider: ValueSlider) -> None:
+    """Bounded settle wait replacing bare ``qtbot.waitExposed`` no-ops.
+
+    Offscreen ``waitExposed`` returns immediately without guaranteeing
+    layout/polish; under ``-n 8`` load the dialog/slider geometry may still
+    be (0, 0) on first assert. Poll until visibility + geometry stabilize
+    for 2 frames instead.
+    """
+    drain_until_stable(
+        None,
+        lambda: (
+            dialog.isVisible(),
+            slider.isVisible(),
+            slider.width(),
+            slider.height(),
+        ),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
+
+
+def _settle_flyout(flyout: SliderHintFlyout) -> None:
+    """Settle wait for the hint flyout (visible + geometry stable).
+
+    Also delivers the controller's deferred ``singleShot(0)`` show, which a
+    bare ``qtbot.wait(ms)`` only sometimes reaches under ``-n 8`` pressure.
+    """
+    drain_until_stable(
+        None,
+        lambda: (
+            flyout.isVisible(),
+            flyout.geometry().x(),
+            flyout.geometry().y(),
+            flyout.geometry().width(),
+            flyout.geometry().height(),
+        ),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
 
 
 def _show_flyout(slider: ValueSlider) -> SliderHintFlyout:
@@ -43,7 +87,7 @@ def _slider_dialog(qtbot, *, width: int = 900) -> tuple[QDialog, ValueSlider]:
     layout.addWidget(slider)
     qtbot.addWidget(dialog)
     dialog.show()
-    qtbot.waitExposed(dialog)
+    _settle_dialog(dialog, slider)
     return dialog, slider
 
 
@@ -51,7 +95,7 @@ def test_flyout_stays_in_slider_window(qtbot):
     """The hint is a child of the slider's window, not of an ancestor one."""
     dialog, slider = _slider_dialog(qtbot)
     flyout = _show_flyout(slider)
-    qtbot.waitExposed(flyout)
+    _settle_flyout(flyout)
 
     assert not flyout.isWindow(), "the hint is an in-window child, not a popup"
     assert flyout.parentWidget() is dialog, (
@@ -65,7 +109,7 @@ def test_flyout_sits_above_thumb_without_overlay(qtbot):
     """The flyout panel's bottom clears the thumb top; X stays centered."""
     dialog, slider = _slider_dialog(qtbot)
     flyout = _show_flyout(slider)
-    qtbot.waitExposed(flyout)
+    _settle_flyout(flyout)
 
     thumb_rect = slider.flyoutAnchorRect()
     thumb_top_left = slider.mapTo(dialog, thumb_rect.topLeft())
@@ -90,13 +134,13 @@ def test_flyout_tracks_thumb_after_value_change(qtbot):
     """reposition() re-anchors above the thumb when the value changes."""
     dialog, slider = _slider_dialog(qtbot)
     flyout = _show_flyout(slider)
-    qtbot.waitExposed(flyout)
+    _settle_flyout(flyout)
 
     # Mid-range value: the flyout stays clear of the dialog's right edge, so
     # exact centering on the thumb is meaningful (at the extremes the clamp
     # presses the flyout against the window edge -- expected behaviour).
     slider.setValue(6)
-    qtbot.wait(10)
+    _settle_flyout(flyout)
 
     thumb_rect = slider.flyoutAnchorRect()
     thumb_top_left = slider.mapTo(dialog, thumb_rect.topLeft())
@@ -152,8 +196,16 @@ def test_track_click_shows_flyout_with_jumped_value(qtbot):
     )
     # Value has already jumped by the time the press returns.
     assert slider.value() == slider.maximum(), slider.value()
-    # One tick later the hint shows with the final value.
-    qtbot.wait(20)
+    # One tick later the hint shows with the final value. The drain delivers
+    # the deferred singleShot(0) show deterministically (a bare qtbot.wait
+    # only sometimes reaches it under -n 8 pressure), then asserts hold.
+    drain_until_stable(
+        None,
+        lambda: (flyout.isVisible(), flyout._label.text()),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
     assert flyout.isVisible()
     assert flyout._label.text() == _percent_text(slider)
     QTest.mouseRelease(slider, Qt.MouseButton.LeftButton, pos=track_pos)
@@ -186,7 +238,13 @@ def test_track_click_hint_is_instant_not_faded(qtbot):
 
     track_pos = QPoint(slider.width() - 2, slider.height() // 2)
     QTest.mousePress(slider, Qt.MouseButton.LeftButton, pos=track_pos)
-    qtbot.wait(20)
+    drain_until_stable(
+        None,
+        lambda: (flyout.isVisible(), flyout._label.text()),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
 
     assert flyout.isVisible()
     # Instant show: no snapshot-based fade state, children visible (the
