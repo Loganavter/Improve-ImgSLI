@@ -198,16 +198,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.update()
 
     def _flush_composition(self) -> None:
-        # Deferred via CoalescedFlush (unparented QTimer.singleShot): the
-        # canvas may be torn down before the tick fires — touching a deleted
-        # C++ object raises inside the event loop and poisons later tests.
-        try:
-            import shiboken6
-
-            if not shiboken6.Shiboken.isValid(self):
-                return
-        except Exception:
-            pass
         if not _is_canvas_visible(self):
             self._composition_stale = True
             try:
@@ -275,16 +265,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     def _flush_view_update(self) -> None:
         self._view_update_pending = False
-        # Deferred via unparented QTimer.singleShot — guard against firing
-        # after teardown (same precedent as session_picker's
-        # request_window_chrome_refresh).
-        try:
-            import shiboken6
-
-            if not shiboken6.Shiboken.isValid(self):
-                return
-        except Exception:
-            pass
         if not self.isVisible():
             return
         self.update()
@@ -400,13 +380,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         per-present flush churn collapses to two full flushes total."""
 
         def _flush() -> None:
-            try:
-                import shiboken6
-
-                if not shiboken6.Shiboken.isValid(self):
-                    return
-            except Exception:
-                pass
             try:
                 from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
 
@@ -727,13 +700,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
             QTimer.singleShot(100, self._schedule_init_retry)
 
     def _schedule_init_retry(self) -> None:
-        try:
-            import shiboken6
-
-            if not shiboken6.Shiboken.isValid(self):
-                return
-        except Exception:
-            pass
         try:
             if not getattr(self._renderer, "initialized", False):
                 self.update()

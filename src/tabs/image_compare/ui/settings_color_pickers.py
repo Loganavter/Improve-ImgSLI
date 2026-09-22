@@ -231,7 +231,7 @@ class SettingsColorPickerCoordinator:
             if transient_host is None:
                 return
             try:
-                if transient_host.isVisible():
+                if transient_host.isVisible() and not transient_host.isActiveWindow():
                     transient_host.raise_()
                     transient_host.activateWindow()
             except (RuntimeError, AttributeError):
