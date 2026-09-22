@@ -113,4 +113,10 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTHONDONTWRITEBYTECODE: 1
         run: |
-          python -m pytest tests -n auto -q -p no:cacheprovider --durations=15
+          # Bare pytest: top-level tests/ AND src/tabs/*/tests/ (TESTING.md).
+          # The `tests`-only path silently skipped 1484 tab tests. Stays
+          # informative (continue-on-error) until the 8 pre-existing tab
+          # reds (video preview x4, canvas-runtime dogma, MC deferred view,
+          # session_picker colors x2 — never gated before, proven on main)
+          # are fixed as the next hardening wave.
+          python -m pytest -n auto -q -p no:cacheprovider --durations=15
