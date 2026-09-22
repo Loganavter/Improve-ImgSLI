@@ -1,7 +1,10 @@
 """Large-image SSIM must not materialize full TiledPixelStore."""
 
 import numpy as np
+import pytest
 from PIL import Image
+
+skimage = pytest.importorskip("skimage")
 
 from shared.analysis import differ as _differ
 from shared.analysis import metrics as _metrics

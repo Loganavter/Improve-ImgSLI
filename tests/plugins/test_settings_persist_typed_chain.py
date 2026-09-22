@@ -16,7 +16,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QSettings, QStandardPaths
+from PySide6.QtCore import QSettings
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -35,38 +35,19 @@ def qapp():
     yield app
 
 
-def _redirect_qsettings(tmp_path):
-    """Point org/app QSettings at an isolated ini file.
+def _manager_for(ini_path, org, app):
+    """Explicit-file injection (pattern from test_settings_schedule_persist).
 
-    The SettingsManager's ``QSettings(org, app)`` resolves with the Native
-    format on Linux (the 2-arg constructor ignores ``setDefaultFormat``), so
-    BOTH format paths must be redirected — canonical pattern from
-    tests/runtime/test_settings_full_pass.py::_redirect_qsettings. Returns
-    the previous format/path so the caller restores them (the redirect is
-    process-global; the tests must never write to the real user config).
+    No global QSettings.setPath redirect: each manager owns an isolated INI
+    file, so sibling tests sharing the process can never observe or pollute
+    this file (and vice versa). Unique org/app per manager keeps even the
+    pre-injection QSettings(org, app) construction isolated.
     """
-    previous_format = QSettings.defaultFormat()
-    previous_path = QStandardPaths.writableLocation(
-        QStandardPaths.StandardLocation.ConfigLocation
-    )
-    QSettings.setPath(
-        QSettings.Format.NativeFormat, QSettings.Scope.UserScope, str(tmp_path)
-    )
-    QSettings.setPath(
-        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path)
-    )
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    return previous_format, previous_path
-
-
-def _restore_qsettings(previous_format, previous_path) -> None:
-    QSettings.setDefaultFormat(previous_format)
-    QSettings.setPath(
-        QSettings.Format.NativeFormat, QSettings.Scope.UserScope, previous_path
-    )
-    QSettings.setPath(
-        QSettings.Format.IniFormat, QSettings.Scope.UserScope, previous_path
-    )
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    mgr = SettingsManager(org, app)
+    mgr.settings = settings
+    mgr._backup_path = settings.fileName() + ".backup"
+    return mgr
 
 
 def test_schedule_persist_typed_load_chain(qapp, tmp_path):
@@ -77,25 +58,30 @@ def test_schedule_persist_typed_load_chain(qapp, tmp_path):
     them into a new Store with their declared types preserved — the raw
     INI strings must not leak through as untyped values.
     """
-    previous_format, previous_path = _redirect_qsettings(tmp_path)
-    try:
-        writer = SettingsManager("improve-imgsli", "improve-imgsli")
-        store = Store()
-        store.settings.ui_mode = "expert"
-        store.settings.ui_scale_factor = 1.5
-        store.settings.theme = "dark"
+    ini_path = os.path.join(str(tmp_path), "persist-chain.ini")
+    writer = _manager_for(ini_path, "improve-imgsli-chain-w", "chain-w")
+    store = Store()
+    store.settings.ui_mode = "expert"
+    store.settings.ui_scale_factor = 1.5
+    store.settings.theme = "dark"
 
-        writer.schedule_persist(store)
-        _settle()
+    writer.schedule_persist(store)
+    _settle()
+    writer.settings.sync()
+    # Drain any pending singleShot before the fresh manager reads, so no
+    # debounced write can leak past this test into a sibling test.
+    qapp.processEvents()
 
-        fresh = SettingsManager("improve-imgsli", "improve-imgsli")
-        reloaded = Store()
-        fresh.load_all_settings(reloaded)
+    fresh = _manager_for(ini_path, "improve-imgsli-chain-r", "chain-r")
+    reloaded = Store()
+    fresh.load_all_settings(reloaded)
 
-        assert reloaded.settings.ui_mode == "expert"
-        assert abs(reloaded.settings.ui_scale_factor - 1.5) < 1e-9
-        assert reloaded.settings.theme == "dark"
-        # The untouched field kept its default through the whole chain.
-        assert reloaded.settings.current_language == "en"
-    finally:
-        _restore_qsettings(previous_format, previous_path)
+    assert reloaded.settings.ui_mode == "expert"
+    assert abs(reloaded.settings.ui_scale_factor - 1.5) < 1e-9
+    assert reloaded.settings.theme == "dark"
+    # The untouched field kept its default through the whole chain.
+    assert reloaded.settings.current_language == "en"
+    # No debounced write may outlive the test: the singleShot fired during
+    # _settle, and the final drain guarantees it before teardown.
+    qapp.processEvents()
+    assert not writer._persist_pending

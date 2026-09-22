@@ -8,6 +8,8 @@ threaded, highlight/grayscale/edge — instead of propagating torn state.
 
 from PIL import Image
 
+import pytest
+
 from shared.image_processing.store_lease import StoreLease
 from engine.store.tiled_pixel_store import TiledPixelStore
 
@@ -78,6 +80,7 @@ def _two_tile_stores():
 
 
 def test_highlight_aborts_when_store_closes_mid_compute(monkeypatch):
+    pytest.importorskip("skimage")
     import shared.analysis.diff_source as ds_mod
 
     monkeypatch.setattr(ds_mod, "_resolve_ssim_workers", lambda total: 1)
@@ -101,6 +104,7 @@ def test_highlight_aborts_when_store_closes_mid_compute(monkeypatch):
 
 
 def test_highlight_control_without_close_completes(monkeypatch):
+    pytest.importorskip("skimage")
     import shared.analysis.diff_source as ds_mod
 
     monkeypatch.setattr(ds_mod, "_resolve_ssim_workers", lambda total: 1)
@@ -127,6 +131,7 @@ class _RaisingSource:
 
 
 def test_mid_compute_read_error_aborts_all_entry_points(monkeypatch):
+    pytest.importorskip("skimage")
     import shared.analysis.diff_source as ds_mod
 
     good = Image.new("RGBA", (1600, 100), "green")
