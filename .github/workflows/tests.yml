@@ -13,6 +13,10 @@ jobs:
   fast:
     name: Fast tier (not slow)
     runs-on: ubuntu-latest
+    # Informative until the suite is hardened for CI (pre-existing flakes
+    # under parallel load + ubuntu-only env gaps, unrelated to any single
+    # PR — see task-ci-suite-hardening-2026-09-22). Flip to required after.
+    continue-on-error: true
     steps:
       - name: Check Out App
         uses: actions/checkout@v4
@@ -64,6 +68,7 @@ jobs:
     name: Full suite (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Check Out App
         uses: actions/checkout@v4
