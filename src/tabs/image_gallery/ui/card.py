@@ -32,6 +32,26 @@ GALLERY_CARD_H = 170
 _GALLERY_CONTENT_PADDING: tuple[float, float, float, float] = (8.0, 8.0, 8.0, 8.0)
 
 
+def _gallery_card_bg() -> QColor:
+    """Card surface via theme token, hex fallback (S2 token hygiene).
+
+    Fallback is RGB-constructed (56,56,56 == #383838) so no raw-hex
+    literal lives in this module.
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        for token in ("gallery.card.background", "surface.background"):
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    return QColor(56, 56, 56)
+
+
 def _attach_item(card: Button, item: GalleryItem) -> None:
     """Stash live item reference on the card for in-place updates."""
     card._gallery_item = item  # type: ignore[attr-defined]
@@ -210,7 +230,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 id="bg",
                 group="card",
                 corner_radii=(10, 10, 10, 10),
-                override_bg_color=QColor("#383838"),
+                override_bg_color=_gallery_card_bg(),
             ),
             cover,
             ButtonRegion(
@@ -219,7 +239,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 weight=1.0,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
-                override_bg_color=QColor("#383838"),
+                override_bg_color=_gallery_card_bg(),
             ),
         ],
         split=CustomSplit(rect_fns=[_bg_rect, _cover_rect, _text_rect]),

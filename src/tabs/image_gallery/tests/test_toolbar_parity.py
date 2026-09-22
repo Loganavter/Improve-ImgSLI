@@ -129,3 +129,37 @@ def test_s2_5_clean_rejected_accent(strip: StatsStrip) -> None:
     assert rows[0].color is not None
     assert not strip.clean_button.isEnabled() or True  # enabled with n>0
     assert strip.clean_button.isEnabled() is True
+
+
+def test_p07_toolbar_qt_import_present() -> None:
+    """P0-7: toolbar.py uses Qt at :233,242 — must be imported, not NameError."""
+    import tabs.image_gallery.ui.toolbar as tb
+
+    assert tb.Qt is not None
+    assert hasattr(tb.Qt.AlignmentFlag, "AlignVCenter")
+
+
+def test_s2_view_switch_active_is_fill_chip(toolbar: GalleryToolbar) -> None:
+    """S2 mockup x1130 y74: active view segment is a fill-chip, not a border."""
+    from tabs.image_gallery.ui.toolbar import (
+        _apply_view_fill_chip,
+        _resolve_toolbar_accent_fill,
+    )
+
+    fill = _resolve_toolbar_accent_fill()
+    assert fill.alpha() == 51
+    # Switching views via the helper must not raise and must keep exclusivity.
+    toolbar._apply_view(True)  # type: ignore[attr-defined]
+    assert toolbar.view_switch_list.isChecked() is True
+    _apply_view_fill_chip(toolbar.view_switch_list, toolbar.view_switch)
+    toolbar._apply_view(False)  # type: ignore[attr-defined]
+    assert toolbar.view_switch.isChecked() is True
+
+
+def test_s2_series_header_has_no_raw_hex() -> None:
+    """grid_view series headers resolve via theme token (no raw #9a9a9a)."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "ui" / "grid_view.py"
+    text = src.read_text(encoding="utf-8")
+    assert "#9a9a9a" not in text.lower()

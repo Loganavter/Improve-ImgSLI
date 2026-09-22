@@ -121,7 +121,12 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
             except Exception:
                 pass
         elif tie_pending:
-            card.setBadge("AI tie-break…")
+            # S2 mockup: AI tie-break is an in-thumbnail pill (left overlay,
+            # like ★ BEST) — not a top-right toolkit badge.
+            try:
+                card.setBadge(None)
+            except Exception:
+                pass
             try:
                 _accent = _token_color(*_ACCENT_TOKEN_FALLBACK)
                 _accent_text = _QColor(_accent)
@@ -129,16 +134,9 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                     _accent_text = _accent_text.lighter(150)
                 except Exception:
                     pass
-                card.setBadgeStyle(
-                    filled=False,
-                    border_color=_accent,
-                    text_color=_accent_text,
-                )
+                card._gallery_badge = "AI tie-break…"  # type: ignore[attr-defined]
+                card._gallery_badge_style = (False, None, _accent, _accent_text)  # type: ignore[attr-defined]
                 card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
-            except Exception:
-                pass
-            try:
-                card._gallery_badge = None  # type: ignore[attr-defined]
             except Exception:
                 pass
         elif is_best or (not rejected and not tie_pending and getattr(item, "rank", None) == 1) or (not rejected and not tie_pending and getattr(item, "crown_rank", None) == 1):
@@ -173,7 +171,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 try:
                     card._gallery_badge = badge_text  # type: ignore[attr-defined]
                     rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
-                    card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
+                    card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("gallery.stats.text", "#dfdfdf"))  # type: ignore[attr-defined]
                     card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
                 except Exception:
                     pass

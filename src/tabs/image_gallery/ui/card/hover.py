@@ -13,6 +13,78 @@ from sli_ui_toolkit.managers import scaled_px
 GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
 
 
+def _card_idle_bg():
+    """Idle card surface via theme token (RGB fallback == #383838)."""
+    try:
+        from PySide6.QtGui import QColor
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        for token in ("gallery.card.background", "surface.background"):
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        return _QC(56, 56, 56)
+    except Exception:
+        return None
+
+
+def _card_hover_bg():
+    """Hovered card surface via theme token (RGB fallback == #424242, svg c4)."""
+    try:
+        from PySide6.QtGui import QColor
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        for token in ("gallery.card.background.hover", "gallery.card.background"):
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        return _QC(66, 66, 66)
+    except Exception:
+        return None
+
+
+def _capsule_icon_color(action_id: str):
+    """Tri-color capsule icons (svg hover pill): star gold · cross red · swap accent."""
+    fallbacks = {
+        "make_best": ("gallery.status.warn", (232, 182, 76)),
+        "reject": ("gallery.status.danger", (217, 48, 37)),
+        "compare": ("gallery.accent.bar", (0, 150, 255)),
+        "set_source": ("gallery.accent.bar", (0, 150, 255)),
+    }
+    token, rgb = fallbacks.get(action_id, ("gallery.accent.bar", (0, 150, 255)))
+    try:
+        from PySide6.QtGui import QColor
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+        if c is not None:
+            return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        return _QC(*rgb)
+    except Exception:
+        return None
+
+
 class _CardHoverFilter(QObject):
     """Shows gallery_card IconActionFlyout on hover; hides on leave.
 
@@ -31,17 +103,15 @@ class _CardHoverFilter(QObject):
             if event.type() == QEvent.Type.Enter:
                 try:
                     # Hovered card bg #424242 per svg c4 (vs #383838 idle)
-                    from PySide6.QtGui import QColor
-
                     try:
-                        self._card.set_override_bg_color(QColor("#424242"))
+                        self._card.set_override_bg_color(_card_hover_bg())
                     except Exception:
                         pass
                     try:
                         # Bg region also
                         for r in self._card.regions():
                             if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=QColor("#424242"))
+                                self._card.update_region(r.id, override_bg_color=_card_hover_bg())
                     except Exception:
                         pass
                     _show_card_hover_underline(self._card)
@@ -53,16 +123,14 @@ class _CardHoverFilter(QObject):
                     pass
             elif event.type() == QEvent.Type.Leave:
                 try:
-                    from PySide6.QtGui import QColor
-
                     try:
-                        self._card.set_override_bg_color(QColor("#383838"))
+                        self._card.set_override_bg_color(_card_idle_bg())
                     except Exception:
                         pass
                     try:
                         for r in self._card.regions():
                             if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=QColor("#383838"))
+                                self._card.update_region(r.id, override_bg_color=_card_idle_bg())
                     except Exception:
                         pass
                     _hide_card_hover_underline(self._card)
@@ -193,6 +261,23 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
             except Exception:
                 _include = False
             flyout.set_actions(_gallery_card_actions_spec(include_source=_include))
+        except Exception:
+            pass
+
+        # S2 tri-color capsule icons: star gold · cross red · swap accent
+        # (painter-pipeline foreground, no QSS).
+        try:
+            for _aid in ("make_best", "reject", "compare", "set_source"):
+                try:
+                    _btn = flyout.action_button(_aid)
+                except Exception:
+                    _btn = None
+                if _btn is None:
+                    continue
+                try:
+                    _btn.setForegroundColor(_capsule_icon_color(_aid))
+                except Exception:
+                    pass
         except Exception:
             pass
 

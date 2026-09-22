@@ -471,11 +471,20 @@ class GalleryGridView(QWidget):
         if is_collapsible:
             from PySide6.QtGui import QColor as _QC3
 
+            try:
+                from sli_ui_toolkit.managers import ThemeManager as _TMH3
+                from ui.theming import try_resolve_theme_color as _trcH3
+
+                _hc3 = _trcH3(_TMH3.get_instance(), "gallery.header.text")
+                _header_col3 = _QC3(_hc3) if isinstance(_hc3, str) else (_hc3 if _hc3 is not None else _QC3(154, 154, 154))
+            except Exception:
+                _header_col3 = _QC3(154, 154, 154)
+
             btn = Button(
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display, size=11, color=_QC3("#9a9a9a"), h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=11, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",
@@ -500,11 +509,20 @@ class GalleryGridView(QWidget):
         try:
             from PySide6.QtGui import QColor as _QC4
 
+            try:
+                from sli_ui_toolkit.managers import ThemeManager as _TMH4
+                from ui.theming import try_resolve_theme_color as _trcH4
+
+                _hc4 = _trcH4(_TMH4.get_instance(), "gallery.header.text")
+                _header_col4 = _QC4(_hc4) if isinstance(_hc4, str) else (_hc4 if _hc4 is not None else _QC4(154, 154, 154))
+            except Exception:
+                _header_col4 = _QC4(154, 154, 154)
+
             btn = Button(
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display, size=11, color=_QC4("#9a9a9a"), h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=11, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",

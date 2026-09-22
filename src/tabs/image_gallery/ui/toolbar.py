@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
@@ -30,7 +30,8 @@ def _resolve_toolbar_triage_color() -> QColor:
         pass
     return QColor("#3fbf5f")
 
-def _resolve_toolbar_accent_border(alpha: int = 153) -> QColor:
+def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
+    """S2 mockup x1130 y74: active view segment is a fill-chip (blue 0.2), not a border."""
     try:
         from sli_ui_toolkit.managers import ThemeManager
         from ui.theming import try_resolve_theme_color
@@ -45,13 +46,25 @@ def _resolve_toolbar_accent_border(alpha: int = 153) -> QColor:
     return QColor(0, 150, 255, int(alpha))
 
 
-class GalleryToolbarViewSwitchContainer(QWidget):
-    """Segmented view-switch background (106×32, gallery.stats.background, r8).
+def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
+    """Active segment = accent fill-chip; inactive = transparent (no border)."""
+    try:
+        active_btn.set_override_bg_color(_resolve_toolbar_accent_fill())
+    except Exception:
+        pass
+    try:
+        inactive_btn.set_override_bg_color(None)
+    except Exception:
+        pass
+    try:
+        active_btn.setBorderColor(QColor(0, 0, 0, 0))
+        inactive_btn.setBorderColor(QColor(0, 0, 0, 0))
+    except Exception:
+        pass
 
-    Plain QWidget with a dedicated type so UI Inspector's Code tab can resolve
-    ``getsourcefile(type(widget))`` to ``toolbar.py`` instead of ``PySide6.QtWidgets.QWidget``.
-    See ``sli-ui-toolkit/src/sli_ui_toolkit/ui/inspector/code/factory.py:81``.
-    """
+
+class GalleryToolbarViewSwitchContainer(QWidget):
+    """Segmented view-switch background (106×32, r8, painter-painted, no QSS)."""
 
     def paintEvent(self, event) -> None:  # noqa: N802
         try:
@@ -63,7 +76,6 @@ class GalleryToolbarViewSwitchContainer(QWidget):
 
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            # Outer 106×32 r8 fill #333 + stroke #4a4a4a per svg x1130 y74
             try:
                 col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
                 bg = QColor(col) if isinstance(col, str) else col
@@ -152,11 +164,6 @@ class GalleryToolbar(QWidget):
         placeholder = "Filter by tag / description…"
         self._filter_edit = CustomLineEdit(self)
         self._filter_edit.setObjectName("gallery_toolbar_filter")
-        # The filter field is not a drop target: a default QLineEdit accepts
-        # drags, which would steal the drag target from the gallery drop
-        # routing (widget/grid/empty-state acceptDrops) whenever the cursor
-        # is over the toolbar — same thief as the image_compare caption
-        # edits (see tabs/image_compare/ui/primitives.py).
         self._filter_edit.setAcceptDrops(False)
         self._filter_edit.setPlaceholderText(placeholder)
         self._filter_edit.setClearButtonEnabled(True)
@@ -289,12 +296,11 @@ class GalleryToolbar(QWidget):
                     self._view_switch_list.blockSignals(True)
                     self._view_switch.setChecked(not is_list)
                     self._view_switch_list.setChecked(is_list)
+                    # S2 mockup: active = fill-chip, not border.
                     if not is_list:
-                        self._view_switch.setBorderColor(_resolve_toolbar_accent_border(153))
-                        self._view_switch_list.setBorderColor(QColor(0, 0, 0, 0))
+                        _apply_view_fill_chip(self._view_switch, self._view_switch_list)
                     else:
-                        self._view_switch.setBorderColor(QColor(0, 0, 0, 0))
-                        self._view_switch_list.setBorderColor(_resolve_toolbar_accent_border(153))
+                        _apply_view_fill_chip(self._view_switch_list, self._view_switch)
                 finally:
                     try:
                         self._view_switch.blockSignals(False)
@@ -307,14 +313,12 @@ class GalleryToolbar(QWidget):
                 self._view_switch_list.blockSignals(True)
                 self._view_switch.setChecked(not is_list)
                 self._view_switch_list.setChecked(is_list)
-                # Active: border, inactive: no border — icon color via tuple (no setForegroundColor hack)
+                # Active: fill-chip, inactive: transparent — icon color via tuple (no setForegroundColor hack)
                 try:
                     if not is_list:
-                        self._view_switch.setBorderColor(_resolve_toolbar_accent_border(153))
-                        self._view_switch_list.setBorderColor(QColor(0, 0, 0, 0))
+                        _apply_view_fill_chip(self._view_switch, self._view_switch_list)
                     else:
-                        self._view_switch.setBorderColor(QColor(0, 0, 0, 0))
-                        self._view_switch_list.setBorderColor(_resolve_toolbar_accent_border(153))
+                        _apply_view_fill_chip(self._view_switch_list, self._view_switch)
                 except Exception:
                     pass
             finally:

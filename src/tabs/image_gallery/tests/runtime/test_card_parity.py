@@ -197,13 +197,42 @@ def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp):
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # S2-9: accent-stroked pill — not filled, accent border + accent text.
-    assert card.property("badgeFilled") is False
-    border = card.property("badgeBorderColor")
-    text = card.property("badgeTextColor")
-    assert border is not None and text is not None
+    # S2: AI tie-break is an in-thumbnail pill (left overlay), not a
+    # top-right toolkit badge — toolkit badge cleared, overlay set.
+    assert card.property("badgeText") in (None, "")
+    assert getattr(card, "_gallery_badge", None) == "AI tie-break…"
+    filled, _bg, border, _text = card._gallery_badge_style
+    assert filled is False
     accent = _token_color("accent", "#0096FF")
     assert border.name().lower() == accent.name().lower()
+    card.deleteLater()
+
+
+def test_rank_badge_text_is_muted_not_white(qapp):
+    from types import SimpleNamespace
+
+    card = build_gallery_card(_item(), parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(
+        card,
+        SimpleNamespace(rejected=False, is_best=False, vlm_tie_pending=False, rank=3, crown_rank=None),
+    )
+    assert getattr(card, "_gallery_badge", None) == "#3"
+    _filled, _bg, _bd, txt = card._gallery_badge_style
+    assert txt.name().lower() == "#dfdfdf"
+    card.deleteLater()
+
+
+def test_unreadable_cover_has_plate_background(qapp):
+    item = _item(
+        thumbnail_status=ThumbnailStatus.ERROR,
+        analysis_error="decode failed",
+    )
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    regions = {r.id: r for r in card.regions()}
+    assert regions["cover"].text == "!"
+    assert regions["cover"].override_bg_color is not None
     card.deleteLater()
 
 
