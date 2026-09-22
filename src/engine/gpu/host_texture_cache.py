@@ -178,6 +178,17 @@ def cache_for_host(
             setattr(state, attr, cache)
         else:
             setattr(host, attr, cache)
+    # Barrier-seam aliasing (canvas-runtime dogma): never rebind the
+    # runtime state's live upload dict here. The only writer of
+    # ``state._texture_upload_cache`` is the DerivedGpuState barrier
+    # (``engine.cache.display_tier_service.upload_pil_images`` and its
+    # queue/upload collaborators); this helper only *adopts* the state's
+    # existing dict as the cache backend in place, so ``cache.entries IS
+    # state._texture_upload_cache`` with zero direct state mutation.
     if _host_has_field(state, "_texture_upload_cache"):
-        state._texture_upload_cache = cache.entries
+        live = getattr(state, "_texture_upload_cache", None)
+        if isinstance(live, OrderedDict) and cache.entries is not live:
+            for key, image in list(cache.entries.items()):
+                live.setdefault(key, image)
+            cache._cache = live
     return cache
