@@ -22,7 +22,8 @@ jobs:
       - name: Check Out Toolkit Sibling
         uses: actions/checkout@v4
         with:
-          repository: Loganavter/sli-ui-toolkit
+          repository: Loganavter/sli-ui-toolkit-private
+          token: ${{ secrets.TOOLKIT_PAT }}
           path: sli-ui-toolkit
 
       - name: Set Up Python
@@ -72,7 +73,8 @@ jobs:
       - name: Check Out Toolkit Sibling
         uses: actions/checkout@v4
         with:
-          repository: Loganavter/sli-ui-toolkit
+          repository: Loganavter/sli-ui-toolkit-private
+          token: ${{ secrets.TOOLKIT_PAT }}
           path: sli-ui-toolkit
 
       - name: Set Up Python
