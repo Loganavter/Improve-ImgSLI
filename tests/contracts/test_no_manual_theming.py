@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC
+from tests.contracts._framework import SRC, parse
 
 
 ALLOWED_THEME_INFRA_FILES = {
@@ -40,7 +40,8 @@ def test_no_manual_theming_calls_outside_theme_infra():
         rel = path.relative_to(SRC)
         if rel in ALLOWED_THEME_INFRA_FILES:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = parse(path)
+        assert tree is not None, f"unparsable {path}"
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

@@ -25,7 +25,7 @@ import ast
 import pytest
 from pathlib import Path
 
-from tests.contracts._framework import SRC
+from tests.contracts._framework import SRC, parse
 
 pytestmark = pytest.mark.slow
 
@@ -71,9 +71,8 @@ def _paint_functions() -> list[tuple[Path, ast.FunctionDef]]:
     for path in sorted(SRC.rglob("*.py")):
         if "resources" in path.parts:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

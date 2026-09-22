@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, iter_py, read, rel
+from ._framework import ROOT, iter_py, parse, read, rel
 
 ENGINE_APPLY = ROOT / "src" / "engine" / "cache" / "display_tier_service.py"
 BUILDER = (
@@ -68,7 +68,10 @@ _BUILDER_FORBIDDEN_IMPORT_NAMES = (
 
 
 def _parse(path):
-    return ast.parse(read(path))
+    tree = parse(path)
+    if tree is None:
+        raise SyntaxError(f"cannot parse {path}")
+    return tree
 
 
 def _top_level_defs(tree: ast.Module) -> list[str]:
@@ -94,9 +97,8 @@ def _definers_of(name: str) -> list[str]:
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         if any(
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

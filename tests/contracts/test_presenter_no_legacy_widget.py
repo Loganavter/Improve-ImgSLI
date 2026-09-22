@@ -13,7 +13,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import SRC, read, rel
+from ._framework import SRC, parse, read, rel
 
 HOST_ROOTS = (
     SRC / "ui" / "presenters" / "main_window",
@@ -36,7 +36,8 @@ def _iter_host_py_files() -> list[Path]:
 
 
 def test_presenter_init_takes_no_widget_parameter():
-    tree = ast.parse(read(PRESENTER_INIT))
+    tree = parse(PRESENTER_INIT)
+    assert tree is not None, f"unparsable {PRESENTER_INIT}"
     init = next(
         node
         for node in ast.walk(tree)
@@ -55,7 +56,9 @@ def test_composer_does_not_read_or_pass_the_legacy_widget():
 def test_host_presenter_code_has_no_widget_attribute_access():
     offenders: list[str] = []
     for py in _iter_host_py_files():
-        tree = ast.parse(read(py))
+        tree = parse(py)
+        if tree is None:
+            continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == "widget":
                 offenders.append(f"{rel(py)}:{node.lineno}: ...{node.attr}")

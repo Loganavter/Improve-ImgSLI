@@ -39,6 +39,37 @@ def read(p: Path) -> str:
     except Exception:
         return ""
 
+
+_parse_cache: dict[str, ast.Module] = {}
+
+
+def parse(path: Path) -> ast.Module | None:
+    """Parse ``path`` to an AST, cached per absolute path for the process.
+
+    Contract tests scan the same ``src/`` tree dozens of times per worker;
+    re-parsing is pure CPU waste (source files are static during a test run).
+    The returned tree is SHARED — walk it read-only, never mutate it.
+    Returns None on SyntaxError / unreadable file (same as ``module_imports``).
+    """
+    key = str(path)
+    try:
+        cached = _parse_cache[key]
+    except KeyError:
+        pass
+    else:
+        return cached
+    try:
+        tree = ast.parse(read(path))
+    except SyntaxError:
+        return None
+    _parse_cache[key] = tree
+    return tree
+
+
+def clear_parse_cache() -> None:
+    """Drop the parse cache (tests that write source files, if any)."""
+    _parse_cache.clear()
+
 def module_imports(path: Path) -> list[tuple[str, int]]:
     try:
         tree = ast.parse(read(path))

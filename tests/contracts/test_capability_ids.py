@@ -13,7 +13,7 @@ import pytest
 import re
 from pathlib import Path
 
-from tests.contracts._framework import ROOT, SRC
+from tests.contracts._framework import ROOT, SRC, parse
 
 pytestmark = pytest.mark.slow
 
@@ -26,9 +26,8 @@ def _collect_contribute_ids_from_host() -> set[str]:
     for py in SRC.rglob("*.py"):
         if "__pycache__" in py.parts:
             continue
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(py)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -59,7 +58,8 @@ def _collect_tab_service_handlers() -> set[str]:
             continue
         try:
             text = py.read_text(encoding="utf-8")
-            tree = ast.parse(text)
+            tree = parse(py)
+            assert tree is not None, f"unparsable {py}"
         except SyntaxError:
             continue
         # Look for: if service_id == "contribute_..."  or  service_id == '...'

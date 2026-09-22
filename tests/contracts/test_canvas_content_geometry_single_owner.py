@@ -41,7 +41,7 @@ import ast
 
 import pytest
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, rel
 
 pytestmark = pytest.mark.slow
 
@@ -108,9 +108,8 @@ def _bounds_access_violations() -> list[str]:
         path_rel = rel(path)
         if _is_allowlisted(path_rel, _BOUNDS_ALLOWLIST):
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr in (
@@ -141,9 +140,8 @@ def _split_arithmetic_violations() -> list[str]:
         path_rel = rel(path)
         if _is_allowlisted(path_rel, _SPLIT_OWNER_ALLOWLIST):
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for func in ast.walk(tree):
             if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):

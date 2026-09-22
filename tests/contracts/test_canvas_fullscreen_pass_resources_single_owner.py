@@ -43,7 +43,7 @@ import ast
 
 import pytest
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, rel
 
 pytestmark = pytest.mark.slow
 
@@ -81,9 +81,8 @@ def _duplicate_resource_class_violations() -> list[str]:
         path_rel = rel(path)
         if path_rel in _ALLOWLIST:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
@@ -135,9 +134,8 @@ def test_textured_shape_has_single_engine_owner():
         path_rel = rel(path)
         if path_rel == _TEXTURED_OWNER:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
