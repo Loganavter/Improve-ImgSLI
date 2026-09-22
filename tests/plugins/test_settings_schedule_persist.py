@@ -28,6 +28,31 @@ def _settle():
     QTest.qWait(220)
 
 
+def _settle_until_value(settings, key, expected, timeout_ms=5000):
+    """Wait for the debounced writer to land `expected` at `key`.
+
+    Fixed qWait(220) leaves only ~70 ms of margin past the 150 ms
+    singleShot; on a loaded CI xdist worker the timer fires late and the
+    assert reads None (flaky red with no exception — the writer is merely
+    late, not broken). Poll the effect with a generous timeout instead of
+    the clock: green fast locally, green slow on loaded CI.
+    """
+    from PySide6.QtCore import QCoreApplication
+
+    elapsed = 0
+    step = 25
+    while elapsed < timeout_ms:
+        QCoreApplication.processEvents()
+        if settings.value(key) == expected:
+            return
+        QTest.qWait(step)
+        elapsed += step
+    assert settings.value(key) == expected, (
+        f"debounced persist never wrote {key}={expected!r} "
+        f"within {timeout_ms} ms"
+    )
+
+
 @pytest.fixture
 def qapp():
     app = QApplication.instance() or QApplication([])
@@ -55,7 +80,7 @@ def test_schedule_persist_writes_full_snapshot_later(qapp, manager):
     assert not manager.settings.contains("ui_mode")
 
     # After the debounce the whole store snapshot is on disk.
-    _settle()
+    _settle_until_value(manager.settings, "ui_mode", "expert")
     assert manager.settings.value("ui_mode") == "expert"
     assert float(manager.settings.value("ui_scale_factor")) == 1.5
     assert manager.settings.value("theme") == "auto"  # untouched fields too
@@ -67,7 +92,7 @@ def test_schedule_persist_coalesces(qapp, manager):
     manager.schedule_persist(store)
     store.settings.ui_mode = "advanced"
     manager.schedule_persist(store)
-    _settle()
+    _settle_until_value(manager.settings, "ui_mode", "advanced")
     assert manager.settings.value("ui_mode") == "advanced"
 
 
@@ -75,10 +100,10 @@ def test_schedule_persist_reusable_after_fire(qapp, manager):
     store = Store()
     store.settings.ui_mode = "expert"
     manager.schedule_persist(store)
-    _settle()
+    _settle_until_value(manager.settings, "ui_mode", "expert")
     assert manager.settings.value("ui_mode") == "expert"
 
     store.settings.ui_mode = "advanced"
     manager.schedule_persist(store)
-    _settle()
+    _settle_until_value(manager.settings, "ui_mode", "advanced")
     assert manager.settings.value("ui_mode") == "advanced"
