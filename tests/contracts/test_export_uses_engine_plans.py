@@ -32,7 +32,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 BUILDER = (
     ROOT
@@ -174,10 +174,7 @@ _PRESCALE_RE = re.compile(r"prescale|resample|downscale", re.I)
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _scope_files():
@@ -219,8 +216,7 @@ def _function_node(tree: ast.Module, name: str):
 
 def _function_segment(path, func_name: str) -> str:
     text = read(path)
-    tree = parse(path)
-    assert tree is not None, f"unparsable {path}"
+    tree = ast.parse(text)
     for node in ast.walk(tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -613,8 +609,7 @@ def test_r4_mc_probe_result_is_record_only():
 
 def test_r4_live_entry_points_take_no_authoritative_tiles():
     offenders: list[str] = []
-    ic_tree = parse(IC_RESIDENCY)
-    assert ic_tree is not None, f"unparsable {IC_RESIDENCY}"
+    ic_tree = ast.parse(read(IC_RESIDENCY))
     for node in ast.walk(ic_tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -627,8 +622,7 @@ def test_r4_live_entry_points_take_no_authoritative_tiles():
             ]
             if bad:
                 offenders.append(f"IC realize_tile_plan: {bad}")
-    mc_tree = parse(MC_RESIDENCY)
-    assert mc_tree is not None, f"unparsable {MC_RESIDENCY}"
+    mc_tree = ast.parse(read(MC_RESIDENCY))
     for node in ast.walk(mc_tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

@@ -24,7 +24,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import ROOT, parse, rel
+from ._framework import ROOT, rel
 
 TESTS_ROOT = ROOT / "tests"
 TABS_ROOT = ROOT / "src" / "tabs"
@@ -122,8 +122,9 @@ def _iter_test_files() -> list[Path]:
 
 
 def _deep_tab_import_candidates(path: Path) -> set[str]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
         return set()
 
     candidates: set[str] = set()

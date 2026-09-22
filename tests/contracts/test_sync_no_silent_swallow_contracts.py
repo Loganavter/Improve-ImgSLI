@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import SRC, parse, read, rel
+from ._framework import SRC, read, rel
 
 _SYNC_FUNCTION_HINTS = (
     "handle_store_domain",
@@ -136,8 +136,9 @@ def _try_body_marks(try_node: ast.Try) -> set[str]:
 
 
 def _scan_file(path) -> list[str]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(read(path))
+    except SyntaxError:
         return []
     offenders: list[str] = []
     for node in ast.walk(tree):
@@ -183,8 +184,9 @@ def test_refresh_toolbar_helpers_report_bool():
     """ ``refresh_*toolbar`` helpers must be typed ``-> bool`` (synced or not)."""
     offenders: list[str] = []
     for path in _iter_sync_files():
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):

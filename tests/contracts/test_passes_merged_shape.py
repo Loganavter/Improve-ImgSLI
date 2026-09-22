@@ -37,7 +37,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, iter_py, parse, read, rel
+from ._framework import ROOT, iter_py, read, rel
 
 ENGINE_PASS = ROOT / "src" / "engine" / "gpu" / "base_images_pass.py"
 ENGINE_REALIZER = ROOT / "src" / "engine" / "cache" / "residency.py"
@@ -107,10 +107,7 @@ _FORBIDDEN_TEXT_RES = [
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _method_node(tree: ast.Module, class_name: str, method: str):
@@ -337,8 +334,9 @@ def test_realize_loop_has_single_home():
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
@@ -370,8 +368,9 @@ def test_base_images_pass_definitions_capped():
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == "BaseImagesPass":

@@ -26,7 +26,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import SRC, iter_py, parse, read, rel
+from ._framework import SRC, iter_py, read, rel
 
 PRIMITIVES_FILE = SRC / "tabs" / "image_compare" / "ui" / "primitives.py"
 
@@ -37,8 +37,7 @@ OWNER_FILES = {
 
 
 def _widget_owned_attrs() -> set[str]:
-    tree = parse(PRIMITIVES_FILE)
-    assert tree is not None, f"unparsable {PRIMITIVES_FILE}"
+    tree = ast.parse(read(PRIMITIVES_FILE))
     attrs: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
@@ -81,8 +80,9 @@ def test_widget_owned_attrs_are_not_read_through_ui():
         rel_path = py.relative_to(SRC)
         if rel_path in OWNER_FILES:
             continue
-        tree = parse(py)
-        if tree is None:
+        try:
+            tree = ast.parse(read(py))
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if (

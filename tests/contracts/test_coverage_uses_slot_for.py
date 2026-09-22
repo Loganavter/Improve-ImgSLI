@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, iter_py, parse, rel
+from ._framework import ROOT, iter_py, rel
 
 IC_DRAW_PLAN = ROOT / "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py"
 ENGINE_COVERAGE = ROOT / "src/engine/cache/tile_coverage.py"
@@ -58,8 +58,7 @@ _COVERAGE_CALL_NAMES = frozenset(
 
 def _function_segment(path, func_name: str) -> str:
     text = path.read_text(encoding="utf-8")
-    tree = parse(path)
-    assert tree is not None, f"unparsable {path}"
+    tree = ast.parse(text)
     for node in ast.walk(tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -126,8 +125,9 @@ def test_drop_functions_are_pure_over_caller_supplied_lists():
 
 
 def _call_names_in(path) -> set[str]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, OSError):
         return set()
     names: set[str] = set()
     for node in ast.walk(tree):

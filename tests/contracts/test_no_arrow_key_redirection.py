@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC, parse
+from tests.contracts._framework import SRC
 
 
 def _keys_in_if_test(node: ast.If) -> set[str]:
@@ -54,8 +54,9 @@ def test_no_down_remap_to_right():
         text = path.read_text(encoding="utf-8")
         if "Key_Down" not in text:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
             continue
         # Grid layouts legitimately map all four arrows
         if "_grid_columns" in text:
@@ -84,8 +85,9 @@ def test_no_up_remap_to_left():
         text = path.read_text(encoding="utf-8")
         if "Key_Up" not in text:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
             continue
         if "_grid_columns" in text:
             continue

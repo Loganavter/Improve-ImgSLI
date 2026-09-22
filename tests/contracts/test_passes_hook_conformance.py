@@ -32,7 +32,7 @@ import inspect
 
 import pytest
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 SEAM = ROOT / "src" / "engine" / "passes" / "hooks.py"
 SEAM_PKG = ROOT / "src" / "engine" / "passes"
@@ -69,10 +69,7 @@ _GPU_MARKS = ("QRhi", "newTexture", "uploadTexture", "generateMips", "QRhiWidget
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _method_node(tree: ast.Module, class_name: str, method: str):

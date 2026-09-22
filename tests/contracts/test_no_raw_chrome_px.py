@@ -13,7 +13,7 @@ import ast
 import re
 from pathlib import Path
 
-from tests.contracts._framework import SRC, parse
+from tests.contracts._framework import SRC
 
 # Canvas/image-space or infra files where raw fixed-size literals are
 # intentional: the canvas widget minimum sizes are image-space (plan
@@ -56,8 +56,7 @@ def test_raw_chrome_px_goes_through_scaled_px():
         text = path.read_text(encoding="utf-8")
         if "scaled_px" in text or "ui_font" in text:
             continue
-        tree = parse(path)
-        assert tree is not None, f"unparsable {path}"
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -85,8 +84,7 @@ def test_no_raw_font_size_literals_outside_font_infra():
         # with raw font-size literals that have no scaling path at all.
         if "scaled_px" in text or "ui_font" in text or "apply_ui_font" in text:
             continue
-        tree = parse(path)
-        assert tree is not None, f"unparsable {path}"
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

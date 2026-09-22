@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC, iter_py, parse
+from tests.contracts._framework import SRC, iter_py
 
 WINDOW_TOOLTIP_ALLOWLIST: set[Path] = {
     Path("shared_toolkit/ui/overlay_layer.py"),
@@ -60,8 +60,9 @@ def _window_tooltip_flag_offenses(tree: ast.AST) -> list[int]:
 def test_no_qtooltip_usage_anywhere():
     offenders: list[str] = []
     for path in iter_py(SRC):
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
             continue
         rel = path.relative_to(SRC)
         for lineno in _qttooltip_offenses(tree):
@@ -81,8 +82,9 @@ def test_no_window_tooltip_flag_outside_allowlist():
         rel = path.relative_to(SRC)
         if rel in WINDOW_TOOLTIP_ALLOWLIST:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
             continue
         for lineno in _window_tooltip_flag_offenses(tree):
             offenders.append(f"{rel}:{lineno}")

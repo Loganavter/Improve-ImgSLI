@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import SRC, parse, read
+from ._framework import SRC, read
 
 #: file (relative to src/) -> expected stable names. A name matches when it
 #: appears as a string literal inside a ``setObjectName(...)`` call, or as a
@@ -101,9 +101,10 @@ def test_expected_object_names_present():
     for rel_path, expected in EXPECTED_NAMES.items():
         path = SRC / rel_path
         assert path.is_file(), f"scoped file moved: {rel_path}"
-        tree = parse(path)
-        if tree is None:
-            raise AssertionError(f"{rel_path} does not parse")
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError as exc:
+            raise AssertionError(f"{rel_path} does not parse: {exc}") from exc
         found = _object_name_fragments(tree)
         haystack = "\n".join(sorted(found))
         for name in sorted(expected):
@@ -117,8 +118,7 @@ def test_expected_object_names_present():
 
 def test_cards_name_each_built_card():
     path = SRC / "tabs" / "session_picker" / "recent" / "cards.py"
-    tree = parse(path)
-    assert tree is not None, f"unparsable {path}"
+    tree = ast.parse(read(path))
     funcs = {
         node.name: node
         for node in ast.walk(tree)
@@ -150,8 +150,7 @@ def test_cards_name_each_built_card():
 def test_no_empty_object_name_in_scope():
     offenders: list[str] = []
     for rel_path in EXPECTED_NAMES:
-        tree = parse(SRC / rel_path)
-        assert tree is not None, f"unparsable {rel_path}"
+        tree = ast.parse(read(SRC / rel_path))
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)

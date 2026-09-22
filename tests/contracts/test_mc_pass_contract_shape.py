@@ -29,7 +29,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 MC_SCENE = ROOT / "src" / "tabs" / "multi_compare" / "scene"
 MC_BASE_IMAGES = MC_SCENE / "passes" / "base_images.py"
@@ -49,10 +49,7 @@ _HARDCODED_LAYER_RE = re.compile(r"^\s*(layer|priority)\s*=\s*\d+", re.MULTILINE
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _method_arg_names(tree: ast.Module, class_name: str, method: str):

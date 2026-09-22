@@ -37,7 +37,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 OVERLAY = ROOT / "src" / "engine" / "overlay"
 
@@ -94,10 +94,7 @@ _FORBIDDEN_SELF_GPU_RE = re.compile(
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _methods(tree: ast.Module, class_name: str) -> dict[str, ast.FunctionDef]:
@@ -289,8 +286,9 @@ def test_overlay_names_no_tab_geometry():
                     f"src/engine/overlay/{py.name} references app layer "
                     f"({rx.pattern!r}) -- the engine never names its callers"
                 )
-        tree = parse(py)
-        if tree is None:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:

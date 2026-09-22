@@ -20,7 +20,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC, iter_py, parse, rel
+from tests.contracts._framework import SRC, iter_py, rel
 
 
 def _service_factory_files() -> list[Path]:
@@ -57,8 +57,9 @@ def test_service_factories_guard_tab_widget():
     """Every service factory branch that uses tab._widget must guard against None."""
     offenders: list[str] = []
     for path in _service_factory_files():
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
             continue
         rel_path = rel(path)
         for node in ast.walk(tree):
@@ -93,8 +94,7 @@ def test_create_startup_service_probes_by_capability():
     """
     registry_path = SRC / "tabs" / "use_cases" / "capability_routing.py"
     text = registry_path.read_text(encoding="utf-8")
-    tree = parse(registry_path)
-    assert tree is not None, f"unparsable {registry_path}"
+    tree = ast.parse(text)
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
             continue

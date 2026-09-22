@@ -32,7 +32,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 IC_RHI_RENDERER = (
     ROOT / "src" / "tabs" / "image_compare" / "canvas" / "rhi_renderer"
@@ -60,10 +60,7 @@ _LAST_GLOBAL_RE = re.compile(r"^_last_\w+")
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _turf_modules():

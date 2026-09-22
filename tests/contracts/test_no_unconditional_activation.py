@@ -28,7 +28,7 @@ import pytest
 import os
 from pathlib import Path
 
-from tests.contracts._framework import ROOT, parse
+from tests.contracts._framework import ROOT
 
 pytestmark = pytest.mark.slow
 
@@ -119,8 +119,9 @@ def _collect_offenders(tag: str, root: Path, anchor: Path) -> list[str]:
     for path in sorted(root.rglob("*.py")):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
             continue
         for node, owner in _walk_with_owner(tree):
             if not (

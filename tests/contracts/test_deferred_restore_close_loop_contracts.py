@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import SRC, parse, read, rel
+from ._framework import SRC, read, rel
 
 _CLOSE_TOKENS = (
     "dispatch",
@@ -69,8 +69,9 @@ def _is_singleshot(call: ast.Call) -> bool:
 
 
 def _scan_file(path) -> list[str]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(read(path))
+    except SyntaxError:
         return []
     offenders: list[str] = []
     for node in ast.walk(tree):

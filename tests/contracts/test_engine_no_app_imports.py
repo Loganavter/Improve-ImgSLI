@@ -21,7 +21,7 @@ import io
 import re
 import tokenize
 
-from ._framework import ROOT, iter_py, parse, rel
+from ._framework import ROOT, iter_py, rel
 
 ENGINE = ROOT / "src" / "engine"
 
@@ -54,8 +54,9 @@ def _engine_py() -> list:
 
 
 def _import_modules(path) -> list[tuple[str, int]]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, OSError):
         return []
     out: list[tuple[str, int]] = []
     for node in ast.walk(tree):
@@ -120,8 +121,9 @@ def test_legacy_shims_hold_only_the_pinned_import():
 
 
 def _string_spans(path) -> list[tuple[int, str]]:
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, OSError):
         return []
     return [
         (getattr(node, "lineno", 0), node.value)

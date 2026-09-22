@@ -23,7 +23,6 @@ import pytest
 from ._framework import (
     SHADER_SOURCES,
     list_all_canvas_features,
-    parse,
     read,
     rel,
 )
@@ -48,8 +47,9 @@ def _local_pass_modules(feature: Path, path: Path, seen: set[Path]) -> None:
     if path in seen or not path.is_file():
         return
     seen.add(path)
-    tree = parse(path)
-    if tree is None:
+    try:
+        tree = ast.parse(read(path))
+    except SyntaxError:
         return
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.level < 1 or not node.module:

@@ -26,7 +26,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, parse, read
+from ._framework import ROOT, read
 
 ENGINE_PASS = ROOT / "src" / "engine" / "gpu" / "base_images_pass.py"
 RETIRED_IC_MANIFEST = (
@@ -49,10 +49,7 @@ _HARDCODED_LAYER_RE = re.compile(r"^\s*(layer|priority)\s*=\s*\d+", re.MULTILINE
 
 
 def _parse(path):
-    tree = parse(path)
-    if tree is None:
-        raise SyntaxError(f"cannot parse {path}")
-    return tree
+    return ast.parse(read(path))
 
 
 def _class_attr_value(tree: ast.Module, class_name: str, attr: str):

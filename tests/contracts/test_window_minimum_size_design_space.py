@@ -18,7 +18,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC, parse
+from tests.contracts._framework import SRC
 
 _FORBIDDEN_CALLS = {"scaled_px"}
 
@@ -27,8 +27,9 @@ def _iter_window_minimum_size_defs():
     for path in SRC.rglob("*.py"):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        tree = parse(path)
-        if tree is None:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
             continue
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
