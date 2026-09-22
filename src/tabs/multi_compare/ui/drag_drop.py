@@ -1,12 +1,15 @@
 """Drag & drop / pending-placement orchestration for ``MultiCompareWidget``.
 
-Audit-Meta: pattern=thin-owner reason="DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites"
+Audit-Meta: pattern=thin-owner-target size=927 reason="widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator"
 
 Split out of ``widget.py`` to keep that class down to composition/wiring --
 mirrors the ``use_cases`` split applied to ``MultiCompareController``. Every
 function here takes the widget as its first argument and reads/writes its
 instance state (``_pending_duplicate_source``, ``_pending_paste_paths``)
-directly, same calling convention as the controller's use_cases modules.
+directly, same calling convention as the controller's use_cases modules. The
+``DropQueue`` queue lifecycle lives in ``drop_queue.py`` (collaborator object
+with its own queue/inflight state, owner passed via method args) and is
+re-exported here for backward compatibility.
 
 Qt calls ``dragEnterEvent``/``dragMoveEvent``/``dragLeaveEvent``/``dropEvent``/
 ``eventFilter`` by name on the widget itself, so those stay defined as thin
@@ -31,154 +34,20 @@ from tabs.multi_compare.models import slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
+from tabs.multi_compare.ui.drop_queue import DropQueue, get_drop_queue
 from tabs.multi_compare.use_cases import placement as _placement
 
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def _normpath_str(p) -> str:
-    """Normalized path string for DropQueue dedup keys (IC ``slot.py`` parity).
-
-    ``os.path.normpath`` over ``os.fspath`` heals textual variants of the
-    same file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``) without
-    ever equating distinct files.
-    """
-    import os as _os
-
-    try:
-        return _os.path.normpath(_os.fspath(p))
-    except Exception:
-        return str(p)
-
-
-class DropQueue:
-    """FIFO dedup queue for MC external drops — A1 IC mirror.
-
-    Dedup key ``(anchor_slot, normpath)`` (``anchor_slot`` is the pure
-    :func:`placement.anchor_slot_for_path` verdict, ``0`` for root/empty).
-    Max 1 inflight per anchor slot: the next entry for a busy slot waits
-    while entries for free slots flow — same shape as IC's
-    ``image_compare.use_cases.drag_drop.DropQueue`` (there the key is the
-    1/2 slot number). Delivery is one ``images_dropped`` emit per entry,
-    scheduled past the P7 accept via ``QTimer.singleShot(0)``. The
-    internal-drag Move echo never enters the queue (untouched branch in
-    :func:`drop_event`).
-    """
-
-    #: Cap on total pending paths (queued + inflight). A pathological drop
-    #: (or rapid-fire drops) must not pile unbounded worker intake; the
-    #: trimmed tail is reported via the queue-full summary, never silent.
-    MAX_PENDING_PATHS = 128
-
-    def __init__(self) -> None:
-        from collections import deque as _dq
-
-        self._queue: _dq[tuple[int, list, object, object]] = _dq()
-        self._inflight_slots: set[int] = set()
-        self._queued_keys: set[tuple[int, str]] = set()
-        self._inflight_keys: set[tuple[int, str]] = set()
-
-    def _pending_path_count(self) -> int:
-        try:
-            queued = sum(len(paths) for _, paths, _, _, _ in self._queue)
-        except Exception:
-            queued = len(self._queue)
-        try:
-            return queued + len(self._inflight_keys)
-        except Exception:
-            return queued
-
-    def enqueue(self, anchor_slot: int | None, paths, widget, target, side) -> bool:
-        slot = int(anchor_slot) if anchor_slot is not None else 0
-        uniq: list = []
-        for raw in paths:
-            n = _normpath_str(raw)
-            key = (slot, n)
-            if key in self._queued_keys or key in self._inflight_keys:
-                _dnd_log("DropQueue dedup skip slot=%s path=%s", slot, n)
-                continue
-            uniq.append(raw)
-            self._queued_keys.add(key)
-        if not uniq:
-            _dnd_log("DropQueue enqueue slot=%s -> all deduped, skip", slot)
-            return False
-        budget = self.MAX_PENDING_PATHS - self._pending_path_count()
-        if budget < len(uniq):
-            dropped = uniq[max(budget, 0):]
-            uniq = uniq[:max(budget, 0)]
-            for raw in dropped:
-                self._queued_keys.discard((slot, _normpath_str(raw)))
-            _dnd_log(
-                "DropQueue cap slot=%s: queued %d, dropped %d (max %d)",
-                slot, len(uniq), len(dropped), self.MAX_PENDING_PATHS,
-            )
-            _emit_dnd_overflow_summary(widget, dropped, reason="queue_full")
-            if not uniq:
-                return False
-        self._queue.append((slot, uniq, widget, target, side))
-        _dnd_log(
-            "DropQueue enqueue slot=%s paths=%s queued=%s inflight=%s",
-            slot, [str(p) for p in uniq][:3], len(self._queue),
-            sorted(self._inflight_slots),
-        )
-        self._try_process()
-        return True
-
-    def _try_process(self) -> None:
-        from PySide6.QtCore import QTimer as _QTimer
-
-        entry = None
-        for slot, paths, widget, target, side in list(self._queue):
-            if slot not in self._inflight_slots:
-                entry = (slot, paths, widget, target, side)
-                break
-        if entry is None:
-            return
-        slot, paths, widget, target, side = entry
-        try:
-            self._queue.remove(entry)  # type: ignore[arg-type]
-        except Exception:
-            from collections import deque as _dq
-
-            new_q = _dq(x for x in self._queue if x is not entry)
-            self._queue = new_q
-        normed: list[str] = []
-        for raw in paths:
-            n = _normpath_str(raw)
-            normed.append(n)
-            self._queued_keys.discard((slot, n))
-            self._inflight_keys.add((slot, n))
-        self._inflight_slots.add(slot)
-        _dnd_log("DropQueue _try_process start slot=%s paths=%s", slot, normed[:3])
-
-        def _do_emit(
-            q=self, sl=slot, keys=normed, wid=widget, tgt=target,
-            sd=side, ps=list(paths),
-        ):
-            try:
-                wid.images_dropped.emit(list(ps), tgt, sd)
-            except Exception:
-                logger.exception("[mc-dnd] DropQueue emit failed")
-            for _n in keys:
-                q._inflight_keys.discard((int(sl), _n))
-            q._inflight_slots.discard(int(sl))
-            _dnd_log("DropQueue finish slot=%s remaining queued=%s", sl, len(q._queue))
-            q._try_process()
-
-        _QTimer.singleShot(0, _do_emit)
-
-    def clear(self) -> None:
-        self._queue.clear()
-        self._inflight_slots.clear()
-        self._queued_keys.clear()
-        self._inflight_keys.clear()
-
-
-_drop_queue = DropQueue()
-
-
-def get_drop_queue() -> DropQueue:
-    return _drop_queue
+# Re-exported for backward compatibility: tests and callers import
+# ``DropQueue``/``get_drop_queue`` from this module; the lifecycle itself
+# lives in ``tabs.multi_compare.ui.drop_queue`` (collaborator object with
+# its own queue/inflight state, owner passed via method args).
+__all__ = [  # noqa: F822 — re-exported names are used by external importers
+    "DropQueue",
+    "get_drop_queue",
+]
 
 
 def _dnd_grid_full_message(widget, overflow) -> str:

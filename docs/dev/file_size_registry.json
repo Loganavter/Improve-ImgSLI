@@ -858,13 +858,14 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 1058,
+      "lines": 927,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner reason=\"DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites\"",
+      "raw": "pattern=thin-owner-target size=927 reason=\"widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator\"",
       "parsed": {
-        "pattern": "thin-owner",
-        "reason": "DropQueue + accept-first + pending UX share Qt event-name surface (delegated by widget); DropQueue extraction tracked post-B1 to avoid churning B1's state-shape call sites"
+        "pattern": "thin-owner-target",
+        "size": "927",
+        "reason": "widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator"
       }
     },
     {
