@@ -215,3 +215,50 @@ def test_rejected_badge_uses_danger_token(qapp):
     danger = _token_color("danger", "#D93025")
     assert card.property("badgeBackgroundColor").name().lower() == danger.name().lower()
     card.deleteLater()
+
+
+def test_hover_capsule_flyout_fits_its_buttons(qapp):
+    """The hover pill must not clamp its outer widget below content size.
+
+    Regression: setFixedSize(88, 30) was applied to the BaseFlyout *outer*
+    widget, which carries 2×8 shadow margins + 2×4 content padding — the
+    three 22px buttons then lived in a ~72×14 box (clipped ~2× vertically,
+    worse with the 4th fidelity action). The outer sizeHint must always
+    contain every action button's geometry.
+    """
+    from tabs.image_gallery.ui.card.hover import (
+        ensure_gallery_card_flyout,
+        show_gallery_card_flyout,
+    )
+
+    card = build_gallery_card(_item(), parent=None)
+    card.resize(250, 170)
+    qapp.processEvents()
+    show_gallery_card_flyout(card)
+    qapp.processEvents()
+    flyout = ensure_gallery_card_flyout(card)
+    assert flyout is not None
+    flyout.update_state()
+    qapp.processEvents()
+
+    # Outer widget must be at least content-sized (never fixed to the
+    # svg's visible-pill 88×30, which cannot hold the shadow margins).
+    assert flyout.width() >= 88
+    assert flyout.height() >= 30
+
+    # The real invariant: every action button fits inside the outer rect.
+    # Buttons are children of flyout.container (itself inset by
+    # SHADOW_RADIUS=8 inside the outer widget), so map via container pos.
+    outer = flyout.rect()
+    container = flyout.container
+    buttons = list(flyout._buttons.values())
+    assert buttons, "capsule must contain action buttons"
+    for btn in buttons:
+        in_outer = btn.geometry().translated(container.x(), container.y())
+        assert outer.contains(in_outer), (
+            f"button {btn.property('element_name')!r} geometry {btn.geometry()} "
+            f"(container-relative) -> {in_outer} does not fit outer rect {outer}"
+        )
+
+    flyout.hide()
+    card.deleteLater()

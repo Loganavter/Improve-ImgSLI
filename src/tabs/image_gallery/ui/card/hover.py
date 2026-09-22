@@ -132,7 +132,14 @@ def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
     """Get or create gallery_card IconActionFlyout for *parent* window.
 
     Group ``gallery_card`` ensures exclusive show policy via FlyoutManager.
-    Pill 88×30 r15 #2b2b2b 0.92 + white 0.25 border per svg x1022 y198.
+
+    Sizing: the svg's 88×30 (x1022 y198) is the *visible pill*, not the
+    outer widget — BaseFlyout's shell adds 2×8 shadow margins and the
+    container 2×4 content padding. Clamping the outer widget to 88×30
+    starved the buttons (28px each) to a 72×14 box. Compact
+    ``button_size=22`` lands the visible container at 30px tall (22+2×4,
+    matching the svg height); width auto-follows the action count
+    (3, or 4 in fidelity mode) via ``update_state`` → ``adjustSize``.
     """
     try:
         from sli_ui_toolkit.widgets import IconActionFlyout
@@ -148,12 +155,7 @@ def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
                     return existing
             except Exception:
                 return existing
-        flyout = IconActionFlyout(parent)
-        # Pill per svg 88×30 r15 — size via fixed, background/border via flyout tokens (flyout.background/border), not setStyleSheet
-        try:
-            flyout.setFixedSize(88, 30)
-        except Exception:
-            pass
+        flyout = IconActionFlyout(parent, button_size=22, icon_size=14)
         # Identity for GroupShowPolicy.
         try:
             flyout.flyout_group = GALLERY_CARD_FLYOUT_GROUP  # type: ignore[attr-defined]
@@ -253,19 +255,18 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
         except Exception:
             pass
         flyout.actionTriggered.connect(_on_trigger)
-        # Show inside card top-right per svg x1022 y198 (6px from preview top, 8px from right) — 88×30 pill
+        # Show inside card top-right per svg x1022 y198 (6px from preview top, 8px from right).
+        # Outer widget width = visible pill + 2×SHADOW_RADIUS(8) — position from the
+        # live sizeHint (set_actions→update_state→adjustSize), never a hardcoded 88.
         try:
-            # Position as child of card, inside preview at 8,14 from card top (preview 8,8 +6)
-            # Use global positioning via show_aligned with top-right inside
-            # Card width 250, flyout 88, right offset 8 => x = 250-88-8=154, y=14
             flyout.setParent(card)
             try:
-                flyout.move(card.width() - 88 - 8, 14)
+                flyout.update_state()
             except Exception:
                 pass
-            # Ensure pill style
             try:
-                flyout.setFixedSize(88, 30)
+                # Card 250 wide, right margin 8, top 14 (preview 8,8 +6)
+                flyout.move(card.width() - flyout.width() - scaled_px(8), scaled_px(14))
             except Exception:
                 pass
             flyout.show()
