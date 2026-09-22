@@ -36,7 +36,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     if not isinstance(metrics, dict):
         metrics = {}
 
-    def _add_metric_row(title: str, value_text: str, fraction: float, color=None) -> None:
+    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None) -> None:
         row = QWidget(overlay._metrics_host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -47,7 +47,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         t = Label(title, pixel_size=11, parent=row)
         header.addWidget(t)
         header.addStretch(1)
-        v = Label(value_text, pixel_size=11, parent=row)
+        # S4 mockup: measured values read green (#3fbf5f); gaps stay muted.
+        vc = _ok_color() if value_color is None else value_color
+        v = Label(value_text, pixel_size=11, parent=row, color=vc)
         header.addWidget(v)
         rl.addLayout(header)
         # Lazy import bar widget
@@ -71,7 +73,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         """Unmeasured state: an explicit 'not measured' row, never a plausible
         constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
         data look measured; gaps must read as gaps."""
-        _add_metric_row(title, "— · not measured", 0.0, _muted_color())
+        _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color())
 
     if is_fidelity:
         ssim = metrics.get("ssim")
@@ -119,7 +121,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             t = Label("Detail gain (HF ratio)", pixel_size=11, parent=row)
             header.addWidget(t)
             header.addStretch(1)
-            v = Label(pct, pixel_size=11, parent=row)
+            v = Label(pct, pixel_size=11, parent=row, color=_ok_color())
             header.addWidget(v)
             rl.addLayout(header)
             from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar

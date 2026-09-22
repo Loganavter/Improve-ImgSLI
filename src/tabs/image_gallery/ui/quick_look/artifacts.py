@@ -110,11 +110,19 @@ def rebuild_artifacts(overlay, item) -> None:
         t = Label(title_map.get(aid, aid), pixel_size=11, parent=row)
         header.addWidget(t)
         header.addStretch(1)
-        if aid == "banding" and lvl == "mild":
-            lvl_label = "mild · sky region"
-        else:
-            lvl_label = {"clean": "clean", "mild": "mild", "flagged": "flagged"}[lvl]
-        v = Label(lvl_label, pixel_size=11, parent=row)
+        # P0-8: no region analysis exists — never claim one. Severity only.
+        lvl_label = {"clean": "clean", "mild": "mild", "flagged": "flagged"}[lvl]
+        # S4 mockup severity colors: mild amber, flagged red (ThemeManager + hex fallback).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import _token_color as _ql_token_color
+
+            sev_color = _ql_token_color(
+                "gallery.status.warn" if lvl == "mild" else "gallery.status.danger",
+                "#e8b64c" if lvl == "mild" else "#D93025",
+            )
+        except Exception:
+            sev_color = None
+        v = Label(lvl_label, pixel_size=11, parent=row, color=sev_color)
         header.addWidget(v)
         rl.addLayout(header)
         if aid == "banding":

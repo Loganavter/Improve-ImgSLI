@@ -25,7 +25,10 @@ def _token_qcolor(token: str, fallback_hex: str) -> QColor:
 
 
 class _BandingCombHistogram(QWidget):
-    """Banding: gradient histogram comb spikes = banding steps (sky)."""
+    """Banding: gradient histogram comb spikes = banding steps (sky).
+
+    Container 56px per mockup (spikes reach 50px) — never clip the signature.
+    """
 
     def __init__(self, severity: str = "clean", parent=None) -> None:
         super().__init__(parent)
@@ -69,7 +72,7 @@ class _BandingCombHistogram(QWidget):
                     bar.setAutoFillBackground(True)
                     bar.setPalette(pal)
                     lay.addWidget(bar)
-        self.setFixedHeight(scaled_px(36))
+        self.setFixedHeight(scaled_px(56))
         try:
             from PySide6.QtGui import QPalette
 
@@ -107,7 +110,8 @@ class _GenericHistogram(QWidget):
             bar.setAutoFillBackground(True)
             bar.setPalette(pal)
             lay.addWidget(bar)
-        self.setFixedHeight(scaled_px(36))
+        # P0-9: container fits the tallest bar (mockup 56).
+        self.setFixedHeight(scaled_px(56))
 
 
 class _HistogramStub(QWidget):
@@ -125,4 +129,5 @@ class _HistogramStub(QWidget):
         else:
             inner = _GenericHistogram(severity=severity, parent=self)
         lay.addWidget(inner)
-        self.setFixedHeight(scaled_px(36))
+        # P0-9: container fits the tallest bar (mockup 56).
+        self.setFixedHeight(scaled_px(56))
