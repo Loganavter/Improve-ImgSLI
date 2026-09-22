@@ -42,6 +42,91 @@ def _reset_toolkit_config():
 
 
 @pytest.fixture(autouse=True)
+def _destroy_lingering_toplevels():
+    """Deterministically destroy lingering top-levels at teardown (suite-wide).
+
+    CI segfaults (``Fatal Python error: Segmentation fault`` in
+    ``pytestqt/plugin.py:_process_events`` under ``-n 8``) come from test
+    windows outliving their test: ``qtbot`` teardown (``close()`` +
+    ``deleteLater()``) never delivers ``DeferredDelete`` on the offscreen
+    QPA, so the dialog leaks — alive, with app-wide event filters / signal
+    connections keeping stale receivers installed. The next test's ``show()``
+    queues window-system focus events; a later ``processEvents`` then
+    notifies through the stale receiver after shiboken freed the C++ object
+    (``getWrapperForQObject`` → SIGSEGV).
+
+    This fixture closes the leak: at teardown every top-level widget created
+    during the test is closed and its ``DeferredDelete`` delivered
+    synchronously, so C++ destruction happens deterministically while Python
+    wrappers are still alive. Mirrors
+    ``tests/runtime/conftest.py::_destroy_lingering_toplevels`` (kept as-is;
+    harmless duplication beats shared-import coupling across conftest scopes).
+
+    Only widgets created *during* the test are destroyed (setup snapshot).
+    """
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    # Strong refs: keep setup-time windows alive for the whole test so
+    # their later teardown below compares by identity, not id().
+    before = list(app.topLevelWidgets()) if app is not None else []
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    victims = [w for w in app.topLevelWidgets() if not any(w is b for b in before)]
+    # Drop the setup refs first: widgets the test itself abandoned are
+    # already half-torn-down or dead — only C++ destruction matters now.
+    del before
+    for w in victims:
+        try:
+            w.close()
+        except RuntimeError:
+            # Wrapper already dead (C++ gone with it) — nothing to do.
+            pass
+    for w in victims:
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
+    for w in victims:
+        try:
+            QApplication.sendPostedEvents(w, QEvent.Type.DeferredDelete)
+        except RuntimeError:
+            pass
+    # NOTE: no processEvents() here on purpose — pytest-qt's own
+    # teardown hook drains the loop after all fixture finalizers, with
+    # stale receivers already destroyed above.
+    if not _sweep_all_destroyed(victims):
+        import warnings
+
+        warnings.warn(
+            "lingering top-level widgets survived the teardown sweep; "
+            "cross-test Qt state may leak",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
+def _sweep_all_destroyed(widgets) -> bool:
+    """Best-effort check the sweep really destroyed everything (debug aid).
+
+    Never fails the suite: returns True unless a *live* widget remains.
+    """
+    import shiboken6
+    from PySide6.QtWidgets import QApplication
+
+    for w in widgets:
+        try:
+            if shiboken6.isValid(w) and w in QApplication.instance().topLevelWidgets():
+                return False
+        except RuntimeError:
+            continue
+    return True
+
+
+@pytest.fixture(autouse=True)
 def _reset_translation_language():
     """Global current language is process-wide; isolate every test from it.
 
