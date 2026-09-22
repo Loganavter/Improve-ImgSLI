@@ -23,7 +23,7 @@ from core.store import Store
 from core.store_runtime_cache import ViewportRuntimeCache
 from core.store_viewport import ViewportState
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, read, rel
 
 ALLOWED_VIEWPORT_ATTRS = {
     "render_config",
@@ -40,9 +40,8 @@ ALLOWED_VIEWPORT_ATTRS = {
 def _viewport_attr_assignments() -> list[tuple[str, int, str]]:
     out: list[tuple[str, int, str]] = []
     for path in iter_py(SRC):
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Assign):

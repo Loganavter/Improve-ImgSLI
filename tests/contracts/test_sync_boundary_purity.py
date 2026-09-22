@@ -39,7 +39,7 @@ import ast
 import re
 from pathlib import Path
 
-from ._framework import SRC, read
+from ._framework import SRC, parse, read
 
 BOUNDARY_MODULES: tuple[str, ...] = (
     "src/tabs/image_compare/use_cases/persistence.py",
@@ -123,9 +123,8 @@ def _widget_state_io() -> set[tuple[str, int, str]]:
         path = root / rel_path
         if not path.is_file():
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -152,9 +151,8 @@ def _widget_state_io() -> set[tuple[str, int, str]]:
 
 
 def _dataclass_fields(path: Path, class_name: str) -> list[str]:
-    try:
-        tree = ast.parse(read(path))
-    except (OSError, SyntaxError):
+    tree = parse(path)
+    if tree is None:
         return []
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:

@@ -20,7 +20,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import SRC, read
+from ._framework import SRC, parse, read
 
 LAYERS_PATH = SRC / "tabs" / "image_compare" / "canvas" / "texture_parts" / "layers.py"
 WIDGET_PATH = SRC / "tabs" / "image_compare" / "widget.py"
@@ -47,11 +47,9 @@ def _find_function(tree: ast.Module, name: str) -> ast.FunctionDef | None:
 
 
 def _layers_clear_assigns_drag_overlay() -> list[str]:
-    text = read(LAYERS_PATH)
-    try:
-        tree = ast.parse(text)
-    except SyntaxError as e:
-        return [f"{LAYERS_PATH}:{e}"]
+    tree = parse(LAYERS_PATH)
+    if tree is None:
+        return [f"{LAYERS_PATH}: unparsable"]
     fn = _find_function(tree, "clear")
     if fn is None:
         return [f"def clear not found in {LAYERS_PATH}"]
@@ -80,11 +78,9 @@ def _layers_clear_assigns_drag_overlay() -> list[str]:
 
 
 def _widget_hardcodes_visible_false() -> list[str]:
-    text = read(WIDGET_PATH)
-    try:
-        tree = ast.parse(text)
-    except SyntaxError as e:
-        return [f"{WIDGET_PATH}:{e}"]
+    tree = parse(WIDGET_PATH)
+    if tree is None:
+        return [f"{WIDGET_PATH}: unparsable"]
     fn = _find_function(tree, "update_drag_overlays")
     if fn is None:
         return [f"def update_drag_overlays not found in {WIDGET_PATH}"]

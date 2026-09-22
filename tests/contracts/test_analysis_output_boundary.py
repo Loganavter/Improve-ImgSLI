@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import ROOT, rel
+from tests.contracts._framework import ROOT, parse, rel
 
 ANALYSIS_DIR = ROOT / "src" / "shared" / "analysis"
 BOUNDARY_MODULE = "src/shared/analysis/output.py"
@@ -25,10 +25,8 @@ def _analysis_py_files() -> list[Path]:
 
 
 def _fromarray_calls(path: Path) -> list[int]:
-    text = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
+    tree = parse(path)
+    if tree is None:
         return []
     hits: list[int] = []
     for node in ast.walk(tree):

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import ast
 
-from tests.contracts._framework import SRC
+from tests.contracts._framework import SRC, parse
 
 
 def _is_scaled_px_call(node: ast.AST) -> bool:
@@ -28,9 +28,8 @@ def test_no_nested_scaled_px():
     for path in SRC.rglob("*.py"):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not _is_scaled_px_call(node):
