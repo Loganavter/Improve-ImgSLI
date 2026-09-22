@@ -24,6 +24,29 @@ def _translate_or_default(
         return default
 
 
+def _name_row_color() -> _QColor:
+    """Filename row color via theme token (fallback #dfdfdf)."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _token_color
+
+        return _token_color("gallery.stats.text", "#dfdfdf")
+    except Exception:
+        return _QColor("#dfdfdf")
+
+
+def _unreadable_plate_color() -> _QColor:
+    """Unreadable '!' plate via theme token (RGB fallback == #303030)."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _token_color
+
+        c = _token_color("gallery.card.unreadable.plate", "#303030")
+        if c is not None:
+            return c
+    except Exception:
+        pass
+    return _QColor(48, 48, 48)
+
+
 def _item_unreadable(item: GalleryItem) -> bool:
     """S2-3: unreadable/corrupt item detection via existing model fields.
 
@@ -66,6 +89,7 @@ def _cover_region(item: GalleryItem) -> ButtonRegion:
             weight=3.0,
             group="card",
             corner_radii=(8, 8, 8, 8),
+            override_bg_color=_unreadable_plate_color(),
         )
     return ButtonRegion(
         id="cover",
@@ -90,7 +114,7 @@ def _text_rows(
             text=item.name,
             size=12,
             weight="normal",
-            color=_QColor("#dfdfdf"),
+            color=_name_row_color(),
             h_align=Qt.AlignmentFlag.AlignLeft,
             marquee=True,
             strikethrough=_rejected,

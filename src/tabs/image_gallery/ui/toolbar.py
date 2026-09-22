@@ -46,22 +46,6 @@ def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
     return QColor(0, 150, 255, int(alpha))
 
 
-def _resolve_toolbar_accent_border(alpha: int = 153) -> QColor:
-    """Legacy border helper (kept for compat) — S2 prefers fill-chip."""
-    try:
-        from sli_ui_toolkit.managers import ThemeManager
-        from ui.theming import try_resolve_theme_color
-        for token in ("gallery.accent.bar", "accent"):
-            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-            if c is not None:
-                col = QColor(c) if isinstance(c, str) else QColor(c)
-                try: col.setAlpha(int(alpha))
-                except Exception: pass
-                return col
-    except Exception: pass
-    return QColor(0, 150, 255, int(alpha))
-
-
 def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
     """Active segment = accent fill-chip; inactive = transparent (no border)."""
     try:
@@ -80,12 +64,7 @@ def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
 
 
 class GalleryToolbarViewSwitchContainer(QWidget):
-    """Segmented view-switch background (106×32, gallery.stats.background, r8).
-
-    Plain QWidget with a dedicated type so UI Inspector's Code tab can resolve
-    ``getsourcefile(type(widget))`` to ``toolbar.py`` instead of ``PySide6.QtWidgets.QWidget``.
-    See ``sli-ui-toolkit/src/sli_ui_toolkit/ui/inspector/code/factory.py:81``.
-    """
+    """Segmented view-switch background (106×32, r8, painter-painted, no QSS)."""
 
     def paintEvent(self, event) -> None:  # noqa: N802
         try:
@@ -97,7 +76,6 @@ class GalleryToolbarViewSwitchContainer(QWidget):
 
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            # Outer 106×32 r8 fill #333 + stroke #4a4a4a per svg x1130 y74
             try:
                 col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
                 bg = QColor(col) if isinstance(col, str) else col
@@ -186,11 +164,6 @@ class GalleryToolbar(QWidget):
         placeholder = "Filter by tag / description…"
         self._filter_edit = CustomLineEdit(self)
         self._filter_edit.setObjectName("gallery_toolbar_filter")
-        # The filter field is not a drop target: a default QLineEdit accepts
-        # drags, which would steal the drag target from the gallery drop
-        # routing (widget/grid/empty-state acceptDrops) whenever the cursor
-        # is over the toolbar — same thief as the image_compare caption
-        # edits (see tabs/image_compare/ui/primitives.py).
         self._filter_edit.setAcceptDrops(False)
         self._filter_edit.setPlaceholderText(placeholder)
         self._filter_edit.setClearButtonEnabled(True)
