@@ -299,4 +299,5 @@ class TabRegistry:
         self._pages.clear()
         self._pending_pages.clear()
         self._appearance_stale.clear()
+        self._discovered_tiers.clear()
         self._active_session_type = None
