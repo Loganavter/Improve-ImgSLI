@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
 from core.runtime_flags import RuntimeFlags
+from core.system_theme import resolve_theme
 from shared_toolkit.ui.decorate_dialog import (
     CUSTOM_DECORATION_RESIZE_MARGIN,
     resolve_csd_band,
@@ -263,7 +264,7 @@ class MainWindow(QWidget):
         # updates across QSS apply + theme_changed so the UI does not fill in
         # gradually mid-freeze.
         app = QApplication.instance()
-        self.theme_manager.set_theme(theme_name, app)
+        self.theme_manager.set_theme(resolve_theme(theme_name), app)
 
     def changeEvent(self, event: QEvent):
         from shared_toolkit.ui.layout_sizing import defer_dialog_geometry

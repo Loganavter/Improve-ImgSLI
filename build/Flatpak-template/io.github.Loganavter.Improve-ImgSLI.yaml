@@ -20,6 +20,7 @@ finish-args:
   - --filesystem=xdg-documents
   - --filesystem=xdg-download
   - --filesystem=xdg-pictures
+  - --talk-name=org.freedesktop.portal.Desktop
   - --env=PATH=/app/lib/ffmpeg:/app/bin:/usr/bin
 cleanup:
   - /include
