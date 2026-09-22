@@ -246,6 +246,48 @@ def test_registry_conflicting_redefinition_warns(caplog):
     assert registry.all_sections()[0].owner_tab == "ic"
 
 
+# --- dialog_tr: tab-content labels must resolve, never show raw keys ---------
+
+
+def test_dialog_tr_resolves_tab_keys_not_qt_tr(qapp):
+    """Regression: _dialog_tr used to prefer QObject.tr, which returns the
+    raw sourceText for JSON i18n keys — settings tab-content labels then
+    displayed dotted keys instead of translations."""
+    from plugins.settings.dialog import SettingsDialog
+    from ui.actions.search_index import _dialog_tr
+
+    # Register tab i18n roots the same way the app startup does.
+    from tabs.registry import TabRegistry
+    from plugins.settings.registry import ensure_tab_settings_contributions
+
+    reg = TabRegistry()
+    reg.discover()
+    reg.contribute_all_settings()
+    ensure_tab_settings_contributions()
+
+    dialog = SettingsDialog(
+        current_language="ru",
+        current_theme="dark",
+        current_max_length=30,
+        min_limit=1,
+        max_limit=9999,
+        debug_mode_enabled=False,
+        system_notifications_enabled=True,
+    )
+    for key in (
+        "image_gallery.settings.enable_ai",
+        "image_gallery.settings.ai_title",
+        "image_compare.settings.video_recording",
+    ):
+        resolved = _dialog_tr(dialog, key)
+        assert resolved != key, f"_dialog_tr returned raw key for {key!r}"
+        assert not resolved.startswith("image_"), f"unresolved tab key {key!r} -> {resolved!r}"
+    # The correct resolver was always reachable — order must prefer _tr.
+    assert _dialog_tr(dialog, "image_gallery.settings.enable_ai") == dialog._tr(
+        "image_gallery.settings.enable_ai", "ru"
+    )
+
+
 # --- export: stable action ids -------------------------------------------------
 
 
