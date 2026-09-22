@@ -402,7 +402,7 @@ def test_preview_frame_fallback_disables_plan_fill_clear(monkeypatch):
     canvas = FakeCanvas()
     coordinator.view.preview_label = canvas
     monkeypatch.setattr(
-        "shared.rendering.tab_canvas_services.reset_canvas_overlays",
+        "engine.cache.tab_canvas_services.reset_canvas_overlays",
         lambda _c: None,
     )
 
