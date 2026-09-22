@@ -29,7 +29,8 @@ def test_gpu_export_proxy_imports_show_offscreen_widget():
 
 
 def test_offscreen_canvas_double_flush():
-    src = Path("src/shared/rendering/offscreen_canvas.py").read_text(encoding="utf-8")
+    # Relocated: src/shared/rendering/offscreen_canvas.py → src/engine/gpu/offscreen_canvas.py.
+    src = Path("src/engine/gpu/offscreen_canvas.py").read_text(encoding="utf-8")
     # Both helpers must flush twice — single leaves QRhi swapchain unallocated
     # and grabFramebuffer returns transparent.
     assert src.count("QApplication.processEvents()") >= 4, (
