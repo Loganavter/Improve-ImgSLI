@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout
 from sli_ui_toolkit.managers import UiScale
 from sli_ui_toolkit.widgets import Slider
 
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.slider_hint import ValueSlider, ValueSliderRow, _percent_text
 
 
@@ -36,14 +37,39 @@ def _make_dialog(slider) -> QDialog:
     return dialog
 
 
+def _settle_row(dialog) -> ValueSliderRow:
+    """Bounded settle wait replacing bare ``qtbot.waitExposed`` no-ops.
+
+    Offscreen ``waitExposed`` returns immediately without guaranteeing
+    layout/polish; under ``-n 8`` load the label geometry may still be
+    (0, 0) on first assert. Poll until visibility + label/pad/slider
+    geometry stabilize for 2 frames instead.
+    """
+    row = dialog.findChild(ValueSliderRow)
+    assert row is not None
+    drain_until_stable(
+        None,
+        lambda: (
+            row.isVisible(),
+            row._label.isHidden(),
+            row._label.width(),
+            row._label.height(),
+            row._right_pad.width(),
+            row._slider.width(),
+            row._slider.height(),
+        ),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
+    return row
+
+
 def test_label_tracks_slider_value(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-
-    row = dialog.findChild(ValueSliderRow)
-    assert row is not None
+    row = _settle_row(dialog)
     assert row._label.text() == _percent_text(slider)
 
     slider.setValue(75)
@@ -57,9 +83,8 @@ def test_row_disables_hint_flyout(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
+    row = _settle_row(dialog)
 
-    row = dialog.findChild(ValueSliderRow)
     assert not row._label.isHidden(), "the label is always visible"
     assert slider._hint_controller is None, (
         "the row disables the hint flyout; no controller should be created"
@@ -82,7 +107,13 @@ def test_hint_enabled_flag_can_be_restored(qtbot):
     layout.addWidget(slider, 1)
     qtbot.addWidget(dialog)
     dialog.show()
-    qtbot.waitExposed(dialog)
+    drain_until_stable(
+        None,
+        lambda: (slider.isVisible(), slider.width(), slider.height()),
+        timeout_ms=1000,
+        poll_ms=10,
+        stable_frames=2,
+    )
     assert slider._hint_controller is not None
 
 
@@ -90,8 +121,7 @@ def test_slider_geometry_stable_across_value_changes(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
+    row = _settle_row(dialog)
 
     before = slider.geometry()
     assert before.width() > 0, "slider must have settled geometry before the check"
@@ -108,8 +138,7 @@ def test_label_sits_right_of_track_without_left_pad(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
+    row = _settle_row(dialog)
 
     assert not hasattr(row, "_left_pad"), "the left pad was removed"
     assert row._right_pad.minimumWidth() > 0
@@ -123,8 +152,7 @@ def test_pad_width_fits_widest_value_text(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
+    row = _settle_row(dialog)
 
     fm = QFontMetrics(row._label.font())
     # The default percent formatter's widest sample over the 1..100 range.
@@ -135,8 +163,7 @@ def test_pad_width_follows_live_scale(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
+    row = _settle_row(dialog)
 
     base = row._right_pad.minimumWidth()
 
@@ -153,8 +180,7 @@ def test_plain_slider_row_keeps_label_visible(qtbot):
     slider = Slider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
-    qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
+    row = _settle_row(dialog)
 
     assert not row._label.isHidden()
     assert row._label.text() == _percent_text(slider)
