@@ -27,10 +27,27 @@ from utils.resource_loader import resource_path
 logger = logging.getLogger("ImproveImgSLI")
 
 _DIALOG_WIDTH = 560
-_DIALOG_HEIGHT = 420
-# Coalesce fast typing into one rebuild instead of tearing down/recreating
+_DIALOG_HEIGHT = 420# Coalesce fast typing into one rebuild instead of tearing down/recreating
 # every row (Button widgets with painter layers) on each keystroke.
 _RELOAD_DEBOUNCE_MS = 90
+
+
+def _is_valid(obj) -> bool:
+    """Shiboken liveness check for deferred callbacks (same shape as combo_reveal).
+
+    Ripple-then-accept timers (`singleShot`) may fire after qtbot teardown
+    destroyed this dialog; calling `accept()` on the dead wrapper raises
+    inside the event loop and segfaults/poisons a later test's
+    `_process_events`. Fail open when shiboken itself is unavailable.
+    """
+    if obj is None:
+        return False
+    try:
+        import shiboken6
+
+        return bool(shiboken6.isValid(obj))
+    except Exception:
+        return True
 
 
 def _active_tab_type() -> str | None:
@@ -434,6 +451,8 @@ class FindActionDialog(ThemedDialog):
         run = action.run
 
         def _accept_and_run() -> None:
+            if not _is_valid(self):
+                return
             self.accept()
             # Defer until the modal palette has closed — otherwise combo/menu
             # overlays opened by ``run`` are killed by the dialog's Hide/Close

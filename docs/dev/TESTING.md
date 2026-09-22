@@ -43,6 +43,20 @@ Timing-sensitive tests that fail only under parallel load are marked
 |---|---|
 | `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `docs/dev/KNOWN_BUGS.md` Qt quirks). |
 
+### Segfault attribution (CI)
+
+Ubuntu CI dies ~2× with `Fatal Python error: Segmentation fault` inside
+`pytestqt/plugin.py _process_events` (Qt loop under xdist; not reproducible
+on Termux). `pytest.ini: faulthandler_timeout = 120` prints the Python stack
+on the next crash — read it before quarantining anything. Prime suspects
+(CI hardening epic, queue `task-ci-suite-hardening-2026-09-22`, F2 recon): unguarded
+`singleShot` emitters firing post-teardown (`palette/dialog.py`
+`_accept_and_run` now `isValid`-guarded — same precedent as the toolbar
+shiboken guards) + tests without a `DeferredDelete` sweep
+(`test_flyout_fade` `_teardown` now drains deterministically, mirroring the
+`tests/runtime` sweep fixture). Rule: guard the callback (`isValid`), never
+`sleep()`-retry the test.
+
 ## Static type checking (mypy)
 
 `mypy` is wired in as a dev dependency (`requirements-dev.txt`) with
