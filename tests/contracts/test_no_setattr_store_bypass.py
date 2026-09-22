@@ -171,7 +171,7 @@ def _setattr_bypasses() -> set[tuple[str, int, str]]:
         tree = parse(path)
         if tree is None:
             continue
-        transients = _collect_transients(tree)
+        transients = _collect_transients(tree, path)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not node.args:
                 continue

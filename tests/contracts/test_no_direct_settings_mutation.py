@@ -251,7 +251,7 @@ def _collect_settings_aliases(tree: ast.Module) -> set[str]:
     return aliases
 
 
-def _collect_extended_transients(tree: ast.Module) -> set[str]:
+def _collect_extended_transients(tree: ast.Module, path=None) -> set[str]:
     """Sibling transients + store-factory call results + one more hop.
 
     Starts from the imported sibling set (``Store()``-derived data flow)
@@ -259,7 +259,7 @@ def _collect_extended_transients(tree: ast.Module) -> set[str]:
     then propagates one fixpoint hop (``y = <expr containing transient>``),
     mirroring the sibling's transitive rule.
     """
-    transients: set[str] = set(_collect_transients(tree))
+    transients: set[str] = set(_collect_transients(tree, path))
     makers = _store_factory_names(tree)
     for node in ast.walk(tree):
         if (
@@ -329,7 +329,7 @@ def _settings_offenders() -> list[tuple[str, int, str]]:
         tree = parse(path)
         if tree is None:
             continue
-        transients = _collect_extended_transients(tree)
+        transients = _collect_extended_transients(tree, path)
         aliases = _collect_settings_aliases(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
