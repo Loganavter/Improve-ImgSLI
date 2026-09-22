@@ -23,7 +23,7 @@ Markers are registered in `pytest.ini` (`slow`, `gui`, `flaky`). No `addopts`
 ```bash
 pytest tests -m "not slow" -n auto -q     # fast tier: everything except the ~13
                                           # whole-tree scans (43 tests); PR/iteration default
-pytest tests -n auto -q                   # full suite (nightly / pre-merge)
+pytest -n auto -q                        # full suite: tests/ + src/tabs/*/tests/ (nightly / pre-merge)
 pytest -m "slow" -q                       # slow scans only
 ```
 
