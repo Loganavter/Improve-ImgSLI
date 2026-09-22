@@ -150,12 +150,59 @@ def _restore_tab_registry_singletons():
     adapters) then resolve against an instance whose ``_active_session_type``
     is None instead of the one the test fixture activated — commands
     silently no-op and the test fails with an empty tool list. Snapshot and
-    restore both singletons so the app-lifetime instances always survive.
+    restore both singletons plus their mutable mapping state so the
+    app-lifetime instances always survive.
     """
     saved_instance = _tabs_registry_module.TabRegistry._instance
     saved_shared = _tabs_registry_module._shared_registry
+    saved_state = _snapshot_registry(saved_instance)
+    saved_shared_state = _snapshot_registry(saved_shared)
     try:
         yield
     finally:
         _tabs_registry_module.TabRegistry._instance = saved_instance
         _tabs_registry_module._shared_registry = saved_shared
+        _restore_registry(saved_instance, saved_state)
+        _restore_registry(_tabs_registry_module._shared_registry, saved_shared_state)
+
+
+def _snapshot_registry(registry):
+    """Shallow snapshot of a registry's mutable discovery state (or None).
+
+    Same objects, restored mappings: reverts every ``_tabs``/``_pending``
+    injection (``recording``/``fake``/``intruder`` junk) and every
+    ``dispose_all`` wipe, so the next test in the worker never inherits
+    foreign or missing tabs (CI ambient red, lazy_init ``fake`` missing,
+    contracts ``_Tab is not a TabContract``).
+    """
+    if registry is None:
+        return None
+    return {
+        "tabs": dict(registry._tabs),
+        "pages": dict(registry._pages),
+        "pending": dict(registry._pending_pages),
+        "tiers": set(registry._discovered_tiers),
+        "stale": set(registry._appearance_stale),
+        "active_type": registry._active_session_type,
+        "active_id": registry._active_session_id,
+        "context": registry._context,
+    }
+
+
+def _restore_registry(registry, saved) -> None:
+    """Restore a snapshot taken by ``_snapshot_registry``."""
+    if registry is None or saved is None:
+        return
+    registry._tabs.clear()
+    registry._tabs.update(saved["tabs"])
+    registry._pages.clear()
+    registry._pages.update(saved["pages"])
+    registry._pending_pages.clear()
+    registry._pending_pages.update(saved["pending"])
+    registry._discovered_tiers.clear()
+    registry._discovered_tiers.update(saved["tiers"])
+    registry._appearance_stale.clear()
+    registry._appearance_stale.update(saved["stale"])
+    registry._active_session_type = saved["active_type"]
+    registry._active_session_id = saved["active_id"]
+    registry._context = saved["context"]
