@@ -434,7 +434,8 @@ class GalleryController:
         except TypeError:
             self._thread_pool.start(worker)
 
-    def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:        """Pure worker for GenericWorker: analyze 7 artifacts per item."""
+    def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
+        """Pure worker for GenericWorker: analyze 7 artifacts per item."""
         from tabs.image_gallery.services.artifacts import analyze_artifacts
 
         out: dict[str, dict] = {}
