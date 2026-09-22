@@ -104,9 +104,11 @@ class ImageCompareContextMenuProvider:
             ),
             ContextMenuAction(
                 "image_compare.crop_override_slot",
-                self._crop_override_label_for_slot(slot),
-                icon=self._crop_override_icon_for_slot(slot),
+                self._crop_toggle_label(),
+                icon=Icon.SCISSORS,
                 data=slot,
+                checkable=True,
+                checked=self._crop_enabled_for_slot(slot),
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
@@ -157,9 +159,11 @@ class ImageCompareContextMenuProvider:
             ),
             ContextMenuAction(
                 "image_compare.crop_override_list_item",
-                self._crop_override_label(list_num, index),
-                icon=self._crop_override_icon(list_num, index),
+                self._crop_toggle_label(),
+                icon=Icon.SCISSORS,
                 data=ref,
+                checkable=True,
+                checked=self._crop_enabled_for_list_item(list_num, index),
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
@@ -259,14 +263,15 @@ class ImageCompareContextMenuProvider:
             if ui_manager is not None and hasattr(ui_manager, "set_modal_dialog_active"):
                 ui_manager.set_modal_dialog_active(False)
 
-    @staticmethod
-    def _next_crop_override(current: bool | None) -> bool | None:
-        """Cycle the tristate: Auto (None) → On (True) → Off (False) → Auto."""
-        if current is None:
-            return True
-        if bool(current):
-            return False
-        return None
+    def _global_crop_enabled(self) -> bool:
+        """Global ``auto_crop_black_borders`` fallback for Auto (None) items."""
+        return bool(
+            getattr(
+                getattr(self.store, "settings", None),
+                "auto_crop_black_borders",
+                True,
+            )
+        )
 
     def _crop_override_for_list_item(self, list_num: int, index: int) -> bool | None:
         try:
@@ -278,40 +283,21 @@ class ImageCompareContextMenuProvider:
         value = getattr(item, "crop_override", None)
         return None if value is None else bool(value)
 
-    def _crop_override_label(self, list_num: int, index: int) -> str:
-        base = self._tr("image_compare.action.context_crop_override", "Crop")
+    def _crop_enabled_for_list_item(self, list_num: int, index: int) -> bool:
+        """Effective toggle state: explicit override, else the global setting."""
         state = self._crop_override_for_list_item(list_num, index)
-        if state is True:
-            suffix = self._tr("image_compare.action.context_crop_on", "On")
-        elif state is False:
-            suffix = self._tr("image_compare.action.context_crop_off", "Off")
-        else:
-            suffix = self._tr("image_compare.action.context_crop_auto", "Auto")
-        return f"{base}: {suffix}"
+        return self._global_crop_enabled() if state is None else state
 
-    def _crop_override_icon(self, list_num: int, index: int):
-        state = self._crop_override_for_list_item(list_num, index)
-        if state is True:
-            return Icon.CROP_IN
-        if state is False:
-            return Icon.CROP_OUT
-        return Icon.SCISSORS
-
-    def _crop_override_label_for_slot(self, slot: int) -> str:
+    def _crop_enabled_for_slot(self, slot: int) -> bool:
         try:
             document = self.store.get_session_state_slot("document")
             index = document.current_index1 if slot == 1 else document.current_index2
         except Exception:
-            index = -1
-        return self._crop_override_label(slot, index)
+            return False
+        return self._crop_enabled_for_list_item(slot, index)
 
-    def _crop_override_icon_for_slot(self, slot: int):
-        try:
-            document = self.store.get_session_state_slot("document")
-            index = document.current_index1 if slot == 1 else document.current_index2
-        except Exception:
-            index = -1
-        return self._crop_override_icon(slot, index)
+    def _crop_toggle_label(self) -> str:
+        return self._tr("image_compare.action.context_crop_override", "Crop")
 
     def _cycle_crop_override_list_item(self, list_num: int, index: int) -> None:
         # Rename structural pattern: controller call with (list_num, index);
@@ -319,13 +305,16 @@ class ImageCompareContextMenuProvider:
         # document emit + canvas update. Deliberately NOT the rating path
         # (in-place item mutation) — the override persists via
         # SetCropOverrideAction + DocumentReducer.
+        # Single boolean toggle (On=True / Off=False): Auto (None) is no
+        # longer reachable from the menu, but stored None keeps following
+        # the global setting and toggles from its effective state.
         try:
             item = self._list_item(list_num, index)
         except Exception:
             return
         if item is None:
             return
-        nxt = self._next_crop_override(getattr(item, "crop_override", None))
+        nxt = not self._crop_enabled_for_list_item(list_num, index)
         ctrl = self._session_ctrl
         if ctrl is not None and hasattr(ctrl, "set_crop_override_at_index"):
             ctrl.set_crop_override_at_index(list_num, index, nxt)
@@ -608,3 +597,45 @@ class ImageCompareContextMenuProvider:
     def _tr(self, key: str, default: str) -> str:
         text = tr(key, get_current_language() or "en")
         return default if text == key else text
+
+
+def ensure_image_compare_context_menu(
+    canvas, store, *, sessions=None, ui_manager=None, flyout=None
+):
+    """Find-or-create the canvas slot context menu provider (single per canvas).
+
+    The provider used to be installed only by ``FlyoutController`` (a lazy
+    transient service): sessions that never opened the list flyout never
+    constructed it, so the global manager held zero providers and RMB on the
+    canvas silently did nothing. Install here instead, where store + sessions
+    + canvas are always in hand (both canvas-wiring paths call this); the
+    flyout controller reuses the instance and only attaches its flyout.
+    Mutable wiring (store/sessions/flyout) is refreshed on every call.
+    Returns the provider, or None when canvas or store is missing.
+    """
+    if canvas is None or store is None:
+        return None
+    from ui.context_menu.manager import (
+        find_context_menu_provider,
+        install_context_menu_provider,
+    )
+
+    existing = getattr(canvas, "_context_menu_provider", None)
+    if not isinstance(existing, ImageCompareContextMenuProvider):
+        existing = find_context_menu_provider(
+            lambda p: isinstance(p, ImageCompareContextMenuProvider)
+            and getattr(p, "canvas", None) is canvas
+        )
+    if existing is None:
+        existing = ImageCompareContextMenuProvider(
+            canvas, store, ui_manager=ui_manager
+        )
+        install_context_menu_provider(existing)
+    existing.store = store
+    if sessions is not None:
+        existing.attach_session_controller(sessions)
+    if flyout is not None:
+        existing.flyout = flyout
+    if hasattr(canvas, "set_context_menu_provider"):
+        canvas.set_context_menu_provider(existing)
+    return existing

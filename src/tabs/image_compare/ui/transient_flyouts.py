@@ -60,8 +60,9 @@ class FlyoutController:
             flyout.set_list_anchors(left, right)
 
     def _install_context_menu(self) -> None:
-        from tabs.image_compare.ui.context_menu import ImageCompareContextMenuProvider
-        from ui.context_menu.manager import install_context_menu_provider
+        from tabs.image_compare.ui.context_menu import (
+            ensure_image_compare_context_menu,
+        )
 
         host = self.manager.host
         store = getattr(host, "store", None)
@@ -69,17 +70,30 @@ class FlyoutController:
             return
         canvas = getattr(self.widget, "image_label", None)
         flyout = getattr(host, "unified_flyout", None)
-        provider = ImageCompareContextMenuProvider(
-            canvas, store, flyout=flyout, ui_manager=host
-        )
         sessions = getattr(getattr(host, "main_controller", None), "sessions", None)
-        if sessions is not None:
-            provider.attach_session_controller(sessions)
-        self._context_menu_provider = install_context_menu_provider(provider)
-        if canvas is not None and hasattr(canvas, "set_context_menu_provider"):
-            canvas.set_context_menu_provider(provider)
+        # Find-or-create: the provider is installed eagerly at canvas-wiring
+        # time; reuse it (attaching this controller's flyout) instead of
+        # registering a second provider, which would duplicate menu entries.
+        provider = ensure_image_compare_context_menu(
+            canvas, store, sessions=sessions, ui_manager=host, flyout=flyout
+        )
+        self._context_menu_provider = provider
         if flyout is not None and hasattr(flyout, "item_context_menu_requested"):
-            flyout.item_context_menu_requested.connect(self._on_item_context_menu)
+            # find-or-create may run again (e.g. late controller construction
+            # after the eager wiring install): connect each flyout once.
+            if getattr(self, "_item_menu_connected_flyout", None) is not flyout:
+                previous = getattr(self, "_item_menu_connected_flyout", None)
+                if previous is not None:
+                    try:
+                        previous.item_context_menu_requested.disconnect(
+                            self._on_item_context_menu
+                        )
+                    except (TypeError, RuntimeError):
+                        pass
+                flyout.item_context_menu_requested.connect(
+                    self._on_item_context_menu
+                )
+                self._item_menu_connected_flyout = flyout
 
     def _on_item_context_menu(self, list_num: int, index: int) -> None:
         from ui.context_menu.manager import open_context_menu

@@ -604,7 +604,7 @@
     },
     {
       "path": "src/tabs/image_compare/ui/context_menu.py",
-      "lines": 610,
+      "lines": 641,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located\"",

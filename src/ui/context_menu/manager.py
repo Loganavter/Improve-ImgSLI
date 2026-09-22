@@ -250,3 +250,21 @@ def open_context_menu_entries(
 def install_context_menu_provider(provider: ContextMenuProvider) -> ContextMenuProvider:
     get_context_menu_manager().register_provider(provider)
     return provider
+
+
+def find_context_menu_provider(predicate) -> ContextMenuProvider | None:
+    """Return the first registered provider matching ``predicate``, or None.
+
+    Tab-agnostic lookup for find-or-create install sites: a provider coupled
+    to a lazily-constructed controller (e.g. a flyout controller) must be
+    reusable by an eager wiring path instead of registering a duplicate
+    (duplicates surface as repeated menu sections). The predicate owns all
+    tab-specific matching; this module stays free of tab names.
+    """
+    for provider in tuple(get_context_menu_manager()._providers):
+        try:
+            if predicate(provider):
+                return provider
+        except Exception:
+            continue
+    return None

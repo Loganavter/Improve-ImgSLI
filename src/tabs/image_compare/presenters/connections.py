@@ -67,6 +67,26 @@ def connect_signals(presenter):
     toolbar_presenter.connect_signals()
 
 
+def _ensure_canvas_context_menu(presenter, image_label) -> None:
+    """Install the canvas slot menu provider independent of the flyout controller.
+
+    The provider used to be installed only by the lazily-constructed
+    ``FlyoutController``; wire it here where store + sessions + canvas are
+    always in hand. Find-or-create (single instance per canvas) — the
+    controller reuses it instead of registering a duplicate.
+    """
+    from tabs.image_compare.ui.context_menu import (
+        ensure_image_compare_context_menu,
+    )
+
+    ensure_image_compare_context_menu(
+        image_label,
+        getattr(presenter, "store", None),
+        sessions=getattr(getattr(presenter, "main_controller", None), "sessions", None),
+        ui_manager=getattr(presenter, "ui_manager", None),
+    )
+
+
 def connect_event_handler_signals(presenter, event_handler):
     image_canvas = presenter.get_feature("image_canvas")
     toolbar_presenter = presenter.get_feature("toolbar")
@@ -79,6 +99,7 @@ def connect_event_handler_signals(presenter, event_handler):
             sessions = getattr(presenter.main_controller, "sessions", None)
             if sessions is not None:
                 image_label.set_session_controller(sessions)
+        _ensure_canvas_context_menu(presenter, image_label)
         image_label.mousePressed.connect(
             event_handler.mouse_press_event_on_image_label_signal.emit
         )

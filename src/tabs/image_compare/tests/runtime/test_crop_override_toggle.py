@@ -1,11 +1,13 @@
-"""Per-image autocrop override (W5): tristate persist + menu dispatch shape.
+"""Per-image autocrop override (W5): tristate persist + boolean menu toggle.
 
 Covers:
 * ``ImageItem.crop_override`` round-trips through
   ``serialize_session``/``deserialize_session`` (None/True/False), and
   pre-override blobs (missing key) rebuild as None (Auto).
-* The context menu exposes the toggle in BOTH the slot menu and the
-  list-item menu, cycling Auto → On → Off → Auto.
+* The context menu exposes a single checkable ``Crop`` toggle in BOTH the
+  slot menu and the list-item menu (On=True / Off=False). Stored Auto (None)
+  keeps following the global ``auto_crop_black_borders`` setting and toggles
+  from its effective state.
 * Dispatch shape: fallback path dispatches ``SetCropOverrideAction`` with
   scope ``"document"`` (Store-native, never in-place); when the session
   controller offers ``set_crop_override_at_index`` it is preferred and no
@@ -275,22 +277,36 @@ def test_toggle_exposed_in_both_menus_with_state_label(qapp):
     ]
     assert "image_compare.crop_override_list_item" in list_ids
 
-    # Labels reflect the tristate (item (1,1) is On).
-    labels = {
-        e.action_id: e.text
+    # Single checkable toggle: plain label, checked == effective state.
+    # Item (1,1) is On → checked; item (1,0) is Auto with the global default
+    # on (fake store has no settings) → checked as well.
+    toggles = {
+        e.action_id: e
         for e in provider_flyout.entries_for(req)
         if isinstance(e, ContextMenuAction)
     }
-    assert "On" in labels["image_compare.crop_override_list_item"]
+    toggle = toggles["image_compare.crop_override_list_item"]
+    assert toggle.checkable is True
+    assert toggle.checked is True
+    assert ":" not in toggle.text
+
+    slot_toggle = next(
+        e
+        for e in provider.entries_for(_slot_request(canvas, 1))
+        if isinstance(e, ContextMenuAction)
+        and e.action_id == "image_compare.crop_override_slot"
+    )
+    assert slot_toggle.checkable is True
+    assert slot_toggle.checked is True
 
 
-def test_execute_cycles_tristate_via_document_dispatch(qapp):
+def test_execute_toggles_boolean_via_document_dispatch(qapp):
     store = _Store({"s1": _Session("s1", document=_doc())}, with_dispatcher=True)
     provider, canvas = _provider(store)
     provider.attach_session_controller(None)
-    req = _list_request(canvas, 1, 0)  # starts Auto (None)
+    req = _list_request(canvas, 1, 0)  # starts Auto (None), effective on
 
-    for expected in (True, False, None):
+    for expected in (False, True):
         handled = provider.execute(
             "image_compare.crop_override_list_item", req, (1, 0)
         )
@@ -300,7 +316,7 @@ def test_execute_cycles_tristate_via_document_dispatch(qapp):
         assert (action.slot, action.index, action.value) == (1, 0, expected)
         assert scope == "document"
     doc = store.get_workspace_session("s1").document
-    assert doc.image_list1[0].crop_override is None
+    assert doc.image_list1[0].crop_override is True
     assert "document" in store.emitted
     assert canvas.updated, "canvas must repaint after the toggle"
 
@@ -317,7 +333,7 @@ def test_execute_prefers_controller_over_manual_dispatch(qapp):
     )
 
     assert handled is True
-    ctrl.set_crop_override_at_index.assert_called_once_with(1, 0, True)
+    ctrl.set_crop_override_at_index.assert_called_once_with(1, 0, False)
     assert store.get_dispatcher().calls == []
 
 
@@ -333,6 +349,6 @@ def test_slot_execute_resolves_current_index(qapp):
     assert handled is True
     action, scope = store.get_dispatcher().calls[-1]
     assert isinstance(action, SetCropOverrideAction)
-    # slot 2 current index is 0, whose override is Off → cycles to Auto.
-    assert (action.slot, action.index, action.value) == (2, 0, None)
+    # slot 2 current index is 0, whose override is Off → toggles to On.
+    assert (action.slot, action.index, action.value) == (2, 0, True)
     assert scope == "document"

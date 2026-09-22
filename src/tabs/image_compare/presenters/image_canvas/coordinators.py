@@ -96,6 +96,20 @@ class CanvasLifecycleCoordinator:
             sessions = getattr(self.presenter.main_controller, "sessions", None)
             if sessions is not None:
                 image_label.set_session_controller(sessions)
+        from tabs.image_compare.ui.context_menu import (
+            ensure_image_compare_context_menu,
+        )
+
+        # Same guarantee as presenters/connections.py: the slot menu provider
+        # must not depend on the lazily-constructed FlyoutController.
+        ensure_image_compare_context_menu(
+            image_label,
+            getattr(self.presenter, "store", None),
+            sessions=getattr(
+                getattr(self.presenter, "main_controller", None), "sessions", None
+            ),
+            ui_manager=getattr(self.presenter, "ui_manager", None),
+        )
         image_label.mousePressed.connect(
             event_handler.mouse_press_event_on_image_label_signal.emit
         )
