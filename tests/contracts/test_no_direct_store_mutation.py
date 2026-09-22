@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, rel
 
 # Intermediate attributes that denote Store-owned state — generated from real
 # Store/ViewportState/SessionData shape + Store top-level fields, not hard-coded
@@ -168,9 +168,8 @@ def _direct_store_mutations() -> list[tuple[str, int, str]]:
         rel_path = rel(path)
         if rel_path in EXEMPT:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         transients = _collect_transients(tree)
         for node in ast.walk(tree):

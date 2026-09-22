@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.contracts._framework import SRC
+from tests.contracts._framework import SRC, parse
 
 _SCALE_FONT_HELPERS = ("ui_font", "paint_font", "rebase_family", "rebase_font", "apply_ui_font")
 _PAINT_FONT_HELPERS = ("paint_font", "rebase_font")
@@ -67,9 +67,8 @@ def _paint_functions() -> list[tuple[Path, ast.FunctionDef]]:
     for path in sorted(SRC.rglob("*.py")):
         if "resources" in path.parts:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

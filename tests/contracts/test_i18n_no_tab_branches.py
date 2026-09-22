@@ -42,7 +42,7 @@ import json
 import re
 from pathlib import Path
 
-from ._framework import ROOT, SRC, iter_py, read, rel
+from ._framework import ROOT, SRC, iter_py, parse, read, rel
 
 I18N_ROOT = SRC / "resources" / "i18n"
 TABS_ROOT = SRC / "tabs"
@@ -137,7 +137,8 @@ def _scan_consumers() -> tuple[dict[str, set[Path]], dict[str, set[Path]]]:
     literals: dict[str, set[Path]] = {}
     templates: dict[str, set[Path]] = {}
     for py in _production_py(SRC):
-        tree = ast.parse(read(py))
+        tree = parse(py)
+        assert tree is not None, f"unparsable {py}"
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 literals.setdefault(node.value, set()).add(py)

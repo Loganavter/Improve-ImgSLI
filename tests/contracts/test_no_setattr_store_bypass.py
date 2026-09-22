@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, rel
 from .test_no_direct_store_mutation import (
     EXEMPT,
     INTERMEDIATE,
@@ -168,9 +168,8 @@ def _setattr_bypasses() -> set[tuple[str, int, str]]:
         rel_path = rel(path)
         if rel_path in EXEMPT:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         transients = _collect_transients(tree)
         for node in ast.walk(tree):

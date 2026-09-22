@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, iter_py, read, rel
+from ._framework import ROOT, iter_py, parse, read, rel
 
 IC_UPLOAD_QUEUE = (
     ROOT
@@ -52,16 +52,18 @@ _QUEUE_FNS = ("queue_texture_upload", "queue_prepared_texture_upload")
 
 
 def _parse(path):
-    return ast.parse(read(path))
+    tree = parse(path)
+    if tree is None:
+        raise SyntaxError(f"cannot parse {path}")
+    return tree
 
 
 def _definers_of(*names):
     """Map each function name to the set of src files defining it."""
     definers: dict[str, set] = {name: set() for name in names}
     for path in iter_py(ROOT / "src"):
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         defined = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -185,9 +187,8 @@ def test_mc_pending_uploads_stays_swap_feed():
 def test_no_upload_queue_class_under_src():
     offenders = []
     for path in iter_py(ROOT / "src"):
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and "UploadQueue" in node.name:
