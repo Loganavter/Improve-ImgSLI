@@ -138,18 +138,26 @@ def resolve_box_for_path(
     path: Any,
     crop_service: Any | None,
     override: bool | None = None,
+    *,
+    forced_service: Any | None = None,
 ) -> Any | None:
     """One slot's effective box via the single-owner interface.
 
     ``override`` is the per-image tristate (``None`` == Auto, ``True`` ==
     On, ``False`` == Off → ``None`` without detection); forwarded to
-    :func:`effective_crop_box_for_path`. Never raises; any failure
-    (including an unwarmed service on the GUI thread, which instead gets a
-    background warmup kick) yields ``None``.
+    :func:`effective_crop_box_for_path`. ``forced_service`` is a detection-only
+    spare consulted solely when ``override`` is True and ``crop_service`` is
+    None (global OFF nulled the session service): Auto/Off behavior is
+    untouched either way. Never raises; any failure (including an unwarmed
+    service on the GUI thread, which instead gets a background warmup kick)
+    yields ``None``.
     """
     if override is False:
         return None
-    if not path or crop_service is None:
+    svc = crop_service
+    if override is True and (svc is None or isinstance(svc, bool)):
+        svc = forced_service
+    if not path or svc is None or isinstance(svc, bool):
         return None
     try:
         path_str = str(path)
@@ -158,8 +166,8 @@ def resolve_box_for_path(
     if not path_str:
         return None
     try:
-        if not _is_warmed(crop_service, path_str):
-            _kick_warmup(crop_service, path_str)
+        if not _is_warmed(svc, path_str):
+            _kick_warmup(svc, path_str)
             return None
     except Exception:
         pass
@@ -167,7 +175,7 @@ def resolve_box_for_path(
         from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
 
         return effective_crop_box_for_path(
-            path_str, crop_service=crop_service, override=override
+            path_str, crop_service=svc, override=override
         )
     except Exception:
         return None
@@ -309,6 +317,34 @@ def _document_for_widget(widget: Any) -> Any | None:
         return None
 
 
+def _forced_service_for_widget(widget: Any) -> Any | None:
+    """Ungated detection spare via the session-controller backlink.
+
+    Same walk as :func:`crop_service_for_widget`'s controller branch, but
+    calling ``_get_crop_service_forced`` (never None-gated by the global
+    flag). Used only for explicit per-image On (True); never wired into the
+    decode pipeline. Never raises.
+    """
+    try:
+        provider = getattr(widget, "_context_menu_provider", None)
+        for ctrl in (
+            getattr(widget, "_pending_session_controller", None),
+            getattr(provider, "_session_ctrl", None),
+        ):
+            getter = getattr(ctrl, "_get_crop_service_forced", None)
+            if not callable(getter):
+                continue
+            try:
+                svc = getter()
+            except Exception:
+                continue
+            if svc is not None and not isinstance(svc, bool):
+                return svc
+    except Exception:
+        pass
+    return None
+
+
 def resolve_slot_boxes(
     widget: Any,
     source_key: Any | None = None,
@@ -324,8 +360,6 @@ def resolve_slot_boxes(
     detection as today.
     """
     svc = crop_service_for_widget(widget, explicit=crop_service)
-    if svc is None:
-        return (None, None)
     path1, path2 = slot_paths_for_widget(widget, source_key=source_key)
     doc = document if document is not None else _document_for_widget(widget)
     try:
@@ -335,9 +369,12 @@ def resolve_slot_boxes(
         ov2 = crop_override_for_path(doc, path2) if doc is not None else None
     except Exception:
         ov1, ov2 = None, None
+    forced = None
+    if (ov1 is True or ov2 is True) and svc is None:
+        forced = _forced_service_for_widget(widget)
     return (
-        resolve_box_for_path(path1, svc, override=ov1),
-        resolve_box_for_path(path2, svc, override=ov2),
+        resolve_box_for_path(path1, svc, override=ov1, forced_service=forced),
+        resolve_box_for_path(path2, svc, override=ov2, forced_service=forced),
     )
 
 

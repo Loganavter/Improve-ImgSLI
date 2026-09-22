@@ -126,11 +126,17 @@ class MetricsService:
             return None, None
         try:
             from tabs.image_compare.services.analysis.analysis_pair import (
+                forced_service_from,
                 resolve_crop_boxes_for_paths,
             )
 
             return resolve_crop_boxes_for_paths(
-                path1, path2, self._get_crop_service
+                path1,
+                path2,
+                self._get_crop_service,
+                get_forced_crop_service=forced_service_from(
+                    self._get_crop_service
+                ),
             )
         except Exception:
             return None, None

@@ -39,6 +39,7 @@ def resolve_images(image_loader, snap, request: VideoRenderRequest, *, get_crop_
         try:
             from tabs.image_compare.services.analysis.analysis_pair import (
                 crop_pair_to_boxes,
+                forced_service_from,
                 resolve_crop_boxes_for_paths,
             )
 
@@ -46,6 +47,7 @@ def resolve_images(image_loader, snap, request: VideoRenderRequest, *, get_crop_
                 getattr(snap, "image1_path", None),
                 getattr(snap, "image2_path", None),
                 get_crop_service,
+                get_forced_crop_service=forced_service_from(get_crop_service),
             )
             img1, img2 = crop_pair_to_boxes(img1, img2, box1, box2)
         except Exception:

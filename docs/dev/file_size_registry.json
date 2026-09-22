@@ -182,7 +182,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 255,
+      "lines": 275,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -424,7 +424,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/texture_parts/crop_clip.py",
-      "lines": 577,
+      "lines": 614,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=canvas-presentation size=exempt reason=\"texture_parts/crop_clip single box seam (W3a/W3f) — box-clipped texture/geometry helpers share one resolution path\"",

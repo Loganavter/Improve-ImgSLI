@@ -105,6 +105,26 @@ class SessionController(SessionApiMixin, QObject):
         except Exception:
             return getattr(self, "_crop_service", None)
 
+    def _get_crop_service_forced(self):
+        """Detection-only spare for an explicit per-image On (True).
+
+        The OFF gate (``_get_crop_service`` → None, nulled session/cache
+        services) stays the default path untouched; this spare is never
+        wired into the decode pipeline and is consulted only when the
+        per-image override is True, so Auto/Off behavior is bit-identical
+        with the flag on or off. Never raises.
+        """
+        try:
+            svc = getattr(self, "_forced_crop_service", None)
+            if svc is None:
+                from shared.image_processing.autocrop.service import CropService
+
+                svc = CropService()
+                self._forced_crop_service = svc
+            return svc
+        except Exception:
+            return None
+
     def _on_store_scoped_change(self, scope: str) -> None:
         # Тоггл auto_crop_black_borders идёт через диспетчер без скоупа
         # (дефолт viewport): синхронизируем сессионные crop-дефолты, иначе

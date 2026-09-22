@@ -127,8 +127,31 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
             _svc = _ctrl._get_crop_service() if _ctrl is not None else None
         except Exception:
             _svc = None
-        _b1 = _scaled_box(_resolve_box(_p1, _svc), path=_p1, live_size=size1)
-        _b2 = _scaled_box(_resolve_box(_p2, _svc), path=_p2, live_size=size2)
+        try:
+            _forced = (
+                _ctrl._get_crop_service_forced()
+                if _ctrl is not None and hasattr(_ctrl, "_get_crop_service_forced")
+                else None
+            )
+        except Exception:
+            _forced = None
+        try:
+            from tabs.image_compare.state.document import crop_override_for_path
+
+            _ov1 = crop_override_for_path(_doc, _p1) if _doc is not None else None
+            _ov2 = crop_override_for_path(_doc, _p2) if _doc is not None else None
+        except Exception:
+            _ov1, _ov2 = None, None
+        _b1 = _scaled_box(
+            _resolve_box(_p1, _svc, override=_ov1, forced_service=_forced),
+            path=_p1,
+            live_size=size1,
+        )
+        _b2 = _scaled_box(
+            _resolve_box(_p2, _svc, override=_ov2, forced_service=_forced),
+            path=_p2,
+            live_size=size2,
+        )
         if _b1 is not None and size1 is not None:
             size1 = _box_dims(_b1, size1)
         if _b2 is not None and size2 is not None:

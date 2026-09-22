@@ -108,12 +108,36 @@ def prepare_pair_for_global_analysis(
     )
 
 
+def forced_service_from(get_crop_service: Any | None) -> Any | None:
+    """Derive the ungated detection spare from a bound service getter.
+
+    Conventionally ``get_crop_service`` is ``controller._get_crop_service``
+    (bound): the forced spare comes from the same controller's
+    ``_get_crop_service_forced``. Anything else (lambdas, fakes, plain
+    services) yields None → today's behavior bit-identical. Never raises.
+    """
+    try:
+        from shared.image_processing.autocrop.service import CropService
+
+        ctrl = getattr(get_crop_service, "__self__", None)
+        getter = getattr(ctrl, "_get_crop_service_forced", None)
+        if not callable(getter):
+            return None
+        svc = getter()
+        if isinstance(svc, CropService):
+            return svc
+    except Exception:
+        pass
+    return None
+
+
 def resolve_crop_boxes_for_paths(
     path1: str | None,
     path2: str | None,
     get_crop_service: Any | None = None,
     *,
     document: Any | None = None,
+    get_forced_crop_service: Any | None = None,
 ) -> tuple[CropBox | None, CropBox | None]:
     """Detected crop windows for a comparison pair (W3c box-aware analysis).
 
@@ -125,6 +149,10 @@ def resolve_crop_boxes_for_paths(
     consumer below keeps today's full-frame behavior. ``document`` (W5b)
     supplies the per-image override lookup via ``crop_override_for_path``:
     Off → ``None`` without detection, otherwise detection as today.
+    ``get_forced_crop_service`` (optional zero-arg callable, usually
+    ``controller._get_crop_service_forced``) is consulted solely for explicit
+    per-image On (True) when the gated service is None (global OFF): Auto/Off
+    behavior is untouched either way.
     """
     if get_crop_service is None:
         return None, None
@@ -132,7 +160,15 @@ def resolve_crop_boxes_for_paths(
         service = get_crop_service() if callable(get_crop_service) else get_crop_service
     except Exception:
         return None, None
-    if service is None:
+    try:
+        forced = (
+            get_forced_crop_service()
+            if callable(get_forced_crop_service)
+            else get_forced_crop_service
+        )
+    except Exception:
+        forced = None
+    if service is None and forced is None:
         return None, None
     from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
 
@@ -145,7 +181,7 @@ def resolve_crop_boxes_for_paths(
         ov1, ov2 = None, None
     try:
         box1 = (
-            effective_crop_box_for_path(path1, crop_service=service, override=ov1)
+            _resolve_one(path1, service, ov1, forced)
             if path1
             else None
         )
@@ -153,13 +189,25 @@ def resolve_crop_boxes_for_paths(
         box1 = None
     try:
         box2 = (
-            effective_crop_box_for_path(path2, crop_service=service, override=ov2)
+            _resolve_one(path2, service, ov2, forced)
             if path2
             else None
         )
     except Exception:
         box2 = None
     return box1, box2
+
+
+def _resolve_one(path, service, override, forced):
+    """Per-side selection: forced spare only for explicit On (True)."""
+    if override is False:
+        return None
+    from tabs.image_compare.pipeline.crop_box import effective_crop_box_for_path
+
+    svc = service
+    if override is True and (svc is None or isinstance(svc, bool)):
+        svc = forced
+    return effective_crop_box_for_path(path, crop_service=svc, override=override)
 
 
 def crop_source_to_box(source: Any, box: CropBox | None) -> Any:

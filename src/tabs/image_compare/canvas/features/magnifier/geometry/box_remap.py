@@ -128,10 +128,13 @@ def resolve_crop_boxes_for_store(
     if doc is None:
         return (None, None)
     try:
-        if not bool(getattr(getattr(store, "settings", None), "auto_crop_black_borders", True)):
-            return (None, None)
+        global_off = not bool(
+            getattr(
+                getattr(store, "settings", None), "auto_crop_black_borders", True
+            )
+        )
     except Exception:
-        pass
+        global_off = False
     try:
         path1 = getattr(doc, "image1_path", None)
     except Exception:
@@ -141,11 +144,22 @@ def resolve_crop_boxes_for_store(
     except Exception:
         path2 = None
     try:
-        box1 = resolve_box_for_path(path1)
+        from tabs.image_compare.state.document import crop_override_for_path
+
+        ov1 = crop_override_for_path(doc, path1)
+        ov2 = crop_override_for_path(doc, path2)
+    except Exception:
+        ov1, ov2 = None, None
+    # Explicit Off never crops; Auto with the global flag OFF keeps today's
+    # (None, None) — only an explicit On bypasses the global gate (its box
+    # comes from the forced spare warmed by the display path, which
+    # _candidate_crop_services picks up via the CropService registry).
+    try:
+        box1 = None if ov1 is False or (ov1 is None and global_off) else resolve_box_for_path(path1)
     except Exception:
         box1 = None
     try:
-        box2 = resolve_box_for_path(path2)
+        box2 = None if ov2 is False or (ov2 is None and global_off) else resolve_box_for_path(path2)
     except Exception:
         box2 = None
     return (box1, box2)
