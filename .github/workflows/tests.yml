@@ -13,10 +13,9 @@ jobs:
   fast:
     name: Fast tier (not slow)
     runs-on: ubuntu-latest
-    # Informative until the suite is hardened for CI (pre-existing flakes
-    # under parallel load + ubuntu-only env gaps, unrelated to any single
-    # PR — see task-ci-suite-hardening-2026-09-22). Flip to required after.
-    continue-on-error: true
+    # Required since F8 (task-ci-suite-hardening-2026-09-22): 3 consecutive
+    # green fast-tier runs on CI (2772 passed x3, runs 35735535521 attempts
+    # 1-3). Suite is hardened for enforcement.
     steps:
       - name: Check Out App
         uses: actions/checkout@v4

@@ -55,6 +55,18 @@ def _registry_with(tab: TabContract) -> TabRegistry:
     registry = TabRegistry()
     registry._tabs[tab.session_type] = tab
     registry._context = TabContext()
+    # Pristine singleton seeding: this file asserts activate/deactivate
+    # ORDER, not ambient worker state. Under xdist + random ordering a prior
+    # test in the same worker can leave _active_session_type == "recording"
+    # (activate() then early-returns with zero lifecycle calls) or an
+    # installed _stack (activate() then fail-closed aborts when the fake
+    # tab's create_page raises). Both produced CI-only reds with
+    # lifecycle_calls == []. Reset the trio the F4 fixture does not fully
+    # own (_stack is assigned externally by pages.install_stack, never in
+    # __init__/dispose_all).
+    registry._active_session_type = None
+    registry._active_session_id = None
+    registry._stack = None
     return registry
 
 def test_drop_routed_when_accepted():
