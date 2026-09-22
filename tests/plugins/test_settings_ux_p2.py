@@ -202,22 +202,48 @@ def test_activate_member_control_checkbox_toggles():
 # --- registry: duplicate section logged ---------------------------------------
 
 
-def test_registry_duplicate_section_warns(caplog):
-    from plugins.settings.registry import SettingsRegistry, SettingsSection
+def _make_dup_section(owner: str = "ic"):
+    from plugins.settings.registry import SettingsSection
     from ui.icon_manager import AppIcon
 
-    registry = SettingsRegistry()
-    section = SettingsSection(
+    def _build(_dialog, _ctx):
+        return None
+
+    return SettingsSection(
         section_id="dup",
         title_key="t",
         icon=AppIcon.SETTINGS,
-        build=lambda _d, _c: None,
+        build=_build,
+        owner_tab=owner,
+        order=40,
     )
-    registry.add(section)
+
+
+def test_registry_identical_reinstall_is_silent(caplog):
+    from plugins.settings.registry import SettingsRegistry
+
+    registry = SettingsRegistry()
+    first = _make_dup_section()
+    second = _make_dup_section()  # fresh instance, same content (startup 3x path)
+    registry.add(first)
     with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
-        registry.add(section)
+        registry.add(second)
+    assert not any(
+        r.levelno >= logging.WARNING and "duplicate section_id" in r.message
+        for r in caplog.records
+    )
+    assert registry.all_sections() == [first]
+
+
+def test_registry_conflicting_redefinition_warns(caplog):
+    from plugins.settings.registry import SettingsRegistry
+
+    registry = SettingsRegistry()
+    registry.add(_make_dup_section(owner="ic"))
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        registry.add(_make_dup_section(owner="other"))
     assert any("duplicate section_id" in r.message for r in caplog.records)
-    assert registry.all_sections() == [section]
+    assert registry.all_sections()[0].owner_tab == "ic"
 
 
 # --- export: stable action ids -------------------------------------------------

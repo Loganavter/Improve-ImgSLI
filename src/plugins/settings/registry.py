@@ -32,6 +32,37 @@ SectionReader = Callable[[object], dict[str, Any]]
 SectionSeeder = Callable[[object], dict[str, Any]]
 
 
+def _build_key(build: Callable[[object, object], None]) -> object:
+    """Stable identity for a section build callable.
+
+    Module-level functions and factory closures (fresh instance per install,
+    e.g. ``_make_analysis_section``) compare by ``(module, qualname)``;
+    opaque callables fall back to object identity.
+    """
+    module = getattr(build, "__module__", None)
+    qualname = getattr(build, "__qualname__", None)
+    if module is not None and qualname is not None:
+        return (module, qualname)
+    return build
+
+
+def _same_section_content(a: SettingsSection, b: SettingsSection) -> bool:
+    """Content identity for idempotent re-install vs conflicting re-definition.
+
+    Everything semantic is compared; ``icon`` is excluded on purpose —
+    factories may build a fresh ``QIcon`` per call (identity-unstable) and
+    the icon is decoration, not payload.
+    """
+    return (
+        a.title_key == b.title_key
+        and a.owner_tab == b.owner_tab
+        and a.order == b.order
+        and a.action_description_key == b.action_description_key
+        and a.search == b.search
+        and _build_key(a.build) == _build_key(b.build)
+    )
+
+
 @dataclass(frozen=True)
 class SettingsSection:
     section_id: str
@@ -127,11 +158,23 @@ class SettingsRegistry:
         return out
 
     def add(self, section: SettingsSection) -> None:
-        if any(s.section_id == section.section_id for s in self._sections):
+        for existing in self._sections:
+            if existing.section_id != section.section_id:
+                continue
+            if _same_section_content(existing, section):
+                # Idempotent re-install: same payload already registered
+                # (startup installs each section up to 3x via per-tab
+                # _register_settings + contribute_all_settings broadcasts).
+                return
             logger.warning(
-                "SettingsRegistry.add: duplicate section_id %r — keeping the "
-                "first registration, ignoring the later one",
+                "SettingsRegistry.add: duplicate section_id %r — conflicting "
+                "re-definition (owner_tab %r vs %r, build %r vs %r); keeping "
+                "the first registration, ignoring the later one",
                 section.section_id,
+                existing.owner_tab,
+                section.owner_tab,
+                _build_key(existing.build),
+                _build_key(section.build),
             )
             return
         self._sections.append(section)
