@@ -35,6 +35,32 @@ MAX_NAME = group("settings.maximum_name_length_ui")
 SEARCH = SearchIndex.of(UI_MODE, UI_FONT, UI_SCALE, MAX_NAME)
 
 
+def _restore_scrollbar_policy(area):
+    """Guarded slot: restore ``ScrollBarAsNeeded`` unless ``area`` died first.
+
+    ``QTimer.singleShot`` is not parented: the Settings dialog may be
+    destroyed before the tick fires — never touch a dead C++ object
+    (same family as the palette ``_accept_and_run`` isValid guard).
+    """
+
+    def _run() -> None:
+        try:
+            import shiboken6
+
+            if not shiboken6.isValid(area):
+                return
+        except ImportError:
+            pass
+        except Exception:
+            return
+        try:
+            area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        except RuntimeError:
+            pass
+
+    return _run
+
+
 def build(dialog, p):
     dialog.page_interface, layout = dialog._create_scrollable_page()
     builder = page_nav_builder(dialog, tag="settings-interface")
@@ -145,10 +171,7 @@ def build(dialog, p):
         dialog.font_group.adjustSize()
         dialog._calculate_and_apply_geometry()
         if scroll_area is not None:
-            QTimer.singleShot(
-                0,
-                lambda: scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded),
-            )
+            QTimer.singleShot(0, _restore_scrollbar_policy(scroll_area))
 
     for rb in (dialog.radio_font_system_custom, dialog.radio_font_builtin, dialog.radio_font_system_default):
         rb.toggled.connect(sync_font_ui)
