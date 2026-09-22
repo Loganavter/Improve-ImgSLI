@@ -7,7 +7,8 @@ Title + reassurance subtitle (``N files will be moved to <folder>/_rejected/
 (thumbs 150x100, capped at ``FILMSTRIP_MAX_CELLS`` cells + ``+N more`` tile)
 with per-item ``↩ Restore`` + per-series Restore SERIES N
 + Restore all. Provenance line ``SERIES N · hub (cnt)`` via hub resolver.
-Final ``Move N to _rejected/`` variant primary does move-only ``shutil.move``
+Final ``Move N to _rejected/`` (surface variant + accent background —
+the mockup primary action; the toolkit has no ``variant="primary"``) does move-only ``shutil.move``
 via ``triage.clean_rejected`` and shows a 10s ``ToastManager.get_instance``
 + total MB + ``ToastAction("Undo")``. HUD suppression via FlyoutManager
 hide gallery_selection in show_for.
@@ -175,7 +176,10 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._scroll.setWidget(self._list_host)
         outer.addWidget(self._scroll, 1)
 
-        # Bottom bar: Restore all | size | Cancel | Move N variant primary.
+        # Bottom bar: Restore all | size | Cancel | Move N — surface variant
+        # with accent background (mockup primary action; toolkit has no
+        # variant="primary", so surface + set_background_color is the
+        # primary look).
         bar = QWidget(self._content)
         bar.setObjectName("clean_review_bar")
         bar_layout = QHBoxLayout(bar)
@@ -358,7 +362,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             # Rebuild with actual enumeration based on sorted order where hub exists.
             # For ungrouped, use UNGROUPED label.
             # Already built.
-            prov_text = " · ".join(parts)
+            prov_text = "from: " + " · ".join(parts)
             # Back-compat: also include raw series label for tests that search lowercase
             # Keep display as built.
         else:
@@ -682,15 +686,13 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             total_mb = total_bytes / (1024 * 1024) if total_bytes else 0.0
         except Exception:
             total_mb = 0.0
-        msg = f"Moved {len(moves)} file(s) to _rejected/"
-        if total_mb > 0.1:
-            msg = f"Moved {len(moves)} file(s) ({total_mb:.1f} MB) to _rejected/"
+        msg = f"Moved {len(moves)} files to _rejected/"
         try:
             tm.show_toast(
                 msg,
                 duration=10000,
                 actions=[ToastAction("Undo", callback=_undo, dismiss=True)],
-                success=False,
+                success=True,
             )
         except Exception:
             pass
