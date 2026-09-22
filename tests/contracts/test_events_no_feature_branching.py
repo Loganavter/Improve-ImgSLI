@@ -18,7 +18,7 @@ import re
 
 import pytest
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, read, rel
 
 FEATURE_VIEWSTATE_FIELDS = (
     "overlay_enabled",
@@ -84,7 +84,8 @@ def _method_source(tree: ast.AST, src_lines: list[str], class_name: str, method_
 
 def test_multi_compare_canvas_widget_does_not_branch_on_gesture_state_directly():
     src = read(MULTI_COMPARE_CANVAS_WIDGET)
-    tree = ast.parse(src)
+    tree = parse(MULTI_COMPARE_CANVAS_WIDGET)
+    assert tree is not None, f"unparsable {MULTI_COMPARE_CANVAS_WIDGET}"
     src_lines = src.splitlines()
     leaks: list[str] = []
     for method_name in MULTI_COMPARE_ROUTING_METHODS:
@@ -137,10 +138,9 @@ def test_events_do_not_call_feature_aliases_directly():
     for path in _events_files():
         if rel(path) in ALIAS_LEAK_ALLOWLIST:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError as exc:
-            pytest.fail(f"could not parse {path}: {exc}")
+        tree = parse(path)
+        if tree is None:
+            pytest.fail(f"could not parse {path}")
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, iter_py, rel
+from ._framework import ROOT, iter_py, parse, rel
 
 TABS = ROOT / "src" / "tabs"
 
@@ -87,9 +87,8 @@ _PINNED_WIDGET_READS = {
 
 def _record_functions(path):
     """Every ``def record(...)`` in a file with its arg names and node."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError):
+    tree = parse(path)
+    if tree is None:
         return []
     out = []
     for node in ast.walk(tree):

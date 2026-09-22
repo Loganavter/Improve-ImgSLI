@@ -6,7 +6,7 @@ import ast
 
 import pytest
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, read, rel
 
 pytestmark = pytest.mark.slow
 
@@ -61,9 +61,8 @@ def test_no_public_pair_canvas_imports_from_shared_facade():
     for path in iter_py(SRC):
         if path == SRC / "ui" / "canvas_infra" / "rhi" / "__init__.py":
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):

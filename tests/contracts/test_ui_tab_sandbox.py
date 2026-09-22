@@ -36,7 +36,7 @@ import re
 
 from tabs.registry import TabRegistry
 
-from tests.contracts._framework import SRC, iter_py, rel
+from tests.contracts._framework import SRC, iter_py, parse, rel
 
 UI_DIR = SRC / "ui"
 # Widened: host isolation is not just ui — services/plugins/shared are also
@@ -251,9 +251,8 @@ def test_ui_no_tab_specific_identifiers():
     """Host (ui/services/plugins/shared/core) must not reference tab concepts."""
     offenders: list[str] = []
     for path in _iter_host_py_files():
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         rel_path = rel(path)
         for lineno, kind, name in _iter_defined_identifiers(tree):
@@ -279,9 +278,8 @@ def test_ui_no_tab_session_type_string_literals():
     """Host must not contain tab session_type/magnifier string literals in logic."""
     offenders: list[str] = []
     for path in _iter_host_py_files():
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         rel_path = rel(path)
         # Magnifier gateway and dispatcher action-type vocab are allowlisted.
@@ -326,9 +324,8 @@ def test_ui_does_not_import_tab_internals():
     """Host may only import ``tabs.contract`` / ``tabs.registry`` — never a concrete tab."""
     offenders: list[str] = []
     for path in _iter_host_py_files():
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         rel_path = rel(path)
         for node in ast.walk(tree):

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, read, rel
+from ._framework import ROOT, parse, read, rel
 
 MC_RESIDENCY = (
     ROOT / "src" / "tabs" / "multi_compare" / "scene" / "passes" / "residency.py"
@@ -47,7 +47,10 @@ _ENGINE_PASS_MODULE = "engine.gpu.base_images_pass"
 
 
 def _parse(path):
-    return ast.parse(read(path))
+    tree = parse(path)
+    if tree is None:
+        raise SyntaxError(f"cannot parse {path}")
+    return tree
 
 
 def _method_node(tree: ast.Module, class_name: str, method: str):
@@ -257,9 +260,8 @@ def test_no_second_residency_loop_in_mc_scene():
     for path in sorted(MC_SCENE.rglob("*.py")):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
