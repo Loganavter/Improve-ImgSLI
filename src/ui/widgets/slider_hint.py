@@ -233,8 +233,21 @@ class SliderHintController(QObject):
         anchor = self._pending_anchor
         if anchor is None:
             return
+        try:
+            from shiboken6 import isValid  # type: ignore[attr-defined]
+
+            if not isValid(anchor) or not isValid(self._flyout):
+                return
+        except ImportError:
+            pass
         self._current_anchor = anchor
-        self._flyout.show_value(self._text_formatter(anchor), anchor)
+        try:
+            self._flyout.show_value(self._text_formatter(anchor), anchor)
+        except RuntimeError:
+            # Teardown destroyed the flyout/slider C++ object between the
+            # guard above and the show (xdist teardown race) — drop it.
+            self._current_anchor = None
+            return
         self._set_hint_active(True)
 
     def _defer_show(self, slider: Slider) -> None:
@@ -248,17 +261,29 @@ class SliderHintController(QObject):
         """
 
         def _run() -> None:
-            if slider is not self._current_anchor:
-                return
             try:
                 from shiboken6 import isValid  # type: ignore[attr-defined]
 
+                if not isValid(self):
+                    return
                 if not isValid(slider):
+                    return
+                if not isValid(self._flyout):
                     return
             except ImportError:
                 pass
+            except RuntimeError:
+                # Wrapper already dead (C++ gone with it) — nothing to do.
+                return
+            if slider is not self._current_anchor:
+                return
             assert slider is not None
-            self._flyout.show_value(self._text_formatter(slider), slider)
+            try:
+                self._flyout.show_value(self._text_formatter(slider), slider)
+            except RuntimeError:
+                # Teardown destroyed the flyout/slider C++ object between
+                # the guard above and the show (xdist teardown race).
+                return
             self._set_hint_active(True)
 
         from PySide6.QtCore import QTimer
@@ -267,8 +292,22 @@ class SliderHintController(QObject):
 
     def _hide(self) -> None:
         self._current_anchor = None
-        self._flyout.hide()
-        self._set_hint_active(False)
+        try:
+            from shiboken6 import isValid  # type: ignore[attr-defined]
+
+            if isValid(self._flyout):
+                self._flyout.hide()
+        except ImportError:
+            try:
+                self._flyout.hide()
+            except RuntimeError:
+                pass
+        except RuntimeError:
+            pass
+        try:
+            self._set_hint_active(False)
+        except RuntimeError:
+            pass
 
     def _set_hint_active(self, active: bool) -> None:
         """Track flyout visibility and emit ``hint_active_changed`` only on
@@ -281,6 +320,17 @@ class SliderHintController(QObject):
     def _on_wheel_idle(self) -> None:
         anchor = self._current_anchor
         if anchor is None:
+            return
+        try:
+            from shiboken6 import isValid  # type: ignore[attr-defined]
+
+            if not isValid(anchor) or not isValid(self._flyout):
+                self._current_anchor = None
+                return
+        except ImportError:
+            pass
+        except RuntimeError:
+            self._current_anchor = None
             return
         if not self._is_cursor_over(anchor):
             self._hide()
@@ -295,8 +345,22 @@ class SliderHintController(QObject):
         return slider.rect().contains(pos)
 
     def _on_value_changed(self, slider: Slider, value: int) -> None:
-        if slider is self._current_anchor:
+        if slider is not self._current_anchor:
+            return
+        try:
+            from shiboken6 import isValid  # type: ignore[attr-defined]
+
+            if not isValid(slider) or not isValid(self._flyout):
+                return
+        except ImportError:
+            pass
+        except RuntimeError:
+            return
+        try:
             self._flyout.update_value(self._text_formatter(slider))
+        except RuntimeError:
+            # Flyout C++ object destroyed mid-drag-teardown — drop it.
+            return
 
 
 class ValueSlider(Slider):
@@ -467,9 +531,28 @@ class ValueSliderRow(QWidget):
         self._apply_pad_width()
 
     def _apply_label(self) -> None:
-        self._label.setText(self._hint_formatter(self._slider))
+        try:
+            import shiboken6
+
+            if not shiboken6.Shiboken.isValid(self._label):
+                return
+            if not shiboken6.Shiboken.isValid(self._slider):
+                return
+        except Exception:
+            return
+        try:
+            self._label.setText(self._hint_formatter(self._slider))
+        except RuntimeError:
+            return
 
     def _on_value_changed(self, _value: int) -> None:
+        try:
+            import shiboken6
+
+            if not shiboken6.Shiboken.isValid(self._label):
+                return
+        except Exception:
+            return
         self._apply_label()
 
     def refresh(self) -> None:
