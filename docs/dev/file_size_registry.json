@@ -1026,7 +1026,7 @@
     },
     {
       "path": "src/ui/widgets/slider_hint.py",
-      "lines": 575,
+      "lines": 658,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single slider hint painter — custom paint + animations\"",
