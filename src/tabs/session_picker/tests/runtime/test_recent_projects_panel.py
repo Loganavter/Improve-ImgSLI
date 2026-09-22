@@ -838,7 +838,11 @@ def test_recent_panel_fills_cards_synchronously_on_show(qapp, tmp_path, monkeypa
 
 def test_recent_missing_list_card_uses_pastel_red(qapp, tmp_path, monkeypatch):
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.cards import _MISSING_LIST_BG, build_list_card
+    from tabs.session_picker.recent.cards import (
+        _missing_list_bg,
+        _opaque,
+        build_list_card,
+    )
 
     missing_path = tmp_path / "gone.imgsli"
     record = RecentProjectRecord(
@@ -856,7 +860,7 @@ def test_recent_missing_list_card_uses_pastel_red(qapp, tmp_path, monkeypatch):
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )
-    assert card._override_bg_color == _MISSING_LIST_BG
+    assert card._override_bg_color == _opaque(_missing_list_bg())
     assert card._override_bg_color.alpha() == 255
     card.deleteLater()
 
@@ -893,7 +897,11 @@ def test_recent_panel_keeps_scroll_host_opaque(qapp, monkeypatch):
 
 def test_recent_missing_grid_cover_is_warning(qapp, tmp_path):
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.cards import _MISSING_COVER_BG, build_grid_card
+    from tabs.session_picker.recent.cards import (
+        _missing_cover_bg,
+        _opaque,
+        build_grid_card,
+    )
 
     record = RecentProjectRecord(
         path=str(tmp_path / "missing.imgsli"),
@@ -911,7 +919,7 @@ def test_recent_missing_grid_cover_is_warning(qapp, tmp_path):
     )
     cover = next(r for r in card.regions() if r.id == "cover")
     assert cover.pixmap is None
-    assert cover.override_bg_color == _MISSING_COVER_BG
+    assert cover.override_bg_color == _opaque(_missing_cover_bg())
     assert cover.icon is not None
     card.deleteLater()
 
