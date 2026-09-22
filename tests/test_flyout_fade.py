@@ -19,9 +19,29 @@ def _make_host():
 
 
 def _teardown(flyout, anchor, host):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    # Deterministic destroy: pending fade animations + singleShot(0) chains
+    # must not fire in a later test against deleted C++ objects (CI segfault
+    # family in pytestqt _process_events). Mirrors the runtime sweep fixture.
     flyout.hide()
-    anchor.deleteLater()
-    host.deleteLater()
+    try:
+        flyout.close()
+    except RuntimeError:
+        pass
+    for w in (flyout, anchor, host):
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
+    app = QApplication.instance()
+    if app is not None:
+        for w in (flyout, anchor, host):
+            try:
+                QApplication.sendPostedEvents(w, QEvent.Type.DeferredDelete)
+            except RuntimeError:
+                pass
 
 def test_fade_hides_live_container_until_opaque(qtbot, qapp):
     """While fading, only the snapshot must be painted — not the live content.
