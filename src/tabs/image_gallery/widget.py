@@ -133,7 +133,7 @@ class ImageGalleryWidget(QWidget):
             self.stats_strip.hide()
         except Exception:
             pass
-        # Wire strip signals -> use_cases (keep_best etc stub).
+        # Wire strip signals -> use_cases (keep_best_of_series etc).
         try:
             self.stats_strip.keepBestClicked.connect(lambda: self._on_keep_best())
             self.stats_strip.cleanClicked.connect(lambda: self._on_clean_rejected())
@@ -716,7 +716,7 @@ class ImageGalleryWidget(QWidget):
         try:
             from tabs.image_gallery.use_cases import triage as _triage
 
-            _triage.keep_best(self._owner_for_triage())
+            _triage.keep_best_of_series(self._owner_for_triage())
         except Exception:
             pass
 

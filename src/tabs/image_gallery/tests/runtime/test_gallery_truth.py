@@ -183,7 +183,7 @@ def _owner_with_series(items: list[GalleryItem]):
     class _Owner:
         def __init__(self):
             self.state = _State()
-            # _series_of reads owner._triage_series (not state.series).
+            # _series_of resolves owner._triage_series first, then state.series.
             self._triage_series = [items]
 
     owner = _Owner()
@@ -210,3 +210,55 @@ def test_rank_one_consistent_across_helpers(tmp_path: Path):
     # Winner invariant: exactly one rank-1 across all three fields.
     for field in ("rank", "crown_rank", "triage_rank"):
         assert sum(1 for it in (a2, b2) if getattr(it, field) == 1) == 1
+
+
+def test_keep_best_reads_controller_state_series(tmp_path: Path):
+    """P0-1: controller-shaped owner (``state.series`` only, cf.
+    ``controller.py:529`` — no ``_triage_series``/``triage_series``) is
+    resolved by the sole ``_series_of`` implementation."""
+    a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
+    b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
+
+    class _State:
+        def __init__(self):
+            self.items = [a, b]
+            self.series = [[a, b]]
+
+    class _ControllerOwner:
+        def __init__(self):
+            self.state = _State()
+
+    assert triage_uc.keep_best(_ControllerOwner()) > 0
+    assert a.triage_best is True
+    assert b.triage_best is False
+
+
+def test_strip_count_grows_after_reject_toggle(tmp_path: Path):
+    """P0-2: ``toggle_reject`` → ``_refresh_owner_grid`` pushes the rejected
+    count to ``stats_strip.set_rejected_count`` (Space-reject updates the
+    strip immediately)."""
+    a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
+    b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
+
+    class _StripStub:
+        def __init__(self):
+            self.counts: list[int] = []
+
+        def set_rejected_count(self, n: int) -> None:
+            self.counts.append(int(n))
+
+    class _WidgetOwner:
+        def __init__(self):
+            from types import SimpleNamespace
+
+            self.state = SimpleNamespace(items=[a, b])
+            self.stats_strip = _StripStub()
+
+        def rebuild_grid(self, items):  # type: ignore[no-untyped-def]
+            self._last_rebuilt = list(items)
+
+    owner = _WidgetOwner()
+    assert triage_uc.toggle_reject(owner, a.path) is True
+    assert owner.stats_strip.counts and owner.stats_strip.counts[-1] == 1
+    assert triage_uc.toggle_reject(owner, a.path) is False
+    assert owner.stats_strip.counts[-1] == 0

@@ -91,7 +91,8 @@ def _dispatch_via_event_bus(owner, paths: list[Path]) -> bool:
 
 
 def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: ignore[no-untyped-def]
-    """Stub for “Find similar” — semantic search for images similar to selection.
+    """Intentional placeholder for “Find similar” — semantic search for images
+    similar to selection (parity plan non-goal: HUD button stays a stub).
 
     Prepared HUD API: ``SelectionHudController`` wires ``Find similar`` → this.
     Widget/controller integration (coordinator) will handle actual filtering

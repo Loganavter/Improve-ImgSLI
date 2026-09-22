@@ -1,12 +1,12 @@
-"""Stage 2 triage stubs — keep best / clean rejected / compare finalists.
+"""Stage 2 triage helpers — keep best / clean rejected / compare finalists.
 Audit-Meta: pattern=thin-owner size=exempt reason="thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
 
 Thin-owner helpers: plain functions taking the owner (controller or widget).
 No implied lookups — owner and paths are passed explicitly.
 
-The pipeline here is a stub: clustering / mode detection is not yet
-implemented, so these helpers work on the current GalleryItem flags
-(rejected, triage_best, etc.) and are wired to StatsStrip signals.
+These helpers work on the current GalleryItem flags (rejected, triage_best,
+etc.) and are wired to StatsStrip signals. Series resolution goes through
+the sole ``_series_of`` implementation below.
 """
 
 from __future__ import annotations
@@ -123,8 +123,13 @@ def _sync_provenance_from_series(owner, series_list) -> None:
 
 
 def _series_of(owner) -> list[list]:
-    # Try explicit triage series on owner/state
-    for attr in ("_triage_series", "triage_series", "_series"):
+    """Resolve triage series clusters for *owner* (sole implementation).
+
+    Attribute order: ``_triage_series``, ``triage_series``, ``_series``,
+    ``series`` on the owner, then on ``owner.state``. Wave A owns this
+    helper — no second copy may exist anywhere.
+    """
+    for attr in ("_triage_series", "triage_series", "_series", "series"):
         val = getattr(owner, attr, None)
         if val:
             return list(val)
@@ -137,7 +142,7 @@ def _series_of(owner) -> list[list]:
 
 
 def keep_best(owner) -> int:
-    """Mark best per series (stub): first item of each cluster becomes best.
+    """Mark best per series: first item of each cluster becomes best.
 
     Returns number of items marked best.
     """
@@ -190,7 +195,7 @@ def keep_best(owner) -> int:
 
 
 def make_best(owner, path: Path) -> bool:
-    """Make *path* the best within its series (stub)."""
+    """Make *path* the best within its series."""
     items = _items_of(owner)
     series = _series_of(owner)
     target: Path = Path(path) if not isinstance(path, Path) else path
@@ -345,7 +350,7 @@ def restore_moves(owner, moves: list[dict]) -> int:
 
 
 def compare_finalists(owner) -> bool:
-    """Dispatch non-rejected best / remaining items to compare (stub).
+    """Dispatch non-rejected best / remaining items to compare.
 
     Uses carry_selected if selection HUD exists; otherwise logs.
     """
@@ -406,6 +411,17 @@ def _refresh_owner_grid(owner) -> None:
             for it in items:
                 if hasattr(w, "refresh_card"):
                     w.refresh_card(it)
+            # P0-2 live "Clean rejected (n)": toggle_reject funnels through
+            # here, so push the count to the strip on every refresh.
+            # Existing StatsStrip.set_rejected_count(n) — signature unchanged.
+            try:
+                strip = getattr(w, "stats_strip", None)
+                setter = getattr(strip, "set_rejected_count", None) if strip is not None else None
+                if callable(setter):
+                    n = sum(1 for it in items if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False))))
+                    setter(int(n))
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -413,7 +429,7 @@ def _refresh_owner_grid(owner) -> None:
 # -- Aliases for design.md spec (Stage 2 crown/reject/S3 flow) ----------
 
 def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
-    """Spec alias for ``keep_best`` — keep best of each series, reject rest.
+    """Keep best of each series, reject the rest (mockup spec ``gallery.keep-best-of-series``).
 
     Collects provenance per series (mirrors triage.keep_best_of_series spec).
     Returns provenance dict ``{series_id: {kept, rejected}}``. Also delegates
@@ -508,7 +524,7 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
             return provenance
     except Exception:
         pass
-    # Fallback to stub keep_best
+    # Fallback to keep_best
     try:
         keep_best(owner)
     except Exception:
