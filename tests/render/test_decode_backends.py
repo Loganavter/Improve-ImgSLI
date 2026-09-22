@@ -39,11 +39,28 @@ def _can_stream_any() -> bool:
 def test_pyvips_can_stream_is_per_format(tmp_path):
     png = tmp_path / "a.png"
     _write_rgba_png(str(png), 8, 8)
-    if pl.PYVIPS_SUPPORTED:
-        assert pl.pyvips_can_stream(str(png)) is True
-        assert pl.pyvips_can_stream(str(png) + ".qzx") is False
-    else:
+    # Env-independent: an unknown suffix never streams.
+    assert pl.pyvips_can_stream(str(png) + ".qzx") is False
+    if not pl.PYVIPS_SUPPORTED:
         assert pl.pyvips_can_stream(str(png)) is False
+        return
+    # Degrade-tolerant: probe consistency with the installed libvips build,
+    # not a hardcoded capability (wheels report different streamable
+    # suffixes per platform). Mirrors test_jxl_probe_consistent_with_suffixes.
+    assert pl.pyvips_can_stream(str(png)) == (".png" in pl._vips_suffixes())
+    if pl.pyvips_can_stream(str(png)):
+        return
+    # Fallback contract when this build reports png as non-streamable:
+    # the PIL/imagecodecs path must enforce the bound.
+    big = tmp_path / "big_fallback.png"
+    _write_rgba_png(str(big), AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION + 1000, 10)
+    assert pl.pyvips_can_stream(str(big)) is False
+    try:
+        TiledPixelStore.from_path(str(big))
+    except pl.ImageSizeLimitError:
+        pass
+    else:
+        raise AssertionError("PIL fallback must enforce MAX_SUPPORTED_IMAGE_DIMENSION")
 
 
 def test_from_path_streams_oversized_image_when_backend_can(tmp_path):
