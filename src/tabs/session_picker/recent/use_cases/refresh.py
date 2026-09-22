@@ -143,7 +143,7 @@ def pin_dropped_paths(panel, paths: list[str]) -> None:
             _panel_mod.notify_recent_cap_eviction(
                 result.evicted,
                 toast_manager=toast,
-                tr=panel._tr,
+                translate=panel._tr,
             )
         except Exception:
             continue

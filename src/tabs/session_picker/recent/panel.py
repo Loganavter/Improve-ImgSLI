@@ -95,9 +95,9 @@ class RecentProjectsPanel(ShelfWidget):
     items view + empty drop zone as content.
     """
 
-    def __init__(self, parent=None, *, tr: Callable[..., str], context=None):
+    def __init__(self, parent=None, *, translate: Callable[..., str], context=None):
         super().__init__(parent)
-        self._tr = tr
+        self._tr = translate
         self._context = context
         self._on_open: Callable[[str], None] | None = None
         self._view_mode = get_recent_view_mode()
@@ -308,14 +308,14 @@ class RecentProjectsPanel(ShelfWidget):
     def _build(self) -> None:
         self.set_title(self._tr("recent.title", "Recent"))
 
-        self._header = RecentHeaderBar(self, tr=self._tr)
+        self._header = RecentHeaderBar(self, translate=self._tr)
         self._header.prefs_changed.connect(self._on_header_prefs_changed)
         self.add_header_widget(self._header)
         self._header.installEventFilter(self)
 
         self._items = RecentItemsView(self)
         self._items.configure(
-            tr=self._tr,
+            translate=self._tr,
             context=self._context,
             on_activate=self._on_card_activate,
             on_context_menu=self._show_context_menu,

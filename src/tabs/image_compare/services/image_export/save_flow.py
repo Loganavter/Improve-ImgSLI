@@ -30,7 +30,7 @@ class ExportSaveFlowCoordinator:
         self.store = store
         self.main_window_app = main_window_app
         self.ui_manager = ui_manager
-        self.tr = tr_func
+        self._tr = tr_func
         self.state = state_coordinator
         self.export_service = export_service
         self._flow = SharedSaveFlowCoordinator(
@@ -57,8 +57,8 @@ class ExportSaveFlowCoordinator:
                     out_path if isinstance(out_path, str) and os.path.isfile(out_path) else None
                 )
                 self.main_window_app.actions.notify_system(
-                    self.tr("msg.saved"),
-                    f"{self.tr('msg.saved')}: {out_path}",
+                    self._tr("msg.saved"),
+                    f"{self._tr('msg.saved')}: {out_path}",
                     image_path=image_for_icon,
                     timeout_ms=4000,
                 )
@@ -72,16 +72,16 @@ class ExportSaveFlowCoordinator:
             return True
         self.ui_manager.messages.show_non_modal_message(
             kind=MessageKind.WARNING,
-            title=self.tr("image_compare.msg.invalid_data"),
-            text=self.tr("image_compare.msg.specify_output_directory_and_file_name"),
+            title=self._tr("image_compare.msg.invalid_data"),
+            text=self._tr("image_compare.msg.specify_output_directory_and_file_name"),
         )
         return False
 
     def show_missing_images_warning(self) -> None:
         self.ui_manager.messages.show_non_modal_message(
             kind=MessageKind.WARNING,
-            title=self.tr("image_compare.common.warning"),
-            text=self.tr("image_compare.msg.select_both_images_first"),
+            title=self._tr("image_compare.common.warning"),
+            text=self._tr("image_compare.msg.select_both_images_first"),
         )
 
     def start_save_worker(

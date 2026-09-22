@@ -82,7 +82,7 @@ class ImageGalleryWidget(QWidget):
             if context is None:
                 return default
             try:
-                return context.tr(key, default)
+                return context._tr(key, default)
             except Exception:
                 return default
 
@@ -94,7 +94,7 @@ class ImageGalleryWidget(QWidget):
         root.setSpacing(scaled_px(12))
 
         # Toolbar: Button variant="surface" + CustomLineEdit (painter pipeline) — matches svg toolbar 34px
-        self.toolbar = GalleryToolbar(self, translate=(context.tr if context is not None else None))
+        self.toolbar = GalleryToolbar(self, translate=(context._tr if context is not None else None))
         self.toolbar.setObjectName("image_gallery_toolbar")
         from PySide6.QtWidgets import QSizePolicy as _QSP
         try:
@@ -121,7 +121,7 @@ class ImageGalleryWidget(QWidget):
         root.addWidget(self.toolbar)
 
         # Stats strip (Stage 2 S2) — Label "40 images · 7 series · 33 redundant" + Buttons + mode chip — svg y114 h34
-        self.stats_strip = StatsStrip(self, translate=(context.tr if context is not None else None))
+        self.stats_strip = StatsStrip(self, translate=(context._tr if context is not None else None))
         self.stats_strip.setObjectName("image_gallery_stats_strip")
         try:
             self.stats_strip.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Fixed)
@@ -156,7 +156,7 @@ class ImageGalleryWidget(QWidget):
         # root.addWidget(self._folder_label)  # svg v2 has no folder label, only stats
 
         # Empty state (S0: DropZoneLabel + DragDropOverlay) — should fill when grid hidden
-        self._empty_state = GalleryEmptyState(self, translate=(context.tr if context is not None else None))
+        self._empty_state = GalleryEmptyState(self, translate=(context._tr if context is not None else None))
         self._empty_state.setObjectName("image_gallery_empty_state")
         try:
             self._empty_state.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Expanding)
@@ -292,7 +292,7 @@ class ImageGalleryWidget(QWidget):
                 except Exception:
                     pass
 
-            tr_fn = (context.tr if context is not None else None)
+            tr_fn = (context._tr if context is not None else None)
             self._selection_hud = SelectionHudController(
                 self,
                 translate=tr_fn,

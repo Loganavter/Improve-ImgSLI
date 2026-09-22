@@ -312,7 +312,7 @@ class GalleryController:
     def _tr(self, key: str, default: str) -> str:
         context = self._context
         if context is not None:
-            return context.tr(key, default)
+            return context._tr(key, default)
         return default
 
     def analyze_item_by_path(self, path: Path) -> None:

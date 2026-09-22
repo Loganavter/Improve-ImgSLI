@@ -43,9 +43,9 @@ class RecentHeaderBar(QWidget):
 
     prefs_changed = Signal()
 
-    def __init__(self, parent: QWidget | None = None, *, tr: Callable[..., str]):
+    def __init__(self, parent: QWidget | None = None, *, translate: Callable[..., str]):
         super().__init__(parent)
-        self._tr = tr
+        self._tr = translate
         self._sort_mode = SORT_MODIFIED
         self._sort_order = SORT_DESC
         self._view_mode = "grid"

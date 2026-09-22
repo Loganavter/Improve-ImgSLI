@@ -23,7 +23,7 @@ def _make_dialog():
     dialog = MagicMock()
     dialog._perf_layout = MagicMock()
     dialog.current_language = "en"
-    dialog.tr = lambda text, *a, **kw: text
+    dialog._tr = lambda text, *a, **kw: text
     return dialog
 
 

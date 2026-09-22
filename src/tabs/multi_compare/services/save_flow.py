@@ -21,7 +21,7 @@ class MultiCompareSaveFlowCoordinator:
 
     def __init__(self, main_window_app, tr_func, thread_pool=None):
         self.main_window_app = main_window_app
-        self.tr = tr_func
+        self._tr = tr_func
         self._thread_pool = thread_pool
         self._flow = SharedSaveFlowCoordinator(
             get_thread_pool=lambda: self._thread_pool or getattr(self.main_window_app, "thread_pool", None),

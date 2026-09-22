@@ -54,7 +54,7 @@ def test_grid_card_wires_hover_wash(qapp, tmp_path, monkeypatch):
     card = build_grid_card(
         _record(tmp_path),
         parent=None,
-        tr=lambda key, default="", **kw: default or key,
+        translate=lambda key, default="", **kw: default or key,
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )
@@ -82,7 +82,7 @@ def test_grid_card_hover_washes_over_cover_preview(qapp, tmp_path, monkeypatch):
     card = build_grid_card(
         _record(tmp_path),
         parent=None,
-        tr=lambda key, default="", **kw: default or key,
+        translate=lambda key, default="", **kw: default or key,
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )

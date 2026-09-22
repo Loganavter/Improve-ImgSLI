@@ -243,17 +243,17 @@ def format_recent_cap_eviction_message(
     evicted: RecentProjectRecord,
     *,
     cap: int = DEFAULT_CAP,
-    tr=None,
+    translate=None,
 ) -> str:
     """User-facing copy when the Recent list drops the oldest entry at cap."""
 
     def _t(key: str, default: str) -> str:
-        if tr is None:
+        if translate is None:
             return default
         try:
-            text = tr(key, default)
+            text = translate(key, default)
         except TypeError:
-            text = tr(key)
+            text = translate(key)
         return text if text else default
 
     name = evicted.display_name or Path(evicted.path).stem or evicted.path
@@ -269,12 +269,12 @@ def notify_recent_cap_eviction(
     evicted: RecentProjectRecord | None,
     *,
     toast_manager=None,
-    tr=None,
+    translate=None,
     cap: int = DEFAULT_CAP,
 ) -> None:
     if evicted is None or toast_manager is None:
         return
-    message = format_recent_cap_eviction_message(evicted, cap=cap, tr=tr)
+    message = format_recent_cap_eviction_message(evicted, cap=cap, translate=translate)
     try:
         toast_manager.show_toast(message, duration=10000)
     except Exception:

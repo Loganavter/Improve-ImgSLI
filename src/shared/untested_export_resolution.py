@@ -30,11 +30,11 @@ def exceeds_tested_export_edge(width: int, height: int) -> bool:
     return max(int(width or 0), int(height or 0)) > edge
 
 
-def _translate(tr: _Translate, key: str, default: str, **kwargs: Any) -> str:
+def _translate(translate: _Translate, key: str, default: str, **kwargs: Any) -> str:
     try:
-        text = tr(key, default)
+        text = translate(key, default)
     except TypeError:
-        text = tr(key)
+        text = translate(key)
     if not text or text == key:
         text = default
     try:

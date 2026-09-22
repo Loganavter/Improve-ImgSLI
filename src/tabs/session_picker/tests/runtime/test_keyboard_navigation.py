@@ -39,7 +39,7 @@ class _Context:
         self.calls: list[tuple] = []
         self._session = _PickerSession()
 
-    def tr(self, key: str, default: str = "") -> str:
+    def _tr(self, key: str, default: str = "") -> str:
         return default or key
 
     def call_service(self, name: str, *args, **kwargs):
@@ -174,7 +174,7 @@ def test_recent_enter_opens_focused_card(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_GRID)
 
     opened: list[str] = []
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.set_open_project_handler(lambda path: opened.append(path))
     panel.resize(700, 800)
     panel.show()

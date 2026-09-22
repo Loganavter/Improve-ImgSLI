@@ -537,7 +537,7 @@ def test_deferred_page_restores_seeded_divider_color_after_early_activation(qapp
     store.active_session_id = "mc1"
     context = SimpleNamespace(
         store=store,
-        tr=lambda key, default=None: default or key,
+        _tr=lambda key, default=None: default or key,
         main_window=None,
         call_service=lambda *_a, **_k: None,
         settings=None,
@@ -587,7 +587,7 @@ def test_seed_after_activate_updates_live_widget(qapp, monkeypatch):
     store.active_session_id = "mc1"
     context = SimpleNamespace(
         store=store,
-        tr=lambda key, default=None: default or key,
+        _tr=lambda key, default=None: default or key,
         main_window=None,
         call_service=lambda *_a, **_k: None,
         settings=None,

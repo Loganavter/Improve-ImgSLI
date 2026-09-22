@@ -41,7 +41,7 @@ def test_recent_panel_empty_and_populated(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(f"{_PANEL}.get_recent_sort_mode", lambda **kwargs: SORT_NAME)
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     assert panel._empty_zone is not None
     assert not panel._empty_zone.isHidden()
@@ -90,7 +90,7 @@ def test_recent_panel_accepts_project_drop(qapp, tmp_path, monkeypatch):
         f"{_PANEL}.record_recent_project",
         lambda path, **kwargs: recorded.append(str(path)),
     )
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     opened: list[str] = []
     panel.set_open_project_handler(lambda path: opened.append(path))
 
@@ -130,7 +130,7 @@ def test_recent_panel_accepts_project_drop(qapp, tmp_path, monkeypatch):
 
 def test_recent_panel_header_uses_default_icon_controls(qapp, monkeypatch):
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     assert panel._header.sort_button is not None
     assert panel._header.sort_order_button is not None
     assert panel._header.view_button is not None
@@ -153,7 +153,7 @@ def test_recent_panel_header_uses_default_icon_controls(qapp, monkeypatch):
 def test_recent_panel_scroll_disables_viewport_mask(qapp, monkeypatch):
     """Nested OverlayScrollArea must not 1-bit-mask corners over CSD chrome."""
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     assert panel._items.scroll_area is not None
     assert panel._items.scroll_area._corner_radius == 0
     panel.deleteLater()
@@ -210,7 +210,7 @@ def test_recent_panel_bare_panel_falls_back_to_two_rows(qapp, tmp_path, monkeypa
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
@@ -289,7 +289,7 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
     cards = QWidget()
     cards.setFixedHeight(300)  # stand-in for the create-cards block
     lay.addWidget(cards)
-    panel = RecentProjectsPanel(content, tr=_tr)
+    panel = RecentProjectsPanel(content, translate=_tr)
     lay.addWidget(panel)
     lay.addStretch(1)
     panel.refresh()
@@ -346,7 +346,7 @@ def test_recent_panel_grid_uses_available_width(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(980, 800)
     panel.show()
     panel.refresh()
@@ -395,7 +395,7 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(980, 800)
     panel.show()
     panel.refresh()
@@ -452,7 +452,7 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     window = QWidget()
     lay = QVBoxLayout(window)
     lay.addStretch(1)
-    panel = RecentProjectsPanel(window, tr=_tr)
+    panel = RecentProjectsPanel(window, translate=_tr)
     lay.addWidget(panel)
     window.resize(1000, 800)
     window.show()
@@ -537,7 +537,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
@@ -579,7 +579,7 @@ def test_recent_panel_cards_use_fixed_size(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     card = panel._items.card_for(record.path)
     assert card is not None
@@ -622,7 +622,7 @@ def test_recent_panel_clears_orphaned_card_widgets(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(560, 800)
     panel.refresh()
     host = panel._items.items_host
@@ -654,7 +654,7 @@ def test_recent_panel_page_shown_soft_refresh_keeps_cards(qapp, tmp_path, monkey
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel._layout_ready = True
     panel.refresh()
     card = panel._items.card_for(record.path)
@@ -697,7 +697,7 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(560, 800)
     panel.show()
     panel.refresh()
@@ -742,7 +742,7 @@ def test_recent_panel_refresh_preserves_card_identity(qapp, tmp_path, monkeypatc
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     first = panel._items.card_for(str(path))
     assert first is not None
@@ -789,7 +789,7 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
@@ -824,7 +824,7 @@ def test_recent_panel_fills_cards_synchronously_on_show(qapp, tmp_path, monkeypa
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(560, 800)
     assert panel._layout_ready is False
     assert panel._items.live_card_count == 0
@@ -856,7 +856,7 @@ def test_recent_missing_list_card_uses_pastel_red(qapp, tmp_path, monkeypatch):
     card = build_list_card(
         record,
         parent=None,
-        tr=_tr,
+        translate=_tr,
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )
@@ -872,7 +872,7 @@ def test_recent_panel_keeps_scroll_host_opaque(qapp, monkeypatch):
     from ui.widgets.shelf import OpaqueFillHost
 
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     host = panel._items.items_host
     assert host is not None
     assert isinstance(host, OpaqueFillHost)
@@ -913,7 +913,7 @@ def test_recent_missing_grid_cover_is_warning(qapp, tmp_path):
     card = build_grid_card(
         record,
         parent=None,
-        tr=_tr,
+        translate=_tr,
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )
@@ -942,7 +942,7 @@ def test_recent_activate_refreshes_when_file_vanishes(qapp, tmp_path, monkeypatc
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel._layout_ready = True
     panel.refresh()
     opened: list[str] = []
@@ -980,7 +980,7 @@ def test_recent_missing_click_does_not_remove(qapp, tmp_path, monkeypatch):
         lambda path, **kwargs: removed.append(str(path)) or True,
     )
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel._layout_ready = True
     panel.refresh()
     panel._activate(record, missing=True)
@@ -1045,7 +1045,7 @@ def test_recent_panel_virtualizes_large_list(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(560, 800)
     panel.show()
     panel.refresh()
@@ -1148,7 +1148,7 @@ def test_scale_above_1_bare_panel_cap_is_scaled(qapp, tmp_path, monkeypatch):
 
     UiScale.get_instance().set_factor(1.5)
     try:
-        panel = RecentProjectsPanel(tr=_tr)
+        panel = RecentProjectsPanel(translate=_tr)
         panel.resize(592, 800)
         panel.show()
         panel.refresh()
@@ -1200,7 +1200,7 @@ def test_scale_above_1_virtualization_keeps_viewport_filled(qapp, tmp_path, monk
 
     UiScale.get_instance().set_factor(1.5)
     try:
-        panel = RecentProjectsPanel(tr=_tr)
+        panel = RecentProjectsPanel(translate=_tr)
         panel.resize(592, 800)
         panel.show()
         panel.refresh()
@@ -1270,7 +1270,7 @@ def test_window_will_fill_screen_and_prelayout_width_estimate(qapp):
             settings=SimpleNamespace(window_was_maximized=True)
         )
         assert _window_will_fill_screen(win) is True
-        panel = RecentProjectsPanel(win, tr=_tr)
+        panel = RecentProjectsPanel(win, translate=_tr)
         width = panel._grid_content_width()
         assert width == 2560 - SESSION_PICKER_PAGE_HORIZONTAL_MARGINS - 32
         panel.deleteLater()
@@ -1285,7 +1285,7 @@ def test_window_will_fill_screen_and_prelayout_width_estimate(qapp):
             settings=SimpleNamespace(window_was_maximized=False)
         )
         assert _window_will_fill_screen(win2) is False
-        panel2 = RecentProjectsPanel(win2, tr=_tr)
+        panel2 = RecentProjectsPanel(win2, translate=_tr)
         width2 = panel2._grid_content_width()
         assert width2 == 1024 - SESSION_PICKER_PAGE_HORIZONTAL_MARGINS - 32
         panel2.deleteLater()
@@ -1327,7 +1327,7 @@ def test_shelf_geometry_settles_by_first_drain(qapp, tmp_path, monkeypatch, fact
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
     class _Ctx:
-        def tr(self, key: str, default: str = "") -> str:
+        def _tr(self, key: str, default: str = "") -> str:
             return default or key
 
         def call_service(self, name: str, *args, **kwargs):
@@ -1429,7 +1429,7 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
 
     UiScale.get_instance().set_factor(1.0)
     try:
-        panel = RecentProjectsPanel(tr=_tr)
+        panel = RecentProjectsPanel(translate=_tr)
         panel.resize(600, 800)
         panel.show()
         panel.refresh()

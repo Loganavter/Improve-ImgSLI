@@ -206,7 +206,7 @@ def test_grid_content_width_floor_holds_in_device_space(qapp):
 
     UiScale.get_instance().set_factor(1.5)
     try:
-        panel = RecentProjectsPanel(tr=lambda k, d="", **kw: d or k)
+        panel = RecentProjectsPanel(translate=lambda k, d="", **kw: d or k)
         try:
             width = sizing.grid_content_width(panel)
         finally:

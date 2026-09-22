@@ -71,7 +71,7 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     toast; see plan §3.3).
     """
     try:
-        # controller.translate is TabContext.tr wrapper (already language-aware)
+        # controller.translate is TabContext._tr wrapper (already language-aware)
         try:
             prefix = controller.translate("msg.failed_to_load_image", "Failed to load image")
         except Exception:

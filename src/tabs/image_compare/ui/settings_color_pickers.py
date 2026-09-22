@@ -17,7 +17,7 @@ class SettingsColorPickerCoordinator:
         self.store = store
         self.main_controller = main_controller
         self.main_window_app = main_window_app
-        self.tr = tr_func
+        self._tr = tr_func
         self._dialogs: dict[str, ColorPickerDialog | None] = {}
 
     def show_canvas_feature_color_picker(
@@ -128,7 +128,7 @@ class SettingsColorPickerCoordinator:
                 )
             ),
             self.main_window_app,
-            title=self.tr("image_compare.ui.choose_magnifier_base_color"),
+            title=self._tr("image_compare.ui.choose_magnifier_base_color"),
             show_alpha=True,
         )
         dialog.setModal(False)
@@ -211,7 +211,7 @@ class SettingsColorPickerCoordinator:
         dialog = ColorPickerDialog(
             color_to_qcolor(current_color),
             host,
-            title=self.tr(title_key),
+            title=self._tr(title_key),
             show_alpha=show_alpha,
         )
         if parent_window is not None:

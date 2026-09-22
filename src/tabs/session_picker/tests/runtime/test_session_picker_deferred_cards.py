@@ -14,7 +14,7 @@ class _FakeContext:
     def __init__(self, blueprints: list[SessionBlueprint]):
         self._blueprints = blueprints
 
-    def tr(self, key: str, default: str = "") -> str:
+    def _tr(self, key: str, default: str = "") -> str:
         return default or key
 
     def call_service(self, name: str, *args, **kwargs):

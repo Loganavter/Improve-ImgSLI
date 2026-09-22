@@ -54,7 +54,7 @@ def test_grid_card_uses_pixmap_cover(tmp_path, qapp, monkeypatch):
     card = build_grid_card(
         record,
         parent=None,
-        tr=_tr,
+        translate=_tr,
         on_activate=lambda *_: None,
         on_context_menu=lambda *_: None,
     )

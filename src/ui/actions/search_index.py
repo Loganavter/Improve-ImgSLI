@@ -206,20 +206,10 @@ def _dialog_tr(dialog, key: str) -> str:
         except TypeError:
             return fn(key)
 
-    # 1) Explicit instance-injected resolver (``dialog.tr = lambda ...`` —
-    #    coordinator/mock convention). Instance dict only: QObject.tr lives on
-    #    the CLASS and must never be picked up (contract: test_no_qt_tr).
-    fn = dialog.__dict__.get("tr") if hasattr(dialog, "__dict__") else None
-    if callable(fn):
-        try:
-            out = _call(fn)
-            if isinstance(out, str):
-                return out
-        except TypeError:
-            pass
-    # 2) Named instance translator (SettingsDialog._tr — deliberately not
-    #    named `tr` so it never shadows QObject.tr). The str-guard keeps
-    #    MagicMock auto-attributes (non-str) from poisoning label text.
+    # 1) Named instance translator (``SettingsDialog._tr`` — the instance
+    #    domain name; never ``tr``, which on a QObject is Qt's own API). The
+    #    str-guard keeps MagicMock auto-attributes (non-str) from poisoning
+    #    label text.
     fn = getattr(dialog, "_tr", None)
     if callable(fn):
         try:
@@ -228,7 +218,7 @@ def _dialog_tr(dialog, key: str) -> str:
                 return out
         except TypeError:
             pass
-    # 3) App-wide JSON translator (host + tab i18n roots).
+    # 2) App-wide JSON translator (host + tab i18n roots) — bare module tr.
     try:
         from resources.translations import tr as app_tr
         out = app_tr(key, lang)
@@ -236,6 +226,5 @@ def _dialog_tr(dialog, key: str) -> str:
             return out
     except Exception:
         pass
-    # Qt's QObject.tr is NEVER a fallback — it cannot resolve JSON keys and
-    # would silently return the raw source (the 2026-09-22 label bug).
+    # 3) Unresolvable: return the raw key.
     return key

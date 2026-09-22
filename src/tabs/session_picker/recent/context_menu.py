@@ -22,7 +22,7 @@ def open_recent_project_menu(
     *,
     source_widget,
     record: RecentProjectRecord,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     on_open: Callable[[RecentProjectRecord], None],
     on_remove: Callable[[RecentProjectRecord], None],
     selected_paths: set[str] | None = None,
@@ -33,12 +33,12 @@ def open_recent_project_menu(
     entries = [
         ContextMenuAction(
             "recent.open",
-            tr("recent.action_open", "Open"),
+            translate("recent.action_open", "Open"),
             enabled=not missing and not multi,
         ),
         ContextMenuAction(
             "recent.properties",
-            tr("recent.action_properties", "Properties"),
+            translate("recent.action_properties", "Properties"),
             enabled=not multi,
         ),
     ]
@@ -46,7 +46,7 @@ def open_recent_project_menu(
         entries.append(
             ContextMenuAction(
                 "recent.remove_selected",
-                tr(
+                translate(
                     "recent.action_remove_selected",
                     "Remove selected ({n})",
                 ).format(n=len(selected_paths)),  # type: ignore[arg-type]  # selected_paths non-None when multi
@@ -56,7 +56,7 @@ def open_recent_project_menu(
         entries.append(
             ContextMenuAction(
                 "recent.remove",
-                tr("recent.action_remove", "Remove from list"),
+                translate("recent.action_remove", "Remove from list"),
             )
         )
     entries.extend(
@@ -64,7 +64,7 @@ def open_recent_project_menu(
             ContextMenuSeparator(),
             ContextMenuAction(
                 "recent.reveal",
-                tr("recent.action_reveal", "Show in folder"),
+                translate("recent.action_reveal", "Show in folder"),
                 enabled=Path(record.path).parent.is_dir() and not multi,
             ),
         ]
@@ -74,7 +74,7 @@ def open_recent_project_menu(
         if action_id == "recent.open":
             on_open(record)
         elif action_id == "recent.properties":
-            open_recent_project_properties(record, tr=tr, parent=source_widget)
+            open_recent_project_properties(record, translate=translate, parent=source_widget)
         elif action_id == "recent.remove":
             on_remove(record)
         elif action_id == "recent.remove_selected" and on_remove_selected is not None:
@@ -95,7 +95,7 @@ def open_recent_project_menu(
 def open_recent_project_properties(
     record: RecentProjectRecord,
     *,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     parent=None,
 ) -> None:
     """Reuse the shared Image Properties dialog with cached Recent metadata."""
@@ -106,8 +106,8 @@ def open_recent_project_properties(
         app_rows.append(
             (
                 "recent.prop_status",
-                tr("recent.prop_status", "Status"),
-                tr("recent.missing", "File missing"),
+                translate("recent.prop_status", "Status"),
+                translate("recent.missing", "File missing"),
             )
         )
     # Live File section already shows Modified when the path exists; for a
@@ -116,7 +116,7 @@ def open_recent_project_properties(
         app_rows.append(
             (
                 "recent.prop_file_modified",
-                tr("recent.prop_file_modified", "Date modified"),
+                translate("recent.prop_file_modified", "Date modified"),
                 format_absolute_timestamp(record.file_modified_at),
             )
         )
@@ -127,7 +127,7 @@ def open_recent_project_properties(
         app_rows.append(
             (
                 "recent.prop_file_created",
-                tr("recent.prop_file_created", "Date created"),
+                translate("recent.prop_file_created", "Date created"),
                 format_absolute_timestamp(created),
             )
         )
@@ -135,23 +135,23 @@ def open_recent_project_properties(
     app_rows.append(
         (
             "recent.prop_pinned",
-            tr("recent.prop_pinned", "Added to Recent"),
+            translate("recent.prop_pinned", "Added to Recent"),
             pinned,
         )
     )
     app_rows.append(
         (
             "recent.prop_opened",
-            tr("recent.prop_opened", "Last opened"),
+            translate("recent.prop_opened", "Last opened"),
             format_absolute_timestamp(record.opened_at),
         )
     )
-    sessions = format_session_types(record.session_types, tr)
+    sessions = format_session_types(record.session_types, translate)
     if sessions:
         app_rows.append(
             (
                 "recent.prop_sessions",
-                tr("recent.prop_sessions", "Sessions"),
+                translate("recent.prop_sessions", "Sessions"),
                 sessions,
             )
         )
@@ -159,7 +159,7 @@ def open_recent_project_properties(
     def _dialog_tr(key, language=None, default=None, *args, **kwargs):
         key_text = str(key or "")
         if key_text.startswith("recent."):
-            return tr(key_text, default if default is not None else key_text)
+            return translate(key_text, default if default is not None else key_text)
         return app_tr(key, language, default, *args, **kwargs)
 
     open_image_properties_dialog(

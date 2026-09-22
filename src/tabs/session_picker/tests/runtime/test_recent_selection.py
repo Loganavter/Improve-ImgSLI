@@ -88,7 +88,7 @@ def test_ctrl_click_toggles_selection_without_open(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
     opened: list[str] = []
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.set_open_project_handler(lambda path: opened.append(path))
     panel.resize(560, 800)
     panel.show()
@@ -122,7 +122,7 @@ def test_marquee_preview_updates_live_before_release(qapp, tmp_path, monkeypatch
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     # Preview must light cards without committing yet.
     panel._on_marquee_preview({records[0].path, records[1].path}, False)
@@ -149,7 +149,7 @@ def test_ctrl_select_locks_bg_immediately(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     panel._on_card_activate(
         records[0], False, Qt.KeyboardModifier.ControlModifier
@@ -176,7 +176,7 @@ def test_marquee_commit_replaces_and_additive(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.refresh()
     panel._on_marquee_commit({records[0].path, records[1].path}, False)
     assert panel._selected_paths == {records[0].path, records[1].path}
@@ -202,7 +202,7 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
 
-    panel = RecentProjectsPanel(tr=_tr)
+    panel = RecentProjectsPanel(translate=_tr)
     panel.resize(560, 800)
     panel.show()
     panel.refresh()

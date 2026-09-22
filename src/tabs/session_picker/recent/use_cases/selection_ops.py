@@ -105,7 +105,7 @@ def show_context_menu(panel, record: RecentProjectRecord) -> None:
     open_recent_project_menu(
         source_widget=panel.window() or panel,
         record=record,
-        tr=panel._tr,
+        translate=panel._tr,
         # Live missing flag: the menu already gates Open on its own check,
         # and activate() re-resolves from disk — no hardcoded False.
         on_open=lambda r: panel._activate(r),

@@ -35,7 +35,7 @@ def test_minimum_floor_raises_for_session_picker_page():
 
 
 class _PickerCtx:
-    def tr(self, key: str, default: str = "") -> str:
+    def _tr(self, key: str, default: str = "") -> str:
         return default or key
 
     def call_service(self, name: str, *args, **kwargs):

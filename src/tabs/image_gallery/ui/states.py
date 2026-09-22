@@ -40,7 +40,7 @@ class GalleryEmptyState(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("GalleryEmptyState")
-        self._translate = translate
+        self._tr = translate
         self._state: str = "empty"
 
         def _tr(key: str, default: str) -> str:
@@ -218,9 +218,9 @@ class GalleryEmptyState(QWidget):
             else:
                 default = f"Scanning {int(n)}"
             # Keep ellipsis-style fallback for legacy translations: scanning ellipsis → n/N
-            if self._translate is not None:
+            if self._tr is not None:
                 try:
-                    txt = self._translate("image_gallery.scanning", default)
+                    txt = self._tr("image_gallery.scanning", default)
                     # If translation is missing and returns key, fallback to default with count.
                     if txt == "image_gallery.scanning":
                         txt = default

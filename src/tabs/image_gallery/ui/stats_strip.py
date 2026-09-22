@@ -104,7 +104,7 @@ class StatsStrip(QWidget):
     def __init__(self, parent: QWidget | None = None, *, translate=None) -> None:
         super().__init__(parent)
         self.setObjectName("GalleryStatsStrip")
-        self._translate = translate
+        self._tr = translate
         self._rejected = 0
         try:
             self.setAttribute(Qt.WA_StyledBackground, True)

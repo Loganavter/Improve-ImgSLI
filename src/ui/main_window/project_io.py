@@ -34,10 +34,10 @@ class MainWindowProjectIo:
         self,
         window: MainWindow,
         *,
-        tr: Callable[[str, str], str],
+        translate: Callable[[str, str], str],
     ) -> None:
         self._window = window
-        self._tr = tr
+        self._tr = translate
         self.current_project_path: str | None = None
         self._project_worker = None
         # Landing spot for a future "save with pixel cache" UI checkbox.

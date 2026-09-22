@@ -1,30 +1,37 @@
 """Contract: Qt's ``QObject.tr`` must never be used — anywhere, ever.
 
-The project i18n is JSON-only (``resources.translations`` app roots incl. tab
-roots, ``dialog._tr`` instance translators, injected ``self.tr = tr_func``
-resolvers, ``context.tr(key, default)`` context objects). There is no Qt
-translation machinery at all: zero ``QTranslator``/``installTranslator``/
-``.qm`` in the tree — ``QObject.tr`` has no legitimate caller.
+Two naming domains, zero overlap:
 
-Why an absolute ban (lesson 2026-09-22, settings raw-key labels):
+- **module** ``tr`` — the JSON translator (``resources.translations.tr``,
+  toolkit twin), imported BARE: ``from resources.translations import tr``.
+  Never reached as an attribute of an object.
+- **instance** ``_tr`` — every object-level resolver: ``TabContext._tr``,
+  ``SettingsDialog._tr``, injected ``self._tr = tr_func``, child-widget
+  ``self._tr`` storage, ``translate`` as the callable kwarg for passing
+  resolvers into widgets. No object anywhere may carry an attribute named
+  ``tr``.
+
+Qt's ``QObject.tr`` belongs to neither domain and is never the i18n path:
+the tree has zero ``QTranslator``/``installTranslator``/``.qm``, and
 ``QObject.tr(sourceText, lang)`` treats ``lang`` as a *disambiguation
 comment* (gettext ``msgctxt`` heritage; language is ambient state via
-installed translators, not a per-call argument) and returns the raw
-sourceText when ``(source, lang)`` misses the ``.qm`` — silently, no error.
-JSON keys therefore render as ``image_gallery.settings.enable_ai`` instead
-of the translation. Name collision with our JSON ``tr`` made the mistake
-easy: any ``obj.tr(...)`` on a QObject reaches Qt, never our resolver.
+installed translators, not a per-call argument) — returning the raw
+sourceText on a miss, silently, no error. JSON keys would therefore render
+as ``image_gallery.settings.enable_ai`` instead of the translation (lesson
+2026-09-22, settings raw-key labels). Name collision with our JSON ``tr``
+made that mistake easy: any ``obj.tr(...)`` on a QObject reaches Qt, never
+our resolver.
 
-Rules (enforced by this file):
-1. ``getattr(x, "tr")`` / ``hasattr(x, "tr")`` — banned (stringly-time reach
-   into Qt tr; the exact vector of the 2026-09-22 ``_dialog_tr`` bug).
-2. ANY attribute-call ``obj.tr(...)`` — banned, unless the receiver follows
-   an established custom-resolver convention where ``tr`` is a PLAIN
-   attribute holding a JSON resolver, never QObject.tr:
-   - ``self.tr(...)`` inside a class that injects ``self.tr = tr_func``, or
-   - ``context.tr(...)`` / ``self._context.tr(...)`` context objects.
-   Non-plain receivers (``dialog.tr``, ``widget.tr``, ...) are violations
-   even with variable keys — there is no case where they are not Qt tr.
+Rules (absolute — no allowlists, enforced by this file):
+
+1. Any attribute-call ``obj.tr(...)`` — banned. On a QObject it is Qt tr;
+   anywhere else it is a domain violation (use a bare module import or the
+   instance ``_tr``).
+2. ``getattr(x, "tr")`` / ``hasattr(x, "tr")`` — banned (stringly-time
+   reach into Qt tr; the exact vector of the 2026-09-22 ``_dialog_tr`` bug).
+3. Any assignment to an attribute named ``tr`` (``self.tr = ...``,
+   ``dialog.tr = ...``, ``x.tr = ...``) — banned (reintroduction of an
+   instance-domain ``tr`` attribute).
 """
 
 from __future__ import annotations
@@ -34,119 +41,59 @@ import re
 
 from ._framework import SRC, iter_py, parse, rel
 
-# Custom-resolver receiver conventions (plain classes / context objects —
-# `tr` there is an attribute holding our JSON resolver, never QObject.tr).
-CONTEXT_RECEIVER_ATTRS = {"context", "_context"}
-
 KEY_LITERAL_RE = re.compile(r"^[a-z0-9_]+(?:\.[a-z0-9_]+)+$")
 
 
-def _base_names(node: ast.ClassDef) -> list[str]:
-    out: list[str] = []
-    for b in node.bases:
-        if isinstance(b, ast.Name):
-            out.append(b.id)
-        elif isinstance(b, ast.Attribute):
-            out.append(b.attr)
-    return out
+def _scan_tree(tree: ast.AST, path: str, violations: list[str]) -> None:
+    """Collect rule 1/2/3 violations anywhere in ``tree``."""
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
 
+        if isinstance(node, ast.Call):
+            func = node.func
+            # Rule 2: getattr(x, "tr") / hasattr(x, "tr")
+            if isinstance(func, ast.Name) and func.id in ("getattr", "hasattr"):
+                if len(node.args) >= 2:
+                    a1 = node.args[1]
+                    if isinstance(a1, ast.Constant) and a1.value == "tr":
+                        violations.append(
+                            f"{path}:{line} rule2: {func.id}(x, \"tr\") — stringly "
+                            f"reach into Qt tr; use the instance _tr / bare module tr"
+                        )
+                continue
+            # Rule 1: any attribute-call obj.tr(...)
+            if isinstance(func, ast.Attribute) and func.attr == "tr":
+                try:
+                    recv_src = ast.unparse(func.value)
+                except Exception:
+                    recv_src = "?"
+                extra = ""
+                if node.args and isinstance(node.args[0], ast.Constant) and isinstance(
+                    node.args[0].value, str
+                ):
+                    if KEY_LITERAL_RE.match(str(node.args[0].value)):
+                        extra = (
+                            f" (literal JSON key {node.args[0].value!r} would render raw)"
+                        )
+                violations.append(
+                    f"{path}:{line} rule1: {recv_src}.tr(...) — Qt tr / wrong "
+                    f"domain; JSON i18n only: bare module tr or instance _tr{extra}"
+                )
+            continue
 
-def _injects_self_tr(node: ast.ClassDef) -> bool:
-    """Class assigns ``self.tr = ...`` (injected JSON resolver convention)."""
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Assign):
-            targets = sub.targets
-        elif isinstance(sub, (ast.AnnAssign, ast.AugAssign)):
-            targets = [sub.target]
+        # Rule 3: any assignment target x.tr = ...
+        if isinstance(node, ast.Assign):
+            targets: list[ast.expr] = list(node.targets)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
         else:
             continue
         for t in targets:
-            if (
-                isinstance(t, ast.Attribute)
-                and t.attr == "tr"
-                and isinstance(t.value, ast.Name)
-                and t.value.id == "self"
-            ):
-                return True
-    return False
-
-
-def _receiver_is_context(func: ast.Attribute) -> bool:
-    v = func.value
-    if isinstance(v, ast.Name):
-        return v.id in CONTEXT_RECEIVER_ATTRS
-    if isinstance(v, ast.Attribute):
-        return v.attr in CONTEXT_RECEIVER_ATTRS
-    return False
-
-
-def _scan_stmts(
-    body: list[ast.stmt],
-    injects_tr: bool,
-    violations: list[str],
-    path: str,
-) -> None:
-    """Scan statements for tr violations (skips nested ClassDefs' own bodies)."""
-    stack: list[ast.AST] = list(body)
-    while stack:
-        node = stack.pop()
-        if isinstance(node, ast.ClassDef):
-            continue  # own scope: own injection flag, scanned separately
-        for child in ast.iter_child_nodes(node):
-            stack.append(child)
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        line = getattr(node, "lineno", 0)
-
-        # Rule 1: getattr(x, "tr") / hasattr(x, "tr")
-        if isinstance(func, ast.Name) and func.id in ("getattr", "hasattr"):
-            if len(node.args) >= 2:
-                a1 = node.args[1]
-                if isinstance(a1, ast.Constant) and a1.value == "tr":
-                    violations.append(
-                        f"{path}:{line} rule1: {func.id}(x, \"tr\") — stringly "
-                        f"reach into Qt tr; use an explicit JSON resolver"
-                    )
-            continue
-
-        # Rule 2: any attribute-call obj.tr(...)
-        if not isinstance(func, ast.Attribute) or func.attr != "tr":
-            continue
-        recv = func.value
-        if isinstance(recv, ast.Name) and recv.id == "self":
-            if injects_tr:
-                continue  # self.tr = tr_func (plain coordinator convention)
-            violations.append(
-                f"{path}:{line} rule2: self.tr(...) — on a QObject this is Qt "
-                f"tr (returns raw keys); inject tr_func or use _tr/app tr"
-            )
-            continue
-        if (
-            isinstance(recv, ast.Call)
-            and isinstance(recv.func, ast.Name)
-            and recv.func.id == "super"
-        ):
-            violations.append(
-                f"{path}:{line} rule2: super().tr(...) is always Qt tr"
-            )
-            continue
-        if _receiver_is_context(func):
-            continue  # context.tr(key, default) convention
-        try:
-            recv_src = ast.unparse(recv)
-        except Exception:
-            recv_src = "?"
-        extra = ""
-        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(
-            node.args[0].value, str
-        ):
-            if KEY_LITERAL_RE.match(str(node.args[0].value)):
-                extra = f" (literal JSON key {node.args[0].value!r} would render raw)"
-        violations.append(
-            f"{path}:{line} rule2: {recv_src}.tr(...) is Qt tr — JSON i18n only; "
-            f"use _tr / app tr / context convention{extra}"
-        )
+            if isinstance(t, ast.Attribute) and t.attr == "tr":
+                violations.append(
+                    f"{path}:{line} rule3: assignment to attribute 'tr' — banned; "
+                    f"instance resolvers are named _tr"
+                )
 
 
 def test_no_qt_tr_anywhere():
@@ -156,13 +103,7 @@ def test_no_qt_tr_anywhere():
         tree = parse(p)
         if tree is None:
             continue
-        path = rel(p)
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                inj = _injects_self_tr(node)
-                _scan_stmts(node.body, inj, violations, path)
-            else:
-                _scan_stmts([node], False, violations, path)
+        _scan_tree(tree, rel(p), violations)
 
     assert not violations, (
         "Qt tr must never be used for i18n (test_no_qt_tr):\n  "

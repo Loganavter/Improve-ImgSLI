@@ -41,5 +41,5 @@ def test_tab_context_tr_uses_live_store_language(monkeypatch):
     context = TabContext(store=store, settings=store.settings)
     store.settings = replace(store.settings, current_language="ru")
 
-    assert context.tr("title", "Create a workspace") == "Создать рабочую область"
+    assert context._tr("title", "Create a workspace") == "Создать рабочую область"
     assert calls[-1] == ("title", "ru")

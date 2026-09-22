@@ -37,7 +37,7 @@ class MainWindowMenuController:
         self._find_action_shortcut = None
         self._contextual_palette_shortcut = None
         self._language_connected = False
-        self.project_io = MainWindowProjectIo(window, tr=self._tr)
+        self.project_io = MainWindowProjectIo(window, translate=self._tr)
         translation_events().language_changed.connect(self._on_language_changed)
         self._language_connected = True
         # Lifetime: the global signal keeps this controller alive and firing

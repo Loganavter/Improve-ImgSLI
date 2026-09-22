@@ -235,13 +235,13 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         layout.setSpacing(scaled_px(20))
 
         self._title_label = Label(
-            self._context.tr("title", "Create a workspace"),
+            self._context._tr("title", "Create a workspace"),
             pixel_size=26,
             bold=True,
         )
         layout.addWidget(self._title_label)
         self._subtitle_label = Label(
-            self._context.tr("subtitle", "Pick a session type to begin"),
+            self._context._tr("subtitle", "Pick a session type to begin"),
             pixel_size=14,
         )
         layout.addWidget(self._subtitle_label)
@@ -254,7 +254,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
         self._recent_panel = RecentProjectsPanel(
             self,
-            tr=self._context.tr,
+            translate=self._context._tr,
             context=self._context,
         )
         layout.addWidget(self._recent_panel)
@@ -355,10 +355,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def _retranslate(self) -> None:
         if self._title_label is not None:
-            self._title_label.setText(self._context.tr("title", "Create a workspace"))
+            self._title_label.setText(self._context._tr("title", "Create a workspace"))
         if self._subtitle_label is not None:
             self._subtitle_label.setText(
-                self._context.tr("subtitle", "Pick a session type to begin")
+                self._context._tr("subtitle", "Pick a session type to begin")
             )
         # Update create-cards in place. Destroy/rebuild collapses the page
         # layout under WA_OpaquePaintEvent and leaves a CSD see-through hole
@@ -396,7 +396,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         }
         for session_type, card in self._cards_by_type.items():
             title = self._label_for(session_type, blueprints.get(session_type))
-            description = self._context.tr(
+            description = self._context._tr(
                 f"descriptions.{session_type}",
                 "",
             )
@@ -431,7 +431,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self, session_type: str, blueprint: SessionBlueprint | None
     ) -> Button:
         title = self._label_for(session_type, blueprint)
-        description = self._context.tr(
+        description = self._context._tr(
             f"descriptions.{session_type}",
             "",
         )
@@ -527,7 +527,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             (blueprint.resolved_title() if blueprint is not None else None)
             or session_type.replace("_", " ").title()
         )
-        return self._context.tr(key, fallback)
+        return self._context._tr(key, fallback)
 
     def _create(self, session_type: str) -> None:
         picker_session = self._context.get_active_session()

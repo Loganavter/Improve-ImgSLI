@@ -173,15 +173,15 @@ def icon_for_record(record: RecentProjectRecord, context=None):
     return get_session_picker_icon(SessionPickerIcon.ADD)
 
 
-def localize_session_type(session_type: str, tr: Callable[..., str]) -> str:
+def localize_session_type(session_type: str, translate: Callable[..., str]) -> str:
     fallback = session_type.replace("_", " ").title()
-    return tr(f"types.{session_type}", fallback)
+    return translate(f"types.{session_type}", fallback)
 
 
-def format_session_types(session_types: tuple[str, ...], tr: Callable[..., str]) -> str:
+def format_session_types(session_types: tuple[str, ...], translate: Callable[..., str]) -> str:
     if not session_types:
         return ""
-    return ", ".join(localize_session_type(st, tr) for st in session_types)
+    return ", ".join(localize_session_type(st, translate) for st in session_types)
 
 
 # Capped in-memory cover store: path -> (mtime_ns, pixmap-or-None).
@@ -333,7 +333,7 @@ def grid_text_rows(
     record: RecentProjectRecord,
     *,
     missing: bool,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
 ) -> list[ButtonRow]:
     rows = [
         ButtonRow(
@@ -347,12 +347,12 @@ def grid_text_rows(
     if missing:
         rows.append(
             ButtonRow(
-                text=tr("recent.missing", "File missing"),
+                text=translate("recent.missing", "File missing"),
                 size=11,
                 h_align=Qt.AlignmentFlag.AlignLeft,
             )
         )
-        types = format_session_types(record.session_types, tr)
+        types = format_session_types(record.session_types, translate)
         if types:
             rows.append(
                 ButtonRow(
@@ -367,12 +367,12 @@ def grid_text_rows(
     # line — only the session-type row may scroll when it overflows.
     rows.append(
         ButtonRow(
-            text=format_relative_opened(record.opened_at, tr),
+            text=format_relative_opened(record.opened_at, translate),
             size=11,
             h_align=Qt.AlignmentFlag.AlignLeft,
         )
     )
-    types = format_session_types(record.session_types, tr)
+    types = format_session_types(record.session_types, translate)
     if types:
         rows.append(
             ButtonRow(
@@ -389,9 +389,9 @@ def list_text_rows(
     record: RecentProjectRecord,
     *,
     missing: bool,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
 ) -> list[ButtonRow]:
-    path_text = tr("recent.missing", "File missing") if missing else record.path
+    path_text = translate("recent.missing", "File missing") if missing else record.path
     return [
         ButtonRow(
             text=record.display_name,
@@ -412,11 +412,11 @@ def list_text_rows(
 def list_meta_rows(
     record: RecentProjectRecord,
     *,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
 ) -> list[ButtonRow]:
     return [
         ButtonRow(
-            text=format_relative_opened(record.opened_at, tr),
+            text=format_relative_opened(record.opened_at, translate),
             size=11,
             h_align=Qt.AlignmentFlag.AlignRight,
         ),
@@ -474,7 +474,7 @@ def update_grid_card(
     card: Button,
     record: RecentProjectRecord,
     *,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     context=None,
 ) -> None:
     missing = not Path(record.path).is_file()
@@ -489,22 +489,22 @@ def update_grid_card(
         icon_size_px=28,
     )
     card.update_region("cover", **_cover_update_kwargs(cover))
-    card.update_region("text", rows=grid_text_rows(record, missing=missing, tr=tr))
+    card.update_region("text", rows=grid_text_rows(record, missing=missing, translate=translate))
 
 
 def update_list_card(
     card: Button,
     record: RecentProjectRecord,
     *,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     context=None,
 ) -> None:
     del context  # list cards have no cover icon
     missing = not Path(record.path).is_file()
     _attach_record(card, record, missing=missing)
     card.setObjectName(_card_object_name(record))
-    card.update_region("text", rows=list_text_rows(record, missing=missing, tr=tr))
-    card.update_region("meta", rows=list_meta_rows(record, tr=tr))
+    card.update_region("text", rows=list_text_rows(record, missing=missing, translate=translate))
+    card.update_region("meta", rows=list_meta_rows(record, translate=translate))
     if missing:
         card.set_override_bg_color(_opaque(_missing_list_bg()))
     else:
@@ -524,7 +524,7 @@ def build_grid_card(
     record: RecentProjectRecord,
     *,
     parent: QWidget | None,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     context=None,
     on_activate: Callable[[RecentProjectRecord, bool], None],
     on_context_menu: Callable[[RecentProjectRecord], None],
@@ -545,7 +545,7 @@ def build_grid_card(
             ),
             ButtonRegion(
                 id="text",
-                rows=grid_text_rows(record, missing=missing, tr=tr),
+                rows=grid_text_rows(record, missing=missing, translate=translate),
                 weight=GRID_TEXT_WEIGHT,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
@@ -574,7 +574,7 @@ def build_list_card(
     record: RecentProjectRecord,
     *,
     parent: QWidget | None,
-    tr: Callable[..., str],
+    translate: Callable[..., str],
     context=None,
     on_activate: Callable[[RecentProjectRecord, bool], None],
     on_context_menu: Callable[[RecentProjectRecord], None],
@@ -585,7 +585,7 @@ def build_list_card(
         regions=[
             ButtonRegion(
                 id="text",
-                rows=list_text_rows(record, missing=missing, tr=tr),
+                rows=list_text_rows(record, missing=missing, translate=translate),
                 weight=8.0,
                 group="card",
                 corner_radii=(8, 0, 0, 8),
@@ -593,7 +593,7 @@ def build_list_card(
             ),
             ButtonRegion(
                 id="meta",
-                rows=list_meta_rows(record, tr=tr),
+                rows=list_meta_rows(record, translate=translate),
                 weight=2.0,
                 group="card",
                 corner_radii=(0, 8, 8, 0),

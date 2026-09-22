@@ -6,7 +6,7 @@ from tabs.registry import get_shared_tab_registry
 class SettingsViewStateCoordinator:
     def __init__(self, store, tr_func):
         self.store = store
-        self.tr = tr_func
+        self._tr = tr_func
 
     def update_interpolation_combo_box_ui(self):
         method_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
@@ -55,7 +55,7 @@ class SettingsViewStateCoordinator:
             current_index = 0
 
         labels = [
-            self.tr(
+            self._tr(
                 interp_translation_map.get(
                     key,
                     f"magnifier.{AppConstants.INTERPOLATION_METHODS_MAP[key].lower().replace(' ', '_')}",
@@ -77,18 +77,18 @@ class SettingsViewStateCoordinator:
 
     def setup_view_buttons(self):
         diff_actions = [
-            (self.tr("common.switch.off"), "off"),
-            (self.tr("video.highlight"), "highlight"),
-            (self.tr("video.grayscale"), "grayscale"),
-            (self.tr("video.edge_comparison"), "edges"),
-            (self.tr("video.ssim_map"), "ssim"),
+            (self._tr("common.switch.off"), "off"),
+            (self._tr("video.highlight"), "highlight"),
+            (self._tr("video.grayscale"), "grayscale"),
+            (self._tr("video.edge_comparison"), "edges"),
+            (self._tr("video.ssim_map"), "ssim"),
         ]
         channel_actions = [
-            (self.tr("video.rgb"), "RGB"),
-            (self.tr("video.red"), "R"),
-            (self.tr("video.green"), "G"),
-            (self.tr("video.blue"), "B"),
-            (self.tr("video.luminance"), "L"),
+            (self._tr("video.rgb"), "RGB"),
+            (self._tr("video.red"), "R"),
+            (self._tr("video.green"), "G"),
+            (self._tr("video.blue"), "B"),
+            (self._tr("video.luminance"), "L"),
         ]
 
         tab = get_shared_tab_registry().get_active_tab()

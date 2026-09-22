@@ -149,7 +149,7 @@ def test_recycle_moves_focus_to_nearest_live_card(qtbot, tmp_path: Path):
     view = RecentItemsView()
     qtbot.addWidget(view)
     view.configure(
-        tr=_tr,
+        translate=_tr,
         context=None,
         on_activate=lambda *a: None,
         on_context_menu=lambda r: None,

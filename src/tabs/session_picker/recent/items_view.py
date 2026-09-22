@@ -146,7 +146,7 @@ class RecentItemsView(QWidget):
     def configure(
         self,
         *,
-        tr: Callable[..., str],
+        translate: Callable[..., str],
         context,
         on_activate: Callable[..., None],
         on_context_menu: Callable[[RecentProjectRecord], None],
@@ -157,7 +157,7 @@ class RecentItemsView(QWidget):
         on_marquee_commit: Callable[[set[str], bool], None] | None = None,
         on_marquee_preview: Callable[[set[str], bool], None] | None = None,
     ) -> None:
-        self._tr = tr
+        self._tr = translate
         self._context = context
         self._on_activate = on_activate
         self._on_context_menu = on_context_menu
@@ -411,7 +411,7 @@ class RecentItemsView(QWidget):
             updater(
                 card,
                 record,
-                tr=self._tr,
+                translate=self._tr,
                 context=self._context,
             )
 
@@ -654,7 +654,7 @@ class RecentItemsView(QWidget):
     def _card_kwargs(self) -> dict:
         return {
             "parent": self.items_host,
-            "tr": self._tr,
+            "translate": self._tr,
             "context": self._context,
             "on_activate": self._on_activate,
             "on_context_menu": self._on_context_menu,
@@ -690,7 +690,7 @@ class RecentItemsView(QWidget):
         updater(
             card,
             record,
-            tr=self._tr,
+            translate=self._tr,
             context=self._context,
         )
 

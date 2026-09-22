@@ -112,7 +112,7 @@ class GalleryToolbar(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("GalleryToolbar")
-        self._translate = translate
+        self._tr = translate
 
         def _tr(key: str, default: str) -> str:
             if translate is None:
@@ -418,8 +418,8 @@ class GalleryToolbar(QWidget):
         text = f"{n_i}/{t_i}" if t_i > 0 else f"{n_i}"
         # Localize if translator available
         try:
-            if self._translate is not None:
-                tr_text = self._translate("image_gallery.scanning", text)
+            if self._tr is not None:
+                tr_text = self._tr("image_gallery.scanning", text)
                 # If translation returns key, keep our n/N
                 if tr_text != "image_gallery.scanning":
                     text = tr_text.replace("{n}", str(n_i)).replace("{total}", str(t_i)) if "{n}" in tr_text else text
@@ -463,8 +463,8 @@ class GalleryToolbar(QWidget):
     def retranslate(self, translate: Callable[[str, str], str] | None = None) -> None:
         """Update translatable texts in place."""
         if translate is not None:
-            self._translate = translate
-        tr = self._translate
+            self._tr = translate
+        tr = self._tr
 
         def _tr(key: str, default: str) -> str:
             if tr is None:

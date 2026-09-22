@@ -28,7 +28,7 @@ class _Context:
         self.calls: list[tuple] = []
         self._session = _PickerSession()
 
-    def tr(self, key: str, default: str = "") -> str:
+    def _tr(self, key: str, default: str = "") -> str:
         return default or key
 
     def call_service(self, name: str, *args, **kwargs):

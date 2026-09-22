@@ -405,7 +405,7 @@ class TabContext:
             return self.store.get_active_workspace_session()
         return None
 
-    def tr(self, key: str, default: str | None = None) -> str:
+    def _tr(self, key: str, default: str | None = None) -> str:
         """Translate a key using the app's i18n system."""
         try:
             from resources.translations import get_current_language, tr

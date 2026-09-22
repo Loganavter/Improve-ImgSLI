@@ -20,12 +20,12 @@ def format_absolute_timestamp(value: str) -> str:
 
 def format_relative_opened(
     opened_at: str,
-    tr: Callable[..., str] | None = None,
+    translate: Callable[..., str] | None = None,
 ) -> str:
     def _t(key: str, default: str) -> str:
-        if tr is None:
+        if translate is None:
             return default
-        return tr(key, default)
+        return translate(key, default)
 
     try:
         dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))

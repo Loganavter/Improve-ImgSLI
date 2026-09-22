@@ -93,7 +93,7 @@ class MultiCompareTab(TabContract):
 
         self._widget = MultiCompareWidget(
             page,
-            translate=context.tr,
+            translate=context._tr,
             lang_provider=_lang,
             context=context,
         )
@@ -103,7 +103,7 @@ class MultiCompareTab(TabContract):
         self._controller = MultiCompareController(
             self._widget,
             store=context.store,
-            translate=context.tr,
+            translate=context._tr,
             dialog_parent=context.main_window or page,
             open_export_dialog=open_export_dialog,
             context=context,

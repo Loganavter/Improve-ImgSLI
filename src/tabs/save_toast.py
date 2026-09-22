@@ -6,7 +6,7 @@ toast-update helpers. This mixin is the single shared implementation; both
 coordinators inherit it and keep only their tab-specific worker wiring.
 
 Methods here are deliberately generic: they only touch ``self.main_window_app``
-(toast manager lookup), ``self.tr`` (translation of caller-provided keys) and
+(toast manager lookup), ``self._tr`` (translation of caller-provided keys) and
 the ``os`` path helpers, so no tab-specific import direction is created.
 """
 
