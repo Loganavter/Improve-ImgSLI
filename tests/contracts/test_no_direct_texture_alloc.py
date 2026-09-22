@@ -18,7 +18,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, iter_py, rel
+from ._framework import ROOT, iter_py, parse, rel
 
 TABS = ROOT / "src" / "tabs"
 STORE = ROOT / "src" / "engine" / "store"
@@ -54,9 +54,8 @@ def _store_py() -> list:
 
 
 def _code_names_and_attrs(path) -> list[tuple[int, str]]:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError):
+    tree = parse(path)
+    if tree is None:
         return []
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -109,9 +108,8 @@ def test_tabs_define_no_tile_texture_allocators():
     """Tabs never grow their own per-tile texture allocator helpers."""
     offenders: list[str] = []
     for py in iter_py(TABS):
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
+        tree = parse(py)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (

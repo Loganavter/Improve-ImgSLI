@@ -26,7 +26,7 @@ import ast
 import os
 from pathlib import Path
 
-from tests.contracts._framework import ROOT
+from tests.contracts._framework import ROOT, parse
 
 APP_SRC = ROOT / "src"
 
@@ -115,9 +115,8 @@ def _collect_offenders(tag: str, root: Path, anchor: Path) -> list[str]:
     for path in sorted(root.rglob("*.py")):
         if "__pycache__" in path.parts or "tests" in path.parts:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
+        tree = parse(path)
+        if tree is None:
             continue
         for node, owner in _walk_with_owner(tree):
             if not (

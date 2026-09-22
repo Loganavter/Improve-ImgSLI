@@ -31,7 +31,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import SRC, read, rel
+from ._framework import SRC, parse, read, rel
 
 _SYNC_FUNCTIONS = frozenset(
     {
@@ -155,9 +155,8 @@ def _check_branch(path, fname: str, lineno: int, label: str, branch) -> list[str
 
 
 def _scan_file(path) -> list[str]:
-    try:
-        tree = ast.parse(read(path))
-    except SyntaxError:
+    tree = parse(path)
+    if tree is None:
         return []
     offenders: list[str] = []
     for fname in _SYNC_FUNCTIONS:

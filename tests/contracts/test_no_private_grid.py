@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import ast
 
-from ._framework import ROOT, iter_py, rel
+from ._framework import ROOT, iter_py, parse, rel
 
 TABS = ROOT / "src" / "tabs"
 
@@ -62,9 +62,8 @@ def _tab_py() -> list:
 
 
 def _lattice_uses_in(path) -> list[tuple[int, str]]:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError):
+    tree = parse(path)
+    if tree is None:
         return []
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -102,9 +101,8 @@ def test_tabs_build_no_tile_grids():
 def test_tabs_define_no_grid_or_slot_bookkeeping():
     leaks: list[str] = []
     for py in _tab_py():
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
+        tree = parse(py)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if (

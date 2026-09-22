@@ -216,11 +216,12 @@ def test_mutation_service_call_sites_require_setting_key():
     Scans every production caller (mutation service, settings controller,
     canvas feature commands) — not just the service definition itself.
     """
-    from tests.contracts._framework import SRC, iter_py
+    from tests.contracts._framework import SRC, iter_py, parse
 
     violations = []
     for path in iter_py(SRC):
-        tree = ast.parse(read(path))
+        tree = parse(path)
+        assert tree is not None, f"unparsable {path}"
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)

@@ -24,8 +24,13 @@ _SRC = _REPO / "src"
 
 
 def _read(relative: str) -> tuple[str, ast.Module]:
-    text = (_SRC / relative).read_text(encoding="utf-8")
-    return text, ast.parse(text)
+    from tests.contracts._framework import parse
+
+    path = _SRC / relative
+    text = path.read_text(encoding="utf-8")
+    tree = parse(path)
+    assert tree is not None, f"unparsable {relative}"
+    return text, tree
 
 
 def _id_calls(tree: ast.Module) -> list[ast.Call]:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import ast
 
-from tests.contracts._framework import ROOT, iter_py, rel
+from tests.contracts._framework import ROOT, iter_py, parse, rel
 
 ALLOWLIST = {
     "src/engine/store/tiled_pixel_store.py",
@@ -26,10 +26,8 @@ _FULL_FRAME_CALLS = {"materialize_full", "to_real_pil_copy", "to_pil"}
 
 
 def _calls_materialize_or_to_real(path) -> list[tuple[str, int]]:
-    text = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
+    tree = parse(path)
+    if tree is None:
         return []
     hits: list[tuple[str, int]] = []
     for node in ast.walk(tree):
@@ -57,10 +55,8 @@ def _receiver_chain(node: ast.AST) -> list[str]:
 
 
 def _calls_resize_on_full_res(path) -> list[tuple[str, int]]:
-    text = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
+    tree = parse(path)
+    if tree is None:
         return []
     hits: list[tuple[str, int]] = []
     for node in ast.walk(tree):

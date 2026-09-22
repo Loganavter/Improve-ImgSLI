@@ -31,7 +31,7 @@ from __future__ import annotations
 import ast
 import re
 
-from ._framework import ROOT, iter_py, read, rel
+from ._framework import ROOT, iter_py, parse, read, rel
 
 ENGINE_DRAW_PLANS = ROOT / "src" / "engine" / "cache" / "draw_plans.py"
 IC_DRAW_PLAN = (
@@ -143,7 +143,10 @@ _FORBIDDEN_TEXT_RES = [
 
 
 def _parse(path):
-    return ast.parse(read(path))
+    tree = parse(path)
+    if tree is None:
+        raise SyntaxError(f"cannot parse {path}")
+    return tree
 
 
 def _dataclass_fields(tree: ast.Module, class_name: str) -> list[str]:
@@ -195,7 +198,8 @@ def _defined_names(tree: ast.Module) -> set[str]:
 
 def _function_segment(path, func_name: str) -> str:
     text = read(path)
-    tree = ast.parse(text)
+    tree = parse(path)
+    assert tree is not None, f"{rel(path)}: unparsable"
     for node in ast.walk(tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -275,9 +279,8 @@ def test_no_second_draw_plan_builders():
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -301,9 +304,8 @@ def test_no_second_draw_plan_builders():
     for path in iter_py(ROOT / "src"):
         if "__pycache__" in path.parts:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if (

@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from ._framework import SRC, iter_py, read, rel
+from ._framework import SRC, iter_py, parse, rel
 
 # Intermediate attributes that denote Store-owned state — generated from real
 # Store/ViewportState/SessionData shape + Store top-level fields, not hard-coded
@@ -112,8 +112,23 @@ def _get_chain(node: ast.AST) -> list[str] | None:
     return None
 
 
-def _collect_transients(tree: ast.Module) -> set[str]:
-    """Variables directly or transitively derived from ``Store()`` construction."""
+_transients_cache: dict[str, set[str]] = {}
+
+
+def _collect_transients(tree: ast.Module, path=None) -> set[str]:
+    """Variables directly or transitively derived from ``Store()`` construction.
+
+    ``path`` (source file) enables a process-wide cache: the store/settings/
+    setattr dogmas all run this collector over the same ``src/`` tree, and
+    re-running the fixpoint per test is pure waste (files are static during
+    a run). Callers must treat the result read-only.
+    """
+    if path is not None:
+        key = str(path)
+        try:
+            return _transients_cache[key]
+        except KeyError:
+            pass
     transients: set[str] = set()
     # direct Store()/SessionData() constructors
     for node in ast.walk(tree):
@@ -159,6 +174,8 @@ def _collect_transients(tree: ast.Module) -> set[str]:
                             break
                 if changed:
                     break
+    if path is not None:
+        _transients_cache[str(path)] = transients
     return transients
 
 
@@ -168,11 +185,10 @@ def _direct_store_mutations() -> list[tuple[str, int, str]]:
         rel_path = rel(path)
         if rel_path in EXEMPT:
             continue
-        try:
-            tree = ast.parse(read(path))
-        except SyntaxError:
+        tree = parse(path)
+        if tree is None:
             continue
-        transients = _collect_transients(tree)
+        transients = _collect_transients(tree, path)
         for node in ast.walk(tree):
             targets: list[ast.AST] = []
             if isinstance(node, ast.Assign):

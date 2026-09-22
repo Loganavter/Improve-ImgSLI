@@ -40,7 +40,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.contracts._framework import ROOT, SRC
+from tests.contracts._framework import ROOT, SRC, parse
 
 TABS_ROOT = SRC / "tabs"
 
@@ -164,10 +164,9 @@ def test_no_tab_to_tab_registry_service_calls():
     offenders: list[str] = []
     for path in sorted(_iter_tab_files()):
         rel = path.relative_to(ROOT).as_posix()
-        try:
-            text = path.read_text(encoding="utf-8")
-            tree = ast.parse(text)
-        except SyntaxError:
+        text = path.read_text(encoding="utf-8")
+        tree = parse(path)
+        if tree is None:
             continue
         lines = text.splitlines()
         for node in ast.walk(tree):
