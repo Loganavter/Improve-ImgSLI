@@ -709,7 +709,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 743,
+      "lines": 785,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
