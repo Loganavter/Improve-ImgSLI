@@ -38,11 +38,15 @@ production code consumes at runtime.
 from __future__ import annotations
 
 import ast
+
+import pytest
 import json
 import re
 from pathlib import Path
 
 from ._framework import ROOT, SRC, iter_py, parse, read, rel
+
+pytestmark = pytest.mark.slow
 
 I18N_ROOT = SRC / "resources" / "i18n"
 TABS_ROOT = SRC / "tabs"

@@ -25,6 +25,8 @@ from core.store_viewport import ViewportState
 
 from ._framework import SRC, iter_py, parse, read, rel
 
+pytestmark = pytest.mark.slow
+
 ALLOWED_VIEWPORT_ATTRS = {
     "render_config",
     "session_data",

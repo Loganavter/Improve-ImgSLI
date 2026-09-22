@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from tests.contracts._framework import (
     JSON_PERSISTED_STORE_SETTINGS,
     MANAGER_PATH,
@@ -48,6 +50,8 @@ from tests.contracts._framework import (
     settings_save_keys,
     store_settings_field_names,
 )
+
+pytestmark = pytest.mark.slow
 
 _MANAGER = ast.parse(read(MANAGER_PATH))
 _SERVICE = ast.parse(read(SERVICE_PATH))
