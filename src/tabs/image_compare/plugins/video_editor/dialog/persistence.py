@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFileDialog
 
@@ -10,7 +10,8 @@ from domain.qt_adapters import color_to_hex, hex_to_color, qcolor_to_color
 class VideoEditorDialogPersistence:
     def __init__(self, dialog):
         self.dialog = dialog
-        self._persist_timer = QTimer(dialog)
+        parent = dialog if isinstance(dialog, QObject) else None
+        self._persist_timer = QTimer(parent)
         self._persist_timer.setSingleShot(True)
         self._persist_timer.setInterval(350)
         self._persist_timer.timeout.connect(self.persist_export_settings)

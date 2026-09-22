@@ -231,14 +231,10 @@ class SettingsColorPickerCoordinator:
             if transient_host is None:
                 return
             try:
-                if transient_host.isVisible():
-                    from sli_ui_toolkit.ui.widgets.composite.base_flyout.lifecycle import (
-                        request_window_activation,
-                    )
-
+                if transient_host.isVisible() and not transient_host.isActiveWindow():
                     transient_host.raise_()
-                    request_window_activation(transient_host, reason="color-finished")
-            except RuntimeError:
+                    transient_host.activateWindow()
+            except (RuntimeError, AttributeError):
                 return
 
         dialog.colorSelected.connect(handle_selected)
