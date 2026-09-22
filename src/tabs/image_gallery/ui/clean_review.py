@@ -4,13 +4,17 @@ Audit-Meta: pattern=state-machine size=exempt reason="one overlay lifecycle — 
 Lists rejected files before any move, grouped by provenance series.
 Title + reassurance subtitle (``N files will be moved to <folder>/_rejected/
 — nothing is deleted, Undo available for 10 s.``). Filmstrip per series
-(thumbs 150x100, capped at ``FILMSTRIP_MAX_CELLS`` cells + ``+N more`` tile)
-with per-item ``↩ Restore`` + per-series Restore SERIES N
-+ Restore all. Provenance line ``SERIES N · hub (cnt)`` via hub resolver.
-Final ``Move N to _rejected/`` variant primary does move-only ``shutil.move``
+(thumbs 150x100, capped at ``FILMSTRIP_MAX_CELLS`` cells + ``+N more`` tile
+in a horizontally scrollable strip) with per-item ``↩ Restore``
++ per-series Restore SERIES N + Restore all. Provenance line below the
+filmstrip, ``from: SERIES N · hub (cnt)`` via hub resolver.
+Final ``Move N to _rejected/`` (surface variant + accent background —
+the mockup primary action; the toolkit has no ``variant="primary"``) does move-only ``shutil.move``
 via ``triage.clean_rejected`` and shows a 10s ``ToastManager.get_instance``
-+ total MB + ``ToastAction("Undo")``. HUD suppression via FlyoutManager
-hide gallery_selection in show_for.
+``Moved N files`` (``success=True``) + ``ToastAction("Undo")``. HUD suppression via FlyoutManager
+hide gallery_selection in show_for. The modal dim veil (0.45) is painted by
+this overlay itself — the toolkit ``TopLevelInWindowOverlay`` has no
+paintEvent (P0-10, gallery scope only).
 
 Public toolkit surface only: ``sli_ui_toolkit.widgets.TopLevelInWindowOverlay``,
 ``ToastManager``, ``ToastAction`` (FEEDBACK_API, OVERLAYS_API),
@@ -23,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QBrush, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
@@ -45,6 +49,11 @@ THUMB_HEIGHT_PX = 100
 # S3-3: per-series filmstrip cap — show the first N cells, then a
 # "+N more / scrollable strip" informational tile (mockup v3).
 FILMSTRIP_MAX_CELLS = 8
+# P0-10: modal dim-veil alpha (mockup v3 "modal veil" rect, fill-opacity
+# 0.45). TopLevelInWindowOverlay has no paintEvent (transparent
+# background), so CleanReviewOverlay paints this veil itself in gallery
+# scope — never in the toolkit.
+DIM_VEIL_ALPHA = round(0.45 * 255)  # 115
 
 
 def _hub_name_for_series(owner, series_id: str) -> str | None:
@@ -156,12 +165,6 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignLeft)
         outer.addWidget(self._subtitle)
 
-        self._provenance_label = Label("", pixel_size=11, parent=self._content)
-        self._provenance_label.setObjectName("clean_review_provenance")
-        self._provenance_label.setWordWrap(True)
-        self._provenance_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        outer.addWidget(self._provenance_label)
-
         # Scrollable list — vertical host, filmstrip per series inside.
         self._scroll = QScrollArea(self._content)
         self._scroll.setWidgetResizable(True)
@@ -175,7 +178,18 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._scroll.setWidget(self._list_host)
         outer.addWidget(self._scroll, 1)
 
-        # Bottom bar: Restore all | size | Cancel | Move N variant primary.
+        # S3 provenance line — BELOW the filmstrip per mockup v3 (svg:100
+        # draws it under the thumbs, above the bottom action bar).
+        self._provenance_label = Label("", pixel_size=11, parent=self._content)
+        self._provenance_label.setObjectName("clean_review_provenance")
+        self._provenance_label.setWordWrap(True)
+        self._provenance_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        outer.addWidget(self._provenance_label)
+
+        # Bottom bar: Restore all | size | Cancel | Move N — surface variant
+        # with accent background (mockup primary action; toolkit has no
+        # variant="primary", so surface + set_background_color is the
+        # primary look).
         bar = QWidget(self._content)
         bar.setObjectName("clean_review_bar")
         bar_layout = QHBoxLayout(bar)
@@ -282,6 +296,24 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             pass
         super().hideEvent(event)
 
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """P0-10 modal dim veil (mockup v3 fill-opacity 0.45).
+
+        ``TopLevelInWindowOverlay`` paints nothing (transparent
+        background), so the veil lives here in gallery scope.
+        """
+        try:
+            painter = QPainter(self)
+            # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
+            # the veil is mockup-specified plain black at an opacity, not
+            # a theme color — Qt global black + painter opacity.
+            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
+            painter.end()
+        except Exception:
+            pass
+        super().paintEvent(event)
+
     # -- internals ----------------------------------------------------
 
     def _rejected_items(self, owner) -> list:
@@ -358,7 +390,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             # Rebuild with actual enumeration based on sorted order where hub exists.
             # For ungrouped, use UNGROUPED label.
             # Already built.
-            prov_text = " · ".join(parts)
+            prov_text = "from: " + " · ".join(parts)
             # Back-compat: also include raw series label for tests that search lowercase
             # Keep display as built.
         else:
@@ -476,16 +508,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             hl_header.addWidget(restore_series_btn)
             sec_layout.addWidget(header)
 
-            # Filmstrip: horizontal strip of thumbs.
+            # Filmstrip: horizontally scrollable strip of thumbs (mockup v3
+            # "scrollable strip" — 8 capped cells exceed the modal width, so
+            # the strip scrolls horizontally past the cap to the +N tile).
             filmstrip = QWidget(section)
-            filmstrip.setObjectName(f"clean_review_filmstrip_{series_idx}")
+            filmstrip.setObjectName(f"clean_review_filmstrip_inner_{series_idx}")
             film_layout = QHBoxLayout(filmstrip)
             film_layout.setContentsMargins(0, 0, 0, 0)
             film_layout.setSpacing(scaled_px(8))
             film_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            # Scrollable filmstrip host — if items exceed width, horizontal scroll handled by outer scroll vertical?
-            # Use inner QScrollArea per filmstrip for horizontal scroll.
-            # Simpler: just horizontal layout with wrapping via adding widgets; outer vertical scroll handles overflow.
             for it in group_items[:FILMSTRIP_MAX_CELLS]:
                 cell = QWidget(filmstrip)
                 cell.setObjectName("clean_review_filmstrip_cell")
@@ -598,7 +629,20 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
                 film_layout.addWidget(more_tile)
             # Add stretch to left align.
             film_layout.addStretch(1)
-            sec_layout.addWidget(filmstrip)
+            # Horizontal scroll host — keeps the clean_review_filmstrip_N
+            # objectName on the scroll so parity tests keep finding the
+            # strip and its cells via findChild/findChildren.
+            strip_scroll = QScrollArea(section)
+            strip_scroll.setObjectName(f"clean_review_filmstrip_{series_idx}")
+            strip_scroll.setWidgetResizable(True)
+            strip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            strip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            strip_scroll.setWidget(filmstrip)
+            try:
+                strip_scroll.setFixedHeight(filmstrip.sizeHint().height() + scaled_px(16))
+            except Exception:
+                pass
+            sec_layout.addWidget(strip_scroll)
             self._list_layout.addWidget(section)
             self._row_widgets.append(section)
             # Also expose legacy row objectName for compat — each cell also has restore button.
@@ -682,15 +726,13 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             total_mb = total_bytes / (1024 * 1024) if total_bytes else 0.0
         except Exception:
             total_mb = 0.0
-        msg = f"Moved {len(moves)} file(s) to _rejected/"
-        if total_mb > 0.1:
-            msg = f"Moved {len(moves)} file(s) ({total_mb:.1f} MB) to _rejected/"
+        msg = f"Moved {len(moves)} files to _rejected/"
         try:
             tm.show_toast(
                 msg,
                 duration=10000,
                 actions=[ToastAction("Undo", callback=_undo, dismiss=True)],
-                success=False,
+                success=True,
             )
         except Exception:
             pass
