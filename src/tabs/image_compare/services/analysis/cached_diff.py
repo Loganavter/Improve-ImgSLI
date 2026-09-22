@@ -274,16 +274,17 @@ class CachedDiffService:
                 try:
                     dispatcher.dispatch(SetCachedDiffImageAction(image=diff_image), scope="viewport")
                 except Exception:
+                    # Fail open for this render-cache content: log the error,
+                    # skip the write, still emit core_updates below. Never
+                    # setattr onto Store state (dispatch-only mutation rule).
                     logger.error("Failed to dispatch SetCachedDiffImageAction", exc_info=True)
-                    try:
-                        setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
-                    except Exception:
-                        pass
             else:
-                try:
-                    setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", diff_image)
-                except Exception:
-                    pass
+                # No dispatcher available: same fail-open — skip the write
+                # rather than mutating Store state directly.
+                logger.error(
+                    "No dispatcher available for SetCachedDiffImageAction; "
+                    "skipping cached diff write"
+                )
             self.runtime.core_updates.emit()
 
     def _on_diff_map_finished(self, request_key) -> None:
