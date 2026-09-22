@@ -165,7 +165,8 @@ class _DualRestoredInventedBar(QWidget):
 
     def _update_geometry(self) -> None:
         try:
-            frac = max(0.0, min(1.0, 0.5 + float(self._hf) * 0.5))
+            hf = max(-1.0, min(1.0, float(self._hf)))
+            frac = 0.5 - hf * 0.5
             pw = self.width()
             if pw <= 0:
                 pw = scaled_px(296)
@@ -187,7 +188,8 @@ class _DualRestoredInventedBar(QWidget):
         try:
             from PySide6.QtGui import QPainter, QBrush
 
-            frac = max(0.0, min(1.0, 0.5 + float(self._hf) * 0.5))
+            hf = max(-1.0, min(1.0, float(self._hf)))
+            frac = 0.5 - hf * 0.5
             cx = int(self.width() * frac)
             cy = self.height() // 2
             r = scaled_px(5)
