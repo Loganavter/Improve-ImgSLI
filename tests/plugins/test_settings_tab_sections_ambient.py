@@ -27,6 +27,11 @@ def registry(app):
     from plugins.settings.registry import ensure_tab_settings_contributions, get_settings_registry
     from tabs.registry import TabRegistry
 
+    # Fresh singleton: TabRegistry() is process-shared and dispose_all()
+    # in unrelated tests (e.g. test_tabs_lifecycle) used to leave it
+    # empty with tiers marked discovered, so discover() early-returned
+    # zero tabs when co-scheduled in one xdist worker (CI ambient red).
+    TabRegistry._instance = None
     tab_registry = TabRegistry()
     tab_registry.discover()
     tab_registry.contribute_all_settings()
