@@ -516,6 +516,62 @@ class GalleryController:
     def _on_artifacts_error(self, error_info: object) -> None:
         logger.debug("artifact worker error: %r", error_info, exc_info=True)
 
+    # -- fidelity metrics (Stage 2 Pass 1b, wave B producer) --------------------
+
+    def _start_fidelity_analysis(self, items: list[GalleryItem], source_path: Path | None) -> None:
+        """Background SSIM/HF/ΔE/upscale metrics vs source (GenericWorker).
+
+        Fail-closed: without a source there is nothing to compare against —
+        keys stay absent and quick look renders "not measured" rows.
+        """
+        if not items or source_path is None:
+            return
+        try:
+            from tabs.image_gallery.services.fidelity_metrics import run_fidelity_sync
+
+            gen = self._folder_gen
+            worker = GenericWorker(run_fidelity_sync, list(items), source_path)
+            worker.signals.result.connect(lambda res, g=gen: self._on_fidelity_ready(res, g))
+            worker.signals.error.connect(
+                lambda err: logger.debug("fidelity worker error: %r", err, exc_info=True)
+            )
+            try:
+                self._thread_pool.start(worker, 1)
+            except TypeError:
+                self._thread_pool.start(worker)
+        except Exception:
+            logger.debug("fidelity worker start failed", exc_info=True)
+
+    def _on_fidelity_ready(self, result: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late fidelity metrics dropped
+        if not isinstance(result, dict):
+            return
+        for item in self.state.items:
+            try:
+                key = str(item.path)
+            except Exception:
+                continue
+            entry = result.get(key)
+            if not isinstance(entry, dict):
+                continue
+            # Identity fail-closed: entry key came from this item's own path;
+            # write the 4 keys only when all measured, never a partial copy.
+            required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+            if not all(k in entry for k in required):
+                continue
+            try:
+                if not isinstance(item.metrics, dict):
+                    continue
+                for k in required:
+                    item.metrics[k] = entry[k]
+                try:
+                    self.widget.refresh_card(item)
+                except Exception:
+                    logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
+            except Exception:
+                logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
+
     def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("triage result dropped: stale folder generation")
@@ -548,6 +604,11 @@ class GalleryController:
             self._start_artifact_analysis(list(self.state.items), source)
         except Exception:
             logger.debug("artifact analysis start failed", exc_info=True)
+        # Stage 2 fidelity metrics (SSIM/HF/ΔE/upscale vs source) — background, fail-closed
+        try:
+            self._start_fidelity_analysis(list(self.state.items), source)
+        except Exception:
+            logger.debug("fidelity analysis start failed", exc_info=True)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:

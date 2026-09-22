@@ -63,13 +63,13 @@ def _show(overlay: QuickLookOverlay, item: GalleryItem, series, mode=Mode.FIDELI
     overlay.show_for(item, owner)
 
 
-# -- S4-2: "mild · sky region" is banding-specific --------------------------
+# -- P0-8: no region claims without region analysis ----------------------------
 
 
-def test_sky_region_suffix_only_on_banding(qtbot):
+def test_no_region_suffix_on_any_artifact(qtbot):
     banding = _item("b.png", artifacts={Artifact.BANDING: Severity.MILD}, metrics={})
     halo = _item("h.png", artifacts={Artifact.HALO: Severity.MILD}, metrics={})
-    for item, expected in ((banding, "mild · sky region"), (halo, "mild")):
+    for item in (banding, halo):
         ov = _make_overlay(qtbot)
         _show(ov, item, [item])
         texts = [
@@ -77,7 +77,8 @@ def test_sky_region_suffix_only_on_banding(qtbot):
             for w in ov._artifact_rows
             for lbl in w.findChildren(type(ov._mode_chip))
         ]
-        assert expected in texts
+        assert "mild" in texts
+        assert all("sky region" not in t for t in texts)
         ov.hide()
 
 
@@ -260,4 +261,133 @@ def test_mode_chip_uses_accent_token(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert ov._mode_chip._color_token_override == "accent"
+    ov.hide()
+
+
+# -- Wave B parity close-out regressions (P0-3/4/5/6) ---------------------------
+
+
+def _noise_png(path, size, seed: int):
+    from PIL import Image
+
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    arr = rng.integers(0, 256, (size[1], size[0], 3), dtype=np.uint8)
+    Image.fromarray(arr, "RGB").save(path)
+
+
+def test_fidelity_writers_produce_four_keys(tmp_path):
+    from tabs.image_gallery.services.fidelity_metrics import (
+        apply_fidelity_metrics,
+        compute_fidelity_metrics,
+    )
+
+    src = tmp_path / "src.png"
+    up = tmp_path / "up.png"
+    _noise_png(src, (64, 64), seed=7)
+    _noise_png(up, (128, 128), seed=8)
+    measured = compute_fidelity_metrics(up, src)
+    for key in ("ssim", "hf_ratio", "delta_e", "upscale_factor"):
+        assert key in measured, f"missing fidelity key {key}"
+    assert 0.0 <= measured["ssim"] <= 1.0
+    assert measured["delta_e"] >= 0
+    assert isinstance(measured["upscale_factor"], int)
+    assert measured["upscale_factor"] == 2
+
+
+def test_fidelity_apply_is_identity_fail_closed(tmp_path):
+    from tabs.image_gallery.services.fidelity_metrics import apply_fidelity_metrics
+
+    src = tmp_path / "src.png"
+    up = tmp_path / "up.png"
+    _noise_png(src, (64, 64), seed=7)
+    _noise_png(up, (128, 128), seed=8)
+    item = GalleryItem(path=up, mtime_ns=1, metrics={})
+    other = GalleryItem(path=tmp_path / "other.png", mtime_ns=1, metrics={})
+    assert apply_fidelity_metrics(item, src) is True
+    for key in ("ssim", "hf_ratio", "delta_e", "upscale_factor"):
+        assert key in item.metrics
+    # Nothing is ever copied between items: the untouched item stays empty,
+    # and a missing file writes nothing (fail-closed).
+    assert other.metrics == {}
+    missing = GalleryItem(path=tmp_path / "gone.png", mtime_ns=1, metrics={})
+    assert apply_fidelity_metrics(missing, src) is False
+    assert missing.metrics == {}
+
+
+def test_dual_marker_frac_restored_side():
+    from tabs.image_gallery.ui.quick_look.bars import dual_marker_frac
+
+    assert dual_marker_frac(0.18) == pytest.approx(0.41)
+    assert dual_marker_frac(0.0) == pytest.approx(0.5)
+    assert dual_marker_frac(-1.0) == pytest.approx(1.0)
+    assert dual_marker_frac(5.0) == pytest.approx(0.0)
+
+
+def test_multi_compare_keeps_two_after_two_adds(qtbot):
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    ov._owner.state.selected_paths = set()
+    ov._owner.state.selected_order = []
+    ov._on_multi()
+    ov.show_for(b, ov._owner)
+    ov._on_multi()
+    assert len(ov._owner.state.selected_paths) >= 2
+    ov.hide()
+
+
+def test_quick_compare_hook_merges_instead_of_clobbering():
+    from tabs.image_gallery.ui import quick_look_hooks as _hooks
+
+    owner = SimpleNamespace(state=SimpleNamespace(selected_paths=set(), selected_order=[]))
+    _hooks.on_quick_compare(owner, Path("/gallery/a.png"))
+    _hooks.on_quick_compare(owner, Path("/gallery/b.png"))
+    assert len(owner.state.selected_paths) >= 2
+
+
+def test_set_source_flips_chip_to_fidelity(qtbot):
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, b, [a, b], mode=Mode.CAMERA)
+    assert "CAMERA" in ov._mode_chip.text()
+    ov._on_set_source()
+    assert "FIDELITY" in ov._mode_chip.text()
+    assert ov._owner.state.mode == Mode.FIDELITY
+    assert ov._owner.state.source_path == b.path
+    ov.hide()
+
+
+def test_series_header_shows_index_and_hub(qtbot):
+    src = _item("src.png")
+    viewing = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing], source=src.path)
+    assert ov._series_header.text() == "Series 1 · src"
+    ov.hide()
+
+
+def test_local_brief_fallback_without_vlm(qtbot):
+    viewing = _item("v.png", rank=1, metrics={"ssim": 0.95, "hf_ratio": 0.18})
+    second = _item("b.png", rank=2, metrics={"ssim": 0.91, "hf_ratio": -0.31})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, second])
+    text = ov._brief_label.text()
+    assert text.startswith("vs #2:")
+    assert "0.95" in text and "0.91" in text
+    ov.hide()
+
+
+def test_meta_order_dims_format_size(qtbot, tmp_path):
+    from PIL import Image as _PIL
+
+    p = tmp_path / "m.png"
+    _PIL.new("RGB", (64, 32), (10, 20, 30)).save(p)
+    item = GalleryItem(path=p, mtime_ns=1, metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    assert ov._meta_label.text().startswith("64 × 32 · PNG · ")
     ov.hide()

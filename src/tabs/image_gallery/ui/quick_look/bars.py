@@ -36,6 +36,20 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
     return QColor(*fallback_rgba)
 
 
+def dual_marker_frac(hf_ratio: float) -> float:
+    """Marker fraction on the restored↔invented axis for an HF ratio.
+
+    ``frac = 0.5 - clamp(hf,-1,1)*0.5`` — positive gain (plausible detail)
+    leans the marker onto the restored (left) side, so ``+0.18 → 0.41``
+    per ``design/ui-mockup-v4-quicklook.svg``. Pure (unit-testable).
+    """
+    try:
+        hf = max(-1.0, min(1.0, float(hf_ratio)))
+    except Exception:
+        return 0.5
+    return 0.5 - hf * 0.5
+
+
 class _BarWidget(QWidget):
     """Simple horizontal bar: background + fill fraction."""
 
@@ -165,7 +179,7 @@ class _DualRestoredInventedBar(QWidget):
 
     def _update_geometry(self) -> None:
         try:
-            frac = max(0.0, min(1.0, 0.5 + float(self._hf) * 0.5))
+            frac = dual_marker_frac(self._hf)
             pw = self.width()
             if pw <= 0:
                 pw = scaled_px(296)
@@ -187,7 +201,7 @@ class _DualRestoredInventedBar(QWidget):
         try:
             from PySide6.QtGui import QPainter, QBrush
 
-            frac = max(0.0, min(1.0, 0.5 + float(self._hf) * 0.5))
+            frac = dual_marker_frac(self._hf)
             cx = int(self.width() * frac)
             cy = self.height() // 2
             r = scaled_px(5)

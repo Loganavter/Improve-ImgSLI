@@ -152,7 +152,8 @@ def build_overlay_ui(overlay) -> None:
 
     overlay._content = QWidget(overlay)
     overlay._content.setObjectName("QuickLookContent")
-    overlay._content.setMinimumSize(scaled_px(900), scaled_px(520))
+    # S4 mockup panel is 1040x620 — floor, not a suggestion.
+    overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
     try:
         overlay._content.setMaximumSize(scaled_px(1040), scaled_px(620))
     except Exception:
@@ -169,7 +170,35 @@ def build_overlay_ui(overlay) -> None:
         overlay._mode_chip.setBold(True)
     except Exception:
         pass
-    chip_row.addWidget(overlay._mode_chip)
+    # S4 mockup: accent-tinted pill behind the chip (fill accent @ 0.2).
+    # Plain QWidget backdrop (stock Qt host, not a toolkit widget) with a
+    # ThemeManager accent fill + hex fallback — no QSS, painter untouched.
+    try:
+        pill = QWidget(overlay._content)
+        pill.setObjectName("quicklook_mode_chip_pill")
+        pill_lay = QHBoxLayout(pill)
+        pill_lay.setContentsMargins(scaled_px(10), scaled_px(2), scaled_px(10), scaled_px(2))
+        pill_lay.setSpacing(0)
+        overlay._mode_chip.setParent(pill)
+        pill_lay.addWidget(overlay._mode_chip)
+        accent_bg = _token_rgba_qcolor("accent", (0, 150, 255, 51))
+        if accent_bg is not None:
+            try:
+                if accent_bg.alpha() == 255:
+                    accent_bg.setAlpha(51)
+            except Exception:
+                pass
+            pal = pill.palette()
+            pal.setColor(pill.backgroundRole(), accent_bg)
+            pill.setAutoFillBackground(True)
+            pill.setPalette(pal)
+        overlay._mode_chip_pill = pill
+        chip_row.addWidget(pill)
+    except Exception:
+        try:
+            chip_row.addWidget(overlay._mode_chip)
+        except Exception:
+            pass
     chip_row.addStretch(1)
     overlay._close_btn = Button(text="✕", variant="surface", size=(28, 28), parent=overlay._content)
     overlay._close_btn.setObjectName("quicklook_close")
@@ -312,6 +341,15 @@ def build_overlay_ui(overlay) -> None:
     overlay._artifacts_layout.setContentsMargins(0, 0, 0, 0)
     overlay._artifacts_layout.setSpacing(scaled_px(6))
     right_lay.addWidget(overlay._artifacts_host)
+    # S4 mockup divider before the series context block (svg:462).
+    try:
+        from sli_ui_toolkit.widgets import Divider as _Divider
+
+        overlay._div_series = _Divider(parent=right_host)
+        overlay._div_series.setObjectName("quicklook_div_series")
+        right_lay.addWidget(overlay._div_series)
+    except Exception:
+        pass
     overlay._series_header = Label("Series", pixel_size=11, parent=right_host)
     overlay._series_header.setObjectName("quicklook_series_header")
     try:
@@ -329,6 +367,15 @@ def build_overlay_ui(overlay) -> None:
     overlay._strip_layout.setSpacing(scaled_px(6))
     overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
     right_lay.addWidget(overlay._strip_host)
+    # S4 mockup divider before the compare-brief teaser (svg:600).
+    try:
+        from sli_ui_toolkit.widgets import Divider as _Divider2
+
+        overlay._div_brief = _Divider2(parent=right_host)
+        overlay._div_brief.setObjectName("quicklook_div_brief")
+        right_lay.addWidget(overlay._div_brief)
+    except Exception:
+        pass
     overlay._brief_label = Label("", pixel_size=11, parent=right_host)
     overlay._brief_label.setObjectName("quicklook_brief")
     overlay._brief_label.setWordWrap(True)
@@ -336,6 +383,15 @@ def build_overlay_ui(overlay) -> None:
     right_scroll.setWidget(right_host)
     mid.addWidget(right_scroll, 1)
     outer.addLayout(mid, 1)
+    # S4 mockup divider above the bottom action bar (svg:648).
+    try:
+        from sli_ui_toolkit.widgets import Divider as _Divider3
+
+        overlay._div_bar = _Divider3(parent=overlay._content)
+        overlay._div_bar.setObjectName("quicklook_div_bar")
+        outer.addWidget(overlay._div_bar)
+    except Exception:
+        pass
     # bottom bar
     bar = QWidget(overlay._content)
     bar.setObjectName("quicklook_bottom_bar")
@@ -493,31 +549,41 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
         pass
     try:
         from PySide6.QtGui import QPixmap
-        meta_parts = []
+        # S4 mockup meta order: dims · format · size (+ upscale suffix).
+        dims_txt: str | None = None
+        fmt_txt: str | None = None
+        size_txt: str | None = None
+        upscale_n = None
         p = Path(getattr(item, "path", ""))
         try:
             if p.is_file():
                 sz = p.stat().st_size
                 if sz < 1024:
-                    meta_parts.append(f"{sz} B")
+                    size_txt = f"{sz} B"
                 elif sz < 1024 * 1024:
-                    meta_parts.append(f"{sz/1024:.1f} KB")
+                    size_txt = f"{sz/1024:.1f} KB"
                 else:
-                    meta_parts.append(f"{sz/1024/1024:.1f} MB")
-                meta_parts.append(p.suffix.lstrip(".").upper() or "IMG")
+                    size_txt = f"{sz/1024/1024:.1f} MB"
+                fmt_txt = p.suffix.lstrip(".").upper() or "IMG"
             pm_meta = QPixmap(str(p))
             if not pm_meta.isNull():
-                meta_parts.append(f"{pm_meta.width()} × {pm_meta.height()}")
+                dims_txt = f"{pm_meta.width()} × {pm_meta.height()}"
         except Exception:
             pass
         metrics = getattr(item, "metrics", None) or {}
         if isinstance(metrics, dict) and metrics.get("upscale_factor"):
             try:
-                meta_parts.append(f"upscale ×{metrics.get('upscale_factor')}")
+                upscale_n = int(metrics.get("upscale_factor"))
             except Exception:
-                pass
+                upscale_n = None
+        meta_parts = [t for t in (dims_txt, fmt_txt, size_txt) if t]
         if is_fidelity and overlay._source_path is not None:
-            meta_parts.append("upscale from source")
+            if upscale_n is not None and upscale_n > 1:
+                meta_parts.append(f"upscale ×{upscale_n} from source")
+            else:
+                meta_parts.append("upscale from source")
+        elif upscale_n is not None and upscale_n > 1:
+            meta_parts.append(f"upscale ×{upscale_n}")
         overlay._meta_label.setText(" · ".join(meta_parts))
     except Exception:
         pass
@@ -541,13 +607,61 @@ def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
 
 
 def populate_series_header(overlay) -> None:
+    """S4 mockup series context: ``Series 1 · <hub>`` + fidelity subline."""
     try:
-        n = len(overlay._series_items)
-        overlay._series_header.setText(f"Series · {n} images" if n > 1 else "Single")
-        rejected_cnt = sum(1 for m in overlay._series_items if bool(getattr(m, "rejected", False)))
-        pending = sum(1 for m in overlay._series_items if bool(getattr(m, "vlm_tie_pending", False)))
+        items = list(overlay._series_items or [])
+        n = len(items)
+        cur = getattr(overlay, "_current_item", None)
+        # 1-based cluster index among the owner's series (display only —
+        # triage ownership stays in use_cases/wave A, never duplicated here).
+        idx = 1
+        try:
+            owner = getattr(overlay, "_owner", None)
+            series_raw = getattr(getattr(owner, "state", None), "series", None)
+            if series_raw:
+                clusters: list[list] = []
+                for entry in list(series_raw):
+                    if hasattr(entry, "members"):
+                        clusters.append(list(getattr(entry, "members") or []))
+                    elif isinstance(entry, (list, tuple)):
+                        clusters.append(list(entry))
+                if clusters and cur is not None:
+                    try:
+                        cur_path = Path(getattr(cur, "path", ""))
+                        for i, cl in enumerate(clusters):
+                            if any(Path(getattr(m, "path", "")) == cur_path for m in cl):
+                                idx = i + 1
+                                break
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # Hub label: source stem when a source is set, else the first member
+        # stem of the viewing cluster (a real member, never invented).
+        hub = ""
+        try:
+            src = getattr(overlay, "_source_path", None)
+            if src is not None:
+                hub = Path(src).stem
+            elif items:
+                hub = Path(getattr(items[0], "path", "")).stem
+        except Exception:
+            pass
         if n > 1:
-            sub = f"rank by fidelity · {rejected_cnt} rejected"
+            overlay._series_header.setText(f"Series {idx} · {hub}" if hub else f"Series {idx}")
+        else:
+            overlay._series_header.setText("Single")
+        rejected_cnt = sum(1 for m in items if bool(getattr(m, "rejected", False)))
+        pending = sum(1 for m in items if bool(getattr(m, "vlm_tie_pending", False)))
+        if n > 1:
+            try:
+                is_fidelity = bool(getattr(overlay, "_source_path", None) is not None)
+            except Exception:
+                is_fidelity = False
+            if is_fidelity:
+                sub = f"{n} upscales of one source · rank by fidelity · {rejected_cnt} rejected"
+            else:
+                sub = f"rank by fidelity · {rejected_cnt} rejected"
             if pending:
                 sub += f" · {pending} tie-break pending"
             overlay._series_sub.setText(sub)
@@ -555,6 +669,114 @@ def populate_series_header(overlay) -> None:
             overlay._series_sub.setText("ungrouped")
     except Exception:
         pass
+
+
+def local_brief_fallback(item, series_items) -> str:
+    """Deterministic ``vs #N`` brief from local metrics when VLM is absent.
+
+    Same shape as the mockup teaser (``vs #2: …``) but every number comes
+    from ``item.metrics`` — no invented detail, no region claims. Returns ""
+    when there is nothing comparative to say (caller hides the label).
+    """
+    try:
+        mates = [m for m in (series_items or []) if m is not item]
+        if not mates:
+            return ""
+
+        def _rank_of(m, default):
+            r = getattr(m, "rank", None) or getattr(m, "crown_rank", None)
+            try:
+                return int(r) if r is not None else default
+            except Exception:
+                return default
+
+        viewing_rank = _rank_of(item, 0)
+        other = None
+        other_rank = None
+        for m in mates:
+            r = getattr(m, "rank", None) or getattr(m, "crown_rank", None)
+            try:
+                r = int(r) if r is not None else None
+            except Exception:
+                r = None
+            if r is not None and r > viewing_rank and (other_rank is None or r < other_rank):
+                other, other_rank = m, r
+        if other is None:
+            # No worse-ranked mate: fall back to the best-ranked other.
+            best = None
+            for m in mates:
+                r = getattr(m, "rank", None) or getattr(m, "crown_rank", None)
+                try:
+                    r = int(r) if r is not None else None
+                except Exception:
+                    r = None
+                if r is not None and (best is None or r < best[0]):
+                    best = (r, m)
+            if best is not None:
+                other_rank, other = best
+            else:
+                other, other_rank = mates[0], _rank_of(mates[0], 2)
+
+        def _f(metrics, *keys):
+            for k in keys:
+                v = metrics.get(k)
+                if v is not None:
+                    try:
+                        return float(v)
+                    except Exception:
+                        continue
+            return None
+
+        ma = getattr(item, "metrics", None) or {}
+        mb = getattr(other, "metrics", None) or {}
+        if not isinstance(ma, dict):
+            ma = {}
+        if not isinstance(mb, dict):
+            mb = {}
+        ssim_a, ssim_b = _f(ma, "ssim"), _f(mb, "ssim")
+        hf_a = _f(ma, "hf_ratio", "detail_gain")
+        hf_b = _f(mb, "hf_ratio", "detail_gain")
+        if ssim_a is None and ssim_b is None and hf_a is None and hf_b is None:
+            return ""
+        clauses: list[str] = []
+        if ssim_a is not None and ssim_b is not None:
+            clauses.append(f"SSIM {ssim_a:.2f} vs {ssim_b:.2f}")
+        elif ssim_a is not None:
+            clauses.append(f"SSIM {ssim_a:.2f}")
+        if hf_a is not None and hf_b is not None:
+            clauses.append(f"detail {int(hf_a * 100):+d}% vs {int(hf_b * 100):+d}%")
+        elif hf_a is not None:
+            clauses.append(f"detail {int(hf_a * 100):+d}%")
+        # Banding note for the *other* item only, severity-only (no regions).
+        banding = None
+        try:
+            raw = getattr(other, "artifacts", None)
+            if isinstance(raw, dict):
+                from tabs.image_gallery.models import Artifact as _Artifact
+
+                sev = raw.get(_Artifact.BANDING, raw.get("banding"))
+                banding = (sev.value if hasattr(sev, "value") else sev)
+            if banding is None and isinstance(mb, dict):
+                artm = mb.get("artifacts")
+                if isinstance(artm, dict):
+                    banding = artm.get("banding", artm.get("BANDING"))
+                    banding = banding.value if hasattr(banding, "value") else banding
+        except Exception:
+            banding = None
+        try:
+            banding = str(banding).lower() if banding is not None else None
+        except Exception:
+            banding = None
+        tail = ""
+        if banding in ("mild", "flagged"):
+            tail = f"#{other_rank} shows banding" + (" (flagged)" if banding == "flagged" else "")
+        head = " · ".join(clauses)
+        text = f"vs #{other_rank}: {head}" if head else f"vs #{other_rank}"
+        if tail:
+            text += f"; {tail}"
+        return text
+    except Exception:
+        return ""
 
 
 def populate_brief(overlay, item) -> None:
@@ -578,6 +800,12 @@ def populate_brief(overlay, item) -> None:
                 brief = ""
             if not brief and status == "pending":
                 brief = "AI brief…"
+        if not brief:
+            # Deterministic local fallback (no VLM): vs-#N from metrics.
+            try:
+                brief = local_brief_fallback(item, getattr(overlay, "_series_items", []))
+            except Exception:
+                brief = ""
         if brief:
             overlay._brief_label.setText(brief)
             overlay._brief_label.setVisible(True)

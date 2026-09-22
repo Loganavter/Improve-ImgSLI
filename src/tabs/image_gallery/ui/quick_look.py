@@ -390,23 +390,42 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             p = Path(getattr(self._current_item, "path", ""))
             owner = self._owner
+            new_mode = None
             if owner is not None:
                 try:
                     st = getattr(owner, "state", None)
                     if st is not None:
                         st.source_path = p
+                        # P0-6: re-run mode selection so the chip flips to
+                        # FIDELITY (a source hub implies fidelity mode).
+                        try:
+                            from tabs.image_gallery.services.mode import select_mode
+
+                            new_mode = select_mode(
+                                getattr(st, "series", None),
+                                getattr(st, "items", None),
+                                p,
+                            )
+                            st.mode = new_mode
+                        except Exception:
+                            new_mode = None
                     w = getattr(owner, "widget", None) or owner
                     if hasattr(w, "_source_path"):
                         w._source_path = p
                     if hasattr(w, "stats_strip"):
                         try:
-                            mode = getattr(st, "mode", None) if st is not None else getattr(w, "_mode", None)
-                            w.stats_strip.set_mode(str(mode or "fidelity"), p)
+                            mode = new_mode
+                            if mode is None:
+                                mode = getattr(st, "mode", None) if st is not None else getattr(w, "_mode", None)
+                            mode_name = getattr(mode, "value", mode) or "fidelity"
+                            w.stats_strip.set_mode(str(mode_name), p)
                         except Exception:
                             pass
                 except Exception:
                     pass
             self._source_path = p
+            if new_mode is not None:
+                self._mode = new_mode
             self.setSource.emit(p)
             self._populate()
         except Exception:
