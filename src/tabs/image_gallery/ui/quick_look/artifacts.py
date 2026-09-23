@@ -112,14 +112,12 @@ def rebuild_artifacts(overlay, item) -> None:
         header.addStretch(1)
         # P0-8: no region analysis exists — never claim one. Severity only.
         lvl_label = {"clean": "clean", "mild": "mild", "flagged": "flagged"}[lvl]
-        # S4 mockup severity colors: mild amber, flagged red (ThemeManager + hex fallback).
+        # S4 mockup severity colors: mild amber, flagged red — single mapping in
+        # ui/card/dots.py (frozen seam: no second severity mapping here).
         try:
-            from tabs.image_gallery.ui.quick_look.helpers import _token_color as _ql_token_color
+            from tabs.image_gallery.ui.card.dots import _severity_color as _dots_severity_color
 
-            sev_color = _ql_token_color(
-                "gallery.status.warn" if lvl == "mild" else "gallery.status.danger",
-                "#e8b64c" if lvl == "mild" else "#D93025",
-            )
+            sev_color = _dots_severity_color(lvl)
         except Exception:
             sev_color = None
         v = Label(lvl_label, pixel_size=11, parent=row, color=sev_color)

@@ -9,7 +9,17 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Label
 
 
-def _token_qcolor(token: str, fallback_hex: str) -> QColor:
+def _is_dark_theme() -> bool:
+    try:
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _bars_is_dark
+
+        return bool(_bars_is_dark())
+    except Exception:
+        pass
+    return True
+
+
+def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None = None) -> QColor:
     try:
         from sli_ui_toolkit.managers import ThemeManager
 
@@ -20,7 +30,9 @@ def _token_qcolor(token: str, fallback_hex: str) -> QColor:
             return c if isinstance(c, QColor) else QColor(c)
     except Exception:
         pass
-    return QColor(fallback_hex)
+    if fallback_dark_hex is None:
+        return QColor(fallback_hex)
+    return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
 def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
@@ -47,7 +59,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         t = Label(title, pixel_size=11, parent=row)
         header.addWidget(t)
         header.addStretch(1)
-        # S4 mockup: measured values read green (#3fbf5f); gaps stay muted.
+        # S4 mockup: measured values read gallery.status.ok green; gaps stay muted.
         vc = _ok_color() if value_color is None else value_color
         v = Label(value_text, pixel_size=11, parent=row, color=vc)
         header.addWidget(v)
@@ -61,10 +73,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         overlay._metric_rows.append(row)
 
     def _ok_color():
-        return _token_qcolor("gallery.status.ok", "#3fbf5f")
+        # NOTE: was #3fbf5f (dark-only) — now gallery.status.ok light/dark chain.
+        return _token_qcolor("gallery.status.ok", "#2e7d32", "#43a047")
 
     def _warn_color():
-        return _token_qcolor("gallery.status.warn", "#e8b64c")
+        # NOTE: was #e8b64c (dark-only) — now gallery.status.warn light/dark chain.
+        return _token_qcolor("gallery.status.warn", "#b77900", "#d9a441")
 
     def _muted_color():
         return _token_qcolor("gallery.status.neutral", "#8a8a8a")

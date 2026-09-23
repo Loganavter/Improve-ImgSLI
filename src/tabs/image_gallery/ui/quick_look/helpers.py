@@ -2,7 +2,7 @@
 Audit-Meta: pattern=thin-owner-target size=exempt reason="ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
 
 Extracted from quick_look.py per CODE_PATTERNS.md thin owner + ui/.
-Painter pipeline owns visuals; no setStyleSheet. Lazy imports for theming.
+Painter pipeline owns visuals; no QSS styling. Lazy imports for theming.
 """
 
 from __future__ import annotations
@@ -10,7 +10,92 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtWidgets import QWidget
+
+
+def _is_dark_theme() -> bool:
+    try:
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _bars_is_dark
+
+        return bool(_bars_is_dark())
+    except Exception:
+        pass
+    return True
+
+
+class _AccentPillHost(QWidget):
+    """Accent-tinted pill backdrop behind the mode chip (explicit paint, no palette)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._bg = self._resolve_bg()
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _resolve_bg() -> QColor:
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            from ui.theming import try_resolve_theme_color
+
+            for token in ("gallery.accent.bar", "accent"):
+                c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+                if c is not None:
+                    # QColor(...) copy: never setAlpha a manager-owned instance in place.
+                    col = QColor(c) if isinstance(c, str) else QColor(c)
+                    try:
+                        if col.alpha() == 255:
+                            col.setAlpha(51)
+                    except Exception:
+                        pass
+                    return col
+        except Exception:
+            pass
+        # NOTE: was (0,150,255) at alpha 51 (dark-only rgba) — now accent light/dark chain.
+        fallback = QColor("#0078D4" if not _is_dark_theme() else "#0096FF")
+        try:
+            fallback.setAlpha(51)
+        except Exception:
+            pass
+        return fallback
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg = self._resolve_bg()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            from sli_ui_toolkit.managers import scaled_px
+
+            p = QPainter(self)
+            try:
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(self._bg)
+                p.drawRoundedRect(self.rect(), scaled_px(8), scaled_px(8))
+            finally:
+                p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
 
 def _load_preview_pixmap(path: Path, target_w: int = 640, target_h: int = 456) -> QPixmap | None:
@@ -171,27 +256,15 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     # S4 mockup: accent-tinted pill behind the chip (fill accent @ 0.2).
-    # Plain QWidget backdrop (stock Qt host, not a toolkit widget) with a
-    # ThemeManager accent fill + hex fallback — no QSS, painter untouched.
+    # Painted host (explicit paintEvent, theme-subscribed) — no QSS, no palette.
     try:
-        pill = QWidget(overlay._content)
+        pill = _AccentPillHost(overlay._content)
         pill.setObjectName("quicklook_mode_chip_pill")
         pill_lay = QHBoxLayout(pill)
         pill_lay.setContentsMargins(scaled_px(10), scaled_px(2), scaled_px(10), scaled_px(2))
         pill_lay.setSpacing(0)
         overlay._mode_chip.setParent(pill)
         pill_lay.addWidget(overlay._mode_chip)
-        accent_bg = _token_rgba_qcolor("accent", (0, 150, 255, 51))
-        if accent_bg is not None:
-            try:
-                if accent_bg.alpha() == 255:
-                    accent_bg.setAlpha(51)
-            except Exception:
-                pass
-            pal = pill.palette()
-            pal.setColor(pill.backgroundRole(), accent_bg)
-            pill.setAutoFillBackground(True)
-            pill.setPalette(pal)
         overlay._mode_chip_pill = pill
         chip_row.addWidget(pill)
     except Exception:
@@ -250,21 +323,8 @@ def build_overlay_ui(overlay) -> None:
     overlay._source_inset_pix.setFixedSize(scaled_px(150), scaled_px(84))
     overlay._source_inset_pix.setAlignment(Qt.AlignmentFlag.AlignCenter)
     overlay._source_inset_pix.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    try:
-        pal = overlay._source_inset_host.palette()
-        bg = _token_rgba_qcolor("shadow.color", (0, 0, 0, 140))
-        if bg is not None:
-            # Ensure overlay alpha 140 if token is opaque
-            try:
-                if bg.alpha() == 255:
-                    bg.setAlpha(140)
-            except Exception:
-                pass
-        pal.setColor(overlay._source_inset_host.backgroundRole(), bg)
-        overlay._source_inset_host.setAutoFillBackground(True)
-        overlay._source_inset_host.setPalette(pal)
-    except Exception:
-        pass
+    # Background fill is painted by _SourceInsetHost itself (theme-subscribed
+    # paintEvent) — no palette here.
     src_lay.addWidget(overlay._source_inset_pix)
     overlay._source_inset_host.raise_()
     overlay._source_inset_host.hide()
@@ -398,9 +458,11 @@ def build_overlay_ui(overlay) -> None:
     bar_lay = QHBoxLayout(bar)
     bar_lay.setContentsMargins(0, scaled_px(6), 0, 0)
     bar_lay.setSpacing(scaled_px(8))
-    accent = _token_color("accent", "#0096FF")
-    danger = _token_color("danger", "#D93025")
-    warning = _token_color("warning", "#e8b64c")
+    dark_bottom = _is_dark_theme()
+    # NOTE: old fallbacks were dark-only (#0096FF, #D93025, #e8b64c) — now light/dark chains.
+    accent = _token_color("accent", "#0078D4" if not dark_bottom else "#0096FF")
+    danger = _token_color("gallery.status.danger", "#c0392b" if not dark_bottom else "#d64545")
+    warning = _token_color("gallery.status.warn", "#b77900" if not dark_bottom else "#d9a441")
     overlay._compare_btn = Button(text="Compare →", variant="surface", parent=bar)
     overlay._compare_btn.setObjectName("quicklook_compare")
     try:

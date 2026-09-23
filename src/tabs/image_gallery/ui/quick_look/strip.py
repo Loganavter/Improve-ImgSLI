@@ -87,8 +87,11 @@ def rebuild_strip(overlay) -> None:
                 try:
                     from tabs.image_gallery.ui.quick_look.helpers import _token_color, _token_rgba_qcolor
 
-                    bg = _token_color("surface.button", "#5a5a5a")
-                    # badge text white via theme token
+                    from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark
+
+                    dark = _ql_is_dark()
+                    bg = _token_color("surface.button", "#8a8a8a" if not dark else "#5a5a5a")
+                    # badge text via theme token with light/dark-aware fallback
                     from PySide6.QtGui import QColor as _QC
 
                     try:
@@ -97,11 +100,11 @@ def rebuild_strip(overlay) -> None:
                         from ui.theming import try_resolve_theme_color
 
                         _txt = try_resolve_theme_color(ThemeManager.get_instance(), "button.primary.text")
-                        txt_col = _txt if isinstance(_txt, _QC) else _QC(_txt) if isinstance(_txt, str) else _QC(255, 255, 255)
-                        if _txt is None:
-                            txt_col = _QC(255, 255, 255)
+                        txt_col = _txt if isinstance(_txt, _QC) else _QC(_txt) if isinstance(_txt, str) else None
+                        if _txt is None or txt_col is None:
+                            txt_col = _QC("#000000" if not dark else "#ffffff")
                     except Exception:
-                        txt_col = _QC(255, 255, 255)
+                        txt_col = _QC("#000000" if not dark else "#ffffff")
                     if bg is None:
                         bg = _QC(90, 90, 90)
                     btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
@@ -126,15 +129,20 @@ def rebuild_strip(overlay) -> None:
             pass
         try:
             if is_source:
+                from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark2
                 from tabs.image_gallery.ui.quick_look.helpers import _token_color
 
-                gold = _token_color("warning", "#e8b64c")
+                # NOTE: was #e8b64c (dark-only) — now gallery.status.warn light/dark chain.
+                dark2 = _ql_is_dark2()
+                gold = _token_color("gallery.status.warn", "#b77900" if not dark2 else "#d9a441")
                 if gold is not None:
                     btn.set_border_color(gold)
             elif is_viewing:
+                from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark3
                 from tabs.image_gallery.ui.quick_look.helpers import _token_color
 
-                accent_c = _token_color("accent", "#0096FF")
+                dark3 = _ql_is_dark3()
+                accent_c = _token_color("accent", "#0078D4" if not dark3 else "#0096FF")
                 if accent_c is not None:
                     btn.set_border_color(accent_c)
         except Exception:

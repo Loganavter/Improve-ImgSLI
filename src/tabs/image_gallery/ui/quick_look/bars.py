@@ -8,7 +8,26 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.managers import scaled_px
 
 
-def _token_qcolor(token: str, fallback_hex: str) -> QColor:
+def _is_dark_theme() -> bool:
+    """True when the dark palette is active (fallbacks stay theme-aware)."""
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        inst = ThemeManager.get_instance()
+        try:
+            return bool(inst.is_dark())
+        except Exception:
+            pass
+        try:
+            return str(inst.get_current_theme()).lower() != "light"
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return True
+
+
+def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None = None) -> QColor:
     try:
         from sli_ui_toolkit.managers import ThemeManager
 
@@ -19,7 +38,10 @@ def _token_qcolor(token: str, fallback_hex: str) -> QColor:
             return c if isinstance(c, QColor) else QColor(c)
     except Exception:
         pass
-    return QColor(fallback_hex)
+    if fallback_dark_hex is None:
+        return QColor(fallback_hex)
+    # NOTE: old code used dark-only fallbacks (#3fbf5f, #4a4a4a, ...) — now light/dark chains.
+    return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
 def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> QColor:
@@ -34,6 +56,52 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
     except Exception:
         pass
     return QColor(*fallback_rgba)
+
+
+def _connect_theme_refresh(slot) -> None:
+    """Subscribe *slot* to ThemeManager.theme_changed (best effort)."""
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        ThemeManager.get_instance().theme_changed.connect(slot)
+    except Exception:
+        pass
+
+
+class _FillBlock(QWidget):
+    """Solid color block painted explicitly (explicit paintEvent fill).
+
+    Shared painted primitive for bar segments: color is cached explicitly and
+    refreshed by the owner on theme change via :meth:`set_fill_color`.
+    """
+
+    def __init__(self, color: QColor | str | None = None, parent=None) -> None:
+        super().__init__(parent)
+        self._color = QColor(0, 0, 0, 0)
+        if color is not None:
+            self.set_fill_color(color)
+
+    def set_fill_color(self, color: QColor | str) -> None:
+        try:
+            self._color = color if isinstance(color, QColor) else QColor(color)
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            p.fillRect(self.rect(), self._color)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
 
 def dual_marker_frac(hf_ratio: float) -> float:
@@ -51,36 +119,76 @@ def dual_marker_frac(hf_ratio: float) -> float:
 
 
 class _BarWidget(QWidget):
-    """Simple horizontal bar: background + fill fraction."""
+    """Simple horizontal bar: background + fill fraction (painter-painted)."""
 
     def __init__(self, fraction: float = 0.0, fill_color=None, parent=None) -> None:
         super().__init__(parent)
         self._fraction = max(0.0, min(1.0, float(fraction)))
-        self._fill_color = fill_color
+        # Explicit caller color is kept as-is; None means "default ok token"
+        # which is re-resolved on every theme change.
+        self._explicit_fill = fill_color
         self.setFixedHeight(scaled_px(6))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        self._fill = QWidget(self)
+        self._fill = _FillBlock(parent=self)
         self._fill.setObjectName("QuickLookBarFill")
-        try:
-            from PySide6.QtGui import QPalette
-
-            pal = self._fill.palette()
-            col = fill_color if fill_color is not None else _token_qcolor("gallery.status.ok", "#3fbf5f")
-            pal.setColor(QPalette.ColorRole.Window, col)
-            self._fill.setAutoFillBackground(True)
-            self._fill.setPalette(pal)
-            pal2 = self.palette()
-            pal2.setColor(QPalette.ColorRole.Window, _token_qcolor("flyout.border", "#4a4a4a"))
-            self.setAutoFillBackground(True)
-            self.setPalette(pal2)
-        except Exception:
-            pass
         outer.addWidget(self._fill, 0)
         outer.addStretch(1)
+        self._bg_color = _token_qcolor("quick_look.bar.background", "#e8e8e8", "#262626")
+        self._refresh_fill()
+        _connect_theme_refresh(self._on_theme_changed)
         self._update_fill()
+
+    @staticmethod
+    def _default_fill() -> QColor:
+        # NOTE: was #3fbf5f (dark-only fallback) — now gallery.status.ok light/dark chain.
+        return _token_qcolor("gallery.status.ok", "#2e7d32", "#43a047")
+
+    def _refresh_fill(self) -> None:
+        try:
+            if self._explicit_fill is not None:
+                col = (
+                    self._explicit_fill
+                    if isinstance(self._explicit_fill, QColor)
+                    else QColor(self._explicit_fill)
+                )
+            else:
+                col = self._default_fill()
+            self._fill.set_fill_color(col)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg_color = _token_qcolor("quick_look.bar.background", "#e8e8e8", "#262626")
+        except Exception:
+            pass
+        if self._explicit_fill is None:
+            try:
+                self._refresh_fill()
+            except Exception:
+                pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            p.fillRect(self.rect(), self._bg_color)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
     def _update_fill(self) -> None:
         try:
@@ -124,58 +232,57 @@ class _DualRestoredInventedBar(QWidget):
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        try:
-            from PySide6.QtGui import QPalette
-
-            pal2 = self.palette()
-            bg = _token_qcolor("quick_look.bar.background", "#262626")
-            # If token resolved is not None, use it; else fallback already is resolved
-            pal2.setColor(QPalette.ColorRole.Window, bg)  # type: ignore[arg-type]
-            self.setAutoFillBackground(True)
-            self.setPalette(pal2)
-        except Exception:
-            try:
-                from PySide6.QtGui import QPalette
-
-                pal2 = self.palette()
-                pal2.setColor(QPalette.ColorRole.Window, _token_qcolor("quick_look.bar.background", "#262626"))
-                self.setAutoFillBackground(True)
-                self.setPalette(pal2)
-            except Exception:
-                pass
-        self._left = QWidget(self)
+        self._bg_color = _token_qcolor("quick_look.bar.background", "#e8e8e8", "#262626")
+        self._left = _FillBlock(parent=self)
         self._left.setObjectName("DualBarLeft")
-        self._right = QWidget(self)
+        self._right = _FillBlock(parent=self)
         self._right.setObjectName("DualBarRight")
-        try:
-            from PySide6.QtGui import QPalette
+        self._refresh_segment_colors()
+        outer.addWidget(self._left, 0)
+        outer.addWidget(self._right, 0)
+        outer.addStretch(1)
+        _connect_theme_refresh(self._on_theme_changed)
+        self._update_geometry()
 
-            # left restored - gallery.status.ok with alpha 140
-            left_base = _token_qcolor("gallery.status.ok", "#3fbf5f")
+    def _refresh_segment_colors(self) -> None:
+        try:
+            # NOTE: was #3fbf5f (dark-only) — now gallery.status.ok light/dark chain.
+            # QColor(...) copy: never setAlpha a manager-owned instance in place.
+            left_base = QColor(_token_qcolor("gallery.status.ok", "#2e7d32", "#43a047"))
             try:
                 left_base.setAlpha(140)
             except Exception:
                 pass
-            pal_l = self._left.palette()
-            pal_l.setColor(QPalette.ColorRole.Window, left_base)
-            self._left.setAutoFillBackground(True)
-            self._left.setPalette(pal_l)
-            # right invented - gallery.status.danger with alpha 115
-            right_base = _token_qcolor("gallery.status.danger", "#D93025")
+            self._left.set_fill_color(left_base)
+        except Exception:
+            pass
+        try:
+            # NOTE: was #D93025 (dark-only) — now gallery.status.danger light/dark chain.
+            right_base = QColor(_token_qcolor("gallery.status.danger", "#c0392b", "#d64545"))
             try:
                 right_base.setAlpha(115)
             except Exception:
                 pass
-            pal_r = self._right.palette()
-            pal_r.setColor(QPalette.ColorRole.Window, right_base)
-            self._right.setAutoFillBackground(True)
-            self._right.setPalette(pal_r)
+            self._right.set_fill_color(right_base)
         except Exception:
             pass
-        outer.addWidget(self._left, 0)
-        outer.addWidget(self._right, 0)
-        outer.addStretch(1)
-        self._update_geometry()
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg_color = _token_qcolor("quick_look.bar.background", "#e8e8e8", "#262626")
+        except Exception:
+            pass
+        try:
+            self._refresh_segment_colors()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
 
     def _update_geometry(self) -> None:
         try:
@@ -197,9 +304,18 @@ class _DualRestoredInventedBar(QWidget):
         self._update_geometry()
 
     def paintEvent(self, event):  # noqa: N802
-        super().paintEvent(event)
         try:
-            from PySide6.QtGui import QPainter, QBrush
+            p = QPainter(self)
+            p.fillRect(self.rect(), self._bg_color)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
+        try:
+            from PySide6.QtGui import QBrush
 
             frac = dual_marker_frac(self._hf)
             cx = int(self.width() * frac)
@@ -207,7 +323,7 @@ class _DualRestoredInventedBar(QWidget):
             r = scaled_px(5)
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            dot_col = _token_qcolor("button.primary.text", "#ffffff")
+            dot_col = _token_qcolor("button.primary.text", "#000000", "#ffffff")
             p.setBrush(QBrush(dot_col))
             p.setPen(dot_col)
             p.drawEllipse(cx - r // 2, cy - r // 2, r, r)
