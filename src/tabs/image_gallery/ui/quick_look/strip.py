@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, Label
+from sli_ui_toolkit.widgets import Button, ButtonRegion, Label
 
 
 def rebuild_strip(overlay) -> None:
@@ -68,16 +68,23 @@ def rebuild_strip(overlay) -> None:
         cont_lay.setContentsMargins(0, 0, 0, 0)
         cont_lay.setSpacing(scaled_px(2))
         cont_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        btn_kwargs = dict(variant="surface", size=(74, 44), parent=container)
+        # S4: thumbnail goes on a ButtonRegion (Button has no pixmap
+        # param); text/badge/click/opacity behavior unchanged.
+        regions = None
         if thumb_pm is not None and not thumb_pm.isNull():
             try:
-                btn = Button(text=text, pixmap=thumb_pm, parent=container, **{k: v for k, v in btn_kwargs.items() if k != "parent"})
-                try:
-                    btn.setProperty("image_fill", "cover")
-                except Exception:
-                    pass
+                regions = [
+                    ButtonRegion(
+                        id="thumb",
+                        pixmap=thumb_pm,
+                        image_fill="cover",
+                        group="card",
+                    )
+                ]
             except Exception:
-                btn = Button(text=text, variant="surface", size=(74, 44), parent=container)
+                regions = None
+        if regions is not None:
+            btn = Button(text=text, variant="surface", size=(74, 44), parent=container, regions=regions)
         else:
             btn = Button(text=text, variant="surface", size=(74, 44), parent=container)
         btn.setObjectName(f"quicklook_strip_{idx}")

@@ -32,7 +32,16 @@ def _severity_fill(severity: str) -> QColor:
 
 
 def _base_fill() -> QColor:
-    return _token_qcolor("surface.button", "#8a8a8a", "#5a5a5a")
+    # S4 LIGHT: local fill only (themes.json forbidden). The surface.button
+    # token resolves to #e1e1e1 on light — near-invisible against the #ffffff
+    # container — so the banding base uses an explicit mid-gray per theme.
+    try:
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme
+
+        dark = bool(_is_dark_theme())
+    except Exception:
+        dark = True
+    return QColor("#5a5a5a" if dark else "#8a8a8a")
 
 
 def _container_bg() -> QColor:

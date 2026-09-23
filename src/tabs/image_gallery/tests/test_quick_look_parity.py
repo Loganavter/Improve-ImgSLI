@@ -649,3 +649,172 @@ def test_refresh_metrics_ignores_other_item(qtbot):
     assert after == before
     assert ov._current_item is viewing
     ov.hide()
+
+
+# -- W3: strip regions / banding base / Find-Action set-source --------------
+
+
+def _w3_png(path, color=(200, 30, 30)):
+    from PIL import Image as _PIL
+
+    _PIL.new("RGB", (64, 44), color).save(path)
+
+
+def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
+    """Strip thumbs ride on ButtonRegion(pixmap, cover) — Button has no pixmap param."""
+    p1 = tmp_path / "s1.png"
+    p2 = tmp_path / "s2.png"
+    _w3_png(p1)
+    _w3_png(p2, (30, 200, 30))
+    src = _item("s1.png")
+    src.path = p1
+    viewing = _item("s2.png")
+    viewing.path = p2
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing], source=src.path)
+    from sli_ui_toolkit.widgets import Button
+
+    buttons = [
+        b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
+    ]
+    assert len(buttons) == 2
+    for b in buttons:
+        regions = b.regions()
+        assert len(regions) == 1
+        assert regions[0].pixmap is not None and not regions[0].pixmap.isNull()
+        assert regions[0].image_fill == "cover"
+    # Badge text preserved: SOURCE on source, #N viewing on viewing.
+    by_path = {b.property("gallery_path"): b for b in buttons}
+    assert by_path[str(p1)]._text == "SOURCE"
+    assert by_path[str(p2)]._text == "#2 viewing"
+    ov.hide()
+
+
+def test_strip_region_click_switches_preview(qtbot, tmp_path):
+    p1 = tmp_path / "c1.png"
+    p2 = tmp_path / "c2.png"
+    _w3_png(p1)
+    _w3_png(p2, (30, 30, 200))
+    src = _item("c1.png")
+    src.path = p1
+    viewing = _item("c2.png")
+    viewing.path = p2
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing], source=src.path)
+    assert ov._current_item.path == p2
+    from sli_ui_toolkit.widgets import Button
+
+    for b in ov._strip_host.findChildren(Button):
+        if b.property("gallery_path") == str(p1):
+            b.click()
+            break
+    QApplication.processEvents()
+    assert ov._current_item.path == p1
+    ov.hide()
+
+
+def test_banding_base_visible_on_light(qtbot, _w1_light_palettes):
+    """Banding base is a local mid-gray on light — not the #e1e1e1 token wash."""
+    from PySide6.QtGui import QColor
+
+    from tabs.image_gallery.ui.quick_look.histograms import (
+        _BandingCombHistogram,
+        _GenericHistogram,
+        _base_fill,
+        _container_bg,
+    )
+
+    base = _base_fill()
+    bg = _container_bg()
+    assert base == QColor("#8a8a8a")
+    assert base != bg
+
+    def _luma(c):
+        return 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+
+    assert abs(_luma(base) - _luma(bg)) > 60
+    comb = _BandingCombHistogram(severity="clean")
+    qtbot.addWidget(comb)
+    base_bars = [bar for bar, kind in comb._bars if kind == "base"]
+    assert base_bars
+    assert all(bar._color == base for bar in base_bars)
+    gen = _GenericHistogram(severity="clean")
+    qtbot.addWidget(gen)
+    assert gen._bars
+    assert all(bar._color == base for bar, _kind in gen._bars)
+
+
+def test_find_action_set_as_source_reruns_fidelity(tmp_path):
+    """Find-Action set-as-source routes through the hooks stale-keys + re-run path."""
+    from tabs.image_gallery.actions import GALLERY_SET_AS_SOURCE
+    from tabs.image_gallery.tab import ImageGalleryTab
+
+    old_src = tmp_path / "old.png"
+    new_src = tmp_path / "new.png"
+    _w3_png(old_src)
+    _w3_png(new_src, (30, 30, 200))
+    fid = {"ssim": 0.9, "hf_ratio": 0.1, "delta_e": 0.5, "upscale_factor": 1}
+    a = GalleryItem(path=old_src, mtime_ns=1, metrics=dict(fid))
+    b = GalleryItem(path=new_src, mtime_ns=2, metrics=dict(fid))
+
+    class _Ctrl:
+        def __init__(self):
+            self.state = SimpleNamespace(
+                selected_paths={Path(new_src)},
+                items=[a, b],
+                source_path=Path(old_src),
+                series=None,
+                mode=None,
+            )
+            self.runs: list = []
+
+        def _start_fidelity_analysis(self, items, source_path):
+            self.runs.append((list(items), source_path))
+
+    class _StripStub:
+        def __init__(self):
+            self.modes: list = []
+
+        def set_mode(self, name, source):
+            self.modes.append((name, source))
+
+    class _OverlayStub:
+        def __init__(self):
+            self.refreshed: list = []
+
+        def refresh_metrics(self, item):
+            self.refreshed.append(item)
+
+    ctrl = _Ctrl()
+    overlay_stub = _OverlayStub()
+    wid = SimpleNamespace(
+        _controller=ctrl,
+        _source_path=Path(old_src),
+        _mode=None,
+        stats_strip=_StripStub(),
+        _quick_look_overlay=overlay_stub,
+    )
+
+    class _Registry:
+        def __init__(self):
+            self.items: list = []
+
+        def register(self, descriptor):
+            self.items.append(descriptor)
+            return True
+
+    tab = ImageGalleryTab()
+    tab._controller = ctrl
+    tab._widget = wid
+    registry = _Registry()
+    assert tab.create_service("contribute_actions", registry) is True
+    descs = [d for d in registry.items if d.action_id == GALLERY_SET_AS_SOURCE]
+    assert len(descs) == 1
+    # Action id and UX identical — only the run path changed.
+    assert descs[0].label_key == "image_gallery.action.set_as_source"
+    descs[0].run()
+    assert ctrl.state.source_path == Path(new_src)
+    for it in (a, b):
+        assert all(k not in it.metrics for k in ("ssim", "hf_ratio", "delta_e", "upscale_factor"))
+    assert ctrl.runs == [([a, b], Path(new_src))]
+    assert overlay_stub.refreshed == [a, b]

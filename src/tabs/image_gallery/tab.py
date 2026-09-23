@@ -468,14 +468,29 @@ class ImageGalleryTab(TabContract):
                         target=ActionTarget(widget=wid) if wid is not None else None,
                     )
                 )
-                # set-as-source
+                # set-as-source — same hooks path as the overlay setSource
+                # signal and the card context menu: stale-keys + fidelity
+                # re-run (never a bare state write; action id/UX unchanged).
                 def _set_as_source():
                     try:
                         sel = None
                         if ctrl is not None and hasattr(ctrl.state, "selected_paths"):
                             sel = next(iter(ctrl.state.selected_paths), None)
-                        if sel is not None:
-                            ctrl.state.source_path = sel  # type: ignore[attr-defined]
+                        if sel is None:
+                            return
+                        try:
+                            from tabs.image_gallery.ui.quick_look_hooks import (
+                                on_quick_set_source as _ql_set_source,
+                            )
+
+                            owner = wid if wid is not None else ctrl
+                            _ql_set_source(owner, sel)
+                        except Exception:
+                            # Fallback: preserve the legacy direct write.
+                            try:
+                                ctrl.state.source_path = sel  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 
