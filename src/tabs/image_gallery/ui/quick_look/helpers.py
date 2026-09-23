@@ -535,6 +535,13 @@ def reposition_grip(overlay) -> None:
     ``reposition_nav_buttons`` / ``reposition_source_inset``). Runs from the
     overlay's ``_content`` Resize filter, ``resizeEvent``, and the grip's
     own drag handler.
+
+    W-B: ends with the card re-layout (preview-with-aspect rescale + footer
+    reflow). This function is the one resize entry point that lives in this
+    module AND is already invoked on every resize path by ``quick_look.py``
+    (``_content`` Resize filter + overlay ``resizeEvent``, both out of W-B
+    scope), so the re-layout rides all resizes with no new hooks and no
+    out-of-scope edits.
     """
     try:
         content = getattr(overlay, "_content", None)
@@ -549,6 +556,10 @@ def reposition_grip(overlay) -> None:
             grip.raise_()
         except Exception:
             pass
+    except Exception:
+        pass
+    try:
+        _relayout_on_card_resize(overlay)
     except Exception:
         pass
 
@@ -649,7 +660,13 @@ def resize_cursor_for(zone: str | None):
 
 
 def _repin_after_card_resize(overlay) -> None:
-    """Re-run the absolute-child pin hooks after a card resize step."""
+    """Re-run the absolute-child pin hooks after a card resize step.
+
+    W-B: the card re-layout (preview-with-aspect rescale + footer reflow)
+    rides along via ``reposition_grip`` (called below), so the drag paths
+    (grip / border / ring) and the overlay Resize paths all re-layout
+    through this one entry.
+    """
     try:
         overlay._reposition_source_inset()
     except Exception:
@@ -658,6 +675,106 @@ def _repin_after_card_resize(overlay) -> None:
         reposition_grip(overlay)
     except Exception:
         pass
+
+
+def _rescale_preview_to_host(overlay) -> None:
+    """Rescale the stashed full preview pixmap to the live label size (W-B).
+
+    Export-window idiom: the preview pane stretches with the card while the
+    image inside keeps its aspect (``KeepAspectRatio`` letterbox, never a
+    stretch). ``populate_preview`` stashes the unscaled source in
+    ``overlay._preview_full``; this re-derives the shown pixmap from it on
+    every card resize. No-op when nothing populatable is stashed (fake
+    paths, null pixmaps) or the label has no size yet.
+    """
+    try:
+        full = getattr(overlay, "_preview_full", None)
+        label = getattr(overlay, "_preview_label", None)
+        if full is None or label is None:
+            return
+        try:
+            if full.isNull():
+                return
+        except Exception:
+            return
+        try:
+            from sli_ui_toolkit.managers import scaled_px
+
+            target_w = label.width()
+            target_h = label.height()
+            if target_w <= 0 or target_h <= 0:
+                target_w, target_h = scaled_px(640), scaled_px(456)
+        except Exception:
+            return
+        try:
+            from PySide6.QtCore import Qt
+
+            scaled = full.scaled(
+                target_w,
+                target_h,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        except Exception:
+            return
+        try:
+            if scaled is not None and not scaled.isNull():
+                label.setPixmap(scaled)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _reflow_footer(overlay) -> None:
+    """Reflow the bottom action bar after a card resize (W-B).
+
+    Export-window idiom: action buttons keep their natural widths on the
+    left, the hint stays pinned right via the bar stretch. The layout does
+    the reflow itself; this hook guarantees its invariants (hint is the
+    last bar item, bar geometry is refreshed) so a resize can never strand
+    the hint mid-bar. Never hides or closes anything.
+    """
+    try:
+        bar = None
+        try:
+            content = getattr(overlay, "_content", None)
+            if content is not None:
+                bar = content.findChild(QWidget, "quicklook_bottom_bar")
+        except Exception:
+            bar = None
+        if bar is None:
+            return
+        hint = getattr(overlay, "_hint_label", None)
+        try:
+            lay = bar.layout()
+        except Exception:
+            lay = None
+        if lay is not None and hint is not None:
+            try:
+                if lay.count() > 0 and lay.itemAt(lay.count() - 1).widget() is not hint:
+                    lay.removeWidget(hint)
+                    lay.addWidget(hint)
+            except Exception:
+                pass
+        try:
+            bar.updateGeometry()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _relayout_on_card_resize(overlay) -> None:
+    """Card re-layout entry for every resize step (W-B).
+
+    Preview stretches with aspect, footer reflows. Called from
+    ``reposition_grip`` (the in-scope hook every resize path already runs);
+    also reachable directly. No close paths, no size-policy changes (W8
+    min-only stays: minimum 1040×620, no maximum).
+    """
+    _rescale_preview_to_host(overlay)
+    _reflow_footer(overlay)
 
 
 # W11: nav arrows (overlay children sitting in the ring zone) must NEVER
@@ -1571,10 +1688,34 @@ def build_overlay_ui(overlay) -> None:
 # -- populate helpers -------------------------------------------------------
 
 def populate_preview(overlay, item) -> None:
+    # W-B: stash the unscaled source in ``overlay._preview_full`` so
+    # ``_rescale_preview_to_host`` can re-derive the shown pixmap at the
+    # live label size on every card resize (preview stretches with aspect,
+    # export-window idiom). The initial shown pixmap keeps the old size.
     try:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QPixmap
+        try:
+            overlay._preview_full = None
+        except Exception:
+            pass
+        try:
+            full = QPixmap(str(getattr(item, "path", "")))
+            if full is not None and not full.isNull():
+                try:
+                    overlay._preview_full = full
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if getattr(overlay, "_preview_full", None) is None:
+            try:
+                thumb = getattr(item, "thumbnail", None)
+                if thumb is not None and not thumb.isNull():
+                    overlay._preview_full = thumb
+            except Exception:
+                pass
         pm = _load_preview_pixmap(Path(getattr(item, "path", "")), scaled_px(640), scaled_px(456))
         if pm is not None and not pm.isNull():
             overlay._preview_label.setPixmap(pm)
@@ -1585,6 +1726,12 @@ def populate_preview(overlay, item) -> None:
             else:
                 overlay._preview_label.setText("No preview")
                 overlay._preview_label.setPixmap(QPixmap())
+        # Settle the initial pixmap at the live label size when populated
+        # after layout (keeps the old 640×456 pixels pre-layout).
+        try:
+            _rescale_preview_to_host(overlay)
+        except Exception:
+            pass
     except Exception:
         pass
 
