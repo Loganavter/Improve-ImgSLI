@@ -153,6 +153,17 @@ def test_normal_card_shows_border_edge_in_light(qtbot, qapp, _w1_palettes) -> No
     edge = img.pixelColor(0, h // 2).name().lower()
     fill = img.pixelColor(4, h // 2).name().lower()
     assert edge != fill, f"card edge {edge} == fill {fill}: border invisible in light"
+    # The overlay strokes the override (not an AA accident): the edge pixel
+    # must sit near the border hex and far from the fill.
+    from PySide6.QtGui import QColor as _QC
+
+    _edge, _bord, _fill = _QC(edge), _QC("#e2e4e8"), _QC(fill)
+
+    def _dist(a, b):
+        return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
+
+    assert _dist(_edge, _bord) < _dist(_edge, _fill), f"edge {edge} closer to fill than to border #e2e4e8"
+    assert _dist(_edge, _bord) < 90, f"edge {edge} too far from border #e2e4e8"
     card.deleteLater()
 
 

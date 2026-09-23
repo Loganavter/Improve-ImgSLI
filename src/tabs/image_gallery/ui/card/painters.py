@@ -255,5 +255,46 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                     painter.restore()
         except Exception:
             pass
+        # Outer card outline r10 (mockup v2/v2-light): toolkit BackgroundLayer
+        # strokes borders ONLY for non-subregion bodies, and gallery cards are
+        # fully region-composed (bg/cover/text) — so setBorderColor() alone
+        # never paints. Stroke it here in the app-owned overlay instead.
+        try:
+            from PySide6.QtCore import QRectF as _QRF3
+            from PySide6.QtGui import QColor as _QC3
+            from PySide6.QtGui import QPen as _QPen3
+
+            border = None
+            try:
+                border = widget.borderColor()
+            except Exception:
+                border = None
+            if border is not None:
+                try:
+                    width = int(widget.property("borderWidth") or 0)
+                except Exception:
+                    width = 0
+                if width <= 0:
+                    width = 1
+                inset = width / 2.0
+                painter.save()
+                try:
+                    painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+                    painter.setPen(_QPen3(border, width))
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.drawRoundedRect(
+                        _QRF3(
+                            rect.x() + inset,
+                            rect.y() + inset,
+                            rect.width() - inset * 2,
+                            rect.height() - inset * 2,
+                        ),
+                        10,
+                        10,
+                    )
+                finally:
+                    painter.restore()
+        except Exception:
+            pass
     except Exception:
         pass
