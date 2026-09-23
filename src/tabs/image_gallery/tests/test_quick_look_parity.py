@@ -616,9 +616,11 @@ def test_card_resize_smoke_preview_grows_column_fixed(qtbot, monkeypatch):
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.horizontalScrollBar().isVisible() is False
     assert scroll.verticalScrollBar().isVisible() is False
-    # Nav circles re-pinned to the new card edges.
-    assert abs(ov._prev_btn.geometry().center().x() - 0) <= 2
-    assert abs(ov._next_btn.geometry().center().x() - content.width()) <= 2
+    # Nav circles re-pinned to the new card edges (W10: overlay coords —
+    # buttons are overlay children, centers on the card left/right edges).
+    card = content.geometry()
+    assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
+    assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
     # Grip re-pinned to the new bottom-right corner.
     grip = ov._resize_grip
     assert grip.parentWidget() is content
@@ -722,8 +724,10 @@ def test_card_size_is_session_only():
 def test_prev_next_36px_circular_at_preview_edges(qtbot):
     """Prev/next: 36px circles overlapping the card edge half-outside (svg:67-70).
 
-    W4 item 6: absolute children of the card plate — each circle's center
-    sits on the card edge, vertically centered on the preview band.
+    W4 item 6: each circle's center sits on the card edge, vertically
+    centered on the preview band. W10: overlay children (siblings above
+    the plate) in overlay coords — the plate clips children to its rect,
+    which erased the outside half when parented to the card.
     """
     from PySide6.QtCore import QPoint
 
@@ -747,15 +751,22 @@ def test_prev_next_36px_circular_at_preview_edges(qtbot):
             row.text for region in btn.regions() for row in (getattr(region, "rows", None) or [])
         ]
         assert glyph in glyphs
-        # Absolute children of the card plate, above the content.
-        assert btn.parentWidget() is content
-    # Half-outside: prev center on the left card edge, next on the right.
+        # Overlay children above the card plate (W10: card-parent clipping
+        # erased the outside half), no QSS.
+        assert btn.parentWidget() is ov
+        try:
+            btn.raise_()
+        except Exception:
+            pass
+    # Half-outside: prev center on the left card edge, next on the right
+    # (overlay coords — geometry is overlay-local since W10).
+    card = content.geometry()
     prev_c = ov._prev_btn.geometry().center()
     next_c = ov._next_btn.geometry().center()
-    assert abs(prev_c.x() - 0) <= 2
-    assert abs(next_c.x() - content.width()) <= 2
-    # Vertically centered on the preview band (mapped to card coords).
-    host_top = host.mapTo(content, QPoint(0, 0)).y()
+    assert abs(prev_c.x() - card.x()) <= 2
+    assert abs(next_c.x() - (card.x() + card.width())) <= 2
+    # Vertically centered on the preview band (mapped to overlay coords).
+    host_top = host.mapTo(ov, QPoint(0, 0)).y()
     for c in (prev_c, next_c):
         assert host_top <= c.y() <= host_top + host.height()
     ov.hide()
@@ -1645,11 +1656,290 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     # Far corner drag floors at the 1040×620 minimum.
     _press_move_release(4, 4, 3000, 3000)
     assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    # Absolute children re-pinned: grip at the corner, nav on the edges
+    # (W10 overlay coords — centers on the card left/right edges).
+    assert ov._resize_grip.geometry().topLeft() == QPoint(
+        content.width() - ov._resize_grip.width(),
+        content.height() - ov._resize_grip.height(),
+    )
+    card = content.geometry()
+    assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
+    assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
+    ov.hide()
+
+
+# -- W10 outer resize ring + arrows live --------------------------------------
+
+
+def _w10_overlay_event(overlay, kind, local, button, buttons):
+    """QMouseEvent in overlay-local coords with matching global pos."""
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    glob = overlay.mapToGlobal(QPoint(*local))
+    return QMouseEvent(
+        kind,
+        QPointF(QPoint(*local)),
+        QPointF(QPoint(glob.x(), glob.y())),
+        button,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_outer_ring_zones_and_cursors(qtbot):
+    """W10 item 1: the 8px ring OUTSIDE the card hits all 8 zones; the
+    interior, card children, and open veil hit nothing."""
+    from PySide6.QtCore import QPoint, Qt
+
+    from sli_ui_toolkit.managers import scaled_px
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    card = ov._content.geometry()
+    assert _ql_helpers.RESIZE_BORDER_PX == 8
+    strip = scaled_px(8)
+    cx = card.x() + card.width() // 2
+    cy = card.y() + card.height() // 2
+    cases = {
+        (card.x() - strip // 2, cy): ("left", Qt.CursorShape.SizeHorCursor),
+        (card.x() + card.width() + strip // 2, cy): ("right", Qt.CursorShape.SizeHorCursor),
+        (cx, card.y() - strip // 2): ("top", Qt.CursorShape.SizeVerCursor),
+        (cx, card.y() + card.height() + strip // 2): ("bottom", Qt.CursorShape.SizeVerCursor),
+        (card.x() - strip // 2, card.y() - strip // 2): ("top_left", Qt.CursorShape.SizeFDiagCursor),
+        (card.x() + card.width() + strip // 2, card.y() - strip // 2): ("top_right", Qt.CursorShape.SizeBDiagCursor),
+        (card.x() - strip // 2, card.y() + card.height() + strip // 2): ("bottom_left", Qt.CursorShape.SizeBDiagCursor),
+        (card.x() + card.width() + strip // 2, card.y() + card.height() + strip // 2): ("bottom_right", Qt.CursorShape.SizeFDiagCursor),
+        # Interior / card edge / open veil: no ring zone (W6 veil stays inert).
+        (cx, cy): (None, None),
+        (card.x() + 2, cy): (None, None),
+        (max(0, card.x() - strip - 60), cy): (None, None),
+        (5, 5): (None, None),
+    }
+    for (x, y), (zone_exp, cursor_exp) in cases.items():
+        zone = _ql_helpers.ring_zone_at(ov, QPoint(x, y))
+        assert zone == zone_exp, ((x, y), zone)
+        assert _ql_helpers.resize_cursor_for(zone) == cursor_exp, zone
+    ov.hide()
+
+
+def test_outer_ring_hover_cursor_through_overlay(qtbot):
+    """W10 item 1: plain moves over the outer ring set the hover cursor via
+    the overlay mouseMove; open-veil moves restore the arrow."""
+    from PySide6.QtCore import QEvent, Qt
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    card = ov._content.geometry()
+    cy = card.y() + card.height() // 2
+
+    def _move(x, y):
+        ov.mouseMoveEvent(
+            _w10_overlay_event(
+                ov, QEvent.Type.MouseMove, (x, y),
+                Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+            )
+        )
+        QApplication.processEvents()
+
+    _move(card.x() - 4, cy)
+    assert ov.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    _move(card.x() + card.width() // 2, card.y() - 4)
+    assert ov.cursor().shape() == Qt.CursorShape.SizeVerCursor
+    _move(card.x() - 4, card.y() - 4)
+    assert ov.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
+    _move(5, 5)
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_outer_ring_drag_clamps_and_repins(qtbot):
+    """W10 item 1: outer-ring drags clamp like the W9 plate drags (min
+    1040×620, overlay minus 16px margin), re-pin grip + nav, stay
+    session-only."""
+    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+
+    from sli_ui_toolkit.managers import scaled_px
+
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+
+    def _press_move_release(lx, ly, dx, dy):
+        from PySide6.QtCore import QPoint as _QPoint
+
+        card = ov._content.geometry()
+        base_right = card.right()
+        press = _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (lx, ly),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+        ov.mousePressEvent(press)
+        started = getattr(ov, "_border_drag", None) is not None
+        move = _w10_overlay_event(
+            ov, QEvent.Type.MouseMove, (lx + dx, ly + dy),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        )
+        ov.mouseMoveEvent(move)
+        release = _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonRelease, (lx + dx, ly + dy),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+        )
+        ov.mouseReleaseEvent(release)
+        QApplication.processEvents()
+        return started, base_right
+
+    content = ov._content
+    card = content.geometry()
+    cy = card.y() + card.height() // 2
+    # Right ring far past the window: clamped to overlay minus margin.
+    started, _ = _press_move_release(card.x() + card.width() + 4, cy, 1000, 0)
+    assert started is True
+    margin = scaled_px(16)
+    assert content.width() == ov.width() - margin * 2
+    assert getattr(ov, "_border_drag", None) is None
+    # Left ring drag rightwards shrinks with the opposite edge anchored.
+    card = content.geometry()
+    w2 = content.width()
+    started, right2 = _press_move_release(card.x() - 4, cy, 200, 0)
+    assert started is True
+    assert content.width() < w2
+    assert content.geometry().right() == right2
+    # Far corner drag floors at the 1040×620 minimum.
+    card = content.geometry()
+    _press_move_release(card.x() - 4, card.y() - 4, 3000, 3000)
+    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    assert getattr(ov, "_border_drag", None) is None
     # Absolute children re-pinned: grip at the corner, nav on the edges.
     assert ov._resize_grip.geometry().topLeft() == QPoint(
         content.width() - ov._resize_grip.width(),
         content.height() - ov._resize_grip.height(),
     )
-    assert abs(ov._prev_btn.geometry().center().x() - 0) <= 2
-    assert abs(ov._next_btn.geometry().center().x() - content.width()) <= 2
+    card = content.geometry()
+    assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
+    assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
+    ov.hide()
+
+
+def test_veil_plain_click_still_does_nothing(qtbot):
+    """W10 item 1 / W6: owning the outer ring must NOT resurrect
+    background-click close — a plain veil press (outside the ring) starts
+    no drag, moves nothing, and leaves the overlay open."""
+    from PySide6.QtCore import QEvent, Qt
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    assert ov.isVisible() is True
+    card_before = ov._content.geometry()
+    # Far veil (well outside the 8px ring).
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (5, 5),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    QApplication.processEvents()
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov._content.geometry() == card_before
+    assert ov.isVisible() is True
+    # Open veil beside the card (beyond the ring band).
+    card = ov._content.geometry()
+    cy = card.y() + card.height() // 2
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (max(0, card.x() - 60), cy),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    QApplication.processEvents()
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov._content.geometry() == card_before
+    assert ov.isVisible() is True
+    # A release with no drag is a no-op (not consumed).
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    assert (
+        _ql_helpers.handle_ring_release(
+            ov,
+            _w10_overlay_event(
+                ov, QEvent.Type.MouseButtonRelease, (5, 5),
+                Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+            ),
+        )
+        is False
+    )
+    ov.hide()
+
+
+def _w10_live_nav_stats(overlay, btn):
+    """Overlay-grab census inside the nav circle (r≤16): mockup fill, ring,
+    glyph dark core. Circle corners are excluded — they show the veil
+    through the round button's transparent corners."""
+    img = overlay.grab().toImage()
+    cc = btn.geometry().center()
+    fills = ring = 0
+    darks = []
+    for y in range(cc.y() - 18, cc.y() + 19):
+        for x in range(cc.x() - 18, cc.x() + 19):
+            dist2 = (x - cc.x()) ** 2 + (y - cc.y()) ** 2
+            if dist2 > 18 * 18:
+                continue
+            c = img.pixelColor(x, y)
+            if dist2 <= 16 * 16:
+                if abs(c.red() - 0xF1) <= 8 and abs(c.green() - 0xF2) <= 8 and abs(c.blue() - 0xF4) <= 8:
+                    fills += 1
+                if (c.red() + c.green() + c.blue()) // 3 < 100 and c.alpha() > 10:
+                    darks.append((x, y))
+            if abs(c.red() - 0xD7) <= 10 and abs(c.green() - 0xDA) <= 10 and abs(c.blue() - 0xDE) <= 10:
+                ring += 1
+    return fills, ring, darks, (cc.x(), cc.y())
+
+
+def test_nav_circles_live_full_disc_centered_glyph(qtbot, _w1_light_palettes):
+    """W10 item 2: at REAL geometry the circles paint whole — the outside
+    half is mockup fill (was: pure veil, parent-clipped), the ring is
+    visible, and the chevron dark core sits on center, enabled AND
+    disabled (mockup: solid 36px, centered chevron, half-outside edge,
+    visible ring in both states)."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    QApplication.processEvents()
+    card = ov._content.geometry()
+    for enabled in (True, False):
+        ov._prev_btn.setEnabled(enabled)
+        ov._next_btn.setEnabled(enabled)
+        QApplication.processEvents()
+        for btn in (ov._prev_btn, ov._next_btn):
+            fills, ring, darks, (ccx, ccy) = _w10_live_nav_stats(ov, btn)
+            # Outside half paints the mockup disc (spot-check 9px outside
+            # the card edge — the pixel that grabbed pure veil pre-W10).
+            img = ov.grab().toImage()
+            outside_x = card.x() - 9 if btn is ov._prev_btn else card.x() + card.width() + 9
+            spot = img.pixelColor(
+                max(0, min(img.width() - 1, outside_x)),
+                max(0, min(img.height() - 1, ccy)),
+            )
+            assert (spot.red(), spot.green(), spot.blue()) == (0xF1, 0xF2, 0xF4), (
+                enabled, btn.objectName(), (spot.red(), spot.green(), spot.blue()),
+            )
+            assert fills > 400, (enabled, btn.objectName(), fills)
+            assert ring > 30, (enabled, btn.objectName(), ring)
+            assert len(darks) >= 5, (enabled, btn.objectName(), len(darks))
+            cx = sum(x for x, _y in darks) / len(darks)
+            cy = sum(y for _x, y in darks) / len(darks)
+            assert abs(cx - ccx) <= 4, (enabled, btn.objectName(), cx, ccx)
+            assert abs(cy - ccy) <= 4, (enabled, btn.objectName(), cy, ccy)
     ov.hide()

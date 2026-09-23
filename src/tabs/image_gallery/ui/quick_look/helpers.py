@@ -482,12 +482,14 @@ class _RuleWidget(QWidget):
 
 
 def reposition_nav_buttons(overlay) -> None:
-    """Pin prev/next circles half-outside the card edges (W4 item 6).
+    """Pin prev/next circles half-outside the card edges (W4 item 6, W10).
 
-    Absolute children of the card plate (like ``reposition_source_inset``):
-    each circle's center sits on the card's left/right edge, vertically
-    centered on the preview band. Called from ``resizeEvent`` and after
-    ``_populate`` (best effort before first show).
+    W10: the circles are overlay children (siblings above the card plate),
+    positioned in OVERLAY coords — each center sits on the card's left/right
+    edge, vertically centered on the preview band. W4..W9 parented them to
+    the card plate, whose parent-rect clipping erased the outside half
+    (offscreen overlay grab: outside-half pixel was pure veil). Called from
+    ``resizeEvent`` and after ``_populate`` (best effort before first show).
     """
     try:
         content = getattr(overlay, "_content", None)
@@ -496,16 +498,22 @@ def reposition_nav_buttons(overlay) -> None:
         nxt = getattr(overlay, "_next_btn", None)
         if content is None or host is None or prev is None or nxt is None:
             return
-        host_pos = host.mapTo(content, QPoint(0, 0))
+        try:
+            card = content.geometry()
+        except Exception:
+            return
+        try:
+            host_pos = host.mapTo(overlay, QPoint(0, 0))
+        except Exception:
+            return
         cy = host_pos.y() + host.height() // 2
-        cw = content.width()
         for btn, left_edge in ((prev, True), (nxt, False)):
             try:
                 bw = btn.width() or btn.sizeHint().width()
                 bh = btn.height() or btn.sizeHint().height()
             except Exception:
                 continue
-            x = -bw // 2 if left_edge else cw - bw // 2
+            x = card.x() - bw // 2 if left_edge else card.x() + card.width() - bw // 2
             btn.move(x, cy - bh // 2)
             try:
                 btn.raise_()
@@ -779,6 +787,174 @@ def handle_border_release(overlay, event) -> bool:
         return False
 
 
+def ring_zone_at(overlay, pos) -> str | None:
+    """Hit-test an OVERLAY-local point against the 8px ring OUTSIDE the card.
+
+    W10: the W9 strip lives on the card plate (inner edge only) — the 8px
+    band on the veil around the card grabbed nothing. This mirrors
+    ``resize_zone_at`` for that outer band: returns the same 8 zone names
+    when ``pos`` is outside the card but within ``RESIZE_BORDER_PX`` of it,
+    else None (interior, card children, and open veil all return None —
+    a plain veil click must never start a drag, W6).
+    """
+    try:
+        from sli_ui_toolkit.managers import scaled_px
+
+        content = getattr(overlay, "_content", None)
+        if content is None:
+            return None
+        try:
+            card = content.geometry()
+        except Exception:
+            return None
+        try:
+            x = pos.x()
+            y = pos.y()
+        except Exception:
+            return None
+        # Interior (including the card border itself) belongs to the W9
+        # plate filter, never to the ring.
+        try:
+            if card.contains(pos):
+                return None
+        except Exception:
+            pass
+        strip = scaled_px(RESIZE_BORDER_PX)
+        left = card.x() - strip <= x < card.x()
+        right = card.x() + card.width() <= x < card.x() + card.width() + strip
+        top = card.y() - strip <= y < card.y()
+        bottom = card.y() + card.height() <= y < card.y() + card.height() + strip
+        # Ring bands only run alongside the card (corners are strip×strip
+        # squares); anything beyond is open veil.
+        v_span = card.y() - strip <= y < card.y() + card.height() + strip
+        h_span = card.x() - strip <= x < card.x() + card.width() + strip
+        if (left or right) and not v_span:
+            return None
+        if (top or bottom) and not h_span:
+            return None
+        if top and left:
+            return "top_left"
+        if top and right:
+            return "top_right"
+        if bottom and left:
+            return "bottom_left"
+        if bottom and right:
+            return "bottom_right"
+        if left:
+            return "left"
+        if right:
+            return "right"
+        if top:
+            return "top"
+        if bottom:
+            return "bottom"
+        return None
+    except Exception:
+        return None
+
+
+def handle_ring_press(overlay, event) -> bool:
+    """Start a border drag from the OUTER ring (W10). True when consumed.
+
+    Shares the ``_border_drag`` tuple + ``clamp_card_size`` + cursor idiom
+    with the W9 plate handlers, so inner and outer drags agree exactly.
+    Plain veil clicks (``ring_zone_at`` None) return False — W6 holds.
+    """
+    try:
+        from PySide6.QtCore import Qt
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            return False
+        content = getattr(overlay, "_content", None)
+        if content is None:
+            return False
+        try:
+            local = event.position().toPoint()
+        except Exception:
+            return False
+        zone = ring_zone_at(overlay, local)
+        if zone is None:
+            return False
+        try:
+            start_global = event.globalPosition().toPoint()
+        except Exception:
+            return False
+        overlay._border_drag = (zone, start_global, content.geometry())
+        cursor = resize_cursor_for(zone)
+        if cursor is not None:
+            try:
+                overlay.setCursor(cursor)
+            except Exception:
+                pass
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def handle_ring_hover(overlay, event) -> bool:
+    """Hover cursors over the outer ring (W10). Never consumed.
+
+    Overlay-level moves carry overlay-local positions, so the W9 plate
+    hover (content-local) cannot serve here. Cursor-only affordance, no QSS.
+    """
+    try:
+        from PySide6.QtCore import Qt
+
+        if getattr(overlay, "_border_drag", None) is not None:
+            return False
+        try:
+            buttons = event.buttons()
+        except Exception:
+            buttons = Qt.MouseButton.NoButton
+        if buttons != Qt.MouseButton.NoButton:
+            return False
+        try:
+            local = event.position().toPoint()
+        except Exception:
+            return False
+        cursor = resize_cursor_for(ring_zone_at(overlay, local))
+        try:
+            if cursor is not None:
+                overlay.setCursor(cursor)
+            else:
+                overlay.unsetCursor()
+        except Exception:
+            pass
+        return False
+    except Exception:
+        return False
+
+
+def handle_ring_release(overlay, event) -> bool:
+    """End an outer-ring drag (W10). True when a drag was active."""
+    try:
+        if getattr(overlay, "_border_drag", None) is None:
+            return False
+        overlay._border_drag = None
+        _repin_after_card_resize(overlay)
+        try:
+            overlay.unsetCursor()
+        except Exception:
+            pass
+        try:
+            content = getattr(overlay, "_content", None)
+            if content is not None:
+                content.unsetCursor()
+        except Exception:
+            pass
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 class _ResizeGrip(QWidget):
     """Bottom-right drag handle for the resizable quick look card (W8).
 
@@ -1027,9 +1203,10 @@ def build_overlay_ui(overlay) -> None:
     preview_row.setSpacing(scaled_px(6))
     preview_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     # S4 v2 (svg:67-70): 36px circular prev/next overlapping the card edge
-    # half-outside (W4 item 6) — absolute children of the card plate,
-    # positioned by reposition_nav_buttons (like reposition_source_inset),
-    # NOT layout items. Glyph via rows (rows-only buttons take setFixedSize
+    # half-outside (W4 item 6) — W10: overlay children (siblings above the
+    # card plate), positioned by reposition_nav_buttons in overlay coords,
+    # NOT layout items and NOT card children (the plate clips children to
+    # its rect, which erased the outside half). Glyph via rows (rows-only buttons take setFixedSize
     # so 36x36 actually lands); round shape via corner_radius (design px,
     # scaled internally); no QSS anywhere on this path.
     # W9: mockup paint — #f1f2f4 disc, #d7dade ring, #23262b chevron.
@@ -1042,7 +1219,7 @@ def build_overlay_ui(overlay) -> None:
     _nav_glyph = _token_color("gallery.nav.glyph", "#23262b")
     _nav_fill = _token_color("gallery.nav.fill", "#f1f2f4")
     _nav_border = _token_color("gallery.nav.border", "#d7dade")
-    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
     overlay._prev_btn.setObjectName("quicklook_prev")
     try:
         if _nav_fill is not None:
@@ -1119,7 +1296,7 @@ def build_overlay_ui(overlay) -> None:
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
     overlay._next_btn.setObjectName("quicklook_next")
     try:
         if _nav_fill is not None:

@@ -184,6 +184,50 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         return super().eventFilter(watched, event)
 
+    # W10: the 8px ring OUTSIDE the card (on the veil) is owned here at
+    # overlay level — the W9 plate filter only sees the inner edge. Ring
+    # drags share the _border_drag tuple + clamp/cursor helpers with the
+    # plate handlers. Plain veil clicks fall through to super() (W6: the
+    # veil never closes — X + Esc stay the close paths).
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press
+            if handle_ring_press(self, event):
+                return
+        except Exception:
+            pass
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if getattr(self, "_border_drag", None) is not None:
+                from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                if handle_border_move(self, event):
+                    return
+            else:
+                from tabs.image_gallery.ui.quick_look.helpers import handle_ring_hover
+                handle_ring_hover(self, event)
+        except Exception:
+            pass
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_release
+            if handle_ring_release(self, event):
+                return
+        except Exception:
+            pass
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if getattr(self, "_border_drag", None) is None:
+                self.unsetCursor()
+        except Exception:
+            pass
+        super().leaveEvent(event)
+
     def show_for(self, item, owner=None) -> None:
         if owner is not None:
             self._owner = owner
