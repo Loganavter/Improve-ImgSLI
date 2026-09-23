@@ -233,6 +233,49 @@ def on_quick_set_source(owner, path) -> None:
             owner.stats_strip.set_mode(str(mode_name), Path(path))  # type: ignore[attr-defined]
         except Exception:
             pass
+        # S4 parity: the new source invalidates every measured number — mark
+        # the 4 fidelity keys stale and re-run the pass so the header (new
+        # source name) and the numbers never disagree. Covers the overlay
+        # setSource signal (connected in show_quick_look) and the card
+        # context-menu fallback (which delegates here); delivery repopulates
+        # the open overlay via QuickLookOverlay.refresh_metrics (W1).
+        try:
+            runner = triage_owner
+            start = getattr(runner, "_start_fidelity_analysis", None)
+            state = getattr(runner, "state", None)
+            if callable(start) and state is not None:
+                items = list(getattr(state, "items", None) or [])
+                source = getattr(state, "source_path", None)
+                if source is None:
+                    try:
+                        source = Path(path)
+                    except Exception:
+                        source = None
+                if items and source is not None:
+                    for it in items:
+                        try:
+                            m = getattr(it, "metrics", None)
+                            if isinstance(m, dict):
+                                for k in ("ssim", "hf_ratio", "delta_e", "upscale_factor"):
+                                    m.pop(k, None)
+                        except Exception:
+                            pass
+                    try:
+                        start(items, source)
+                    except Exception:
+                        pass
+                    try:
+                        overlay = getattr(owner, "_quick_look_overlay", None)
+                        if overlay is not None and hasattr(overlay, "refresh_metrics"):
+                            for it in items:
+                                try:
+                                    overlay.refresh_metrics(it)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+        except Exception:
+            pass
     except Exception:
         pass
 

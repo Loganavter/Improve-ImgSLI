@@ -569,6 +569,19 @@ class GalleryController:
                     self.widget.refresh_card(item)
                 except Exception:
                     logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
+                # Quick look report: overlay opened before delivery shows the
+                # numbers without reopen (mirrors _on_artifacts_ready above;
+                # refresh_metrics itself no-ops when hidden or on another item).
+                try:
+                    for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
+                        ql = getattr(self.widget, attr, None)
+                        if ql is not None and hasattr(ql, "refresh_metrics"):
+                            try:
+                                ql.refresh_metrics(item)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
             except Exception:
                 logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
 
