@@ -56,7 +56,7 @@ def _gallery_card_bg() -> QColor:
 
         from ui.theming import try_resolve_theme_color
 
-        for token in ("gallery.card.background", "surface.background"):
+        for token in ("gallery.card.background", "surface.list", "surface.background"):
             c = try_resolve_theme_color(ThemeManager.get_instance(), token)
             if c is not None:
                 return c if isinstance(c, QColor) else QColor(c)
