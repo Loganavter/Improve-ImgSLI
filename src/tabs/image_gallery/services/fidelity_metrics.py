@@ -8,7 +8,7 @@ Writes ``item.metrics`` keys ``ssim`` / ``hf_ratio`` / ``delta_e`` /
 - ``hf_ratio = hf_out/hf_in - 1`` (Laplacian-variance HF energy ratio;
   dual-bar marker ``frac = 0.5 - clamp(hf,-1,1)*0.5``, so +0.18 → 0.41);
 - ``delta_e >= 0`` (mean per-pixel RGB distance on thumbnails);
-- ``upscale_factor: int`` (item width over source width, >= 1).
+- ``upscale_factor: int`` (item long side over source long side, >= 1).
 
 Identity fail-closed: keys are written strictly by ``item.path`` — the apply
 helpers verify path equality before touching ``item.metrics`` and never copy
@@ -130,6 +130,18 @@ def compute_fidelity_metrics(item_path: Path | str, source_path: Path | str) -> 
         except Exception:
             logger.debug("fidelity: unreadable pair %s vs %s", item_path, source_path, exc_info=True)
             return {}
+        # W5: snapshot the PRE-CAP original dimensions here, before any
+        # engine call. The scalar engines resample internally
+        # (``_cap_edge`` copies for SSIM/HF/ΔE, ``_pair_arrays`` aligns),
+        # but the upscale factor must always divide ORIGINAL long sides:
+        # reading sizes after the engine calls risks a capped-long vs
+        # capped-long ratio (≈1 for any large pair — the live ×1 class of
+        # bug). These locals are the only sizes the factor may use.
+        try:
+            orig_item_size = tuple(item_image.size)
+            orig_source_size = tuple(source_image.size)
+        except Exception:
+            orig_item_size = orig_source_size = (0, 0)
         try:
             ssim_val = calculate_ssim(_cap_edge(item_image, _SSIM_MAX_EDGE), _cap_edge(source_image, _SSIM_MAX_EDGE))
             if ssim_val is not None:
@@ -151,16 +163,18 @@ def compute_fidelity_metrics(item_path: Path | str, source_path: Path | str) -> 
             logger.debug("fidelity: delta_e failed for %s", item_path, exc_info=True)
         try:
             # W4 item 7: factor by LONG side (portrait-safe — a width-only
-            # ratio misreads portrait pairs), log both sizes at the read
-            # site so a live ×1 can be diagnosed (truly-1 vs misread).
-            iw, ih = item_image.size
-            sw, sh = source_image.size
+            # ratio misreads portrait pairs), from the PRE-CAP snapshot
+            # above (W5) — never from post-engine sizes. Log both sizes at
+            # the read site so a live ×1 can be diagnosed (truly-1 vs
+            # misread vs item-smaller-than-source clamp).
+            iw, ih = orig_item_size
+            sw, sh = orig_source_size
             liw, lsw = max(iw, ih), max(sw, sh)
             if lsw > 0 and liw > 0:
                 factor = max(1, int(round(liw / lsw)))
                 out["upscale_factor"] = factor
                 logger.debug(
-                    "fidelity upscale: item=%dx%d source=%dx%d long=%d/%d factor=%d",
+                    "fidelity upscale: item=%dx%d source=%dx%d long=%d/%d factor=%d (pre-cap)",
                     iw, ih, sw, sh, liw, lsw, factor,
                 )
         except Exception:

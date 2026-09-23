@@ -125,21 +125,26 @@ def test_no_region_suffix_on_any_artifact(qtbot):
         ov.hide()
 
 
-# -- S4-4: ALL artifact rows render incl. clean, section never collapses ----
-# (W4 item 8: hiding clean rows hid the banding base on all-clean items.)
+# -- S4-4: mockup artifact rows (Banding + Halo) incl. clean ---------------
+# (W4 item 8: hiding clean rows hid the banding base on all-clean items.
+# W5: the overlay shows the mockup set only — Banding + Halo. The full
+# 7-key catalog stays in the card dots/tooltip, untouched.)
 
 
 def test_all_artifact_rows_shown_including_clean(qtbot):
     item = _item("c.png", artifacts={}, metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    assert len(ov._artifact_rows) == 7
+    assert len(ov._artifact_rows) == 2
     assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
     texts = [
         lbl.text()
         for w in ov._artifact_rows
         for lbl in w.findChildren(type(ov._mode_chip))
     ]
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(type(ov._mode_chip))]
+    assert any("Banding" in t for t in titles)
+    assert any("Halo" in t for t in titles)
     assert "clean" in texts
     ov.hide()
 
@@ -149,22 +154,21 @@ def test_non_clean_artifact_rows_shown(qtbot):
         "d.png",
         artifacts={
             Artifact.BANDING: Severity.MILD,
-            Artifact.BLOCKING: Severity.CLEAN,
             Artifact.HALO: Severity.FLAGGED,
         },
         metrics={},
     )
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    # All seven rows render (clean included); severities read severity-only.
-    assert len(ov._artifact_rows) == 7
+    # Mockup set only (Banding + Halo); severities read severity-only.
+    assert len(ov._artifact_rows) == 2
     assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
     texts = [
         lbl.text()
         for w in ov._artifact_rows
         for lbl in w.findChildren(type(ov._mode_chip))
     ]
-    assert "mild" in texts and "flagged" in texts and "clean" in texts
+    assert "mild" in texts and "flagged" in texts
     ov.hide()
 
 
@@ -1007,4 +1011,90 @@ def test_strip_rejected_badge_is_x(qtbot, tmp_path):
     }
     assert by_path[str(p2)]._badge == "✕"
     assert by_path[str(p2)]._text == ""
+    ov.hide()
+
+
+# -- W5 fit + live xN --------------------------------------------------------
+
+
+def _w5_solid_png(path, size, color=(10, 20, 30)):
+    from PIL import Image as _PIL
+
+    _PIL.new("RGB", size, color).save(path)
+
+
+def test_upscale_factor_precap_long_side(tmp_path):
+    """W5 item 1: factor divides PRE-CAP original long sides — the live ×1
+    class (5760×4320 vs ~1100×432 reading 1) stays 5, plus a portrait pair."""
+    from tabs.image_gallery.services.fidelity_metrics import compute_fidelity_metrics
+
+    big = tmp_path / "big.png"
+    small = tmp_path / "small.png"
+    _w5_solid_png(big, (5760, 4320))
+    _w5_solid_png(small, (1100, 432), (40, 50, 60))
+    measured = compute_fidelity_metrics(big, small)
+    assert measured["upscale_factor"] == 5
+    # Portrait pair: long-side ratio, not width-only.
+    psrc = tmp_path / "psrc.png"
+    pup = tmp_path / "pup.png"
+    _w5_solid_png(psrc, (540, 960))
+    _w5_solid_png(pup, (1080, 1920), (40, 50, 60))
+    assert compute_fidelity_metrics(pup, psrc)["upscale_factor"] == 2
+
+
+def test_meta_smaller_than_source(tmp_path, qtbot):
+    """W5 item 1b: factor 1 with a genuinely smaller item must not claim
+    'same size as source' (the max(1, …) clamp hid downscales)."""
+    small = tmp_path / "small.png"
+    big = tmp_path / "big.png"
+    _w5_solid_png(small, (64, 32))
+    _w5_solid_png(big, (128, 128), (40, 50, 60))
+    src = GalleryItem(path=big, mtime_ns=1, metrics={})
+    item = GalleryItem(path=small, mtime_ns=2, metrics={"upscale_factor": 1})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    assert "smaller than source" in ov._meta_label.text()
+    assert "same size as source" not in ov._meta_label.text()
+    ov.hide()
+
+
+def test_right_column_no_scrollbars_with_full_content(qtbot):
+    """W5 item 3: full right column (metrics + 2 artifact rows + series +
+    brief) fits the 1040×620 card with both scrollbars hidden (mockup:
+    none). Value/subline labels elide to the 296px column instead of
+    forcing width; the full copy stays in _original_text."""
+    from PySide6.QtWidgets import QScrollArea
+
+    from sli_ui_toolkit.managers import scaled_px
+    from sli_ui_toolkit.widgets import Button
+
+    src = _item("src.png", metrics={})
+    viewing = _item(
+        "v.png",
+        rank=1,
+        vlm_tie_pending=True,
+        metrics={"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 4},
+        artifacts={Artifact.BANDING: Severity.MILD},
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    # Full content is really there.
+    assert len(ov._metric_rows) >= 3
+    assert len(ov._artifact_rows) == 2
+    thumbs = [
+        b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
+    ]
+    assert len(thumbs) == 2
+    assert ov._brief_label.isVisible() and ov._brief_label.text()
+    # The column is the mockup 296px; both scrollbars stay hidden.
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.width() == scaled_px(296)
+    assert scroll.horizontalScrollBar().maximum() == 0
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.horizontalScrollBar().isVisible() is False
+    assert scroll.verticalScrollBar().isVisible() is False
+    # Elide, not truncate: the full sub copy survives in _original_text.
+    assert "shared/analysis engine" in ov._report_sub._original_text
     ov.hide()

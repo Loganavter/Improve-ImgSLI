@@ -744,7 +744,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
-      "lines": 1222,
+      "lines": 1272,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",

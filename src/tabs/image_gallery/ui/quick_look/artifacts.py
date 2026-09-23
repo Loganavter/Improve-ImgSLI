@@ -8,17 +8,19 @@ from sli_ui_toolkit.managers import scaled_px
 
 
 def rebuild_artifacts(overlay, item) -> None:
-    """Rebuild artifact rows — ALL severities incl. clean (W4 item 8).
+    """Rebuild artifact rows — Banding + Halo ONLY (W5, S4 v2 LIGHT).
 
-    Diagnosis for the empty banding visual (W4 item 8): the detector path
-    was clean-by-default (``_sev_for`` returns ``"clean"`` for every
-    unknown/absent key) and the old code *hid* clean rows and collapsed the
-    whole section — so an all-clean item showed no banding base at all,
-    and the section vanished. Delivery itself is not racy here:
+    The mockup's right column shows exactly two artifact rows (svg:106-141:
+    the Banding histogram block and the Halo bar); the remaining five
+    catalog keys (over-smoothing, invented texture, blocking, chroma
+    fringing, noise amplification) stay visible in the card quality dots
+    and tooltips (``ui/card/dots.py`` — untouched by this overlay cut).
+    Severities still resolve through the same ``_sev_for`` channel, so a
+    mild/flagged banding or halo reads identically; every shown row
+    renders incl. clean (W4 item 8 — hiding clean rows hid the banding
+    base on all-clean items). Delivery is not racy here:
     ``refresh_artifacts`` rebuilds the open overlay on every artifacts
-    delivery (path-guarded, mirrors ``refresh_metrics``). Fix: render every
-    row including clean, so the banding base is always visible; keep the
-    section host always visible.
+    delivery (path-guarded, mirrors ``refresh_metrics``).
     """
     try:
         from tabs.image_gallery.ui.quick_look.helpers import _make_label
@@ -39,7 +41,9 @@ def rebuild_artifacts(overlay, item) -> None:
     metrics = getattr(item, "metrics", None) or {}
     if not isinstance(metrics, dict):
         metrics = {}
-    artifacts = ["banding", "halo", "over_smoothing", "invented_texture", "blocking", "chroma_fringing", "noise_amplification"]
+    # W5: overlay shows the mockup set only (Banding + Halo). The full
+    # 7-key catalog stays in the card dots/tooltip (ui/card/dots.py).
+    artifacts = ["banding", "halo"]
     artifacts_map: dict[str, str] = {}
     try:
         raw = getattr(item, "artifacts", None)
@@ -108,19 +112,13 @@ def rebuild_artifacts(overlay, item) -> None:
         row = QWidget(overlay._artifacts_host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.setSpacing(scaled_px(4))
+        rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
         title_map = {
             "banding": "Banding",
             "halo": "Halo / overshoot",
-            "over_smoothing": "Over-smoothing",
-            "invented_texture": "Invented texture",
-            "blocking": "Blocking",
-            "chroma_fringing": "Chroma fringing",
-            "noise_amplification": "Noise amplification",
-            "noise_amp": "Noise amplification",
         }
         t = _make_label(title_map.get(aid, aid), parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
@@ -156,11 +154,14 @@ def rebuild_artifacts(overlay, item) -> None:
             hist = _GenericHistogram(severity=lvl, parent=row)
         rl.addWidget(hist)
         if aid == "banding":
-            note = _make_label("gradient histogram — comb spikes = banding steps (sky)", parent=row, pixel_size=9, pt=9)
+            # W5: the caption elides to the 296px column like the metric
+            # sublines (its full ~300px text forced the h-scrollbar; the
+            # full copy stays in _original_text, as with elided values).
+            note = _make_label("gradient histogram — comb spikes = banding steps (sky)", parent=row, pixel_size=9, pt=9, elide=True, minimum_width=40)
             rl.addWidget(note)
         overlay._artifacts_layout.addWidget(row)
         overlay._artifact_rows.append(row)
-    # W4 item 8: every row renders incl. clean — the section never collapses.
+    # W5: both mockup rows render incl. clean — the section never collapses.
     try:
         overlay._artifacts_host.setVisible(True)
     except Exception:

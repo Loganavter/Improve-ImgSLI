@@ -559,7 +559,12 @@ def build_overlay_ui(overlay) -> None:
         pass
     outer = QVBoxLayout(overlay._content)
     outer.setContentsMargins(scaled_px(16), scaled_px(12), scaled_px(16), scaled_px(12))
-    outer.setSpacing(scaled_px(8))
+    # W5: the 620-tall card must fit without scrollbars (S4 mockup: none) —
+    # the W4 pt fonts cost ~95px of row height vs the mockup's px lines,
+    # so the column/mode chrome gaps densify instead of scrolling. Budget:
+    # content min-height must stay under the mid-row viewport (~505px);
+    # every spacing below is sized against that budget (see W5 DONE note).
+    outer.setSpacing(scaled_px(4))
     chip_row = QHBoxLayout()
     chip_row.setContentsMargins(0, 0, 0, 0)
     chip_row.setSpacing(scaled_px(8))
@@ -704,6 +709,10 @@ def build_overlay_ui(overlay) -> None:
     mid.addWidget(left, 2)
     right_scroll = QScrollArea(overlay._content)
     right_scroll.setObjectName("quicklook_right_scroll")
+    # W5: the mockup's right column is a fixed 296px (svg x=816 w=296) —
+    # the value/sub labels elide to it instead of stretching it into
+    # h-scrollbars. mid-stretch still gives the left preview the rest.
+    right_scroll.setFixedWidth(scaled_px(296))
     # W4 item 2: frameless — the scroll frame drew a bogus box around the
     # right column. No QSS (stock Qt widget, frame shape only).
     try:
@@ -717,25 +726,27 @@ def build_overlay_ui(overlay) -> None:
     right_host.setObjectName("quicklook_right_host")
     right_lay = QVBoxLayout(right_host)
     right_lay.setContentsMargins(0, 0, 0, 0)
-    right_lay.setSpacing(scaled_px(10))
+    # W5: 10→4 (see outer spacing note — the 296px column must fit the
+    # 620 card with metrics + 2 artifact rows + series + brief, no scroll).
+    right_lay.setSpacing(scaled_px(4))
     right_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
     overlay._report_title = _make_label("Fidelity report", parent=right_host, pixel_size=13, pt=13, bold=True)
     overlay._report_title.setObjectName("quicklook_report_title")
     right_lay.addWidget(overlay._report_title)
-    overlay._report_sub = _make_label("", parent=right_host, pixel_size=10, pt=10)
+    overlay._report_sub = _make_label("", parent=right_host, pixel_size=10, pt=10, elide=True, minimum_width=40)
     overlay._report_sub.setObjectName("quicklook_report_sub")
     right_lay.addWidget(overlay._report_sub)
     overlay._metrics_host = QWidget(right_host)
     overlay._metrics_host.setObjectName("quicklook_metrics_host")
     overlay._metrics_layout = QVBoxLayout(overlay._metrics_host)
     overlay._metrics_layout.setContentsMargins(0, 0, 0, 0)
-    overlay._metrics_layout.setSpacing(scaled_px(8))
+    overlay._metrics_layout.setSpacing(scaled_px(4))
     right_lay.addWidget(overlay._metrics_host)
     overlay._artifacts_host = QWidget(right_host)
     overlay._artifacts_host.setObjectName("quicklook_artifacts_host")
     overlay._artifacts_layout = QVBoxLayout(overlay._artifacts_host)
     overlay._artifacts_layout.setContentsMargins(0, 0, 0, 0)
-    overlay._artifacts_layout.setSpacing(scaled_px(6))
+    overlay._artifacts_layout.setSpacing(scaled_px(2))
     right_lay.addWidget(overlay._artifacts_host)
     # S4 mockup divider before the series context block (svg:462) — a
     # file-local 1px painted rule (W4 item 3); the toolkit Divider is a
@@ -746,7 +757,7 @@ def build_overlay_ui(overlay) -> None:
     overlay._series_header = _make_label("Series", parent=right_host, pixel_size=11, pt=13, bold=True)
     overlay._series_header.setObjectName("quicklook_series_header")
     right_lay.addWidget(overlay._series_header)
-    overlay._series_sub = _make_label("", parent=right_host, pixel_size=10, pt=11.5)
+    overlay._series_sub = _make_label("", parent=right_host, pixel_size=10, pt=11.5, elide=True, minimum_width=40)
     overlay._series_sub.setObjectName("quicklook_series_sub")
     right_lay.addWidget(overlay._series_sub)
     overlay._strip_host = QWidget(right_host)
@@ -777,7 +788,7 @@ def build_overlay_ui(overlay) -> None:
     bar = QWidget(overlay._content)
     bar.setObjectName("quicklook_bottom_bar")
     bar_lay = QHBoxLayout(bar)
-    bar_lay.setContentsMargins(0, scaled_px(6), 0, 0)
+    bar_lay.setContentsMargins(0, scaled_px(4), 0, 0)
     bar_lay.setSpacing(scaled_px(8))
     dark_bottom = _is_dark_theme()
     # NOTE: old fallbacks were dark-only (#0096FF, #D93025, #e8b64c) — now light/dark chains.
@@ -981,7 +992,15 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
                 meta_parts.append(f"upscale ×{upscale_n} from source")
             elif upscale_n == 1:
                 # W4 item 7: explicit same-size text when truly ×1.
-                meta_parts.append("same size as source")
+                # W5: factor 1 also covers item-smaller-than-source (the
+                # max(1, ...) clamp) — only claim "same size" when the
+                # item is not genuinely smaller; else say so honestly.
+                # Falls back to the old text whenever either side's dims
+                # are unknown (never a fabricated comparison).
+                if _item_smaller_than_source(overlay, dims_txt):
+                    meta_parts.append("smaller than source")
+                else:
+                    meta_parts.append("same size as source")
             else:
                 meta_parts.append("upscale from source")
         elif upscale_n is not None and upscale_n > 1:
@@ -989,6 +1008,37 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
         overlay._meta_label.setText(" · ".join(meta_parts))
     except Exception:
         pass
+
+
+def _item_smaller_than_source(overlay, dims_txt: str | None) -> bool:
+    """True only when the item's long side is known-smaller than the source's.
+
+    Compares the already-formatted item dims (``"W × H"``) against
+    ``_source_dimensions`` (metrics first, QPixmap fallback). False on any
+    unknown side — callers keep the neutral text instead of guessing.
+    """
+    try:
+        if not dims_txt or "×" not in dims_txt:
+            return False
+        iw, ih = (int(p.strip()) for p in dims_txt.split("×"))
+        src = getattr(overlay, "_source_path", None)
+        src_item = None
+        try:
+            owner = getattr(overlay, "_owner", None)
+            items = list(getattr(getattr(owner, "state", None), "items", []) or [])
+            if src is not None:
+                for it2 in items:
+                    if Path(getattr(it2, "path", "")) == Path(src):
+                        src_item = it2
+                        break
+        except Exception:
+            pass
+        sdims = _source_dimensions(src_item, src)
+        if sdims is None:
+            return False
+        return max(iw, ih) < max(sdims[0], sdims[1])
+    except Exception:
+        return False
 
 
 def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:

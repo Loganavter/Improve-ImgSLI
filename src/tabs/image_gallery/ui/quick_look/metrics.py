@@ -55,11 +55,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     if not isinstance(metrics, dict):
         metrics = {}
 
-    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None) -> None:
+    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
         row = QWidget(overlay._metrics_host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.setSpacing(scaled_px(4))
+        rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
@@ -67,8 +67,16 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         header.addWidget(t)
         header.addStretch(1)
         # S4 mockup: measured values read gallery.status.ok green; gaps stay muted.
+        # W5: values elide to the 296px right column (svg:84 — right-aligned,
+        # text-anchor=end) instead of widening it into an h-scrollbar.
+        # NOTE: elide alone does not shrink the layout minimum (QLabel's
+        # minimumSizeHint stays full-text) — minimum_width is what lets the
+        # stretch squeeze the label so the elide engages.
         vc = _ok_color() if value_color is None else value_color
-        v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
+        if value_elide:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc, elide=True, minimum_width=40)
+        else:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
         header.addWidget(v)
         rl.addLayout(header)
         # Lazy import bar widget
@@ -93,8 +101,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     def _add_unmeasured_row(title: str) -> None:
         """Unmeasured state: an explicit 'not measured' row, never a plausible
         constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
-        data look measured; gaps must read as gaps."""
-        _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color())
+        data look measured; gaps must read as gaps. The value is a fixed
+        short constant that always fits the column, so it skips elision
+        (W5: keeps .text() verbatim for readers that match on it)."""
+        _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color(), value_elide=False)
 
     if is_fidelity:
         ssim = metrics.get("ssim")
@@ -118,7 +128,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub_lay = QVBoxLayout(sub_row)
             sub_lay.setContentsMargins(0, 0, 0, 0)
             sub_lay.setSpacing(0)
-            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=9, pt=9.5, color_token="list_item.text.rating"))
+            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=9, pt=9.5, color_token="list_item.text.rating", elide=True, minimum_width=40))
             overlay._metrics_layout.addWidget(sub_row)
             overlay._metric_rows.append(sub_row)
         hf = metrics.get("hf_ratio") if "hf_ratio" in metrics else metrics.get("detail_gain")
@@ -135,14 +145,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             row = QWidget(overlay._metrics_host)
             rl = QVBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
-            rl.setSpacing(scaled_px(4))
+            rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
             t = _make_label("Detail gain (HF ratio)", parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
             header.addStretch(1)
-            v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color())
+            v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color(), elide=True, minimum_width=40)
             header.addWidget(v)
             rl.addLayout(header)
             from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
