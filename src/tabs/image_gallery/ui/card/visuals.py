@@ -41,6 +41,38 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
     return QColor(*fallback_rgba)
 
 
+def _card_border_color() -> QColor:
+    """Default card edge: ``gallery.card.border`` → ``button.dialog.default.border``.
+
+    Frozen seam: tokens only via ``try_resolve_theme_color``. Rule A: fallback
+    keyed on ``is_dark()`` (light default) — ``#e2e4e8`` light / white@0.12
+    dark (mockup 1px card edges, v2/v3/v4-light). BEST accent 2px and the
+    rejected/danger paths are untouched — only default borders route here.
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        mgr = ThemeManager.get_instance()
+        for _tok in ("gallery.card.border", "button.dialog.default.border"):
+            try:
+                c = try_resolve_theme_color(mgr, _tok)
+            except Exception:
+                c = None
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+        try:
+            _dark = bool(mgr.is_dark())
+        except Exception:
+            _dark = False
+    except Exception:
+        _dark = False
+    if _dark:
+        return QColor(255, 255, 255, 30)
+    return QColor("#e2e4e8")
+
+
 if TYPE_CHECKING:
     from sli_ui_toolkit.widgets import Button
     from tabs.image_gallery.models import GalleryItem
@@ -136,7 +168,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                     pass
                 card._gallery_badge = "AI tie-break…"  # type: ignore[attr-defined]
                 card._gallery_badge_style = (False, None, _accent, _accent_text)  # type: ignore[attr-defined]
-                card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
+                card.setBorderColor(_card_border_color())
             except Exception:
                 pass
         elif is_best or (not rejected and not tie_pending and getattr(item, "rank", None) == 1) or (not rejected and not tie_pending and getattr(item, "crown_rank", None) == 1):
@@ -172,7 +204,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                     card._gallery_badge = badge_text  # type: ignore[attr-defined]
                     rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
                     card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("gallery.stats.text", "#dfdfdf"))  # type: ignore[attr-defined]
-                    card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
+                    card.setBorderColor(_card_border_color())
                 except Exception:
                     pass
             else:
@@ -182,7 +214,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                     pass
                 try:
                     card._gallery_badge = None  # type: ignore[attr-defined]
-                    card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
+                    card.setBorderColor(_card_border_color())
                 except Exception:
                     pass
     except Exception:

@@ -137,6 +137,32 @@ def _stats_bg_color() -> QColor:
     return QColor("#8a8a8a")
 
 
+def _stats_border_color() -> QColor:
+    """Stats strip edge: ``gallery.card.border`` → ``flyout.border`` → theme-aware fallback.
+
+    Mockup (v2-light): stats strip is a #ffffff card with a 1px #e2e4e8 edge —
+    same hairline as gallery cards. Frozen seam: ``try_resolve_theme_color`` only.
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        mgr = ThemeManager.get_instance()
+        for _tok in ("gallery.card.border", "flyout.border"):
+            try:
+                col = try_resolve_theme_color(mgr, _tok)
+            except Exception:
+                col = None
+            if col is not None:
+                return col if isinstance(col, QColor) else QColor(col)
+    except Exception:
+        pass
+    if _is_dark():
+        return QColor(255, 255, 255, 30)
+    return QColor("#e2e4e8")
+
+
 def _accent_border_color() -> QColor:
     """Enabled clean button border — accent with 60% opacity (alpha 153)."""
     base = _token_qcolor("accent", _fallback_for("#0078D4", "#0096FF"))
@@ -172,6 +198,7 @@ class StatsStrip(QWidget):
         # Cached surface color; repainted explicitly in paintEvent (never via
         # palette/auto-fill — see THEMING.md warm-up quirk).
         self._stats_bg = _stats_bg_color()
+        self._stats_border = _stats_border_color()
         try:
             from sli_ui_toolkit.managers import ThemeManager
 
@@ -302,6 +329,10 @@ class StatsStrip(QWidget):
         except Exception:
             pass
         try:
+            self._stats_border = _stats_border_color()
+        except Exception:
+            pass
+        try:
             self._keep_btn.setForegroundColor(_stats_text_color())
             self._keep_btn.setBorderColor(_thin_border_color())
         except Exception:
@@ -335,6 +366,23 @@ class StatsStrip(QWidget):
             p.setBrush(bg)
             r = QRectF(self.rect())
             p.drawRoundedRect(r, 8, 8)
+            try:
+                border = self._stats_border
+            except Exception:
+                border = _stats_border_color()
+            try:
+                p.setBrush(QColor(0, 0, 0, 0))
+                pen = border
+                try:
+                    from PySide6.QtGui import QPen
+
+                    pen = QPen(border, 1)
+                except Exception:
+                    pass
+                p.setPen(pen)
+                p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            except Exception:
+                pass
             p.end()
         except Exception:
             pass

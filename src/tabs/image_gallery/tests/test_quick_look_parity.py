@@ -242,10 +242,11 @@ def test_strip_source_and_viewing_border_colors(qtbot, _w1_light_palettes):
     ]
     assert len(buttons) == 2
     by_path = {b.property("gallery_path"): b for b in buttons}
-    # W1 production palettes registered under the light theme → borders
-    # resolve the live gallery.status.warn / accent hexes via the real
-    # painter border API (not the old setProperty no-op).
-    assert by_path["/gallery/src.png"].borderColor() == QColor("#b77900")
+    # Light production palettes registered → borders resolve the live
+    # gallery.status.warn / accent hexes via the real painter border API
+    # (not the old setProperty no-op). White-cards norm: warn #e8b64c; the
+    # viewing border follows the global accent token (untouched #0078D4).
+    assert by_path["/gallery/src.png"].borderColor() == QColor("#e8b64c")
     assert by_path["/gallery/v.png"].borderColor() == QColor("#0078D4")
     ov.hide()
 

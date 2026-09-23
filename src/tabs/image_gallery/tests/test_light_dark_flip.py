@@ -21,6 +21,7 @@ from tabs.image_gallery.ui.stats_strip import StatsStrip
 # themes.json — never duplicated here.
 GALLERY_TOKENS = (
     "gallery.card.background",
+    "gallery.card.border",
     "gallery.card.hover",
     "gallery.stats.background",
     "gallery.stats.text",
@@ -31,6 +32,7 @@ GALLERY_TOKENS = (
     "gallery.status.warn",
     "gallery.status.danger",
     "gallery.accent.bar",
+    "gallery.accent.text",
     "separator.color",
     "surface.background",
     "Window",
@@ -118,5 +120,60 @@ def test_stats_strip_and_section_bars_repaint_on_flip(qtbot, qapp, _w1_palettes)
         assert not plain_bar.grab().isNull()
 
     # Round-trip lands back on the light production values.
-    assert strip._stats_bg.name().lower() == "#8a8a8a"
-    assert accent_bar._bar_color.name().lower() == "#0078d4"
+    assert strip._stats_bg.name().lower() == "#ffffff"
+    assert accent_bar._bar_color.name().lower() == "#0096ff"
+
+
+def test_normal_card_shows_border_edge_in_light(qtbot, qapp, _w1_palettes) -> None:
+    """Normal (non-BEST, non-rejected) cards render a visible edge in light.
+
+    ``visuals._card_border_color`` repoints the default border to
+    ``gallery.card.border`` (``#e2e4e8``); BEST accent 2px and rejected/danger
+    paths are untouched. Asserts the override resolves hex-exact AND that an
+    offscreen grab shows an edge pixel distinct from the card fill (the
+    painter blends the 1px hairline, so the pixel need not equal the hex —
+    it must differ from the fill).
+    """
+    from pathlib import Path
+
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.ui.card import build_gallery_card
+
+    tm = _w1_palettes
+    _set_theme(tm, qapp, "light")
+    item = GalleryItem(path=Path("/gallery/a.png"), mtime_ns=1)
+    card = build_gallery_card(item, parent=None)
+    qtbot.addWidget(card)
+    card.show()
+    qapp.processEvents()
+    assert card.borderColor().name().lower() == "#e2e4e8"
+    img = card.grab().toImage()
+    assert not img.isNull()
+    w, h = img.width(), img.height()
+    edge = img.pixelColor(0, h // 2).name().lower()
+    fill = img.pixelColor(4, h // 2).name().lower()
+    assert edge != fill, f"card edge {edge} == fill {fill}: border invisible in light"
+    card.deleteLater()
+
+
+def test_stats_strip_paints_border_edge_in_light(qtbot, qapp, _w1_palettes) -> None:
+    """StatsStrip strokes the ``gallery.card.border`` hairline in light.
+
+    The strip fill is ``#ffffff`` like the cards (white-cards philosophy);
+    separation comes from the 1px rounded border painted in ``paintEvent``.
+    Asserts the cached border resolves hex-exact AND that the grabbed top
+    edge differs from the strip fill.
+    """
+    tm = _w1_palettes
+    _set_theme(tm, qapp, "light")
+    strip = StatsStrip()
+    qtbot.addWidget(strip)
+    strip.show()
+    qapp.processEvents()
+    assert strip._stats_border.name().lower() == "#e2e4e8"
+    img = strip.grab().toImage()
+    assert not img.isNull()
+    sw, sh = img.width(), img.height()
+    edge = img.pixelColor(sw // 2, 0).name().lower()
+    fill = img.pixelColor(sw // 2, sh // 2).name().lower()
+    assert edge != fill, f"strip edge {edge} == fill {fill}: border invisible in light"

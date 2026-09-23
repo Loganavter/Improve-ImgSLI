@@ -105,10 +105,12 @@ def _grid_substrate_color():
     """Grid viewport substrate: gallery-scoped, NOT the global surface.
 
     Chain: ``gallery.grid.background`` → ``surface.background`` →
-    ``#cecece`` (light) / ``#2b2b2b`` (dark). The grid keeps its own gray
-    substrate in light theme while ``Window``/``surface.background`` stay
-    app-global near-white (a global ``#cecece`` leaked into every
-    autoFillBackground widget app-wide — see plan 2026-09-23 rescope).
+    ``#ffffff`` (light) / ``#2b2b2b`` (dark). White-cards + visible-borders
+    philosophy (mockups v2/v3/v4-light): the grid is white and cards read
+    via their 1px ``gallery.card.border`` hairline — the gray substrate is
+    dead. ``Window``/``surface.background`` stay app-global near-white (a
+    global ``#cecece`` leaked into every autoFillBackground widget app-wide —
+    see plan 2026-09-23 rescope).
     Rule A: keyed on ``is_dark()`` (light default).
     """
     from PySide6.QtGui import QColor as _QC
@@ -126,7 +128,7 @@ def _grid_substrate_color():
         pass
     if _is_dark():
         return _QC(0x2B, 0x2B, 0x2B)
-    return _QC(0xCE, 0xCE, 0xCE)
+    return _QC(0xFF, 0xFF, 0xFF)
 
 
 class _SeriesHeaderBar(QWidget):

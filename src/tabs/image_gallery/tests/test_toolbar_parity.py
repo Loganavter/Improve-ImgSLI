@@ -132,13 +132,14 @@ def test_s2_8_view_switch_icon_pair(toolbar: GalleryToolbar) -> None:
 
 
 def test_s2_7_triage_indicator_green(qtbot, _w1_light_palettes) -> None:
-    # gallery.status.ok token under the registered W1 light palette (#2e7d32),
-    # not the dark fallback (#3fbf5f) bare-manager tests used to pin.
+    # gallery.status.ok token under the registered light palette (#3fbf5f —
+    # white-cards norm: light converges with the dark value), resolved live
+    # via the theme token, not a fallback literal.
     toolbar = GalleryToolbar()
     qtbot.addWidget(toolbar)
     color = toolbar.triage_indicator._color_override
     assert color is not None
-    assert color.name().lower() == "#2e7d32"
+    assert color.name().lower() == "#3fbf5f"
 
 
 def test_s2_6_stats_segments(strip: StatsStrip) -> None:
