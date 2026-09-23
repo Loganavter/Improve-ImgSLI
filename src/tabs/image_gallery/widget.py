@@ -311,6 +311,14 @@ class ImageGalleryWidget(QWidget):
             self._empty_state.setAcceptDrops(True)
         except Exception:
             pass
+        # W12-D: forward zone-surface drops (full mime) to the unified router —
+        # the zone label alone would re-emit only the first path.
+        try:
+            from tabs.image_gallery.ui import drag_drop as _drag_drop
+
+            _drag_drop.install_zone_drop_forwarding(self)
+        except Exception:
+            pass
 
         # Update initial state
         self._empty_state.set_state("empty")
