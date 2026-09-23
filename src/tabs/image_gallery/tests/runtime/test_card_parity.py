@@ -31,6 +31,37 @@ from tabs.image_gallery.ui.card import (
     update_gallery_card,
 )
 
+import pytest
+
+
+@pytest.fixture()
+def _production_dark_palettes(qapp):
+    """Register production palettes under the dark theme.
+
+    Rule A flipped the bare-manager fallbacks to light, so the dark-pin
+    assertions below now boot the real dark palette and assert production
+    hexes. Teardown restores the bare manager for the fallback-literal
+    tests elsewhere in this file.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    prev_theme = tm.get_current_theme()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("dark", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    yield tm
+    try:
+        tm.register_palettes({}, {})
+        tm.set_theme(prev_theme, qapp, await_ripples=False)
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 
 def _item(**overrides) -> GalleryItem:
     defaults = dict(path=Path("/gallery/a.png"), mtime_ns=1)
@@ -192,7 +223,7 @@ def test_hover_underline_toggle(qapp):
     card.deleteLater()
 
 
-def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp):
+def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp, _production_dark_palettes):
     item = _item(vlm_tie_pending=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
@@ -204,6 +235,7 @@ def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp):
     filled, _bg, border, _text = card._gallery_badge_style
     assert filled is False
     accent = _token_color("accent", "#0096FF")
+    assert accent.name().lower() == "#0096ff"  # live dark production hex
     assert border.name().lower() == accent.name().lower()
     card.deleteLater()
 
@@ -236,12 +268,15 @@ def test_unreadable_cover_has_plate_background(qapp):
     card.deleteLater()
 
 
-def test_rejected_badge_uses_danger_token(qapp):
+def test_rejected_badge_uses_danger_token(qapp, _production_dark_palettes):
     item = _item(rejected=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    danger = _token_color("danger", "#D93025")
+    # Badge resolves the real gallery.status.danger token (dark #D93025);
+    # the bare "danger" alias never exists in themes.json.
+    danger = _token_color("gallery.status.danger", "#D93025")
+    assert danger.name().lower() == "#d93025"  # live dark production hex
     assert card.property("badgeBackgroundColor").name().lower() == danger.name().lower()
     card.deleteLater()
 
@@ -291,3 +326,62 @@ def test_hover_capsule_flyout_fits_its_buttons(qapp):
 
     flyout.hide()
     card.deleteLater()
+
+
+def test_card_bg_is_not_substrate_color_light_theme(monkeypatch) -> None:
+    """Card fill must differ from the substrate in the light theme.
+
+    ``gallery.card.background`` is a registered token (W1); the resolver
+    chain still prefers ``surface.list`` over ``surface.background`` so a
+    missing card token can never paint the exact substrate color. This test
+    pins that chain order with a mocked resolver table.
+    """
+    from unittest.mock import patch
+
+    from tabs.image_gallery.ui import card as card_mod
+
+    table = {
+        "surface.list": QColor(240, 240, 240),
+        "surface.background": QColor(255, 255, 255),
+    }
+
+    def fake_resolve(tm, token):
+        return table.get(token)
+
+    with patch("ui.theming.try_resolve_theme_color", side_effect=fake_resolve):
+        bg = card_mod._gallery_card_bg()
+    assert (bg.red(), bg.green(), bg.blue()) == (240, 240, 240)
+    assert (bg.red(), bg.green(), bg.blue()) != (255, 255, 255)
+
+
+def test_card_hover_differs_from_idle_per_theme(monkeypatch) -> None:
+    """Hover must stay a visible step away from idle in both themes."""
+    from unittest.mock import patch
+
+    from tabs.image_gallery.ui.card import hover as hover_mod
+
+    table = {
+        "surface.list": QColor(240, 240, 240),
+        "surface.background": QColor(255, 255, 255),
+    }
+
+    def fake_resolve(tm, token):
+        return table.get(token)
+
+    class FakeTM:
+        def __init__(self, dark: bool):
+            self._dark = dark
+
+        def is_dark(self) -> bool:
+            return self._dark
+
+    with patch("ui.theming.try_resolve_theme_color", side_effect=fake_resolve):
+        with patch(
+            "sli_ui_toolkit.managers.ThemeManager.get_instance",
+            return_value=FakeTM(False),
+        ):
+            idle = hover_mod._card_idle_bg()
+            hover = hover_mod._card_hover_bg()
+    assert (idle.red(), idle.green(), idle.blue()) == (240, 240, 240)
+    assert (hover.red(), hover.green(), hover.blue()) != (idle.red(), idle.green(), idle.blue())
+    assert hover.red() < idle.red()  # light theme: hover darkens

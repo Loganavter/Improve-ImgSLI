@@ -13,6 +13,34 @@ from tabs.image_gallery.ui.toolbar import GalleryToolbar
 
 
 @pytest.fixture
+def _w1_light_palettes(qapp):
+    """Register the production W1 palettes under the light theme.
+
+    Rule A: token reads then assert live ``themes.json`` hexes instead of
+    fallback literals. Teardown restores the bare manager (empty palettes,
+    previous theme) so later suites keep their unbootstrapped behavior.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    prev_theme = tm.get_current_theme()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("light", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    yield tm
+    try:
+        tm.register_palettes({}, {})
+        tm.set_theme(prev_theme, qapp, await_ripples=False)
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+@pytest.fixture
 def toolbar(qtbot):
     widget = GalleryToolbar()
     qtbot.addWidget(widget)
@@ -103,11 +131,14 @@ def test_s2_8_view_switch_icon_pair(toolbar: GalleryToolbar) -> None:
     assert grid_btn.isChecked() is True
 
 
-def test_s2_7_triage_indicator_green(toolbar: GalleryToolbar) -> None:
-    # No "success" token in the toolkit palettes → mockup hex via Label color=.
+def test_s2_7_triage_indicator_green(qtbot, _w1_light_palettes) -> None:
+    # gallery.status.ok token under the registered W1 light palette (#2e7d32),
+    # not the dark fallback (#3fbf5f) bare-manager tests used to pin.
+    toolbar = GalleryToolbar()
+    qtbot.addWidget(toolbar)
     color = toolbar.triage_indicator._color_override
     assert color is not None
-    assert color.name().lower() == "#3fbf5f"
+    assert color.name().lower() == "#2e7d32"
 
 
 def test_s2_6_stats_segments(strip: StatsStrip) -> None:

@@ -26,6 +26,35 @@ def _item(name: str, **kwargs) -> GalleryItem:
 
 
 @pytest.fixture()
+def _w1_light_palettes(qapp):
+    """Register the production W1 palettes under the light theme.
+
+    Rule A: strip borders then resolve live ``themes.json`` hexes
+    (``gallery.status.warn`` / ``accent``) instead of fallback literals.
+    Teardown restores the bare manager so later suites keep their
+    unbootstrapped behavior.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    prev_theme = tm.get_current_theme()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("light", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    yield tm
+    try:
+        tm.register_palettes({}, {})
+        tm.set_theme(prev_theme, qapp, await_ripples=False)
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+@pytest.fixture()
 def overlay(qtbot):
     parent = QWidget()
     qtbot.addWidget(parent)
@@ -199,7 +228,7 @@ def test_camera_noise_and_wb_rows_skipped_when_missing(qtbot):
 # -- S4-7: strip borders + rejected dim ----------------------------------------
 
 
-def test_strip_source_and_viewing_border_colors(qtbot):
+def test_strip_source_and_viewing_border_colors(qtbot, _w1_light_palettes):
     from PySide6.QtGui import QColor
 
     from sli_ui_toolkit.widgets import Button
@@ -213,11 +242,11 @@ def test_strip_source_and_viewing_border_colors(qtbot):
     ]
     assert len(buttons) == 2
     by_path = {b.property("gallery_path"): b for b in buttons}
-    # No warning/accent tokens registered in the bare test ThemeManager →
-    # module fallbacks (#e8b64c gold / #0096FF accent) must be applied via
-    # the real painter border API (not the old setProperty no-op).
-    assert by_path["/gallery/src.png"].borderColor() == QColor("#e8b64c")
-    assert by_path["/gallery/v.png"].borderColor() == QColor("#0096FF")
+    # W1 production palettes registered under the light theme → borders
+    # resolve the live gallery.status.warn / accent hexes via the real
+    # painter border API (not the old setProperty no-op).
+    assert by_path["/gallery/src.png"].borderColor() == QColor("#b77900")
+    assert by_path["/gallery/v.png"].borderColor() == QColor("#0078D4")
     ov.hide()
 
 

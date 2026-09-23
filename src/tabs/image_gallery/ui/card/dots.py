@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 _SEVERITY_TOKEN_FALLBACKS: dict[str, tuple[str, str]] = {
     "clean": ("gallery.status.ok", "#3fbf5f"),
     "mild": ("gallery.status.warn", "#e8b64c"),
-    "flagged": ("gallery.status.danger", "#c0392b"),
+    "flagged": ("gallery.status.danger", "#D93025"),
 }
 # Light-theme counterparts of the dark fallbacks above (themes.json light section).
 _SEVERITY_FALLBACKS_LIGHT: dict[str, str] = {
@@ -29,29 +29,23 @@ _DOTS_ROW_GAP = 2  # RowsContent.row_gap default (compact layout)
 
 
 def _is_dark() -> bool:
-    """Current theme darkness for fallback selection.
+    """Current theme darkness for fallback selection (Rule A).
 
-    When the manager carries no registered palette (unbootstrapped host,
-    e.g. offscreen unit tests where ``try_resolve_theme_color`` returns
-    ``None`` for every token), report dark so the legacy dark defaults
-    apply — this keeps the S2-12 fallback tests green. In a booted app the
-    registered tokens resolve first and this only picks the fallback pair.
+    Keyed ONLY on ``ThemeManager.is_dark()``: a bare manager defaults to
+    ``_current_theme='light'`` (``is_dark()`` False), and an
+    empty/unregistered palette does NOT imply dark. Callers
+    (``stats_strip``, ``grid_view``, ``hover``) delegate here, so every
+    ``_fallback_for(light, dark)`` pair resolves light under a bare manager —
+    same as the ``_is_dark_theme`` chains in ``toolbar``/``quick_look``.
     """
     try:
         from sli_ui_toolkit.managers import ThemeManager
 
-        from ui.theming import try_resolve_theme_color
-
-        mgr = ThemeManager.get_instance()
-        for _sentinel in ("accent", "surface.background", "gallery.card.background"):
-            try:
-                if try_resolve_theme_color(mgr, _sentinel) is not None:
-                    return bool(mgr.is_dark())
-            except Exception:
-                continue
-        return True
+        return bool(ThemeManager.get_instance().is_dark())
     except Exception:
-        return True
+        # Manager unreachable (no Qt host at all) — mirror the bare-manager
+        # default, which is the light theme.
+        return False
 
 
 def _token_color(token: str, fallback_hex: str):

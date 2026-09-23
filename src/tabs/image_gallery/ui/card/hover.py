@@ -14,13 +14,18 @@ GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
 
 
 def _theme_is_dark() -> bool:
-    """Darkness for fallback selection — delegates to ``dots._is_dark``."""
+    """Darkness for fallback selection — delegates to ``dots._is_dark``.
+
+    Rule A: ``gallery.card.hover`` IS a registered token (both themes in
+    ``themes.json``), so this only picks the hardcoded pair when tokens are
+    absent; an unregistered palette resolves light, never dark.
+    """
     try:
         from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
 
         return bool(_dots_is_dark())
     except Exception:
-        return True
+        return False
 
 
 def _card_idle_bg():
