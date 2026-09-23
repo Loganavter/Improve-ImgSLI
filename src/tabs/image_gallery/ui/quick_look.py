@@ -95,6 +95,15 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._artifact_rows: list = []
         if not hasattr(self, "_strip_caption_labels"):
             self._strip_caption_labels: list = []
+        # W8: the resizable card plate is a plain child widget — its own
+        # resizes never reach the overlay's resizeEvent, so watch it and
+        # re-run the pin hooks (nav circles, source inset, resize grip).
+        try:
+            content = getattr(self, "_content", None)
+            if content is not None:
+                content.installEventFilter(self)
+        except Exception:
+            pass
 
     def _reposition_source_inset(self) -> None:
         try:
@@ -116,6 +125,32 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._reposition_source_inset()
         except Exception:
             pass
+        # W8: keep the drag handle pinned on overlay (window) resizes.
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+            reposition_grip(self)
+        except Exception:
+            pass
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        # W8: card-plate resizes (user drag via the corner grip or direct
+        # resizes) re-run the same pin hooks as resizeEvent.
+        try:
+            from PySide6.QtCore import QEvent
+
+            if watched is getattr(self, "_content", None) and event.type() == QEvent.Type.Resize:
+                try:
+                    self._reposition_source_inset()
+                except Exception:
+                    pass
+                try:
+                    from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+                    reposition_grip(self)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return super().eventFilter(watched, event)
 
     def show_for(self, item, owner=None) -> None:
         if owner is not None:
@@ -368,6 +403,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
             reposition_nav_buttons(self)
+        except Exception:
+            pass
+        # W8: pin the resize grip with the other absolute card children
+        # (the _content Resize filter re-pins on every later resize).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+            reposition_grip(self)
         except Exception:
             pass
 

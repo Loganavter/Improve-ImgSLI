@@ -553,14 +553,170 @@ def test_card_plate_paints_fill(qtbot, _w1_light_palettes):
     assert pixel.alpha() == 255
 
 
-def test_card_geometry_1040x620(qtbot):
-    """S4 mockup panel is 1040x620 (svg:31) — floor, not a suggestion."""
+def test_card_geometry_min_1040x620_no_max(qtbot):
+    """W8: S4 mockup panel 1040x620 (svg:31) is the card MINIMUM — the card
+    is user-resizable, so there is no maximum (was: fixed min == max)."""
     from sli_ui_toolkit.managers import scaled_px
 
     ov = _make_overlay(qtbot)
     assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(620))
-    assert ov._content.maximumSize() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov._content.maximumSize() == QSize(16777215, 16777215)
     assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
+
+
+def test_card_resize_smoke_preview_grows_column_fixed(qtbot, monkeypatch):
+    """W8 resize smoke: a bigger card grows the preview pane while the right
+    column stays the fixed 296px with no scrollbars, and the pin hooks
+    (nav circles, source inset, resize grip) re-ran for the new size."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QScrollArea, QWidget
+
+    from sli_ui_toolkit.managers import scaled_px
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    content = ov._content
+    # Spy the reposition hooks: the _content Resize filter must re-run them.
+    hook_calls: list = []
+    orig_inset = ov._reposition_source_inset
+
+    def _spy_inset():
+        hook_calls.append("inset")
+        return orig_inset()
+
+    monkeypatch.setattr(ov, "_reposition_source_inset", _spy_inset)
+    orig_grip = _ql_helpers.reposition_grip
+
+    def _spy_grip(overlay):
+        hook_calls.append("grip")
+        return orig_grip(overlay)
+
+    monkeypatch.setattr(_ql_helpers, "reposition_grip", _spy_grip)
+    preview_before = ov._preview_host.size()
+    base_w, base_h = content.width(), content.height()
+    assert (base_w, base_h) == (scaled_px(1040), scaled_px(620))
+    content.resize(base_w + scaled_px(160), base_h + scaled_px(80))
+    QApplication.processEvents()
+    QApplication.processEvents()
+    # Hooks re-ran for the resize.
+    assert "inset" in hook_calls
+    assert "grip" in hook_calls
+    # Preview pane took the extra space (right column is stretch 0).
+    assert ov._preview_host.width() > preview_before.width()
+    assert ov._preview_host.height() > preview_before.height()
+    # Right column is still the mockup 296px, scrollbars still hidden.
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.width() == scaled_px(296)
+    assert scroll.horizontalScrollBar().maximum() == 0
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.horizontalScrollBar().isVisible() is False
+    assert scroll.verticalScrollBar().isVisible() is False
+    # Nav circles re-pinned to the new card edges.
+    assert abs(ov._prev_btn.geometry().center().x() - 0) <= 2
+    assert abs(ov._next_btn.geometry().center().x() - content.width()) <= 2
+    # Grip re-pinned to the new bottom-right corner.
+    grip = ov._resize_grip
+    assert grip.parentWidget() is content
+    assert grip.geometry().topLeft() == QPoint(
+        content.width() - grip.width(), content.height() - grip.height()
+    )
+    ov.hide()
+
+
+def test_resize_grip_drag_clamp_floor_and_paint(qtbot):
+    """W8 drag handle: painter-painted (no QSS), bottom-right child of the
+    card; dragging clamps to the overlay minus margin and floors at the
+    1040x620 minimum; nothing is persisted (session-only size)."""
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QWidget
+
+    from sli_ui_toolkit.managers import scaled_px
+    from tabs.image_gallery.ui.quick_look.helpers import _ResizeGrip
+
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    grip = ov._resize_grip
+    assert isinstance(grip, _ResizeGrip)
+    assert _ResizeGrip.paintEvent is not QWidget.paintEvent
+    assert grip.styleSheet() == ""
+    assert grip.objectName() == "quicklook_resize_grip"
+    assert not grip.grab().isNull()  # paintEvent smoke — must not raise
+
+    def _press_move_release(dx: int, dy: int):
+        from PySide6.QtCore import QPoint
+
+        start_global = grip.mapToGlobal(grip.rect().center())
+        end_global = start_global + QPoint(dx, dy)
+        local = QPointF(grip.rect().center())
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            local,
+            QPointF(start_global),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        grip.mousePressEvent(press)
+        move = QMouseEvent(
+            QEvent.Type.MouseMove,
+            local,
+            QPointF(end_global),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        grip.mouseMoveEvent(move)
+        release = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            local,
+            QPointF(end_global),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        grip.mouseReleaseEvent(release)
+        QApplication.processEvents()
+
+    content = ov._content
+    # Drag far past the window: clamped to overlay minus the 16px margin.
+    _press_move_release(1000, 1000)
+    margin = scaled_px(16)
+    assert content.width() == ov.width() - margin * 2
+    assert content.height() == ov.height() - margin * 2
+    # Drag far the other way: floored at the 1040x620 minimum.
+    _press_move_release(-2000, -2000)
+    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    # Grip followed the card back to the minimum corner.
+    from PySide6.QtCore import QPoint
+
+    assert grip.geometry().topLeft() == QPoint(
+        content.width() - grip.width(), content.height() - grip.height()
+    )
+    ov.hide()
+
+
+def test_card_size_is_session_only():
+    """W8: the resized card size lives on the widget only — no settings /
+    persistence writes in the quick look scope."""
+    import inspect
+
+    from tabs.image_gallery.ui import quick_look as _ql_mod
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    for mod in (_ql_mod, _ql_helpers):
+        src = inspect.getsource(mod)
+        assert "QSettings" not in src
+        assert "setValue" not in src
 
 
 def test_prev_next_36px_circular_at_preview_edges(qtbot):

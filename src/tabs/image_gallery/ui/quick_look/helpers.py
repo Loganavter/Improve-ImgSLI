@@ -515,6 +515,187 @@ def reposition_nav_buttons(overlay) -> None:
         pass
 
 
+def reposition_grip(overlay) -> None:
+    """Pin the drag-resize grip to the card's bottom-right corner (W8).
+
+    Absolute child of the card plate (same idiom as
+    ``reposition_nav_buttons`` / ``reposition_source_inset``). Runs from the
+    overlay's ``_content`` Resize filter, ``resizeEvent``, and the grip's
+    own drag handler.
+    """
+    try:
+        content = getattr(overlay, "_content", None)
+        grip = getattr(overlay, "_resize_grip", None)
+        if content is None or grip is None:
+            return
+        grip.move(
+            max(0, content.width() - grip.width()),
+            max(0, content.height() - grip.height()),
+        )
+        try:
+            grip.raise_()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+class _ResizeGrip(QWidget):
+    """Bottom-right drag handle for the resizable quick look card (W8).
+
+    Painter-painted (three diagonal grip lines in the ``separator.color``
+    token, theme-subscribed) — no QSS, no palette. Dragging resizes the
+    card plate in place (top-left anchored): minimum 1040×620, clamped to
+    the overlay size minus margin; session-only, nothing persisted. After
+    every step the existing reposition hooks (nav circles, source inset)
+    re-run via ``overlay._reposition_source_inset()`` plus
+    ``reposition_grip``.
+    """
+
+    GRIP_PX = 20
+
+    def __init__(self, overlay, parent=None) -> None:
+        super().__init__(parent)
+        self._overlay_ref = overlay
+        from sli_ui_toolkit.managers import scaled_px
+
+        self.setFixedSize(scaled_px(self.GRIP_PX), scaled_px(self.GRIP_PX))
+        self.setObjectName("quicklook_resize_grip")
+        try:
+            from PySide6.QtCore import Qt
+
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        except Exception:
+            pass
+        self._color = self._resolve_color()
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+        self._drag_start = None
+        self._drag_size = None
+
+    @staticmethod
+    def _resolve_color():
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            from ui.theming import try_resolve_theme_color
+
+            c = try_resolve_theme_color(ThemeManager.get_instance(), "separator.color")
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+        except Exception:
+            pass
+        return _token_color("separator.color", "#e5e5e5")
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._color = self._resolve_color()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtGui import QPen
+
+            from sli_ui_toolkit.managers import scaled_px
+
+            p = QPainter(self)
+            try:
+                color = self._color
+                if color is None:
+                    # Contract-safe re-resolve (token helper, never a
+                    # bare literal — test_no_hardcoded_qcolor ratchet).
+                    color = _token_color("separator.color", "#e5e5e5")
+                pen = QPen(color if color is not None else QColor(0, 0, 0, 0))
+                pen.setWidthF(max(1.0, scaled_px(1)))
+                p.setPen(pen)
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                w = self.width()
+                h = self.height()
+                step = scaled_px(4)
+                for i in range(3):
+                    off = step * (i + 1)
+                    p.drawLine(w - off, h, w, h - off)
+            finally:
+                p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtCore import Qt
+
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_start = event.globalPosition().toPoint()
+                content = getattr(self._overlay_ref, "_content", None)
+                if content is not None:
+                    self._drag_size = content.size()
+                event.accept()
+                return
+        except Exception:
+            pass
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if self._drag_start is not None and self._drag_size is not None:
+                from sli_ui_toolkit.managers import scaled_px
+
+                overlay = self._overlay_ref
+                content = getattr(overlay, "_content", None)
+                if content is not None:
+                    delta = event.globalPosition().toPoint() - self._drag_start
+                    want_w = self._drag_size.width() + delta.x()
+                    want_h = self._drag_size.height() + delta.y()
+                    # Floor: the S4 mockup 1040×620 card. No maximum —
+                    # clamp only to the overlay (parent/window) minus margin.
+                    margin = scaled_px(16)
+                    try:
+                        bound_w = max(0, overlay.width() - margin * 2)
+                        bound_h = max(0, overlay.height() - margin * 2)
+                    except Exception:
+                        bound_w, bound_h = 0, 0
+                    new_w = max(scaled_px(1040), want_w)
+                    new_h = max(scaled_px(620), want_h)
+                    if bound_w > 0:
+                        new_w = min(new_w, bound_w)
+                    if bound_h > 0:
+                        new_h = min(new_h, bound_h)
+                    content.resize(new_w, new_h)
+                    # The _content Resize filter re-runs nav/inset/grip
+                    # hooks; belt-and-braces for paths that compress events.
+                    try:
+                        overlay._reposition_source_inset()
+                    except Exception:
+                        pass
+                    reposition_grip(overlay)
+                event.accept()
+                return
+        except Exception:
+            pass
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start = None
+        self._drag_size = None
+        super().mouseReleaseEvent(event)
+
+
 def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
     """Source image dimensions: metrics width/height first, QPixmap fallback."""
     metrics = getattr(src_item, "metrics", None) if src_item is not None else None
@@ -560,12 +741,9 @@ def build_overlay_ui(overlay) -> None:
 
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
-    # S4 mockup panel is 1040x620 — floor, not a suggestion.
+    # S4 mockup panel is 1040x620 — minimum (floor), not a suggestion.
+    # W8: NO maximum — the user drag-resizes via the corner grip handle.
     overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
-    try:
-        overlay._content.setMaximumSize(scaled_px(1040), scaled_px(620))
-    except Exception:
-        pass
     outer = QVBoxLayout(overlay._content)
     outer.setContentsMargins(scaled_px(16), scaled_px(12), scaled_px(16), scaled_px(12))
     # W5: the 620-tall card must fit without scrollbars (S4 mockup: none) —
@@ -715,7 +893,7 @@ def build_overlay_ui(overlay) -> None:
     left_lay.addLayout(preview_row, 1)
     # W4 item 4: the Esc hint lives at the right end of the bottom button
     # bar (built below), not in the left column. Nothing added here.
-    mid.addWidget(left, 2)
+    mid.addWidget(left, 1)
     right_scroll = QScrollArea(overlay._content)
     right_scroll.setObjectName("quicklook_right_scroll")
     # W5: the mockup's right column is a fixed 296px (svg x=816 w=296) —
@@ -807,7 +985,9 @@ def build_overlay_ui(overlay) -> None:
         pass
     right_lay.addWidget(overlay._brief_label)
     right_scroll.setWidget(right_host)
-    mid.addWidget(right_scroll, 1)
+    # W8: the preview pane stretches on resize; the right column stays a
+    # fixed 296px (stretch 0 — it never takes extra space).
+    mid.addWidget(right_scroll, 0)
     outer.addLayout(mid, 1)
     # S4 mockup divider above the bottom action bar (svg:648) — painted
     # rule, see _div_series.
@@ -868,6 +1048,14 @@ def build_overlay_ui(overlay) -> None:
     bar_lay.addWidget(overlay._hint_label)
     outer.addWidget(bar)
     overlay.add_widget(overlay._content, slot=None)
+    # W8: bottom-right drag handle — painter-painted, absolute child of the
+    # card plate, pinned by reposition_grip (Resize filter / resizeEvent).
+    overlay._resize_grip = _ResizeGrip(overlay, overlay._content)
+    reposition_grip(overlay)
+    try:
+        overlay._resize_grip.raise_()
+    except Exception:
+        pass
     overlay._strip_buttons: list = []
     overlay._metric_rows: list = []
     overlay._artifact_rows: list = []
