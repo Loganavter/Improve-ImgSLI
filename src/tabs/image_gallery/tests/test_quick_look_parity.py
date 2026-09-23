@@ -2183,3 +2183,57 @@ def test_nav_glyphs_enlarged_centered_both_states(qtbot, _w1_light_palettes):
             assert abs(cx - w / 2) <= 3, (enabled, cx, w)
             assert abs(cy - h / 2) <= 3, (enabled, cy, h)
     ov.hide()
+
+
+# -- W12-A close semantics: navigating buttons dismiss, triage stays ---------
+
+
+def test_compare_button_closes_overlay(qtbot):
+    """W12-A: `Compare →` leaves for the compare flow — overlay dismisses."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    ov._on_compare()
+    QApplication.processEvents()
+    assert ov.isHidden()
+
+
+def test_multi_compare_button_closes_overlay(qtbot):
+    """W12-A: `Add to Multi Compare` enters the compare flow (verified:
+    compareRequested -> on_quick_compare -> carry_selected ->
+    ImageCarryService.begin) — overlay dismisses."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    ov._on_multi()
+    QApplication.processEvents()
+    assert ov.isHidden()
+
+
+def test_reject_button_stays_open(qtbot):
+    """W12-A: `Reject` keeps triaging — overlay stays open."""
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    ov._on_reject()
+    QApplication.processEvents()
+    assert ov.isVisible()
+    ov.hide()
+
+
+def test_set_source_button_stays_open(qtbot):
+    """W12-A: `Set as source` keeps triaging — overlay stays open."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, b, [a, b], mode=Mode.CAMERA)
+    assert ov.isVisible()
+    ov._on_set_source()
+    QApplication.processEvents()
+    assert ov.isVisible()
+    ov.hide()

@@ -555,6 +555,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 _carry.carry_selected(owner)
         except Exception:
             pass
+        # W12-A: Compare navigates away (carry flow) — dismiss the overlay.
+        # Reject / Set as source stay open (triage continues); X still closes.
+        try:
+            self.hide()
+        except Exception:
+            pass
 
     def _on_multi(self) -> None:
         if self._current_item is None:
@@ -575,6 +581,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 except Exception:
                     pass
             self.compareRequested.emit(p)
+        except Exception:
+            pass
+        # W12-A: verified in code that _on_multi enters the compare flow
+        # (compareRequested -> on_quick_compare -> carry_selected ->
+        # ImageCarryService.begin), so it dismisses like Compare. Reject /
+        # Set as source stay open (triage continues); X still closes.
+        try:
+            self.hide()
         except Exception:
             pass
 
@@ -609,7 +623,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 except Exception:
                     pass
             self.rejectToggled.emit(p)
-            self._populate()
+            self._populate()  # W12-A: Reject stays open — triage continues.
         except Exception:
             pass
 
@@ -656,7 +670,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             if new_mode is not None:
                 self._mode = new_mode
             self.setSource.emit(p)
-            self._populate()
+            self._populate()  # W12-A: Set as source stays open — triage continues.
         except Exception:
             pass
 
