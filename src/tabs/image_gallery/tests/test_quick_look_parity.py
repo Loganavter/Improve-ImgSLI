@@ -1059,25 +1059,41 @@ def test_meta_smaller_than_source(tmp_path, qtbot):
 
 
 def test_right_column_no_scrollbars_with_full_content(qtbot):
-    """W5 item 3: full right column (metrics + 2 artifact rows + series +
-    brief) fits the 1040×620 card with both scrollbars hidden (mockup:
-    none). Value/subline labels elide to the 296px column instead of
-    forcing width; the full copy stays in _original_text."""
+    """W5 item 3 + W7: full right column (metrics + 2 artifact rows +
+    series + brief) fits the 1040×620 card with both scrollbars hidden
+    (mockup: none). Value/subline labels elide to the 296px column instead
+    of forcing width; the full copy stays in _original_text.
+
+    W7 extends this with LIVE-like long content (supervisor offscreen
+    repro: layout totalHint 379px vs 296px viewport — report_sub,
+    series_sub and the banding caption hints forced h-scroll; elide
+    paints truncated text but does NOT shrink QLabel.sizeHint, and
+    minimum_width=40 only sets minimumSize). One-line elided labels now
+    carry horizontal QSizePolicy.Ignored (layout reserves the minimum,
+    not the hint), the right scroll is AlwaysOff horizontally, and the
+    word-wrap brief pins its minimum width to the column so its
+    minimumSizeHint is the height AT that width instead of the height
+    at longest-word width (a 4px phantom v-scroll)."""
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QScrollArea
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button
+    from sli_ui_toolkit.widgets import Button, Label
 
-    src = _item("src.png", metrics={})
+    src = _item("2x-Futsuu-Anime(1).png", metrics={})
     viewing = _item(
-        "v.png",
+        "up1.png",
         rank=1,
-        vlm_tie_pending=True,
-        metrics={"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 4},
+        metrics={"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 2},
         artifacts={Artifact.BANDING: Severity.MILD},
     )
+    second = _item("up2.png", rank=2, metrics={"ssim": 0.91})
+    third = _item("up3.png", rank=3, metrics={"ssim": 0.83})
+    third.rejected = True
+    fourth = _item("up4.png", rank=4, metrics={"ssim": 0.80})
+    mates = [viewing, second, third, fourth]
     ov = _make_overlay(qtbot)
-    _show(ov, viewing, [src, viewing], source=src.path)
+    _show(ov, viewing, [[src], list(mates)], source=src.path)
     QApplication.processEvents()
     QApplication.processEvents()
     # Full content is really there.
@@ -1086,11 +1102,32 @@ def test_right_column_no_scrollbars_with_full_content(qtbot):
     thumbs = [
         b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
     ]
-    assert len(thumbs) == 2
+    assert len(thumbs) == 4
     assert ov._brief_label.isVisible() and ov._brief_label.text()
-    # The column is the mockup 296px; both scrollbars stay hidden.
+    # W7 LIVE-long texts (verbatim full copies, painting elides them).
+    assert ov._report_sub._original_text == "vs SOURCE 2x-Futsuu-Anime(1).png · shared/analysis engine"
+    assert ov._series_sub._original_text == "4 upscales of one source · rank by fidelity · 1 rejected"
+    sublines = [
+        lbl._original_text
+        for w in ov._metric_rows
+        for lbl in w.findChildren(Label)
+        if "rejected tail" in getattr(lbl, "_original_text", "")
+    ]
+    assert sublines == ["#2 scores 0.91 · rejected tail ≤ 0.83"]
+    captions = [
+        lbl._original_text
+        for w in ov._artifact_rows
+        for lbl in w.findChildren(Label)
+        if "gradient histogram" in getattr(lbl, "_original_text", "")
+    ]
+    assert captions == ["gradient histogram — comb spikes = banding steps (sky)"]
+    # The column is the mockup 296px; the layout hint fits it, and both
+    # scrollbars stay hidden with zero range.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
     assert scroll.width() == scaled_px(296)
+    assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    host = ov.findChild(QWidget, "quicklook_right_host")
+    assert host.layout().totalSizeHint().width() <= scaled_px(296)
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.horizontalScrollBar().isVisible() is False

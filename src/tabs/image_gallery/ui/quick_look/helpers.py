@@ -399,6 +399,15 @@ def _make_label(text: str = "", parent=None, pixel_size: int = 10, pt=None, **kw
         _apply_point_size(lbl, float(pt) if pt is not None else _POINT_PT_BY_PIXEL.get(pixel_size, pixel_size), **_resolve_kw)
     except Exception:
         pass
+    if kwargs.get("elide"):
+        # W7: elide paints truncated text but does NOT shrink
+        # QLabel.sizeHint (full-text hint forces the 296px column into
+        # h-scroll; minimum_width alone only sets minimumSize). Ignored
+        # lets the layout reserve the minimum instead of the hint.
+        try:
+            lbl.setSizePolicy(QSizePolicy.Policy.Ignored, lbl.sizePolicy().verticalPolicy())
+        except Exception:
+            pass
     return lbl
 
 
@@ -720,7 +729,10 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     right_scroll.setWidgetResizable(True)
-    right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    # W7: widths are bounded by construction (296px column, elided text,
+    # fixed thumbs) — a full-text sizeHint must never summon a scrollbar.
+    # Horizontal is AlwaysOff; vertical stays AsNeeded.
+    right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     right_host = QWidget(right_scroll)
     right_host.setObjectName("quicklook_right_host")
@@ -754,7 +766,9 @@ def build_overlay_ui(overlay) -> None:
     overlay._div_series = _RuleWidget(right_host)
     overlay._div_series.setObjectName("quicklook_div_series")
     right_lay.addWidget(overlay._div_series)
-    overlay._series_header = _make_label("Series", parent=right_host, pixel_size=11, pt=13, bold=True)
+    # W7: the hub stem can be a long filename ("Series 1 · <stem>":
+    # probe measured 315px) — elide to the column like the sublines.
+    overlay._series_header = _make_label("Series", parent=right_host, pixel_size=11, pt=13, bold=True, elide=True, minimum_width=40)
     overlay._series_header.setObjectName("quicklook_series_header")
     right_lay.addWidget(overlay._series_header)
     overlay._series_sub = _make_label("", parent=right_host, pixel_size=10, pt=11.5, elide=True, minimum_width=40)
@@ -775,6 +789,22 @@ def build_overlay_ui(overlay) -> None:
     overlay._brief_label = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
     overlay._brief_label.setObjectName("quicklook_brief")
     overlay._brief_label.setWordWrap(True)
+    # W7: a word-wrap label reports the UNWRAPPED width as its sizeHint
+    # (~346px live) — it must wrap to the column, never widen it.
+    try:
+        overlay._brief_label.setSizePolicy(QSizePolicy.Policy.Ignored, overlay._brief_label.sizePolicy().verticalPolicy())
+    except Exception:
+        pass
+    # W7: QLabel.minimumSizeHint for wrapped text is the height at the
+    # LONGEST-WORD width (2 phantom lines here) — the layout reserves it
+    # and the 620px card gains a 4px v-scroll. The label always lays out
+    # at the 296px column width, so pin the minimum width to the column:
+    # minimumSizeHint becomes the height AT that width (honest, grows
+    # with real line count) and the column minimum stays 296.
+    try:
+        overlay._brief_label.setMinimumWidth(scaled_px(296))
+    except Exception:
+        pass
     right_lay.addWidget(overlay._brief_label)
     right_scroll.setWidget(right_host)
     mid.addWidget(right_scroll, 1)

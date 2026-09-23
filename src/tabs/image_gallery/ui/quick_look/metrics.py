@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
@@ -65,19 +66,23 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         header.setSpacing(scaled_px(6))
         t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
-        header.addStretch(1)
-        # S4 mockup: measured values read gallery.status.ok green; gaps stay muted.
-        # W5: values elide to the 296px right column (svg:84 — right-aligned,
-        # text-anchor=end) instead of widening it into an h-scrollbar.
-        # NOTE: elide alone does not shrink the layout minimum (QLabel's
-        # minimumSizeHint stays full-text) — minimum_width is what lets the
-        # stretch squeeze the label so the elide engages.
+        # W7: no spacer here — the value below is horizontal-Ignored (it
+        # contributes no sizeHint so the 296px column never h-scrolls) and
+        # an Ignored label beside a spacer would collapse to its 40px
+        # minimum and elide EVERYTHING ("+0…"). The value takes the free
+        # row width via stretch and end-aligns per the mockup (svg:84
+        # text-anchor=end); it elides only when the title genuinely
+        # leaves no room.
         vc = _ok_color() if value_color is None else value_color
         if value_elide:
             v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc, elide=True, minimum_width=40)
         else:
             v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
-        header.addWidget(v)
+        try:
+            v.setAlignment(Qt.AlignmentFlag.AlignRight)
+        except Exception:
+            pass
+        header.addWidget(v, 1)
         rl.addLayout(header)
         # Lazy import bar widget
         from tabs.image_gallery.ui.quick_look.bars import _BarWidget
@@ -151,9 +156,13 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header.setSpacing(scaled_px(6))
             t = _make_label("Detail gain (HF ratio)", parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
-            header.addStretch(1)
+            # W7: value takes free row width via stretch (see _add_metric_row).
             v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color(), elide=True, minimum_width=40)
-            header.addWidget(v)
+            try:
+                v.setAlignment(Qt.AlignmentFlag.AlignRight)
+            except Exception:
+                pass
+            header.addWidget(v, 1)
             rl.addLayout(header)
             from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
 
