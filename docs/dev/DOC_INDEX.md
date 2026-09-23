@@ -196,8 +196,12 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
   Referenced by: [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
 - **[Image Gallery — product & interaction design](../../src/tabs/image_gallery/docs/design.md)** — `src/tabs/image_gallery/docs/design.md`
-  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
+  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md), [src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)
 - **[Image Gallery — Design Parity Audit](../../src/tabs/image_gallery/docs/design_parity_audit.md)** — `src/tabs/image_gallery/docs/design_parity_audit.md`
+  Referenced by: [src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)
+- **[Plan: gallery light-theme contrast revision](../../src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md)** — `src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md`
+- **[Plan: Image Gallery — parity close-out (S2/S3/S4)](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)** — `src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md`
+  Referenced by: [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
 
 ## src/tabs/image_gallery/docs/plugins/
 
