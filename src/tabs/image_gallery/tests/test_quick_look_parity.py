@@ -1098,3 +1098,113 @@ def test_right_column_no_scrollbars_with_full_content(qtbot):
     # Elide, not truncate: the full sub copy survives in _original_text.
     assert "shared/analysis engine" in ov._report_sub._original_text
     ov.hide()
+
+
+# -- W6 strip fit + background-close -------------------------------------------
+
+
+def test_strip_hint_below_thumbs_not_in_row(qtbot):
+    """W6 item 1: the hint sits BELOW the thumb row (svg:170, y=588 under
+    the 516..560 thumbs), not inside the strip HBox."""
+    from sli_ui_toolkit.widgets import Label
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    hint = ov.findChild(QWidget, "quicklook_strip_hint")
+    assert hint is not None
+    # Out of the strip HBox.
+    assert ov._strip_layout.indexOf(hint) == -1
+    assert hint.parentWidget() is not ov._strip_host
+    # In the right column, directly after the strip host.
+    assert hint.parentWidget() is ov._strip_host.parentWidget()
+    parent_lay = hint.parentWidget().layout()
+    assert parent_lay.indexOf(hint) == parent_lay.indexOf(ov._strip_host) + 1
+    # Below the thumbs (same parent coords as the strip host).
+    assert hint.y() >= ov._strip_host.y() + ov._strip_host.height()
+    assert isinstance(hint, Label)
+    assert hint.text() == "click thumb = switch preview"
+    ov.hide()
+
+
+def test_strip_four_thumbs_fit_296px_column(qtbot):
+    """W6 item 2: 4 svg-pitch thumbs (4x66 + 3x10 = 294) fit the 296px
+    column — no h-scroll, badge/click/dim behavior intact."""
+    from PySide6.QtWidgets import QScrollArea
+
+    from sli_ui_toolkit.managers import scaled_px
+    from sli_ui_toolkit.widgets import Button
+
+    items = [_item(f"{c}.png") for c in "abcd"]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    buttons = [
+        b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
+    ]
+    assert len(buttons) == 4
+    for b in buttons:
+        assert b.width() == scaled_px(66)
+    row = sum(b.width() for b in buttons) + 3 * scaled_px(10)
+    assert row <= scaled_px(296)
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.horizontalScrollBar().maximum() == 0
+    assert scroll.horizontalScrollBar().isVisible() is False
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.verticalScrollBar().isVisible() is False
+    # Badge contract still holds at the new size.
+    by_path = {b.property("gallery_path"): b for b in buttons}
+    assert by_path["/gallery/a.png"]._badge == "#1"
+    ov.hide()
+
+
+def test_background_click_close_disabled_esc_and_x_kept(qtbot):
+    """W6 item 3: the veil no longer closes the overlay — X + Esc do."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    assert ov._close_on_background is False
+    assert ov._close_on_escape is True
+    # X button path.
+    assert ov._close_btn is not None
+    ov._close_btn.click()
+    QApplication.processEvents()
+    assert ov.isVisible() is False
+    # Esc path.
+    _show(ov, item, [item])
+    assert ov.isVisible() is True
+    ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+    QApplication.processEvents()
+    assert ov.isVisible() is False
+
+
+def test_dblclick_open_survives_no_background_close(qtbot):
+    """W6 item 3: grid dbl-click still opens quick look — the open path
+    never depended on background-close (no test asserted a veil click)."""
+    from PySide6.QtCore import QEvent
+
+    from tabs.image_gallery.ui import quick_look_hooks as _hooks
+
+    item = _item("d.png")
+    ov = _make_overlay(qtbot)
+    owner = SimpleNamespace(_items=[item], _quick_look_overlay=ov)
+    watched = SimpleNamespace(_gallery_item=item)
+    event = SimpleNamespace(type=lambda: QEvent.Type.MouseButtonDblClick)
+    assert _hooks.event_filter(owner, watched, event) is True
+    try:
+        parent = ov.parentWidget()
+        if parent is not None:
+            parent.resize(1280, 800)
+            parent.show()
+    except Exception:
+        pass
+    QApplication.processEvents()
+    assert ov.isVisible() is True
+    assert ov._current_item is item
+    ov.hide()

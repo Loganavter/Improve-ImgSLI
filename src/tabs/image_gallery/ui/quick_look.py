@@ -68,7 +68,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     setSource = Signal(object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
-        super().__init__(parent, close_on_background=True, close_on_escape=True, close_on_deactivate=True)
+        # W6: background-click close is OFF for quick look only — a click
+        # on the dim veil must not discard the report (the X button and
+        # Esc stay the close paths). Toolkit default is True; every other
+        # overlay keeps it.
+        super().__init__(parent, close_on_background=False, close_on_escape=True, close_on_deactivate=True)
         self._owner = owner
         self._current_item = None
         self._series_items: list = []

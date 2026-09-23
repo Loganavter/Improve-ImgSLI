@@ -12,6 +12,14 @@ from sli_ui_toolkit.widgets import Button, ButtonRegion, Label
 
 
 def rebuild_strip(overlay) -> None:
+    # W6: svg pitch is 76px (thumbs x=816/892/968/1044, 66 wide) — the
+    # HBox spacing is pinned here so 4 thumbs span 4*66+3*10=294px and
+    # fit the 296px right column with no h-scroll. (The layout itself is
+    # built in helpers.py, out of W6 scope; its spacing is overridden.)
+    try:
+        overlay._strip_layout.setSpacing(scaled_px(10))
+    except Exception:
+        pass
     for b in list(overlay._strip_buttons):
         try:
             overlay._strip_layout.removeWidget(b)
@@ -87,9 +95,10 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 regions = None
         if regions is not None:
-            btn = Button(text="", variant="surface", size=(74, 44), parent=container, regions=regions, badge=badge_text)
+            # W6: 66px thumbs per svg (x=816/892/968/1044 w=66 h=44).
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, badge=badge_text)
         else:
-            btn = Button(text="", variant="surface", size=(74, 44), parent=container, badge=badge_text)
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, badge=badge_text)
         btn.setObjectName(f"quicklook_strip_{idx}")
         try:
             if pending:
@@ -211,12 +220,35 @@ def rebuild_strip(overlay) -> None:
                 from tabs.image_gallery.ui.quick_look.helpers import _make_label as _strip_hint_label
             except Exception:
                 _strip_hint_label = Label  # type: ignore
+            # W6: the hint lives BELOW the thumbs (svg:170 y=588, under the
+            # 516..560 thumb row), not inside the strip HBox — in-row it
+            # cost ~175px and pushed 4x66px thumbs over the 296px column
+            # into h-scroll. Parented to the right column right after the
+            # strip host; the caption cleanup above detaches it via
+            # setParent(None) regardless of which layout holds it.
+            strip_parent = overlay._strip_host.parentWidget()
             if _strip_hint_label is Label:
-                hint = Label("click thumb = switch preview", pixel_size=9, parent=overlay._strip_host)
+                hint = Label("click thumb = switch preview", pixel_size=9, parent=strip_parent)
             else:
-                hint = _strip_hint_label("click thumb = switch preview", parent=overlay._strip_host, pixel_size=10, pt=10)
+                hint = _strip_hint_label("click thumb = switch preview", parent=strip_parent, pixel_size=10, pt=10)
             hint.setObjectName("quicklook_strip_hint")
-            overlay._strip_layout.addWidget(hint)
+            placed = False
+            try:
+                parent_lay = strip_parent.layout() if strip_parent is not None else None
+                if parent_lay is not None:
+                    at = parent_lay.indexOf(overlay._strip_host)
+                    if at >= 0:
+                        parent_lay.insertWidget(at + 1, hint)
+                        placed = True
+            except Exception:
+                placed = False
+            if not placed:
+                # Structural fallback: keep the hint visible in-row rather
+                # than dropping it if the column layout ever changes shape.
+                try:
+                    overlay._strip_layout.addWidget(hint)
+                except Exception:
+                    pass
             overlay._strip_caption_labels.append(hint)
     except Exception:
         pass
