@@ -609,9 +609,10 @@ def test_card_resize_smoke_preview_grows_column_fixed(qtbot, monkeypatch):
     # Preview pane took the extra space (right column is stretch 0).
     assert ov._preview_host.width() > preview_before.width()
     assert ov._preview_host.height() > preview_before.height()
-    # Right column is still the mockup 296px, scrollbars still hidden.
+    # Right column stretches with the card (W13: min 296px, grows on extra
+    # space), scrollbars still hidden.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
-    assert scroll.width() == scaled_px(296)
+    assert scroll.width() >= scaled_px(296)
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.horizontalScrollBar().isVisible() is False
@@ -1288,13 +1289,13 @@ def test_right_column_no_scrollbars_with_full_content(qtbot):
         if "gradient histogram" in getattr(lbl, "_original_text", "")
     ]
     assert captions == ["gradient histogram — comb spikes = banding steps (sky)"]
-    # The column is the mockup 296px; the layout hint fits it, and both
-    # scrollbars stay hidden with zero range.
+    # The column stretches from the 296px floor (W13); the layout hint fits
+    # the live column width, and both scrollbars stay hidden with zero range.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
-    assert scroll.width() == scaled_px(296)
+    assert scroll.width() >= scaled_px(296)
     assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     host = ov.findChild(QWidget, "quicklook_right_host")
-    assert host.layout().totalSizeHint().width() <= scaled_px(296)
+    assert host.layout().totalSizeHint().width() <= scroll.width()
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.horizontalScrollBar().isVisible() is False
