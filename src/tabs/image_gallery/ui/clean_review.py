@@ -24,6 +24,7 @@ No ``setStyleSheet`` — painter pipeline owns visuals.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -31,6 +32,8 @@ from PySide6.QtGui import QBrush, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
+
+from tabs.image_gallery.debug import gallery_debug
 
 # Public toolkit imports.
 from sli_ui_toolkit.widgets import (
@@ -251,6 +254,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         owner = self._owner
         if owner is None:
             return
+        _t0 = time.perf_counter()
         # HUD suppression via FlyoutManager hide gallery_selection.
         try:
             from sli_ui_toolkit.managers import FlyoutManager
@@ -274,13 +278,31 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
                 hud.set_suppressed(True)
         except Exception:
             pass
+        _t1 = time.perf_counter()
         self._populate(owner)
+        _t2 = time.perf_counter()
         self.show()
         try:
             self.raise_()
             self.setFocus(Qt.FocusReason.PopupFocusReason)
         except Exception:
             pass
+        _t3 = time.perf_counter()
+        try:
+            _n = len(self._rejected_items(owner))
+        except Exception:
+            _n = -1
+        # TEMP-DIAG (remove after S3-open lag fixed): phase splits for the
+        # clean-review open path. Gated by IMGSLI_GALLERY_DEBUG via the tab's
+        # debug helper (LOGGING.md: never wire subsystem noise to the global
+        # debug switch) — visible without --debug when the env flag is set.
+        gallery_debug(
+            "s3-open: suppress=%dms populate=%dms show=%dms n_rejected=%d",
+            int((_t1 - _t0) * 1000),
+            int((_t2 - _t1) * 1000),
+            int((_t3 - _t2) * 1000),
+            _n,
+        )
 
     def hideEvent(self, event) -> None:  # noqa: N802
         # Restore HUD suppression after overlay hides.
