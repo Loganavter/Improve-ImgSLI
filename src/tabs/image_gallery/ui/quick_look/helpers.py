@@ -101,6 +101,11 @@ class _AccentPillHost(QWidget):
 # S4 v2 LIGHT (svg:31): 1040x620 card plate — card fill + 1px border + rx 12.
 QUICK_LOOK_CARD_RADIUS_PX = 12
 
+# W11: nav chevron glyph size (pt rows). The mockup chevron path spans
+# ~18px in the 36px circle (svg prev/next); the text ‹ › at 18pt rendered
+# small, so the rows size up to 24 — circles stay 36px, ring untouched.
+QUICK_LOOK_NAV_GLYPH_PT = 24
+
 
 class _CardPlate(QWidget):
     """Quick look card plate — ``gallery.card.background`` fill + border, rx 12.
@@ -655,10 +660,51 @@ def _repin_after_card_resize(overlay) -> None:
         pass
 
 
+# W11: nav arrows (overlay children sitting in the ring zone) must NEVER
+# start a drag. A press/drag starting inside either arrow rect walks the
+# series and consumes the event — the arrow rects are excluded from ring +
+# plate drag hit-testing at the handler level (the pure zone functions
+# ``resize_zone_at`` / ``ring_zone_at`` stay arrow-agnostic so their unit
+# geometry is unchanged). This covers the fall-through production case:
+# enabled buttons consume presses as widgets, but DISABLED buttons (single
+# item) let presses through to the overlay/plate handlers, where the outer
+# half of the circle sits inside the ring band. Hover over an arrow shows
+# the plain arrow cursor, never a resize cursor.
+
+
+def nav_button_at(overlay, overlay_pos):
+    """Overlay-local hit-test against the prev/next circles (W11).
+
+    Returns the hit button or None. Geometry is overlay-local (W10: the
+    circles are overlay children), so plate callers must map content-local
+    points via ``content.mapTo(overlay, local)`` first.
+    """
+    try:
+        for btn in (getattr(overlay, "_prev_btn", None), getattr(overlay, "_next_btn", None)):
+            try:
+                if btn is not None and btn.geometry().contains(overlay_pos):
+                    return btn
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _walk_for_nav_button(overlay, btn) -> None:
+    """Walk the series for a nav-arrow press (W11). Prev → −1, next → +1."""
+    try:
+        overlay._walk(-1 if btn is getattr(overlay, "_prev_btn", None) else 1)
+    except Exception:
+        pass
+
+
 def handle_border_press(overlay, event) -> bool:
     """Start a full-border drag on left-press inside the strip (W9).
 
-    Returns True when the press was consumed (caller must accept it).
+    W11: presses inside either nav-arrow rect walk the series and are
+    consumed (never a drag). Returns True when the press was consumed
+    (caller must accept it).
     """
     try:
         from PySide6.QtCore import Qt
@@ -672,6 +718,17 @@ def handle_border_press(overlay, event) -> bool:
             local = event.position().toPoint()
         except Exception:
             return False
+        try:
+            nav_hit = nav_button_at(overlay, content.mapTo(overlay, local))
+        except Exception:
+            nav_hit = None
+        if nav_hit is not None:
+            _walk_for_nav_button(overlay, nav_hit)
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return True
         zone = resize_zone_at(content, local)
         if zone is None:
             return False
@@ -751,6 +808,16 @@ def handle_border_move(overlay, event) -> bool:
             local = event.position().toPoint()
         except Exception:
             return False
+        # W11: arrow rects never show a resize cursor (plain arrow instead).
+        try:
+            if nav_button_at(overlay, content.mapTo(overlay, local)) is not None:
+                try:
+                    content.unsetCursor()
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
         cursor = resize_cursor_for(resize_zone_at(content, local))
         try:
             if cursor is not None:
@@ -859,6 +926,8 @@ def handle_ring_press(overlay, event) -> bool:
     Shares the ``_border_drag`` tuple + ``clamp_card_size`` + cursor idiom
     with the W9 plate handlers, so inner and outer drags agree exactly.
     Plain veil clicks (``ring_zone_at`` None) return False — W6 holds.
+    W11: presses inside either nav-arrow rect walk the series and are
+    consumed (arrows never start a drag).
     """
     try:
         from PySide6.QtCore import Qt
@@ -872,6 +941,14 @@ def handle_ring_press(overlay, event) -> bool:
             local = event.position().toPoint()
         except Exception:
             return False
+        nav_hit = nav_button_at(overlay, local)
+        if nav_hit is not None:
+            _walk_for_nav_button(overlay, nav_hit)
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return True
         zone = ring_zone_at(overlay, local)
         if zone is None:
             return False
@@ -916,6 +993,16 @@ def handle_ring_hover(overlay, event) -> bool:
             local = event.position().toPoint()
         except Exception:
             return False
+        # W11: arrow rects never show a resize cursor (plain arrow instead).
+        try:
+            if nav_button_at(overlay, local) is not None:
+                try:
+                    overlay.unsetCursor()
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
         cursor = resize_cursor_for(ring_zone_at(overlay, local))
         try:
             if cursor is not None:
@@ -1219,7 +1306,9 @@ def build_overlay_ui(overlay) -> None:
     _nav_glyph = _token_color("gallery.nav.glyph", "#23262b")
     _nav_fill = _token_color("gallery.nav.fill", "#f1f2f4")
     _nav_border = _token_color("gallery.nav.border", "#d7dade")
-    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
+    # W11: glyph rows size up to QUICK_LOOK_NAV_GLYPH_PT (ratio=1.0 keeps
+    # them centered, ring intact in both states) — 36px circles unchanged.
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
     overlay._prev_btn.setObjectName("quicklook_prev")
     try:
         if _nav_fill is not None:
@@ -1296,7 +1385,7 @@ def build_overlay_ui(overlay) -> None:
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
     overlay._next_btn.setObjectName("quicklook_next")
     try:
         if _nav_fill is not None:
@@ -1457,9 +1546,10 @@ def build_overlay_ui(overlay) -> None:
     overlay._set_source_btn.clicked.connect(overlay._on_set_source)
     bar_lay.addWidget(overlay._set_source_btn)
     bar_lay.addStretch(1)
-    # W4 item 4: the Esc hint sits at the right end of the button bar row
+    # W4 item 4: the hint sits at the right end of the button bar row
     # (svg:198, right-aligned), out of the left column.
-    overlay._hint_label = _make_label("Esc closes · ←→ walk series", parent=bar, pixel_size=10, pt=10)
+    # W11 pinned policy: Esc no longer closes (X is the only close path).
+    overlay._hint_label = _make_label("X closes · ←→ walk series", parent=bar, pixel_size=10, pt=10)
     overlay._hint_label.setObjectName("quicklook_hint")
     bar_lay.addWidget(overlay._hint_label)
     outer.addWidget(bar)

@@ -68,11 +68,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     setSource = Signal(object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
-        # W6: background-click close is OFF for quick look only — a click
-        # on the dim veil must not discard the report (the X button and
-        # Esc stay the close paths). Toolkit default is True; every other
-        # overlay keeps it.
-        super().__init__(parent, close_on_background=False, close_on_escape=True, close_on_deactivate=True)
+        # W11 pinned close policy (InfoHUD analog — pinned flyouts ignore
+        # outside clicks/deactivation): the X button is the ONLY close path.
+        # close_on_background=False (W6: a veil click must not discard the
+        # report), close_on_escape=False and close_on_deactivate=False, so
+        # Esc, window minimize/restore, and focus loss never hide the card.
+        # Toolkit default is True for all three; every other overlay keeps it.
+        super().__init__(parent, close_on_background=False, close_on_escape=False, close_on_deactivate=False)
         self._owner = owner
         self._current_item = None
         self._series_items: list = []
@@ -187,8 +189,10 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     # W10: the 8px ring OUTSIDE the card (on the veil) is owned here at
     # overlay level — the W9 plate filter only sees the inner edge. Ring
     # drags share the _border_drag tuple + clamp/cursor helpers with the
-    # plate handlers. Plain veil clicks fall through to super() (W6: the
-    # veil never closes — X + Esc stay the close paths).
+    # plate handlers. Plain veil clicks fall through to super() (W11 pinned
+    # policy: the veil never closes — X is the only close path). W11: ring
+    # and plate presses inside either nav-arrow rect walk the series via
+    # the helpers (arrows never start a drag).
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:
             from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press
@@ -658,10 +662,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         k = event.key()
-        if k == Qt.Key.Key_Escape:
-            self.hide()
-            event.accept()
-            return
+        # W11 pinned policy: Esc NEVER closes (the toolkit base also ignores
+        # it with close_on_escape=False) — X is the only close path. ←→
+        # still walk the series.
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             delta = -1 if k == Qt.Key.Key_Left else 1
             self._walk(delta)

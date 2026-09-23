@@ -1365,8 +1365,12 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
     ov.hide()
 
 
-def test_background_click_close_disabled_esc_and_x_kept(qtbot):
-    """W6 item 3: the veil no longer closes the overlay — X + Esc do."""
+def test_pinned_close_policy_x_only(qtbot):
+    """W11 pinned policy (InfoHUD analog): X is the ONLY close path.
+
+    Replaces the W6 Esc-close assertion — Esc, window deactivate/focus
+    loss, and minimize/restore must all leave the card open.
+    """
     from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
 
@@ -1374,16 +1378,35 @@ def test_background_click_close_disabled_esc_and_x_kept(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert ov._close_on_background is False
-    assert ov._close_on_escape is True
-    # X button path.
+    assert ov._close_on_escape is False
+    assert ov._close_on_deactivate is False
+    assert ov._hint_label.text() == "X closes · ←→ walk series"
+    assert ov.isVisible() is True
+    # Esc must NOT close.
+    ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+    QApplication.processEvents()
+    assert ov.isVisible() is True
+    # Window/focus loss must NOT close (deactivation filter is inert, and
+    # no deferred dismiss is queued — flush the singleShot queue to prove it).
+    window = ov.window()
+    assert ov.eventFilter(window, QEvent(QEvent.Type.WindowDeactivate)) is False
+    assert ov.eventFilter(window, QEvent(QEvent.Type.ApplicationDeactivate)) is False
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov.isVisible() is True
+    assert getattr(ov, "_dismissing", False) is False
+    # Minimize/restore keeps the card (geometry follows the parent resize;
+    # no hide path fires).
+    parent = ov.parentWidget()
+    parent.showMinimized()
+    QApplication.processEvents()
+    parent.showNormal()
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov.isVisible() is True
+    # X button path still closes.
     assert ov._close_btn is not None
     ov._close_btn.click()
-    QApplication.processEvents()
-    assert ov.isVisible() is False
-    # Esc path.
-    _show(ov, item, [item])
-    assert ov.isVisible() is True
-    ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
     QApplication.processEvents()
     assert ov.isVisible() is False
 
@@ -1575,6 +1598,10 @@ def test_resize_border_hover_cursor_through_filter(qtbot):
     QApplication.processEvents()
     content = ov._content
     w, h = content.width(), content.height()
+    # W11: mid-height strip points can sit inside the nav circles (their
+    # preview-band offset varies with layout) — ride the edge at a
+    # proven nav-clear height instead.
+    _ly = content.mapFrom(ov, QPoint(0, _ring_y_clear_of_nav(ov, content.geometry()))).y()
 
     def _move(x, y):
         glob = content.mapToGlobal(QPoint(x, y))
@@ -1590,7 +1617,7 @@ def test_resize_border_hover_cursor_through_filter(qtbot):
         )  # hover never consumes
         QApplication.processEvents()
 
-    _move(4, h // 2)
+    _move(4, _ly)
     assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
     _move(w // 2, 4)
     assert content.cursor().shape() == Qt.CursorShape.SizeVerCursor
@@ -1616,6 +1643,10 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     QApplication.processEvents()
     content = ov._content
     base_geom = content.geometry()
+    # W11: mid-height strip points can sit inside the nav circles (their
+    # preview-band offset varies with layout) — drag from a proven
+    # nav-clear height on the same edges instead.
+    _ly = content.mapFrom(ov, QPoint(0, _ring_y_clear_of_nav(ov, content.geometry()))).y()
 
     def _press_move_release(lx, ly, dx, dy):
         start = content.mapToGlobal(QPoint(lx, ly))
@@ -1644,13 +1675,15 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     assert content.geometry() == base_geom
     assert getattr(ov, "_border_drag", None) is None
     # Right edge far past the window: clamped to overlay minus margin.
-    assert _press_move_release(w - 4, h // 2, 1000, 0) is True
+    # (W11: the strip point sits clear of the nav-circle band — presses
+    # inside either arrow rect walk the series instead of dragging.)
+    assert _press_move_release(w - 4, _ly, 1000, 0) is True
     margin = scaled_px(16)
     assert content.width() == ov.width() - margin * 2
     assert getattr(ov, "_border_drag", None) is None
     # Left edge drag rightwards shrinks with the opposite edge anchored.
     w2, right2 = content.width(), content.geometry().right()
-    assert _press_move_release(4, h // 2, 200, 0) is True
+    assert _press_move_release(4, _ly, 200, 0) is True
     assert content.width() < w2
     assert content.geometry().right() == right2
     # Far corner drag floors at the 1040×620 minimum.
@@ -1685,6 +1718,29 @@ def _w10_overlay_event(overlay, kind, local, button, buttons):
         buttons,
         Qt.KeyboardModifier.NoModifier,
     )
+
+
+def _ring_y_clear_of_nav(overlay, card) -> int:
+    """Overlay-y on the left/right ring bands, clear of both nav circles.
+
+    W11: the 36px circles sit on the card edges at the preview-band
+    center, whose offset varies with layout — fixed offsets are fragile,
+    so scan candidates and prove the pick hits the ring, not an arrow.
+    """
+    from PySide6.QtCore import QPoint
+
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    for y in (card.y() + 40, card.y() + card.height() - 40, card.y() + card.height() // 2):
+        pts = (QPoint(card.x() - 4, y), QPoint(card.x() + card.width() + 4, y))
+        if any(_ql_helpers.nav_button_at(overlay, p) is not None for p in pts):
+            continue
+        if _ql_helpers.ring_zone_at(overlay, pts[0]) != "left":
+            continue
+        if _ql_helpers.ring_zone_at(overlay, pts[1]) != "right":
+            continue
+        return y
+    raise AssertionError("no nav-clear ring y")
 
 
 def test_outer_ring_zones_and_cursors(qtbot):
@@ -1736,7 +1792,6 @@ def test_outer_ring_hover_cursor_through_overlay(qtbot):
     _show(ov, item, [item])
     QApplication.processEvents()
     card = ov._content.geometry()
-    cy = card.y() + card.height() // 2
 
     def _move(x, y):
         ov.mouseMoveEvent(
@@ -1747,7 +1802,10 @@ def test_outer_ring_hover_cursor_through_overlay(qtbot):
         )
         QApplication.processEvents()
 
-    _move(card.x() - 4, cy)
+    # W11: the mid-edge ring point at card center sits inside the prev
+    # circle (arrows show the plain cursor) — hover rides the same edge
+    # above the arrow band.
+    _move(card.x() - 4, _ring_y_clear_of_nav(ov, card))
     assert ov.cursor().shape() == Qt.CursorShape.SizeHorCursor
     _move(card.x() + card.width() // 2, card.y() - 4)
     assert ov.cursor().shape() == Qt.CursorShape.SizeVerCursor
@@ -1799,9 +1857,12 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
 
     content = ov._content
     card = content.geometry()
-    cy = card.y() + card.height() // 2
+    # W11: the mid-edge ring points at card vertical center sit inside the
+    # 36px nav circles — presses there walk the series (see W11 tests), so
+    # the drag points ride the same edges clear of the arrow band.
+    ring_y = _ring_y_clear_of_nav(ov, card)
     # Right ring far past the window: clamped to overlay minus margin.
-    started, _ = _press_move_release(card.x() + card.width() + 4, cy, 1000, 0)
+    started, _ = _press_move_release(card.x() + card.width() + 4, ring_y, 1000, 0)
     assert started is True
     margin = scaled_px(16)
     assert content.width() == ov.width() - margin * 2
@@ -1809,7 +1870,7 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
     # Left ring drag rightwards shrinks with the opposite edge anchored.
     card = content.geometry()
     w2 = content.width()
-    started, right2 = _press_move_release(card.x() - 4, cy, 200, 0)
+    started, right2 = _press_move_release(card.x() - 4, ring_y, 200, 0)
     assert started is True
     assert content.width() < w2
     assert content.geometry().right() == right2
@@ -1942,4 +2003,183 @@ def test_nav_circles_live_full_disc_centered_glyph(qtbot, _w1_light_palettes):
             cy = sum(y for _x, y in darks) / len(darks)
             assert abs(cx - ccx) <= 4, (enabled, btn.objectName(), cx, ccx)
             assert abs(cy - ccy) <= 4, (enabled, btn.objectName(), cy, ccy)
+    ov.hide()
+
+
+# -- W11 arrows exempt + pinned policy + enlarged glyphs -----------------------
+
+
+def test_nav_arrow_ring_press_walks_and_consumes_no_drag(qtbot):
+    """W11 item 1: a press starting inside either arrow rect walks the
+    series and is consumed — no border drag starts (arrows never drag)."""
+    from PySide6.QtCore import QEvent, Qt
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    assert ov._current_item.path == a.path
+    nxt_c = ov._next_btn.geometry().center()
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (nxt_c.x(), nxt_c.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    QApplication.processEvents()
+    assert ov._current_item.path == b.path
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is True
+    # Prev walks back; the outer half of the circle (ring band) too.
+    prev_c = ov._prev_btn.geometry().center()
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (prev_c.x() - 12, prev_c.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    QApplication.processEvents()
+    assert ov._current_item.path == a.path
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is True
+    ov.hide()
+
+
+def test_nav_arrow_press_disabled_consumes_no_drag(qtbot):
+    """W11 item 1: single-item series (disabled arrows) — the fall-through
+    press inside the circle is still consumed, never a drag."""
+    from PySide6.QtCore import QEvent, Qt
+
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    assert ov._prev_btn.isEnabled() is False
+    assert ov._next_btn.isEnabled() is False
+    prev_c = ov._prev_btn.geometry().center()
+    assert (
+        _ql_helpers.handle_ring_press(
+            ov,
+            _w10_overlay_event(
+                ov, QEvent.Type.MouseButtonPress, (prev_c.x(), prev_c.y()),
+                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            ),
+        )
+        is True
+    )
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is True
+    ov.hide()
+
+
+def test_nav_arrow_plate_press_walks_and_consumes(qtbot):
+    """W11 item 1: the plate filter excludes the arrow rects too — a
+    content-local press mapping into the next circle walks + consumes."""
+    from PySide6.QtCore import QEvent, QPoint, Qt
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    content = ov._content
+    nxt_c = ov._next_btn.geometry().center()
+    local = content.mapFrom(ov, nxt_c)
+    assert content.rect().contains(local)  # inner half overlaps the plate
+    glob = content.mapToGlobal(QPoint(local.x(), local.y()))
+    assert (
+        ov.eventFilter(
+            content,
+            _w9_mouse_event(
+                QEvent.Type.MouseButtonPress, (local.x(), local.y()), (glob.x(), glob.y()),
+                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            ),
+        )
+        is True
+    )
+    QApplication.processEvents()
+    assert ov._current_item.path == b.path
+    assert getattr(ov, "_border_drag", None) is None
+    ov.hide()
+
+
+def test_nav_arrow_hover_shows_plain_cursor(qtbot):
+    """W11 item 1: hovering either arrow shows the plain cursor, never a
+    resize cursor (ring and plate paths)."""
+    from PySide6.QtCore import QEvent, QPoint, Qt
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    nxt_c = ov._next_btn.geometry().center()
+    ov.mouseMoveEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseMove, (nxt_c.x(), nxt_c.y()),
+            Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+        )
+    )
+    QApplication.processEvents()
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
+    # Plate hover over the inner half: no resize cursor either.
+    content = ov._content
+    local = content.mapFrom(ov, nxt_c)
+    glob = content.mapToGlobal(QPoint(local.x(), local.y()))
+    assert (
+        ov.eventFilter(
+            content,
+            _w9_mouse_event(
+                QEvent.Type.MouseMove, (local.x(), local.y()), (glob.x(), glob.y()),
+                Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+            ),
+        )
+        is False
+    )  # hover never consumes
+    QApplication.processEvents()
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_nav_glyphs_enlarged_centered_both_states(qtbot, _w1_light_palettes):
+    """W11 item 1: ‹ › rows size up (24pt), still centered, ring intact in
+    both states; circles stay 36px."""
+    from PySide6.QtGui import QColor
+
+    from sli_ui_toolkit.managers import scaled_px
+    from tabs.image_gallery.ui.quick_look.helpers import QUICK_LOOK_NAV_GLYPH_PT
+
+    assert QUICK_LOOK_NAV_GLYPH_PT == 24
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    for btn, glyph in ((ov._prev_btn, "‹"), (ov._next_btn, "›")):
+        assert (btn.width(), btn.height()) == (scaled_px(36), scaled_px(36))
+        assert btn._corner_radius_px == 18
+        assert btn.styleSheet() == ""
+        glyph_rows = [
+            row for region in btn.regions() for row in (getattr(region, "rows", None) or [])
+        ]
+        assert [row.text for row in glyph_rows] == [glyph]
+        assert all(row.ratio == pytest.approx(1.0) for row in glyph_rows)
+        assert all(row.size == QUICK_LOOK_NAV_GLYPH_PT for row in glyph_rows)
+    for enabled in (True, False):
+        ov._prev_btn.setEnabled(enabled)
+        ov._next_btn.setEnabled(enabled)
+        QApplication.processEvents()
+        for btn in (ov._prev_btn, ov._next_btn):
+            assert btn.borderColor() == QColor("#d7dade")
+            assert btn._override_bg_color == QColor("#f1f2f4")
+            _px, ring_n, darks, (w, h) = _w9_grab_stats(btn)
+            assert ring_n > 30, (enabled, ring_n)
+            assert len(darks) >= 5, (enabled, len(darks))
+            cx = sum(x for x, _y in darks) / len(darks)
+            cy = sum(y for _x, y in darks) / len(darks)
+            assert abs(cx - w / 2) <= 3, (enabled, cx, w)
+            assert abs(cy - h / 2) <= 3, (enabled, cy, h)
     ov.hide()
