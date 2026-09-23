@@ -3,25 +3,40 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 
-from PySide6.QtGui import QColor
+from tabs.image_gallery.ui.quick_look.bars import (
+    _FillBlock,
+    _connect_theme_refresh,
+    _token_qcolor,
+)
 
 
-def _token_qcolor(token: str, fallback_hex: str) -> QColor:
+def _severity_fill(severity: str) -> QColor:
+    """Severity color via the single card-dots mapping (frozen seam).
+
+    Reuses ``ui/card/dots.py::_severity_color`` — no second severity mapping
+    lives here; the except path falls back to a neutral surface tone, never a
+    competing severity claim.
+    """
     try:
-        from sli_ui_toolkit.managers import ThemeManager
+        from tabs.image_gallery.ui.card.dots import _severity_color
 
-        from ui.theming import try_resolve_theme_color
-
-        c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-        if c is not None:
-            return c if isinstance(c, QColor) else QColor(c)
+        return _severity_color(severity)
     except Exception:
         pass
-    return QColor(fallback_hex)
+    return _token_qcolor("surface.button", "#8a8a8a", "#5a5a5a")
+
+
+def _base_fill() -> QColor:
+    return _token_qcolor("surface.button", "#8a8a8a", "#5a5a5a")
+
+
+def _container_bg() -> QColor:
+    return _token_qcolor("surface.background", "#cecece", "#2b2b2b")
 
 
 class _BandingCombHistogram(QWidget):
@@ -37,49 +52,65 @@ class _BandingCombHistogram(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(scaled_px(2))
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bg_color = _container_bg()
+        self._bars: list[tuple[_FillBlock, str]] = []
         base_heights = [18, 24, 30, 34, 36, 34, 30, 24, 18]
         spike_heights = [40, 44, 38, 32] if severity == "flagged" else ([40, 44, 38, 32] if severity == "mild" else [])
-        from PySide6.QtGui import QPalette
 
-        base_col = _token_qcolor("surface.button", "#5a5a5a")
+        base_col = _base_fill()
         for h in base_heights:
-            bar = QWidget(self)
+            bar = _FillBlock(base_col, self)
             bar.setFixedSize(scaled_px(9), scaled_px(h))
-            pal = bar.palette()
-            pal.setColor(QPalette.ColorRole.Window, base_col)
-            bar.setAutoFillBackground(True)
-            bar.setPalette(pal)
             lay.addWidget(bar)
+            self._bars.append((bar, "base"))
         if spike_heights:
-            if severity == "mild":
-                spike_col = _token_qcolor("gallery.status.warn", "#e8b64c")
-            else:
-                spike_col = _token_qcolor("gallery.status.danger", "#D93025")
+            spike_col = _severity_fill(severity)
             for h in spike_heights[:4]:
-                bar = QWidget(self)
+                bar = _FillBlock(spike_col, self)
                 bar.setFixedSize(scaled_px(9), scaled_px(h))
-                pal = bar.palette()
-                pal.setColor(QPalette.ColorRole.Window, spike_col)
-                bar.setAutoFillBackground(True)
-                bar.setPalette(pal)
                 lay.addWidget(bar)
+                self._bars.append((bar, "sev"))
             if severity == "flagged":
                 for h in [46, 50, 42]:
-                    bar = QWidget(self)
+                    bar = _FillBlock(_severity_fill(severity), self)
                     bar.setFixedSize(scaled_px(9), scaled_px(h))
-                    pal = bar.palette()
-                    pal.setColor(QPalette.ColorRole.Window, _token_qcolor("gallery.status.danger", "#D93025"))
-                    bar.setAutoFillBackground(True)
-                    bar.setPalette(pal)
                     lay.addWidget(bar)
+                    self._bars.append((bar, "sev"))
         self.setFixedHeight(scaled_px(56))
-        try:
-            from PySide6.QtGui import QPalette
+        _connect_theme_refresh(self._on_theme_changed)
 
-            pal2 = self.palette()
-            pal2.setColor(QPalette.ColorRole.Window, _token_qcolor("surface.background", "#262626"))
-            self.setAutoFillBackground(True)
-            self.setPalette(pal2)
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg_color = _container_bg()
+        except Exception:
+            pass
+        try:
+            base_col = _base_fill()
+            sev_col = _severity_fill(self._severity)
+            for bar, kind in self._bars:
+                try:
+                    bar.set_fill_color(base_col if kind == "base" else sev_col)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            p.fillRect(self.rect(), self._bg_color)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
         except Exception:
             pass
 
@@ -89,29 +120,68 @@ class _GenericHistogram(QWidget):
 
     def __init__(self, severity: str = "clean", parent=None) -> None:
         super().__init__(parent)
+        self._severity = severity
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(scaled_px(2))
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         heights = [18, 24, 30, 34, 36, 34, 30, 24, 18]
-        from PySide6.QtGui import QPalette
+        self._bg_color = _container_bg()
+        self._bars: list[tuple[_FillBlock, str]] = []
 
-        if severity == "flagged":
-            colors = [_token_qcolor("gallery.status.danger", "#D93025")] * len(heights)
-        elif severity == "mild":
-            colors = [_token_qcolor("gallery.status.warn", "#e8b64c")] * len(heights)
+        if severity in ("flagged", "mild"):
+            sev_col = _severity_fill(severity)
+            colors = [sev_col] * len(heights)
+            kinds = ["sev"] * len(heights)
         else:
-            colors = [_token_qcolor("surface.button", "#5a5a5a")] * len(heights)
-        for h, c in zip(heights, colors):
-            bar = QWidget(self)
+            base_col = _base_fill()
+            colors = [base_col] * len(heights)
+            kinds = ["base"] * len(heights)
+        for h, c, k in zip(heights, colors, kinds):
+            bar = _FillBlock(c, self)
             bar.setFixedSize(scaled_px(9), scaled_px(h))
-            pal = bar.palette()
-            pal.setColor(QPalette.ColorRole.Window, c)
-            bar.setAutoFillBackground(True)
-            bar.setPalette(pal)
             lay.addWidget(bar)
+            self._bars.append((bar, k))
         # P0-9: container fits the tallest bar (mockup 56).
         self.setFixedHeight(scaled_px(56))
+        _connect_theme_refresh(self._on_theme_changed)
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg_color = _container_bg()
+        except Exception:
+            pass
+        try:
+            if self._severity in ("flagged", "mild"):
+                col = _severity_fill(self._severity)
+            else:
+                col = _base_fill()
+            for bar, _kind in self._bars:
+                try:
+                    bar.set_fill_color(col)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            p.fillRect(self.rect(), self._bg_color)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
 
 class _HistogramStub(QWidget):

@@ -19,6 +19,24 @@ from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, LoadingSpinner
 from tabs.image_gallery.icons import Icon as GalleryIcon
 
 
+def _is_dark_theme() -> bool:
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        inst = ThemeManager.get_instance()
+        try:
+            return bool(inst.is_dark())
+        except Exception:
+            pass
+        try:
+            return str(inst.get_current_theme()).lower() != "light"
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return True
+
+
 def _resolve_toolbar_triage_color() -> QColor:
     try:
         from sli_ui_toolkit.managers import ThemeManager
@@ -28,7 +46,8 @@ def _resolve_toolbar_triage_color() -> QColor:
             return QColor(c) if isinstance(c, str) else c
     except Exception:
         pass
-    return QColor("#3fbf5f")
+    # NOTE: was #3fbf5f (dark-only fallback) — now gallery.status.ok light/dark chain.
+    return QColor("#2e7d32" if not _is_dark_theme() else "#43a047")
 
 def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
     """S2 mockup x1130 y74: active view segment is a fill-chip (blue 0.2), not a border."""
@@ -43,7 +62,13 @@ def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
                 except Exception: pass
                 return col
     except Exception: pass
-    return QColor(0, 150, 255, int(alpha))
+    # NOTE: was (0,150,255) at alpha (dark-only rgba) — now accent light/dark chain.
+    col = QColor("#0078D4" if not _is_dark_theme() else "#0096FF")
+    try:
+        col.setAlpha(int(alpha))
+    except Exception:
+        pass
+    return col
 
 
 def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
@@ -66,6 +91,24 @@ def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
 class GalleryToolbarViewSwitchContainer(QWidget):
     """Segmented view-switch background (106×32, r8, painter-painted, no QSS)."""
 
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
     def paintEvent(self, event) -> None:  # noqa: N802
         try:
             from PySide6.QtCore import QRectF
@@ -80,16 +123,20 @@ class GalleryToolbarViewSwitchContainer(QWidget):
                 col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
                 bg = QColor(col) if isinstance(col, str) else col
                 if bg is None:
-                    bg = QColor("#333333")
+                    # NOTE: was #333333 (dark-only) — now stats-background light/dark chain.
+                    bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
             except Exception:
-                bg = QColor("#333333")
+                # NOTE: was #333333 (dark-only) — now stats-background light/dark chain.
+                bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
             try:
                 border = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.border")
                 border_col = QColor(border) if isinstance(border, str) else border
                 if border_col is None:
-                    border_col = QColor("#4a4a4a")
+                    # NOTE: was #4a4a4a (dark-only) — now dialog-border light/dark chain.
+                    border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             except Exception:
-                border_col = QColor("#4a4a4a")
+                # NOTE: was #4a4a4a (dark-only) — now dialog-border light/dark chain.
+                border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             p.setPen(border_col)
             p.setBrush(bg)
             p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
@@ -106,7 +153,7 @@ class GalleryToolbar(QWidget):
     """Toolbar row for the gallery: Open Folder + filter + Sort + view switch (svg v2).
 
     Thin owner: state lives on the parent controller; this widget only emits
-    signals. No ``setStyleSheet`` — visuals via Button/CustomLineEdit painter
+    signals. No QSS styling — visuals via Button/CustomLineEdit painter
     pipeline. Matches ui-mockup-v2-triage.svg toolbar y72 h34.
     """
 
@@ -228,7 +275,7 @@ class GalleryToolbar(QWidget):
             pass
         layout.addWidget(self._scanning_label)
 
-        # Stretch pushes triage indicator to center/right (SVG: x660, green #3fbf5f, 12px)
+        # Stretch pushes triage indicator to center/right (SVG: x660, status-ok green, 12px)
         layout.addStretch(1)
 
         # Triage indicator — centered/right, green check via gallery.status.ok token
@@ -260,10 +307,7 @@ class GalleryToolbar(QWidget):
             self._view_switch_container.setFixedSize(scaled_px(106), scaled_px(32))
         except Exception:
             pass
-        try:
-            self._view_switch_container.setAutoFillBackground(False)
-        except Exception:
-            pass
+        # Container paints its own background in paintEvent (explicit fill).
         vs_lay = QHBoxLayout(self._view_switch_container)
         vs_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
         vs_lay.setSpacing(scaled_px(2))
@@ -376,6 +420,50 @@ class GalleryToolbar(QWidget):
             self.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Fixed)
         except Exception:
             pass
+
+        # Theme fan-out: tokens are re-read live, so refresh chips + indicator.
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        """Re-resolve token colors and repaint (no palette, no QSS)."""
+        try:
+            col = _resolve_toolbar_triage_color()
+            ind = self._triage_indicator
+            try:
+                if hasattr(ind, "setColor"):
+                    ind.setColor(col)
+                elif hasattr(ind, "apply_text_color"):
+                    ind.apply_text_color(col)
+            except Exception:
+                pass
+            try:
+                ind.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            apply_view = getattr(self, "_apply_view", None)
+            if callable(apply_view):
+                apply_view(bool(getattr(self, "_is_list", False)))
+        except Exception:
+            pass
+        try:
+            self._view_switch_container.update()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
 
     # -- public accessors ------------------------------------------------
 
