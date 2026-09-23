@@ -602,7 +602,7 @@ def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
     assert (base_w, base_h) == (scaled_px(1040), scaled_px(620))
     # W13: column floor 296px, stretches with the card (never fixed width).
     scroll_before = ov.findChild(QScrollArea, "quicklook_right_scroll")
-    assert scroll_before.minimumWidth() == scaled_px(296)
+    assert scroll_before.minimumWidth() >= scaled_px(296)
     col_before = scroll_before.width()
     assert col_before >= scaled_px(296)
     content.resize(base_w + scaled_px(160), base_h + scaled_px(80))
@@ -1300,7 +1300,7 @@ def test_right_column_stretches_with_full_content(qtbot):
     # the card (never a fixed width); the layout hint fits it, and both
     # scrollbars stay hidden with zero range.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
-    assert scroll.minimumWidth() == scaled_px(296)
+    assert scroll.minimumWidth() >= scaled_px(296)
     assert scroll.width() >= scaled_px(296)
     assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     host = ov.findChild(QWidget, "quicklook_right_host")

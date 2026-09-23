@@ -128,7 +128,9 @@ def test_right_column_stretches_with_min_296_on_resize(qtbot, tmp_path):
     # The 296 floor is a minimum, not a fixed width: the live width
     # follows the layout distribution (with an unloaded preview the
     # column takes more than the floor even at the minimum card).
-    assert scroll.minimumWidth() == scaled_px(296)
+    # Column floor is dynamic (296 + 35% of slack, pinned from live card
+    # width) — never below the mockup 296px, exact value follows size.
+    assert scroll.minimumWidth() >= scaled_px(296)
     width_before = scroll.width()
     assert width_before >= scaled_px(296)
 
