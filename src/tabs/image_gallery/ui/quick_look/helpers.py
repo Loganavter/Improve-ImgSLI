@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 
 def _is_dark_theme() -> bool:
@@ -315,6 +315,197 @@ def _set_colored_text(btn, text: str, color: QColor | None) -> None:
             pass
 
 
+# S4 v2 LIGHT mockup-pt sizing (W4 item 1): every quick-look Label renders at
+# the mockup's own number as *points* via the UiFont point path
+# (``UiFont.resolve(point_size=...)`` — scaled exactly once, no UiScale or
+# settings changes). ``Label`` itself accepts only ``pixel_size`` (its
+# ``_apply_style`` re-runs on font/scale changes using the pixel value), so
+# the point font is applied *after* construction and re-asserted after
+# Label's own pixel-based restyle. Theme flips only recolor
+# (``Label._on_theme_changed``), so they never clobber the point font.
+_POINT_PT_BY_PIXEL = {13: 13, 12: 12, 11: 11.5, 10: 10, 9: 9}
+
+
+def _apply_point_size(label, pt: int | float, **font_kwargs) -> None:
+    """Apply a mockup-pt font to a Label via the UiFont point path.
+
+    Extra ``font_kwargs`` (e.g. ``bold=True``) forward to
+    ``UiFont.resolve`` so overrides set via the Label constructor survive.
+    """
+    try:
+        from sli_ui_toolkit.managers import UiFont, UiScale
+
+        ui_font = UiFont.get_instance()
+        label.setFont(ui_font.resolve(point_size=float(pt), **font_kwargs))
+    except Exception:
+        try:
+            f = label.font()
+            f.setPointSizeF(float(pt))
+            if font_kwargs.get("bold") is not None:
+                f.setBold(bool(font_kwargs["bold"]))
+            label.setFont(f)
+        except Exception:
+            return
+    # Re-assert after Label's own pixel-based _apply_style (wired at Label
+    # construction, so it always runs first): font_changed and scale_changed
+    # would otherwise revert the point font to the pixel value.
+    try:
+        import weakref as _wr
+
+        from sli_ui_toolkit.managers import UiFont as _UiFont2, UiScale as _UiScale2
+
+        _ui_font = _UiFont2.get_instance()
+        _pt = float(pt)
+        _fkw = dict(font_kwargs)
+        _ref = _wr.ref(label)
+        _conns: list = []
+
+        def _reassert() -> None:
+            tgt = _ref()
+            if tgt is None:
+                for _sig, _slot in list(_conns):
+                    try:
+                        _sig.disconnect(_slot)
+                    except Exception:
+                        pass
+                _conns.clear()
+                return
+            try:
+                tgt.setFont(_UiFont2.get_instance().resolve(point_size=_pt, **_fkw))
+            except Exception:
+                pass
+
+        try:
+            _conns.append((_ui_font.font_changed, _ui_font.font_changed.connect(_reassert)))
+            _scale = _UiScale2.get_instance()
+            _conns.append((_scale.scale_changed, _scale.scale_changed.connect(_reassert)))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _make_label(text: str = "", parent=None, pixel_size: int = 10, pt=None, **kwargs):
+    """Create a toolkit Label with mockup-pt sizing (W4 item 1).
+
+    ``pixel_size`` is kept as the Label fallback; the rendered size is the
+    mockup number as points (``pt`` override or ``_POINT_PT_BY_PIXEL``).
+    """
+    from sli_ui_toolkit.widgets import Label
+
+    lbl = Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+    try:
+        _resolve_kw = {k: kwargs[k] for k in ("bold", "italic") if kwargs.get(k) is not None}
+        _apply_point_size(lbl, float(pt) if pt is not None else _POINT_PT_BY_PIXEL.get(pixel_size, pixel_size), **_resolve_kw)
+    except Exception:
+        pass
+    return lbl
+
+
+class _RuleWidget(QWidget):
+    """1px horizontal rule — file-local painted divider (W4 item 3).
+
+    The toolkit ``Divider`` is a button-region dataclass, not a widget
+    (``TypeError`` on ``parent=``), and there is no toolkit divider widget
+    (``DividerLayer`` is a painter layer, not a ``QWidget``). So the three
+    quick-look section rules live here: explicit paintEvent with the
+    ``separator.color`` token, theme-subscribed. No QSS.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        from sli_ui_toolkit.managers import scaled_px
+
+        self.setFixedHeight(scaled_px(9))
+        try:
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass
+        self._color = self._resolve_color()
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _resolve_color():
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            from ui.theming import try_resolve_theme_color
+
+            c = try_resolve_theme_color(ThemeManager.get_instance(), "separator.color")
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+        except Exception:
+            pass
+        return _token_color("separator.color", "#e5e5e5")
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._color = self._resolve_color()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            try:
+                r = self.rect()
+                p.fillRect(0, r.height() // 2, r.width(), 1, self._color)
+            finally:
+                p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
+
+
+def reposition_nav_buttons(overlay) -> None:
+    """Pin prev/next circles half-outside the card edges (W4 item 6).
+
+    Absolute children of the card plate (like ``reposition_source_inset``):
+    each circle's center sits on the card's left/right edge, vertically
+    centered on the preview band. Called from ``resizeEvent`` and after
+    ``_populate`` (best effort before first show).
+    """
+    try:
+        content = getattr(overlay, "_content", None)
+        host = getattr(overlay, "_preview_host", None)
+        prev = getattr(overlay, "_prev_btn", None)
+        nxt = getattr(overlay, "_next_btn", None)
+        if content is None or host is None or prev is None or nxt is None:
+            return
+        host_pos = host.mapTo(content, QPoint(0, 0))
+        cy = host_pos.y() + host.height() // 2
+        cw = content.width()
+        for btn, left_edge in ((prev, True), (nxt, False)):
+            try:
+                bw = btn.width() or btn.sizeHint().width()
+                bh = btn.height() or btn.sizeHint().height()
+            except Exception:
+                continue
+            x = -bw // 2 if left_edge else cw - bw // 2
+            btn.move(x, cy - bh // 2)
+            try:
+                btn.raise_()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
     """Source image dimensions: metrics width/height first, QPixmap fallback."""
     metrics = getattr(src_item, "metrics", None) if src_item is not None else None
@@ -345,15 +536,18 @@ def build_overlay_ui(overlay) -> None:
     No QSS, painter pipeline only, lazy imports for theming.
     """
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QHBoxLayout, QLabel, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button, ButtonRow, Label
+    from sli_ui_toolkit.widgets import Button, ButtonRow
 
     try:
-        from tabs.image_gallery.ui.quick_look.source_inset import _SourceInsetHost
+        from tabs.image_gallery.ui.quick_look.source_inset import _InsetCaptionStrip, _SourceInsetHost
     except Exception:
-        _SourceInsetHost = QWidget  # type: ignore
+        from PySide6.QtWidgets import QWidget as _W
+
+        _SourceInsetHost = _W  # type: ignore
+        _InsetCaptionStrip = _W  # type: ignore
 
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
@@ -369,12 +563,11 @@ def build_overlay_ui(overlay) -> None:
     chip_row = QHBoxLayout()
     chip_row.setContentsMargins(0, 0, 0, 0)
     chip_row.setSpacing(scaled_px(8))
-    overlay._mode_chip = Label("FIDELITY MODE", pixel_size=10, color_token="accent", parent=overlay._content)
+    # NOTE: bold goes through the _make_label constructor (never setBold
+    # after): setBold re-runs Label's pixel-based _apply_style and would
+    # revert the mockup-pt font.
+    overlay._mode_chip = _make_label("FIDELITY MODE", parent=overlay._content, pixel_size=10, pt=10, color_token="accent", bold=True)
     overlay._mode_chip.setObjectName("quicklook_mode_chip")
-    try:
-        overlay._mode_chip.setBold(True)
-    except Exception:
-        pass
     # S4 mockup: accent-tinted pill behind the chip (fill accent @ 0.2).
     # Painted host (explicit paintEvent, theme-subscribed) — no QSS, no palette.
     try:
@@ -387,6 +580,8 @@ def build_overlay_ui(overlay) -> None:
         pill_lay.addWidget(overlay._mode_chip)
         overlay._mode_chip_pill = pill
         chip_row.addWidget(pill)
+        # Reparenting resets the explicit font — re-assert the pt size after.
+        _apply_point_size(overlay._mode_chip, 10, bold=True)
     except Exception:
         try:
             chip_row.addWidget(overlay._mode_chip)
@@ -410,16 +605,24 @@ def build_overlay_ui(overlay) -> None:
     preview_row.setContentsMargins(0, 0, 0, 0)
     preview_row.setSpacing(scaled_px(6))
     preview_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    # S4 v2 (svg:67-70): 36px circular prev/next at the preview outer edges.
-    # Glyph via rows (not text=): the toolkit gives text buttons at the
-    # default 36x36 a content-sized minimum instead of a fixed 36x36, while
-    # rows-only buttons take setFixedSize — so rows= is what actually lands
-    # 36x36. Round shape via corner_radius (design px, scaled internally);
-    # no QSS anywhere on this path.
-    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18)], variant="surface", size=(36, 36), corner_radius=18, parent=left)
+    # S4 v2 (svg:67-70): 36px circular prev/next overlapping the card edge
+    # half-outside (W4 item 6) — absolute children of the card plate,
+    # positioned by reposition_nav_buttons (like reposition_source_inset),
+    # NOT layout items. Glyph via rows (rows-only buttons take setFixedSize
+    # so 36x36 actually lands); round shape via corner_radius (design px,
+    # scaled internally); no QSS anywhere on this path.
+    # Glyph color is a fixed dark token (mockup #23262b); the border is set
+    # explicitly so it survives the disabled state (W4 item 6).
+    _nav_glyph = _token_color("gallery.nav.glyph", "#23262b")
+    _nav_border = _token_color("gallery.card.border", "#e2e4e8")
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
     overlay._prev_btn.setObjectName("quicklook_prev")
+    try:
+        if _nav_border is not None:
+            overlay._prev_btn.set_border_color(_nav_border)
+    except Exception:
+        pass
     overlay._prev_btn.clicked.connect(lambda: overlay._walk(-1))
-    preview_row.addWidget(overlay._prev_btn)
     preview_host = QWidget(left)
     preview_host.setObjectName("QuickLookPreviewHost")
     overlay._preview_host = preview_host
@@ -441,9 +644,15 @@ def build_overlay_ui(overlay) -> None:
     src_lay = QVBoxLayout(overlay._source_inset_host)
     src_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
     src_lay.setSpacing(scaled_px(2))
-    overlay._source_inset_label = Label("SOURCE", pixel_size=9, parent=overlay._source_inset_host)
-    overlay._source_inset_label.setObjectName("quicklook_source_inset_title")
-    src_lay.addWidget(overlay._source_inset_label)
+    # W4 item 5: caption is an amber-on-dark strip overlaid at the inset
+    # bottom (svg:53-64), elided to the strip width — not a VBox label.
+    # The attribute name stays _source_inset_label (tests + populate read it).
+    try:
+        overlay._source_inset_caption = _InsetCaptionStrip(overlay._source_inset_host)
+        overlay._source_inset_label = overlay._source_inset_caption.label
+    except Exception:
+        overlay._source_inset_label = _make_label("SOURCE", parent=overlay._source_inset_host, pixel_size=9, pt=9)
+        overlay._source_inset_label.setObjectName("quicklook_source_inset_title")
     overlay._source_inset_pix = QLabel(overlay._source_inset_host)
     overlay._source_inset_pix.setObjectName("quicklook_source_inset_pix")
     overlay._source_inset_pix.setFixedSize(scaled_px(150), scaled_px(84))
@@ -459,7 +668,7 @@ def build_overlay_ui(overlay) -> None:
     crop_lay = QVBoxLayout(overlay._crop_host)
     crop_lay.setContentsMargins(0, 0, 0, 0)
     crop_lay.setSpacing(scaled_px(2))
-    overlay._crop_title = Label("SHARPNESS CROP", pixel_size=9, parent=overlay._crop_host)
+    overlay._crop_title = _make_label("SHARPNESS CROP", parent=overlay._crop_host, pixel_size=9, pt=9)
     overlay._crop_title.setObjectName("quicklook_crop_title")
     crop_lay.addWidget(overlay._crop_title)
     overlay._crop_pix = QLabel(overlay._crop_host)
@@ -472,30 +681,35 @@ def build_overlay_ui(overlay) -> None:
     fname_row = QHBoxLayout()
     fname_row.setContentsMargins(0, 0, 0, 0)
     fname_row.setSpacing(scaled_px(8))
-    overlay._filename_label = Label("", pixel_size=12, parent=preview_host)
+    overlay._filename_label = _make_label("", parent=preview_host, pixel_size=12, pt=12, bold=True)
     overlay._filename_label.setObjectName("quicklook_filename")
-    try:
-        overlay._filename_label.setBold(True)
-    except Exception:
-        pass
     fname_row.addWidget(overlay._filename_label)
-    overlay._meta_label = Label("", pixel_size=11, parent=preview_host)
+    overlay._meta_label = _make_label("", parent=preview_host, pixel_size=11, pt=11.5)
     overlay._meta_label.setObjectName("quicklook_meta")
     fname_row.addWidget(overlay._meta_label)
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18)], variant="surface", size=(36, 36), corner_radius=18, parent=left)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
     overlay._next_btn.setObjectName("quicklook_next")
+    try:
+        if _nav_border is not None:
+            overlay._next_btn.set_border_color(_nav_border)
+    except Exception:
+        pass
     overlay._next_btn.clicked.connect(lambda: overlay._walk(1))
-    preview_row.addWidget(overlay._next_btn)
     left_lay.addLayout(preview_row, 1)
-    overlay._hint_label = Label("Esc closes · ←→ walk series", pixel_size=10, parent=left)
-    overlay._hint_label.setObjectName("quicklook_hint")
-    left_lay.addWidget(overlay._hint_label)
+    # W4 item 4: the Esc hint lives at the right end of the bottom button
+    # bar (built below), not in the left column. Nothing added here.
     mid.addWidget(left, 2)
     right_scroll = QScrollArea(overlay._content)
     right_scroll.setObjectName("quicklook_right_scroll")
+    # W4 item 2: frameless — the scroll frame drew a bogus box around the
+    # right column. No QSS (stock Qt widget, frame shape only).
+    try:
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+    except Exception:
+        pass
     right_scroll.setWidgetResizable(True)
     right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -505,14 +719,10 @@ def build_overlay_ui(overlay) -> None:
     right_lay.setContentsMargins(0, 0, 0, 0)
     right_lay.setSpacing(scaled_px(10))
     right_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
-    overlay._report_title = Label("Fidelity report", pixel_size=13, parent=right_host)
+    overlay._report_title = _make_label("Fidelity report", parent=right_host, pixel_size=13, pt=13, bold=True)
     overlay._report_title.setObjectName("quicklook_report_title")
-    try:
-        overlay._report_title.setBold(True)
-    except Exception:
-        pass
     right_lay.addWidget(overlay._report_title)
-    overlay._report_sub = Label("", pixel_size=10, parent=right_host)
+    overlay._report_sub = _make_label("", parent=right_host, pixel_size=10, pt=10)
     overlay._report_sub.setObjectName("quicklook_report_sub")
     right_lay.addWidget(overlay._report_sub)
     overlay._metrics_host = QWidget(right_host)
@@ -527,23 +737,16 @@ def build_overlay_ui(overlay) -> None:
     overlay._artifacts_layout.setContentsMargins(0, 0, 0, 0)
     overlay._artifacts_layout.setSpacing(scaled_px(6))
     right_lay.addWidget(overlay._artifacts_host)
-    # S4 mockup divider before the series context block (svg:462).
-    try:
-        from sli_ui_toolkit.widgets import Divider as _Divider
-
-        overlay._div_series = _Divider(parent=right_host)
-        overlay._div_series.setObjectName("quicklook_div_series")
-        right_lay.addWidget(overlay._div_series)
-    except Exception:
-        pass
-    overlay._series_header = Label("Series", pixel_size=11, parent=right_host)
+    # S4 mockup divider before the series context block (svg:462) — a
+    # file-local 1px painted rule (W4 item 3); the toolkit Divider is a
+    # button-region dataclass, not a widget.
+    overlay._div_series = _RuleWidget(right_host)
+    overlay._div_series.setObjectName("quicklook_div_series")
+    right_lay.addWidget(overlay._div_series)
+    overlay._series_header = _make_label("Series", parent=right_host, pixel_size=11, pt=13, bold=True)
     overlay._series_header.setObjectName("quicklook_series_header")
-    try:
-        overlay._series_header.setBold(True)
-    except Exception:
-        pass
     right_lay.addWidget(overlay._series_header)
-    overlay._series_sub = Label("", pixel_size=10, parent=right_host)
+    overlay._series_sub = _make_label("", parent=right_host, pixel_size=10, pt=11.5)
     overlay._series_sub.setObjectName("quicklook_series_sub")
     right_lay.addWidget(overlay._series_sub)
     overlay._strip_host = QWidget(right_host)
@@ -553,31 +756,23 @@ def build_overlay_ui(overlay) -> None:
     overlay._strip_layout.setSpacing(scaled_px(6))
     overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
     right_lay.addWidget(overlay._strip_host)
-    # S4 mockup divider before the compare-brief teaser (svg:600).
-    try:
-        from sli_ui_toolkit.widgets import Divider as _Divider2
-
-        overlay._div_brief = _Divider2(parent=right_host)
-        overlay._div_brief.setObjectName("quicklook_div_brief")
-        right_lay.addWidget(overlay._div_brief)
-    except Exception:
-        pass
-    overlay._brief_label = Label("", pixel_size=11, parent=right_host)
+    # S4 mockup divider before the compare-brief teaser (svg:600) — painted
+    # rule, see _div_series.
+    overlay._div_brief = _RuleWidget(right_host)
+    overlay._div_brief.setObjectName("quicklook_div_brief")
+    right_lay.addWidget(overlay._div_brief)
+    overlay._brief_label = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
     overlay._brief_label.setObjectName("quicklook_brief")
     overlay._brief_label.setWordWrap(True)
     right_lay.addWidget(overlay._brief_label)
     right_scroll.setWidget(right_host)
     mid.addWidget(right_scroll, 1)
     outer.addLayout(mid, 1)
-    # S4 mockup divider above the bottom action bar (svg:648).
-    try:
-        from sli_ui_toolkit.widgets import Divider as _Divider3
-
-        overlay._div_bar = _Divider3(parent=overlay._content)
-        overlay._div_bar.setObjectName("quicklook_div_bar")
-        outer.addWidget(overlay._div_bar)
-    except Exception:
-        pass
+    # S4 mockup divider above the bottom action bar (svg:648) — painted
+    # rule, see _div_series.
+    overlay._div_bar = _RuleWidget(overlay._content)
+    overlay._div_bar.setObjectName("quicklook_div_bar")
+    outer.addWidget(overlay._div_bar)
     # bottom bar
     bar = QWidget(overlay._content)
     bar.setObjectName("quicklook_bottom_bar")
@@ -625,6 +820,11 @@ def build_overlay_ui(overlay) -> None:
     overlay._set_source_btn.clicked.connect(overlay._on_set_source)
     bar_lay.addWidget(overlay._set_source_btn)
     bar_lay.addStretch(1)
+    # W4 item 4: the Esc hint sits at the right end of the button bar row
+    # (svg:198, right-aligned), out of the left column.
+    overlay._hint_label = _make_label("Esc closes · ←→ walk series", parent=bar, pixel_size=10, pt=10)
+    overlay._hint_label.setObjectName("quicklook_hint")
+    bar_lay.addWidget(overlay._hint_label)
     outer.addWidget(bar)
     overlay.add_widget(overlay._content, slot=None)
     overlay._strip_buttons: list = []
@@ -779,6 +979,9 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
         if is_fidelity and overlay._source_path is not None:
             if upscale_n is not None and upscale_n > 1:
                 meta_parts.append(f"upscale ×{upscale_n} from source")
+            elif upscale_n == 1:
+                # W4 item 7: explicit same-size text when truly ×1.
+                meta_parts.append("same size as source")
             else:
                 meta_parts.append("upscale from source")
         elif upscale_n is not None and upscale_n > 1:

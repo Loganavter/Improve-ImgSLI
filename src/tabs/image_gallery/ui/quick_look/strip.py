@@ -47,14 +47,17 @@ def rebuild_strip(overlay) -> None:
             pass
         rejected = bool(getattr(m, "rejected", False))
         pending = bool(getattr(m, "vlm_tie_pending", False))
-        if is_source:
-            text = "SOURCE"
+        # W4 item 9: SOURCE / #N / ✕ ride as badge overlays, not button
+        # text. Text-under-button survives only for tie-break pending and
+        # the strip hint. The checked + accent border still marks viewing.
+        if pending:
+            badge_text = "…"
+        elif is_source:
+            badge_text = "SOURCE"
         elif rejected:
-            text = "✕"
-        elif is_viewing:
-            text = f"#{idx+1} viewing"
+            badge_text = "✕"
         else:
-            text = f"#{idx+1}"
+            badge_text = f"#{idx+1}"
         thumb_pm = None
         try:
             from tabs.image_gallery.ui.quick_look.helpers import _thumb_pixmap
@@ -84,9 +87,9 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 regions = None
         if regions is not None:
-            btn = Button(text=text, variant="surface", size=(74, 44), parent=container, regions=regions)
+            btn = Button(text="", variant="surface", size=(74, 44), parent=container, regions=regions, badge=badge_text)
         else:
-            btn = Button(text=text, variant="surface", size=(74, 44), parent=container)
+            btn = Button(text="", variant="surface", size=(74, 44), parent=container, badge=badge_text)
         btn.setObjectName(f"quicklook_strip_{idx}")
         try:
             if pending:
@@ -117,8 +120,6 @@ def rebuild_strip(overlay) -> None:
                     btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
                 except Exception:
                     pass
-            elif is_source:
-                pass
         except Exception:
             pass
         try:
@@ -189,7 +190,14 @@ def rebuild_strip(overlay) -> None:
         elif is_viewing and len(overlay._series_items) > 1:
             caption_text = ""
         if caption_text:
-            cap = Label(caption_text, pixel_size=9, parent=container)
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import _make_label as _strip_label
+            except Exception:
+                _strip_label = Label  # type: ignore
+            if _strip_label is Label:
+                cap = Label(caption_text, pixel_size=9, parent=container)
+            else:
+                cap = _strip_label(caption_text, parent=container, pixel_size=10, pt=10)
             cap.setObjectName(f"quicklook_strip_cap_{idx}")
             cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cont_lay.addWidget(cap)
@@ -199,7 +207,14 @@ def rebuild_strip(overlay) -> None:
     try:
         has_pending = any(bool(getattr(m, "vlm_tie_pending", False)) for m in overlay._series_items)
         if not has_pending and overlay._series_items:
-            hint = Label("click thumb = switch preview", pixel_size=9, parent=overlay._strip_host)
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import _make_label as _strip_hint_label
+            except Exception:
+                _strip_hint_label = Label  # type: ignore
+            if _strip_hint_label is Label:
+                hint = Label("click thumb = switch preview", pixel_size=9, parent=overlay._strip_host)
+            else:
+                hint = _strip_hint_label("click thumb = switch preview", parent=overlay._strip_host, pixel_size=10, pt=10)
             hint.setObjectName("quicklook_strip_hint")
             overlay._strip_layout.addWidget(hint)
             overlay._strip_caption_labels.append(hint)

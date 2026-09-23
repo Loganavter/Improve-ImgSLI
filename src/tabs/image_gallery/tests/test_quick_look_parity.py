@@ -125,15 +125,22 @@ def test_no_region_suffix_on_any_artifact(qtbot):
         ov.hide()
 
 
-# -- S4-4: clean rows are hidden, empty section collapses --------------------
+# -- S4-4: ALL artifact rows render incl. clean, section never collapses ----
+# (W4 item 8: hiding clean rows hid the banding base on all-clean items.)
 
 
-def test_clean_artifacts_hidden_section_collapsed(qtbot):
+def test_all_artifact_rows_shown_including_clean(qtbot):
     item = _item("c.png", artifacts={}, metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    assert ov._artifact_rows == []
-    assert not ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
+    assert len(ov._artifact_rows) == 7
+    assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
+    texts = [
+        lbl.text()
+        for w in ov._artifact_rows
+        for lbl in w.findChildren(type(ov._mode_chip))
+    ]
+    assert "clean" in texts
     ov.hide()
 
 
@@ -149,8 +156,31 @@ def test_non_clean_artifact_rows_shown(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    assert len(ov._artifact_rows) == 2
+    # All seven rows render (clean included); severities read severity-only.
+    assert len(ov._artifact_rows) == 7
     assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
+    texts = [
+        lbl.text()
+        for w in ov._artifact_rows
+        for lbl in w.findChildren(type(ov._mode_chip))
+    ]
+    assert "mild" in texts and "flagged" in texts and "clean" in texts
+    ov.hide()
+
+
+def test_halo_renders_as_bar_widget(qtbot):
+    """W4 item 8: halo is a horizontal _BarWidget like the metric rows."""
+    from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+
+    item = _item("h.png", artifacts={Artifact.HALO: Severity.MILD}, metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    halo_rows = [
+        w for w in ov._artifact_rows
+        if any("Halo" in lbl.text() for lbl in w.findChildren(type(ov._mode_chip)))
+    ]
+    assert len(halo_rows) == 1
+    assert halo_rows[0].findChild(_BarWidget) is not None
     ov.hide()
 
 
@@ -175,9 +205,11 @@ def test_source_caption_includes_dimensions(qtbot):
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
-    text = ov._source_inset_label.text()
-    assert text.startswith("SOURCE · src.png")
-    assert "960×540" in text
+    # Caption is an overlaid strip elided to width (W4 item 5): the full
+    # caption lives in _original_text even when the strip elides the tail.
+    full = ov._source_inset_label._original_text
+    assert full.startswith("SOURCE · src.png")
+    assert "960×540" in full
     ov.hide()
 
 
@@ -528,12 +560,20 @@ def test_card_geometry_1040x620(qtbot):
 
 
 def test_prev_next_36px_circular_at_preview_edges(qtbot):
-    """Prev/next: 36px circular buttons flanking the preview host (svg:67-70)."""
+    """Prev/next: 36px circles overlapping the card edge half-outside (svg:67-70).
+
+    W4 item 6: absolute children of the card plate — each circle's center
+    sits on the card edge, vertically centered on the preview band.
+    """
+    from PySide6.QtCore import QPoint
+
     from sli_ui_toolkit.managers import scaled_px
 
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
+    QApplication.processEvents()
+    content = ov._content
     host = ov._preview_host
     assert (ov._prev_btn.width(), ov._prev_btn.height()) == (scaled_px(36), scaled_px(36))
     assert (ov._next_btn.width(), ov._next_btn.height()) == (scaled_px(36), scaled_px(36))
@@ -547,13 +587,28 @@ def test_prev_next_36px_circular_at_preview_edges(qtbot):
             row.text for region in btn.regions() for row in (getattr(region, "rows", None) or [])
         ]
         assert glyph in glyphs
-    # Outer edges: prev left of the preview host, next right of it.
-    assert ov._prev_btn.x() + ov._prev_btn.width() <= host.x()
-    assert ov._next_btn.x() >= host.x() + host.width()
-    # Vertically centered on the preview band.
+        # Absolute children of the card plate, above the content.
+        assert btn.parentWidget() is content
+    # Half-outside: prev center on the left card edge, next on the right.
+    prev_c = ov._prev_btn.geometry().center()
+    next_c = ov._next_btn.geometry().center()
+    assert abs(prev_c.x() - 0) <= 2
+    assert abs(next_c.x() - content.width()) <= 2
+    # Vertically centered on the preview band (mapped to card coords).
+    host_top = host.mapTo(content, QPoint(0, 0)).y()
+    for c in (prev_c, next_c):
+        assert host_top <= c.y() <= host_top + host.height()
+    ov.hide()
+
+
+def test_prev_next_keep_border_when_disabled(qtbot):
+    """W4 item 6: the nav border is explicit, so it survives disable."""
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
     for btn in (ov._prev_btn, ov._next_btn):
-        cy = btn.y() + btn.height() // 2
-        assert host.y() <= cy <= host.y() + host.height()
+        btn.setEnabled(False)
+        assert btn.borderColor() is not None
     ov.hide()
 
 
@@ -683,10 +738,12 @@ def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
         assert len(regions) == 1
         assert regions[0].pixmap is not None and not regions[0].pixmap.isNull()
         assert regions[0].image_fill == "cover"
-    # Badge text preserved: SOURCE on source, #N viewing on viewing.
+    # Badge text preserved as badge overlays (W4 item 9): SOURCE on source,
+    # #N on viewing — not Button text.
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path[str(p1)]._text == "SOURCE"
-    assert by_path[str(p2)]._text == "#2 viewing"
+    assert by_path[str(p1)]._badge == "SOURCE"
+    assert by_path[str(p2)]._badge == "#2"
+    assert by_path[str(p1)]._text == ""
     ov.hide()
 
 
@@ -818,3 +875,136 @@ def test_find_action_set_as_source_reruns_fidelity(tmp_path):
         assert all(k not in it.metrics for k in ("ssim", "hf_ratio", "delta_e", "upscale_factor"))
     assert ctrl.runs == [([a, b], Path(new_src))]
     assert overlay_stub.refreshed == [a, b]
+
+
+# -- W4 render fidelity -------------------------------------------------------
+
+
+def test_right_column_scroll_frameless(qtbot):
+    """W4 item 2: the right-column QScrollArea is frameless (no bogus box)."""
+    from PySide6.QtWidgets import QFrame, QScrollArea
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll is not None
+    assert scroll.frameShape() == QFrame.Shape.NoFrame
+    ov.hide()
+
+
+def test_hint_at_right_end_of_button_bar(qtbot):
+    """W4 item 4: the Esc hint is the last widget of the bottom bar row."""
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    bar = ov.findChild(QWidget, "quicklook_bottom_bar")
+    assert bar is not None
+    assert ov._hint_label.parentWidget() is bar
+    lay = bar.layout()
+    assert lay.itemAt(lay.count() - 1).widget() is ov._hint_label
+    # Out of the left column.
+    left = ov.findChild(QWidget, "QuickLookLeft")
+    assert ov._hint_label not in left.findChildren(type(ov._hint_label))
+    ov.hide()
+
+
+def test_dividers_are_painted_widgets(qtbot):
+    """W4 item 3: section dividers are real 1px painted widgets, no QSS."""
+    from tabs.image_gallery.ui.quick_look.helpers import _RuleWidget
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    for name in ("quicklook_div_series", "quicklook_div_brief", "quicklook_div_bar"):
+        div = ov.findChild(QWidget, name)
+        assert isinstance(div, _RuleWidget), name
+        assert div.styleSheet() == ""
+        pm = div.grab()
+        assert not pm.isNull()
+    ov.hide()
+
+
+def test_labels_render_at_mockup_point_sizes(qtbot):
+    """W4 item 1: Labels render the mockup number as points (UiFont path)."""
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    assert ov._report_title.font().pointSizeF() == pytest.approx(13)
+    assert ov._filename_label.font().pointSizeF() == pytest.approx(12)
+    assert ov._mode_chip.font().pointSizeF() == pytest.approx(10)
+    assert ov._hint_label.font().pointSizeF() == pytest.approx(10)
+    assert ov._brief_label.font().pointSizeF() == pytest.approx(11.5)
+    ov.hide()
+
+
+def test_inset_caption_is_bottom_overlay_strip(qtbot):
+    """W4 item 5: caption is an overlaid strip at the inset bottom, not a
+    VBox label — full width, bottom edge, eliding."""
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    host = ov._source_inset_host
+    cap = ov._source_inset_caption
+    assert cap.parentWidget() is host
+    # Not managed by the host VBox layout.
+    assert host.layout().indexOf(cap) == -1
+    # Pinned to the inset bottom, full inset width.
+    assert cap.y() + cap.height() == host.height()
+    assert cap.width() == host.width()
+    ov.hide()
+
+
+def test_meta_same_size_when_factor_one(qtbot):
+    """W4 item 7: fidelity meta reads an explicit same-size text when ×1."""
+    src = _item("src.png", metrics={})
+    item = _item("v.png", metrics={"upscale_factor": 1})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    assert "same size as source" in ov._meta_label.text()
+    assert "upscale ×" not in ov._meta_label.text()
+    ov.hide()
+
+
+def test_upscale_factor_uses_long_side(tmp_path):
+    """W4 item 7: portrait-safe — factor by LONG side, not width."""
+    from tabs.image_gallery.services.fidelity_metrics import compute_fidelity_metrics
+
+    src = tmp_path / "psrc.png"
+    up = tmp_path / "pup.png"
+    _noise_png(src, (32, 64), seed=11)
+    _noise_png(up, (64, 128), seed=12)
+    measured = compute_fidelity_metrics(up, src)
+    assert measured["upscale_factor"] == 2
+    # Square control still exact.
+    s2 = tmp_path / "ssrc.png"
+    u2 = tmp_path / "sup.png"
+    _noise_png(s2, (64, 64), seed=13)
+    _noise_png(u2, (64, 64), seed=14)
+    assert compute_fidelity_metrics(u2, s2)["upscale_factor"] == 1
+
+
+def test_strip_rejected_badge_is_x(qtbot, tmp_path):
+    """W4 item 9: rejected thumbs carry the ✕ badge overlay, no text."""
+    from sli_ui_toolkit.widgets import Button
+
+    p1 = tmp_path / "r1.png"
+    p2 = tmp_path / "r2.png"
+    _w3_png(p1)
+    _w3_png(p2, (30, 200, 30))
+    viewing = _item("r1.png")
+    viewing.path = p1
+    rejected = _item("r2.png", rejected=True)
+    rejected.path = p2
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, rejected])
+    by_path = {
+        b.property("gallery_path"): b
+        for b in ov._strip_host.findChildren(Button)
+        if b.objectName().startswith("quicklook_strip_")
+    }
+    assert by_path[str(p2)]._badge == "✕"
+    assert by_path[str(p2)]._text == ""
+    ov.hide()

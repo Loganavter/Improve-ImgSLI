@@ -6,7 +6,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Label
 
 
 def _is_dark_theme() -> bool:
@@ -36,6 +35,14 @@ def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None =
 
 
 def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import _make_label
+    except Exception:
+        from sli_ui_toolkit.widgets import Label as _Label
+
+        def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
+            return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+
     for w in list(overlay._metric_rows):
         try:
             overlay._metrics_layout.removeWidget(w)
@@ -56,12 +63,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
-        t = Label(title, pixel_size=11, parent=row)
+        t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
         header.addStretch(1)
         # S4 mockup: measured values read gallery.status.ok green; gaps stay muted.
         vc = _ok_color() if value_color is None else value_color
-        v = Label(value_text, pixel_size=11, parent=row, color=vc)
+        v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
         header.addWidget(v)
         rl.addLayout(header)
         # Lazy import bar widget
@@ -111,7 +118,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub_lay = QVBoxLayout(sub_row)
             sub_lay.setContentsMargins(0, 0, 0, 0)
             sub_lay.setSpacing(0)
-            sub_lay.addWidget(Label(subline, pixel_size=9, color_token="list_item.text.rating", parent=sub_row))
+            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=9, pt=9.5, color_token="list_item.text.rating"))
             overlay._metrics_layout.addWidget(sub_row)
             overlay._metric_rows.append(sub_row)
         hf = metrics.get("hf_ratio") if "hf_ratio" in metrics else metrics.get("detail_gain")
@@ -132,10 +139,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = Label("Detail gain (HF ratio)", pixel_size=11, parent=row)
+            t = _make_label("Detail gain (HF ratio)", parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
             header.addStretch(1)
-            v = Label(pct, pixel_size=11, parent=row, color=_ok_color())
+            v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color())
             header.addWidget(v)
             rl.addLayout(header)
             from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
@@ -145,10 +152,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub = QHBoxLayout()
             sub.setContentsMargins(0, 0, 0, 0)
             sub.setSpacing(scaled_px(6))
-            lab_l = Label("restored texture", pixel_size=9, parent=row)
+            lab_l = _make_label("restored texture", parent=row, pixel_size=9, pt=9.5)
             sub.addWidget(lab_l)
             sub.addStretch(1)
-            lab_r = Label("invented / hallucinated", pixel_size=9, parent=row)
+            lab_r = _make_label("invented / hallucinated", parent=row, pixel_size=9, pt=9.5)
             sub.addWidget(lab_r)
             rl.addLayout(sub)
             overlay._metrics_layout.addWidget(row)

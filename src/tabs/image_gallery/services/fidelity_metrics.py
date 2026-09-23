@@ -150,10 +150,19 @@ def compute_fidelity_metrics(item_path: Path | str, source_path: Path | str) -> 
         except Exception:
             logger.debug("fidelity: delta_e failed for %s", item_path, exc_info=True)
         try:
-            iw = item_image.size[0]
-            sw = source_image.size[0]
-            if sw > 0 and iw > 0:
-                out["upscale_factor"] = max(1, int(round(iw / sw)))
+            # W4 item 7: factor by LONG side (portrait-safe — a width-only
+            # ratio misreads portrait pairs), log both sizes at the read
+            # site so a live ×1 can be diagnosed (truly-1 vs misread).
+            iw, ih = item_image.size
+            sw, sh = source_image.size
+            liw, lsw = max(iw, ih), max(sw, sh)
+            if lsw > 0 and liw > 0:
+                factor = max(1, int(round(liw / lsw)))
+                out["upscale_factor"] = factor
+                logger.debug(
+                    "fidelity upscale: item=%dx%d source=%dx%d long=%d/%d factor=%d",
+                    iw, ih, sw, sh, liw, lsw, factor,
+                )
         except Exception:
             logger.debug("fidelity: upscale_factor failed for %s", item_path, exc_info=True)
     except Exception:

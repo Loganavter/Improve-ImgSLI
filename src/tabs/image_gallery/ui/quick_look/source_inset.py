@@ -4,9 +4,108 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
+
+
+def _inset_dark_bg() -> QColor:
+    """Translucent dark fill for inset chrome (caption strip + host)."""
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import _token_rgba_qcolor
+
+        bg = _token_rgba_qcolor("shadow.color", (0, 0, 0, 140))
+        if bg is not None:
+            # QColor(...) copy: never setAlpha a manager-owned instance in place.
+            bg = QColor(bg)
+            try:
+                if bg.alpha() == 255:
+                    bg.setAlpha(140)
+            except Exception:
+                pass
+            return bg
+    except Exception:
+        pass
+    return QColor(0, 0, 0, 140)
+
+
+class _InsetCaptionStrip(QWidget):
+    """Amber-on-dark caption strip overlaid at the inset bottom (W4 item 5).
+
+    S4 v2 LIGHT (svg:53-64): a dark strip pinned to the inset's bottom edge
+    carrying the amber ``SOURCE · name · WxH`` caption, elided to the strip
+    width — not a VBox label above the thumbnail. Absolutely positioned by
+    :func:`reposition_source_inset`; no QSS.
+    """
+
+    # svg:62-63: 16px dark strip at the top of the 84px inset; the caption
+    # strip here pins to the *bottom* per the frozen item.
+    STRIP_PX = 16
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("quicklook_source_inset_caption_strip")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(scaled_px(4), 0, scaled_px(4), 0)
+        lay.setSpacing(0)
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import _make_label, _token_color
+        except Exception:
+            _make_label = None  # type: ignore
+            _token_color = None  # type: ignore
+        amber = None
+        try:
+            amber = _token_color("gallery.status.warn", "#e8b64c")
+        except Exception:
+            pass
+        try:
+            self.label = _make_label(
+                "SOURCE", parent=self, pixel_size=9, pt=9, color=amber, elide=True
+            )
+        except Exception:
+            from sli_ui_toolkit.widgets import Label
+
+            self.label = Label("SOURCE", pixel_size=9, parent=self)
+        self.label.setObjectName("quicklook_source_inset_title")
+        try:
+            self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        except Exception:
+            pass
+        lay.addWidget(self.label)
+        self._bg = _inset_dark_bg()
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg = _inset_dark_bg()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            p = QPainter(self)
+            try:
+                p.fillRect(self.rect(), self._bg)
+            finally:
+                p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
 
 class _SourceInsetHost(QWidget):
@@ -37,22 +136,7 @@ class _SourceInsetHost(QWidget):
 
     @staticmethod
     def _resolve_bg() -> QColor:
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import _token_rgba_qcolor
-
-            bg = _token_rgba_qcolor("shadow.color", (0, 0, 0, 140))
-            if bg is not None:
-                # QColor(...) copy: never setAlpha a manager-owned instance in place.
-                bg = QColor(bg)
-                try:
-                    if bg.alpha() == 255:
-                        bg.setAlpha(140)
-                except Exception:
-                    pass
-                return bg
-        except Exception:
-            pass
-        return QColor(0, 0, 0, 140)
+        return _inset_dark_bg()
 
     def _on_theme_changed(self) -> None:
         try:
@@ -126,5 +210,14 @@ def reposition_source_inset(overlay) -> None:
         y = max(margin, host.height() - h - margin)
         inset.move(x, y)
         inset.raise_()
+        # W4 item 5: caption strip pinned to the inset bottom, full width.
+        try:
+            cap = getattr(overlay, "_source_inset_caption", None)
+            if cap is not None:
+                cap_h = scaled_px(_InsetCaptionStrip.STRIP_PX)
+                cap.setGeometry(0, max(0, h - cap_h), w, cap_h)
+                cap.raise_()
+        except Exception:
+            pass
     except Exception:
         pass

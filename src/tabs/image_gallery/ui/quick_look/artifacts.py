@@ -5,10 +5,29 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Label
 
 
 def rebuild_artifacts(overlay, item) -> None:
+    """Rebuild artifact rows — ALL severities incl. clean (W4 item 8).
+
+    Diagnosis for the empty banding visual (W4 item 8): the detector path
+    was clean-by-default (``_sev_for`` returns ``"clean"`` for every
+    unknown/absent key) and the old code *hid* clean rows and collapsed the
+    whole section — so an all-clean item showed no banding base at all,
+    and the section vanished. Delivery itself is not racy here:
+    ``refresh_artifacts`` rebuilds the open overlay on every artifacts
+    delivery (path-guarded, mirrors ``refresh_metrics``). Fix: render every
+    row including clean, so the banding base is always visible; keep the
+    section host always visible.
+    """
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import _make_label
+    except Exception:
+        from sli_ui_toolkit.widgets import Label as _Label
+
+        def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
+            return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+
     for w in list(overlay._artifact_rows):
         try:
             overlay._artifacts_layout.removeWidget(w)
@@ -83,11 +102,7 @@ def rebuild_artifacts(overlay, item) -> None:
                 pass
         return "clean"
 
-    shown: list[tuple[str, str]] = []
-    for aid in artifacts:
-        lvl = _sev_for(aid)
-        if lvl != "clean":
-            shown.append((aid, lvl))
+    shown: list[tuple[str, str]] = [(aid, _sev_for(aid)) for aid in artifacts]
 
     for aid, lvl in shown:
         row = QWidget(overlay._artifacts_host)
@@ -107,11 +122,11 @@ def rebuild_artifacts(overlay, item) -> None:
             "noise_amplification": "Noise amplification",
             "noise_amp": "Noise amplification",
         }
-        t = Label(title_map.get(aid, aid), pixel_size=11, parent=row)
+        t = _make_label(title_map.get(aid, aid), parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
         header.addStretch(1)
         # P0-8: no region analysis exists — never claim one. Severity only.
-        lvl_label = {"clean": "clean", "mild": "mild", "flagged": "flagged"}[lvl]
+        lvl_label = {"clean": "clean edges" if aid == "halo" else "clean", "mild": "mild", "flagged": "flagged"}[lvl]
         # S4 mockup severity colors: mild amber, flagged red — single mapping in
         # ui/card/dots.py (frozen seam: no second severity mapping here).
         try:
@@ -120,24 +135,33 @@ def rebuild_artifacts(overlay, item) -> None:
             sev_color = _dots_severity_color(lvl)
         except Exception:
             sev_color = None
-        v = Label(lvl_label, pixel_size=11, parent=row, color=sev_color)
+        v = _make_label(lvl_label, parent=row, pixel_size=11, pt=11.5, color=sev_color)
         header.addWidget(v)
         rl.addLayout(header)
         if aid == "banding":
+            # Banding keeps histogram + base + caption (W4 item 8).
             from tabs.image_gallery.ui.quick_look.histograms import _BandingCombHistogram
 
             hist = _BandingCombHistogram(severity=lvl, parent=row)
+        elif aid == "halo":
+            # Halo renders as a horizontal _BarWidget like the metric rows
+            # (W4 item 8): severity-mapped fraction in the severity color.
+            from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+
+            halo_frac = {"clean": 0.15, "mild": 0.5, "flagged": 0.9}[lvl]
+            hist = _BarWidget(fraction=halo_frac, fill_color=sev_color, parent=row)
         else:
             from tabs.image_gallery.ui.quick_look.histograms import _GenericHistogram
 
             hist = _GenericHistogram(severity=lvl, parent=row)
         rl.addWidget(hist)
         if aid == "banding":
-            note = Label("gradient histogram — comb spikes = banding steps (sky)", pixel_size=9, parent=row)
+            note = _make_label("gradient histogram — comb spikes = banding steps (sky)", parent=row, pixel_size=9, pt=9)
             rl.addWidget(note)
         overlay._artifacts_layout.addWidget(row)
         overlay._artifact_rows.append(row)
+    # W4 item 8: every row renders incl. clean — the section never collapses.
     try:
-        overlay._artifacts_host.setVisible(bool(shown))
+        overlay._artifacts_host.setVisible(True)
     except Exception:
         pass

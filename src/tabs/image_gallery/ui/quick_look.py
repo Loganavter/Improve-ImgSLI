@@ -98,6 +98,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             reposition_source_inset(self)
         except Exception:
             pass
+        # W4 item 6: nav circles are absolute card children — re-pin with
+        # every resize (like the source inset).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
+            reposition_nav_buttons(self)
+        except Exception:
+            pass
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
@@ -350,6 +357,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             self._compare_btn.setEnabled(True)
             self._multi_btn.setEnabled(True)
+        except Exception:
+            pass
+        # W4 item 6: best-effort nav pin after populate (resizeEvent re-pins
+        # once live geometry lands).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
+            reposition_nav_buttons(self)
         except Exception:
             pass
 
