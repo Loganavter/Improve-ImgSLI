@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from sli_ui_toolkit.managers import scaled_px
 
+import time
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -32,6 +34,12 @@ class GalleryEmptyState(QWidget):
     fileDropped = Signal(str)
     openRequested = Signal()
 
+    # W12 W-C: single-flight window for open requests. One LMB click on the
+    # zone can reach us twice (``_open_button.clicked`` + the zone
+    # ``mousePressEvent`` override below) — collapse bursts into one emit
+    # so exactly one folder dialog opens per click.
+    _OPEN_SINGLE_FLIGHT_S = 0.6
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -42,6 +50,7 @@ class GalleryEmptyState(QWidget):
         self.setObjectName("GalleryEmptyState")
         self._tr = translate
         self._state: str = "empty"
+        self._last_open_emit: float = 0.0
 
         def _tr(key: str, default: str) -> str:
             if translate is None:
@@ -58,16 +67,14 @@ class GalleryEmptyState(QWidget):
 
         empty_text = _tr("image_gallery.empty_state", "Drop folder or images here")
         hint = _tr("image_gallery.drop_hint", "or pick a folder to start triage")
-        # DropZoneLabel is the S0 drop surface — make it prominent, like session_picker empty
+        # DropZoneLabel is the S0 drop surface — make it prominent, like session_picker empty.
+        # W12 W-C: expanding zone that fills available space — no fixed
+        # minimum height (toolkit default 80px floor applies); the layout
+        # stretch below gives it the free vertical space.
         self._drop_label = DropZoneLabel(empty_text, self)
         self._drop_label.setObjectName("gallery_empty_drop_zone")
         self._drop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        try:
-            self._drop_label.setMinimumHeight(scaled_px(180))
-            self._drop_label.setMinimumWidth(scaled_px(420))
-        except Exception:
-            pass
-        # Make it expand to fill width while keeping centered
+        # Make it expand to fill width AND height while keeping centered
         try:
             from PySide6.QtWidgets import QSizePolicy as _QSP
             self._drop_label.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Expanding)
@@ -83,13 +90,15 @@ class GalleryEmptyState(QWidget):
         self._open_button = Button(text=open_text, variant="surface", size=(160, 36), parent=self)
         self._open_button.setObjectName("gallery_empty_open_button")
         try:
-            self._open_button.clicked.connect(self.openRequested.emit)
+            self._open_button.clicked.connect(self._request_open)
         except Exception:
             pass
         try:
             self._drop_label.setCursor(Qt.CursorShape.PointingHandCursor)
-            # Click on zone also opens
-            self._drop_label.mousePressEvent = lambda e, _old=getattr(self._drop_label, "mousePressEvent", None): (self.openRequested.emit(), e.accept()) if e.button() == Qt.MouseButton.LeftButton else (_old(e) if _old else None)
+            # Click on zone also opens — routed through the single-flight
+            # guard so one LMB click yields exactly one dialog even if both
+            # this handler and the button's clicked signal fire together.
+            self._drop_label.mousePressEvent = lambda e, _old=getattr(self._drop_label, "mousePressEvent", None): (self._request_open(), e.accept()) if e.button() == Qt.MouseButton.LeftButton else (_old(e) if _old else None)
         except Exception:
             pass
 
@@ -137,6 +146,24 @@ class GalleryEmptyState(QWidget):
             pass
 
         self._ensure_overlay_parent()
+
+    # -- open single-flight -------------------------------------------------
+
+    def _request_open(self) -> None:
+        """Emit ``openRequested`` at most once per single-flight window.
+
+        Both the Open button's ``clicked`` and the zone's ``mousePressEvent``
+        override call this; a single LMB click that reaches both paths
+        emits exactly once (W12 W-C: one click = one folder dialog).
+        """
+        now = time.monotonic()
+        if now - self._last_open_emit < self._OPEN_SINGLE_FLIGHT_S:
+            return
+        self._last_open_emit = now
+        try:
+            self.openRequested.emit()
+        except Exception:
+            pass
 
     # -- overlay helpers --------------------------------------------------
 
