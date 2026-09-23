@@ -45,6 +45,7 @@ def test_light_gallery_tokens_present() -> None:
     for key in (
         "gallery.card.background",
         "gallery.card.hover",
+        "gallery.grid.background",
         "gallery.stats.background",
         "gallery.stats.text",
         "gallery.header.text",
@@ -56,11 +57,23 @@ def test_light_gallery_tokens_present() -> None:
         assert key in tokens, f"light palette missing {key}"
 
 
-def test_light_card_vs_substrate() -> None:
-    """White cards separate from the gray substrate: card vs Window and card vs surface.background >= 1.5."""
+def test_light_globals_unleaked() -> None:
+    """App-global tokens stay at their pre-epic values (2026-09-23 rescope).
+
+    The gallery substrate lives in gallery.grid.background; Window /
+    surface.background / separator.color must never be re-tinted for gallery
+    (a #cecece Window leaked into every autoFillBackground widget app-wide).
+    """
     tokens = _light_tokens()
-    _assert_ratio(tokens, "gallery.card.background", "Window", 1.5)
-    _assert_ratio(tokens, "gallery.card.background", "surface.background", 1.5)
+    assert tokens["Window"].lower() == "#f5f5f5"
+    assert tokens["surface.background"].lower() == "#ffffff"
+    assert tokens["separator.color"].lower() == "#e5e5e5"
+
+
+def test_light_card_vs_substrate() -> None:
+    """White cards separate from the gallery grid substrate >= 1.5."""
+    tokens = _light_tokens()
+    _assert_ratio(tokens, "gallery.card.background", "gallery.grid.background", 1.5)
 
 
 def test_light_hover_step_vs_card() -> None:
@@ -69,12 +82,10 @@ def test_light_hover_step_vs_card() -> None:
     _assert_ratio(tokens, "gallery.card.hover", "gallery.card.background", 1.3)
 
 
-def test_light_separator_vs_surfaces() -> None:
-    """Separators read on every surface: separator vs card/Window/surface.background >= 3.0."""
+def test_light_grid_substrate_vs_card() -> None:
+    """Grid substrate reads as a distinct band behind cards >= 1.5 (same pair, explicit name)."""
     tokens = _light_tokens()
-    _assert_ratio(tokens, "separator.color", "gallery.card.background", 3.0)
-    _assert_ratio(tokens, "separator.color", "Window", 3.0)
-    _assert_ratio(tokens, "separator.color", "surface.background", 3.0)
+    _assert_ratio(tokens, "gallery.grid.background", "gallery.card.background", 1.5)
 
 
 def test_light_stats_surface_vs_card() -> None:

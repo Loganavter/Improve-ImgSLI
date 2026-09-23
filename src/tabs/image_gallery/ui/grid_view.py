@@ -101,6 +101,34 @@ def _gallery_header_text_color():
     return _QC(0x38, 0x38, 0x38)
 
 
+def _grid_substrate_color():
+    """Grid viewport substrate: gallery-scoped, NOT the global surface.
+
+    Chain: ``gallery.grid.background`` → ``surface.background`` →
+    ``#cecece`` (light) / ``#2b2b2b`` (dark). The grid keeps its own gray
+    substrate in light theme while ``Window``/``surface.background`` stay
+    app-global near-white (a global ``#cecece`` leaked into every
+    autoFillBackground widget app-wide — see plan 2026-09-23 rescope).
+    Rule A: keyed on ``is_dark()`` (light default).
+    """
+    from PySide6.QtGui import QColor as _QC
+
+    try:
+        from sli_ui_toolkit.managers import ThemeManager as _TM
+        from ui.theming import try_resolve_theme_color as _trc
+
+        mgr = _TM.get_instance()
+        for tok in ("gallery.grid.background", "surface.background"):
+            c = _trc(mgr, tok)
+            if c is not None:
+                return _QC(c) if isinstance(c, str) else c
+    except Exception:
+        pass
+    if _is_dark():
+        return _QC(0x2B, 0x2B, 0x2B)
+    return _QC(0xCE, 0xCE, 0xCE)
+
+
 class _SeriesHeaderBar(QWidget):
     """3×14 section bar painted explicitly from a cached theme color.
 
@@ -222,9 +250,17 @@ class GalleryGridView(QWidget):
             ThemeManager.get_instance().theme_changed.connect(self._on_gallery_theme_changed)
         except Exception:
             pass
+        try:
+            self.set_fill_color(_grid_substrate_color())
+        except Exception:
+            pass
 
     def _on_gallery_theme_changed(self) -> None:
         """Repaint grid surfaces on theme flip: accent, card fills, selection."""
+        try:
+            self.set_fill_color(_grid_substrate_color())
+        except Exception:
+            pass
         try:
             self._selection_accent = gallery_selection_accent()
         except Exception:
@@ -677,7 +713,7 @@ class GalleryGridView(QWidget):
                 from sli_ui_toolkit.managers import ThemeManager
                 from ui.theming import resolve_theme_color
 
-                token = "surface.background"
+                token = "gallery.grid.background"
                 bg = resolve_theme_color(ThemeManager.get_instance(), token)
                 apply_opaque_widget_fill(container, bg)
             except Exception:

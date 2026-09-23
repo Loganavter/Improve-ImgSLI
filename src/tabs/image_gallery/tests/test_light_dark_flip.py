@@ -26,6 +26,7 @@ GALLERY_TOKENS = (
     "gallery.stats.text",
     "gallery.header.text",
     "gallery.footer.text",
+    "gallery.grid.background",
     "gallery.status.ok",
     "gallery.status.warn",
     "gallery.status.danger",

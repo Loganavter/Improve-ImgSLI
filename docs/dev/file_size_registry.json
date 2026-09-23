@@ -721,7 +721,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 824,
+      "lines": 976,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -744,7 +744,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
-      "lines": 820,
+      "lines": 882,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
@@ -752,6 +752,18 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/toolbar.py",
+      "lines": 577,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch + triage indicator sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
+      "parsed": {
+        "pattern": "compound-widget",
+        "size": "exempt",
+        "reason": "toolbar + view-switch + triage indicator sharing one paint/theme lifecycle — split tracked post light-theme epic"
       }
     },
     {

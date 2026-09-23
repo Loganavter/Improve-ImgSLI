@@ -3,6 +3,7 @@
 Provides ``GalleryToolbar`` with surface Button + CustomLineEdit (+ optional
 ScrollableComboBox). Signals: ``openClicked`` and ``filterChanged(str)``,
 plus ``sortChanged(str)`` and ``viewToggled(bool)``.
+Audit-Meta: pattern=compound-widget size=exempt reason="toolbar + view-switch + triage indicator sharing one paint/theme lifecycle — split tracked post light-theme epic"
 """
 
 from __future__ import annotations

@@ -36,7 +36,9 @@ def _base_fill() -> QColor:
 
 
 def _container_bg() -> QColor:
-    return _token_qcolor("surface.background", "#cecece", "#2b2b2b")
+    # Fallbacks track the REAL token values (surface.background light is
+    # #ffffff again after the 2026-09-23 gallery-only substrate rescope).
+    return _token_qcolor("surface.background", "#ffffff", "#2b2b2b")
 
 
 class _BandingCombHistogram(QWidget):
