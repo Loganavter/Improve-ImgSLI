@@ -261,3 +261,92 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
         # buttons, which is exactly why BorderLayer exists.
     except Exception:
         pass
+
+
+def _gallery_hover_wash_color(tm=None):  # type: ignore[no-untyped-def]
+    """Hover wash color — SAME token as the recent-projects shelf.
+
+    Single token with per-theme hex: light ``#1a000000`` (26 alpha black),
+    dark ``#26ffffff`` (38 alpha white). Regions keep a transparent
+    ``hover_color`` so the stock ``BackgroundLayer`` hover stays off — this
+    wash is the only hover effect.
+    """
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        if tm is None:
+            try:
+                tm = ThemeManager.get_instance()
+            except Exception:
+                tm = None
+        if tm is not None:
+            try:
+                dark = bool(tm.is_dark())
+            except Exception:
+                dark = _theme_is_dark()
+        else:
+            dark = _theme_is_dark()
+        fallback = "#26ffffff" if dark else "#1a000000"
+        if tm is not None:
+            try:
+                resolved = try_resolve_theme_color(tm, "recent.card.hover_wash")
+                if resolved is not None:
+                    return resolved if not isinstance(resolved, str) else _QC(resolved)
+            except Exception:
+                pass
+        return _QC(fallback)
+    except Exception:
+        return None
+
+
+def _gallery_hover_wash(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """``overlay_painter=`` callback: translucent wash over the whole card.
+
+    Same recipe as the recent-projects shelf
+    (``tabs.session_picker.recent.cards._card_hover_wash``): runs in the
+    widget-scoped pass, after every region layer, so the wash sits over the
+    preview pixmap and the text rows instead of being hidden behind them.
+    """
+    try:
+        if getattr(ctx, "effective_bg_locked", False) or getattr(ctx, "hovered_region_id", None) is None:
+            return
+        color = _gallery_hover_wash_color(tm)
+        if color is None:
+            return
+        radii = getattr(ctx, "corner_radii", None) or (0, 0, 0, 0)
+        rect = getattr(ctx, "rect", None)
+        if rect is None:
+            return
+        from PySide6.QtGui import QBrush as _QBrush
+        from PySide6.QtGui import QPainterPath as _QPath
+
+        painter.save()
+        try:
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(_QBrush(color))
+            try:
+                path = _QPath()
+                path.addRoundedRect(rect, radii[0], radii[0])
+                painter.drawPath(path)
+            except Exception:
+                painter.drawRect(rect)
+        finally:
+            painter.restore()
+    except Exception:
+        pass
+
+
+def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """Combined card overlay: shelf-style hover wash first, then dots/badge."""
+    try:
+        _gallery_hover_wash(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        _dots_overlay_painter(painter, ctx, tm)
+    except Exception:
+        pass

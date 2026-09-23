@@ -81,6 +81,7 @@ def _cover_region(item: GalleryItem) -> ButtonRegion:
             weight=3.0,
             group="card",
             corner_radii=(8, 8, 8, 8),
+            hover_color=_QColor(0, 0, 0, 0),
         )
     if _item_unreadable(item):
         return ButtonRegion(
@@ -90,12 +91,14 @@ def _cover_region(item: GalleryItem) -> ButtonRegion:
             group="card",
             corner_radii=(8, 8, 8, 8),
             override_bg_color=_unreadable_plate_color(),
+            hover_color=_QColor(0, 0, 0, 0),
         )
     return ButtonRegion(
         id="cover",
         weight=3.0,
         group="card",
         corner_radii=(8, 8, 0, 0),
+        hover_color=_QColor(0, 0, 0, 0),
     )
 
 

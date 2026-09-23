@@ -354,34 +354,42 @@ def test_card_bg_is_not_substrate_color_light_theme(monkeypatch) -> None:
     assert (bg.red(), bg.green(), bg.blue()) != (255, 255, 255)
 
 
-def test_card_hover_differs_from_idle_per_theme(monkeypatch) -> None:
-    """Hover must stay a visible step away from idle in both themes."""
+def test_card_hover_is_shelf_wash_not_opaque_swap(monkeypatch) -> None:
+    """Hover must be the shelf-style translucent wash, not an opaque bg swap."""
     from unittest.mock import patch
 
-    from tabs.image_gallery.ui.card import hover as hover_mod
+    from tabs.image_gallery.ui.card import painters as painters_mod
 
     table = {
-        "surface.list": QColor(240, 240, 240),
-        "surface.background": QColor(255, 255, 255),
+        "recent.card.hover_wash": QColor(0, 0, 0, 26),
     }
 
     def fake_resolve(tm, token):
         return table.get(token)
 
     class FakeTM:
-        def __init__(self, dark: bool):
-            self._dark = dark
-
         def is_dark(self) -> bool:
-            return self._dark
+            return False
 
     with patch("ui.theming.try_resolve_theme_color", side_effect=fake_resolve):
         with patch(
             "sli_ui_toolkit.managers.ThemeManager.get_instance",
-            return_value=FakeTM(False),
+            return_value=FakeTM(),
         ):
-            idle = hover_mod._card_idle_bg()
-            hover = hover_mod._card_hover_bg()
-    assert (idle.red(), idle.green(), idle.blue()) == (240, 240, 240)
-    assert (hover.red(), hover.green(), hover.blue()) != (idle.red(), idle.green(), idle.blue())
-    assert hover.red() < idle.red()  # light theme: hover darkens
+            wash = painters_mod._gallery_hover_wash_color(None)
+    assert wash is not None
+    assert wash.alpha() == 26  # translucent, like the recent-projects shelf
+    assert (wash.red(), wash.green(), wash.blue()) == (0, 0, 0)
+
+
+def test_card_regions_keep_transparent_hover(qapp) -> None:
+    """Bg/text/cover regions must not pin opaque fills or hover repaints."""
+    card = build_gallery_card(_item(), parent=None)
+    qapp.processEvents()
+    regions = {r.id: r for r in card.regions()}
+    assert regions["bg"].override_bg_color is None
+    assert regions["text"].override_bg_color is None
+    for rid in ("bg", "text", "cover"):
+        hc = getattr(regions[rid], "hover_color", None)
+        assert hc is not None and hc.alpha() == 0
+    card.deleteLater()

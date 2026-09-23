@@ -168,7 +168,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     # Lazy imports to avoid cycles (CODE_PATTERNS.md).
     from tabs.image_gallery.ui.card.dots import _dots_for_item
     from tabs.image_gallery.ui.card.hover import _CardHoverFilter
-    from tabs.image_gallery.ui.card.painters import _dots_overlay_painter
+    from tabs.image_gallery.ui.card.painters import _gallery_card_overlay_painter
     from tabs.image_gallery.ui.card.regions import _cover_region, _text_rows
     from tabs.image_gallery.ui.card.visuals import _apply_rejected_visuals, apply_fixed_gallery_card_size
 
@@ -245,7 +245,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 id="bg",
                 group="card",
                 corner_radii=(10, 10, 10, 10),
-                override_bg_color=_gallery_card_bg(),
+                hover_color=QColor(0, 0, 0, 0),
             ),
             cover,
             ButtonRegion(
@@ -254,7 +254,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 weight=1.0,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
-                override_bg_color=_gallery_card_bg(),
+                hover_color=QColor(0, 0, 0, 0),
             ),
         ],
         split=CustomSplit(rect_fns=[_bg_rect, _cover_rect, _text_rect]),
@@ -262,7 +262,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         size=(GALLERY_CARD_W, GALLERY_CARD_H),
         content_padding=_GALLERY_CONTENT_PADDING,
         corner_radius=10,
-        overlay_painter=_dots_overlay_painter,
+        overlay_painter=_gallery_card_overlay_painter,
         parent=actual_parent,
     )
     card._rows_compact = True  # type: ignore[attr-defined]
@@ -419,6 +419,7 @@ _LAZY_REEXPORTS: dict[str, tuple[str, str]] = {
     "hide_gallery_card_flyout": ("tabs.image_gallery.ui.card.hover", "hide_gallery_card_flyout"),
     "show_gallery_card_flyout": ("tabs.image_gallery.ui.card.hover", "show_gallery_card_flyout"),
     "_dots_overlay_painter": ("tabs.image_gallery.ui.card.painters", "_dots_overlay_painter"),
+    "_gallery_card_overlay_painter": ("tabs.image_gallery.ui.card.painters", "_gallery_card_overlay_painter"),
     "_left_badge_painter": ("tabs.image_gallery.ui.card.painters", "_left_badge_painter"),
     "_cover_region": ("tabs.image_gallery.ui.card.regions", "_cover_region"),
     "_item_unreadable": ("tabs.image_gallery.ui.card.regions", "_item_unreadable"),

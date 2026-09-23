@@ -28,63 +28,6 @@ def _theme_is_dark() -> bool:
         return False
 
 
-def _card_idle_bg():
-    """Idle card surface via theme token with a light/dark-aware fallback.
-
-    Chain (frozen seam): ``gallery.card.background`` → ``surface.list`` →
-    ``surface.background`` → ``#ffffff`` (light) / dark gray (dark).
-    NOTE: the historical dark-only ``QColor(56, 56, 56)`` default (== the
-    legacy dark ``gallery.card.background`` value) is kept for the dark
-    theme only; the light theme falls back to white.
-    """
-    try:
-        from PySide6.QtGui import QColor
-
-        from sli_ui_toolkit.managers import ThemeManager
-        from ui.theming import try_resolve_theme_color
-
-        for token in ("gallery.card.background", "surface.list", "surface.background"):
-            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-            if c is not None:
-                return c if isinstance(c, QColor) else QColor(c)
-    except Exception:
-        pass
-    try:
-        from PySide6.QtGui import QColor as _QC
-
-        if _theme_is_dark():
-            return _QC(0x38, 0x38, 0x38)
-        return _QC("#ffffff")
-    except Exception:
-        return None
-
-
-def _card_hover_bg():
-    """Hovered card surface via theme token (RGB fallback == #424242, svg c4)."""
-    try:
-        from PySide6.QtGui import QColor
-
-        from sli_ui_toolkit.managers import ThemeManager
-        from ui.theming import try_resolve_theme_color
-
-        for token in ("gallery.card.hover", "gallery.card.background.hover"):
-            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-            if c is not None:
-                return c if isinstance(c, QColor) else QColor(c)
-    except Exception:
-        pass
-    try:
-        from PySide6.QtGui import QColor as _QC
-
-        # NOTE: historical dark-only (66, 66, 66) step kept for dark theme;
-        # light theme uses the registered gallery.card.hover value.
-        if _theme_is_dark():
-            return _QC(0x42, 0x42, 0x42)
-        return _QC("#dcdcdc")
-    except Exception:
-        return None
-
-
 def _capsule_icon_color(action_id: str):
     """Tri-color capsule icons (svg hover pill): star gold · cross red · swap accent.
 
@@ -144,18 +87,8 @@ class _CardHoverFilter(QObject):
         if watched is self._card:
             if event.type() == QEvent.Type.Enter:
                 try:
-                    # Hovered card bg per svg c4 (one step from idle)
-                    try:
-                        self._card.set_override_bg_color(_card_hover_bg())
-                    except Exception:
-                        pass
-                    try:
-                        # Bg region also
-                        for r in self._card.regions():
-                            if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=_card_hover_bg())
-                    except Exception:
-                        pass
+                    # Hover FX is the translucent shelf-style wash
+                    # (overlay painter) — no opaque bg swap. Underline only.
                     _show_card_hover_underline(self._card)
                 except Exception:
                     pass
@@ -165,16 +98,6 @@ class _CardHoverFilter(QObject):
                     pass
             elif event.type() == QEvent.Type.Leave:
                 try:
-                    try:
-                        self._card.set_override_bg_color(_card_idle_bg())
-                    except Exception:
-                        pass
-                    try:
-                        for r in self._card.regions():
-                            if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=_card_idle_bg())
-                    except Exception:
-                        pass
                     _hide_card_hover_underline(self._card)
                 except Exception:
                     pass

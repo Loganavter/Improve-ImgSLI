@@ -268,25 +268,12 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         try:
-            from tabs.image_gallery.ui.card.hover import _card_idle_bg
-
-            bg = _card_idle_bg()
             cards = list(self._cards_by_path.values()) + list(self._pool)
             for card in cards:
                 try:
-                    card.set_override_bg_color(bg)
+                    card.update()
                 except Exception:
                     pass
-                try:
-                    regions = card.regions()
-                except Exception:
-                    regions = []
-                for r in regions or []:
-                    try:
-                        if getattr(r, "id", "") in ("bg", "text"):
-                            card.update_region(r.id, override_bg_color=bg)
-                    except Exception:
-                        pass
         except Exception:
             pass
         try:
