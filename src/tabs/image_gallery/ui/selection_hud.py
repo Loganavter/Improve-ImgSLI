@@ -73,11 +73,27 @@ class SelectionHudController:
             flyout.flyout_group = self.flyout_group  # type: ignore[attr-defined]
         except Exception:
             pass
-        # Glass gradient — semi-transparent linear tint (no backdrop blur, see FLYOUT_SYSTEM.md).
+        # Glass gradient — subtle vertical shading composited INTO one opaque
+        # brush. NOTE: BaseFlyout.set_background_brush REPLACES the panel fill
+        # (it does not layer over it), so a translucent white tint here used
+        # to leave the body ~transparent with only the shadow visible.
+        # Keep the glassy look with an opaque base→light gradient instead.
         try:
+            from sli_ui_toolkit.managers import ThemeManager
+            from ui.theming import try_resolve_theme_color
+
+            base = None
+            for token in ("surface.background", "flyout.background"):
+                base = try_resolve_theme_color(ThemeManager.get_instance(), token)
+                if base is not None:
+                    break
+            base = base if isinstance(base, QColor) else QColor(base) if base is not None else QColor(56, 56, 56)
+            base.setAlpha(255)
+            top = QColor(base).lighter(118)
+            top.setAlpha(255)
             grad = QLinearGradient(0, 0, 0, scaled_px(44))
-            grad.setColorAt(0.0, QColor(255, 255, 255, 38))
-            grad.setColorAt(1.0, QColor(255, 255, 255, 10))
+            grad.setColorAt(0.0, top)
+            grad.setColorAt(1.0, base)
             flyout.set_background_brush(QBrush(grad))
         except Exception:
             pass
