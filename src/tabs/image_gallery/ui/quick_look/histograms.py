@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 
@@ -88,6 +88,13 @@ class _BandingCombHistogram(QWidget):
                     lay.addWidget(bar)
                     self._bars.append((bar, "sev"))
         self.setFixedHeight(scaled_px(56))
+        # W13: the container stretches with the right column — the bar
+        # COUNT stays fixed (mockup comb) and the centering margins absorb
+        # the extra width; individual bars never grow.
+        try:
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass
         _connect_theme_refresh(self._on_theme_changed)
 
     def _on_theme_changed(self) -> None:
@@ -155,6 +162,12 @@ class _GenericHistogram(QWidget):
             self._bars.append((bar, k))
         # P0-9: container fits the tallest bar (mockup 56).
         self.setFixedHeight(scaled_px(56))
+        # W13: stretches with the right column like the banding comb —
+        # fixed bar count, centering margins absorb the extra width.
+        try:
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass
         _connect_theme_refresh(self._on_theme_changed)
 
     def _on_theme_changed(self) -> None:
@@ -212,3 +225,9 @@ class _HistogramStub(QWidget):
         lay.addWidget(inner)
         # P0-9: container fits the tallest bar (mockup 56).
         self.setFixedHeight(scaled_px(56))
+        # W13: the stub fills the stretched column; the inner comb keeps
+        # its fixed bar count (margins absorb extra width).
+        try:
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass

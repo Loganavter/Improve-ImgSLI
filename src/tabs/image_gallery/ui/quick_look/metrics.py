@@ -67,7 +67,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
         # W7: no spacer here — the value below is horizontal-Ignored (it
-        # contributes no sizeHint so the 296px column never h-scrolls) and
+        # contributes no sizeHint so the min-296px column never h-scrolls) and
         # an Ignored label beside a spacer would collapse to its 40px
         # minimum and elide EVERYTHING ("+0…"). The value takes the free
         # row width via stretch and end-aligns per the mockup (svg:84

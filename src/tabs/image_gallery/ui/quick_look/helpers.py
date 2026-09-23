@@ -1518,10 +1518,16 @@ def build_overlay_ui(overlay) -> None:
     mid.addWidget(left, 1)
     right_scroll = QScrollArea(overlay._content)
     right_scroll.setObjectName("quicklook_right_scroll")
-    # W5: the mockup's right column is a fixed 296px (svg x=816 w=296) —
-    # the value/sub labels elide to it instead of stretching it into
-    # h-scrollbars. mid-stretch still gives the left preview the rest.
-    right_scroll.setFixedWidth(scaled_px(296))
+    # W13: the mockup's right column is min 296px (svg x=816 w=296) and
+    # STRETCHES with the card — a minimum, never a fixed width. The
+    # value/sub labels still elide (they take the free row width via
+    # stretch), so a wider column never summons scrollbars; the column
+    # never drops below 296.
+    right_scroll.setMinimumWidth(scaled_px(296))
+    try:
+        right_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    except Exception:
+        pass
     # W4 item 2: frameless — the scroll frame drew a bogus box around the
     # right column. No QSS (stock Qt widget, frame shape only).
     try:
@@ -1536,6 +1542,12 @@ def build_overlay_ui(overlay) -> None:
     right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     right_host = QWidget(right_scroll)
     right_host.setObjectName("quicklook_right_host")
+    # W13: the host expands with the scroll viewport (the scroll area is
+    # widget-resizable, so the host tracks the stretched column width).
+    try:
+        right_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    except Exception:
+        pass
     right_lay = QVBoxLayout(right_host)
     right_lay.setContentsMargins(0, 0, 0, 0)
     # W5: 10→4 (see outer spacing note — the 296px column must fit the
@@ -1598,18 +1610,22 @@ def build_overlay_ui(overlay) -> None:
     # W7: QLabel.minimumSizeHint for wrapped text is the height at the
     # LONGEST-WORD width (2 phantom lines here) — the layout reserves it
     # and the 620px card gains a 4px v-scroll. The label always lays out
-    # at the 296px column width, so pin the minimum width to the column:
+    # at the column width, so pin the minimum width to the column floor:
     # minimumSizeHint becomes the height AT that width (honest, grows
-    # with real line count) and the column minimum stays 296.
+    # with real line count) and the column minimum stays 296. W13: the
+    # 296 floor is unchanged for wider (stretched) columns — the label
+    # fills them via its Ignored horizontal policy.
     try:
         overlay._brief_label.setMinimumWidth(scaled_px(296))
     except Exception:
         pass
     right_lay.addWidget(overlay._brief_label)
     right_scroll.setWidget(right_host)
-    # W8: the preview pane stretches on resize; the right column stays a
-    # fixed 296px (stretch 0 — it never takes extra space).
-    mid.addWidget(right_scroll, 0)
+    # W13: the right column takes resize space too (stretch 1) — the
+    # preview keeps priority with its own stretch 1 plus the larger
+    # expanding preview pane. W8 min-only stays (minimum 1040×620, no
+    # maximum); the column floor is the 296px minimum above.
+    mid.addWidget(right_scroll, 1)
     outer.addLayout(mid, 1)
     # S4 mockup divider above the bottom action bar (svg:648) — painted
     # rule, see _div_series.

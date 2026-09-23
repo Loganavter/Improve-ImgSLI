@@ -1,10 +1,13 @@
-"""Quick look resize re-layout (W12 W-B) regression tests.
+"""Quick look resize re-layout (W12 W-B + W13 stretch) regression tests.
 
 Recompose like the image-save (export) window: the preview pane stretches
-with the card while the image inside keeps its aspect, the right column
-stays a fixed 296px, the footer reflows (actions left, hint right), and all
-existing reposition hooks re-run on every resize. W8 min-only stays
-(minimum 1040×620, no maximum); no new close paths.
+with the card while the image inside keeps its aspect. W13: the right
+column is min 296px and STRETCHES with the card (scroll area + host
+expanding, mid-layout stretch on both sides with the preview keeping
+priority) — its bars/histograms fill the live column width while strip
+thumbs keep their fixed size. The footer reflows (actions left, hint
+right), and all existing reposition hooks re-run on every resize. W8
+min-only stays (minimum 1040×620, no maximum); no new close paths.
 """
 
 from __future__ import annotations
@@ -104,8 +107,14 @@ def test_preview_stretches_with_aspect_on_resize(qtbot, tmp_path):
     ov.hide()
 
 
-def test_right_column_stays_fixed_296_on_resize(qtbot, tmp_path):
-    """W-B: the right column never takes resize space (fixed 296, no scroll)."""
+def test_right_column_stretches_with_min_296_on_resize(qtbot, tmp_path):
+    """W13: the right column stretches with the card (floor 296, no scroll).
+
+    The column never drops below the mockup 296px floor; a bigger card
+    widens it (the preview still takes its priority share of the extra),
+    and shrinking back restores the floor-honoring width. No scrollbars
+    at any size.
+    """
     from sli_ui_toolkit.managers import scaled_px
 
     src_p = _real_png(tmp_path, "src.png")
@@ -115,18 +124,119 @@ def test_right_column_stays_fixed_296_on_resize(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
 
-    _grow(qtbot, ov)
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
-    assert scroll.width() == scaled_px(296)
-    assert scroll.horizontalScrollBar().maximum() == 0
-    assert scroll.verticalScrollBar().maximum() == 0
-    assert scroll.horizontalScrollBar().isVisible() is False
-    assert scroll.verticalScrollBar().isVisible() is False
-    # ...and still fixed after shrinking back to the minimum.
+    # The 296 floor is a minimum, not a fixed width: the live width
+    # follows the layout distribution (with an unloaded preview the
+    # column takes more than the floor even at the minimum card).
+    assert scroll.minimumWidth() == scaled_px(296)
+    width_before = scroll.width()
+    assert width_before >= scaled_px(296)
+
+    def _assert_no_scroll():
+        assert scroll.horizontalScrollBar().maximum() == 0
+        assert scroll.verticalScrollBar().maximum() == 0
+        assert scroll.horizontalScrollBar().isVisible() is False
+        assert scroll.verticalScrollBar().isVisible() is False
+
+    _assert_no_scroll()
+    preview_before = ov._preview_host.width()
+    _grow(qtbot, ov)
+    # Column stretched with the card...
+    assert scroll.width() > width_before
+    # ...while the preview kept priority (it grew too).
+    assert ov._preview_host.width() > preview_before
+    _assert_no_scroll()
+    # ...and shrinking back restores the floor-honoring width, never below.
+    # Settle loop: fixed-pixel fill segments transiently prop the host
+    # minimum open for one layout pass after a shrink (production pumps
+    # continuously so it self-corrects; the horizontal bar stays
+    # AlwaysOff regardless).
     ov._content.resize(scaled_px(1040), scaled_px(620))
-    QApplication.processEvents()
-    QApplication.processEvents()
-    assert scroll.width() == scaled_px(296)
+    for _ in range(10):
+        QApplication.processEvents()
+        QApplication.processEvents()
+        if scroll.width() == width_before and scroll.horizontalScrollBar().maximum() == 0:
+            break
+    assert scroll.width() == width_before
+    assert scroll.width() >= scaled_px(296)
+    _assert_no_scroll()
+    ov.hide()
+
+
+def test_right_contents_fill_stretched_column(qtbot, tmp_path):
+    """W13: bars/histograms fill the stretched column; thumbs do NOT grow.
+
+    Bar widgets and histogram containers track the live column width
+    (bar COUNT and thumb sizes fixed, gaps absorb the extra).
+    """
+    from sli_ui_toolkit.managers import scaled_px
+    from sli_ui_toolkit.widgets import Button
+
+    from tabs.image_gallery.models import Artifact, Severity
+    from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+    from tabs.image_gallery.ui.quick_look.histograms import (
+        _BandingCombHistogram,
+        _GenericHistogram,
+    )
+
+    src_p = _real_png(tmp_path, "src.png")
+    mates = []
+    for i in range(4):
+        p = _real_png(tmp_path, f"v{i}.png")
+        mates.append(
+            GalleryItem(
+                path=p,
+                mtime_ns=i + 2,
+                metrics={"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8},
+                artifacts={Artifact.BANDING: Severity.MILD},
+            )
+        )
+    src = GalleryItem(path=src_p, mtime_ns=1, metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], [[src], list(mates)], source=src.path)
+
+    def _widths():
+        scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+        bars = ov._metrics_host.findChildren(_BarWidget)
+        hist = None
+        for cls in (_BandingCombHistogram, _GenericHistogram):
+            found = ov._artifacts_host.findChildren(cls)
+            if found:
+                hist = found[0]
+                break
+        thumbs = [
+            b
+            for b in ov._strip_host.findChildren(Button)
+            if b.objectName().startswith("quicklook_strip_")
+        ]
+        return scroll, bars, hist, thumbs
+
+    scroll, bars, hist, thumbs = _widths()
+    assert bars, "expected metric bars"
+    assert hist is not None, "expected an artifact histogram"
+    assert len(thumbs) == 4
+    viewport_w = scroll.viewport().width()
+    for bar in bars:
+        assert abs(bar.width() - viewport_w) <= 4
+    hist_w_before = hist.width()
+    hist_bars_before = len(hist._bars)
+    assert hist_w_before > 0
+    col_w_before = scroll.width()
+    _grow(qtbot, ov)
+    scroll, bars, hist2, thumbs = _widths()
+    viewport_w = scroll.viewport().width()
+    assert scroll.width() > col_w_before
+    # Bars track the wider viewport...
+    for bar in bars:
+        assert abs(bar.width() - viewport_w) <= 4
+    # ...the histogram container stretches with a fixed bar count...
+    assert hist2.width() > hist_w_before
+    assert len(hist2._bars) == hist_bars_before
+    for fill, _kind in hist2._bars:
+        assert fill.width() == scaled_px(9)
+    # ...and strip thumbs keep their fixed size.
+    for b in thumbs:
+        assert b.width() == scaled_px(66)
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
     ov.hide()

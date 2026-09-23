@@ -289,7 +289,11 @@ class _DualRestoredInventedBar(QWidget):
             frac = dual_marker_frac(self._hf)
             pw = self.width()
             if pw <= 0:
-                pw = scaled_px(296)
+                # W13: pre-layout there is no column width yet — wait for
+                # the first resizeEvent instead of assuming the old
+                # fixed-296 column. The bar fills whatever width the
+                # stretched layout gives it once shown (Expanding policy).
+                return
             total = pw
             marker_x = int(total * frac)
             left_w = max(scaled_px(4), marker_x)
