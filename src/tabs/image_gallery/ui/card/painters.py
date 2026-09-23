@@ -6,8 +6,22 @@ from PySide6.QtCore import QRect, Qt
 from sli_ui_toolkit.managers import ui_font
 
 
+def _theme_is_dark() -> bool:
+    """Darkness for fallback selection — delegates to ``dots._is_dark``."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
+
+        return bool(_dots_is_dark())
+    except Exception:
+        return True
+
+
 def _resolve_badge_accent() -> object:
-    """Accent for badge filled background via theme token."""
+    """Accent for badge filled background via theme token.
+
+    Chain (frozen seam): ``gallery.accent.bar`` → ``accent`` →
+    ``#0078D4`` (light) / ``#0096FF`` (dark).
+    """
     try:
         from sli_ui_toolkit.managers import ThemeManager
         from PySide6.QtGui import QColor
@@ -22,11 +36,18 @@ def _resolve_badge_accent() -> object:
         pass
     from PySide6.QtGui import QColor as _QC
 
-    return _QC("#0096FF")
+    if _theme_is_dark():
+        return _QC("#0096FF")
+    return _QC("#0078D4")
 
 
 def _resolve_unfilled_bg() -> object:
-    """Unfilled badge background via surface tokens."""
+    """Unfilled badge background via surface tokens with light/dark fallback.
+
+    Chain: ``surface.background`` → ``gallery.card.background`` → light
+    gray (light) / dark gray (dark). NOTE: the historical dark-only
+    ``QColor(43, 43, 43)`` default is kept for the dark theme only.
+    """
     try:
         from sli_ui_toolkit.managers import ThemeManager
         from PySide6.QtGui import QColor
@@ -41,7 +62,9 @@ def _resolve_unfilled_bg() -> object:
         pass
     from PySide6.QtGui import QColor as _QC
 
-    return _QC(43, 43, 43)
+    if _theme_is_dark():
+        return _QC(43, 43, 43)
+    return _QC("#cecece")
 
 
 def _resolve_badge_text() -> object:

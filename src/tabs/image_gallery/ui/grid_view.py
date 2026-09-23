@@ -6,8 +6,8 @@ reused ``Button`` pool (4 columns, rebuild_grid / refresh_card /
 set_card_visible / apply_selection). Keeps the same contracts as
 ``session_picker/recent/items_view.py`` but simplified for a flat 4-column
 layout (no list mode, no virtual row window for Stage 1). ``scaled_px`` is
-used for every geometry constant; no setStyleSheet — painter pipeline owns
-visuals.
+used for every geometry constant; no ad-hoc stylesheets — painter pipeline
+owns visuals.
 """
 
 from __future__ import annotations
@@ -41,6 +41,119 @@ GRID_MARGIN_BOTTOM = 0
 # Optional virtual buffer for later full virtualization; not used in MVP rebuild
 # but kept for marquee hit-testing parity.
 VIRTUAL_ROW_BUFFER = 1
+
+
+def _is_dark() -> bool:
+    """Darkness for fallback selection — delegates to ``dots._is_dark``."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
+
+        return bool(_dots_is_dark())
+    except Exception:
+        return True
+
+
+def _resolve_section_bar_color(collapsible: bool):
+    """Section header bar color with a light/dark-aware fallback.
+
+    Collapsible series: ``gallery.accent.bar`` → ``accent`` →
+    ``#0078D4`` (light) / ``#0096FF`` (dark). UNGROUPED tail:
+    ``dialog.border`` → ``#c0c0c0`` (light) / ``#555555`` (dark).
+    """
+    from PySide6.QtGui import QColor as _QC
+
+    try:
+        from sli_ui_toolkit.managers import ThemeManager as _TM
+        from ui.theming import try_resolve_theme_color as _trc
+
+        mgr = _TM.get_instance()
+        if collapsible:
+            for tok in ("gallery.accent.bar", "accent"):
+                c = _trc(mgr, tok)
+                if c is not None:
+                    return _QC(c) if isinstance(c, str) else c
+        else:
+            c = _trc(mgr, "dialog.border")
+            if c is not None:
+                return _QC(c) if isinstance(c, str) else c
+    except Exception:
+        pass
+    if collapsible:
+        return _QC("#0096FF") if _is_dark() else _QC("#0078D4")
+    return _QC("#555555") if _is_dark() else _QC("#c0c0c0")
+
+
+def _gallery_header_text_color():
+    """Series header text: ``gallery.header.text`` → light/dark fallback."""
+    from PySide6.QtGui import QColor as _QC
+
+    try:
+        from sli_ui_toolkit.managers import ThemeManager as _TM
+        from ui.theming import try_resolve_theme_color as _trc
+
+        c = _trc(_TM.get_instance(), "gallery.header.text")
+        if c is not None:
+            return _QC(c) if isinstance(c, str) else c
+    except Exception:
+        pass
+    if _is_dark():
+        return _QC(154, 154, 154)
+    return _QC(0x38, 0x38, 0x38)
+
+
+class _SeriesHeaderBar(QWidget):
+    """3×14 section bar painted explicitly from a cached theme color.
+
+    Replaces the palette/auto-fill path (THEMING.md warm-up quirk):
+    background is painted in ``paintEvent`` from a cached ``QColor`` and
+    re-resolved on ``theme_changed``.
+    """
+
+    def __init__(self, parent: QWidget | None = None, *, collapsible: bool = True) -> None:
+        super().__init__(parent)
+        self.setObjectName("GallerySeriesHeaderBar")
+        self._collapsible = bool(collapsible)
+        self._bar_color = _resolve_section_bar_color(self._collapsible)
+        try:
+            self.setFixedSize(scaled_px(3), scaled_px(14))
+        except Exception:
+            pass
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bar_color = _resolve_section_bar_color(self._collapsible)
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtGui import QPainter
+
+            p = QPainter(self)
+            try:
+                p.fillRect(self.rect(), self._bar_color)
+            except Exception:
+                pass
+            try:
+                p.end()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
 
 
 class GalleryGridView(QWidget):
@@ -103,6 +216,49 @@ class GalleryGridView(QWidget):
         self._series_cards: dict[int, list[object]] = {}
         # A2: mode for per-dot card colors (fidelity/camera/batch_synthetic) — proxied from widget set_triage.
         self._mode: object = None
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_gallery_theme_changed)
+        except Exception:
+            pass
+
+    def _on_gallery_theme_changed(self) -> None:
+        """Repaint grid surfaces on theme flip: accent, card fills, selection."""
+        try:
+            self._selection_accent = gallery_selection_accent()
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.card.hover import _card_idle_bg
+
+            bg = _card_idle_bg()
+            cards = list(self._cards_by_path.values()) + list(self._pool)
+            for card in cards:
+                try:
+                    card.set_override_bg_color(bg)
+                except Exception:
+                    pass
+                try:
+                    regions = card.regions()
+                except Exception:
+                    regions = []
+                for r in regions or []:
+                    try:
+                        if getattr(r, "id", "") in ("bg", "text"):
+                            card.update_region(r.id, override_bg_color=bg)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        try:
+            self.apply_selection(self._selection)
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
 
     # -- configuration -----------------------------------------------------
 
@@ -439,46 +595,15 @@ class GalleryGridView(QWidget):
         lay = QHBoxLayout(container)
         lay.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
         lay.setSpacing(scaled_px(12))
-        # Accent bar 3×14
-        bar = QWidget(container)
-        bar.setObjectName("GallerySeriesHeaderBar")
-        try:
-            bar.setFixedSize(scaled_px(3), scaled_px(14))
-            from PySide6.QtGui import QPalette, QColor
-            from sli_ui_toolkit.managers import ThemeManager as _TMBar
-            from ui.theming import try_resolve_theme_color as _trcBar
-
-            pal = bar.palette()
-            token = "gallery.accent.bar" if is_collapsible else "dialog.border"
-            try:
-                c_bar = _trcBar(_TMBar.get_instance(), token)
-                from PySide6.QtGui import QColor as _QCB
-                col = _QCB(c_bar) if isinstance(c_bar, str) else c_bar
-                if col is None:
-                    col = _QCB("#0096FF") if is_collapsible else _QCB("#555555")
-            except Exception:
-                col = QColor("#0096FF") if is_collapsible else QColor("#555555")
-            pal.setColor(QPalette.ColorRole.Window, col)
-            bar.setAutoFillBackground(True)
-            bar.setPalette(pal)
-        except Exception:
-            pass
+        # Accent bar 3×14 — explicitly painted themed widget (no palette fill).
+        bar = _SeriesHeaderBar(container, collapsible=is_collapsible)
         lay.addWidget(bar)
         try:
             lay.setAlignment(bar, Qt.AlignmentFlag.AlignVCenter)
         except Exception:
             pass
         if is_collapsible:
-            from PySide6.QtGui import QColor as _QC3
-
-            try:
-                from sli_ui_toolkit.managers import ThemeManager as _TMH3
-                from ui.theming import try_resolve_theme_color as _trcH3
-
-                _hc3 = _trcH3(_TMH3.get_instance(), "gallery.header.text")
-                _header_col3 = _QC3(_hc3) if isinstance(_hc3, str) else (_hc3 if _hc3 is not None else _QC3(154, 154, 154))
-            except Exception:
-                _header_col3 = _QC3(154, 154, 154)
+            _header_col3 = _gallery_header_text_color()
 
             btn = Button(
                 regions=[
@@ -507,16 +632,7 @@ class GalleryGridView(QWidget):
                 pass
             return container
         try:
-            from PySide6.QtGui import QColor as _QC4
-
-            try:
-                from sli_ui_toolkit.managers import ThemeManager as _TMH4
-                from ui.theming import try_resolve_theme_color as _trcH4
-
-                _hc4 = _trcH4(_TMH4.get_instance(), "gallery.header.text")
-                _header_col4 = _QC4(_hc4) if isinstance(_hc4, str) else (_hc4 if _hc4 is not None else _QC4(154, 154, 154))
-            except Exception:
-                _header_col4 = _QC4(154, 154, 154)
+            _header_col4 = _gallery_header_text_color()
 
             btn = Button(
                 regions=[

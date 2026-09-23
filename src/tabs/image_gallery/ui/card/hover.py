@@ -13,8 +13,25 @@ from sli_ui_toolkit.managers import scaled_px
 GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
 
 
+def _theme_is_dark() -> bool:
+    """Darkness for fallback selection — delegates to ``dots._is_dark``."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
+
+        return bool(_dots_is_dark())
+    except Exception:
+        return True
+
+
 def _card_idle_bg():
-    """Idle card surface via theme token (RGB fallback == #383838)."""
+    """Idle card surface via theme token with a light/dark-aware fallback.
+
+    Chain (frozen seam): ``gallery.card.background`` → ``surface.list`` →
+    ``surface.background`` → ``#ffffff`` (light) / dark gray (dark).
+    NOTE: the historical dark-only ``QColor(56, 56, 56)`` default (== the
+    legacy dark ``gallery.card.background`` value) is kept for the dark
+    theme only; the light theme falls back to white.
+    """
     try:
         from PySide6.QtGui import QColor
 
@@ -30,7 +47,9 @@ def _card_idle_bg():
     try:
         from PySide6.QtGui import QColor as _QC
 
-        return _QC(56, 56, 56)
+        if _theme_is_dark():
+            return _QC(0x38, 0x38, 0x38)
+        return _QC("#ffffff")
     except Exception:
         return None
 
@@ -43,7 +62,7 @@ def _card_hover_bg():
         from sli_ui_toolkit.managers import ThemeManager
         from ui.theming import try_resolve_theme_color
 
-        for token in ("gallery.card.background.hover", "gallery.card.background"):
+        for token in ("gallery.card.hover", "gallery.card.background.hover"):
             c = try_resolve_theme_color(ThemeManager.get_instance(), token)
             if c is not None:
                 return c if isinstance(c, QColor) else QColor(c)
@@ -52,34 +71,52 @@ def _card_hover_bg():
     try:
         from PySide6.QtGui import QColor as _QC
 
-        return _QC(66, 66, 66)
+        # NOTE: historical dark-only (66, 66, 66) step kept for dark theme;
+        # light theme uses the registered gallery.card.hover value.
+        if _theme_is_dark():
+            return _QC(0x42, 0x42, 0x42)
+        return _QC("#dcdcdc")
     except Exception:
         return None
 
 
 def _capsule_icon_color(action_id: str):
-    """Tri-color capsule icons (svg hover pill): star gold · cross red · swap accent."""
+    """Tri-color capsule icons (svg hover pill): star gold · cross red · swap accent.
+
+    Accent chain (frozen seam): ``gallery.accent.bar`` → ``accent`` →
+    ``#0078D4`` (light) / ``#0096FF`` (dark).
+    """
     fallbacks = {
         "make_best": ("gallery.status.warn", (232, 182, 76)),
         "reject": ("gallery.status.danger", (217, 48, 37)),
-        "compare": ("gallery.accent.bar", (0, 150, 255)),
-        "set_source": ("gallery.accent.bar", (0, 150, 255)),
+        "compare": ("gallery.accent.bar", (0, 120, 212)),
+        "set_source": ("gallery.accent.bar", (0, 120, 212)),
     }
-    token, rgb = fallbacks.get(action_id, ("gallery.accent.bar", (0, 150, 255)))
+    token, rgb = fallbacks.get(action_id, ("gallery.accent.bar", (0, 120, 212)))
     try:
         from PySide6.QtGui import QColor
 
         from sli_ui_toolkit.managers import ThemeManager
         from ui.theming import try_resolve_theme_color
 
-        c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-        if c is not None:
-            return c if isinstance(c, QColor) else QColor(c)
+        if token == "gallery.accent.bar":
+            for tok in ("gallery.accent.bar", "accent"):
+                c = try_resolve_theme_color(ThemeManager.get_instance(), tok)
+                if c is not None:
+                    return c if isinstance(c, QColor) else QColor(c)
+        else:
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
     except Exception:
         pass
     try:
         from PySide6.QtGui import QColor as _QC
 
+        if token == "gallery.accent.bar" and not _theme_is_dark():
+            return _QC(*rgb)
+        if token == "gallery.accent.bar":
+            return _QC(0, 150, 255)
         return _QC(*rgb)
     except Exception:
         return None
@@ -102,7 +139,7 @@ class _CardHoverFilter(QObject):
         if watched is self._card:
             if event.type() == QEvent.Type.Enter:
                 try:
-                    # Hovered card bg #424242 per svg c4 (vs #383838 idle)
+                    # Hovered card bg per svg c4 (one step from idle)
                     try:
                         self._card.set_override_bg_color(_card_hover_bg())
                     except Exception:
@@ -153,11 +190,11 @@ def _show_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
         pass
     # Keep legacy underline as fallback for non-overlay path
     try:
-        from tabs.image_gallery.ui.card.dots import _ACCENT_TOKEN_FALLBACK, _token_color
+        from tabs.image_gallery.ui.card.dots import _accent_color
 
         card.setUnderlineThickness(float(scaled_px(3)))
         card.setUnderlineTongueReach(float(scaled_px(2)))
-        card.setUnderlineColor(_token_color(*_ACCENT_TOKEN_FALLBACK))
+        card.setUnderlineColor(_accent_color())
         # Do not show whole-button underline — overlay draws inset bar
         card.setShowUnderline(False)
     except Exception:

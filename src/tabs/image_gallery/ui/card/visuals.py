@@ -80,8 +80,8 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
 
     # Lazy imports to avoid cycles at module import.
     from tabs.image_gallery.ui.card.dots import (
-        _ACCENT_TOKEN_FALLBACK,
-        _ERROR_LINE_TOKEN_FALLBACK,
+        _accent_color,
+        _error_line_color,
         _token_color,
     )
 
@@ -106,7 +106,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         if rejected:
             card.setBadge("✕")
             try:
-                _danger = _token_color(*_ERROR_LINE_TOKEN_FALLBACK)
+                _danger = _error_line_color()
                 card.setBadgeStyle(
                     filled=True,
                     background_color=_danger,
@@ -128,7 +128,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
             except Exception:
                 pass
             try:
-                _accent = _token_color(*_ACCENT_TOKEN_FALLBACK)
+                _accent = _accent_color()
                 _accent_text = _QColor(_accent)
                 try:
                     _accent_text = _accent_text.lighter(150)
@@ -147,10 +147,10 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 pass
             try:
                 card._gallery_badge = "★ BEST"  # type: ignore[attr-defined]
-                card._gallery_badge_style = (True, _token_color(*_ACCENT_TOKEN_FALLBACK), _token_color(*_ACCENT_TOKEN_FALLBACK), _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
+                card._gallery_badge_style = (True, _accent_color(), _accent_color(), _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
                 # Accent border 2px for BEST
                 try:
-                    card.setBorderColor(_token_color(*_ACCENT_TOKEN_FALLBACK))
+                    card.setBorderColor(_accent_color())
                     card.setProperty("borderWidth", 2)
                 except Exception:
                     pass
@@ -230,10 +230,10 @@ def gallery_selection_accent(theme_manager=None):  # type: ignore[no-untyped-def
 
         return selection_accent_color(theme_manager)
     except Exception:
-        # S2-12: accent via theme token, fallback hex for offscreen tests.
-        from tabs.image_gallery.ui.card.dots import _ACCENT_TOKEN_FALLBACK, _token_color
+        # S2-12: accent via theme token chain, theme-aware fallback for offscreen tests.
+        from tabs.image_gallery.ui.card.dots import _accent_color
 
-        return _token_color(*_ACCENT_TOKEN_FALLBACK)
+        return _accent_color()
 
 
 def apply_gallery_selection(card: Button, selected: bool, accent=None) -> None:  # type: ignore[no-untyped-def]

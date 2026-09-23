@@ -5,7 +5,7 @@ the thin owner implementation lives in the sibling file ``card.py`` (≈380 line
 This ``__init__`` loads that file as ``_file`` and re-exports its public
 surface so both ``import tabs.image_gallery.ui.card`` paths work and
 ``ui/card/*`` submodules are found via the package's ``__path__``.
-Painter pipeline only (no setStyleSheet), lazy imports per CODE_PATTERNS.md.
+Painter pipeline only (no ad-hoc stylesheets), lazy imports per CODE_PATTERNS.md.
 """
 
 from __future__ import annotations
