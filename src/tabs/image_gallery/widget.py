@@ -421,7 +421,14 @@ class ImageGalleryWidget(QWidget):
     # -- card interaction -------------------------------------------------
 
     def _on_card_toggle(self, path: Path, additive: bool = False) -> None:
-        # A3: manual selection orthogonal to triage — Ctrl-click/marquee → HUD
+        # Click opens, Ctrl+click selects (manual selection stays orthogonal
+        # to triage — Ctrl-click/marquee → HUD; plain click → quick look).
+        if not additive:
+            try:
+                self.show_quick_look(path)
+                return
+            except Exception:
+                pass
         try:
             from tabs.image_gallery.use_cases import selection as _sel
 
