@@ -135,19 +135,51 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
         # W8: card-plate resizes (user drag via the corner grip or direct
         # resizes) re-run the same pin hooks as resizeEvent.
+        # W9: the whole card border is an 8px resize strip (8 directions) —
+        # press/move/release on the plate drive the border drag, plain
+        # moves update the hover cursor. Same clamp + re-pin idiom as W8.
         try:
             from PySide6.QtCore import QEvent
 
-            if watched is getattr(self, "_content", None) and event.type() == QEvent.Type.Resize:
-                try:
-                    self._reposition_source_inset()
-                except Exception:
-                    pass
-                try:
-                    from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
-                    reposition_grip(self)
-                except Exception:
-                    pass
+            if watched is getattr(self, "_content", None):
+                t = event.type()
+                if t == QEvent.Type.Resize:
+                    try:
+                        self._reposition_source_inset()
+                    except Exception:
+                        pass
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+                        reposition_grip(self)
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseButtonPress:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_press
+                        if handle_border_press(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseMove:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                        if handle_border_move(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseButtonRelease:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_release
+                        if handle_border_release(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.Leave:
+                    try:
+                        if getattr(self, "_border_drag", None) is None:
+                            self._content.unsetCursor()
+                    except Exception:
+                        pass
         except Exception:
             pass
         return super().eventFilter(watched, event)

@@ -1401,3 +1401,255 @@ def test_dblclick_open_survives_no_background_close(qtbot):
     assert ov.isVisible() is True
     assert ov._current_item is item
     ov.hide()
+
+
+# -- W9 full-border resize + nav mockup paint ----------------------------------
+
+
+def _w9_grab_stats(btn):
+    """Offscreen grab census: fill samples, ring count, glyph dark core."""
+    from PySide6.QtGui import QColor
+
+    img = btn.grab().toImage()
+    w, h = img.width(), img.height()
+
+    def _px(x, y):
+        c = img.pixelColor(x, y)
+        return (c.red(), c.green(), c.blue(), c.alpha())
+
+    ring = QColor("#d7dade")
+    ring_n = sum(
+        1
+        for y in range(h)
+        for x in range(w)
+        if abs(img.pixelColor(x, y).red() - ring.red()) <= 8
+        and abs(img.pixelColor(x, y).green() - ring.green()) <= 8
+        and abs(img.pixelColor(x, y).blue() - ring.blue()) <= 8
+    )
+    # Glyph dark core (subpixel fringes excluded: strict luma floor).
+    darks = [
+        (x, y)
+        for y in range(h)
+        for x in range(w)
+        if (lambda p: (p.red() + p.green() + p.blue()) // 3 < 100 and p.alpha() > 10)(
+            img.pixelColor(x, y)
+        )
+    ]
+    return _px, ring_n, darks, (w, h)
+
+
+def test_nav_circles_mockup_fill_ring_centered_glyph(qtbot, _w1_light_palettes):
+    """W9 arrows: mockup paint — #f1f2f4 disc, #d7dade ring, chevron on center.
+
+    Execution diagnosis (offscreen grabs, light palettes): the W8 buttons
+    rendered a #ffffff disc (surface default) with a ~#fdfdfd ring, and the
+    glyph parked in the top half (dark rows y 8..13 of 36 — ButtonRow
+    defaults to ratio=0.5). The veil hypothesis was REFUTED (nav buttons
+    are _content children painted above the veil; fills grabbed pure).
+    Fill now goes through set_override_bg_color (exact layer) with
+    ratio=1.0 rows; the ring is the mockup #d7dade."""
+    from PySide6.QtGui import QColor
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    for btn in (ov._prev_btn, ov._next_btn):
+        assert btn.isEnabled()
+        # Exact override fill + explicit mockup ring (API values).
+        assert btn._override_bg_color == QColor("#f1f2f4")
+        assert btn.borderColor() == QColor("#d7dade")
+        # Glyph row fills the button (ratio=1.0 centers it vertically).
+        glyph_rows = [
+            row.text
+            for region in btn.regions()
+            for row in (getattr(region, "rows", None) or [])
+        ]
+        assert glyph_rows
+        for region in btn.regions():
+            for row in (getattr(region, "rows", None) or []):
+                assert row.ratio == pytest.approx(1.0)
+        # Rendered pixels: mockup fill, visible ring, centered dark core.
+        px, ring_n, darks, (w, h) = _w9_grab_stats(btn)
+        assert px(18, 6)[:3] == (0xF1, 0xF2, 0xF4), px(18, 6)
+        assert px(6, 18)[:3] == (0xF1, 0xF2, 0xF4), px(6, 18)
+        assert ring_n > 30, ring_n
+        assert len(darks) >= 5, len(darks)
+        cx = sum(x for x, _y in darks) / len(darks)
+        cy = sum(y for _x, y in darks) / len(darks)
+        assert abs(cx - w / 2) <= 3, (cx, w)
+        assert abs(cy - h / 2) <= 3, (cy, h)
+    ov.hide()
+
+
+def test_nav_circles_keep_ring_and_glyph_when_disabled(qtbot, _w1_light_palettes):
+    """W9 arrows disabled: the ring survives (override-bg path keeps the
+    explicit border in DISABLED — the derived-palette path early-returns
+    with border=None and rendered a flat #e0e0e0 disc with no ring)."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    for btn in (ov._prev_btn, ov._next_btn):
+        btn.setEnabled(False)
+        assert btn.borderColor() is not None
+        px, ring_n, darks, _size = _w9_grab_stats(btn)
+        assert px(18, 6)[:3] == (0xF1, 0xF2, 0xF4), px(18, 6)
+        assert ring_n > 30, ring_n
+        assert len(darks) >= 5, len(darks)
+    ov.hide()
+
+
+def test_resize_border_zones_and_cursors(qtbot):
+    """W9 item 1: 8px strip on all 4 edges + 4 corners, 8 directions."""
+    from PySide6.QtCore import QPoint, Qt
+
+    from sli_ui_toolkit.managers import scaled_px
+    from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    content = ov._content
+    w, h = content.width(), content.height()
+    assert (w, h) == (scaled_px(1040), scaled_px(620))
+    assert _ql_helpers.RESIZE_BORDER_PX == 8
+    strip = scaled_px(8)
+    cases = {
+        (strip // 2, h // 2): ("left", Qt.CursorShape.SizeHorCursor),
+        (w - strip // 2 - 1, h // 2): ("right", Qt.CursorShape.SizeHorCursor),
+        (w // 2, strip // 2): ("top", Qt.CursorShape.SizeVerCursor),
+        (w // 2, h - strip // 2 - 1): ("bottom", Qt.CursorShape.SizeVerCursor),
+        (strip // 2, strip // 2): ("top_left", Qt.CursorShape.SizeFDiagCursor),
+        (w - strip // 2 - 1, strip // 2): ("top_right", Qt.CursorShape.SizeBDiagCursor),
+        (strip // 2, h - strip // 2 - 1): ("bottom_left", Qt.CursorShape.SizeBDiagCursor),
+        (w - strip // 2 - 1, h - strip // 2 - 1): ("bottom_right", Qt.CursorShape.SizeFDiagCursor),
+        (w // 2, h // 2): (None, None),
+    }
+    for (x, y), (zone_exp, cursor_exp) in cases.items():
+        zone = _ql_helpers.resize_zone_at(content, QPoint(x, y))
+        assert zone == zone_exp, ((x, y), zone)
+        assert _ql_helpers.resize_cursor_for(zone) == cursor_exp, zone
+    # Hover affordance is cursor-only over a tracking plate — no QSS.
+    assert content.hasMouseTracking() is True
+    assert content.styleSheet() == ""
+    ov.hide()
+
+
+def _w9_mouse_event(kind, local, glob, button, buttons):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    return QMouseEvent(
+        kind,
+        QPointF(QPoint(*local)),
+        QPointF(QPoint(*glob)),
+        button,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_resize_border_hover_cursor_through_filter(qtbot):
+    """W9 item 1: plain moves over the strip set the hover cursor via the
+    overlay eventFilter; interior moves restore the arrow."""
+    from PySide6.QtCore import QEvent, QPoint, Qt
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    content = ov._content
+    w, h = content.width(), content.height()
+
+    def _move(x, y):
+        glob = content.mapToGlobal(QPoint(x, y))
+        assert (
+            ov.eventFilter(
+                content,
+                _w9_mouse_event(
+                    QEvent.Type.MouseMove, (x, y), (glob.x(), glob.y()),
+                    Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+                ),
+            )
+            is False
+        )  # hover never consumes
+        QApplication.processEvents()
+
+    _move(4, h // 2)
+    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    _move(w // 2, 4)
+    assert content.cursor().shape() == Qt.CursorShape.SizeVerCursor
+    _move(4, 4)
+    assert content.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
+    _move(w // 2, h // 2)
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_resize_border_drag_clamps_and_repins(qtbot):
+    """W9 item 1: border drags clamp like the W8 grip (min 1040×620,
+    overlay minus 16px margin), re-pin grip + nav, stay session-only."""
+    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+
+    from sli_ui_toolkit.managers import scaled_px
+
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    content = ov._content
+    base_geom = content.geometry()
+
+    def _press_move_release(lx, ly, dx, dy):
+        start = content.mapToGlobal(QPoint(lx, ly))
+        end = start + QPoint(dx, dy)
+        press = _w9_mouse_event(
+            QEvent.Type.MouseButtonPress, (lx, ly), (start.x(), start.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+        consumed = ov.eventFilter(content, press)
+        move = _w9_mouse_event(
+            QEvent.Type.MouseMove, (lx + dx, ly + dy), (end.x(), end.y()),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        )
+        ov.eventFilter(content, move)
+        release = _w9_mouse_event(
+            QEvent.Type.MouseButtonRelease, (lx + dx, ly + dy), (end.x(), end.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+        )
+        ov.eventFilter(content, release)
+        QApplication.processEvents()
+        return consumed
+
+    w, h = content.width(), content.height()
+    # Interior press is ignored (not consumed, no drag).
+    assert _press_move_release(w // 2, h // 2, 100, 100) is False
+    assert content.geometry() == base_geom
+    assert getattr(ov, "_border_drag", None) is None
+    # Right edge far past the window: clamped to overlay minus margin.
+    assert _press_move_release(w - 4, h // 2, 1000, 0) is True
+    margin = scaled_px(16)
+    assert content.width() == ov.width() - margin * 2
+    assert getattr(ov, "_border_drag", None) is None
+    # Left edge drag rightwards shrinks with the opposite edge anchored.
+    w2, right2 = content.width(), content.geometry().right()
+    assert _press_move_release(4, h // 2, 200, 0) is True
+    assert content.width() < w2
+    assert content.geometry().right() == right2
+    # Far corner drag floors at the 1040×620 minimum.
+    _press_move_release(4, 4, 3000, 3000)
+    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    # Absolute children re-pinned: grip at the corner, nav on the edges.
+    assert ov._resize_grip.geometry().topLeft() == QPoint(
+        content.width() - ov._resize_grip.width(),
+        content.height() - ov._resize_grip.height(),
+    )
+    assert abs(ov._prev_btn.geometry().center().x() - 0) <= 2
+    assert abs(ov._next_btn.geometry().center().x() - content.width()) <= 2
+    ov.hide()

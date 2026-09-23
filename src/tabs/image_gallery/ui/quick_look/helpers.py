@@ -540,6 +540,245 @@ def reposition_grip(overlay) -> None:
         pass
 
 
+def clamp_card_size(overlay, want_w: int, want_h: int) -> tuple[int, int]:
+    """Clamp a wanted card size to the session-only resize bounds (W8/W9).
+
+    Floor: the S4 mockup 1040×620 card. Ceiling: the overlay (parent/window)
+    minus the 16px margin on each side. Shared by the corner grip drag and
+    the full-border drag so both handles agree exactly.
+    """
+    try:
+        from sli_ui_toolkit.managers import scaled_px
+
+        margin = scaled_px(16)
+        try:
+            bound_w = max(0, overlay.width() - margin * 2)
+            bound_h = max(0, overlay.height() - margin * 2)
+        except Exception:
+            bound_w, bound_h = 0, 0
+        new_w = max(scaled_px(1040), int(want_w))
+        new_h = max(scaled_px(620), int(want_h))
+        if bound_w > 0:
+            new_w = min(new_w, bound_w)
+        if bound_h > 0:
+            new_h = min(new_h, bound_h)
+        return new_w, new_h
+    except Exception:
+        return int(want_w), int(want_h)
+
+
+# W9: full-border resize — an 8px hit strip along the WHOLE card border
+# (4 edges + 4 corners, 8 drag directions). Zones are hit-tested from the
+# overlay's _content eventFilter (quick_look.py) and reuse the W8 clamp +
+# reposition idiom. No QSS: hover affordance is cursor-only, and the
+# painted _ResizeGrip stays as the SE corner's visual affordance.
+RESIZE_BORDER_PX = 8
+
+
+def resize_zone_at(content, pos) -> str | None:
+    """Hit-test a _content-local point against the 8px border strip (W9).
+
+    Returns one of ``left`` / ``right`` / ``top`` / ``bottom`` /
+    ``top_left`` / ``top_right`` / ``bottom_left`` / ``bottom_right``,
+    or None when the point is outside the strip (interior).
+    """
+    try:
+        from sli_ui_toolkit.managers import scaled_px
+
+        strip = scaled_px(RESIZE_BORDER_PX)
+        w = content.width()
+        h = content.height()
+        x = pos.x()
+        y = pos.y()
+        left = x < strip
+        right = x >= w - strip
+        top = y < strip
+        bottom = y >= h - strip
+        if top and left:
+            return "top_left"
+        if top and right:
+            return "top_right"
+        if bottom and left:
+            return "bottom_left"
+        if bottom and right:
+            return "bottom_right"
+        if left:
+            return "left"
+        if right:
+            return "right"
+        if top:
+            return "top"
+        if bottom:
+            return "bottom"
+        return None
+    except Exception:
+        return None
+
+
+def resize_cursor_for(zone: str | None):
+    """Hover/drag cursor for a resize zone (W9). None → default arrow."""
+    try:
+        from PySide6.QtCore import Qt
+
+        mapping = {
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "top_left": Qt.CursorShape.SizeFDiagCursor,
+            "bottom_right": Qt.CursorShape.SizeFDiagCursor,
+            "top_right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom_left": Qt.CursorShape.SizeBDiagCursor,
+        }
+        return mapping.get(zone if zone is not None else "")
+    except Exception:
+        return None
+
+
+def _repin_after_card_resize(overlay) -> None:
+    """Re-run the absolute-child pin hooks after a card resize step."""
+    try:
+        overlay._reposition_source_inset()
+    except Exception:
+        pass
+    try:
+        reposition_grip(overlay)
+    except Exception:
+        pass
+
+
+def handle_border_press(overlay, event) -> bool:
+    """Start a full-border drag on left-press inside the strip (W9).
+
+    Returns True when the press was consumed (caller must accept it).
+    """
+    try:
+        from PySide6.QtCore import Qt
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            return False
+        content = getattr(overlay, "_content", None)
+        if content is None:
+            return False
+        try:
+            local = event.position().toPoint()
+        except Exception:
+            return False
+        zone = resize_zone_at(content, local)
+        if zone is None:
+            return False
+        try:
+            start_global = event.globalPosition().toPoint()
+        except Exception:
+            return False
+        overlay._border_drag = (zone, start_global, content.geometry())
+        cursor = resize_cursor_for(zone)
+        if cursor is not None:
+            try:
+                content.setCursor(cursor)
+            except Exception:
+                pass
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def handle_border_move(overlay, event) -> bool:
+    """Hover cursors + live border drag (W9). True when consumed."""
+    try:
+        from PySide6.QtCore import Qt
+
+        content = getattr(overlay, "_content", None)
+        if content is None:
+            return False
+        drag = getattr(overlay, "_border_drag", None)
+        if drag is not None:
+            try:
+                cur = event.globalPosition().toPoint()
+            except Exception:
+                return False
+            zone, start_global, start_geom = drag
+            dx = cur.x() - start_global.x()
+            dy = cur.y() - start_global.y()
+            want_w = start_geom.width()
+            want_h = start_geom.height()
+            if "left" in zone:
+                want_w = start_geom.width() - dx
+            elif "right" in zone:
+                want_w = start_geom.width() + dx
+            if "top" in zone:
+                want_h = start_geom.height() - dy
+            elif "bottom" in zone:
+                want_h = start_geom.height() + dy
+            new_w, new_h = clamp_card_size(overlay, want_w, want_h)
+            try:
+                # Anchor the opposite edge: left/top drags move the card
+                # so the edge under the cursor tracks it (right/bottom
+                # drags keep the W8 top-left anchor).
+                new_x = start_geom.x() + (start_geom.width() - new_w) if "left" in zone else start_geom.x()
+                new_y = start_geom.y() + (start_geom.height() - new_h) if "top" in zone else start_geom.y()
+                if new_x != start_geom.x() or new_y != start_geom.y():
+                    content.move(new_x, new_y)
+                content.resize(new_w, new_h)
+            except Exception:
+                pass
+            _repin_after_card_resize(overlay)
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return True
+        # Hover (no buttons): cursor-only affordance, never consumed.
+        try:
+            buttons = event.buttons()
+        except Exception:
+            buttons = Qt.MouseButton.NoButton
+        if buttons != Qt.MouseButton.NoButton:
+            return False
+        try:
+            local = event.position().toPoint()
+        except Exception:
+            return False
+        cursor = resize_cursor_for(resize_zone_at(content, local))
+        try:
+            if cursor is not None:
+                content.setCursor(cursor)
+            else:
+                content.unsetCursor()
+        except Exception:
+            pass
+        return False
+    except Exception:
+        return False
+
+
+def handle_border_release(overlay, event) -> bool:
+    """End a full-border drag (W9). True when a drag was active."""
+    try:
+        drag = getattr(overlay, "_border_drag", None)
+        if drag is None:
+            return False
+        overlay._border_drag = None
+        _repin_after_card_resize(overlay)
+        try:
+            content = getattr(overlay, "_content", None)
+            if content is not None:
+                content.unsetCursor()
+        except Exception:
+            pass
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 class _ResizeGrip(QWidget):
     """Bottom-right drag handle for the resizable quick look card (W8).
 
@@ -654,36 +893,19 @@ class _ResizeGrip(QWidget):
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         try:
             if self._drag_start is not None and self._drag_size is not None:
-                from sli_ui_toolkit.managers import scaled_px
-
                 overlay = self._overlay_ref
                 content = getattr(overlay, "_content", None)
                 if content is not None:
                     delta = event.globalPosition().toPoint() - self._drag_start
                     want_w = self._drag_size.width() + delta.x()
                     want_h = self._drag_size.height() + delta.y()
-                    # Floor: the S4 mockup 1040×620 card. No maximum —
-                    # clamp only to the overlay (parent/window) minus margin.
-                    margin = scaled_px(16)
-                    try:
-                        bound_w = max(0, overlay.width() - margin * 2)
-                        bound_h = max(0, overlay.height() - margin * 2)
-                    except Exception:
-                        bound_w, bound_h = 0, 0
-                    new_w = max(scaled_px(1040), want_w)
-                    new_h = max(scaled_px(620), want_h)
-                    if bound_w > 0:
-                        new_w = min(new_w, bound_w)
-                    if bound_h > 0:
-                        new_h = min(new_h, bound_h)
+                    # W9: shared session-only clamp (floor 1040×620, ceiling
+                    # overlay minus 16px margin) — same as the border drag.
+                    new_w, new_h = clamp_card_size(overlay, want_w, want_h)
                     content.resize(new_w, new_h)
                     # The _content Resize filter re-runs nav/inset/grip
                     # hooks; belt-and-braces for paths that compress events.
-                    try:
-                        overlay._reposition_source_inset()
-                    except Exception:
-                        pass
-                    reposition_grip(overlay)
+                    _repin_after_card_resize(overlay)
                 event.accept()
                 return
         except Exception:
@@ -741,6 +963,13 @@ def build_overlay_ui(overlay) -> None:
 
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
+    # W9: the whole border is a resize strip — hover cursors need
+    # button-free MouseMove delivery on the plate (no QSS involved).
+    try:
+        overlay._content.setMouseTracking(True)
+    except Exception:
+        pass
+    overlay._border_drag = None
     # S4 mockup panel is 1040x620 — minimum (floor), not a suggestion.
     # W8: NO maximum — the user drag-resizes via the corner grip handle.
     overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
@@ -803,13 +1032,21 @@ def build_overlay_ui(overlay) -> None:
     # NOT layout items. Glyph via rows (rows-only buttons take setFixedSize
     # so 36x36 actually lands); round shape via corner_radius (design px,
     # scaled internally); no QSS anywhere on this path.
-    # Glyph color is a fixed dark token (mockup #23262b); the border is set
-    # explicitly so it survives the disabled state (W4 item 6).
+    # W9: mockup paint — #f1f2f4 disc, #d7dade ring, #23262b chevron.
+    # Fill goes through set_override_bg_color (exact base layer), NOT
+    # set_background_color: the derived-palette path early-returns on
+    # DISABLED with border=None, so a single-item card rendered a flat
+    # #e0e0e0 disc with no ring. The override path keeps the explicit
+    # border in every state. Glyph ratio=1.0 (ButtonRow defaults to 0.5,
+    # which parked the chevron in the top half — dark rows y 8..13 of 36).
     _nav_glyph = _token_color("gallery.nav.glyph", "#23262b")
-    _nav_border = _token_color("gallery.card.border", "#e2e4e8")
-    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
+    _nav_fill = _token_color("gallery.nav.fill", "#f1f2f4")
+    _nav_border = _token_color("gallery.nav.border", "#d7dade")
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
     overlay._prev_btn.setObjectName("quicklook_prev")
     try:
+        if _nav_fill is not None:
+            overlay._prev_btn.set_override_bg_color(_nav_fill)
         if _nav_border is not None:
             overlay._prev_btn.set_border_color(_nav_border)
     except Exception:
@@ -882,9 +1119,11 @@ def build_overlay_ui(overlay) -> None:
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay._content)
     overlay._next_btn.setObjectName("quicklook_next")
     try:
+        if _nav_fill is not None:
+            overlay._next_btn.set_override_bg_color(_nav_fill)
         if _nav_border is not None:
             overlay._next_btn.set_border_color(_nav_border)
     except Exception:
