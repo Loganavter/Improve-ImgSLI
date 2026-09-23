@@ -25,10 +25,17 @@ except Exception:
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QBrush, QPainter
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Label, TopLevelInWindowOverlay
+
+# S4 v2 LIGHT (svg:27): modal dim-veil alpha, mirroring
+# ui/clean_review.py DIM_VEIL_ALPHA (mockup "modal veil" fill-opacity 0.45).
+# TopLevelInWindowOverlay has no paintEvent (transparent background), so the
+# overlay paints this veil itself in gallery scope — never in the toolkit.
+DIM_VEIL_ALPHA = round(0.45 * 255)  # 115
 
 # Re-export for tests
 try:
@@ -160,6 +167,88 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
+    def refresh_metrics(self, item) -> None:
+        """W1 seam — W2 calls this from ``_on_fidelity_ready`` / set-source paths.
+
+        Mirrors ``refresh_artifacts``: rebuilds metrics + meta + brief for the
+        open overlay (no reopen needed when fidelity numbers land); no-op when
+        hidden or for another item. Never copied between items (path-guarded).
+        """
+        try:
+            cur = getattr(self, "_current_item", None)
+            if cur is None:
+                return
+            try:
+                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
+                    return
+            except Exception:
+                if cur is not item:
+                    return
+            if not self.isVisible():
+                return
+            try:
+                self._current_item = item
+            except Exception:
+                pass
+            # Re-read mode from owner state (W2 may have flipped it, e.g.
+            # set-as-source → FIDELITY) before rebuilding.
+            try:
+                owner = getattr(self, "_owner", None)
+                st = getattr(owner, "state", None) if owner is not None else None
+                if st is not None and getattr(st, "mode", None) is not None:
+                    self._mode = st.mode
+            except Exception:
+                pass
+            mode_str = "FIDELITY MODE"
+            try:
+                mode = getattr(self, "_mode", None)
+                if mode is not None:
+                    mode_str = str(mode.value) if hasattr(mode, "value") else str(mode)
+                mode_str = mode_str.upper()
+                if not mode_str.endswith(" MODE"):
+                    mode_str = f"{mode_str} MODE"
+            except Exception:
+                pass
+            is_fidelity = "FIDELITY" in mode_str
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import (
+                    populate_brief,
+                    populate_crop,
+                    populate_filename_meta,
+                )
+
+                populate_crop(self, item, is_fidelity)
+                populate_filename_meta(self, item, is_fidelity)
+            except Exception:
+                pass
+            self._rebuild_metrics(item, is_fidelity, mode_str)
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
+
+                _pb(self, item)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """S4 modal dim veil (mockup fill-opacity 0.45), mirroring clean_review.
+
+        ``TopLevelInWindowOverlay`` paints nothing (transparent background),
+        so the veil lives here in gallery scope.
+        """
+        try:
+            painter = QPainter(self)
+            # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
+            # the veil is mockup-specified plain black at an opacity, not
+            # a theme color — Qt global black + painter opacity.
+            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
+            painter.end()
+        except Exception:
+            pass
+        super().paintEvent(event)
+
     def refresh_quick_look(self, item) -> None:
         self.refresh_artifacts(item)
 
@@ -228,7 +317,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             )
             populate_preview(self, item)
             populate_source_inset(self, item, is_fidelity)
-            populate_crop(self, item)
+            populate_crop(self, item, is_fidelity)
             populate_filename_meta(self, item, is_fidelity)
             populate_report_header(self, is_fidelity, mode_str)
         except Exception:

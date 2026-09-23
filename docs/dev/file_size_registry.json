@@ -709,7 +709,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 785,
+      "lines": 807,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -733,7 +733,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 448,
+      "lines": 537,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip\"",
@@ -744,7 +744,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
-      "lines": 882,
+      "lines": 1019,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
@@ -780,7 +780,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 903,
+      "lines": 910,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

@@ -98,6 +98,126 @@ class _AccentPillHost(QWidget):
             pass
 
 
+# S4 v2 LIGHT (svg:31): 1040x620 card plate — card fill + 1px border + rx 12.
+QUICK_LOOK_CARD_RADIUS_PX = 12
+
+
+class _CardPlate(QWidget):
+    """Quick look card plate — ``gallery.card.background`` fill + border, rx 12.
+
+    Painter pipeline owns visuals (explicit paintEvent, theme-subscribed);
+    no QSS, no palette. Token chains mirror the grid-card seam
+    (``ui/card.py::_gallery_card_bg``, ``ui/card/visuals.py``).
+    All QColor() calls take resolved variables — never literals
+    (contracts/test_no_hardcoded_qcolor.py baseline).
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._bg = self._resolve_bg()
+        self._border = self._resolve_border()
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _resolve_bg():
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            from ui.theming import try_resolve_theme_color
+
+            mgr = ThemeManager.get_instance()
+            for token in ("gallery.card.background", "surface.list", "surface.background"):
+                c = try_resolve_theme_color(mgr, token)
+                if c is not None:
+                    return c if isinstance(c, QColor) else QColor(c)
+        except Exception:
+            pass
+        return _token_color(
+            "gallery.card.background", "#ffffff" if not _is_dark_theme() else "#383838"
+        )
+
+    @staticmethod
+    def _resolve_border():
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            from ui.theming import try_resolve_theme_color
+
+            mgr = ThemeManager.get_instance()
+            for token in ("gallery.card.border", "flyout.border"):
+                try:
+                    c = try_resolve_theme_color(mgr, token)
+                except Exception:
+                    c = None
+                if c is not None:
+                    return c if isinstance(c, QColor) else QColor(c)
+        except Exception:
+            pass
+        return _token_color(
+            "gallery.card.border", "#e2e4e8" if not _is_dark_theme() else "#4a4a4a"
+        )
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self._bg = self._resolve_bg()
+        except Exception:
+            pass
+        try:
+            self._border = self._resolve_border()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtCore import QRectF
+            from PySide6.QtGui import QPen
+
+            from sli_ui_toolkit.managers import scaled_px
+
+            p = QPainter(self)
+            try:
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                r = QRectF(self.rect())
+                rx = scaled_px(QUICK_LOOK_CARD_RADIUS_PX)
+                p.setPen(Qt.PenStyle.NoPen)
+                try:
+                    bg = self._bg
+                except Exception:
+                    bg = self._resolve_bg()
+                p.setBrush(bg)
+                p.drawRoundedRect(r, rx, rx)
+                try:
+                    border = self._border
+                except Exception:
+                    border = self._resolve_border()
+                try:
+                    p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.setPen(QPen(border, 1))
+                    p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), rx, rx)
+                except Exception:
+                    pass
+            finally:
+                p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
+
+
 def _load_preview_pixmap(path: Path, target_w: int = 640, target_h: int = 456) -> QPixmap | None:
     try:
         pm = QPixmap(str(path))
@@ -228,14 +348,14 @@ def build_overlay_ui(overlay) -> None:
     from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button, Label
+    from sli_ui_toolkit.widgets import Button, ButtonRow, Label
 
     try:
         from tabs.image_gallery.ui.quick_look.source_inset import _SourceInsetHost
     except Exception:
         _SourceInsetHost = QWidget  # type: ignore
 
-    overlay._content = QWidget(overlay)
+    overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
     # S4 mockup panel is 1040x620 — floor, not a suggestion.
     overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
@@ -290,7 +410,13 @@ def build_overlay_ui(overlay) -> None:
     preview_row.setContentsMargins(0, 0, 0, 0)
     preview_row.setSpacing(scaled_px(6))
     preview_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    overlay._prev_btn = Button(text="‹", variant="surface", size=(36, 36), parent=left)
+    # S4 v2 (svg:67-70): 36px circular prev/next at the preview outer edges.
+    # Glyph via rows (not text=): the toolkit gives text buttons at the
+    # default 36x36 a content-sized minimum instead of a fixed 36x36, while
+    # rows-only buttons take setFixedSize — so rows= is what actually lands
+    # 36x36. Round shape via corner_radius (design px, scaled internally);
+    # no QSS anywhere on this path.
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=18)], variant="surface", size=(36, 36), corner_radius=18, parent=left)
     overlay._prev_btn.setObjectName("quicklook_prev")
     overlay._prev_btn.clicked.connect(lambda: overlay._walk(-1))
     preview_row.addWidget(overlay._prev_btn)
@@ -359,7 +485,7 @@ def build_overlay_ui(overlay) -> None:
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(text="›", variant="surface", size=(36, 36), parent=left)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=18)], variant="surface", size=(36, 36), corner_radius=18, parent=left)
     overlay._next_btn.setObjectName("quicklook_next")
     overlay._next_btn.clicked.connect(lambda: overlay._walk(1))
     preview_row.addWidget(overlay._next_btn)
@@ -578,7 +704,18 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
         pass
 
 
-def populate_crop(overlay, item) -> None:
+def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
+    """Sharpness-crop inset — non-fidelity modes only.
+
+    S4 v2 LIGHT is fidelity mode and draws no ``SHARPNESS CROP`` inset
+    (camera/batch modes keep it). Hidden in fidelity, shown otherwise.
+    """
+    try:
+        overlay._crop_host.setVisible(not bool(is_fidelity))
+    except Exception:
+        pass
+    if is_fidelity:
+        return
     try:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt

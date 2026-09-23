@@ -6,15 +6,18 @@ design.md "Quick look report" + ui-mockup-v4-quicklook.svg.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Mode, Severity
 from tabs.image_gallery.ui.quick_look import (
+    DIM_VEIL_ALPHA,
     QuickLookOverlay,
     _SourceInsetHost,
     _source_dimensions,
@@ -90,6 +93,17 @@ def _show(overlay: QuickLookOverlay, item: GalleryItem, series, mode=Mode.FIDELI
         )
     )
     overlay.show_for(item, owner)
+    # Real visibility + layout: the overlay only counts as visible over a
+    # shown window (production state). Needed for isVisible()/geometry and
+    # for refresh_* which no-op while hidden.
+    try:
+        parent = getattr(overlay, "_parity_test_parent", None) or overlay.parentWidget()
+        if parent is not None:
+            parent.resize(1280, 800)
+            parent.show()
+    except Exception:
+        pass
+    QApplication.processEvents()
 
 
 # -- P0-8: no region claims without region analysis ----------------------------
@@ -420,4 +434,218 @@ def test_meta_order_dims_format_size(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert ov._meta_label.text().startswith("64 × 32 · PNG · ")
+    ov.hide()
+
+
+# -- W1 chrome: veil / plate / geometry / crop gate / refresh_metrics --------
+
+
+def test_veil_alpha_matches_mockup():
+    """Veil override assert (mirrors test_clean_review_parity.py:274)."""
+    from sli_ui_toolkit.widgets import TopLevelInWindowOverlay
+
+    assert QuickLookOverlay.paintEvent is not TopLevelInWindowOverlay.paintEvent
+    assert DIM_VEIL_ALPHA == round(0.45 * 255) == 115
+
+
+def test_veil_dims_background(qtbot):
+    """The overlay paints a fullscreen 0.45-black veil (offscreen ``grab``
+    returns the raw translucent pixel, so assert alpha + blackness)."""
+    from PySide6.QtGui import QColor, QPalette
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    parent.setAutoFillBackground(True)
+    pal = parent.palette()
+    pal.setColor(QPalette.ColorRole.Window, QColor("white"))
+    parent.setPalette(pal)
+    parent.resize(800, 600)
+    parent.show()
+
+    ov = QuickLookOverlay(parent)
+    qtbot.addWidget(ov)
+    ov._parity_test_parent = parent
+    ov._content.hide()  # veil only — no content plate over the sample
+    ov.setGeometry(parent.rect())
+    ov.show()
+    QApplication.processEvents()
+
+    try:
+        pixel = ov.grab().toImage().pixelColor(5, 5)
+    finally:
+        ov.hide()
+    assert abs(pixel.alpha() - DIM_VEIL_ALPHA) <= 2, pixel.alpha()
+    assert pixel.red() == pixel.green() == pixel.blue() == 0
+
+
+def test_card_plate_fill_border_radius(qtbot, _w1_light_palettes):
+    """Card plate: ``gallery.card.background`` fill + border + rx 12, no QSS."""
+    from PySide6.QtGui import QColor
+
+    from tabs.image_gallery.ui.quick_look.helpers import (
+        QUICK_LOOK_CARD_RADIUS_PX,
+        _CardPlate,
+    )
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    plate = ov._content
+    assert isinstance(plate, _CardPlate)
+    assert _CardPlate.paintEvent is not QWidget.paintEvent
+    assert QUICK_LOOK_CARD_RADIUS_PX == 12
+    # Light production palettes registered → live token hexes (design.md
+    # light-theme norm: white card + #e2e4e8 hairline, never fill contrast).
+    assert plate._bg == QColor("#ffffff")
+    assert plate._border == QColor("#e2e4e8")
+    # Painter pipeline owns visuals — no ad-hoc QSS on the plate.
+    assert plate.styleSheet() == ""
+    ov.hide()
+
+
+def test_card_plate_paints_fill(qtbot, _w1_light_palettes):
+    """Bare plate grab: interior pixel is the card fill (paintEvent smoke)."""
+    from tabs.image_gallery.ui.quick_look.helpers import _CardPlate
+
+    plate = _CardPlate()
+    qtbot.addWidget(plate)
+    plate.resize(400, 200)
+    plate.show()
+    QApplication.processEvents()
+    pixel = plate.grab().toImage().pixelColor(200, 100)
+    assert (pixel.red(), pixel.green(), pixel.blue()) == (255, 255, 255)
+    assert pixel.alpha() == 255
+
+
+def test_card_geometry_1040x620(qtbot):
+    """S4 mockup panel is 1040x620 (svg:31) — floor, not a suggestion."""
+    from sli_ui_toolkit.managers import scaled_px
+
+    ov = _make_overlay(qtbot)
+    assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov._content.maximumSize() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
+
+
+def test_prev_next_36px_circular_at_preview_edges(qtbot):
+    """Prev/next: 36px circular buttons flanking the preview host (svg:67-70)."""
+    from sli_ui_toolkit.managers import scaled_px
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    host = ov._preview_host
+    assert (ov._prev_btn.width(), ov._prev_btn.height()) == (scaled_px(36), scaled_px(36))
+    assert (ov._next_btn.width(), ov._next_btn.height()) == (scaled_px(36), scaled_px(36))
+    for btn, glyph in ((ov._prev_btn, "‹"), (ov._next_btn, "›")):
+        # Circular via the painter pipeline (Button corner_radius, design px
+        # — Button scales it internally); glyph via rows (text= buttons stay
+        # content-sized); no QSS.
+        assert btn._corner_radius_px == 18
+        assert btn.styleSheet() == ""
+        glyphs = [
+            row.text for region in btn.regions() for row in (getattr(region, "rows", None) or [])
+        ]
+        assert glyph in glyphs
+    # Outer edges: prev left of the preview host, next right of it.
+    assert ov._prev_btn.x() + ov._prev_btn.width() <= host.x()
+    assert ov._next_btn.x() >= host.x() + host.width()
+    # Vertically centered on the preview band.
+    for btn in (ov._prev_btn, ov._next_btn):
+        cy = btn.y() + btn.height() // 2
+        assert host.y() <= cy <= host.y() + host.height()
+    ov.hide()
+
+
+def test_crop_hidden_in_fidelity(qtbot):
+    """S4 v2 LIGHT draws no SHARPNESS CROP inset in fidelity mode."""
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    viewing = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing], source=src.path)
+    assert "FIDELITY" in ov._mode_chip.text()
+    assert ov._crop_host.isVisible() is False
+    ov.hide()
+
+
+def test_crop_visible_in_camera(qtbot):
+    item = _item("cam.png", metrics={"sharpness": 150.0})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item], mode=Mode.CAMERA)
+    assert ov._crop_host.isVisible() is True
+    ov.hide()
+
+
+def test_refresh_metrics_signature():
+    """Seam shape W2 codes against: ``refresh_metrics(self, item) -> None``."""
+    assert list(inspect.signature(QuickLookOverlay.refresh_metrics).parameters) == [
+        "self",
+        "item",
+    ]
+
+
+def test_refresh_metrics_rebuilds_without_reopen(qtbot):
+    """Fidelity delivery (W2) refreshes the open overlay: numbers, meta, brief."""
+    src = _item("src.png", rank=0, metrics={})
+    viewing = _item("v.png", rank=1, metrics={})
+    second = _item("b.png", rank=2, metrics={"ssim": 0.91, "hf_ratio": -0.31})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [src, viewing, second], source=src.path)
+    before = [
+        lbl.text()
+        for row in ov._metric_rows
+        for lbl in row.findChildren(type(ov._mode_chip))
+    ]
+    assert any("not measured" in t for t in before)
+    # Fidelity delivery mutates metrics in place (service contract), then W2
+    # calls refresh_metrics — the overlay shows numbers without reopening.
+    viewing.metrics = {"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 4}
+    ov.refresh_metrics(viewing)
+    after = [
+        lbl.text()
+        for row in ov._metric_rows
+        for lbl in row.findChildren(type(ov._mode_chip))
+    ]
+    assert any("0.94" in t for t in after)
+    assert not any("not measured" in t for t in after)
+    assert "upscale ×4" in ov._meta_label.text()
+    assert ov._brief_label.text().startswith("vs #2:")
+    assert ov._brief_label.isVisible()
+    assert ov._crop_host.isVisible() is False
+    ov.hide()
+
+
+def test_refresh_metrics_noop_when_hidden(qtbot):
+    viewing = _item("v.png", rank=1, metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing])
+    ov.hide()
+    QApplication.processEvents()
+    n_before = len(ov._metric_rows)
+    viewing.metrics = {"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 4}
+    ov.refresh_metrics(viewing)  # must not raise, must not rebuild
+    assert len(ov._metric_rows) == n_before
+    # The service wrote through to the item; the hidden overlay kept its rows.
+    assert ov._current_item.metrics["ssim"] == 0.94
+
+
+def test_refresh_metrics_ignores_other_item(qtbot):
+    viewing = _item("v.png", rank=1, metrics={})
+    other = _item("o.png", rank=2, metrics={"ssim": 0.5})
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, other])
+    before = [
+        lbl.text()
+        for row in ov._metric_rows
+        for lbl in row.findChildren(type(ov._mode_chip))
+    ]
+    ov.refresh_metrics(other)
+    after = [
+        lbl.text()
+        for row in ov._metric_rows
+        for lbl in row.findChildren(type(ov._mode_chip))
+    ]
+    # Path-guarded: another item's delivery changes nothing on the open card.
+    assert after == before
+    assert ov._current_item is viewing
     ov.hide()
