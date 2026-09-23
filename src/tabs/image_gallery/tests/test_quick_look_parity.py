@@ -564,9 +564,9 @@ def test_card_geometry_min_1040x620_no_max(qtbot):
     assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
 
 
-def test_card_resize_smoke_preview_grows_column_fixed(qtbot, monkeypatch):
-    """W8 resize smoke: a bigger card grows the preview pane while the right
-    column stays the fixed 296px with no scrollbars, and the pin hooks
+def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
+    """W13 resize smoke: a bigger card grows the preview pane AND stretches
+    the right column (floor 296px) with no scrollbars, and the pin hooks
     (nav circles, source inset, resize grip) re-ran for the new size."""
     from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QScrollArea, QWidget
@@ -600,18 +600,24 @@ def test_card_resize_smoke_preview_grows_column_fixed(qtbot, monkeypatch):
     preview_before = ov._preview_host.size()
     base_w, base_h = content.width(), content.height()
     assert (base_w, base_h) == (scaled_px(1040), scaled_px(620))
+    # W13: column floor 296px, stretches with the card (never fixed width).
+    scroll_before = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll_before.minimumWidth() == scaled_px(296)
+    col_before = scroll_before.width()
+    assert col_before >= scaled_px(296)
     content.resize(base_w + scaled_px(160), base_h + scaled_px(80))
     QApplication.processEvents()
     QApplication.processEvents()
     # Hooks re-ran for the resize.
     assert "inset" in hook_calls
     assert "grip" in hook_calls
-    # Preview pane took the extra space (right column is stretch 0).
+    # Preview pane took its priority share of the extra space; the right
+    # column stretched too (never below the 296px floor).
     assert ov._preview_host.width() > preview_before.width()
     assert ov._preview_host.height() > preview_before.height()
-    # Right column stretches with the card (W13: min 296px, grows on extra
-    # space), scrollbars still hidden.
+    # Right column stretched with the card, scrollbars still hidden.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.width() > col_before
     assert scroll.width() >= scaled_px(296)
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
@@ -1226,11 +1232,12 @@ def test_meta_smaller_than_source(tmp_path, qtbot):
     ov.hide()
 
 
-def test_right_column_no_scrollbars_with_full_content(qtbot):
-    """W5 item 3 + W7: full right column (metrics + 2 artifact rows +
+def test_right_column_stretches_with_full_content(qtbot):
+    """W5 item 3 + W7 + W13: full right column (metrics + 2 artifact rows +
     series + brief) fits the 1040×620 card with both scrollbars hidden
-    (mockup: none). Value/subline labels elide to the 296px column instead
-    of forcing width; the full copy stays in _original_text.
+    (mockup: none). Value/subline labels elide to the live column width
+    (floor 296px) instead of forcing width; the full copy stays in
+    _original_text.
 
     W7 extends this with LIVE-like long content (supervisor offscreen
     repro: layout totalHint 379px vs 296px viewport — report_sub,
@@ -1289,12 +1296,17 @@ def test_right_column_no_scrollbars_with_full_content(qtbot):
         if "gradient histogram" in getattr(lbl, "_original_text", "")
     ]
     assert captions == ["gradient histogram — comb spikes = banding steps (sky)"]
-    # The column stretches from the 296px floor (W13); the layout hint fits
-    # the live column width, and both scrollbars stay hidden with zero range.
+    # W13: the column honors the mockup 296px floor and stretches with
+    # the card (never a fixed width); the layout hint fits it, and both
+    # scrollbars stay hidden with zero range.
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.minimumWidth() == scaled_px(296)
     assert scroll.width() >= scaled_px(296)
     assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     host = ov.findChild(QWidget, "quicklook_right_host")
+    # W13: under the stretched column the W7 invariant tracks the LIVE
+    # width (wide bars report wide hints once laid out) — the hint must
+    # still fit the column it is laid out in, never force it wider.
     assert host.layout().totalSizeHint().width() <= scroll.width()
     assert scroll.horizontalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().maximum() == 0
