@@ -13,6 +13,63 @@ from sli_ui_toolkit.managers import scaled_px
 GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
 
 
+def _theme_is_dark() -> bool:
+    """Darkness for fallback selection — delegates to ``dots._is_dark``.
+
+    Rule A: ``gallery.card.hover`` IS a registered token (both themes in
+    ``themes.json``), so this only picks the hardcoded pair when tokens are
+    absent; an unregistered palette resolves light, never dark.
+    """
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
+
+        return bool(_dots_is_dark())
+    except Exception:
+        return False
+
+
+def _capsule_icon_color(action_id: str):
+    """Tri-color capsule icons (svg hover pill): star gold · cross red · swap accent.
+
+    Accent chain (frozen seam): ``gallery.accent.bar`` → ``accent`` →
+    ``#0078D4`` (light) / ``#0096FF`` (dark).
+    """
+    fallbacks = {
+        "make_best": ("gallery.status.warn", (232, 182, 76)),
+        "reject": ("gallery.status.danger", (217, 48, 37)),
+        "compare": ("gallery.accent.bar", (0, 120, 212)),
+        "set_source": ("gallery.accent.bar", (0, 120, 212)),
+    }
+    token, rgb = fallbacks.get(action_id, ("gallery.accent.bar", (0, 120, 212)))
+    try:
+        from PySide6.QtGui import QColor
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        if token == "gallery.accent.bar":
+            for tok in ("gallery.accent.bar", "accent"):
+                c = try_resolve_theme_color(ThemeManager.get_instance(), tok)
+                if c is not None:
+                    return c if isinstance(c, QColor) else QColor(c)
+        else:
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        if token == "gallery.accent.bar" and not _theme_is_dark():
+            return _QC(*rgb)
+        if token == "gallery.accent.bar":
+            return _QC(0, 150, 255)
+        return _QC(*rgb)
+    except Exception:
+        return None
+
+
 class _CardHoverFilter(QObject):
     """Shows gallery_card IconActionFlyout on hover; hides on leave.
 
@@ -30,20 +87,8 @@ class _CardHoverFilter(QObject):
         if watched is self._card:
             if event.type() == QEvent.Type.Enter:
                 try:
-                    # Hovered card bg #424242 per svg c4 (vs #383838 idle)
-                    from PySide6.QtGui import QColor
-
-                    try:
-                        self._card.set_override_bg_color(QColor("#424242"))
-                    except Exception:
-                        pass
-                    try:
-                        # Bg region also
-                        for r in self._card.regions():
-                            if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=QColor("#424242"))
-                    except Exception:
-                        pass
+                    # Hover FX is the translucent shelf-style wash
+                    # (overlay painter) — no opaque bg swap. Underline only.
                     _show_card_hover_underline(self._card)
                 except Exception:
                     pass
@@ -53,18 +98,6 @@ class _CardHoverFilter(QObject):
                     pass
             elif event.type() == QEvent.Type.Leave:
                 try:
-                    from PySide6.QtGui import QColor
-
-                    try:
-                        self._card.set_override_bg_color(QColor("#383838"))
-                    except Exception:
-                        pass
-                    try:
-                        for r in self._card.regions():
-                            if r.id in ("bg", "text"):
-                                self._card.update_region(r.id, override_bg_color=QColor("#383838"))
-                    except Exception:
-                        pass
                     _hide_card_hover_underline(self._card)
                 except Exception:
                     pass
@@ -85,11 +118,11 @@ def _show_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
         pass
     # Keep legacy underline as fallback for non-overlay path
     try:
-        from tabs.image_gallery.ui.card.dots import _ACCENT_TOKEN_FALLBACK, _token_color
+        from tabs.image_gallery.ui.card.dots import _accent_color
 
         card.setUnderlineThickness(float(scaled_px(3)))
         card.setUnderlineTongueReach(float(scaled_px(2)))
-        card.setUnderlineColor(_token_color(*_ACCENT_TOKEN_FALLBACK))
+        card.setUnderlineColor(_accent_color())
         # Do not show whole-button underline — overlay draws inset bar
         card.setShowUnderline(False)
     except Exception:
@@ -132,7 +165,14 @@ def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
     """Get or create gallery_card IconActionFlyout for *parent* window.
 
     Group ``gallery_card`` ensures exclusive show policy via FlyoutManager.
-    Pill 88×30 r15 #2b2b2b 0.92 + white 0.25 border per svg x1022 y198.
+
+    Sizing: the svg's 88×30 (x1022 y198) is the *visible pill*, not the
+    outer widget — BaseFlyout's shell adds 2×8 shadow margins and the
+    container 2×4 content padding. Clamping the outer widget to 88×30
+    starved the buttons (28px each) to a 72×14 box. Compact
+    ``button_size=22`` lands the visible container at 30px tall (22+2×4,
+    matching the svg height); width auto-follows the action count
+    (3, or 4 in fidelity mode) via ``update_state`` → ``adjustSize``.
     """
     try:
         from sli_ui_toolkit.widgets import IconActionFlyout
@@ -148,12 +188,7 @@ def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
                     return existing
             except Exception:
                 return existing
-        flyout = IconActionFlyout(parent)
-        # Pill per svg 88×30 r15 — size via fixed, background/border via flyout tokens (flyout.background/border), not setStyleSheet
-        try:
-            flyout.setFixedSize(88, 30)
-        except Exception:
-            pass
+        flyout = IconActionFlyout(parent, button_size=22, icon_size=14)
         # Identity for GroupShowPolicy.
         try:
             flyout.flyout_group = GALLERY_CARD_FLYOUT_GROUP  # type: ignore[attr-defined]
@@ -191,6 +226,23 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
             except Exception:
                 _include = False
             flyout.set_actions(_gallery_card_actions_spec(include_source=_include))
+        except Exception:
+            pass
+
+        # S2 tri-color capsule icons: star gold · cross red · swap accent
+        # (painter-pipeline foreground, no QSS).
+        try:
+            for _aid in ("make_best", "reject", "compare", "set_source"):
+                try:
+                    _btn = flyout.action_button(_aid)
+                except Exception:
+                    _btn = None
+                if _btn is None:
+                    continue
+                try:
+                    _btn.setForegroundColor(_capsule_icon_color(_aid))
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -253,19 +305,18 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
         except Exception:
             pass
         flyout.actionTriggered.connect(_on_trigger)
-        # Show inside card top-right per svg x1022 y198 (6px from preview top, 8px from right) — 88×30 pill
+        # Show inside card top-right per svg x1022 y198 (6px from preview top, 8px from right).
+        # Outer widget width = visible pill + 2×SHADOW_RADIUS(8) — position from the
+        # live sizeHint (set_actions→update_state→adjustSize), never a hardcoded 88.
         try:
-            # Position as child of card, inside preview at 8,14 from card top (preview 8,8 +6)
-            # Use global positioning via show_aligned with top-right inside
-            # Card width 250, flyout 88, right offset 8 => x = 250-88-8=154, y=14
             flyout.setParent(card)
             try:
-                flyout.move(card.width() - 88 - 8, 14)
+                flyout.update_state()
             except Exception:
                 pass
-            # Ensure pill style
             try:
-                flyout.setFixedSize(88, 30)
+                # Card 250 wide, right margin 8, top 14 (preview 8,8 +6)
+                flyout.move(card.width() - flyout.width() - scaled_px(8), scaled_px(14))
             except Exception:
                 pass
             flyout.show()

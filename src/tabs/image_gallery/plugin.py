@@ -14,10 +14,8 @@ from typing import Any
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import SessionBlueprint, SessionSlotBlueprint
-
-
-def _fresh_gallery_state_slot() -> dict:
-    return {"folder": None}
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+from tabs.image_gallery.state.models import fresh_gallery_slot_state
 
 
 @plugin(name="image_gallery", version="0.1", startup_tier="deferred")
@@ -31,6 +29,11 @@ class ImageGalleryPlugin(Plugin, ISessionPlugin):
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.event_bus = getattr(context, "event_bus", None)
+        from tabs.image_gallery.bootstrap_reducers import (
+            register_gallery_reducers,
+        )
+
+        register_gallery_reducers()
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return (
@@ -40,8 +43,8 @@ class ImageGalleryPlugin(Plugin, ISessionPlugin):
                 title="Image Gallery",
                 state_slots=(
                     SessionSlotBlueprint(
-                        name="image_gallery.state",
-                        factory=_fresh_gallery_state_slot,
+                        name=GALLERY_SLOT_NAME,
+                        factory=fresh_gallery_slot_state,
                     ),
                 ),
             ),

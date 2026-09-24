@@ -11,9 +11,21 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
+
+from core.state_management.gallery_actions import (
+    GalleryFilterSet,
+    GalleryPathsAppended,
+    GalleryPoolOpened,
+    GalleryPoolReplaced,
+    GallerySelectionSet,
+    GalleryThumbnailsReady,
+    GalleryTriageFinished,
+)
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+from tabs.image_gallery.state import selectors as _gallery_selectors
 
 from tabs.image_gallery.models import (
     AnalysisStatus,
@@ -71,6 +83,22 @@ class GalleryController:
         self._filter_gen = 0
         self._pending_filter_text = ""
         self._filter_timer = None
+        # Wave-2 (plan-gallery-redux): slot-backed pool mirror. Rich local
+        # state (QPixmap caches, LOADING flags, workers, VLM streams) stays
+        # on self.state / self.widget; pool membership, selection, filter and
+        # triage-finish additionally dispatch GALLERY_* actions with scope
+        # 'gallery' whenever a store/dispatcher is available. Storeless unit
+        # contexts (context=None) keep pure-local behavior, verbatim.
+        self._pending_thumb_ready: list[tuple[str, str]] = []
+        self._thumb_flush_scheduled = False
+        self._subscribed_gallery_store = None
+        # Own-dispatch accounting: dispatch → emit is synchronous, so each
+        # successful _emit/_transact arms one light (no-op) reconcile; any
+        # other 'gallery' emit (undo, widget gestures, external replace)
+        # takes the authoritative branch. This keeps newer local scalars
+        # (triage RUNNING, VLM crowns) safe from stale-slot clobbering.
+        self._own_gallery_emits = 0
+        self._ensure_gallery_subscription()
 
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
@@ -112,6 +140,381 @@ class GalleryController:
     def _is_current_folder_gen(self, gen: int) -> bool:
         return gen == self._folder_gen
 
+    # -- gallery slot (Wave-2 Redux; scope 'gallery') -------------------------
+
+    def _gallery_store(self):
+        """Store behind ``context.store`` (None in storeless unit contexts)."""
+        store = getattr(self._context, "store", None)
+        if store is None or not hasattr(store, "get_dispatcher"):
+            return None
+        return store
+
+    def _ensure_gallery_subscription(self) -> None:
+        """Learn of slot changes via store.on_change (session_init precedent).
+
+        Subscriber filters on scope == 'gallery' in _on_store_changed and
+        reconciles the local mirror (thumbnail loads for new metas + grid
+        rebuild reading the slot via selectors). No-op without a store.
+        """
+        store = self._gallery_store()
+        if store is None or self._subscribed_gallery_store is store:
+            return
+        try:
+            if hasattr(store, "on_change"):
+                store.on_change(self._on_store_changed)
+                self._subscribed_gallery_store = store
+        except Exception:
+            logger.debug("gallery slot subscription failed", exc_info=True)
+
+    def _resolve_gallery_session_id(self) -> str | None:
+        try:
+            store = self._gallery_store()
+            if store is None:
+                return None
+            sess = store.get_active_workspace_session()
+            return getattr(sess, "id", None)
+        except Exception:
+            return None
+
+    def _gallery_slot(self):
+        """Read path: store.get_session_state_slot('gallery', session_id)."""
+        store = self._gallery_store()
+        if store is None or not hasattr(store, "get_session_state_slot"):
+            return None
+        try:
+            return store.get_session_state_slot(
+                GALLERY_SLOT_NAME, session_id=self._resolve_gallery_session_id()
+            )
+        except Exception:
+            return None
+
+    def _emit_gallery(self, action) -> bool:
+        """Write path: dispatcher.dispatch(..., scope='gallery').
+
+        Never mutates slot values directly. Returns False (local-only) when
+        no dispatcher is wired — callers always mirror locally first.
+        """
+        store = self._gallery_store()
+        if store is None:
+            return False
+        try:
+            self._ensure_gallery_subscription()
+            dispatcher = store.get_dispatcher()
+            if dispatcher is None:
+                return False
+            self._own_gallery_emits += 1
+            try:
+                dispatcher.dispatch(action, scope=GALLERY_SLOT_NAME)
+            except Exception:
+                self._own_gallery_emits -= 1
+                raise
+            return True
+        except Exception:
+            logger.debug("_emit_gallery dispatch failed", exc_info=True)
+            return False
+
+    def _transact_gallery(self, actions) -> bool:
+        """Batch path: Store.transact([...], scope='gallery') — one emit."""
+        store = self._gallery_store()
+        batch = [a for a in actions or []]
+        if store is None or not batch:
+            return False
+        try:
+            self._ensure_gallery_subscription()
+            if store.get_dispatcher() is None:
+                return False
+            self._own_gallery_emits += 1
+            try:
+                store.transact(list(batch), scope=GALLERY_SLOT_NAME)
+            except Exception:
+                self._own_gallery_emits -= 1
+                raise
+            return True
+        except Exception:
+            logger.debug("_transact_gallery failed", exc_info=True)
+            return False
+
+    def _on_store_changed(self, scope: str) -> None:
+        if scope != GALLERY_SLOT_NAME:
+            return
+        if self._own_gallery_emits > 0:
+            # Own dispatch: the local mirror was updated before emitting, so
+            # reconcile selection/filter only (cheap no-op). Scalars/ranks
+            # stay local — the slot cannot be newer than what we just sent.
+            self._own_gallery_emits -= 1
+            slot = self._gallery_slot()
+            if slot is None:
+                return
+            try:
+                before_filter = self.state.filter_text
+                self._apply_slot_selection_filter(slot)
+                if self.state.filter_text != before_filter:
+                    self._apply_filter_fast(self.state.filter_text)
+            except Exception:
+                pass
+            return
+        # Undo / widget-gesture / external dispatch: the slot is authoritative.
+        self._sync_from_slot()
+
+    def _sync_from_slot(self) -> None:
+        """Authoritative reconcile from the slot (undo / external changes).
+
+        Thumbnail LOADING flags, pixmaps and workers are never reset here
+        beyond starting loads for genuinely new metas; series objects (not
+        in the slot) are left untouched and triage is never restarted.
+        """
+        slot = self._gallery_slot()
+        if slot is None:
+            return
+        try:
+            slot_paths = _gallery_selectors.get_item_paths(slot)
+        except Exception:
+            return
+        try:
+            local_paths = [str(it.path) for it in self.state.items]
+        except Exception:
+            return
+        if slot_paths == local_paths:
+            try:
+                before_filter = self.state.filter_text
+                self._apply_slot_selection_filter(slot)
+                if self.state.filter_text != before_filter:
+                    self._apply_filter_fast(self.state.filter_text)
+            except Exception:
+                pass
+            self._apply_slot_ranks(slot)
+            self._apply_slot_triage_scalars(slot)
+            return
+        # Membership differs (undo / external replace): rebuild the mirror,
+        # preserving rich local objects (pixmaps, analysis) by path.
+        by_path: dict[str, GalleryItem] = {}
+        for it in self.state.items:
+            try:
+                by_path[str(it.path)] = it
+            except Exception:
+                continue
+        new_items: list[GalleryItem] = []
+        fresh: list[GalleryItem] = []
+        try:
+            metas = _gallery_selectors.get_items(slot)
+        except Exception:
+            return
+        for meta in metas:
+            old = by_path.get(meta.path)
+            if old is not None:
+                try:
+                    if meta.mtime_ns != old.mtime_ns:
+                        old.mtime_ns = meta.mtime_ns
+                    if meta.rank != old.rank:
+                        old.rank = meta.rank
+                except Exception:
+                    pass
+                new_items.append(old)
+            else:
+                try:
+                    item = GalleryItem(path=Path(meta.path), mtime_ns=meta.mtime_ns)
+                except Exception:
+                    continue
+                try:
+                    item.rank = meta.rank
+                except Exception:
+                    pass
+                new_items.append(item)
+                fresh.append(item)
+        self.state.items = new_items
+        try:
+            folder = _gallery_selectors.get_folder(slot)
+            self.state.folder = Path(folder) if folder else None
+        except Exception:
+            pass
+        self._apply_slot_selection_filter(slot)
+        self._apply_slot_triage_scalars(slot)
+        try:
+            if self.state.folder is not None:
+                self.widget.set_folder_label(self.state.folder)
+        except Exception:
+            pass
+        try:
+            self.widget.rebuild_grid(new_items)
+        except Exception:
+            logger.debug("gallery slot sync rebuild_grid failed", exc_info=True)
+        for item in fresh:
+            try:
+                self._load_thumbnail(item)
+            except Exception:
+                pass
+
+    def _apply_slot_ranks(self, slot) -> None:
+        """Authoritative rank sync (undo / external replace only)."""
+        try:
+            metas = {m.path: m.rank for m in _gallery_selectors.get_items(slot)}
+        except Exception:
+            return
+        for it in self.state.items:
+            try:
+                want = metas.get(str(it.path))
+                if it.rank != want:
+                    it.rank = want
+            except Exception:
+                pass
+
+    def _apply_slot_selection_filter(self, slot) -> None:
+        try:
+            slot_sel = _gallery_selectors.get_selection(slot)
+            local_sel = [str(p) for p in self.state.selected_order]
+            if slot_sel != local_sel:
+                self.state.selected_paths = {Path(s) for s in slot_sel}
+                self.state.selected_order = [Path(s) for s in slot_sel]
+                try:
+                    grid = getattr(self.widget, "_grid_view", None)
+                    if grid is not None and hasattr(grid, "apply_selection"):
+                        grid.apply_selection(set(self.state.selected_paths))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            slot_filter = _gallery_selectors.get_filter_text(slot)
+            if slot_filter != self.state.filter_text:
+                self.state.filter_text = slot_filter
+        except Exception:
+            pass
+
+    def _apply_slot_triage_scalars(self, slot) -> None:
+        try:
+            summary = _gallery_selectors.get_triage_summary(slot)
+        except Exception:
+            return
+        try:
+            self.state.triage_state = TriageState(summary.get("triage_state", "idle"))
+        except Exception:
+            pass
+        try:
+            mode = summary.get("mode")
+            self.state.mode = Mode(mode) if mode else None
+        except Exception:
+            pass
+        try:
+            src = summary.get("source_path")
+            self.state.source_path = Path(src) if src else None
+        except Exception:
+            pass
+
+    def set_selection(self, paths) -> None:
+        """Wholesale selection: dispatch GallerySelectionSet + mirror locally.
+
+        Triage UI (keyboard/arrows/Esc) routes through here so selection is
+        tracer-visible; storeless owners fall back to direct writes in
+        use_cases/triage_ui. Re-selection of the current slot value skips
+        the dispatch (reducer identity would no-op without an emit, which
+        would leak one unit of own-emit accounting).
+        """
+        try:
+            strs: list[str] = []
+            seen: set[str] = set()
+            for p in paths or []:
+                s = str(p)
+                if s not in seen:
+                    seen.add(s)
+                    strs.append(s)
+        except Exception:
+            strs = []
+        try:
+            slot = self._gallery_slot()
+            if slot is not None and _gallery_selectors.get_selection(slot) == strs:
+                pass
+            else:
+                self._emit_gallery(GallerySelectionSet(selected_ids=strs))
+        except Exception:
+            self._emit_gallery(GallerySelectionSet(selected_ids=strs))
+        try:
+            self.state.selected_paths = {Path(s) for s in strs}
+            self.state.selected_order = [Path(s) for s in strs]
+        except Exception:
+            pass
+        try:
+            grid = getattr(self.widget, "_grid_view", None)
+            if grid is not None and hasattr(grid, "apply_selection"):
+                grid.apply_selection(set(self.state.selected_paths))
+        except Exception:
+            pass
+
+    # -- coalesced thumbnail completions (ONE action per event-loop turn) -----
+
+    def _queue_thumb_ready(self, path: Path, status: str) -> None:
+        try:
+            self._pending_thumb_ready.append((str(path), status))
+        except Exception:
+            return
+        if self._thumb_flush_scheduled:
+            return
+        self._thumb_flush_scheduled = True
+        try:
+            if QCoreApplication.instance() is None:
+                # No event loop (headless unit context) — flush synchronously.
+                self._flush_pending_thumbnails()
+            else:
+                QTimer.singleShot(0, self._flush_pending_thumbnails)
+        except Exception:
+            try:
+                self._flush_pending_thumbnails()
+            except Exception:
+                pass
+
+    def _flush_pending_thumbnails(self) -> None:
+        self._thumb_flush_scheduled = False
+        if not self._pending_thumb_ready:
+            return
+        batch, self._pending_thumb_ready = self._pending_thumb_ready, []
+        # Coalesce same path → last status wins, first-seen order kept.
+        last: dict[str, str] = {}
+        for path, status in batch:
+            last[path] = status
+        ready = [(p, last[p]) for p in dict.fromkeys(p for p, _ in batch)]
+        # Drop entries the slot already has (reducer identity would no-op
+        # without an emit, leaking own-emit accounting).
+        try:
+            slot = self._gallery_slot()
+            if slot is not None:
+                current = {
+                    m.path: m.status for m in _gallery_selectors.get_items(slot)
+                }
+                ready = [(p, s) for p, s in ready if current.get(p) != s]
+        except Exception:
+            pass
+        if not ready:
+            return
+        self._emit_gallery(GalleryThumbnailsReady(ready=ready))
+
+    def flush_pending_thumbnails(self) -> None:
+        """Flush a coalesced turn synchronously (tests / teardown)."""
+        self._flush_pending_thumbnails()
+
+    def _emit_triage_finished(self, triage_state: str) -> bool:
+        """Dispatch GalleryTriageFinished from the local summary + ranks."""
+        try:
+            ranks: dict[str, int] = {}
+            for it in self.state.items:
+                try:
+                    if it.rank is not None:
+                        ranks[str(it.path)] = int(it.rank)
+                except Exception:
+                    continue
+            mode = getattr(self.state, "mode", None)
+            mode_s = getattr(mode, "value", mode)
+            source = getattr(self.state, "source_path", None)
+            return self._emit_gallery(
+                GalleryTriageFinished(
+                    triage_state=triage_state,
+                    mode=str(mode_s) if mode_s is not None else None,
+                    source_path=str(source) if source is not None else None,
+                    ranks=ranks,
+                )
+            )
+        except Exception:
+            logger.debug("triage-finished dispatch failed", exc_info=True)
+            return False
+
     # -- folder loading ----------------------------------------------------
 
     def open_folder(self, folder: Path) -> None:
@@ -143,6 +546,12 @@ class GalleryController:
                 _dbg("open_folder single file -> parent %s items=%d", display_folder, len(items))
                 self.widget.set_folder_label(display_folder)
                 self.widget.rebuild_grid(items)
+                self._emit_gallery(
+                    GalleryPoolOpened(
+                        folder=str(display_folder),
+                        entries=[(str(it.path), it.mtime_ns) for it in items],
+                    )
+                )
                 for item in items:
                     self._load_thumbnail(item)
                 self._start_triage(items)
@@ -156,25 +565,43 @@ class GalleryController:
         self.widget.set_folder_label(folder)
         self.widget.rebuild_grid(items)
         _dnd_log("open_folder: rebuild_grid DONE (%.1f ms total)", (time.perf_counter() - t0) * 1000)
+        self._emit_gallery(
+            GalleryPoolOpened(
+                folder=str(folder),
+                entries=[(str(it.path), it.mtime_ns) for it in items],
+            )
+        )
         for item in items:
             self._load_thumbnail(item)
         self._start_triage(items)
         _dnd_log("open_folder: EXIT ok (%.1f ms)", (time.perf_counter() - t0) * 1000)
 
-    def open_paths(self, paths: list[Path]) -> None:
+    def open_paths(self, paths: list[Path], *, replace: bool = False) -> None:
         """Open an explicit list of image paths (single/multiple drop).
 
         Fixes "скормить всю папку когда скинул одно изображение": previously
         a single image drop was converted to its parent folder and the whole
         folder was scanned (40 images). Now we build items only from the
         explicitly dropped paths.
+
+        ``replace=False`` (default, file-drop style) APPENDS to the current
+        pool — each FM file drop used to wipe the pool because ``uniq`` was
+        built from the new drop only. ``replace=True`` restores the old
+        wipe-and-replace (mixed folder+files drops where the dropped folder
+        becomes the pool context).
         """
         import time
 
         t0 = time.perf_counter()
-        _dnd_log("open_paths: ENTER %d paths %r", len(paths), paths[:3])
-        # Folder switch cancels everything in flight from the previous folder.
-        self._next_folder_gen()
+        _dnd_log("open_paths: ENTER %d paths %r replace=%s", len(paths), paths[:3], replace)
+        if replace:
+            # Folder switch cancels everything in flight from the previous folder.
+            self._next_folder_gen()
+            old_items: list[GalleryItem] = []
+        else:
+            # Append: no folder switch — in-flight thumbnail/triage workers for
+            # the old pool stay valid, so the generation is left untouched.
+            old_items = list(self.state.items)
         # Filter to images that exist
         from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
 
@@ -190,14 +617,23 @@ class GalleryController:
             elif pp.is_dir():
                 # If a directory was dropped among files, scan it
                 filtered.extend(scan_folder(pp))
-        # Deduplicate by path
-        seen: set[str] = set()
+        # Deduplicate by path — seeded from the old pool when appending so
+        # re-dropped files don't duplicate and already-loaded items are known.
+        def _key(it: GalleryItem) -> str:
+            try:
+                return str(it.path.resolve()) if it.path.exists() else str(it.path)
+            except Exception:
+                return str(it.path)
+
+        seen: set[str] = {_key(it) for it in old_items}
         uniq: list[GalleryItem] = []
         for it in filtered:
-            s = str(it.path.resolve()) if it.path.exists() else str(it.path)
+            s = _key(it)
             if s not in seen:
                 seen.add(s)
                 uniq.append(it)
+        # Append: old pool first, truly-new drops at the end.
+        merged: list[GalleryItem] = list(old_items) + uniq
         # For explicit file drops, don't set folder to parent — keep it None
         # so we don't imply the whole parent folder was opened (fixes "установил путь на папку"
         # when user dropped a single image). Folder is only set when a directory
@@ -216,9 +652,18 @@ class GalleryController:
                     display_folder = uniq[0].path.parent
                 except Exception:
                     display_folder = None
+        # else: file-only drop — leave display_folder as None (no folder context),
+        # unless appending into a folder-backed pool: then keep the folder so
+        # folder actions (run-triage reopen, pick start_dir) keep working.
+        if not has_dir_input and not replace and self.state.folder is not None:
+            display_folder = self.state.folder
         # else: file-only drop — leave display_folder as None (no folder context)
-        self.state = GalleryState(folder=display_folder, items=uniq, triage_state=TriageState.RUNNING)
-        _dnd_log("open_paths -> folder %s items=%d (has_dir=%s) (%.1f ms)", display_folder, len(uniq), has_dir_input, (time.perf_counter() - t0) * 1000)
+        self.state = GalleryState(folder=display_folder, items=merged, triage_state=TriageState.RUNNING)
+        _dnd_log(
+            "open_paths -> folder %s items=%d (has_dir=%s replace=%s old=%d new=%d) (%.1f ms)",
+            display_folder, len(merged), has_dir_input, replace,
+            len(old_items), len(uniq), (time.perf_counter() - t0) * 1000,
+        )
         if display_folder is not None:
             self.widget.set_folder_label(display_folder)
         else:
@@ -232,10 +677,28 @@ class GalleryController:
                     self.widget.set_folder_label(Path(""))
             except Exception:
                 pass
-        self.widget.rebuild_grid(uniq)
+        self.widget.rebuild_grid(merged)
+        # Mirror pool membership into the slot AFTER the local mirror + grid
+        # are current, so the resulting 'gallery' emit reconciles to a no-op.
+        if replace:
+            self._emit_gallery(
+                GalleryPoolReplaced(
+                    folder=str(display_folder) if display_folder is not None else None,
+                    entries=[(str(it.path), it.mtime_ns) for it in merged],
+                )
+            )
+        elif uniq:
+            self._emit_gallery(
+                GalleryPathsAppended(
+                    entries=[(str(it.path), it.mtime_ns) for it in uniq],
+                )
+            )
+        # Thumbnails only for truly-new items — old ones are already loaded.
         for item in uniq:
             self._load_thumbnail(item)
-        self._start_triage(uniq)
+        # Triage series/mode/source describe the whole pool (set wholesale on
+        # ready), so re-run over the merged pool, not just the drop.
+        self._start_triage(merged)
 
     def _on_pick_folder(self) -> None:
         start_dir = str(self.state.folder) if self.state.folder else ""
@@ -245,15 +708,16 @@ class GalleryController:
         p = Path(chosen)
         _dbg("pick_folder_dialog chosen: %s is_file=%s is_dir=%s", p, p.is_file(), p.is_dir())
         # If dialog returned a file (image picked), open just that file
+        # (replace: explicit pick, not an additive drop).
         if p.is_file():
-            self.open_paths([p])
+            self.open_paths([p], replace=True)
         elif p.is_dir():
             self.open_folder(p)
         else:
             # Fallback: try as folder
             if Path(chosen).exists():
                 if Path(chosen).is_file():
-                    self.open_paths([Path(chosen)])
+                    self.open_paths([Path(chosen)], replace=True)
                 else:
                     self.open_folder(Path(chosen))
 
@@ -297,6 +761,11 @@ class GalleryController:
                 item.thumbnail = pixmap
                 item.thumbnail_status = ThumbnailStatus.LOADED
         self.widget.refresh_card(item)
+        # Per-item completion coalesces to ONE GalleryThumbnailsReady per turn.
+        try:
+            self._queue_thumb_ready(path, item.thumbnail_status.value)
+        except Exception:
+            pass
 
     def _on_thumbnail_error(self, path: Path, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -306,6 +775,10 @@ class GalleryController:
             return
         item.thumbnail_status = ThumbnailStatus.ERROR
         self.widget.refresh_card(item)
+        try:
+            self._queue_thumb_ready(path, ThumbnailStatus.ERROR.value)
+        except Exception:
+            pass
 
     # -- AI analyze -----------------------------------------------------------
 
@@ -413,6 +886,7 @@ class GalleryController:
             self.state.series = []
             self.state.mode = None
             self.state.source_path = None
+            self._emit_triage_finished("done")
             try:
                 self.widget.set_triage([], None, None)
             except Exception:
@@ -516,6 +990,75 @@ class GalleryController:
     def _on_artifacts_error(self, error_info: object) -> None:
         logger.debug("artifact worker error: %r", error_info, exc_info=True)
 
+    # -- fidelity metrics (Stage 2 Pass 1b, wave B producer) --------------------
+
+    def _start_fidelity_analysis(self, items: list[GalleryItem], source_path: Path | None) -> None:
+        """Background SSIM/HF/ΔE/upscale metrics vs source (GenericWorker).
+
+        Fail-closed: without a source there is nothing to compare against —
+        keys stay absent and quick look renders "not measured" rows.
+        """
+        if not items or source_path is None:
+            return
+        try:
+            from tabs.image_gallery.services.fidelity_metrics import run_fidelity_sync
+
+            gen = self._folder_gen
+            worker = GenericWorker(run_fidelity_sync, list(items), source_path)
+            worker.signals.result.connect(lambda res, g=gen: self._on_fidelity_ready(res, g))
+            worker.signals.error.connect(
+                lambda err: logger.debug("fidelity worker error: %r", err, exc_info=True)
+            )
+            try:
+                self._thread_pool.start(worker, 1)
+            except TypeError:
+                self._thread_pool.start(worker)
+        except Exception:
+            logger.debug("fidelity worker start failed", exc_info=True)
+
+    def _on_fidelity_ready(self, result: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late fidelity metrics dropped
+        if not isinstance(result, dict):
+            return
+        for item in self.state.items:
+            try:
+                key = str(item.path)
+            except Exception:
+                continue
+            entry = result.get(key)
+            if not isinstance(entry, dict):
+                continue
+            # Identity fail-closed: entry key came from this item's own path;
+            # write the 4 keys only when all measured, never a partial copy.
+            required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+            if not all(k in entry for k in required):
+                continue
+            try:
+                if not isinstance(item.metrics, dict):
+                    continue
+                for k in required:
+                    item.metrics[k] = entry[k]
+                try:
+                    self.widget.refresh_card(item)
+                except Exception:
+                    logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
+                # Quick look report: overlay opened before delivery shows the
+                # numbers without reopen (mirrors _on_artifacts_ready above;
+                # refresh_metrics itself no-ops when hidden or on another item).
+                try:
+                    for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
+                        ql = getattr(self.widget, attr, None)
+                        if ql is not None and hasattr(ql, "refresh_metrics"):
+                            try:
+                                ql.refresh_metrics(item)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            except Exception:
+                logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
+
     def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("triage result dropped: stale folder generation")
@@ -525,11 +1068,13 @@ class GalleryController:
         except Exception:
             logger.debug("triage result unpack failed: %r", result, exc_info=True)
             self.state.triage_state = TriageState.ERROR
+            self._emit_triage_finished("error")
             return
         self.state.series = series  # type: ignore[assignment]
         self.state.source_path = source  # type: ignore[assignment]
         self.state.mode = mode  # type: ignore[assignment]
         self.state.triage_state = TriageState.DONE
+        self._emit_triage_finished("done")
         try:
             self.widget.set_triage(series, mode, source)
         except Exception:
@@ -548,6 +1093,11 @@ class GalleryController:
             self._start_artifact_analysis(list(self.state.items), source)
         except Exception:
             logger.debug("artifact analysis start failed", exc_info=True)
+        # Stage 2 fidelity metrics (SSIM/HF/ΔE/upscale vs source) — background, fail-closed
+        try:
+            self._start_fidelity_analysis(list(self.state.items), source)
+        except Exception:
+            logger.debug("fidelity analysis start failed", exc_info=True)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:
@@ -560,6 +1110,7 @@ class GalleryController:
             return
         logger.debug("triage worker error: %r", error_info, exc_info=True)
         self.state.triage_state = TriageState.ERROR
+        self._emit_triage_finished("error")
         try:
             self.widget.set_triage([], None, None)
         except Exception:
@@ -882,13 +1433,10 @@ class GalleryController:
         self._filter_gen += 1
         self._apply_filter(self._pending_filter_text, self._filter_gen)
 
-    def _apply_filter(self, text: str, filter_gen: int) -> None:
-        from tabs.image_gallery.services.filtering import match_brief_items, match_fast_items
+    def _apply_filter_fast(self, text: str) -> None:
+        """UI-thread fast pass: filename + in-memory tags only, no disk."""
+        from tabs.image_gallery.services.filtering import match_fast_items
 
-        self._filter_gen = max(self._filter_gen, filter_gen)
-        gen = self._filter_gen
-        self.state.filter_text = text
-        # Fast pass on the UI thread: filename + in-memory tags only, no disk.
         fast = {item.path for item in match_fast_items(self.state.items, text)}
         if not (text or "").strip():
             fast = {item.path for item in self.state.items}
@@ -897,6 +1445,20 @@ class GalleryController:
                 self.widget.set_card_visible(item.path, item.path in fast)
             except Exception:
                 pass
+
+    def _apply_filter(self, text: str, filter_gen: int) -> None:
+        from tabs.image_gallery.services.filtering import match_brief_items
+
+        self._filter_gen = max(self._filter_gen, filter_gen)
+        gen = self._filter_gen
+        self.state.filter_text = text
+        try:
+            slot = self._gallery_slot()
+            if slot is None or _gallery_selectors.get_filter_text(slot) != text:
+                self._emit_gallery(GalleryFilterSet(filter_text=text))
+        except Exception:
+            self._emit_gallery(GalleryFilterSet(filter_text=text))
+        self._apply_filter_fast(text)
         if not (text or "").strip():
             return
         # Slow pass off the UI thread: brief-cache disk match, mtime-honored.

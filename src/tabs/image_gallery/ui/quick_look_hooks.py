@@ -147,9 +147,26 @@ def on_quick_compare(owner, path) -> None:
         triage_owner = owner_for_triage(owner)
         try:
             state = triage_owner.state  # type: ignore[attr-defined]
-            state.selected_paths = {Path(path)}  # type: ignore[attr-defined]
+            # P0-5: MERGE, never overwrite — "Add to Multi Compare" accumulates
+            # across quick-look visits (|selection| >= 2 after two adds). The
+            # single-compare path already narrows to {current} in
+            # QuickLookOverlay._on_compare before emitting, so merging here is
+            # a no-op for it and a fix for multi-add.
+            p = Path(path)
             try:
-                state.selected_order = [Path(path)]  # type: ignore[attr-defined]
+                selected = getattr(state, "selected_paths", None)
+                if selected is None:
+                    state.selected_paths = {p}  # type: ignore[attr-defined]
+                else:
+                    selected.add(p)
+            except Exception:
+                state.selected_paths = {p}  # type: ignore[attr-defined]
+            try:
+                order = getattr(state, "selected_order", None)
+                if order is None:
+                    state.selected_order = [p]  # type: ignore[attr-defined]
+                elif p not in order:
+                    order.append(p)
             except Exception:
                 pass
         except Exception:
@@ -181,9 +198,22 @@ def on_quick_reject(owner, path) -> None:
 def on_quick_set_source(owner, path) -> None:
     try:
         triage_owner = owner_for_triage(owner)
+        new_mode = None
         try:
             state = triage_owner.state  # type: ignore[attr-defined]
             state.source_path = Path(path)  # type: ignore[attr-defined]
+            # P0-6: re-run mode selection so chips flip to FIDELITY.
+            try:
+                from tabs.image_gallery.services.mode import select_mode
+
+                new_mode = select_mode(
+                    getattr(state, "series", None),
+                    getattr(state, "items", None),
+                    Path(path),
+                )
+                state.mode = new_mode  # type: ignore[attr-defined]
+            except Exception:
+                new_mode = None
         except Exception:
             pass
         try:
@@ -191,12 +221,59 @@ def on_quick_set_source(owner, path) -> None:
         except Exception:
             pass
         try:
-            try:
-                st = triage_owner.state  # type: ignore[attr-defined]
-                mode = getattr(st, "mode", None) if st is not None else owner._mode  # type: ignore[attr-defined]
-            except Exception:
-                mode = owner._mode  # type: ignore[attr-defined]
-            owner.stats_strip.set_mode(str(mode or "fidelity"), Path(path))  # type: ignore[attr-defined]
+            if new_mode is None:
+                try:
+                    st = triage_owner.state  # type: ignore[attr-defined]
+                    mode = getattr(st, "mode", None) if st is not None else owner._mode  # type: ignore[attr-defined]
+                except Exception:
+                    mode = owner._mode  # type: ignore[attr-defined]
+            else:
+                mode = new_mode
+            mode_name = getattr(mode, "value", mode) or "fidelity"
+            owner.stats_strip.set_mode(str(mode_name), Path(path))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # S4 parity: the new source invalidates every measured number — mark
+        # the 4 fidelity keys stale and re-run the pass so the header (new
+        # source name) and the numbers never disagree. Covers the overlay
+        # setSource signal (connected in show_quick_look) and the card
+        # context-menu fallback (which delegates here); delivery repopulates
+        # the open overlay via QuickLookOverlay.refresh_metrics (W1).
+        try:
+            runner = triage_owner
+            start = getattr(runner, "_start_fidelity_analysis", None)
+            state = getattr(runner, "state", None)
+            if callable(start) and state is not None:
+                items = list(getattr(state, "items", None) or [])
+                source = getattr(state, "source_path", None)
+                if source is None:
+                    try:
+                        source = Path(path)
+                    except Exception:
+                        source = None
+                if items and source is not None:
+                    for it in items:
+                        try:
+                            m = getattr(it, "metrics", None)
+                            if isinstance(m, dict):
+                                for k in ("ssim", "hf_ratio", "delta_e", "upscale_factor"):
+                                    m.pop(k, None)
+                        except Exception:
+                            pass
+                    try:
+                        start(items, source)
+                    except Exception:
+                        pass
+                    try:
+                        overlay = getattr(owner, "_quick_look_overlay", None)
+                        if overlay is not None and hasattr(overlay, "refresh_metrics"):
+                            for it in items:
+                                try:
+                                    overlay.refresh_metrics(it)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
         except Exception:
             pass
     except Exception:

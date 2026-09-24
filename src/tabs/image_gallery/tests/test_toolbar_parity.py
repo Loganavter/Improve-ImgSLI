@@ -13,6 +13,34 @@ from tabs.image_gallery.ui.toolbar import GalleryToolbar
 
 
 @pytest.fixture
+def _w1_light_palettes(qapp):
+    """Register the production W1 palettes under the light theme.
+
+    Rule A: token reads then assert live ``themes.json`` hexes instead of
+    fallback literals. Teardown restores the bare manager (empty palettes,
+    previous theme) so later suites keep their unbootstrapped behavior.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    prev_theme = tm.get_current_theme()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("light", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    yield tm
+    try:
+        tm.register_palettes({}, {})
+        tm.set_theme(prev_theme, qapp, await_ripples=False)
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+@pytest.fixture
 def toolbar(qtbot):
     widget = GalleryToolbar()
     qtbot.addWidget(widget)
@@ -103,8 +131,12 @@ def test_s2_8_view_switch_icon_pair(toolbar: GalleryToolbar) -> None:
     assert grid_btn.isChecked() is True
 
 
-def test_s2_7_triage_indicator_green(toolbar: GalleryToolbar) -> None:
-    # No "success" token in the toolkit palettes → mockup hex via Label color=.
+def test_s2_7_triage_indicator_green(qtbot, _w1_light_palettes) -> None:
+    # gallery.status.ok token under the registered light palette (#3fbf5f —
+    # white-cards norm: light converges with the dark value), resolved live
+    # via the theme token, not a fallback literal.
+    toolbar = GalleryToolbar()
+    qtbot.addWidget(toolbar)
     color = toolbar.triage_indicator._color_override
     assert color is not None
     assert color.name().lower() == "#3fbf5f"
@@ -129,3 +161,37 @@ def test_s2_5_clean_rejected_accent(strip: StatsStrip) -> None:
     assert rows[0].color is not None
     assert not strip.clean_button.isEnabled() or True  # enabled with n>0
     assert strip.clean_button.isEnabled() is True
+
+
+def test_p07_toolbar_qt_import_present() -> None:
+    """P0-7: toolbar.py uses Qt at :233,242 — must be imported, not NameError."""
+    import tabs.image_gallery.ui.toolbar as tb
+
+    assert tb.Qt is not None
+    assert hasattr(tb.Qt.AlignmentFlag, "AlignVCenter")
+
+
+def test_s2_view_switch_active_is_fill_chip(toolbar: GalleryToolbar) -> None:
+    """S2 mockup x1130 y74: active view segment is a fill-chip, not a border."""
+    from tabs.image_gallery.ui.toolbar import (
+        _apply_view_fill_chip,
+        _resolve_toolbar_accent_fill,
+    )
+
+    fill = _resolve_toolbar_accent_fill()
+    assert fill.alpha() == 51
+    # Switching views via the helper must not raise and must keep exclusivity.
+    toolbar._apply_view(True)  # type: ignore[attr-defined]
+    assert toolbar.view_switch_list.isChecked() is True
+    _apply_view_fill_chip(toolbar.view_switch_list, toolbar.view_switch)
+    toolbar._apply_view(False)  # type: ignore[attr-defined]
+    assert toolbar.view_switch.isChecked() is True
+
+
+def test_s2_series_header_has_no_raw_hex() -> None:
+    """grid_view series headers resolve via theme token (no raw #9a9a9a)."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "ui" / "grid_view.py"
+    text = src.read_text(encoding="utf-8")
+    assert "#9a9a9a" not in text.lower()

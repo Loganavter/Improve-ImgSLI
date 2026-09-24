@@ -25,10 +25,17 @@ except Exception:
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QBrush, QPainter
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Label, TopLevelInWindowOverlay
+
+# S4 v2 LIGHT (svg:27): modal dim-veil alpha, mirroring
+# ui/clean_review.py DIM_VEIL_ALPHA (mockup "modal veil" fill-opacity 0.45).
+# TopLevelInWindowOverlay has no paintEvent (transparent background), so the
+# overlay paints this veil itself in gallery scope — never in the toolkit.
+DIM_VEIL_ALPHA = round(0.45 * 255)  # 115
 
 # Re-export for tests
 try:
@@ -61,7 +68,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     setSource = Signal(object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
-        super().__init__(parent, close_on_background=True, close_on_escape=True, close_on_deactivate=True)
+        # W11 pinned close policy (InfoHUD analog — pinned flyouts ignore
+        # outside clicks/deactivation): the X button is the ONLY close path.
+        # close_on_background=False (W6: a veil click must not discard the
+        # report), close_on_escape=False and close_on_deactivate=False, so
+        # Esc, window minimize/restore, and focus loss never hide the card.
+        # Toolkit default is True for all three; every other overlay keeps it.
+        super().__init__(parent, close_on_background=False, close_on_escape=False, close_on_deactivate=False)
         self._owner = owner
         self._current_item = None
         self._series_items: list = []
@@ -84,11 +97,27 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._artifact_rows: list = []
         if not hasattr(self, "_strip_caption_labels"):
             self._strip_caption_labels: list = []
+        # W8: the resizable card plate is a plain child widget — its own
+        # resizes never reach the overlay's resizeEvent, so watch it and
+        # re-run the pin hooks (nav circles, source inset, resize grip).
+        try:
+            content = getattr(self, "_content", None)
+            if content is not None:
+                content.installEventFilter(self)
+        except Exception:
+            pass
 
     def _reposition_source_inset(self) -> None:
         try:
             from tabs.image_gallery.ui.quick_look.source_inset import reposition_source_inset
             reposition_source_inset(self)
+        except Exception:
+            pass
+        # W4 item 6: nav circles are absolute card children — re-pin with
+        # every resize (like the source inset).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
+            reposition_nav_buttons(self)
         except Exception:
             pass
 
@@ -98,6 +127,110 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._reposition_source_inset()
         except Exception:
             pass
+        # W8: keep the drag handle pinned on overlay (window) resizes.
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+            reposition_grip(self)
+        except Exception:
+            pass
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        # W8: card-plate resizes (user drag via the corner grip or direct
+        # resizes) re-run the same pin hooks as resizeEvent.
+        # W9: the whole card border is an 8px resize strip (8 directions) —
+        # press/move/release on the plate drive the border drag, plain
+        # moves update the hover cursor. Same clamp + re-pin idiom as W8.
+        try:
+            from PySide6.QtCore import QEvent
+
+            if watched is getattr(self, "_content", None):
+                t = event.type()
+                if t == QEvent.Type.Resize:
+                    try:
+                        self._reposition_source_inset()
+                    except Exception:
+                        pass
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+                        reposition_grip(self)
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseButtonPress:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_press
+                        if handle_border_press(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseMove:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                        if handle_border_move(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.MouseButtonRelease:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_release
+                        if handle_border_release(self, event):
+                            return True
+                    except Exception:
+                        pass
+                elif t == QEvent.Type.Leave:
+                    try:
+                        if getattr(self, "_border_drag", None) is None:
+                            self._content.unsetCursor()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return super().eventFilter(watched, event)
+
+    # W10: the 8px ring OUTSIDE the card (on the veil) is owned here at
+    # overlay level — the W9 plate filter only sees the inner edge. Ring
+    # drags share the _border_drag tuple + clamp/cursor helpers with the
+    # plate handlers. Plain veil clicks fall through to super() (W11 pinned
+    # policy: the veil never closes — X is the only close path). W11: ring
+    # and plate presses inside either nav-arrow rect walk the series via
+    # the helpers (arrows never start a drag).
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press
+            if handle_ring_press(self, event):
+                return
+        except Exception:
+            pass
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if getattr(self, "_border_drag", None) is not None:
+                from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                if handle_border_move(self, event):
+                    return
+            else:
+                from tabs.image_gallery.ui.quick_look.helpers import handle_ring_hover
+                handle_ring_hover(self, event)
+        except Exception:
+            pass
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_release
+            if handle_ring_release(self, event):
+                return
+        except Exception:
+            pass
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if getattr(self, "_border_drag", None) is None:
+                self.unsetCursor()
+        except Exception:
+            pass
+        super().leaveEvent(event)
 
     def show_for(self, item, owner=None) -> None:
         if owner is not None:
@@ -139,6 +272,21 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self.show_overlay()
         except Exception:
             pass
+        # Post-show re-pin: base reposition() recenters the card AFTER
+        # _populate ran on stale pre-show geometry, and overlay-child nav
+        # circles are unknown to it — re-run the pin hooks on live geometry
+        # (same idiom as resizeEvent/eventFilter), or arrows/inset/grip keep
+        # the previous opening's coordinates on reopen.
+        try:
+            self._reposition_source_inset()
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+
+            reposition_grip(self)
+        except Exception:
+            pass
 
     def show_quick_look(self, item, owner=None) -> None:
         self.show_for(item, owner)
@@ -159,6 +307,88 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._rebuild_artifacts(item)
         except Exception:
             pass
+
+    def refresh_metrics(self, item) -> None:
+        """W1 seam — W2 calls this from ``_on_fidelity_ready`` / set-source paths.
+
+        Mirrors ``refresh_artifacts``: rebuilds metrics + meta + brief for the
+        open overlay (no reopen needed when fidelity numbers land); no-op when
+        hidden or for another item. Never copied between items (path-guarded).
+        """
+        try:
+            cur = getattr(self, "_current_item", None)
+            if cur is None:
+                return
+            try:
+                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
+                    return
+            except Exception:
+                if cur is not item:
+                    return
+            if not self.isVisible():
+                return
+            try:
+                self._current_item = item
+            except Exception:
+                pass
+            # Re-read mode from owner state (W2 may have flipped it, e.g.
+            # set-as-source → FIDELITY) before rebuilding.
+            try:
+                owner = getattr(self, "_owner", None)
+                st = getattr(owner, "state", None) if owner is not None else None
+                if st is not None and getattr(st, "mode", None) is not None:
+                    self._mode = st.mode
+            except Exception:
+                pass
+            mode_str = "FIDELITY MODE"
+            try:
+                mode = getattr(self, "_mode", None)
+                if mode is not None:
+                    mode_str = str(mode.value) if hasattr(mode, "value") else str(mode)
+                mode_str = mode_str.upper()
+                if not mode_str.endswith(" MODE"):
+                    mode_str = f"{mode_str} MODE"
+            except Exception:
+                pass
+            is_fidelity = "FIDELITY" in mode_str
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import (
+                    populate_brief,
+                    populate_crop,
+                    populate_filename_meta,
+                )
+
+                populate_crop(self, item, is_fidelity)
+                populate_filename_meta(self, item, is_fidelity)
+            except Exception:
+                pass
+            self._rebuild_metrics(item, is_fidelity, mode_str)
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
+
+                _pb(self, item)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """S4 modal dim veil (mockup fill-opacity 0.45), mirroring clean_review.
+
+        ``TopLevelInWindowOverlay`` paints nothing (transparent background),
+        so the veil lives here in gallery scope.
+        """
+        try:
+            painter = QPainter(self)
+            # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
+            # the veil is mockup-specified plain black at an opacity, not
+            # a theme color — Qt global black + painter opacity.
+            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
+            painter.end()
+        except Exception:
+            pass
+        super().paintEvent(event)
 
     def refresh_quick_look(self, item) -> None:
         self.refresh_artifacts(item)
@@ -228,7 +458,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             )
             populate_preview(self, item)
             populate_source_inset(self, item, is_fidelity)
-            populate_crop(self, item)
+            populate_crop(self, item, is_fidelity)
             populate_filename_meta(self, item, is_fidelity)
             populate_report_header(self, is_fidelity, mode_str)
         except Exception:
@@ -261,6 +491,20 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             self._compare_btn.setEnabled(True)
             self._multi_btn.setEnabled(True)
+        except Exception:
+            pass
+        # W4 item 6: best-effort nav pin after populate (resizeEvent re-pins
+        # once live geometry lands).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
+            reposition_nav_buttons(self)
+        except Exception:
+            pass
+        # W8: pin the resize grip with the other absolute card children
+        # (the _content Resize filter re-pins on every later resize).
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+            reposition_grip(self)
         except Exception:
             pass
 
@@ -326,6 +570,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 _carry.carry_selected(owner)
         except Exception:
             pass
+        # W12-A: Compare navigates away (carry flow) — dismiss the overlay.
+        # Reject / Set as source stay open (triage continues); X still closes.
+        try:
+            self.hide()
+        except Exception:
+            pass
 
     def _on_multi(self) -> None:
         if self._current_item is None:
@@ -346,6 +596,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 except Exception:
                     pass
             self.compareRequested.emit(p)
+        except Exception:
+            pass
+        # W12-A: verified in code that _on_multi enters the compare flow
+        # (compareRequested -> on_quick_compare -> carry_selected ->
+        # ImageCarryService.begin), so it dismisses like Compare. Reject /
+        # Set as source stay open (triage continues); X still closes.
+        try:
+            self.hide()
         except Exception:
             pass
 
@@ -380,7 +638,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 except Exception:
                     pass
             self.rejectToggled.emit(p)
-            self._populate()
+            self._populate()  # W12-A: Reject stays open — triage continues.
         except Exception:
             pass
 
@@ -390,34 +648,52 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             p = Path(getattr(self._current_item, "path", ""))
             owner = self._owner
+            new_mode = None
             if owner is not None:
                 try:
                     st = getattr(owner, "state", None)
                     if st is not None:
                         st.source_path = p
+                        # P0-6: re-run mode selection so the chip flips to
+                        # FIDELITY (a source hub implies fidelity mode).
+                        try:
+                            from tabs.image_gallery.services.mode import select_mode
+
+                            new_mode = select_mode(
+                                getattr(st, "series", None),
+                                getattr(st, "items", None),
+                                p,
+                            )
+                            st.mode = new_mode
+                        except Exception:
+                            new_mode = None
                     w = getattr(owner, "widget", None) or owner
                     if hasattr(w, "_source_path"):
                         w._source_path = p
                     if hasattr(w, "stats_strip"):
                         try:
-                            mode = getattr(st, "mode", None) if st is not None else getattr(w, "_mode", None)
-                            w.stats_strip.set_mode(str(mode or "fidelity"), p)
+                            mode = new_mode
+                            if mode is None:
+                                mode = getattr(st, "mode", None) if st is not None else getattr(w, "_mode", None)
+                            mode_name = getattr(mode, "value", mode) or "fidelity"
+                            w.stats_strip.set_mode(str(mode_name), p)
                         except Exception:
                             pass
                 except Exception:
                     pass
             self._source_path = p
+            if new_mode is not None:
+                self._mode = new_mode
             self.setSource.emit(p)
-            self._populate()
+            self._populate()  # W12-A: Set as source stays open — triage continues.
         except Exception:
             pass
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         k = event.key()
-        if k == Qt.Key.Key_Escape:
-            self.hide()
-            event.accept()
-            return
+        # W11 pinned policy: Esc NEVER closes (the toolkit base also ignores
+        # it with close_on_escape=False) — X is the only close path. ←→
+        # still walk the series.
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             delta = -1 if k == Qt.Key.Key_Left else 1
             self._walk(delta)

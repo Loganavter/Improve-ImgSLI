@@ -16,6 +16,21 @@ def _widget_under(widget, ancestor) -> bool:
     return False
 
 
+def _safe_widget_label(widget):
+    """Class name for focus-change diagnostics — never touches Qt.
+
+    ``bool(widget)`` / ``repr(widget)`` on a half-deleted wrapper can run
+    C++-side code; ``type(x).__name__`` is pure-Python and cannot recurse
+    into logging or focus handling.
+    """
+    if widget is None:
+        return None
+    try:
+        return type(widget).__name__
+    except Exception:
+        return "<undescribable>"
+
+
 def _modal_dialog_blocks_transient_hide(host, widget=None) -> bool:
     """Keep flyouts open while a modal prompt (rename / properties / …) owns focus."""
     if getattr(host, "_is_modal_active", False):
@@ -174,8 +189,8 @@ class PopupClosingController:
             window_active = None
         logger.debug(
             "[transient-close] on_app_focus_changed old=%s new=%s window_active=%s",
-            type(old_widget).__name__ if old_widget else None,
-            type(new_widget).__name__ if new_widget else None,
+            _safe_widget_label(old_widget),
+            _safe_widget_label(new_widget),
             window_active,
         )
         if _modal_dialog_blocks_transient_hide(host, new_widget):

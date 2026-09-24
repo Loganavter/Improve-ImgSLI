@@ -31,6 +31,37 @@ from tabs.image_gallery.ui.card import (
     update_gallery_card,
 )
 
+import pytest
+
+
+@pytest.fixture()
+def _production_dark_palettes(qapp):
+    """Register production palettes under the dark theme.
+
+    Rule A flipped the bare-manager fallbacks to light, so the dark-pin
+    assertions below now boot the real dark palette and assert production
+    hexes. Teardown restores the bare manager for the fallback-literal
+    tests elsewhere in this file.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    prev_theme = tm.get_current_theme()
+    tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    tm.set_theme("dark", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    yield tm
+    try:
+        tm.register_palettes({}, {})
+        tm.set_theme(prev_theme, qapp, await_ripples=False)
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 
 def _item(**overrides) -> GalleryItem:
     defaults = dict(path=Path("/gallery/a.png"), mtime_ns=1)
@@ -192,26 +223,173 @@ def test_hover_underline_toggle(qapp):
     card.deleteLater()
 
 
-def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp):
+def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp, _production_dark_palettes):
     item = _item(vlm_tie_pending=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # S2-9: accent-stroked pill — not filled, accent border + accent text.
-    assert card.property("badgeFilled") is False
-    border = card.property("badgeBorderColor")
-    text = card.property("badgeTextColor")
-    assert border is not None and text is not None
+    # S2: AI tie-break is an in-thumbnail pill (left overlay), not a
+    # top-right toolkit badge — toolkit badge cleared, overlay set.
+    assert card.property("badgeText") in (None, "")
+    assert getattr(card, "_gallery_badge", None) == "AI tie-break…"
+    filled, _bg, border, _text = card._gallery_badge_style
+    assert filled is False
     accent = _token_color("accent", "#0096FF")
+    assert accent.name().lower() == "#0096ff"  # live dark production hex
     assert border.name().lower() == accent.name().lower()
     card.deleteLater()
 
 
-def test_rejected_badge_uses_danger_token(qapp):
+def test_rank_badge_text_is_muted_not_white(qapp):
+    from types import SimpleNamespace
+
+    card = build_gallery_card(_item(), parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(
+        card,
+        SimpleNamespace(rejected=False, is_best=False, vlm_tie_pending=False, rank=3, crown_rank=None),
+    )
+    assert getattr(card, "_gallery_badge", None) == "#3"
+    _filled, _bg, _bd, txt = card._gallery_badge_style
+    assert txt.name().lower() == "#dfdfdf"
+    card.deleteLater()
+
+
+def test_unreadable_cover_has_plate_background(qapp):
+    item = _item(
+        thumbnail_status=ThumbnailStatus.ERROR,
+        analysis_error="decode failed",
+    )
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    regions = {r.id: r for r in card.regions()}
+    assert regions["cover"].text == "!"
+    assert regions["cover"].override_bg_color is not None
+    card.deleteLater()
+
+
+def test_rejected_badge_uses_danger_token(qapp, _production_dark_palettes):
     item = _item(rejected=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    danger = _token_color("danger", "#D93025")
+    # Badge resolves the real gallery.status.danger token (dark #D93025);
+    # the bare "danger" alias never exists in themes.json.
+    danger = _token_color("gallery.status.danger", "#D93025")
+    assert danger.name().lower() == "#d93025"  # live dark production hex
     assert card.property("badgeBackgroundColor").name().lower() == danger.name().lower()
+    card.deleteLater()
+
+
+def test_hover_capsule_flyout_fits_its_buttons(qapp):
+    """The hover pill must not clamp its outer widget below content size.
+
+    Regression: setFixedSize(88, 30) was applied to the BaseFlyout *outer*
+    widget, which carries 2×8 shadow margins + 2×4 content padding — the
+    three 22px buttons then lived in a ~72×14 box (clipped ~2× vertically,
+    worse with the 4th fidelity action). The outer sizeHint must always
+    contain every action button's geometry.
+    """
+    from tabs.image_gallery.ui.card.hover import (
+        ensure_gallery_card_flyout,
+        show_gallery_card_flyout,
+    )
+
+    card = build_gallery_card(_item(), parent=None)
+    card.resize(250, 170)
+    qapp.processEvents()
+    show_gallery_card_flyout(card)
+    qapp.processEvents()
+    flyout = ensure_gallery_card_flyout(card)
+    assert flyout is not None
+    flyout.update_state()
+    qapp.processEvents()
+
+    # Outer widget must be at least content-sized (never fixed to the
+    # svg's visible-pill 88×30, which cannot hold the shadow margins).
+    assert flyout.width() >= 88
+    assert flyout.height() >= 30
+
+    # The real invariant: every action button fits inside the outer rect.
+    # Buttons are children of flyout.container (itself inset by
+    # SHADOW_RADIUS=8 inside the outer widget), so map via container pos.
+    outer = flyout.rect()
+    container = flyout.container
+    buttons = list(flyout._buttons.values())
+    assert buttons, "capsule must contain action buttons"
+    for btn in buttons:
+        in_outer = btn.geometry().translated(container.x(), container.y())
+        assert outer.contains(in_outer), (
+            f"button {btn.property('element_name')!r} geometry {btn.geometry()} "
+            f"(container-relative) -> {in_outer} does not fit outer rect {outer}"
+        )
+
+    flyout.hide()
+    card.deleteLater()
+
+
+def test_card_bg_is_not_substrate_color_light_theme(monkeypatch) -> None:
+    """Card fill must differ from the substrate in the light theme.
+
+    ``gallery.card.background`` is a registered token (W1); the resolver
+    chain still prefers ``surface.list`` over ``surface.background`` so a
+    missing card token can never paint the exact substrate color. This test
+    pins that chain order with a mocked resolver table.
+    """
+    from unittest.mock import patch
+
+    from tabs.image_gallery.ui import card as card_mod
+
+    table = {
+        "surface.list": QColor(240, 240, 240),
+        "surface.background": QColor(255, 255, 255),
+    }
+
+    def fake_resolve(tm, token):
+        return table.get(token)
+
+    with patch("ui.theming.try_resolve_theme_color", side_effect=fake_resolve):
+        bg = card_mod._gallery_card_bg()
+    assert (bg.red(), bg.green(), bg.blue()) == (240, 240, 240)
+    assert (bg.red(), bg.green(), bg.blue()) != (255, 255, 255)
+
+
+def test_card_hover_is_shelf_wash_not_opaque_swap(monkeypatch) -> None:
+    """Hover must be the shelf-style translucent wash, not an opaque bg swap."""
+    from unittest.mock import patch
+
+    from tabs.image_gallery.ui.card import painters as painters_mod
+
+    table = {
+        "recent.card.hover_wash": QColor(0, 0, 0, 26),
+    }
+
+    def fake_resolve(tm, token):
+        return table.get(token)
+
+    class FakeTM:
+        def is_dark(self) -> bool:
+            return False
+
+    with patch("ui.theming.try_resolve_theme_color", side_effect=fake_resolve):
+        with patch(
+            "sli_ui_toolkit.managers.ThemeManager.get_instance",
+            return_value=FakeTM(),
+        ):
+            wash = painters_mod._gallery_hover_wash_color(None)
+    assert wash is not None
+    assert wash.alpha() == 26  # translucent, like the recent-projects shelf
+    assert (wash.red(), wash.green(), wash.blue()) == (0, 0, 0)
+
+
+def test_card_regions_keep_transparent_hover(qapp) -> None:
+    """Bg/text/cover regions must not pin opaque fills or hover repaints."""
+    card = build_gallery_card(_item(), parent=None)
+    qapp.processEvents()
+    regions = {r.id: r for r in card.regions()}
+    assert regions["bg"].override_bg_color is None
+    assert regions["text"].override_bg_color is None
+    for rid in ("bg", "text", "cover"):
+        hc = getattr(regions[rid], "hover_color", None)
+        assert hc is not None and hc.alpha() == 0
     card.deleteLater()

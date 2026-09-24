@@ -1,7 +1,8 @@
-"""Carry selected images to a workspace tab via ImageCarryService / EventBus.
+"""Carry selected images to a workspace tab via ImageCarryService.
 
 Plain function taking the owner; no implied lookups — owner, paths, and
 services are resolved explicitly from owner attributes or via direct imports.
+ImageCarryService is the only dispatch path (no EventBus fallback).
 """
 
 from __future__ import annotations
@@ -12,7 +13,52 @@ from pathlib import Path
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _slot_selection(owner) -> list[str] | None:
+    """Gallery slot selection (ordered path-id strings), or None.
+
+    Returns None when no store/slot is available (storeless unit contexts)
+    so callers fall back to the local mirror. When the slot exists it is
+    authoritative — even when empty (a cleared selection must not resurrect
+    the local mirror).
+    """
+    try:
+        from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+        from tabs.image_gallery.state import selectors as _selectors
+    except Exception:
+        return None
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None:
+            continue
+        try:
+            ctx = getattr(cand, "_context", None) or getattr(cand, "context", None)
+            store = getattr(ctx, "store", None) or getattr(cand, "store", None)
+            if store is None or not hasattr(store, "get_session_state_slot"):
+                continue
+            slot = store.get_session_state_slot(GALLERY_SLOT_NAME)
+            if slot is None:
+                continue
+            return list(_selectors.get_selection(slot))
+        except Exception:
+            continue
+    return None
+
+
 def _selected_paths(owner) -> list[Path]:
+    slot_sel = _slot_selection(owner)
+    if slot_sel is not None:
+        out: list[Path] = []
+        for p in slot_sel:
+            try:
+                out.append(Path(p) if not isinstance(p, Path) else p)
+            except Exception:
+                continue
+        return out
     state = getattr(owner, "state", None)
     if state is None:
         return []
@@ -58,40 +104,9 @@ def _dispatch_via_image_carry(paths: list[Path], *, pixmap=None) -> bool:
     return False
 
 
-def _dispatch_via_event_bus(owner, paths: list[Path]) -> bool:
-    """Fallback: emit via owner's EventBus if available (not primary path)."""
-    bus = None
-    for attr in ("event_bus", "_event_bus", "bus"):
-        bus = getattr(owner, attr, None)
-        if bus is not None:
-            break
-    if bus is None:
-        # Try to resolve from main window / context if owner holds it.
-        ctx = getattr(owner, "_context", None) or getattr(owner, "context", None)
-        if ctx is not None:
-            bus = getattr(ctx, "event_bus", None)
-    if bus is None or not hasattr(bus, "emit"):
-        return False
-    try:
-        # Generic payload — listeners on workspace switch can pick it up.
-        # We avoid a hard dependency on a specific Event type; try common ones.
-        from core.events import Event  # noqa: F401
-
-        # Use a lightweight dict-like event if available; otherwise no-op.
-        # Emit a simple custom event carrying paths.
-        class GalleryCarryRequested:  # minimal duck-typed Event
-            def __init__(self, paths):  # type: ignore[no-untyped-def]
-                self.paths = paths
-
-        bus.emit(GalleryCarryRequested(paths))
-        return True
-    except Exception:
-        logger.debug("carry: EventBus emit failed", exc_info=True)
-        return False
-
-
 def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: ignore[no-untyped-def]
-    """Stub for “Find similar” — semantic search for images similar to selection.
+    """Intentional placeholder for “Find similar” — semantic search for images
+    similar to selection (parity plan non-goal: HUD button stays a stub).
 
     Prepared HUD API: ``SelectionHudController`` wires ``Find similar`` → this.
     Widget/controller integration (coordinator) will handle actual filtering
@@ -150,9 +165,5 @@ def carry_selected(owner, *, pixmap=None) -> bool:  # type: ignore[no-untyped-de
         logger.debug("carry_selected: dispatched via ImageCarryService (%d paths)", len(existing))
         return True
 
-    if _dispatch_via_event_bus(owner, existing):
-        logger.debug("carry_selected: dispatched via EventBus (%d paths)", len(existing))
-        return True
-
-    logger.warning("carry_selected: dispatch failed — no ImageCarryService/EventBus available")
+    logger.warning("carry_selected: dispatch failed — no ImageCarryService available")
     return False

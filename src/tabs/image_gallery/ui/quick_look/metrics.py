@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Label
 
 
-def _token_qcolor(token: str, fallback_hex: str) -> QColor:
+def _is_dark_theme() -> bool:
+    try:
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _bars_is_dark
+
+        return bool(_bars_is_dark())
+    except Exception:
+        pass
+    return True
+
+
+def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None = None) -> QColor:
     try:
         from sli_ui_toolkit.managers import ThemeManager
 
@@ -20,13 +30,29 @@ def _token_qcolor(token: str, fallback_hex: str) -> QColor:
             return c if isinstance(c, QColor) else QColor(c)
     except Exception:
         pass
-    return QColor(fallback_hex)
+    if fallback_dark_hex is None:
+        return QColor(fallback_hex)
+    return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
 def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import _make_label
+    except Exception:
+        from sli_ui_toolkit.widgets import Label as _Label
+
+        def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
+            return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+
+    # Rows live flat in right_lay (see helpers.relayout_report_rows); the
+    # report host is their visible ancestor (falls back to parentless for
+    # bare stubs like the truth-test harness, which only reads _metric_rows).
+    host = getattr(overlay, "_report_host", None)
+    lay = getattr(overlay, "_right_lay", None)
     for w in list(overlay._metric_rows):
         try:
-            overlay._metrics_layout.removeWidget(w)
+            if lay is not None:
+                lay.removeWidget(w)
             w.setParent(None)
             w.deleteLater()
         except Exception:
@@ -36,33 +62,48 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     if not isinstance(metrics, dict):
         metrics = {}
 
-    def _add_metric_row(title: str, value_text: str, fraction: float, color=None) -> None:
-        row = QWidget(overlay._metrics_host)
+    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
+        row = QWidget(host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.setSpacing(scaled_px(4))
+        rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
-        t = Label(title, pixel_size=11, parent=row)
+        t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
-        header.addStretch(1)
-        v = Label(value_text, pixel_size=11, parent=row)
-        header.addWidget(v)
+        # W7: no spacer here — the value below is horizontal-Ignored (it
+        # contributes no sizeHint so the min-296px column never h-scrolls) and
+        # an Ignored label beside a spacer would collapse to its 40px
+        # minimum and elide EVERYTHING ("+0…"). The value takes the free
+        # row width via stretch and end-aligns per the mockup (svg:84
+        # text-anchor=end); it elides only when the title genuinely
+        # leaves no room.
+        vc = _ok_color() if value_color is None else value_color
+        if value_elide:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc, elide=True, minimum_width=40)
+        else:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
+        try:
+            v.setAlignment(Qt.AlignmentFlag.AlignRight)
+        except Exception:
+            pass
+        header.addWidget(v, 1)
         rl.addLayout(header)
         # Lazy import bar widget
         from tabs.image_gallery.ui.quick_look.bars import _BarWidget
 
         bar = _BarWidget(fraction=fraction, fill_color=color, parent=row)
         rl.addWidget(bar)
-        overlay._metrics_layout.addWidget(row)
         overlay._metric_rows.append(row)
 
     def _ok_color():
-        return _token_qcolor("gallery.status.ok", "#3fbf5f")
+        # NOTE: was #3fbf5f (dark-only) — now gallery.status.ok light/dark chain.
+        return _token_qcolor("gallery.status.ok", "#2e7d32", "#43a047")
 
     def _warn_color():
-        return _token_qcolor("gallery.status.warn", "#e8b64c")
+        # NOTE: was #e8b64c (dark-only) — now gallery.status.warn light/dark chain.
+        return _token_qcolor("gallery.status.warn", "#b77900", "#d9a441")
 
     def _muted_color():
         return _token_qcolor("gallery.status.neutral", "#8a8a8a")
@@ -70,8 +111,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     def _add_unmeasured_row(title: str) -> None:
         """Unmeasured state: an explicit 'not measured' row, never a plausible
         constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
-        data look measured; gaps must read as gaps."""
-        _add_metric_row(title, "— · not measured", 0.0, _muted_color())
+        data look measured; gaps must read as gaps. The value is a fixed
+        short constant that always fits the column, so it skips elision
+        (W5: keeps .text() verbatim for readers that match on it)."""
+        _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color(), value_elide=False)
 
     if is_fidelity:
         ssim = metrics.get("ssim")
@@ -91,12 +134,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 _add_metric_row("SSIM vs source", f"{ssim_f:.2f} · {rank_txt}", ssim_f, _ok_color())
         subline = ssim_subline(overlay, item)
         if subline:
-            sub_row = QWidget(overlay._metrics_host)
+            sub_row = QWidget(host)
             sub_lay = QVBoxLayout(sub_row)
             sub_lay.setContentsMargins(0, 0, 0, 0)
             sub_lay.setSpacing(0)
-            sub_lay.addWidget(Label(subline, pixel_size=9, color_token="list_item.text.rating", parent=sub_row))
-            overlay._metrics_layout.addWidget(sub_row)
+            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=9, pt=9.5, color_token="list_item.text.rating", elide=True, minimum_width=40))
             overlay._metric_rows.append(sub_row)
         hf = metrics.get("hf_ratio") if "hf_ratio" in metrics else metrics.get("detail_gain")
         hf_f = None
@@ -109,18 +151,22 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             _add_unmeasured_row("Detail gain (HF ratio)")
         else:
             pct = f"{int(hf_f*100):+d}% " + ("plausible" if hf_f >= 0 else "loss")
-            row = QWidget(overlay._metrics_host)
+            row = QWidget(host)
             rl = QVBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
-            rl.setSpacing(scaled_px(4))
+            rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = Label("Detail gain (HF ratio)", pixel_size=11, parent=row)
+            t = _make_label("Detail gain (HF ratio)", parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
-            header.addStretch(1)
-            v = Label(pct, pixel_size=11, parent=row)
-            header.addWidget(v)
+            # W7: value takes free row width via stretch (see _add_metric_row).
+            v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color(), elide=True, minimum_width=40)
+            try:
+                v.setAlignment(Qt.AlignmentFlag.AlignRight)
+            except Exception:
+                pass
+            header.addWidget(v, 1)
             rl.addLayout(header)
             from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
 
@@ -129,13 +175,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub = QHBoxLayout()
             sub.setContentsMargins(0, 0, 0, 0)
             sub.setSpacing(scaled_px(6))
-            lab_l = Label("restored texture", pixel_size=9, parent=row)
+            lab_l = _make_label("restored texture", parent=row, pixel_size=9, pt=9.5)
             sub.addWidget(lab_l)
             sub.addStretch(1)
-            lab_r = Label("invented / hallucinated", pixel_size=9, parent=row)
+            lab_r = _make_label("invented / hallucinated", parent=row, pixel_size=9, pt=9.5)
             sub.addWidget(lab_r)
             rl.addLayout(sub)
-            overlay._metrics_layout.addWidget(row)
             overlay._metric_rows.append(row)
         de = metrics.get("delta_e") if "delta_e" in metrics else metrics.get("deltaE") or metrics.get("color_shift")
         de_f = None
@@ -255,6 +300,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         else:
             frac2 = max(0.0, min(1.0, aes_f if aes_f <= 1 else aes_f / 10))
             _add_metric_row("Aesthetic (tie-break)", f"{aes_f:.2f}", frac2, _ok_color())
+
+    # Flat placement (rows + uniform spacers) is owned by the coordinator —
+    # it also re-seats the artifact rows, so either rebuild order converges.
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
+
+        relayout_report_rows(overlay)
+    except Exception:
+        pass
 
 
 def ssim_subline(overlay, item) -> str:

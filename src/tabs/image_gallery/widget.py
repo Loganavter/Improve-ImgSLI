@@ -109,6 +109,13 @@ class ImageGalleryWidget(QWidget):
         # Wire toolbar signals outward
         self.toolbar.openClicked.connect(self.folder_pick_requested.emit)
         self.toolbar.filterChanged.connect(self.filter_text_changed.emit)
+        # Wave 2c: every filter keystroke is a dispatched GalleryFilterSet
+        # (view action, not undoable). The controller debounce connection
+        # stays for thumbnail/filter-worker side-effects.
+        try:
+            self.filter_text_changed.connect(self._on_filter_text_dispatch)
+        except Exception:
+            pass
         # A1: wiring sort/view signals
         try:
             self.toolbar.sortChanged.connect(self._on_sort_changed)
@@ -133,7 +140,7 @@ class ImageGalleryWidget(QWidget):
             self.stats_strip.hide()
         except Exception:
             pass
-        # Wire strip signals -> use_cases (keep_best etc stub).
+        # Wire strip signals -> use_cases (keep_best_of_series etc).
         try:
             self.stats_strip.keepBestClicked.connect(lambda: self._on_keep_best())
             self.stats_strip.cleanClicked.connect(lambda: self._on_clean_rejected())
@@ -311,15 +318,240 @@ class ImageGalleryWidget(QWidget):
             self._empty_state.setAcceptDrops(True)
         except Exception:
             pass
+        # W12-D: forward zone-surface drops (full mime) to the unified router —
+        # the zone label alone would re-emit only the first path.
+        try:
+            from tabs.image_gallery.ui import drag_drop as _drag_drop
+
+            _drag_drop.install_zone_drop_forwarding(self)
+        except Exception:
+            pass
 
         # Update initial state
         self._empty_state.set_state("empty")
         self._grid_view.hide()
 
+        # Wave 2c: subscribe renders to the ``gallery`` slot (fail-open —
+        # no store in tests / unbootstrapped tabs means no subscription).
+        self._gallery_store_connected = False
+        try:
+            self._init_gallery_store_subscription()
+        except Exception:
+            pass
+
+    # -- Redux: gesture dispatch + subscribed renders (Wave 2c) -------------
+
+    def _on_filter_text_dispatch(self, text: str) -> None:
+        """Dispatch ``GalleryFilterSet`` for a filter gesture (fail-open)."""
+        try:
+            from core.state_management.gallery_actions import GalleryFilterSet
+            from tabs.image_gallery.ui.gallery_store import dispatch_gallery
+
+            dispatch_gallery(self, GalleryFilterSet(filter_text=text or ""))
+        except Exception:
+            pass
+
+    def _init_gallery_store_subscription(self) -> None:
+        """Render grid/selection/filter from the ``gallery`` slot on emit."""
+        try:
+            from tabs.image_gallery.ui.gallery_store import resolve_store
+
+            store = resolve_store(self)
+        except Exception:
+            return
+        if store is None:
+            return
+        try:
+            qt_signal = getattr(store, "state_changed", None)
+            if qt_signal is not None and hasattr(qt_signal, "connect"):
+                qt_signal.connect(self._on_gallery_store_changed)
+                self._gallery_store_connected = True
+                return
+        except Exception:
+            pass
+        try:
+            if hasattr(store, "on_change"):
+                store.on_change(self._on_gallery_store_changed)
+                self._gallery_store_connected = True
+        except Exception:
+            pass
+
+    def _on_gallery_store_changed(self, scope: str) -> None:
+        try:
+            if scope != "gallery":
+                return
+        except Exception:
+            return
+        try:
+            self._render_from_gallery_slot()
+        except Exception:
+            pass
+
+    def _render_from_gallery_slot(self) -> None:
+        """Re-render selection/filter/folder/pool from slot reads (no dispatch)."""
+        try:
+            from tabs.image_gallery.ui.gallery_store import read_gallery_slot
+
+            slot = read_gallery_slot(self)
+        except Exception:
+            return
+        if slot is None:
+            # No Redux state (foreign session, pre-first-dispatch) — never clear.
+            return
+        try:
+            from tabs.image_gallery.state import selectors as _sel2
+
+            self._render_gallery_selection(_sel2.get_selection(slot))
+            self._render_gallery_filter(_sel2.get_filter_text(slot))
+            self._render_gallery_folder(_sel2.get_folder(slot))
+            self._render_gallery_pool(slot)
+        except Exception:
+            pass
+
+    def _render_gallery_selection(self, selected_ids: list) -> None:
+        """Apply slot selection to grid + HUD (visuals only, no dispatch)."""
+        try:
+            wanted = set(str(s) for s in (selected_ids or []))
+        except Exception:
+            return
+        try:
+            current = set()
+            for p in (self._grid_view._selection or set()):
+                current.add(str(p))
+        except Exception:
+            current = set()
+        if wanted == current:
+            pass
+        try:
+            self._grid_view.apply_selection(set(wanted))
+        except Exception:
+            pass
+        try:
+            hud = getattr(self, "_selection_hud", None)
+            if hud is not None:
+                n = len(wanted)
+                try:
+                    if hasattr(hud, "update"):
+                        hud.update(n)
+                    elif hasattr(hud, "set_count"):
+                        hud.set_count(n)
+                except Exception:
+                    pass
+                try:
+                    if n > 0 and hasattr(hud, "show"):
+                        hud.show()
+                    elif n == 0 and hasattr(hud, "hide"):
+                        hud.hide()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _render_gallery_filter(self, filter_text: str) -> None:
+        """Sync the filter edit from the slot (signal-blocked, no loop)."""
+        try:
+            want = str(filter_text or "")
+        except Exception:
+            return
+        try:
+            edit = getattr(self.toolbar, "_filter_edit", None) or getattr(self, "_filter_edit", None)
+            if edit is None:
+                return
+            try:
+                cur = str(edit.text())
+            except Exception:
+                return
+            if cur == want:
+                return
+            try:
+                edit.blockSignals(True)
+                edit.setText(want)
+            finally:
+                try:
+                    edit.blockSignals(False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _render_gallery_folder(self, folder: str | None) -> None:
+        """Sync the compat folder label from the slot (folder set only)."""
+        if not folder:
+            return
+        try:
+            label = getattr(self, "_folder_label", None)
+            if label is None:
+                return
+            try:
+                cur = str(label.text())
+            except Exception:
+                cur = ""
+            if cur != str(folder):
+                label.setText(str(folder))
+        except Exception:
+            pass
+
+    def _render_gallery_pool(self, slot) -> None:
+        """Reconcile flat-grid membership with the slot pool (no dispatch).
+
+        Skipped while a triage series view is active — grouping is owned by
+        the controller triage reaction (W2b). New paths materialize as bare
+        ``GalleryItem``\\ s WITHOUT pixmaps: thumbnail fetch for
+        slot-materialized items is a missing controller reaction (see
+        DONE.md) — during transition the legacy ``ctrl.open_*`` call that
+        follows each gesture loads thumbnails right after this reconcile.
+        """
+        try:
+            if getattr(self, "_series", None):
+                return
+            from tabs.image_gallery.state import selectors as _selectors
+
+            slot_paths = [str(p) for p in _selectors.get_item_paths(slot)]
+        except Exception:
+            return
+        try:
+            cur_paths = [str(it.path) for it in (self._items or [])]
+        except Exception:
+            return
+        if slot_paths == cur_paths:
+            return
+        try:
+            from tabs.image_gallery.state import selectors as _sel3
+
+            metas = {m.path: m for m in _sel3.get_items(slot)}
+        except Exception:
+            metas = {}
+        try:
+            by_path = {}
+            for it in (self._items or []):
+                try:
+                    by_path[str(it.path)] = it
+                except Exception:
+                    continue
+            merged: list = []
+            for sp in slot_paths:
+                it = by_path.get(sp)
+                if it is None:
+                    try:
+                        meta = metas.get(sp)
+                        mtime = int(getattr(meta, "mtime_ns", 0) or 0)
+                    except Exception:
+                        mtime = 0
+                    try:
+                        it = GalleryItem(path=Path(sp), mtime_ns=mtime)
+                    except Exception:
+                        continue
+                merged.append(it)
+            self.rebuild_grid(merged)
+        except Exception:
+            pass
+
     # -- wiring for toolbar sort/view (A1) ---------------------------------
 
     def _on_sort_changed(self, text: str) -> None:
         # S2: toolbar sort combo "Sort: Rank/Name/Date" — reorder grid.
+        # Wave 2c note: the frozen seam has no GALLERY_* sort action, so
+        # sort stays view-local (grid order only, no slot write) by design.
         # Thin owner: delegate to filtering/sorting helper if available, else sort items in place.
         try:
             key = str(text or "").lower()
@@ -407,7 +639,8 @@ class ImageGalleryWidget(QWidget):
         return None
 
     def _on_view_toggled(self, checked: bool) -> None:
-        # View switch toggle (grid/list) — currently only grid exists; keep state for future parity.
+        # View switch toggle (grid/list) — view-local only (no GALLERY_*
+        # action in the frozen seam); keep state for future parity.
         try:
             self._view_mode = bool(checked)
         except Exception:
@@ -421,7 +654,14 @@ class ImageGalleryWidget(QWidget):
     # -- card interaction -------------------------------------------------
 
     def _on_card_toggle(self, path: Path, additive: bool = False) -> None:
-        # A3: manual selection orthogonal to triage — Ctrl-click/marquee → HUD
+        # Click opens, Ctrl+click selects (manual selection stays orthogonal
+        # to triage — Ctrl-click/marquee → HUD; plain click → quick look).
+        if not additive:
+            try:
+                self.show_quick_look(path)
+                return
+            except Exception:
+                pass
         try:
             from tabs.image_gallery.use_cases import selection as _sel
 
@@ -716,7 +956,7 @@ class ImageGalleryWidget(QWidget):
         try:
             from tabs.image_gallery.use_cases import triage as _triage
 
-            _triage.keep_best(self._owner_for_triage())
+            _triage.keep_best_of_series(self._owner_for_triage())
         except Exception:
             pass
 

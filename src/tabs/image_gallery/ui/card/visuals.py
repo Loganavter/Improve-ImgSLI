@@ -41,6 +41,38 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
     return QColor(*fallback_rgba)
 
 
+def _card_border_color() -> QColor:
+    """Default card edge: ``gallery.card.border`` → ``button.dialog.default.border``.
+
+    Frozen seam: tokens only via ``try_resolve_theme_color``. Rule A: fallback
+    keyed on ``is_dark()`` (light default) — ``#e2e4e8`` light / white@0.12
+    dark (mockup 1px card edges, v2/v3/v4-light). BEST accent 2px and the
+    rejected/danger paths are untouched — only default borders route here.
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        mgr = ThemeManager.get_instance()
+        for _tok in ("gallery.card.border", "button.dialog.default.border"):
+            try:
+                c = try_resolve_theme_color(mgr, _tok)
+            except Exception:
+                c = None
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+        try:
+            _dark = bool(mgr.is_dark())
+        except Exception:
+            _dark = False
+    except Exception:
+        _dark = False
+    if _dark:
+        return QColor(255, 255, 255, 30)
+    return QColor("#e2e4e8")
+
+
 if TYPE_CHECKING:
     from sli_ui_toolkit.widgets import Button
     from tabs.image_gallery.models import GalleryItem
@@ -80,8 +112,8 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
 
     # Lazy imports to avoid cycles at module import.
     from tabs.image_gallery.ui.card.dots import (
-        _ACCENT_TOKEN_FALLBACK,
-        _ERROR_LINE_TOKEN_FALLBACK,
+        _accent_color,
+        _error_line_color,
         _token_color,
     )
 
@@ -106,7 +138,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         if rejected:
             card.setBadge("✕")
             try:
-                _danger = _token_color(*_ERROR_LINE_TOKEN_FALLBACK)
+                _danger = _error_line_color()
                 card.setBadgeStyle(
                     filled=True,
                     background_color=_danger,
@@ -121,24 +153,22 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
             except Exception:
                 pass
         elif tie_pending:
-            card.setBadge("AI tie-break…")
+            # S2 mockup: AI tie-break is an in-thumbnail pill (left overlay,
+            # like ★ BEST) — not a top-right toolkit badge.
             try:
-                _accent = _token_color(*_ACCENT_TOKEN_FALLBACK)
+                card.setBadge(None)
+            except Exception:
+                pass
+            try:
+                _accent = _accent_color()
                 _accent_text = _QColor(_accent)
                 try:
                     _accent_text = _accent_text.lighter(150)
                 except Exception:
                     pass
-                card.setBadgeStyle(
-                    filled=False,
-                    border_color=_accent,
-                    text_color=_accent_text,
-                )
-                card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
-            except Exception:
-                pass
-            try:
-                card._gallery_badge = None  # type: ignore[attr-defined]
+                card._gallery_badge = "AI tie-break…"  # type: ignore[attr-defined]
+                card._gallery_badge_style = (False, None, _accent, _accent_text)  # type: ignore[attr-defined]
+                card.setBorderColor(_card_border_color())
             except Exception:
                 pass
         elif is_best or (not rejected and not tie_pending and getattr(item, "rank", None) == 1) or (not rejected and not tie_pending and getattr(item, "crown_rank", None) == 1):
@@ -149,10 +179,10 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 pass
             try:
                 card._gallery_badge = "★ BEST"  # type: ignore[attr-defined]
-                card._gallery_badge_style = (True, _token_color(*_ACCENT_TOKEN_FALLBACK), _token_color(*_ACCENT_TOKEN_FALLBACK), _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
+                card._gallery_badge_style = (True, _accent_color(), _accent_color(), _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
                 # Accent border 2px for BEST
                 try:
-                    card.setBorderColor(_token_color(*_ACCENT_TOKEN_FALLBACK))
+                    card.setBorderColor(_accent_color())
                     card.setProperty("borderWidth", 2)
                 except Exception:
                     pass
@@ -173,8 +203,8 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 try:
                     card._gallery_badge = badge_text  # type: ignore[attr-defined]
                     rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
-                    card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
-                    card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
+                    card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("gallery.stats.text", "#dfdfdf"))  # type: ignore[attr-defined]
+                    card.setBorderColor(_card_border_color())
                 except Exception:
                     pass
             else:
@@ -184,7 +214,7 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                     pass
                 try:
                     card._gallery_badge = None  # type: ignore[attr-defined]
-                    card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
+                    card.setBorderColor(_card_border_color())
                 except Exception:
                     pass
     except Exception:
@@ -232,10 +262,10 @@ def gallery_selection_accent(theme_manager=None):  # type: ignore[no-untyped-def
 
         return selection_accent_color(theme_manager)
     except Exception:
-        # S2-12: accent via theme token, fallback hex for offscreen tests.
-        from tabs.image_gallery.ui.card.dots import _ACCENT_TOKEN_FALLBACK, _token_color
+        # S2-12: accent via theme token chain, theme-aware fallback for offscreen tests.
+        from tabs.image_gallery.ui.card.dots import _accent_color
 
-        return _token_color(*_ACCENT_TOKEN_FALLBACK)
+        return _accent_color()
 
 
 def apply_gallery_selection(card: Button, selected: bool, accent=None) -> None:  # type: ignore[no-untyped-def]

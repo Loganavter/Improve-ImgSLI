@@ -1,12 +1,12 @@
-"""Stage 2 triage stubs — keep best / clean rejected / compare finalists.
+"""Stage 2 triage helpers — keep best / clean rejected / compare finalists.
 Audit-Meta: pattern=thin-owner size=exempt reason="thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
 
 Thin-owner helpers: plain functions taking the owner (controller or widget).
 No implied lookups — owner and paths are passed explicitly.
 
-The pipeline here is a stub: clustering / mode detection is not yet
-implemented, so these helpers work on the current GalleryItem flags
-(rejected, triage_best, etc.) and are wired to StatsStrip signals.
+These helpers work on the current GalleryItem flags (rejected, triage_best,
+etc.) and are wired to StatsStrip signals. Series resolution goes through
+the sole ``_series_of`` implementation below.
 """
 
 from __future__ import annotations
@@ -14,6 +14,13 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+
+from core.state_management.gallery_actions import (
+    GalleryItemsRemoved,
+    GalleryPathsAppended,
+    GalleryTriageFinished,
+)
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 
 # Toolkit usage per S3 spec: scaled_px + ThemeManager tokens (no QSS) — ensure
 # provenance logic respects theme scaling where UI consumes it (clean_review).
@@ -29,6 +36,137 @@ except Exception:
     ThemeManager = None  # type: ignore
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _emit_gallery(owner, action) -> bool:
+    """Dispatch one gallery action with scope 'gallery' via the owner chain.
+
+    Prefers the controller's ``_emit_gallery`` (session-aware write path);
+    falls back to a direct dispatcher dispatch resolved from any visible
+    context/store. Returns False when no dispatcher is wired (storeless
+    unit contexts keep pure-local behavior). Never mutates slot values.
+    """
+    seen: set[int] = set()
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None or id(cand) in seen:
+            continue
+        seen.add(id(cand))
+        emit = getattr(cand, "_emit_gallery", None)
+        if callable(emit):
+            try:
+                if bool(emit(action)):
+                    return True
+            except Exception:
+                pass
+    for cand in candidates:
+        if cand is None:
+            continue
+        try:
+            ctx = getattr(cand, "_context", None) or getattr(cand, "context", None)
+            store = getattr(ctx, "store", None) or getattr(cand, "store", None)
+            dispatcher = store.get_dispatcher() if store is not None else None
+            if dispatcher is None:
+                continue
+            dispatcher.dispatch(action, scope=GALLERY_SLOT_NAME)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _transact_gallery(owner, actions) -> bool:
+    """Batch path: Store.transact([...], scope='gallery'), else sequential."""
+    batch = [a for a in actions or []]
+    if not batch:
+        return False
+    seen: set[int] = set()
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None or id(cand) in seen:
+            continue
+        seen.add(id(cand))
+        meth = getattr(cand, "_transact_gallery", None)
+        if callable(meth):
+            try:
+                if bool(meth(batch)):
+                    return True
+            except Exception:
+                pass
+    ok = False
+    for action in batch:
+        try:
+            ok = _emit_gallery(owner, action) or ok
+        except Exception:
+            pass
+    return ok
+
+
+def _emit_rank_snapshot(owner) -> bool:
+    """Mirror local ranks into the slot (GalleryTriageFinished, same summary).
+
+    keep_best / make_best / keep_best_of_series re-rank locally; the slot's
+    per-item ranks would otherwise go stale. Triage state/mode/source pass
+    through unchanged — only ranks move.
+    """
+    try:
+        st = getattr(owner, "state", None)
+        if st is None:
+            return False
+        ranks: dict[str, int] = {}
+        for it in list(getattr(st, "items", []) or []):
+            try:
+                r = getattr(it, "rank", None)
+                if r is not None:
+                    ranks[str(getattr(it, "path"))] = int(r)
+            except Exception:
+                continue
+        ts = getattr(getattr(st, "triage_state", "done"), "value", None)
+        if ts is None:
+            ts = getattr(st, "triage_state", "done")
+        try:
+            triage_state = str(ts or "done")
+        except Exception:
+            triage_state = "done"
+        mode = getattr(st, "mode", None)
+        mode = getattr(mode, "value", mode)
+        try:
+            mode_s = str(mode) if mode is not None else None
+        except Exception:
+            mode_s = None
+        source = getattr(st, "source_path", None)
+        try:
+            source_s = str(source) if source is not None else None
+        except Exception:
+            source_s = None
+        return _emit_gallery(
+            owner,
+            GalleryTriageFinished(
+                triage_state=triage_state,
+                mode=mode_s,
+                source_path=source_s,
+                ranks=ranks,
+            ),
+        )
+    except Exception:
+        return False
+
+
+def _mtime_of(path) -> int:
+    try:
+        return int(Path(path).stat().st_mtime_ns)
+    except Exception:
+        return 0
 
 
 def _items_of(owner) -> list:
@@ -123,8 +261,13 @@ def _sync_provenance_from_series(owner, series_list) -> None:
 
 
 def _series_of(owner) -> list[list]:
-    # Try explicit triage series on owner/state
-    for attr in ("_triage_series", "triage_series", "_series"):
+    """Resolve triage series clusters for *owner* (sole implementation).
+
+    Attribute order: ``_triage_series``, ``triage_series``, ``_series``,
+    ``series`` on the owner, then on ``owner.state``. Wave A owns this
+    helper — no second copy may exist anywhere.
+    """
+    for attr in ("_triage_series", "triage_series", "_series", "series"):
         val = getattr(owner, attr, None)
         if val:
             return list(val)
@@ -137,7 +280,7 @@ def _series_of(owner) -> list[list]:
 
 
 def keep_best(owner) -> int:
-    """Mark best per series (stub): first item of each cluster becomes best.
+    """Mark best per series: first item of each cluster becomes best.
 
     Returns number of items marked best.
     """
@@ -185,12 +328,16 @@ def keep_best(owner) -> int:
             pass
     # Refresh grid if owner has widget
     _refresh_owner_grid(owner)
+    try:
+        _emit_rank_snapshot(owner)
+    except Exception:
+        pass
     logger.debug("triage.keep_best: marked %d best", count)
     return count
 
 
 def make_best(owner, path: Path) -> bool:
-    """Make *path* the best within its series (stub)."""
+    """Make *path* the best within its series."""
     items = _items_of(owner)
     series = _series_of(owner)
     target: Path = Path(path) if not isinstance(path, Path) else path
@@ -214,6 +361,10 @@ def make_best(owner, path: Path) -> bool:
                     it.triage_rank = 1
                     it.rank = 1
                     _refresh_owner_grid(owner)
+                    try:
+                        _emit_rank_snapshot(owner)
+                    except Exception:
+                        pass
                     return True
             except Exception:
                 continue
@@ -245,6 +396,10 @@ def make_best(owner, path: Path) -> bool:
         except Exception:
             pass
     _refresh_owner_grid(owner)
+    try:
+        _emit_rank_snapshot(owner)
+    except Exception:
+        pass
     return True
 
 
@@ -315,6 +470,22 @@ def clean_rejected(owner) -> list[dict]:
                 pass
         except Exception:
             logger.exception("triage.clean_rejected: move failed %s -> %s", src, dst)
+    # Route the move through the slot as one batch (remove old + append new
+    # locations) so pool membership stays tracer-visible; the local mirror
+    # keeps the moved items with their new paths, verbatim as before.
+    if moves:
+        try:
+            _transact_gallery(
+                owner,
+                [
+                    GalleryItemsRemoved(paths=[m["path"] for m in moves]),
+                    GalleryPathsAppended(
+                        entries=[(m["src"], _mtime_of(m["src"])) for m in moves]
+                    ),
+                ],
+            )
+        except Exception:
+            logger.debug("triage.clean_rejected: slot transact failed", exc_info=True)
     _refresh_owner_grid(owner)
     logger.debug("triage.clean_rejected: moved %d", len(moves))
     return moves
@@ -323,6 +494,7 @@ def clean_rejected(owner) -> list[dict]:
 def restore_moves(owner, moves: list[dict]) -> int:
     """Undo clean_rejected moves."""
     restored = 0
+    restored_recs: list[dict] = []
     for rec in moves or []:
         src = rec.get("src")
         dst = rec.get("dst")
@@ -331,6 +503,7 @@ def restore_moves(owner, moves: list[dict]) -> int:
         try:
             shutil.move(src, dst)
             restored += 1
+            restored_recs.append(rec)
             # Update item path back
             for it in _items_of(owner):
                 try:
@@ -340,12 +513,27 @@ def restore_moves(owner, moves: list[dict]) -> int:
                     pass
         except Exception:
             logger.exception("triage.restore_moves: undo failed %s -> %s", src, dst)
+    # Mirror the undo through the slot as one batch (remove _rejected
+    # locations, re-append originals).
+    if restored_recs:
+        try:
+            _transact_gallery(
+                owner,
+                [
+                    GalleryItemsRemoved(paths=[r["src"] for r in restored_recs]),
+                    GalleryPathsAppended(
+                        entries=[(r["dst"], _mtime_of(r["dst"])) for r in restored_recs]
+                    ),
+                ],
+            )
+        except Exception:
+            logger.debug("triage.restore_moves: slot transact failed", exc_info=True)
     _refresh_owner_grid(owner)
     return restored
 
 
 def compare_finalists(owner) -> bool:
-    """Dispatch non-rejected best / remaining items to compare (stub).
+    """Dispatch non-rejected best / remaining items to compare.
 
     Uses carry_selected if selection HUD exists; otherwise logs.
     """
@@ -406,6 +594,17 @@ def _refresh_owner_grid(owner) -> None:
             for it in items:
                 if hasattr(w, "refresh_card"):
                     w.refresh_card(it)
+            # P0-2 live "Clean rejected (n)": toggle_reject funnels through
+            # here, so push the count to the strip on every refresh.
+            # Existing StatsStrip.set_rejected_count(n) — signature unchanged.
+            try:
+                strip = getattr(w, "stats_strip", None)
+                setter = getattr(strip, "set_rejected_count", None) if strip is not None else None
+                if callable(setter):
+                    n = sum(1 for it in items if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False))))
+                    setter(int(n))
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -413,7 +612,7 @@ def _refresh_owner_grid(owner) -> None:
 # -- Aliases for design.md spec (Stage 2 crown/reject/S3 flow) ----------
 
 def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
-    """Spec alias for ``keep_best`` — keep best of each series, reject rest.
+    """Keep best of each series, reject the rest (mockup spec ``gallery.keep-best-of-series``).
 
     Collects provenance per series (mirrors triage.keep_best_of_series spec).
     Returns provenance dict ``{series_id: {kept, rejected}}``. Also delegates
@@ -504,11 +703,15 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
         except Exception:
             pass
         _refresh_owner_grid(owner)
+        try:
+            _emit_rank_snapshot(owner)
+        except Exception:
+            pass
         if provenance:
             return provenance
     except Exception:
         pass
-    # Fallback to stub keep_best
+    # Fallback to keep_best
     try:
         keep_best(owner)
     except Exception:

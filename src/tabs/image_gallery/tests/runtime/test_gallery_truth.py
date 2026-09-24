@@ -175,6 +175,9 @@ def test_quick_look_unmeasured_not_fabricated(qtbot):
 
 
 def _owner_with_series(items: list[GalleryItem]):
+    # STORELESS FAIL-OPEN: triage use-case owner (no Redux store); asserts
+    # rank/crown fields only — never pool membership (see
+    # test_gallery_pool_append.py for slot-backed membership coverage).
     class _State:
         def __init__(self):
             self.items = items
@@ -183,7 +186,7 @@ def _owner_with_series(items: list[GalleryItem]):
     class _Owner:
         def __init__(self):
             self.state = _State()
-            # _series_of reads owner._triage_series (not state.series).
+            # _series_of resolves owner._triage_series first, then state.series.
             self._triage_series = [items]
 
     owner = _Owner()
@@ -210,3 +213,194 @@ def test_rank_one_consistent_across_helpers(tmp_path: Path):
     # Winner invariant: exactly one rank-1 across all three fields.
     for field in ("rank", "crown_rank", "triage_rank"):
         assert sum(1 for it in (a2, b2) if getattr(it, field) == 1) == 1
+
+
+def test_keep_best_reads_controller_state_series(tmp_path: Path):
+    """P0-1: controller-shaped owner (``state.series`` only, cf.
+    ``controller.py:529`` — no ``_triage_series``/``triage_series``) is
+    resolved by the sole ``_series_of`` implementation."""
+    a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
+    b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
+
+    class _State:
+        def __init__(self):
+            self.items = [a, b]
+            self.series = [[a, b]]
+
+    class _ControllerOwner:
+        def __init__(self):
+            self.state = _State()
+
+    assert triage_uc.keep_best(_ControllerOwner()) > 0
+    assert a.triage_best is True
+    assert b.triage_best is False
+
+
+def test_strip_count_grows_after_reject_toggle(tmp_path: Path):
+    """P0-2: ``toggle_reject`` → ``_refresh_owner_grid`` pushes the rejected
+    count to ``stats_strip.set_rejected_count`` (Space-reject updates the
+    strip immediately)."""
+    a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
+    b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
+
+    class _StripStub:
+        def __init__(self):
+            self.counts: list[int] = []
+
+        def set_rejected_count(self, n: int) -> None:
+            self.counts.append(int(n))
+
+    class _WidgetOwner:
+        # STORELESS FAIL-OPEN: reject-toggle owner (no Redux store); asserts
+        # strip counts only — never pool membership.
+        def __init__(self):
+            from types import SimpleNamespace
+
+            self.state = SimpleNamespace(items=[a, b])
+            self.stats_strip = _StripStub()
+
+        def rebuild_grid(self, items):  # type: ignore[no-untyped-def]
+            self._last_rebuilt = list(items)
+
+    owner = _WidgetOwner()
+    assert triage_uc.toggle_reject(owner, a.path) is True
+    assert owner.stats_strip.counts and owner.stats_strip.counts[-1] == 1
+    assert triage_uc.toggle_reject(owner, a.path) is False
+    assert owner.stats_strip.counts[-1] == 0
+
+
+# --- S4 parity (W2): fidelity pipeline refreshes the open overlay ----------
+
+_FIDELITY_KEYS = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+
+
+class _GallerySignalStub:
+    def __init__(self):
+        self._slots: list = []
+
+    def connect(self, fn):
+        self._slots.append(fn)
+
+
+class _FakeQuickLookOverlay:
+    """Stand-in for W1's QuickLookOverlay: exposes refresh_metrics(item)."""
+
+    def __init__(self):
+        self.refreshed: list = []
+
+    def refresh_metrics(self, item) -> None:
+        self.refreshed.append(item)
+
+
+class _FidelityWidgetStub:
+    def __init__(self, overlay=None):
+        self.folder_pick_requested = _GallerySignalStub()
+        self.analyze_requested = _GallerySignalStub()
+        self.filter_text_changed = _GallerySignalStub()
+        self.refreshed_cards: list = []
+        self._quick_look_overlay = overlay
+
+    def refresh_card(self, item) -> None:
+        self.refreshed_cards.append(item)
+
+
+def test_fidelity_ready_refreshes_open_overlay_without_reopen(tmp_path: Path):
+    """Overlay opened before fidelity completes shows numbers after delivery.
+
+    Regression for the S4 race: ``_on_fidelity_ready`` must call
+    ``overlay.refresh_metrics(item)`` for the affected item (mirroring the
+    ``_on_artifacts_ready`` refresh pattern) and land metrics strictly by
+    path — no reopen, no cross-item copy.
+
+    STORELESS FAIL-OPEN: the controller runs without a Redux store and the
+    pool mirror is seeded directly (``ctrl.state.items = ...``) because this
+    test asserts metric delivery/overlay refresh — never pool membership.
+    Slot-backed membership coverage lives in ``test_gallery_pool_append.py``.
+    """
+    from PySide6.QtCore import QThreadPool
+
+    from tabs.image_gallery.controller import GalleryController
+
+    a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1, metrics={})
+    b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2, metrics={})
+    overlay = _FakeQuickLookOverlay()
+    widget = _FidelityWidgetStub(overlay=overlay)
+    ctrl = GalleryController(widget, thread_pool=QThreadPool.globalInstance(), context=None)
+    ctrl.state.items = [a, b]
+
+    delivered = {"ssim": 0.94, "hf_ratio": 0.18, "delta_e": 1.8, "upscale_factor": 2}
+    ctrl._on_fidelity_ready({str(a.path): dict(delivered)}, None)
+
+    # Metrics land on the right item, by path.
+    for k, v in delivered.items():
+        assert a.metrics[k] == v
+    # Fail-closed: the undelivered item keeps no fabricated keys.
+    assert all(k not in b.metrics for k in _FIDELITY_KEYS)
+    # Open overlay refreshed for the affected item only — no reopen needed.
+    assert overlay.refreshed == [a]
+    assert a in widget.refreshed_cards
+
+
+def test_set_source_marks_metrics_stale_and_reruns_fidelity(tmp_path: Path):
+    """Set-as-source re-runs the fidelity pass so header and numbers agree."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.ui import quick_look_hooks as _hooks
+
+    old_src = tmp_path / "old.jpg"
+    new_src = tmp_path / "new.jpg"
+    old_src.write_bytes(b"\x00")
+    new_src.write_bytes(b"\x01")
+    a = GalleryItem(
+        path=old_src,
+        mtime_ns=1,
+        metrics={"ssim": 0.9, "hf_ratio": 0.1, "delta_e": 0.5, "upscale_factor": 1,
+                 "embedding_dist_to_centroid": 0.01},
+    )
+    b = GalleryItem(
+        path=new_src,
+        mtime_ns=2,
+        metrics={"ssim": 0.8, "hf_ratio": -0.2, "delta_e": 2.0, "upscale_factor": 2},
+    )
+
+    class _Runner:
+        # STORELESS FAIL-OPEN: fidelity re-run owner (no Redux store); asserts
+        # stale-metric clearing + re-run args — never pool membership.
+        def __init__(self):
+            from tabs.image_gallery.models import GalleryState
+
+            self.state = GalleryState(items=[a, b])
+            self.state.source_path = old_src
+            self.runs: list = []
+
+        def _start_fidelity_analysis(self, items, source_path):
+            self.runs.append((list(items), source_path))
+
+    class _StripStub:
+        def __init__(self):
+            self.modes: list = []
+
+        def set_mode(self, name, source):
+            self.modes.append((name, source))
+
+    runner = _Runner()
+    overlay = _FakeQuickLookOverlay()
+    owner = SimpleNamespace(
+        _controller=runner,
+        _source_path=old_src,
+        _mode=None,
+        stats_strip=_StripStub(),
+        _quick_look_overlay=overlay,
+    )
+
+    _hooks.on_quick_set_source(owner, new_src)
+
+    assert runner.state.source_path == new_src
+    # Stale numbers cleared (non-fidelity keys preserved).
+    for it in (a, b):
+        assert all(k not in it.metrics for k in _FIDELITY_KEYS)
+    assert a.metrics["embedding_dist_to_centroid"] == 0.01
+    # Fidelity pass re-run for the new source.
+    assert runner.runs == [([a, b], new_src)]
+    # Open overlay repainted for the stale items.
+    assert overlay.refreshed == [a, b]

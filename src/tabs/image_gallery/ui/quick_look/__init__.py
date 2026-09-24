@@ -26,6 +26,7 @@ try:
             # Re-export public symbols for ``from tabs.image_gallery.ui.quick_look import X``
             for _name in (
                 "QuickLookOverlay",
+                "DIM_VEIL_ALPHA",
                 "_SourceInsetHost",
                 "_BarWidget",
                 "_DualRestoredInventedBar",

@@ -2,8 +2,8 @@
 
 Thin owner per CODE_PATTERNS.md: construction/wiring + state on Button
 itself (``_gallery_*`` attributes). Bodies live in ``ui/card/*`` helpers
-as plain functions taking the card/owner; no second class, no setStyleSheet
-— painter pipeline owns visuals. Lazy imports avoid cycles.
+as plain functions taking the card/owner; no second class, no ad-hoc
+stylesheets — painter pipeline owns visuals. Lazy imports avoid cycles.
 """
 
 from __future__ import annotations
@@ -30,6 +30,41 @@ GALLERY_CARD_W = 250
 GALLERY_CARD_H = 170
 # Reference: preview 234×110 r8 at 8,8 inside 250×170 r10 outer, bottom zone 52 (110+52+8+8=170) — balanced vertical
 _GALLERY_CONTENT_PADDING: tuple[float, float, float, float] = (8.0, 8.0, 8.0, 8.0)
+
+
+def _theme_is_dark() -> bool:
+    """Darkness for fallback selection — delegates to ``dots._is_dark``."""
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark as _dots_is_dark
+
+        return bool(_dots_is_dark())
+    except Exception:
+        return True
+
+
+def _gallery_card_bg() -> QColor:
+    """Card surface via theme token with a light/dark-aware fallback chain.
+
+    Chain (frozen seam): ``gallery.card.background`` → ``surface.list`` →
+    ``surface.background`` → ``#ffffff`` (light) / dark gray (dark).
+    NOTE: the historical dark-only ``QColor(56, 56, 56)`` default (== the
+    legacy dark ``gallery.card.background`` value) is kept for the dark
+    theme only; the light theme falls back to white.
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        for token in ("gallery.card.background", "surface.list", "surface.background"):
+            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    if _theme_is_dark():
+        return QColor(0x38, 0x38, 0x38)
+    return QColor("#ffffff")
 
 
 def _attach_item(card: Button, item: GalleryItem) -> None:
@@ -133,7 +168,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     # Lazy imports to avoid cycles (CODE_PATTERNS.md).
     from tabs.image_gallery.ui.card.dots import _dots_for_item
     from tabs.image_gallery.ui.card.hover import _CardHoverFilter
-    from tabs.image_gallery.ui.card.painters import _dots_overlay_painter
+    from tabs.image_gallery.ui.card.painters import _gallery_card_overlay_painter
     from tabs.image_gallery.ui.card.regions import _cover_region, _text_rows
     from tabs.image_gallery.ui.card.visuals import _apply_rejected_visuals, apply_fixed_gallery_card_size
 
@@ -194,7 +229,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     cover = _cover_region(actual_item)
     text_rows = _text_rows(actual_item, actual_translate, mode=mode)
     # CustomSplit for 8px padding around preview 234×110 r8 at 8,8, text 52 zone at 118 — matches svg 250×170 r10 outer
-    # Bg region covers whole outer for #383838 padding and bottom rounding — fixes toolkit group seam
+    # Bg region covers whole outer for card-surface padding and bottom rounding — fixes toolkit group seam
     def _bg_rect(r: QRectF) -> QRectF:
         return QRectF(0, 0, r.width(), r.height())
 
@@ -210,7 +245,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 id="bg",
                 group="card",
                 corner_radii=(10, 10, 10, 10),
-                override_bg_color=QColor("#383838"),
+                hover_color=QColor(0, 0, 0, 0),
             ),
             cover,
             ButtonRegion(
@@ -219,7 +254,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
                 weight=1.0,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
-                override_bg_color=QColor("#383838"),
+                hover_color=QColor(0, 0, 0, 0),
             ),
         ],
         split=CustomSplit(rect_fns=[_bg_rect, _cover_rect, _text_rect]),
@@ -227,7 +262,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         size=(GALLERY_CARD_W, GALLERY_CARD_H),
         content_padding=_GALLERY_CONTENT_PADDING,
         corner_radius=10,
-        overlay_painter=_dots_overlay_painter,
+        overlay_painter=_gallery_card_overlay_painter,
         parent=actual_parent,
     )
     card._rows_compact = True  # type: ignore[attr-defined]
@@ -370,6 +405,9 @@ _LAZY_REEXPORTS: dict[str, tuple[str, str]] = {
     "_ERROR_LINE_TOKEN_FALLBACK": ("tabs.image_gallery.ui.card.dots", "_ERROR_LINE_TOKEN_FALLBACK"),
     "_SEVERITY_TOKEN_FALLBACKS": ("tabs.image_gallery.ui.card.dots", "_SEVERITY_TOKEN_FALLBACKS"),
     "_dots_for_item": ("tabs.image_gallery.ui.card.dots", "_dots_for_item"),
+    "_accent_color": ("tabs.image_gallery.ui.card.dots", "_accent_color"),
+    "_error_line_color": ("tabs.image_gallery.ui.card.dots", "_error_line_color"),
+    "_is_dark": ("tabs.image_gallery.ui.card.dots", "_is_dark"),
     "_severity_color": ("tabs.image_gallery.ui.card.dots", "_severity_color"),
     "_token_color": ("tabs.image_gallery.ui.card.dots", "_token_color"),
     "GALLERY_CARD_FLYOUT_GROUP": ("tabs.image_gallery.ui.card.hover", "GALLERY_CARD_FLYOUT_GROUP"),
@@ -381,6 +419,7 @@ _LAZY_REEXPORTS: dict[str, tuple[str, str]] = {
     "hide_gallery_card_flyout": ("tabs.image_gallery.ui.card.hover", "hide_gallery_card_flyout"),
     "show_gallery_card_flyout": ("tabs.image_gallery.ui.card.hover", "show_gallery_card_flyout"),
     "_dots_overlay_painter": ("tabs.image_gallery.ui.card.painters", "_dots_overlay_painter"),
+    "_gallery_card_overlay_painter": ("tabs.image_gallery.ui.card.painters", "_gallery_card_overlay_painter"),
     "_left_badge_painter": ("tabs.image_gallery.ui.card.painters", "_left_badge_painter"),
     "_cover_region": ("tabs.image_gallery.ui.card.regions", "_cover_region"),
     "_item_unreadable": ("tabs.image_gallery.ui.card.regions", "_item_unreadable"),
