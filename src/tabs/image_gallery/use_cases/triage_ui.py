@@ -49,6 +49,34 @@ def owner_for_triage(owner):
     return owner
 
 
+def _set_owner_selection(triage_owner, owner, paths: list) -> None:
+    """Wholesale selection routed through the slot when available.
+
+    Controllers expose ``set_selection`` (dispatches GallerySelectionSet +
+    mirrors locally); storeless owners (widget-only unit contexts) keep the
+    direct ``selected_paths``/``selected_order`` writes, verbatim.
+    """
+    setter = getattr(triage_owner, "set_selection", None)
+    if callable(setter):
+        try:
+            setter(list(paths))
+            return
+        except Exception:
+            pass
+    try:
+        triage_owner.state.selected_paths = set(paths)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        triage_owner.state.selected_order = list(paths)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        owner._grid_view.apply_selection(set(paths))  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
 def current_path(owner) -> Path | None:
     """Return current gallery path for keyboard actions.
 
@@ -130,16 +158,7 @@ def handle_key(owner, event) -> None:
             try:
                 sel = triage_owner.state.selected_paths  # type: ignore[attr-defined]
                 if sel:
-                    sel.clear()  # type: ignore[attr-defined]
-                    try:
-                        order = triage_owner.state.selected_order  # type: ignore[attr-defined]
-                        order.clear()  # type: ignore[attr-defined]
-                    except Exception:
-                        pass
-                    try:
-                        owner._grid_view.apply_selection(set())  # type: ignore[attr-defined]
-                    except Exception:
-                        pass
+                    _set_owner_selection(triage_owner, owner, [])
                     event.accept()
                     return
             except Exception:
@@ -244,18 +263,7 @@ def handle_key(owner, event) -> None:
             nxt_path = Path(items[nxt_idx].path)
             triage_owner = owner_for_triage(owner)
             try:
-                try:
-                    triage_owner.state.selected_paths = {nxt_path}  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-                try:
-                    triage_owner.state.selected_order = [nxt_path]  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-                try:
-                    owner._grid_view.apply_selection({nxt_path})  # type: ignore[attr-defined]
-                except Exception:
-                    pass
+                _set_owner_selection(triage_owner, owner, [nxt_path])
             except Exception:
                 pass
             event.accept()
