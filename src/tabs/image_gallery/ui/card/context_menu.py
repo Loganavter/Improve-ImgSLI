@@ -14,6 +14,8 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
     try:
         from sli_ui_toolkit.widgets import ContextMenu, ContextMenuAction
 
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+
         # Resolve mode: explicit > card attribute > owner state.
         _mode = mode
         if _mode is None:
@@ -59,6 +61,13 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
                 )
             )
         menu = ContextMenu(entries=entries)
+        _dbg(
+            "card menu popup path=%s mode=%r owner=%s n_entries=%d",
+            path,
+            ms,
+            type(owner).__name__,
+            len(entries),
+        )
         # Flyout group identity for policy.
         try:
             menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
@@ -96,9 +105,16 @@ def _ctx_make_best(owner, path: Path) -> None:
 
 def _ctx_toggle_reject(owner, path: Path) -> None:
     try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg
         from tabs.image_gallery.use_cases import triage as _triage
 
-        _triage.toggle_reject(owner, path)
+        _dbg("reject clicked path=%s owner=%s", path, type(owner).__name__)
+        try:
+            result = _triage.toggle_reject(owner, path)
+        except Exception:
+            _dbg("reject toggle_reject raised path=%s", path, exc_info=True)
+            return
+        _dbg("reject toggle_reject returned %r path=%s", result, path)
     except Exception:
         pass
 

@@ -405,7 +405,15 @@ def make_best(owner, path: Path) -> bool:
 
 def toggle_reject(owner, path: Path) -> bool:
     """Toggle rejected flag for *path*."""
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+
     items = _items_of(owner)
+    _dbg(
+        "toggle_reject ENTER path=%s owner=%s pool=%d",
+        path,
+        type(owner).__name__,
+        len(items),
+    )
     for it in items:
         try:
             if Path(it.path) == Path(path):
@@ -419,10 +427,12 @@ def toggle_reject(owner, path: Path) -> bool:
                     it.triage_rejected = new
                 except Exception:
                     pass
+                _dbg("toggle_reject applied path=%s rejected=%s", path, new)
                 _refresh_owner_grid(owner)
                 return new
         except Exception:
             continue
+    _dbg("toggle_reject MISS path=%s pool_paths=%r", path, [str(getattr(it, "path", None)) for it in items[:5]])
     return False
 
 
