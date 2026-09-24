@@ -12,7 +12,52 @@ from pathlib import Path
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _slot_selection(owner) -> list[str] | None:
+    """Gallery slot selection (ordered path-id strings), or None.
+
+    Returns None when no store/slot is available (storeless unit contexts)
+    so callers fall back to the local mirror. When the slot exists it is
+    authoritative — even when empty (a cleared selection must not resurrect
+    the local mirror).
+    """
+    try:
+        from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+        from tabs.image_gallery.state import selectors as _selectors
+    except Exception:
+        return None
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None:
+            continue
+        try:
+            ctx = getattr(cand, "_context", None) or getattr(cand, "context", None)
+            store = getattr(ctx, "store", None) or getattr(cand, "store", None)
+            if store is None or not hasattr(store, "get_session_state_slot"):
+                continue
+            slot = store.get_session_state_slot(GALLERY_SLOT_NAME)
+            if slot is None:
+                continue
+            return list(_selectors.get_selection(slot))
+        except Exception:
+            continue
+    return None
+
+
 def _selected_paths(owner) -> list[Path]:
+    slot_sel = _slot_selection(owner)
+    if slot_sel is not None:
+        out: list[Path] = []
+        for p in slot_sel:
+            try:
+                out.append(Path(p) if not isinstance(p, Path) else p)
+            except Exception:
+                continue
+        return out
     state = getattr(owner, "state", None)
     if state is None:
         return []

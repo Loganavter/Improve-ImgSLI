@@ -15,6 +15,13 @@ import logging
 import shutil
 from pathlib import Path
 
+from core.state_management.gallery_actions import (
+    GalleryItemsRemoved,
+    GalleryPathsAppended,
+    GalleryTriageFinished,
+)
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+
 # Toolkit usage per S3 spec: scaled_px + ThemeManager tokens (no QSS) — ensure
 # provenance logic respects theme scaling where UI consumes it (clean_review).
 # No direct ThemeManager.get_color calls (contracts forbid outside theme infra)
@@ -29,6 +36,137 @@ except Exception:
     ThemeManager = None  # type: ignore
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _emit_gallery(owner, action) -> bool:
+    """Dispatch one gallery action with scope 'gallery' via the owner chain.
+
+    Prefers the controller's ``_emit_gallery`` (session-aware write path);
+    falls back to a direct dispatcher dispatch resolved from any visible
+    context/store. Returns False when no dispatcher is wired (storeless
+    unit contexts keep pure-local behavior). Never mutates slot values.
+    """
+    seen: set[int] = set()
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None or id(cand) in seen:
+            continue
+        seen.add(id(cand))
+        emit = getattr(cand, "_emit_gallery", None)
+        if callable(emit):
+            try:
+                if bool(emit(action)):
+                    return True
+            except Exception:
+                pass
+    for cand in candidates:
+        if cand is None:
+            continue
+        try:
+            ctx = getattr(cand, "_context", None) or getattr(cand, "context", None)
+            store = getattr(ctx, "store", None) or getattr(cand, "store", None)
+            dispatcher = store.get_dispatcher() if store is not None else None
+            if dispatcher is None:
+                continue
+            dispatcher.dispatch(action, scope=GALLERY_SLOT_NAME)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _transact_gallery(owner, actions) -> bool:
+    """Batch path: Store.transact([...], scope='gallery'), else sequential."""
+    batch = [a for a in actions or []]
+    if not batch:
+        return False
+    seen: set[int] = set()
+    candidates = [owner]
+    for attr in ("_controller", "_owner", "widget", "_widget"):
+        try:
+            candidates.append(getattr(owner, attr, None))
+        except Exception:
+            pass
+    for cand in candidates:
+        if cand is None or id(cand) in seen:
+            continue
+        seen.add(id(cand))
+        meth = getattr(cand, "_transact_gallery", None)
+        if callable(meth):
+            try:
+                if bool(meth(batch)):
+                    return True
+            except Exception:
+                pass
+    ok = False
+    for action in batch:
+        try:
+            ok = _emit_gallery(owner, action) or ok
+        except Exception:
+            pass
+    return ok
+
+
+def _emit_rank_snapshot(owner) -> bool:
+    """Mirror local ranks into the slot (GalleryTriageFinished, same summary).
+
+    keep_best / make_best / keep_best_of_series re-rank locally; the slot's
+    per-item ranks would otherwise go stale. Triage state/mode/source pass
+    through unchanged — only ranks move.
+    """
+    try:
+        st = getattr(owner, "state", None)
+        if st is None:
+            return False
+        ranks: dict[str, int] = {}
+        for it in list(getattr(st, "items", []) or []):
+            try:
+                r = getattr(it, "rank", None)
+                if r is not None:
+                    ranks[str(getattr(it, "path"))] = int(r)
+            except Exception:
+                continue
+        ts = getattr(getattr(st, "triage_state", "done"), "value", None)
+        if ts is None:
+            ts = getattr(st, "triage_state", "done")
+        try:
+            triage_state = str(ts or "done")
+        except Exception:
+            triage_state = "done"
+        mode = getattr(st, "mode", None)
+        mode = getattr(mode, "value", mode)
+        try:
+            mode_s = str(mode) if mode is not None else None
+        except Exception:
+            mode_s = None
+        source = getattr(st, "source_path", None)
+        try:
+            source_s = str(source) if source is not None else None
+        except Exception:
+            source_s = None
+        return _emit_gallery(
+            owner,
+            GalleryTriageFinished(
+                triage_state=triage_state,
+                mode=mode_s,
+                source_path=source_s,
+                ranks=ranks,
+            ),
+        )
+    except Exception:
+        return False
+
+
+def _mtime_of(path) -> int:
+    try:
+        return int(Path(path).stat().st_mtime_ns)
+    except Exception:
+        return 0
 
 
 def _items_of(owner) -> list:
@@ -190,6 +328,10 @@ def keep_best(owner) -> int:
             pass
     # Refresh grid if owner has widget
     _refresh_owner_grid(owner)
+    try:
+        _emit_rank_snapshot(owner)
+    except Exception:
+        pass
     logger.debug("triage.keep_best: marked %d best", count)
     return count
 
@@ -219,6 +361,10 @@ def make_best(owner, path: Path) -> bool:
                     it.triage_rank = 1
                     it.rank = 1
                     _refresh_owner_grid(owner)
+                    try:
+                        _emit_rank_snapshot(owner)
+                    except Exception:
+                        pass
                     return True
             except Exception:
                 continue
@@ -250,6 +396,10 @@ def make_best(owner, path: Path) -> bool:
         except Exception:
             pass
     _refresh_owner_grid(owner)
+    try:
+        _emit_rank_snapshot(owner)
+    except Exception:
+        pass
     return True
 
 
@@ -320,6 +470,22 @@ def clean_rejected(owner) -> list[dict]:
                 pass
         except Exception:
             logger.exception("triage.clean_rejected: move failed %s -> %s", src, dst)
+    # Route the move through the slot as one batch (remove old + append new
+    # locations) so pool membership stays tracer-visible; the local mirror
+    # keeps the moved items with their new paths, verbatim as before.
+    if moves:
+        try:
+            _transact_gallery(
+                owner,
+                [
+                    GalleryItemsRemoved(paths=[m["path"] for m in moves]),
+                    GalleryPathsAppended(
+                        entries=[(m["src"], _mtime_of(m["src"])) for m in moves]
+                    ),
+                ],
+            )
+        except Exception:
+            logger.debug("triage.clean_rejected: slot transact failed", exc_info=True)
     _refresh_owner_grid(owner)
     logger.debug("triage.clean_rejected: moved %d", len(moves))
     return moves
@@ -328,6 +494,7 @@ def clean_rejected(owner) -> list[dict]:
 def restore_moves(owner, moves: list[dict]) -> int:
     """Undo clean_rejected moves."""
     restored = 0
+    restored_recs: list[dict] = []
     for rec in moves or []:
         src = rec.get("src")
         dst = rec.get("dst")
@@ -336,6 +503,7 @@ def restore_moves(owner, moves: list[dict]) -> int:
         try:
             shutil.move(src, dst)
             restored += 1
+            restored_recs.append(rec)
             # Update item path back
             for it in _items_of(owner):
                 try:
@@ -345,6 +513,21 @@ def restore_moves(owner, moves: list[dict]) -> int:
                     pass
         except Exception:
             logger.exception("triage.restore_moves: undo failed %s -> %s", src, dst)
+    # Mirror the undo through the slot as one batch (remove _rejected
+    # locations, re-append originals).
+    if restored_recs:
+        try:
+            _transact_gallery(
+                owner,
+                [
+                    GalleryItemsRemoved(paths=[r["src"] for r in restored_recs]),
+                    GalleryPathsAppended(
+                        entries=[(r["dst"], _mtime_of(r["dst"])) for r in restored_recs]
+                    ),
+                ],
+            )
+        except Exception:
+            logger.debug("triage.restore_moves: slot transact failed", exc_info=True)
     _refresh_owner_grid(owner)
     return restored
 
@@ -520,6 +703,10 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
         except Exception:
             pass
         _refresh_owner_grid(owner)
+        try:
+            _emit_rank_snapshot(owner)
+        except Exception:
+            pass
         if provenance:
             return provenance
     except Exception:
