@@ -100,6 +100,18 @@ _UNDOABLE_TYPES = frozenset(
         "multi_compare/set_pan",
         "multi_compare/reset_view",
         "multi_compare/apply_layout_tree",
+        # gallery session slot ("gallery"). Membership + triage ops only —
+        # progress actions (GALLERY_THUMBNAILS_READY) and view state
+        # (GALLERY_SELECTION_SET, GALLERY_FILTER_SET) stay out, mirroring
+        # the multi_compare focus/pixel-note exclusion above. Slots are
+        # path-only (pixmaps live in the tab's thumbnail cache, never in
+        # state), so a reference-snapshot undo restores paths that
+        # re-resolve against the still-warm cache.
+        "GALLERY_POOL_OPENED",
+        "GALLERY_PATHS_APPENDED",
+        "GALLERY_POOL_REPLACED",
+        "GALLERY_ITEMS_REMOVED",
+        "GALLERY_TRIAGE_FINISHED",
     }
 )
 
