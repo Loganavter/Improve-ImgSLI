@@ -38,6 +38,35 @@ def _selected_set(owner) -> set[Path]:
     return out
 
 
+def _dispatch_selection(owner, norm: set[Path]) -> None:
+    """Dispatch the wholesale selection to the ``gallery`` slot (fail-open).
+
+    Ordered ids preserve the owner's ``selected_order`` when tracked,
+    else sorted path strings. The legacy ``owner.state`` mutation below
+    stays until the controller reads the slot (W2b) — the reducer dedups
+    identical selections, so this dispatch is idempotent.
+    """
+    try:
+        ordered: list[str] = []
+        try:
+            track = list(getattr(getattr(owner, "state", None), "selected_order", None) or [])
+            if track:
+                ordered = [str(p) for p in track]
+        except Exception:
+            ordered = []
+        if not ordered:
+            try:
+                ordered = sorted(str(p) for p in norm)
+            except Exception:
+                ordered = [str(p) for p in norm]
+        from core.state_management.gallery_actions import GallerySelectionSet
+        from tabs.image_gallery.ui.gallery_store import dispatch_gallery
+
+        dispatch_gallery(owner, GallerySelectionSet(selected_ids=ordered))
+    except Exception:
+        pass
+
+
 def _set_selected(owner, paths: set[Path]) -> None:
     norm = set(Path(p) for p in paths)
     try:
@@ -57,6 +86,8 @@ def _set_selected(owner, paths: set[Path]) -> None:
             owner.state.selected_order = new_order  # type: ignore[attr-defined]
         except Exception:
             pass
+    # Dispatch AFTER the legacy order update so the action carries fresh order.
+    _dispatch_selection(owner, norm)
     _notify_selection_changed(owner, norm)
 
 

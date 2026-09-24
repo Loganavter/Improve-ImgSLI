@@ -126,6 +126,61 @@ def _fallback_folder(paths: list[Path]) -> Path:
     return paths[0].parent
 
 
+def _dispatch_drop_pool(owner, *, all_files: bool, has_dir: bool, paths: list[Path], folder: Path | None) -> None:
+    """Dispatch the pool action matching this drop (fail-open, Wave 2c).
+
+    Mirrors the routing below: file-only drops append, mixed folder+files
+    replace, pure folders open. Entries are ``[(path, mtime_ns), ...]`` —
+    plain scalars per the frozen seam. The legacy ``ctrl.open_*`` calls
+    stay (controller-owned thumbnail/triage side-effects until W2b reads
+    the slot); the reducer dedups re-drops, so dispatch is idempotent.
+    """
+    try:
+        from core.state_management.gallery_actions import (
+            GalleryPathsAppended,
+            GalleryPoolOpened,
+            GalleryPoolReplaced,
+        )
+        from tabs.image_gallery.ui.gallery_store import (
+            dispatch_gallery,
+            entries_for_folder,
+            entries_for_paths,
+        )
+
+        if all_files and not has_dir:
+            dispatch_gallery(owner, GalleryPathsAppended(entries=entries_for_paths(paths)))
+            return
+        if folder is None:
+            dispatch_gallery(owner, GalleryPathsAppended(entries=entries_for_paths(paths)))
+            return
+        folder_entries = entries_for_folder(folder)
+        try:
+            from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTS3
+
+            dropped_files = [
+                p for p in paths
+                if p.is_file() and p.suffix.lower() in _EXTS3
+            ]
+        except Exception:
+            dropped_files = []
+        if dropped_files:
+            seen: set[str] = set()
+            merged: list[tuple[str, int]] = []
+            for e in entries_for_paths(dropped_files) + folder_entries:
+                if e[0] not in seen:
+                    seen.add(e[0])
+                    merged.append(e)
+            dispatch_gallery(
+                owner, GalleryPoolReplaced(folder=str(folder), entries=merged)
+            )
+        else:
+            dispatch_gallery(
+                owner, GalleryPoolOpened(folder=str(folder), entries=folder_entries)
+            )
+    except Exception:
+        pass
+
+
 def _route_paths(owner, paths: list[Path]) -> bool:
     """Shared routing for widget + zone drops — one rule everywhere.
 
@@ -165,6 +220,23 @@ def _route_paths(owner, paths: list[Path]) -> bool:
         has_dir = False
     _dnd_log("dropEvent decision: all_files=%s has_dir=%s", all_files, has_dir)
     ctrl = _controller_of(owner)
+    # Redux first (fail-open): the gesture's state change is a dispatched
+    # pool action; the controller calls below stay for pixmap/thumbnail
+    # side-effects until the controller reads the slot (W2b).
+    _folder_hint: Path | None = None
+    for p in paths:
+        try:
+            if p.is_dir():
+                _folder_hint = p
+                break
+        except Exception:
+            continue
+    if _folder_hint is None and not (all_files and not has_dir):
+        try:
+            _folder_hint = _fallback_folder(paths)
+        except Exception:
+            _folder_hint = None
+    _dispatch_drop_pool(owner, all_files=all_files, has_dir=has_dir, paths=list(paths), folder=_folder_hint)
     if all_files and not has_dir:
         _dnd_log("dropEvent single/multi image %d files -> open_paths (not parent folder)", len(paths))
         if ctrl is not None and hasattr(ctrl, "open_paths"):
@@ -276,6 +348,20 @@ def try_open_folder(owner, folder: Path) -> None:
     """Open *folder* via the widget's controller, else emit pick request."""
     folder = Path(folder)
     _dnd_log("try_open_folder: %s ctrl=%s", folder, getattr(owner, "_controller", None))
+    try:
+        from core.state_management.gallery_actions import GalleryPoolOpened
+        from tabs.image_gallery.ui.gallery_store import dispatch_gallery, entries_for_folder
+
+        try:
+            is_dir = folder.is_dir()
+        except Exception:
+            is_dir = False
+        if is_dir:
+            dispatch_gallery(
+                owner, GalleryPoolOpened(folder=str(folder), entries=entries_for_folder(folder))
+            )
+    except Exception:
+        pass
     try:
         ctrl = owner._controller
         if ctrl is not None and hasattr(ctrl, "open_folder"):
