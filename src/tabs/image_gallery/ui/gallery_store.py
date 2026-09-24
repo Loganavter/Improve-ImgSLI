@@ -17,8 +17,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-GALLERY_SCOPE = "gallery"
-GALLERY_SLOT_NAME = "gallery"
+# Single source of truth for the seam literals (Wave-1 frozen interface):
+# slot + scope both come from bootstrap_reducers — no second definition.
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+
+GALLERY_SCOPE = GALLERY_SLOT_NAME
 
 
 def resolve_store(owner: Any) -> Any | None:
