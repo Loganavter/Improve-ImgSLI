@@ -175,6 +175,9 @@ def test_quick_look_unmeasured_not_fabricated(qtbot):
 
 
 def _owner_with_series(items: list[GalleryItem]):
+    # STORELESS FAIL-OPEN: triage use-case owner (no Redux store); asserts
+    # rank/crown fields only — never pool membership (see
+    # test_gallery_pool_append.py for slot-backed membership coverage).
     class _State:
         def __init__(self):
             self.items = items
@@ -248,6 +251,8 @@ def test_strip_count_grows_after_reject_toggle(tmp_path: Path):
             self.counts.append(int(n))
 
     class _WidgetOwner:
+        # STORELESS FAIL-OPEN: reject-toggle owner (no Redux store); asserts
+        # strip counts only — never pool membership.
         def __init__(self):
             from types import SimpleNamespace
 
@@ -306,6 +311,11 @@ def test_fidelity_ready_refreshes_open_overlay_without_reopen(tmp_path: Path):
     ``overlay.refresh_metrics(item)`` for the affected item (mirroring the
     ``_on_artifacts_ready`` refresh pattern) and land metrics strictly by
     path — no reopen, no cross-item copy.
+
+    STORELESS FAIL-OPEN: the controller runs without a Redux store and the
+    pool mirror is seeded directly (``ctrl.state.items = ...``) because this
+    test asserts metric delivery/overlay refresh — never pool membership.
+    Slot-backed membership coverage lives in ``test_gallery_pool_append.py``.
     """
     from PySide6.QtCore import QThreadPool
 
@@ -354,6 +364,8 @@ def test_set_source_marks_metrics_stale_and_reruns_fidelity(tmp_path: Path):
     )
 
     class _Runner:
+        # STORELESS FAIL-OPEN: fidelity re-run owner (no Redux store); asserts
+        # stale-metric clearing + re-run args — never pool membership.
         def __init__(self):
             from tabs.image_gallery.models import GalleryState
 

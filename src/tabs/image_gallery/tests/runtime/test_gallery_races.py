@@ -12,9 +12,17 @@ from pathlib import Path
 
 from PySide6.QtCore import QThreadPool
 
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.services import folder_scanner
+from tabs.image_gallery.state import selectors as gallery_selectors
+from tabs.image_gallery.tests._gallery_dispatch_doubles import (
+    dispatched_kinds,
+    dispatched_scopes,
+    gallery_slot,
+    make_gallery_context,
+)
 
 
 class _SignalStub:
@@ -61,11 +69,19 @@ class _WidgetStub:
 
 def _make_ctrl() -> tuple[GalleryController, _WidgetStub]:
     widget = _WidgetStub()
-    ctrl = GalleryController(widget, thread_pool=QThreadPool.globalInstance(), context=None)
+    context, _store = make_gallery_context()
+    ctrl = GalleryController(
+        widget, thread_pool=QThreadPool.globalInstance(), context=context
+    )
     # Silence real background triage/thumbnails: this test drives handlers directly.
     ctrl._start_triage = lambda items: None  # type: ignore[method-assign]
     ctrl._load_thumbnail = lambda item: None  # type: ignore[method-assign]
     return ctrl, widget
+
+
+def _slot(ctrl: GalleryController):
+    store = ctrl._context.store
+    return gallery_slot(store)
 
 
 def _img(tmp_path: Path, name: str) -> Path:
@@ -81,13 +97,21 @@ def test_folder_switch_drops_stale_triage(tmp_path: Path):
 
     ctrl.open_paths([a])
     stale_gen = ctrl._folder_gen
-    ctrl.open_paths([b])
+    # Replace path (folder switch) bumps the generation; plain file drops
+    # append and leave it untouched.
+    ctrl.open_paths([b], replace=True)
     assert ctrl._folder_gen != stale_gen
+    store = ctrl._context.store
+    assert dispatched_kinds(store)[-1] == "GalleryPoolReplaced"
+    assert all(s == GALLERY_SLOT_NAME for s in dispatched_scopes(store))
+    # Slot holds only the new folder's pool (replace wiped A).
+    assert gallery_selectors.get_item_paths(_slot(ctrl)) == [str(b)]
 
     # Late triage result from folder A arrives after the switch.
     ctrl._on_triage_ready((["series-from-A"], None, None), stale_gen)
     assert ctrl.state.series == []
     assert [it.path for it in ctrl.state.items] == [b]
+    assert gallery_selectors.get_item_paths(_slot(ctrl)) == [str(b)]
 
 
 def test_folder_switch_drops_stale_artifacts_and_thumbnails(tmp_path: Path):
@@ -98,7 +122,8 @@ def test_folder_switch_drops_stale_artifacts_and_thumbnails(tmp_path: Path):
     ctrl.open_paths([a])
     stale_gen = ctrl._folder_gen
     item_a = ctrl.state.items[0]
-    ctrl.open_paths([b])
+    ctrl.open_paths([b], replace=True)
+    assert gallery_selectors.get_item_paths(_slot(ctrl)) == [str(b)]
 
     # Stale artifact catalog must not touch the new folder's items.
     ctrl._on_artifacts_ready({str(item_a.path): {"x": 1}}, stale_gen)
@@ -133,6 +158,10 @@ def test_filter_debounce_and_stale_brief_drop(tmp_path: Path):
     ctrl.set_filter_text("banana")
     ctrl.apply_pending_filter()
     assert ctrl.state.filter_text == "banana"
+    store = ctrl._context.store
+    assert dispatched_kinds(store)[-1] == "GalleryFilterSet"
+    assert all(s == GALLERY_SLOT_NAME for s in dispatched_scopes(store))
+    assert gallery_selectors.get_filter_text(_slot(ctrl)) == "banana"
     assert widget._visible[a] is False
     assert widget._visible[b] is True
 
