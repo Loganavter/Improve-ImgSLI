@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject
@@ -11,6 +12,51 @@ from sli_ui_toolkit.managers import scaled_px
 
 # Stage 2 flyout group for hover capsule (FLYOUT_SYSTEM.md).
 GALLERY_CARD_FLYOUT_GROUP = "gallery_card"
+
+# Post-action suppression window (ms): grid rebuilds recreate cards under
+# the cursor, whose fresh Enter would instantly re-show the capsule the
+# action just hid. Stamped on the owner (survives rebuilds).
+_CAPSULE_SUPPRESS_MS = 600
+
+
+def _suppress_capsule(owner, card=None, ms: int = _CAPSULE_SUPPRESS_MS) -> None:
+    try:
+        until = time.monotonic() + max(0, int(ms)) / 1000.0
+        for obj in (owner, card):
+            try:
+                if obj is not None:
+                    obj._gallery_capsule_suppress_until = until  # type: ignore[attr-defined]
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _capsule_suppressed(owner, card=None) -> bool:
+    try:
+        now = time.monotonic()
+        for obj in (owner, card):
+            try:
+                if obj is not None and now < float(getattr(obj, "_gallery_capsule_suppress_until", 0.0) or 0.0):
+                    return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return False
+
+
+def _notify_owner_hud(owner, text: str) -> None:
+    """Transient HUD notice for card actions (fail-open)."""
+    try:
+        hud = getattr(owner, "_selection_hud", None)
+        if hud is None:
+            w = getattr(owner, "widget", None)
+            hud = getattr(w, "_selection_hud", None) if w is not None else None
+        if hud is not None and hasattr(hud, "notify"):
+            hud.notify(text)
+    except Exception:
+        pass
 
 
 def _theme_is_dark() -> bool:
@@ -93,7 +139,15 @@ class _CardHoverFilter(QObject):
                 except Exception:
                     pass
                 try:
-                    show_gallery_card_flyout(self._card, self._owner)
+                    if _capsule_suppressed(self._owner, self._card):
+                        try:
+                            from tabs.image_gallery.debug import gallery_debug as _dbg
+
+                            _dbg("capsule show suppressed (post-action window)")
+                        except Exception:
+                            pass
+                    else:
+                        show_gallery_card_flyout(self._card, self._owner)
                 except Exception:
                     pass
             elif event.type() == QEvent.Type.Leave:
@@ -248,6 +302,18 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
 
         # Wire actionTriggered to triage helpers.
         def _on_trigger(action_id: str, c=card, o=owner) -> None:
+            try:
+                from tabs.image_gallery.debug import gallery_debug as _dbg
+            except Exception:
+                _dbg = None  # type: ignore[assignment]
+
+            def _log(msg, *args):
+                try:
+                    if _dbg is not None:
+                        _dbg(msg, *args)
+                except Exception:
+                    pass
+
             # Resolve owner: explicit or stored on card/window.
             actual_owner = o
             if actual_owner is None:
@@ -266,15 +332,25 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
                     path = Path(str(c.property("gallery_path") or ""))
                 except Exception:
                     return
+            _log("capsule action %s path=%s", action_id, path)
             try:
                 if action_id == "make_best":
                     from tabs.image_gallery.use_cases import triage as _triage
 
                     _triage.make_best(actual_owner, path)
+                    _after_card_action(c, actual_owner, f"Best: {Path(path).name}")
                 elif action_id == "reject":
                     from tabs.image_gallery.use_cases import triage as _triage
 
-                    _triage.toggle_reject(actual_owner, path)
+                    try:
+                        rejected = bool(_triage.toggle_reject(actual_owner, path))
+                    except Exception:
+                        _log("capsule reject raised path=%s", path, exc_info=True)
+                        return
+                    name = Path(path).name
+                    _after_card_action(
+                        c, actual_owner, f"Rejected {name}" if rejected else f"Restored {name}"
+                    )
                 elif action_id == "compare":
                     # Dispatch to carry/compare — reuse selection/carry flow.
                     from tabs.image_gallery.use_cases import carry as _carry
@@ -332,6 +408,27 @@ def show_gallery_card_flyout(card, owner=None) -> None:  # type: ignore[no-untyp
                     flyout.show_for_button(card)  # type: ignore[attr-defined]
                 except Exception:
                     pass
+    except Exception:
+        pass
+
+
+def _after_card_action(card, owner, notice: str | None = None) -> None:
+    """Close the capsule after an action, block its instant re-show, notify.
+
+    The grid rebuild recreates cards under the cursor — without suppression
+    the fresh Enter re-opens the capsule the action just closed.
+    """
+    try:
+        hide_gallery_card_flyout(card)
+    except Exception:
+        pass
+    _suppress_capsule(owner, card)
+    if notice:
+        _notify_owner_hud(owner, notice)
+    try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+
+        _dbg("capsule action done notice=%r", notice)
     except Exception:
         pass
 
