@@ -1,7 +1,8 @@
-"""Carry selected images to a workspace tab via ImageCarryService / EventBus.
+"""Carry selected images to a workspace tab via ImageCarryService.
 
 Plain function taking the owner; no implied lookups — owner, paths, and
 services are resolved explicitly from owner attributes or via direct imports.
+ImageCarryService is the only dispatch path (no EventBus fallback).
 """
 
 from __future__ import annotations
@@ -103,38 +104,6 @@ def _dispatch_via_image_carry(paths: list[Path], *, pixmap=None) -> bool:
     return False
 
 
-def _dispatch_via_event_bus(owner, paths: list[Path]) -> bool:
-    """Fallback: emit via owner's EventBus if available (not primary path)."""
-    bus = None
-    for attr in ("event_bus", "_event_bus", "bus"):
-        bus = getattr(owner, attr, None)
-        if bus is not None:
-            break
-    if bus is None:
-        # Try to resolve from main window / context if owner holds it.
-        ctx = getattr(owner, "_context", None) or getattr(owner, "context", None)
-        if ctx is not None:
-            bus = getattr(ctx, "event_bus", None)
-    if bus is None or not hasattr(bus, "emit"):
-        return False
-    try:
-        # Generic payload — listeners on workspace switch can pick it up.
-        # We avoid a hard dependency on a specific Event type; try common ones.
-        from core.events import Event  # noqa: F401
-
-        # Use a lightweight dict-like event if available; otherwise no-op.
-        # Emit a simple custom event carrying paths.
-        class GalleryCarryRequested:  # minimal duck-typed Event
-            def __init__(self, paths):  # type: ignore[no-untyped-def]
-                self.paths = paths
-
-        bus.emit(GalleryCarryRequested(paths))
-        return True
-    except Exception:
-        logger.debug("carry: EventBus emit failed", exc_info=True)
-        return False
-
-
 def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: ignore[no-untyped-def]
     """Intentional placeholder for “Find similar” — semantic search for images
     similar to selection (parity plan non-goal: HUD button stays a stub).
@@ -196,9 +165,5 @@ def carry_selected(owner, *, pixmap=None) -> bool:  # type: ignore[no-untyped-de
         logger.debug("carry_selected: dispatched via ImageCarryService (%d paths)", len(existing))
         return True
 
-    if _dispatch_via_event_bus(owner, existing):
-        logger.debug("carry_selected: dispatched via EventBus (%d paths)", len(existing))
-        return True
-
-    logger.warning("carry_selected: dispatch failed — no ImageCarryService/EventBus available")
+    logger.warning("carry_selected: dispatch failed — no ImageCarryService available")
     return False
