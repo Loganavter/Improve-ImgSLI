@@ -31,6 +31,11 @@ class ImageGalleryPlugin(Plugin, ISessionPlugin):
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.event_bus = getattr(context, "event_bus", None)
+        from tabs.image_gallery.bootstrap_reducers import (
+            register_gallery_reducers,
+        )
+
+        register_gallery_reducers()
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return (
