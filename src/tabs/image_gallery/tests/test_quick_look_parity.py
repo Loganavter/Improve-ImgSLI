@@ -136,7 +136,7 @@ def test_all_artifact_rows_shown_including_clean(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert len(ov._artifact_rows) == 2
-    assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
+    assert ov._artifact_rows and all(w.isVisibleTo(ov._report_host) for w in ov._artifact_rows)
     texts = [
         lbl.text()
         for w in ov._artifact_rows
@@ -162,7 +162,7 @@ def test_non_clean_artifact_rows_shown(qtbot):
     _show(ov, item, [item])
     # Mockup set only (Banding + Halo); severities read severity-only.
     assert len(ov._artifact_rows) == 2
-    assert ov._artifacts_host.isVisibleTo(ov._artifacts_host.parentWidget())
+    assert ov._artifact_rows and all(w.isVisibleTo(ov._report_host) for w in ov._artifact_rows)
     texts = [
         lbl.text()
         for w in ov._artifact_rows

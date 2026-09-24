@@ -44,9 +44,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
             return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
 
+    # Rows live flat in right_lay (see helpers.relayout_report_rows); the
+    # report host is their visible ancestor (falls back to parentless for
+    # bare stubs like the truth-test harness, which only reads _metric_rows).
+    host = getattr(overlay, "_report_host", None)
+    lay = getattr(overlay, "_right_lay", None)
     for w in list(overlay._metric_rows):
         try:
-            overlay._metrics_layout.removeWidget(w)
+            if lay is not None:
+                lay.removeWidget(w)
             w.setParent(None)
             w.deleteLater()
         except Exception:
@@ -57,7 +63,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         metrics = {}
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
-        row = QWidget(overlay._metrics_host)
+        row = QWidget(host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
@@ -89,7 +95,6 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
 
         bar = _BarWidget(fraction=fraction, fill_color=color, parent=row)
         rl.addWidget(bar)
-        overlay._metrics_layout.addWidget(row)
         overlay._metric_rows.append(row)
 
     def _ok_color():
@@ -129,12 +134,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 _add_metric_row("SSIM vs source", f"{ssim_f:.2f} · {rank_txt}", ssim_f, _ok_color())
         subline = ssim_subline(overlay, item)
         if subline:
-            sub_row = QWidget(overlay._metrics_host)
+            sub_row = QWidget(host)
             sub_lay = QVBoxLayout(sub_row)
             sub_lay.setContentsMargins(0, 0, 0, 0)
             sub_lay.setSpacing(0)
             sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=9, pt=9.5, color_token="list_item.text.rating", elide=True, minimum_width=40))
-            overlay._metrics_layout.addWidget(sub_row)
             overlay._metric_rows.append(sub_row)
         hf = metrics.get("hf_ratio") if "hf_ratio" in metrics else metrics.get("detail_gain")
         hf_f = None
@@ -147,7 +151,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             _add_unmeasured_row("Detail gain (HF ratio)")
         else:
             pct = f"{int(hf_f*100):+d}% " + ("plausible" if hf_f >= 0 else "loss")
-            row = QWidget(overlay._metrics_host)
+            row = QWidget(host)
             rl = QVBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
             rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
@@ -177,7 +181,6 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             lab_r = _make_label("invented / hallucinated", parent=row, pixel_size=9, pt=9.5)
             sub.addWidget(lab_r)
             rl.addLayout(sub)
-            overlay._metrics_layout.addWidget(row)
             overlay._metric_rows.append(row)
         de = metrics.get("delta_e") if "delta_e" in metrics else metrics.get("deltaE") or metrics.get("color_shift")
         de_f = None
@@ -297,6 +300,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         else:
             frac2 = max(0.0, min(1.0, aes_f if aes_f <= 1 else aes_f / 10))
             _add_metric_row("Aesthetic (tie-break)", f"{aes_f:.2f}", frac2, _ok_color())
+
+    # Flat placement (rows + uniform spacers) is owned by the coordinator —
+    # it also re-seats the artifact rows, so either rebuild order converges.
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
+
+        relayout_report_rows(overlay)
+    except Exception:
+        pass
 
 
 def ssim_subline(overlay, item) -> str:

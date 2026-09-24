@@ -30,9 +30,13 @@ def rebuild_artifacts(overlay, item) -> None:
         def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
             return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
 
+    # Rows live flat in right_lay (see helpers.relayout_report_rows).
+    host = getattr(overlay, "_report_host", None)
+    lay = getattr(overlay, "_right_lay", None)
     for w in list(overlay._artifact_rows):
         try:
-            overlay._artifacts_layout.removeWidget(w)
+            if lay is not None:
+                lay.removeWidget(w)
             w.setParent(None)
             w.deleteLater()
         except Exception:
@@ -109,7 +113,7 @@ def rebuild_artifacts(overlay, item) -> None:
     shown: list[tuple[str, str]] = [(aid, _sev_for(aid)) for aid in artifacts]
 
     for aid, lvl in shown:
-        row = QWidget(overlay._artifacts_host)
+        row = QWidget(host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
@@ -159,10 +163,13 @@ def rebuild_artifacts(overlay, item) -> None:
             # full copy stays in _original_text, as with elided values).
             note = _make_label("gradient histogram — comb spikes = banding steps (sky)", parent=row, pixel_size=9, pt=9, elide=True, minimum_width=40)
             rl.addWidget(note)
-        overlay._artifacts_layout.addWidget(row)
         overlay._artifact_rows.append(row)
-    # W5: both mockup rows render incl. clean — the section never collapses.
+    # Flat placement (rows + uniform spacers) is owned by the coordinator.
     try:
-        overlay._artifacts_host.setVisible(True)
+        from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
+
+        relayout_report_rows(overlay)
     except Exception:
         pass
+    # W5: both mockup rows render incl. clean — the section never collapses
+    # (rows are always appended above, even with no measurements).

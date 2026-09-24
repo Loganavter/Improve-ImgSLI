@@ -659,6 +659,114 @@ def resize_cursor_for(zone: str | None):
         return None
 
 
+def _distribute_column_floors(overlay) -> None:
+    """Pin left/right minimums from the LIVE card width (65/35 split).
+
+    QBoxLayout hands all undistributed extra space to a single side, so
+    stretch factors alone cannot hold mockup proportions AND share growth:
+    the column ended stranded at ~496px after shrink-back (clipped preview).
+    Instead the floors consume the width exactly — left (preview priority)
+    takes 65% of the extra, right 35% — leaving no remainder to misdeal.
+    Floors derive from the card width only (never from grown children), so
+    nothing ratchets: shrink restores 640/296.
+    """
+    try:
+        from sli_ui_toolkit.managers import scaled_px
+
+        content = getattr(overlay, "_content", None)
+        host = getattr(overlay, "_preview_host", None)
+        if content is None or host is None:
+            return
+        left = host.parentWidget()
+        scroll = content.findChild(QWidget, "quicklook_right_scroll")
+        if left is None or scroll is None:
+            return
+        outer = content.layout()
+        mid = left.parentWidget().layout()
+        try:
+            om = outer.contentsMargins()
+            mm = mid.contentsMargins()
+            avail = (
+                content.width()
+                - om.left() - om.right()
+                - mm.left() - mm.right()
+                - mid.spacing()
+            )
+        except Exception:
+            avail = content.width() - scaled_px(40)
+        base_l, base_r = scaled_px(640), scaled_px(296)
+        extra = max(0, int(avail) - base_l - base_r)
+        left_extra = int(round(extra * 0.65))
+        left.setMinimumWidth(base_l + left_extra)
+        scroll.setMinimumWidth(base_r + (extra - left_extra))
+    except Exception:
+        pass
+
+
+def relayout_report_rows(overlay) -> None:
+    """Lay metric + artifact rows flat in the right column, uniformly spaced.
+
+    Rows (tracked in ``overlay._metric_rows`` / ``overlay._artifact_rows``)
+    become direct ``right_lay`` children with stretch 0, in visual order,
+    with one stretch-1 spacer between every consecutive pair — metrics rows,
+    then artifact rows, inserted right before the series divider. Rows pin
+    at sizeHint; ALL surplus splits evenly among the N equal spacers at
+    every height (gap = surplus/N, collapsing to the 4px spacing floor
+    when short). The series/strip/brief blocks below stay pinned after the
+    last row. Called after every metrics/artifacts rebuild (either order);
+    never raises.
+    """
+    try:
+        lay = getattr(overlay, "_right_lay", None)
+        host = getattr(overlay, "_report_host", None)
+        anchor = getattr(overlay, "_div_series", None)
+        if lay is None or host is None or anchor is None:
+            return
+        rows = list(getattr(overlay, "_metric_rows", [])) + list(getattr(overlay, "_artifact_rows", []))
+        # Detach previous pass: tracked rows plus any spacers this function
+        # inserted (this layout owns no other spacers, so sweep them all).
+        for row in rows:
+            try:
+                lay.removeWidget(row)
+            except Exception:
+                pass
+        for i in range(lay.count() - 1, -1, -1):
+            try:
+                it = lay.itemAt(i)
+            except Exception:
+                continue
+            if it is not None and it.widget() is None and it.spacerItem() is not None:
+                try:
+                    lay.removeItem(it)
+                except Exception:
+                    pass
+        try:
+            idx = lay.indexOf(anchor)
+        except Exception:
+            idx = -1
+        if idx < 0:
+            return
+        for n, row in enumerate(rows):
+            try:
+                if row.parent() is not host:
+                    row.setParent(host)
+            except Exception:
+                pass
+            try:
+                lay.insertWidget(idx, row, 0)
+            except Exception:
+                continue
+            idx += 1
+            if n < len(rows) - 1:
+                try:
+                    lay.insertStretch(idx, 1)
+                except Exception:
+                    pass
+                idx += 1
+    except Exception:
+        pass
+
+
 def _repin_after_card_resize(overlay) -> None:
     """Re-run the absolute-child pin hooks after a card resize step.
 
@@ -773,6 +881,7 @@ def _relayout_on_card_resize(overlay) -> None:
     also reachable directly. No close paths, no size-policy changes (W8
     min-only stays: minimum 1040×620, no maximum).
     """
+    _distribute_column_floors(overlay)
     _rescale_preview_to_host(overlay)
     _reflow_footer(overlay)
 
@@ -1399,6 +1508,10 @@ def build_overlay_ui(overlay) -> None:
     mid.setSpacing(scaled_px(16))
     left = QWidget(overlay._content)
     left.setObjectName("QuickLookLeft")
+    # Expanding (not Preferred): a Preferred pane caps at its sizeHint, so it
+    # would never take layout growth (sticky 640/496 split). Expanding shares
+    # extra space by stretch; minimums still floor the shrink-back.
+    left.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     left_lay = QVBoxLayout(left)
     left_lay.setContentsMargins(0, 0, 0, 0)
     left_lay.setSpacing(scaled_px(8))
@@ -1436,6 +1549,7 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._prev_btn.clicked.connect(lambda: overlay._walk(-1))
     preview_host = QWidget(left)
+    preview_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     preview_host.setObjectName("QuickLookPreviewHost")
     overlay._preview_host = preview_host
     preview_host_lay = QVBoxLayout(preview_host)
@@ -1445,7 +1559,12 @@ def build_overlay_ui(overlay) -> None:
     overlay._preview_label.setObjectName("quicklook_preview")
     overlay._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     overlay._preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    overlay._preview_label.setMinimumSize(scaled_px(320), scaled_px(260))
+    # Mockup preview is 640x456 (svg): the label floor holds the min-card
+    # proportions (640 preview + 296 column) so grow->shrink settles back
+    # instead of splitting the leftover 1:1 (which stranded ~496px on the
+    # scroll and clipped the preview). The pixmap itself stays aspect-kept
+    # (W-B reflow); this floor is layout geometry only.
+    overlay._preview_label.setMinimumSize(scaled_px(640), scaled_px(456))
     try:
         overlay._preview_label.setScaledContents(False)
     except Exception:
@@ -1560,18 +1679,18 @@ def build_overlay_ui(overlay) -> None:
     overlay._report_sub = _make_label("", parent=right_host, pixel_size=10, pt=10, elide=True, minimum_width=40)
     overlay._report_sub.setObjectName("quicklook_report_sub")
     right_lay.addWidget(overlay._report_sub)
-    overlay._metrics_host = QWidget(right_host)
-    overlay._metrics_host.setObjectName("quicklook_metrics_host")
-    overlay._metrics_layout = QVBoxLayout(overlay._metrics_host)
-    overlay._metrics_layout.setContentsMargins(0, 0, 0, 0)
-    overlay._metrics_layout.setSpacing(scaled_px(4))
-    right_lay.addWidget(overlay._metrics_host)
-    overlay._artifacts_host = QWidget(right_host)
-    overlay._artifacts_host.setObjectName("quicklook_artifacts_host")
-    overlay._artifacts_layout = QVBoxLayout(overlay._artifacts_host)
-    overlay._artifacts_layout.setContentsMargins(0, 0, 0, 0)
-    overlay._artifacts_layout.setSpacing(scaled_px(2))
-    right_lay.addWidget(overlay._artifacts_host)
+    # FLAT report section: metric + artifact rows are direct right_lay
+    # children (stretch 0) with one uniform stretch-1 spacer between every
+    # consecutive pair — rows pin at sizeHint, ALL surplus splits evenly
+    # among the spacers at every height (gap = surplus/N, floor = spacing
+    # when short). Nested host layouts can NOT do this: QBoxLayout deals
+    # absolute space by stretch, so a host's share gets eaten by its fixed
+    # rows and starves its inner gaps while boundary spacers balloon.
+    # Rows are parented to right_host (visible ancestor) and tracked in
+    # overlay._metric_rows / overlay._artifact_rows; relayout_report_rows()
+    # owns row/spacer placement after every rebuild.
+    overlay._report_host = right_host
+    overlay._right_lay = right_lay
     # S4 mockup divider before the series context block (svg:462) — a
     # file-local 1px painted rule (W4 item 3); the toolkit Divider is a
     # button-region dataclass, not a widget.

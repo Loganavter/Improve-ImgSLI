@@ -199,10 +199,10 @@ def test_right_contents_fill_stretched_column(qtbot, tmp_path):
 
     def _widths():
         scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
-        bars = ov._metrics_host.findChildren(_BarWidget)
+        bars = ov._report_host.findChildren(_BarWidget)
         hist = None
         for cls in (_BandingCombHistogram, _GenericHistogram):
-            found = ov._artifacts_host.findChildren(cls)
+            found = ov._report_host.findChildren(cls)
             if found:
                 hist = found[0]
                 break
@@ -344,3 +344,97 @@ def test_min_only_no_max_regression(qtbot):
     assert ov._content.maximumSize() == QSize(16777215, 16777215)
     assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
     ov.hide()
+
+
+def test_metric_row_gaps_grow_uniformly_on_vertical_stretch(qtbot, tmp_path):
+    """Metric rows spread with uniform gaps when the card grows taller.
+
+    The metrics block takes the column's extra height (stretch 1 in the
+    AlignTop right column) and equal inter-row spacers split it evenly:
+    every gap grows, all gaps stay equal. Short window → 4px floor.
+    """
+    from sli_ui_toolkit.managers import scaled_px
+
+    src_p = _real_png(tmp_path, "src.png")
+    v_p = _real_png(tmp_path, "v.png")
+    src = GalleryItem(path=src_p, mtime_ns=1, metrics={})
+    item = GalleryItem(
+        path=v_p, mtime_ns=2,
+        metrics={"ssim": 0.93, "hf_ratio": -0.07, "delta_e": 8.3},
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [[src], [item]], source=src.path)
+
+    def _gaps():
+        # every gap in the report section in visual order: metric rows,
+        # then artifact rows (flat right_lay children with uniform spacers).
+        # Rows live in the shared report host, so map to its coordinates.
+        from PySide6.QtCore import QPoint
+
+        host = ov._report_host
+        spans = []
+        for row in list(ov._metric_rows) + list(ov._artifact_rows):
+            top = row.mapTo(host, QPoint(0, 0)).y()
+            spans.append((top, top + row.height()))
+        assert len(spans) >= 4, f"expected >=4 report rows, got {len(spans)}"
+        return [spans[i + 1][0] - spans[i][1] for i in range(len(spans) - 1)]
+
+    gaps_before = _gaps()
+    # Already uniform at the default card size (proportional stretches:
+    # each gap in the section gets exactly one share of extra height).
+    assert max(gaps_before) - min(gaps_before) <= 8
+
+    content = ov._content
+    content.resize(content.width(), content.height() + scaled_px(400))
+    QApplication.processEvents()
+    QApplication.processEvents()
+
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    assert scroll.verticalScrollBar().maximum() == 0
+    gaps_after = _gaps()
+    # Every gap grew (inner and boundary seams alike)...
+    for before, after in zip(gaps_before, gaps_after):
+        assert after > before
+    # ...and uniformly.
+    assert max(gaps_after) - min(gaps_after) <= 8
+    ov.hide()
+
+
+def test_grow_shrink_roundtrip_restores_proportions(qtbot, tmp_path):
+    """Sticky-width regression: grow->shrink must settle back (no ratchet).
+
+    Root causes fixed: bar fill segments baked grown widths into the layout
+    minimum via setFixedWidth (now paint-only via _set_painted_width), and the
+    preview label floor (320px) let the 1:1 stretch split strand ~496px on the
+    scroll (now 640px mockup floor).
+    """
+    from sli_ui_toolkit.managers import scaled_px
+
+    src = _item("src.png")
+    item = _item(
+        "view.png",
+        metrics={"ssim": 0.93, "hf_ratio": 0.08, "delta_e": 8.3, "upscale_factor": 5},
+        artifacts={"banding": "mild", "halo": "flagged"},
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    content = ov._content
+    scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
+    _grow(qtbot, ov, dw=400, dh=200)
+    assert content.width() == scaled_px(1040) + scaled_px(400)
+    content.resize(scaled_px(1040), scaled_px(620))
+    QApplication.processEvents()
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert content.width() == scaled_px(1040)
+    assert ov._preview_host.width() >= scaled_px(640)
+    assert scroll.width() < scaled_px(500)
+    assert scroll.viewport().width() >= scaled_px(296)
+    assert scroll.horizontalScrollBar().maximum() == 0
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert sa_min_hint(scroll) <= scaled_px(296)
+    ov.hide()
+
+
+def sa_min_hint(scroll):
+    return scroll.widget().minimumSizeHint().width()
