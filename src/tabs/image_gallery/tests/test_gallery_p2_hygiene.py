@@ -158,7 +158,7 @@ def test_mixed_file_plus_folder_routes_open_paths(qapp, tmp_path):
     sub.mkdir()
     opened: dict = {}
     ctrl = SimpleNamespace(
-        open_paths=lambda ps: opened.setdefault("paths", list(ps)),
+        open_paths=lambda ps, **kw: (opened.setdefault("paths", list(ps)), opened.update(kw)),
         open_folder=lambda f: opened.setdefault("folder", f),
     )
     owner = SimpleNamespace(_controller=ctrl)
@@ -170,6 +170,9 @@ def test_mixed_file_plus_folder_routes_open_paths(qapp, tmp_path):
     assert "paths" in opened
     assert "folder" not in opened
     assert {Path(p).name for p in opened["paths"]} == {"pic.png", "sub"}
+    # Mixed folder+files replaces the pool (folder context wins), it must not
+    # ride the file-append default.
+    assert opened.get("replace") is True
 
 
 def test_pure_folder_still_opens_folder(qapp, tmp_path):

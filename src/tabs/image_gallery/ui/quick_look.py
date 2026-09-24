@@ -272,6 +272,21 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self.show_overlay()
         except Exception:
             pass
+        # Post-show re-pin: base reposition() recenters the card AFTER
+        # _populate ran on stale pre-show geometry, and overlay-child nav
+        # circles are unknown to it — re-run the pin hooks on live geometry
+        # (same idiom as resizeEvent/eventFilter), or arrows/inset/grip keep
+        # the previous opening's coordinates on reopen.
+        try:
+            self._reposition_source_inset()
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
+
+            reposition_grip(self)
+        except Exception:
+            pass
 
     def show_quick_look(self, item, owner=None) -> None:
         self.show_for(item, owner)

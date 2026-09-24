@@ -68,6 +68,25 @@ def _connect_theme_refresh(slot) -> None:
         pass
 
 
+def _set_painted_width(block, width: int, floor: int) -> None:
+    """Set a fill segment width as paint geometry, never as a layout floor.
+
+    ``setFixedWidth`` pins minimum AND maximum, so a width measured at a grown
+    card size would ratchet the column minimum and the card could never shrink
+    back (sticky-width bug: grow→shrink kept ~496px viewports). Lower the
+    minimum back to a constant floor right after pinning; the next resizeEvent
+    recomputes the real width anyway.
+    """
+    try:
+        block.setFixedWidth(max(int(floor), int(width)))
+    except Exception:
+        return
+    try:
+        block.setMinimumWidth(int(floor))
+    except Exception:
+        pass
+
+
 class _FillBlock(QWidget):
     """Solid color block painted explicitly (explicit paintEvent fill).
 
@@ -201,7 +220,7 @@ class _BarWidget(QWidget):
             pw = self.width()
             if pw > 0:
                 fw = int(pw * self._fraction)
-                self._fill.setFixedWidth(max(scaled_px(4), fw))
+                _set_painted_width(self._fill, fw, scaled_px(4))
             else:
                 pass
         except Exception:
@@ -212,7 +231,7 @@ class _BarWidget(QWidget):
         try:
             pw = self.width()
             fw = int(pw * self._fraction) if pw > 0 else scaled_px(40)
-            self._fill.setFixedWidth(max(scaled_px(4), fw))
+            _set_painted_width(self._fill, fw, scaled_px(4))
         except Exception:
             pass
 
@@ -298,8 +317,8 @@ class _DualRestoredInventedBar(QWidget):
             marker_x = int(total * frac)
             left_w = max(scaled_px(4), marker_x)
             right_w = max(0, total - marker_x)
-            self._left.setFixedWidth(left_w)
-            self._right.setFixedWidth(right_w)
+            _set_painted_width(self._left, left_w, scaled_px(4))
+            _set_painted_width(self._right, right_w, 0)
         except Exception:
             pass
 

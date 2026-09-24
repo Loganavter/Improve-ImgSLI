@@ -197,8 +197,11 @@ def reposition_source_inset(overlay) -> None:
             w = scaled_px(150) + scaled_px(4)
         if h <= 0:
             h = scaled_px(84) + scaled_px(18)
-        w = max(w, inset.width() or scaled_px(154))
-        h = max(h, inset.height() or scaled_px(106))
+        # Floor from constants only: max() with the CURRENT width would ratchet
+        # the fixed size upward on every grow (sticky-width bug — the inset
+        # kept its grown size and blocked card shrink).
+        w = max(w, scaled_px(154))
+        h = max(h, scaled_px(106))
         max_w = max(0, host.width() - margin * 2)
         max_h = max(0, host.height() - margin * 2)
         if w > max_w:

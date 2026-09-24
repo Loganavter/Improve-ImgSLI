@@ -172,4 +172,17 @@ class UIManager(QObject):
         self.transient.hide_transient_same_window_ui()
 
     def _on_app_focus_changed(self, old_widget, new_widget):
-        self.transient.on_app_focus_changed(old_widget, new_widget)
+        # QApplication.focusChanged is synchronous: anything downstream that
+        # moves focus (menu hide, flyout guard, toolkit realign, ...) emits
+        # focusChanged again before this slot returns. Without a guard that
+        # ping-pongs A->B->A->... until RecursionError (seen dying inside
+        # logging.format, which is just where the deep stack overflowed).
+        if getattr(self, "_in_focus_changed", False):
+            return
+        self._in_focus_changed = True
+        try:
+            self.transient.on_app_focus_changed(old_widget, new_widget)
+        except Exception:
+            logger.exception("[transient-close] on_app_focus_changed failed")
+        finally:
+            self._in_focus_changed = False

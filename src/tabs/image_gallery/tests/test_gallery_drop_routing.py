@@ -66,9 +66,9 @@ def _drag_enter_event(mime: QMimeData) -> QDragEnterEvent:
 
 
 def _recorder():
-    calls: dict = {"paths": [], "folders": [], "notes": []}
+    calls: dict = {"paths": [], "folders": [], "notes": [], "kwargs": []}
     ctrl = SimpleNamespace(
-        open_paths=lambda ps: calls["paths"].append([Path(p) for p in ps]),
+        open_paths=lambda ps, **kw: (calls["paths"].append([Path(p) for p in ps]), calls["kwargs"].append(kw)),
         open_folder=lambda f: calls["folders"].append(Path(f)),
     )
     return calls, ctrl
@@ -186,6 +186,8 @@ def test_zone_mixed_drop_rides_files_along(qapp, qtbot, tmp_path):
     assert len(calls["paths"]) == 1
     assert {p.name for p in calls["paths"][0]} == {"pic.png", "sub"}
     assert calls["folders"] == []
+    # Mixed folder+files replaces the pool (folder context wins).
+    assert calls["kwargs"] == [{"replace": True}]
 
 
 # --------------------------------------------------------------------------

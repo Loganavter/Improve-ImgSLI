@@ -189,9 +189,9 @@ def _route_paths(owner, paths: list[Path]) -> bool:
     n=1 of this branch — open the file, never its parent), folders, and
     mixed folder+files route identically no matter which surface was hit:
 
-    * all image files, no dirs → ``open_paths``;
+    * all image files, no dirs → ``open_paths`` (append to the pool);
     * first directory wins as folder; files alongside it ride along via
-      ``open_paths`` (mixed), pure dirs via ``open_folder``;
+      ``open_paths(replace=True)`` (mixed), pure dirs via ``open_folder``;
     * otherwise the file-vs-folder fallback (parent, never itself).
 
     Returns True when a controller consumed the drop.
@@ -274,7 +274,7 @@ def _route_paths(owner, paths: list[Path]) -> bool:
                 folder, len(dropped_files),
             )
             try:
-                ctrl.open_paths(paths)
+                ctrl.open_paths(paths, replace=True)
                 return True
             except Exception:
                 _dnd_log("open_paths (mixed) failed", exc_info=True)
