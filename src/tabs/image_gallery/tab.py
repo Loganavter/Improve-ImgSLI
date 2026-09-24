@@ -15,10 +15,22 @@ from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
 
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+from tabs.image_gallery.state.models import (
+    GalleryItemMeta,
+    GallerySlotState,
+    fresh_gallery_slot_state,
+)
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
-_STATE_SLOT = "image_gallery.state"
+# Legacy folder-only slot (pre-Redux sessions). Read-only fallback for
+# foreign/legacy restores — never written; the ``gallery`` slot above is
+# the single source of truth.
+_LEGACY_STATE_SLOT = "image_gallery.state"
+
+_SERIALIZE_VERSION = 2
 
 
 class ImageGalleryTab(TabContract):
@@ -153,7 +165,9 @@ class ImageGalleryTab(TabContract):
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         if session_id == self._active_session_id:
             return
-        self._snapshot_into(context, self._active_session_id)
+        # No snapshot: the ``gallery`` slot is already current — every pool /
+        # selection / filter / triage mutation dispatches synchronously, so
+        # there is no controller-local truth left to flush.
         self._active_session_id = session_id
         self._restore_from(context, session_id)
 
@@ -165,7 +179,7 @@ class ImageGalleryTab(TabContract):
                 NavigationManager.get_instance().unregister(self._widget)
             except Exception:
                 pass
-        self._snapshot_into(context, self._active_session_id)
+        # No snapshot (see on_active_session_changed): slot is authoritative.
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
@@ -188,23 +202,12 @@ class ImageGalleryTab(TabContract):
         return getattr(session, "id", None)
 
     # -- snapshot / restore ------------------------------------------------
-
-    def _snapshot_into(self, context: TabContext, session_id: str | None) -> None:
-        if session_id is None or self._widget is None or self._controller is None:
-            return
-        store = getattr(context, "store", None)
-        if store is None or not hasattr(store, "set_session_state_slot"):
-            return
-        folder = getattr(getattr(self._controller, "state", None), "folder", None)
-        try:
-            store.set_session_state_slot(
-                _STATE_SLOT,
-                {"folder": str(folder) if folder else None},
-                session_id=session_id,
-                emit_scope=None,
-            )
-        except Exception:
-            pass
+    #
+    # The ``gallery`` session slot (GallerySlotState) is the single source of
+    # truth: pool membership, selection, filter, folder and triage summary.
+    # Restore rebuilds the controller mirror from the slot WITHOUT rescanning
+    # the disk when the slot carries pool data; a disk rescan happens only
+    # for empty/absent/foreign slots (legacy sessions).
 
     def _restore_from(self, context: TabContext, session_id: str | None) -> None:
         if session_id is None or self._widget is None or self._controller is None:
@@ -212,24 +215,42 @@ class ImageGalleryTab(TabContract):
         store = getattr(context, "store", None)
         if store is None:
             return
-        saved = None
         try:
-            if hasattr(store, "ensure_session_state_slot"):
-                saved = store.ensure_session_state_slot(
-                    _STATE_SLOT, session_id=session_id, factory=lambda: {"folder": None}
-                )
-            else:
-                session = store.get_workspace_session(session_id) if hasattr(store, "get_workspace_session") else None
-                if session is not None and hasattr(session, "state_slots"):
-                    saved = session.state_slots.get(_STATE_SLOT)
+            slot = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=session_id)
         except Exception:
+            slot = None
+        if isinstance(slot, GallerySlotState) and slot.items:
+            # Pool data present — rebuild the mirror from the slot, no rescan.
+            # The controller resolves the slot via the *active* session, so
+            # only sync when this session is the active one; otherwise the
+            # slot persists untouched and activation restores it.
+            try:
+                active = store.get_active_workspace_session()
+                active_id = getattr(active, "id", None)
+            except Exception:
+                active_id = None
+            if active_id is not None and active_id != session_id:
+                return
+            try:
+                self._controller._sync_from_slot()
+            except Exception:
+                logger.debug("ImageGalleryTab slot restore failed", exc_info=True)
             return
-        if not saved:
+        # Empty / absent / foreign slot — legacy rescan path. Folder comes
+        # from the (possibly empty) slot, else the legacy folder-only slot.
+        folder_raw = slot.folder if isinstance(slot, GallerySlotState) else None
+        if not folder_raw and isinstance(slot, dict):
+            folder_raw = slot.get("folder")
+        if not folder_raw:
+            try:
+                legacy = store.get_session_state_slot(_LEGACY_STATE_SLOT, session_id=session_id)
+            except Exception:
+                legacy = None
+            if isinstance(legacy, dict):
+                folder_raw = legacy.get("folder")
+        if not folder_raw:
             return
-        raw = saved.get("folder")
-        if not raw:
-            return
-        folder = Path(raw)
+        folder = Path(folder_raw)
         if folder.is_dir():
             try:
                 self._controller.open_folder(folder)
@@ -248,27 +269,82 @@ class ImageGalleryTab(TabContract):
             return None
         if session is None or getattr(session, "session_type", None) != self.session_type:
             return None
-        if session_id == self._active_session_id:
-            self._snapshot_into(context, session_id)
+        # No snapshot: the slot is already current (dispatch-only mutation).
+        try:
+            slot = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=session_id)
+        except Exception:
+            slot = None
+        if isinstance(slot, GallerySlotState):
+            return {
+                "version": _SERIALIZE_VERSION,
+                "folder": slot.folder,
+                "filter_text": slot.filter_text,
+                "selection": list(slot.selection),
+                "triage_state": slot.triage_state,
+                "mode": slot.mode,
+                "source_path": slot.source_path,
+                "items": [
+                    {
+                        "path": it.path,
+                        "mtime_ns": it.mtime_ns,
+                        "status": it.status,
+                        "rank": it.rank,
+                    }
+                    for it in slot.items
+                ],
+            }
+        # Foreign/legacy slot value — persist whatever folder we can find.
+        folder = slot.get("folder") if isinstance(slot, dict) else None
+        if folder is None:
             try:
-                session = store.get_workspace_session(session_id) or session
+                legacy = store.get_session_state_slot(_LEGACY_STATE_SLOT, session_id=session_id)
             except Exception:
-                pass
-        slot = session.state_slots.get(_STATE_SLOT) if hasattr(session, "state_slots") else None
-        if slot is None:
-            folder = getattr(getattr(self._controller, "state", None), "folder", None) if self._controller else None
-            return {"version": 1, "folder": str(folder) if folder else None}
-        return {"version": 1, "folder": slot.get("folder")}
+                legacy = None
+            if isinstance(legacy, dict):
+                folder = legacy.get("folder")
+        if folder is None and self._controller is not None:
+            ctrl_folder = getattr(getattr(self._controller, "state", None), "folder", None)
+            folder = str(ctrl_folder) if ctrl_folder else None
+        return {"version": 1, "folder": folder}
 
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
         store = getattr(context, "store", None)
         if store is None or not data:
             return
+        if data.get("version", 1) >= _SERIALIZE_VERSION and data.get("items") is not None:
+            items = []
+            for e in data.get("items") or []:
+                if not isinstance(e, dict):
+                    continue
+                try:
+                    items.append(
+                        GalleryItemMeta(
+                            path=str(e.get("path", "")),
+                            mtime_ns=int(e.get("mtime_ns", 0) or 0),
+                            status=str(e.get("status", "not_loaded") or "not_loaded"),
+                            rank=e.get("rank") if e.get("rank") is None else int(e.get("rank")),
+                        )
+                    )
+                except Exception:
+                    continue
+            state = GallerySlotState(
+                items=items,
+                selection=[str(s) for s in (data.get("selection") or [])],
+                filter_text=str(data.get("filter_text") or ""),
+                folder=data.get("folder"),
+                triage_state=str(data.get("triage_state") or "idle"),
+                mode=data.get("mode"),
+                source_path=data.get("source_path"),
+            )
+        else:
+            # Legacy v1 (folder only): empty pool forces a rescan on restore.
+            state = fresh_gallery_slot_state()
+            state.folder = data.get("folder")
         try:
-            store.set_session_state_slot(_STATE_SLOT, dict(data), session_id=session_id, emit_scope=None)
+            store.set_session_state_slot(GALLERY_SLOT_NAME, state, session_id=session_id, emit_scope=None)
         except Exception:
             pass
-        # If this session is currently visible, apply folder immediately.
+        # If this session is currently visible, rebuild from the slot now.
         active = None
         try:
             getter = getattr(store, "get_active_workspace_session", None)
@@ -283,7 +359,8 @@ class ImageGalleryTab(TabContract):
         return self.serialize_session(source_session_id, context)
 
     def rehydrate_session(self, session_id: str, context: TabContext) -> None:
-        # Folder contents are re-scanned from disk; nothing to decode beyond restore.
+        # Pool data lives in the slot — restore rebuilds from it without a
+        # disk rescan; only empty/legacy slots rescan.
         self._restore_from(context, session_id)
 
     # -- drag & drop -------------------------------------------------------
