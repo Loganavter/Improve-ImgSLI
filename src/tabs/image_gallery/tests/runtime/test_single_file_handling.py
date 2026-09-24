@@ -11,9 +11,17 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QThreadPool
 
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import GalleryItem
+from tabs.image_gallery.state import selectors as gallery_selectors
 from tabs.image_gallery.tab import ImageGalleryTab
+from tabs.image_gallery.tests._gallery_dispatch_doubles import (
+    dispatched_kinds,
+    dispatched_scopes,
+    gallery_slot,
+    make_gallery_context,
+)
 
 
 class _WidgetStub:
@@ -53,6 +61,21 @@ class _SignalStub:
             fn(*a, **kw)
 
 
+def _make_ctrl(widget):
+    """Store-backed controller: pool transitions dispatch with scope 'gallery'.
+
+    Triage/thumbnail side-effects are stubbed (this file asserts pool
+    membership, not background workers).
+    """
+    context, store = make_gallery_context()
+    ctrl = GalleryController(
+        widget, thread_pool=QThreadPool.globalInstance(), context=context
+    )
+    ctrl._start_triage = lambda items: None  # type: ignore[method-assign]
+    ctrl._load_thumbnail = lambda item: None  # type: ignore[method-assign]
+    return ctrl, store
+
+
 def test_open_paths_single_file_does_not_scan_parent(tmp_path: Path):
     # parent with 2 images, we drop only one
     parent = tmp_path / "Images"
@@ -63,20 +86,19 @@ def test_open_paths_single_file_does_not_scan_parent(tmp_path: Path):
     b.write_bytes(b"\x00")
 
     widget = _WidgetStub()
-    pool = QThreadPool.globalInstance()
-    # use direct pool to avoid async racy thumbnail workers in this unit test
-    # we only care about state after open_paths, not thumbnails
-    ctrl = GalleryController(widget, thread_pool=pool, context=None)
+    ctrl, store = _make_ctrl(widget)
 
     ctrl.open_paths([a])
 
-    assert len(ctrl.state.items) == 1
-    assert ctrl.state.items[0].path == a
+    assert dispatched_kinds(store) == ["GalleryPathsAppended"]
+    assert dispatched_scopes(store) == [GALLERY_SLOT_NAME]
+    # CONTENT IDENTITY: 1 dropped file -> 1 pool entry with the matching path.
+    assert gallery_selectors.get_item_paths(gallery_slot(store)) == [str(a)]
     # folder must not be the parent with 2 items scanned — it must be None (no folder context)
     # or at least not imply 2 items
-    assert ctrl.state.folder is None or ctrl.state.folder == parent
+    assert gallery_selectors.get_folder(gallery_slot(store)) is None
     # ensure we didn't scan b.jpg
-    names = {it.path.name for it in ctrl.state.items}
+    names = {Path(p).name for p in gallery_selectors.get_item_paths(gallery_slot(store))}
     assert "b.jpg" not in names
     assert "a.jpg" in names
 
@@ -92,10 +114,12 @@ def test_open_paths_multiple_files_from_same_parent(tmp_path: Path):
     c.write_text("x")
 
     widget = _WidgetStub()
-    ctrl = GalleryController(widget, thread_pool=QThreadPool.globalInstance(), context=None)
+    ctrl, store = _make_ctrl(widget)
     ctrl.open_paths([a, b, c])
 
-    names = {it.path.name for it in ctrl.state.items}
+    assert dispatched_kinds(store) == ["GalleryPathsAppended"]
+    assert dispatched_scopes(store) == [GALLERY_SLOT_NAME]
+    names = {Path(p).name for p in gallery_selectors.get_item_paths(gallery_slot(store))}
     assert names == {"a.png", "b.png"}
 
 
@@ -106,15 +130,20 @@ def test_open_folder_still_scans_all(tmp_path: Path):
     (parent / "b.jpg").write_bytes(b"\x00")
 
     widget = _WidgetStub()
-    ctrl = GalleryController(widget, thread_pool=QThreadPool.globalInstance(), context=None)
+    ctrl, store = _make_ctrl(widget)
     ctrl.open_folder(parent)
 
-    assert len(ctrl.state.items) == 2
-    assert ctrl.state.folder == parent
+    assert dispatched_kinds(store) == ["GalleryPoolOpened"]
+    assert dispatched_scopes(store) == [GALLERY_SLOT_NAME]
+    assert len(gallery_selectors.get_item_paths(gallery_slot(store))) == 2
+    assert gallery_selectors.get_folder(gallery_slot(store)) == str(parent)
 
 
 def test_tab_handle_drop_single_file_uses_open_paths(tmp_path: Path, qtbot):
-    # Real Tab + Widget path for handle_drop single file
+    # STORELESS FAIL-OPEN: real Tab + Widget without a Redux store — the drop
+    # takes the legacy controller path (no dispatch). Membership is asserted
+    # on the local mirror only; slot-backed coverage lives in the tests above
+    # plus test_gallery_pool_append.py.
     from PySide6.QtWidgets import QWidget
 
     from tabs.contract import TabContext
@@ -182,6 +211,9 @@ def test_filtering_matches_filename_even_when_not_analyzed():
 
 
 def test_widget_drop_single_file_uses_open_paths(tmp_path: Path, qtbot):
+    # STORELESS FAIL-OPEN: real Widget + controller without a Redux store —
+    # the drop takes the legacy controller path (no dispatch). Membership is
+    # asserted on the local mirror only; see the slot-backed tests above.
     from PySide6.QtCore import QMimeData, QUrl, Qt
     from PySide6.QtGui import QDropEvent
     from PySide6.QtCore import QPoint
