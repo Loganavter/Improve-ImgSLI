@@ -109,7 +109,10 @@ def test_color_picker_recenters_transient_parent_on_close():
     picker.close()
     app.processEvents()
 
-    assert activations == ["raise", "activate"]
+    # Modal-lifetime contract (W3): closing the picker must NOT re-raise or
+    # re-activate the transient host — the window system restores focus
+    # naturally. The old ["raise", "activate"] pin was the raise-war.
+    assert activations == []
     host.close()
     picker.deleteLater()
     host.deleteLater()
