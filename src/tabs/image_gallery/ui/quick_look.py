@@ -233,6 +233,18 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().leaveEvent(event)
 
     def show_for(self, item, owner=None) -> None:
+        import time as _time
+
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        _dbg_on = _dbg_enabled()
+        _t0 = _time.perf_counter() if _dbg_on else 0.0
+        if _dbg_on:
+            try:
+                _dbg("quick look show_for begin path=%s", getattr(item, "path", item))
+            except Exception:
+                pass
         if owner is not None:
             self._owner = owner
         self._current_item = item
@@ -252,6 +264,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         self._mode = mode_val
         self._source_path = Path(source) if source is not None else None
+        if _dbg_on:
+            _t_state = _time.perf_counter()
         self._series_items = self._resolve_series(item, series_raw)
         self._current_idx = 0
         try:
@@ -261,17 +275,42 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                     break
         except Exception:
             pass
+        if _dbg_on:
+            _t_series = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase state-resolve=%.1fms series-resolve=%.1fms n_series=%d",
+                (_t_state - _t0) * 1000.0,
+                (_t_series - _t_state) * 1000.0,
+                len(self._series_items),
+            )
+            _t_pop = _time.perf_counter()
         self._populate()
+        if _dbg_on:
+            _t_pop_done = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase populate=%.1fms total=%.1fms",
+                (_t_pop_done - _t_pop) * 1000.0,
+                (_t_pop_done - _t0) * 1000.0,
+            )
         self.show()
         try:
             self.raise_()
             self.setFocus(Qt.FocusReason.PopupFocusReason)
         except Exception:
             pass
+        if _dbg_on:
+            _t_show = _time.perf_counter()
         try:
             self.show_overlay()
         except Exception:
             pass
+        if _dbg_on:
+            _t_overlay = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase show=%.1fms show_overlay=%.1fms",
+                (_t_show - _t_pop_done) * 1000.0,
+                (_t_overlay - _t_show) * 1000.0,
+            )
         # Post-show re-pin: base reposition() recenters the card AFTER
         # _populate ran on stale pre-show geometry, and overlay-child nav
         # circles are unknown to it — re-run the pin hooks on live geometry
@@ -287,6 +326,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             reposition_grip(self)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg(
+                "quick look show_for done total=%.1fms repin=%.1fms path=%s",
+                (_time.perf_counter() - _t0) * 1000.0,
+                (_time.perf_counter() - _t_overlay) * 1000.0,
+                getattr(item, "path", item),
+            )
 
     def show_quick_look(self, item, owner=None) -> None:
         self.show_for(item, owner)
@@ -426,6 +472,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         return [item]
 
     def _populate(self) -> None:
+        import time as _time
+
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        _dbg_on = _dbg_enabled()
+        _tp0 = _time.perf_counter() if _dbg_on else 0.0
         item = self._current_item
         if item is None:
             return
@@ -446,6 +499,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         is_fidelity = "FIDELITY" in mode_str
         # Delegate populated sections
+        if _dbg_on:
+            _tp_sections = _time.perf_counter()
         try:
             from tabs.image_gallery.ui.quick_look.helpers import (
                 populate_brief,
@@ -456,22 +511,56 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 populate_series_header,
                 populate_source_inset,
             )
+            if _dbg_on:
+                _t = _time.perf_counter()
             populate_preview(self, item)
+            if _dbg_on:
+                _dbg("quick look populate preview=%.1fms path=%s", (_time.perf_counter() - _t) * 1000.0, getattr(item, "path", item))
+                _t = _time.perf_counter()
             populate_source_inset(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate source-inset=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_crop(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate crop=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_filename_meta(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate filename-meta=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_report_header(self, is_fidelity, mode_str)
+            if _dbg_on:
+                _dbg("quick look populate report-header=%.1fms", (_time.perf_counter() - _t) * 1000.0)
         except Exception:
             pass
+        if _dbg_on:
+            _t = _time.perf_counter()
         self._rebuild_metrics(item, is_fidelity, mode_str)
+        if _dbg_on:
+            _dbg("quick look populate metrics=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         self._rebuild_artifacts(item)
+        if _dbg_on:
+            _dbg("quick look populate artifacts=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         try:
             from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh, populate_brief as _pb
             _psh(self)
             _pb(self, item)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg("quick look populate series+brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         self._rebuild_strip()
+        if _dbg_on:
+            _dbg(
+                "quick look populate strip=%.1fms n_series=%d total_populate=%.1fms",
+                (_time.perf_counter() - _t) * 1000.0,
+                len(self._series_items),
+                (_time.perf_counter() - _tp0) * 1000.0,
+            )
         try:
             has_series = len(self._series_items) > 1
             self._prev_btn.setEnabled(bool(has_series))

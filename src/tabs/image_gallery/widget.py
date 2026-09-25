@@ -676,6 +676,14 @@ class ImageGalleryWidget(QWidget):
     def _on_card_context(self, path: Path) -> None:
         # S2a: ContextMenu mirrors hover mini-capsule (★ make best · ✕ reject · ⇄ compare).
         # Use public sli_ui_toolkit.widgets ContextMenu via card helper.
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        import time as _time
+
+        _dbg_on = _dbg_enabled()
+        _t0 = _time.perf_counter() if _dbg_on else 0.0
+        if _dbg_on:
+            _dbg("ctx menu entry path=%s", path)
         try:
             # Resolve owner: try controller via parent tab, else self.
             owner = None
@@ -691,8 +699,18 @@ class ImageGalleryWidget(QWidget):
                     owner = getattr(win, "_gallery_controller", None) or self
                 except Exception:
                     owner = self
+            if _dbg_on:
+                _t_owner = _time.perf_counter()
             card = self._grid_view.card_for(path) if hasattr(self, "_grid_view") else None
             anchor = card if card is not None else self
+            if _dbg_on:
+                _dbg(
+                    "ctx menu phase resolve=%.1fms card_for=%.1fms anchor=%s owner=%s",
+                    (_t_owner - _t0) * 1000.0,
+                    (_time.perf_counter() - _t_owner) * 1000.0,
+                    type(anchor).__name__,
+                    type(owner).__name__ if owner is not None else "None",
+                )
             # Try hover helper popup.
             from tabs.image_gallery.ui.card import popup_gallery_card_context_menu
 
@@ -703,7 +721,11 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 gp = None
             popup_gallery_card_context_menu(anchor, owner, Path(path), global_pos=gp)
+            if _dbg_on:
+                _dbg("ctx menu done total=%.1fms path=%s", (_time.perf_counter() - _t0) * 1000.0, path)
         except Exception:
+            if _dbg_on:
+                _dbg("ctx menu raised path=%s", path, exc_info=True)
             pass
 
     def _on_empty_file_dropped(self, path_str: str) -> None:

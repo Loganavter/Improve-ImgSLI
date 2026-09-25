@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 
@@ -10,11 +11,25 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
 
     Uses public ``sli_ui_toolkit.widgets`` ContextMenu API (no QMenu).
     ``mode`` controls inclusion of "Set as source" (fidelity only).
+
+    Slow-open diagnosis (IMGSLI_GALLERY_DEBUG=1): logs per-phase ms
+    (mode-resolve / entries-build / ContextMenu-construct / popup_at)
+    with ``[gallery-debug]`` prefix, see ``docs/dev/LOGGING.md``.
     """
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+    from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+    _dbg_on = _dbg_enabled()
+    _t0 = time.perf_counter() if _dbg_on else 0.0
+    if _dbg_on:
+        _dbg(
+            "card menu begin path=%s has_pos=%s owner=%s",
+            path,
+            global_pos is not None,
+            type(owner).__name__ if owner is not None else "None",
+        )
     try:
         from sli_ui_toolkit.widgets import ContextMenu, ContextMenuAction
-
-        from tabs.image_gallery.debug import gallery_debug as _dbg
 
         # Resolve mode: explicit > card attribute > owner state.
         _mode = mode
@@ -34,6 +49,14 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
         except Exception:
             ms = ""
         include_source = ms == "fidelity"
+        if _dbg_on:
+            _dbg(
+                "card menu phase mode-resolve=%.1fms mode=%r include_source=%d",
+                (time.perf_counter() - _t0) * 1000.0,
+                ms,
+                1 if include_source else 0,
+            )
+            _t_entries = time.perf_counter()
 
         entries = [
             ContextMenuAction(
@@ -60,37 +83,78 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
                     callback=lambda: _ctx_set_source(owner, path),
                 )
             )
+        if _dbg_on:
+            _dbg(
+                "card menu phase entries-build=%.1fms n_entries=%d",
+                (time.perf_counter() - _t_entries) * 1000.0,
+                len(entries),
+            )
+            _t_construct = time.perf_counter()
         menu = ContextMenu(entries=entries)
-        _dbg(
-            "card menu popup path=%s mode=%r owner=%s n_entries=%d",
-            path,
-            ms,
-            type(owner).__name__,
-            len(entries),
-        )
+        if _dbg_on:
+            _dbg(
+                "card menu phase construct=%.1fms total=%.1fms path=%s owner=%s",
+                (time.perf_counter() - _t_construct) * 1000.0,
+                (time.perf_counter() - _t0) * 1000.0,
+                path,
+                type(owner).__name__ if owner is not None else "None",
+            )
         # Flyout group identity for policy.
         try:
             menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
         except Exception:
             pass
         if global_pos is not None:
+            if _dbg_on:
+                _t_popup = time.perf_counter()
             try:
                 menu.popup_at(global_pos)
+                if _dbg_on:
+                    _dbg(
+                        "card menu phase popup_at=%.1fms total=%.1fms path=%s",
+                        (time.perf_counter() - _t_popup) * 1000.0,
+                        (time.perf_counter() - _t0) * 1000.0,
+                        path,
+                    )
                 return
             except Exception:
+                if _dbg_on:
+                    _dbg("card menu popup_at raised path=%s", path, exc_info=True)
                 pass
         # Fallback anchor popup.
+        if _dbg_on:
+            _t_fallback = time.perf_counter()
         try:
             from sli_ui_toolkit.widgets import popup_context_menu_for_anchor
 
             popup_context_menu_for_anchor(card.window() or card, card, entries)
+            if _dbg_on:
+                _dbg(
+                    "card menu phase fallback-anchor=%.1fms total=%.1fms path=%s",
+                    (time.perf_counter() - _t_fallback) * 1000.0,
+                    (time.perf_counter() - _t0) * 1000.0,
+                    path,
+                )
         except Exception:
+            if _dbg_on:
+                _dbg("card menu fallback-anchor raised path=%s", path, exc_info=True)
             # Last resort: try menu.show
             try:
                 menu.show()
+                if _dbg_on:
+                    _dbg(
+                        "card menu phase show=%.1fms total=%.1fms path=%s",
+                        (time.perf_counter() - _t_fallback) * 1000.0,
+                        (time.perf_counter() - _t0) * 1000.0,
+                        path,
+                    )
             except Exception:
+                if _dbg_on:
+                    _dbg("card menu show raised path=%s", path, exc_info=True)
                 pass
     except Exception:
+        if _dbg_on:
+            _dbg("card menu outer raised path=%s", path, exc_info=True)
         pass
 
 
