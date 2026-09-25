@@ -39,9 +39,30 @@ try:
                 "_token_color",
                 "_set_colored_text",
                 "_source_dimensions",
+                # helpers split homes (not on the file module — fallback below)
+                "build_overlay_ui",
+                "populate_preview",
+                "populate_source_inset",
+                "populate_crop",
+                "populate_filename_meta",
+                "populate_report_header",
+                "populate_series_header",
+                "populate_brief",
+                "reposition_nav_buttons",
+                "reposition_grip",
             ):
                 if hasattr(_mod, _name):
                     globals()[_name] = getattr(_mod, _name)
+                else:
+                    # Concern-module home (helpers.py is a thin re-export
+                    # shim since the grab-bag split) — best effort, never fatal.
+                    try:
+                        from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
+
+                        if hasattr(_ql_helpers, _name):
+                            globals()[_name] = getattr(_ql_helpers, _name)
+                    except Exception:
+                        pass
             # Also keep file module accessible if someone imported it directly
             _ql_sys.modules["tabs.image_gallery.ui.quick_look"] = _ql_sys.modules[__name__]
             # Preserve subpackage path for helpers etc.
