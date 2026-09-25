@@ -1785,7 +1785,13 @@ def test_outer_ring_zones_and_cursors(qtbot):
         (card.x() + card.width() + strip // 2, card.y() - strip // 2): ("top_right", Qt.CursorShape.SizeBDiagCursor),
         (card.x() - strip // 2, card.y() + card.height() + strip // 2): ("bottom_left", Qt.CursorShape.SizeBDiagCursor),
         (card.x() + card.width() + strip // 2, card.y() + card.height() + strip // 2): ("bottom_right", Qt.CursorShape.SizeFDiagCursor),
-        # Interior / card edge / open veil: no ring zone (W6 veil stays inert).
+        # Boundary frame: claimed by the ring too (1px overlap with the
+        # plate strip), so the edge row resizes regardless of receiver.
+        (cx, card.y()): ("top", Qt.CursorShape.SizeVerCursor),
+        (cx, card.y() + card.height() - 1): ("bottom", Qt.CursorShape.SizeVerCursor),
+        (card.x(), cy): ("left", Qt.CursorShape.SizeHorCursor),
+        (card.x() + card.width() - 1, cy): ("right", Qt.CursorShape.SizeHorCursor),
+        # Deep interior / open veil: no ring zone (W6 veil stays inert).
         (cx, cy): (None, None),
         (card.x() + 2, cy): (None, None),
         (max(0, card.x() - strip - 60), cy): (None, None),
@@ -1829,6 +1835,33 @@ def test_outer_ring_hover_cursor_through_overlay(qtbot):
     assert ov.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
     _move(5, 5)
     assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_boundary_row_press_starts_ring_drag(qtbot):
+    """Boundary frame press through the overlay handler starts a drag.
+
+    The edge row belongs to both sides: whichever widget receives the press
+    (plate filter or overlay ring path), exactly one drag starts. Top-edge
+    midpoint is nav/grip-clear.
+    """
+    from PySide6.QtCore import QEvent, Qt
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    card = ov._content.geometry()
+    cx = card.x() + card.width() // 2
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (cx, card.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    drag = getattr(ov, "_border_drag", None)
+    assert drag is not None and drag[0] == "top"
+    ov._border_drag = None
     ov.hide()
 
 

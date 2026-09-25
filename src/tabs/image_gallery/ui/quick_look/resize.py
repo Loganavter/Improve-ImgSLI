@@ -696,8 +696,14 @@ def ring_zone_at(overlay, pos) -> str | None:
     band on the veil around the card grabbed nothing. This mirrors
     ``resize_zone_at`` for that outer band: returns the same 8 zone names
     when ``pos`` is outside the card but within ``RESIZE_BORDER_PX`` of it,
-    else None (interior, card children, and open veil all return None —
+    else None (deep interior, card children, and open veil all return None —
     a plain veil click must never start a drag, W6).
+
+    The 1px boundary frame belongs to BOTH sides: the plate strip claims
+    content-0 and the ring claims the card edge row/column too. The two
+    handlers never fire for the same event (delivery is exclusive), so this
+    overlap only removes the single-row cliff where receiver, owner, and
+    cursor slot all switched at once (a press still starts exactly one drag).
     """
     try:
         from sli_ui_toolkit.managers import scaled_px
@@ -714,18 +720,18 @@ def ring_zone_at(overlay, pos) -> str | None:
             y = pos.y()
         except Exception:
             return None
-        # Interior (including the card border itself) belongs to the W9
-        # plate filter, never to the ring.
+        # Deep interior belongs to the W9 plate filter, never to the ring —
+        # but the 1px boundary frame is claimed here too (see docstring).
         try:
-            if card.contains(pos):
+            if card.adjusted(1, 1, -1, -1).contains(pos):
                 return None
         except Exception:
             pass
         strip = scaled_px(RESIZE_BORDER_PX)
-        left = card.x() - strip <= x < card.x()
-        right = card.x() + card.width() <= x < card.x() + card.width() + strip
-        top = card.y() - strip <= y < card.y()
-        bottom = card.y() + card.height() <= y < card.y() + card.height() + strip
+        left = card.x() - strip <= x <= card.x()
+        right = card.x() + card.width() - 1 <= x < card.x() + card.width() + strip
+        top = card.y() - strip <= y <= card.y()
+        bottom = card.y() + card.height() - 1 <= y < card.y() + card.height() + strip
         # Ring bands only run alongside the card (corners are strip×strip
         # squares); anything beyond is open veil.
         v_span = card.y() - strip <= y < card.y() + card.height() + strip
