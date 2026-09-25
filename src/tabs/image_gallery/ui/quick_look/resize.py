@@ -337,6 +337,68 @@ def _resize_dbg():
     return False, None
 
 
+def _resize_trace_on() -> bool:
+    """Full firehose (IMGSLI_QL_RESIZE_TRACE=1): log EVERYObserved move with
+    receiver + effective cursor, no change-gating. For when the filtered
+    ql-resize logs hide the picture (steady states and child-swallowed
+    events are silent there by design)."""
+    try:
+        from shared.debug_flags import env_flag as _env_flag
+
+        return bool(_env_flag("IMGSLI_QL_RESIZE_TRACE"))
+    except Exception:
+        return False
+
+
+def _effective_cursor_name(widget) -> str:
+    """Effective (inherited) cursor shape name for a widget."""
+    try:
+        if widget is None:
+            return "none"
+        cur = widget.cursor()
+        shape = cur.shape() if hasattr(cur, "shape") else cur
+        return str(shape).split(".")[-1]
+    except Exception:
+        return "?"
+
+
+def trace_move(overlay, where: str, pos, receiver=None) -> None:
+    """One firehose line per observed mouse move (trace mode only)."""
+    try:
+        if not _resize_trace_on():
+            return
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+
+        try:
+            recv_name = (
+                f"{type(receiver).__name__}:{receiver.objectName()}"
+                if receiver is not None
+                else "veil"
+            )
+        except Exception:
+            recv_name = "?"
+        try:
+            eff = _effective_cursor_name(receiver if receiver is not None else overlay)
+        except Exception:
+            eff = "?"
+        try:
+            drag = getattr(overlay, "_border_drag", None)
+            drag_s = drag[0] if drag is not None else "-"
+        except Exception:
+            drag_s = "?"
+        _dbg(
+            "ql-resize trace %s pos=(%d,%d) receiver=%s cursor=%s drag=%s",
+            where,
+            pos.x(),
+            pos.y(),
+            recv_name,
+            eff,
+            drag_s,
+        )
+    except Exception:
+        pass
+
+
 def _cursor_name(cursor) -> str:
     """Human-readable cursor shape (ArrowCursor for None)."""
     if cursor is None:

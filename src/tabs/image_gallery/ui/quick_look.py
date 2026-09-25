@@ -165,6 +165,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 elif t == QEvent.Type.MouseMove:
                     try:
                         from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                        from tabs.image_gallery.ui.quick_look.helpers import trace_move
+
+                        try:
+                            trace_move(self, "plate-move", event.position().toPoint(), watched)
+                        except Exception:
+                            pass
                         if handle_border_move(self, event):
                             return True
                     except Exception:
@@ -228,6 +234,16 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import trace_move
+
+            try:
+                _pos = event.position().toPoint()
+                trace_move(self, "overlay-move", _pos, self.childAt(_pos))
+            except Exception:
+                pass
+        except Exception:
+            pass
         try:
             if getattr(self, "_border_drag", None) is not None:
                 from tabs.image_gallery.ui.quick_look.helpers import handle_border_move

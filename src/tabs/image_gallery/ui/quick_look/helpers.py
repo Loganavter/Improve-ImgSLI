@@ -77,6 +77,7 @@ from tabs.image_gallery.ui.quick_look.resize import (
     handle_ring_press,
     handle_ring_hover,
     handle_ring_release,
+    trace_move,
 )
 
 __all__ = [
@@ -131,4 +132,5 @@ __all__ = [
     "handle_ring_press",
     "handle_ring_hover",
     "handle_ring_release",
+    "trace_move",
 ]
