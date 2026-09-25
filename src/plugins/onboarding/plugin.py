@@ -211,10 +211,3 @@ class OnboardingPlugin(Plugin):
                 event_bus.emit(SettingsUIModeChangedEvent(mode_key))
             except Exception:
                 logger.exception("Failed to emit UI mode after onboarding")
-
-        widget = getattr(window, "image_compare_widget", None) if window else None
-        if widget is not None and hasattr(widget, "reapply_button_styles"):
-            try:
-                widget.reapply_button_styles()
-            except Exception:
-                logger.exception("Failed to reapply toolbar styles after onboarding")
