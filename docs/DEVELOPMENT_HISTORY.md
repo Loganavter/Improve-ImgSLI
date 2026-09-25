@@ -2,11 +2,11 @@
 
 This document tracks the evolution of Improve-ImgSLI across releases and major refactors. It is migrated from the former "Development Story" section of README to keep the main page concise.
 
-## September 2024 — First prototype
-The journey of Improve ImgSLI began in September 2024, initially conceived with ChatGPT's assistance to address a personal need for straightforward image comparison in my work. The early version provided basic side-by-side functionality.
+## 22 October 2024 — First prototype
+The journey of Improve ImgSLI began on October 22, 2024, initially conceived with Claude 3.5 Sonnet's assistance to address a personal need for straightforward image comparison in my work. The early version provided basic side-by-side functionality. That very first script predates the repository history and is preserved as an artifact at [docs/origin/image-comparison-app.py](origin/image-comparison-app.py) — a single ~130-line PyQt6 widget with two image pickers, a split slider, a horizontal/vertical toggle, and PNG export.
 
-## October 2024 — Magnifier and drag-and-drop
-The following month, October, marked an enhancement phase using Claude, which introduced a magnifier tool and drag-and-drop support, significantly improving usability.
+## Late October 2024 — Magnifier and drag-and-drop
+Later that month, another enhancement phase using Claude introduced a magnifier tool and drag-and-drop support, significantly improving usability.
 
 ## November 2024 — Magnifier refinements
 By November, further refinements to the magnifier were implemented with Claude, including view freezing and merging capabilities. However, the codebase's expansion, coupled with Claude's 8k token context limit, made complete code regeneration impractical, necessitating manual integration of new features. Gemini was then employed to help manage these integrations, though not all AI-generated code was directly usable, leading to some features being postponed or temporarily disabled to maintain stability.
