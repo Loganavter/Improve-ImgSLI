@@ -366,6 +366,11 @@ class MultiCompareTab(TabContract):
             )
             return True
         if service_id == "toast_anchor_widget":
+            # Content-below-strip contract (wave C): the toast anchor is
+            # this tab's own canvas, which lives inside workspace_stack /
+            # workspace_content_widget below the tab strip. The host
+            # (ui.sync_session_mode) only accepts anchors from that
+            # subtree and never anchors to the window itself.
             if self._widget is None:
                 return None
             return self._widget.canvas
