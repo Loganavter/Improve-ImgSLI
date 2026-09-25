@@ -68,15 +68,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     setSource = Signal(object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
-        # Close policy: veil click and the X button close; Esc/minimize/
-        # focus loss stay pinned (W11 rationale kept for keyboard/focus —
-        # only the W6/W11 background-click ban is reversed: a veil click no
-        # longer traps the user, and no report state is lost — triage state
-        # lives in the controller, reopen re-resolves it).
-        # close_on_background stays False so the base class never dismisses
-        # on its own: the veil dismiss below is explicit (ring presses
-        # return earlier, children eat their own presses).
-        super().__init__(parent, close_on_background=False, close_on_escape=False, close_on_deactivate=False)
+        # Close policy: veil click, Esc, and the X button close;
+        # minimize/focus loss stay pinned. Reverses W6 (background ban) and
+        # the W11 Esc ban; no report state is lost — triage state lives in
+        # the controller, reopen re-resolves it. close_on_background stays
+        # False so the base class never dismisses on its own: the veil
+        # dismiss is explicit (ring presses return earlier, children eat
+        # their own presses); Esc flows through the base keyPressEvent.
+        super().__init__(parent, close_on_background=False, close_on_escape=True, close_on_deactivate=False)
         self._owner = owner
         self._current_item = None
         self._series_items: list = []
@@ -837,9 +836,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         k = event.key()
-        # W11 pinned policy: Esc NEVER closes (the toolkit base also ignores
-        # it with close_on_escape=False) — X is the only close path. ←→
-        # still walk the series.
+        # Esc closes via the toolkit base (close_on_escape=True); ←→ still
+        # walk the series here.
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             delta = -1 if k == Qt.Key.Key_Left else 1
             self._walk(delta)
