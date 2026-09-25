@@ -77,6 +77,66 @@ def _set_owner_selection(triage_owner, owner, paths: list) -> None:
         pass
 
 
+def dismiss_gallery_modals(owner) -> None:
+    """Modal-lifetime (W1): tab-owned window-parented modals must not outlive the tab.
+
+    Dismisses the QuickLook (``_quick_look_overlay``) and CleanReview
+    (``_clean_overlay``) overlays via the existing ``dismiss()``/``hide()``
+    APIs. Fail-open throughout: missing attrs, detached widgets, and
+    partially-constructed overlays never raise.
+
+    Beyond the widget refs, sweeps the window for visible
+    QuickLook/CleanReview overlays tagged ``owner_tab="image_gallery"``
+    (untagged production instances are treated as ours; foreign tags are
+    never touched). No new overlay resolvers, no focus calls.
+    """
+    for attr in ("_quick_look_overlay", "_clean_overlay"):
+        try:
+            overlay = getattr(owner, attr, None)
+        except Exception:
+            continue
+        _dismiss_one(overlay)
+    try:
+        window = owner.window() if hasattr(owner, "window") else None
+    except Exception:
+        window = None
+    if window is None:
+        return
+    try:
+        for child in window.findChildren(QWidget):
+            try:
+                if type(child).__name__ not in ("QuickLookOverlay", "CleanReviewOverlay"):
+                    continue
+                if not child.isVisible():
+                    continue
+                if child.property("owner_tab") not in (None, "", "image_gallery"):
+                    continue
+                _dismiss_one(child)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def _dismiss_one(overlay) -> None:
+    """Dismiss a single overlay if visible — fail-open."""
+    if overlay is None:
+        return
+    try:
+        if not overlay.isVisible():
+            return
+    except Exception:
+        return
+    try:
+        dismiss = getattr(overlay, "dismiss", None)
+        if callable(dismiss):
+            dismiss()
+        else:
+            overlay.hide()
+    except Exception:
+        pass
+
+
 def current_path(owner) -> Path | None:
     """Return current gallery path for keyboard actions.
 

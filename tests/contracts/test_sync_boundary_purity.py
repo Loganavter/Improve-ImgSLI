@@ -87,7 +87,7 @@ PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
         # tab.py UI-internal read (widget→widget visibility, no slot
         # involved) — tolerated pending the boundary audit.
-        ("src/tabs/image_compare/tab.py", 446, "isVisible"),
+        ("src/tabs/image_compare/tab.py", 492, "isVisible"),
     }
 )
 

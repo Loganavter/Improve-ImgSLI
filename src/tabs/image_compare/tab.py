@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 
+from PySide6.QtCore import QObject
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.image_compare.use_cases import drag_drop, host_callbacks, persistence, registration
 
@@ -25,6 +26,26 @@ if TYPE_CHECKING:
     from tabs.image_compare.widget import ImageCompareWidget
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+class _ModalLifetimeHideFilter(QObject):
+    """Page-Hide watcher (W1): explicit page hide dismisses tab modals."""
+
+    def __init__(self, on_hidden, parent=None):
+        super().__init__(parent)
+        self._on_hidden = on_hidden
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            from PySide6.QtCore import QEvent
+            if event.type() == QEvent.Type.Hide and watched.isHidden():
+                try:
+                    self._on_hidden()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
 
 class ImageCompareTab(TabContract):
@@ -95,6 +116,12 @@ class ImageCompareTab(TabContract):
                 "[ic-page] create_page widget=%s",
                 str(hex(id(self._widget)))[-6:],
             )
+        try:  # W1: explicit page hides dismiss paste overlays (fail-open).
+            self._widget.installEventFilter(
+                _ModalLifetimeHideFilter(self._dismiss_paste_overlays, self._widget)
+            )
+        except Exception:
+            pass
         return self._widget
 
     @property
@@ -309,6 +336,24 @@ class ImageCompareTab(TabContract):
 
             NavigationManager.get_instance().unregister(self._widget)
         self._snapshot_into(context, self._active_session_id)
+        self._dismiss_paste_overlays()
+
+    def _dismiss_paste_overlays(self) -> None:
+        # W1: PasteDirection overlays (clipboard/duplicate/pending-insert)
+        # must not outlive the tab. Fail-open sweep over dismiss()/hide().
+        try:
+            window = self._widget.window() if self._widget is not None else None
+            for child in window.findChildren(QWidget) if window is not None else ():
+                try:
+                    if type(child).__name__ != "PasteDirectionOverlay" or child.isHidden():
+                        continue
+                    if child.property("owner_tab") not in (None, "", self.session_type):
+                        continue
+                    (getattr(child, "dismiss", None) or child.hide)()
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
@@ -317,6 +362,7 @@ class ImageCompareTab(TabContract):
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:
             self._active_session_id = None
+        self._dismiss_paste_overlays()
 
     def _resolve_active_session_id(self, context: TabContext) -> str | None:
         store = getattr(context, "store", None)
