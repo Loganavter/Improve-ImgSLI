@@ -814,8 +814,9 @@ def build_overlay_ui(overlay) -> None:
     bar_lay.addStretch(1)
     # W4 item 4: the hint sits at the right end of the button bar row
     # (svg:198, right-aligned), out of the left column.
-    # W11 pinned policy: Esc no longer closes (X is the only close path).
-    overlay._hint_label = _make_label("X closes · ←→ walk series", parent=bar, pixel_size=10, pt=10)
+    # W11 pinned policy: Esc no longer closes. Veil click closes again
+    # (W6/W11 background-click ban reversed) — hint names both paths.
+    overlay._hint_label = _make_label("X / veil click closes · ←→ walk series", parent=bar, pixel_size=10, pt=10)
     overlay._hint_label.setObjectName("quicklook_hint")
     bar_lay.addWidget(overlay._hint_label)
     outer.addWidget(bar)

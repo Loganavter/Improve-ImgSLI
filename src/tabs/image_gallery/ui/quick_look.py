@@ -68,12 +68,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     setSource = Signal(object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
-        # W11 pinned close policy (InfoHUD analog — pinned flyouts ignore
-        # outside clicks/deactivation): the X button is the ONLY close path.
-        # close_on_background=False (W6: a veil click must not discard the
-        # report), close_on_escape=False and close_on_deactivate=False, so
-        # Esc, window minimize/restore, and focus loss never hide the card.
-        # Toolkit default is True for all three; every other overlay keeps it.
+        # Close policy: veil click and the X button close; Esc/minimize/
+        # focus loss stay pinned (W11 rationale kept for keyboard/focus —
+        # only the W6/W11 background-click ban is reversed: a veil click no
+        # longer traps the user, and no report state is lost — triage state
+        # lives in the controller, reopen re-resolves it).
+        # close_on_background stays False so the base class never dismisses
+        # on its own: the veil dismiss below is explicit (ring presses
+        # return earlier, children eat their own presses).
         super().__init__(parent, close_on_background=False, close_on_escape=False, close_on_deactivate=False)
         self._owner = owner
         self._current_item = None
@@ -197,8 +199,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     # W10: the 8px ring OUTSIDE the card (on the veil) is owned here at
     # overlay level — the W9 plate filter only sees the inner edge. Ring
     # drags share the _border_drag tuple + clamp/cursor helpers with the
-    # plate handlers. Plain veil clicks fall through to super() (W11 pinned
-    # policy: the veil never closes — X is the only close path). W11: ring
+    # plate handlers. Plain veil clicks dismiss the overlay (reverses the
+    # W6/W11 background-click ban; Esc/deactivate stay pinned). W11: ring
     # and plate presses inside either nav-arrow rect walk the series via
     # the helpers (arrows never start a drag).
     def mousePressEvent(self, event) -> None:  # noqa: N802
@@ -231,7 +233,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 )
         except Exception:
             pass
-        super().mousePressEvent(event)
+        # Plain veil press (ring declined above, children eat their own
+        # presses): dismiss the overlay. Reverses the W6/W11 background-click
+        # ban; Esc/deactivate stay pinned (flags unchanged).
+        try:
+            self.dismiss()
+        except Exception:
+            pass
+        return
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         try:
