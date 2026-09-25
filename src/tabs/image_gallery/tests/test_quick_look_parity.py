@@ -1382,10 +1382,10 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
 
 
 def test_pinned_close_policy_x_only(qtbot):
-    """W11 pinned policy (InfoHUD analog): X is the ONLY close path.
-
-    Replaces the W6 Esc-close assertion — Esc, window deactivate/focus
-    loss, and minimize/restore must all leave the card open.
+    """W11 pinned policy (InfoHUD analog), veil-click exception: X closes,
+    veil click closes (W6/W11 background-click ban reversed), but Esc,
+    window deactivate/focus loss, and minimize/restore must all leave
+    the card open.
     """
     from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
@@ -1396,7 +1396,7 @@ def test_pinned_close_policy_x_only(qtbot):
     assert ov._close_on_background is False
     assert ov._close_on_escape is False
     assert ov._close_on_deactivate is False
-    assert ov._hint_label.text() == "X closes · ←→ walk series"
+    assert ov._hint_label.text() == "X / veil click closes · ←→ walk series"
     assert ov.isVisible() is True
     # Esc must NOT close.
     ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
@@ -1939,10 +1939,10 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
     ov.hide()
 
 
-def test_veil_plain_click_still_does_nothing(qtbot):
-    """W10 item 1 / W6: owning the outer ring must NOT resurrect
-    background-click close — a plain veil press (outside the ring) starts
-    no drag, moves nothing, and leaves the overlay open."""
+def test_veil_plain_click_dismisses(qtbot):
+    """Veil click closes (reverses W10-item-1/W6 ban): a plain veil press
+    (outside the ring) starts no drag, moves nothing, and dismisses
+    the overlay. Ring presses still start drags (covered elsewhere)."""
     from PySide6.QtCore import QEvent, Qt
 
     item = _item("v.png", metrics={})
@@ -1951,7 +1951,8 @@ def test_veil_plain_click_still_does_nothing(qtbot):
     QApplication.processEvents()
     assert ov.isVisible() is True
     card_before = ov._content.geometry()
-    # Far veil (well outside the 8px ring).
+    # Far veil (well outside the 8px ring): no drag, card unmoved,
+    # overlay dismissed.
     ov.mousePressEvent(
         _w10_overlay_event(
             ov, QEvent.Type.MouseButtonPress, (5, 5),
@@ -1961,8 +1962,11 @@ def test_veil_plain_click_still_does_nothing(qtbot):
     QApplication.processEvents()
     assert getattr(ov, "_border_drag", None) is None
     assert ov._content.geometry() == card_before
+    assert ov.isVisible() is False
+    # Re-show, then open veil beside the card (beyond the ring band).
+    _show(ov, item, [item])
+    QApplication.processEvents()
     assert ov.isVisible() is True
-    # Open veil beside the card (beyond the ring band).
     card = ov._content.geometry()
     cy = card.y() + card.height() // 2
     ov.mousePressEvent(
@@ -1973,8 +1977,7 @@ def test_veil_plain_click_still_does_nothing(qtbot):
     )
     QApplication.processEvents()
     assert getattr(ov, "_border_drag", None) is None
-    assert ov._content.geometry() == card_before
-    assert ov.isVisible() is True
+    assert ov.isVisible() is False
     # A release with no drag is a no-op (not consumed).
     from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
 
