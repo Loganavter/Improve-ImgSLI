@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import shiboken6 as sip
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
@@ -12,6 +14,8 @@ from shared_toolkit.ui.in_window_surface import (
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, apply_ui_font
+
+logger = logging.getLogger("ImproveImgSLI")
 
 class _PopupBubble(QWidget):
     SHADOW_RADIUS = 8
@@ -148,10 +152,80 @@ def get_overlay_layer(widget: QWidget | None):
         return getattr(window, "overlay_layer", None)
     return None
 
+
+def _resolve_content_host(widget: QWidget | None) -> QWidget | None:
+    """workspace_content_widget below the tab strip, or None (startup)."""
+    if widget is None or not sip.isValid(widget):
+        return None
+    def _valid(obj):
+        return obj is not None and sip.isValid(obj)
+
+    try:
+        current: QWidget | None = widget
+        while current is not None:
+            host = getattr(current, "workspace_content_widget", None)
+            if _valid(host):
+                return host
+            if _valid(getattr(current, "content_overlay_layer", None)):
+                return current  # established content host carries its layer
+            current = current.parentWidget()
+        window = widget.window()
+    except RuntimeError:
+        return None
+    if not _valid(window):
+        return None
+    for owner in (window, getattr(window, "ui", None)):
+        host = getattr(owner, "workspace_content_widget", None) if owner is not None else None
+        if _valid(host):
+            return host
+    return None
+
+
+def get_content_overlay_layer(widget: QWidget | None) -> OverlayLayer | None:
+    """Content layer (host = workspace_content_widget); window layer on startup."""
+    host = _resolve_content_host(widget)
+    if host is None:
+        logger.warning(
+            "get_content_overlay_layer: workspace_content_widget not built yet, "
+            "falling back to the window overlay layer (startup)"
+        )
+        return get_overlay_layer(widget)
+    cached = getattr(host, "content_overlay_layer", None)
+    if cached is not None and sip.isValid(cached):
+        return cached
+    layer = OverlayLayer(host)
+    layer._is_content_layer = True
+    try:
+        host.content_overlay_layer = layer
+    except Exception:
+        pass
+    return layer
+
+
+def content_bounds(widget: QWidget | None) -> QRect:
+    """Host-local content rect; NEVER window.rect() (includes the strip band)."""
+    host = _resolve_content_host(widget)
+    if host is not None:
+        try:
+            return QRect(host.rect())
+        except RuntimeError:
+            pass
+    if widget is not None and sip.isValid(widget):
+        try:
+            window = widget.window()
+            if window is not None and sip.isValid(window):
+                return QRect(window.rect())  # startup fallback only
+        except RuntimeError:
+            pass
+    return QRect()
+
 class OverlayLayer(QObject):
     def __init__(self, host: QWidget):
         super().__init__(host)
         self._host = host
+        # True only for content layers (via get_content_overlay_layer); window
+        # layers keep the legacy window-bounds clamp for menus/dialogs/CSD.
+        self._is_content_layer = False
         self._value_popups: dict[str, _PopupBubble] = {}
         self._popup_timers: dict[str, QTimer] = {}
         self._host.installEventFilter(self)
@@ -209,7 +283,15 @@ class OverlayLayer(QObject):
         return QRect(top_left, anchor_widget.size())
 
     def clamp_rect(self, rect: QRect, margin: int = 8) -> QRect:
-        bounds = self._host.rect().adjusted(margin, margin, -margin, -margin)
+        bounds_host = self._host
+        if getattr(self, "_is_content_layer", False):
+            resolved = _resolve_content_host(self._host)
+            if resolved is not None:
+                bounds_host = resolved
+        try:
+            bounds = bounds_host.rect().adjusted(margin, margin, -margin, -margin)
+        except RuntimeError:
+            return rect
         if bounds.width() <= 0 or bounds.height() <= 0:
             return rect
 
