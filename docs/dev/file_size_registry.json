@@ -733,7 +733,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 705,
+      "lines": 842,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip\"",
@@ -743,15 +743,27 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/helpers.py",
-      "lines": 2278,
+      "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
+      "lines": 857,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"ui/quick_look helpers — overlay build + populate helpers sharing one overlay\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "ui/quick_look helpers — overlay build + populate helpers sharing one overlay"
+        "reason": "one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/resize.py",
+      "lines": 959,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one card-resize concern: grip/border/ring share one clamp + repin idiom\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one card-resize concern: grip/border/ring share one clamp + repin idiom"
       }
     },
     {
@@ -768,7 +780,7 @@
     },
     {
       "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 728,
+      "lines": 738,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
@@ -780,7 +792,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1143,
+      "lines": 1165,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

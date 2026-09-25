@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
@@ -65,6 +65,8 @@ class SelectionHudController:
         self._translate = translate
         self._count = 0
         self._suppressed = False
+        self._notify_active = False
+        self._notify_token = 0
 
         flyout = BaseFlyout(parent, pinned=True)
         flyout.setObjectName("GallerySelectionHud")
@@ -178,11 +180,11 @@ class SelectionHudController:
     def show(self) -> None:
         if self._suppressed:
             return
-        if self.flyout.isVisible() and self._count > 0:
+        if self.flyout.isVisible() and self._count > 0 and not self._notify_active:
             # Already visible — keep position fresh.
             self.reposition()
             return
-        if self._count <= 0:
+        if self._count <= 0 and not self._notify_active:
             return
         # Bottom-center of the parent (gallery widget / window content).
         try:
@@ -224,6 +226,60 @@ class SelectionHudController:
                 pass
         elif self._count > 0:
             self.show()
+
+    def notify(self, text: str, timeout_ms: int = 2500) -> None:
+        """Transient notice in place of the action row (fail-open).
+
+        Hides the action buttons, shows *text*, then restores the row.
+        A newer notify wins: stale timers are ignored via token.
+        """
+        try:
+            self._notify_token += 1
+            token = self._notify_token
+            self._notify_active = True
+            for btn in (
+                getattr(self, "_clear_btn", None),
+                getattr(self, "_analyze_btn", None),
+                getattr(self, "_find_similar_btn", None),
+                getattr(self, "_carry_btn", None),
+            ):
+                try:
+                    if btn is not None:
+                        btn.setVisible(False)
+                except Exception:
+                    pass
+            try:
+                self._label.setText(text)
+            except Exception:
+                pass
+            self.show()
+            try:
+                QTimer.singleShot(int(timeout_ms), lambda: self._end_notify(token))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _end_notify(self, token: int) -> None:
+        try:
+            if token != getattr(self, "_notify_token", token):
+                return
+            self._notify_active = False
+            for btn in (
+                getattr(self, "_clear_btn", None),
+                getattr(self, "_analyze_btn", None),
+                getattr(self, "_find_similar_btn", None),
+                getattr(self, "_carry_btn", None),
+            ):
+                try:
+                    if btn is not None:
+                        btn.setVisible(True)
+                except Exception:
+                    pass
+            self._refresh_label()
+            self.update(self._count)
+        except Exception:
+            pass
 
     # -- internals ---------------------------------------------------------
 

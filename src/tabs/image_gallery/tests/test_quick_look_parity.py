@@ -943,6 +943,9 @@ def test_strip_region_click_switches_preview(qtbot, tmp_path):
         if b.property("gallery_path") == str(p1):
             b.click()
             break
+    # Series switch buttons defer clicked until the press ripple finishes
+    # (defer_click="ripple") — wait out the toolkit delay before asserting.
+    qtbot.wait(450)
     QApplication.processEvents()
     assert ov._current_item.path == p1
     ov.hide()
@@ -1782,7 +1785,13 @@ def test_outer_ring_zones_and_cursors(qtbot):
         (card.x() + card.width() + strip // 2, card.y() - strip // 2): ("top_right", Qt.CursorShape.SizeBDiagCursor),
         (card.x() - strip // 2, card.y() + card.height() + strip // 2): ("bottom_left", Qt.CursorShape.SizeBDiagCursor),
         (card.x() + card.width() + strip // 2, card.y() + card.height() + strip // 2): ("bottom_right", Qt.CursorShape.SizeFDiagCursor),
-        # Interior / card edge / open veil: no ring zone (W6 veil stays inert).
+        # Boundary frame: claimed by the ring too (1px overlap with the
+        # plate strip), so the edge row resizes regardless of receiver.
+        (cx, card.y()): ("top", Qt.CursorShape.SizeVerCursor),
+        (cx, card.y() + card.height() - 1): ("bottom", Qt.CursorShape.SizeVerCursor),
+        (card.x(), cy): ("left", Qt.CursorShape.SizeHorCursor),
+        (card.x() + card.width() - 1, cy): ("right", Qt.CursorShape.SizeHorCursor),
+        # Deep interior / open veil: no ring zone (W6 veil stays inert).
         (cx, cy): (None, None),
         (card.x() + 2, cy): (None, None),
         (max(0, card.x() - strip - 60), cy): (None, None),
@@ -1826,6 +1835,33 @@ def test_outer_ring_hover_cursor_through_overlay(qtbot):
     assert ov.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
     _move(5, 5)
     assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_boundary_row_press_starts_ring_drag(qtbot):
+    """Boundary frame press through the overlay handler starts a drag.
+
+    The edge row belongs to both sides: whichever widget receives the press
+    (plate filter or overlay ring path), exactly one drag starts. Top-edge
+    midpoint is nav/grip-clear.
+    """
+    from PySide6.QtCore import QEvent, Qt
+
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    card = ov._content.geometry()
+    cx = card.x() + card.width() // 2
+    ov.mousePressEvent(
+        _w10_overlay_event(
+            ov, QEvent.Type.MouseButtonPress, (cx, card.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+    )
+    drag = getattr(ov, "_border_drag", None)
+    assert drag is not None and drag[0] == "top"
+    ov._border_drag = None
     ov.hide()
 
 
@@ -2237,6 +2273,54 @@ def test_reject_button_stays_open(qtbot):
     QApplication.processEvents()
     assert ov.isVisible()
     ov.hide()
+
+
+def test_reject_button_toggles_once_with_production_wiring(qtbot):
+    """Double-fire guard: one `_on_reject` flips rejected exactly once even
+    with the production `rejectToggled -> on_quick_reject` wiring connected.
+
+    Regression: `_on_reject` used to emit `rejectToggled` after toggling, and
+    the only subscriber (`on_quick_reject`) toggled BACK plus ran a second
+    full `show_for` (~300ms redundant re-populate) — net zero + prolagg.
+    """
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+    a = _item("a.png")
+    assert a.rejected is False
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    ov.rejectToggled.connect(lambda p: _qlh.on_quick_reject(ov._owner, p))
+    ov._on_reject()
+    QApplication.processEvents()
+    assert a.rejected is True
+    assert ov.isVisible()
+    ov.hide()
+
+
+def test_compare_button_carries_once_with_production_wiring(qtbot, monkeypatch):
+    """Single-fire guard: one `_on_compare` runs `carry_selected` exactly
+    once even with production `compareRequested -> on_quick_compare` connected.
+
+    Regression: `_on_compare` emitted `compareRequested` AND ran the direct
+    select-{p} + `carry_selected` path, so the carry flow started twice
+    (double `ImageCarryService.begin`).
+    """
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+    from tabs.image_gallery.use_cases import carry as _carry
+
+    calls: list = []
+    monkeypatch.setattr(_carry, "carry_selected", lambda owner, *a, **k: calls.append(owner))
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    ov.compareRequested.connect(lambda p: _qlh.on_quick_compare(ov._owner, p))
+    ov._on_compare()
+    QApplication.processEvents()
+    assert len(calls) == 1
+    assert ov.isHidden()
 
 
 def test_set_source_button_stays_open(qtbot):

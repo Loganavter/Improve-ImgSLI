@@ -165,6 +165,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 elif t == QEvent.Type.MouseMove:
                     try:
                         from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
+                        from tabs.image_gallery.ui.quick_look.helpers import trace_move
+
+                        try:
+                            trace_move(self, "plate-move", event.position().toPoint(), watched)
+                        except Exception:
+                            pass
                         if handle_border_move(self, event):
                             return True
                     except Exception:
@@ -179,7 +185,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 elif t == QEvent.Type.Leave:
                     try:
                         if getattr(self, "_border_drag", None) is None:
-                            self._content.unsetCursor()
+                            from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
+
+                            apply_resize_cursor(self, self._content, "plate", None)
                     except Exception:
                         pass
         except Exception:
@@ -195,14 +203,47 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     # the helpers (arrows never start a drag).
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:
-            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press
+            from tabs.image_gallery.debug import gallery_debug as _dbg
+            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press, ring_zone_at
+
+            _press_dbg = _dbg_enabled()
+            _press_pos = event.position().toPoint()
+            _press_zone = ring_zone_at(self, _press_pos) if _press_dbg else None
             if handle_ring_press(self, event):
                 return
+            if _press_dbg:
+                try:
+                    _receiver = self.childAt(_press_pos)
+                    _receiver_name = (
+                        f"{type(_receiver).__name__}:{_receiver.objectName()}"
+                        if _receiver is not None
+                        else "veil"
+                    )
+                except Exception:
+                    _receiver_name = "?"
+                _dbg(
+                    "ql-resize veil press declined zone=%s pos=(%d,%d) receiver=%s",
+                    _press_zone,
+                    _press_pos.x(),
+                    _press_pos.y(),
+                    _receiver_name,
+                )
         except Exception:
             pass
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import trace_move
+
+            try:
+                _pos = event.position().toPoint()
+                trace_move(self, "overlay-move", _pos, self.childAt(_pos))
+            except Exception:
+                pass
+        except Exception:
+            pass
         try:
             if getattr(self, "_border_drag", None) is not None:
                 from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
@@ -227,12 +268,26 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def leaveEvent(self, event) -> None:  # noqa: N802
         try:
             if getattr(self, "_border_drag", None) is None:
-                self.unsetCursor()
+                from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
+
+                apply_resize_cursor(self, self, "overlay", None)
         except Exception:
             pass
         super().leaveEvent(event)
 
     def show_for(self, item, owner=None) -> None:
+        import time as _time
+
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        _dbg_on = _dbg_enabled()
+        _t0 = _time.perf_counter() if _dbg_on else 0.0
+        if _dbg_on:
+            try:
+                _dbg("quick look show_for begin path=%s", getattr(item, "path", item))
+            except Exception:
+                pass
         if owner is not None:
             self._owner = owner
         self._current_item = item
@@ -252,6 +307,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         self._mode = mode_val
         self._source_path = Path(source) if source is not None else None
+        if _dbg_on:
+            _t_state = _time.perf_counter()
         self._series_items = self._resolve_series(item, series_raw)
         self._current_idx = 0
         try:
@@ -261,17 +318,42 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                     break
         except Exception:
             pass
+        if _dbg_on:
+            _t_series = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase state-resolve=%.1fms series-resolve=%.1fms n_series=%d",
+                (_t_state - _t0) * 1000.0,
+                (_t_series - _t_state) * 1000.0,
+                len(self._series_items),
+            )
+            _t_pop = _time.perf_counter()
         self._populate()
+        if _dbg_on:
+            _t_pop_done = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase populate=%.1fms total=%.1fms",
+                (_t_pop_done - _t_pop) * 1000.0,
+                (_t_pop_done - _t0) * 1000.0,
+            )
         self.show()
         try:
             self.raise_()
             self.setFocus(Qt.FocusReason.PopupFocusReason)
         except Exception:
             pass
+        if _dbg_on:
+            _t_show = _time.perf_counter()
         try:
             self.show_overlay()
         except Exception:
             pass
+        if _dbg_on:
+            _t_overlay = _time.perf_counter()
+            _dbg(
+                "quick look show_for phase show=%.1fms show_overlay=%.1fms",
+                (_t_show - _t_pop_done) * 1000.0,
+                (_t_overlay - _t_show) * 1000.0,
+            )
         # Post-show re-pin: base reposition() recenters the card AFTER
         # _populate ran on stale pre-show geometry, and overlay-child nav
         # circles are unknown to it — re-run the pin hooks on live geometry
@@ -287,6 +369,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             reposition_grip(self)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg(
+                "quick look show_for done total=%.1fms repin=%.1fms path=%s",
+                (_time.perf_counter() - _t0) * 1000.0,
+                (_time.perf_counter() - _t_overlay) * 1000.0,
+                getattr(item, "path", item),
+            )
 
     def show_quick_look(self, item, owner=None) -> None:
         self.show_for(item, owner)
@@ -426,6 +515,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         return [item]
 
     def _populate(self) -> None:
+        import time as _time
+
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        _dbg_on = _dbg_enabled()
+        _tp0 = _time.perf_counter() if _dbg_on else 0.0
         item = self._current_item
         if item is None:
             return
@@ -446,6 +542,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         is_fidelity = "FIDELITY" in mode_str
         # Delegate populated sections
+        if _dbg_on:
+            _tp_sections = _time.perf_counter()
         try:
             from tabs.image_gallery.ui.quick_look.helpers import (
                 populate_brief,
@@ -456,22 +554,56 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 populate_series_header,
                 populate_source_inset,
             )
+            if _dbg_on:
+                _t = _time.perf_counter()
             populate_preview(self, item)
+            if _dbg_on:
+                _dbg("quick look populate preview=%.1fms path=%s", (_time.perf_counter() - _t) * 1000.0, getattr(item, "path", item))
+                _t = _time.perf_counter()
             populate_source_inset(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate source-inset=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_crop(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate crop=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_filename_meta(self, item, is_fidelity)
+            if _dbg_on:
+                _dbg("quick look populate filename-meta=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+                _t = _time.perf_counter()
             populate_report_header(self, is_fidelity, mode_str)
+            if _dbg_on:
+                _dbg("quick look populate report-header=%.1fms", (_time.perf_counter() - _t) * 1000.0)
         except Exception:
             pass
+        if _dbg_on:
+            _t = _time.perf_counter()
         self._rebuild_metrics(item, is_fidelity, mode_str)
+        if _dbg_on:
+            _dbg("quick look populate metrics=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         self._rebuild_artifacts(item)
+        if _dbg_on:
+            _dbg("quick look populate artifacts=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         try:
             from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh, populate_brief as _pb
             _psh(self)
             _pb(self, item)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg("quick look populate series+brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _t = _time.perf_counter()
         self._rebuild_strip()
+        if _dbg_on:
+            _dbg(
+                "quick look populate strip=%.1fms n_series=%d total_populate=%.1fms",
+                (_time.perf_counter() - _t) * 1000.0,
+                len(self._series_items),
+                (_time.perf_counter() - _tp0) * 1000.0,
+            )
         try:
             has_series = len(self._series_items) > 1
             self._prev_btn.setEnabled(bool(has_series))
@@ -550,11 +682,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def _on_compare(self) -> None:
         if self._current_item is None:
             return
-        try:
-            p = Path(getattr(self._current_item, "path", ""))
-            self.compareRequested.emit(p)
-        except Exception:
-            pass
+        # No compareRequested.emit here: the direct path below already sets
+        # selection {p} and runs carry_selected, and the only subscriber
+        # (on_quick_compare) would run carry_selected a SECOND time
+        # (double ImageCarryService.begin). on_quick_compare stays for the
+        # _on_multi path, which relies on it for the carry step.
         try:
             owner = self._owner
             if owner is not None and hasattr(owner, "state"):
@@ -637,7 +769,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                                 pass
                 except Exception:
                     pass
-            self.rejectToggled.emit(p)
+            # No rejectToggled.emit here: _on_reject already flipped the flag
+            # above, and the only subscriber (on_quick_reject, wired in
+            # quick_look_hooks.show_quick_look) would flip it BACK plus run a
+            # second full show_for (~300ms of redundant re-populate). External
+            # reject triggers (card menu, hover capsule) still reach the open
+            # overlay via on_quick_reject — that path is untouched.
             self._populate()  # W12-A: Reject stays open — triage continues.
         except Exception:
             pass

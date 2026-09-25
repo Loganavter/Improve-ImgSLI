@@ -83,7 +83,24 @@ def _overlay_parent_window(owner, triage_owner) -> QWidget | None:
 
 
 def show_quick_look(owner, item_or_path) -> None:
-    """Open quick look for *item* — resolves via owner state series."""
+    """Open quick look for *item* — resolves via owner state series.
+
+    Slow-open diagnosis (IMGSLI_GALLERY_DEBUG=1): per-phase ms with
+    ``[gallery-debug]`` prefix (item-resolve / triage-resolve /
+    overlay-create-or-reuse / show_for), see ``docs/dev/LOGGING.md``.
+    """
+    import time as _time
+
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+    from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+    _dbg_on = _dbg_enabled()
+    _t0 = _time.perf_counter() if _dbg_on else 0.0
+    if _dbg_on:
+        try:
+            _dbg("quick look begin raw=%r", str(item_or_path)[:120])
+        except Exception:
+            pass
     try:
         # Normalize to GalleryItem
         item = None
@@ -101,9 +118,24 @@ def show_quick_look(owner, item_or_path) -> None:
                 except Exception:
                     continue
         if item is None:
+            if _dbg_on:
+                _dbg("quick look abort item-not-found total=%.1fms", (_time.perf_counter() - _t0) * 1000.0)
             return
+        if _dbg_on:
+            _t_item = _time.perf_counter()
         triage_owner = owner_for_triage(owner)
+        if _dbg_on:
+            _t_triage = _time.perf_counter()
+            _dbg(
+                "quick look phase item-resolve=%.1fms triage-resolve=%.1fms path=%s n_items=%s",
+                (_t_item - _t0) * 1000.0,
+                (_t_triage - _t_item) * 1000.0,
+                path_val,
+                len(owner._items) if getattr(owner, "_items", None) is not None else -1,  # type: ignore[attr-defined]
+            )
         overlay = owner._quick_look_overlay  # type: ignore[attr-defined]
+        if _dbg_on:
+            _t_overlay_check = _time.perf_counter()
         if overlay is None:
             try:
                 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
@@ -129,14 +161,40 @@ def show_quick_look(owner, item_or_path) -> None:
                 except Exception:
                     pass
             except Exception:
+                if _dbg_on:
+                    _dbg("quick look overlay-create raised", exc_info=True)
                 return
+            if _dbg_on:
+                _dbg(
+                    "quick look phase overlay-create=%.1fms total=%.1fms",
+                    (_time.perf_counter() - _t_overlay_check) * 1000.0,
+                    (_time.perf_counter() - _t0) * 1000.0,
+                )
         else:
             try:
                 overlay._owner = triage_owner  # type: ignore[attr-defined]
             except Exception:
                 pass
+            if _dbg_on:
+                _dbg(
+                    "quick look phase overlay-reuse=%.1fms total=%.1fms visible=%s",
+                    (_time.perf_counter() - _t_overlay_check) * 1000.0,
+                    (_time.perf_counter() - _t0) * 1000.0,
+                    overlay.isVisible() if hasattr(overlay, "isVisible") else "?",
+                )
+        if _dbg_on:
+            _t_show = _time.perf_counter()
         overlay.show_for(item, triage_owner)
+        if _dbg_on:
+            _dbg(
+                "quick look phase show_for=%.1fms total=%.1fms path=%s",
+                (_time.perf_counter() - _t_show) * 1000.0,
+                (_time.perf_counter() - _t0) * 1000.0,
+                path_val,
+            )
     except Exception:
+        if _dbg_on:
+            _dbg("quick look outer raised", exc_info=True)
         pass
 
 

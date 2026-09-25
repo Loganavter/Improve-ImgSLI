@@ -96,10 +96,20 @@ def rebuild_strip(overlay) -> None:
                 regions = None
         if regions is not None:
             # W6: 66px thumbs per svg (x=816/892/968/1044 w=66 h=44).
-            btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, badge=badge_text)
+            # Series switch re-populates the overlay (~300ms) — let the
+            # ripple finish first (same defer_click as the bar buttons).
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, badge=badge_text, defer_click="ripple")
         else:
-            btn = Button(text="", variant="surface", size=(66, 44), parent=container, badge=badge_text)
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, badge=badge_text, defer_click="ripple")
         btn.setObjectName(f"quicklook_strip_{idx}")
+        # D1: explicit arrow — strip thumbs are rebuilt per populate and
+        # would otherwise inherit a stale plate resize cursor.
+        try:
+            from PySide6.QtCore import Qt as _Qt
+
+            btn.setCursor(_Qt.CursorShape.ArrowCursor)
+        except Exception:
+            pass
         try:
             if pending:
                 btn.setBadge("…")
