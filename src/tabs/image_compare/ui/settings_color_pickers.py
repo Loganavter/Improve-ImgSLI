@@ -116,7 +116,6 @@ class SettingsColorPickerCoordinator:
         existing = self._dialogs.get(key)
         if existing and existing.isVisible():
             existing.raise_()
-            existing.activateWindow()
             return
 
         dialog = ColorPickerDialog(
@@ -204,7 +203,6 @@ class SettingsColorPickerCoordinator:
         dialog = self._dialogs.get(key)
         if dialog and dialog.isVisible():
             dialog.raise_()
-            dialog.activateWindow()
             return
 
         host = parent_window if parent_window is not None else self.main_window_app
@@ -226,22 +224,15 @@ class SettingsColorPickerCoordinator:
             if post_apply is not None:
                 post_apply(color)
 
-        def on_finished(_result, *, dialog_key=key, transient_host=parent_window):
+        def on_finished(_result, *, dialog_key=key):
+            # Wayland-safe: never re-raise the transient host after close —
+            # the user may have moved on; nothing steals activation here.
             self._dialogs.pop(dialog_key, None)
-            if transient_host is None:
-                return
-            try:
-                if transient_host.isVisible() and not transient_host.isActiveWindow():
-                    transient_host.raise_()
-                    transient_host.activateWindow()
-            except (RuntimeError, AttributeError):
-                return
 
         dialog.colorSelected.connect(handle_selected)
         dialog.finished.connect(on_finished)
         dialog.show()
         dialog.raise_()
-        dialog.activateWindow()
         self._dialogs[key] = dialog
 
     def _apply_magnifier_divider_color(self, color):
