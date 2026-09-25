@@ -2239,6 +2239,29 @@ def test_reject_button_stays_open(qtbot):
     ov.hide()
 
 
+def test_reject_button_toggles_once_with_production_wiring(qtbot):
+    """Double-fire guard: one `_on_reject` flips rejected exactly once even
+    with the production `rejectToggled -> on_quick_reject` wiring connected.
+
+    Regression: `_on_reject` used to emit `rejectToggled` after toggling, and
+    the only subscriber (`on_quick_reject`) toggled BACK plus ran a second
+    full `show_for` (~300ms redundant re-populate) — net zero + prolagg.
+    """
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+    a = _item("a.png")
+    assert a.rejected is False
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    ov.rejectToggled.connect(lambda p: _qlh.on_quick_reject(ov._owner, p))
+    ov._on_reject()
+    QApplication.processEvents()
+    assert a.rejected is True
+    assert ov.isVisible()
+    ov.hide()
+
+
 def test_set_source_button_stays_open(qtbot):
     """W12-A: `Set as source` keeps triaging — overlay stays open."""
     a = _item("a.png")

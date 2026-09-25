@@ -726,7 +726,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                                 pass
                 except Exception:
                     pass
-            self.rejectToggled.emit(p)
+            # No rejectToggled.emit here: _on_reject already flipped the flag
+            # above, and the only subscriber (on_quick_reject, wired in
+            # quick_look_hooks.show_quick_look) would flip it BACK plus run a
+            # second full show_for (~300ms of redundant re-populate). External
+            # reject triggers (card menu, hover capsule) still reach the open
+            # overlay via on_quick_reject — that path is untouched.
             self._populate()  # W12-A: Reject stays open — triage continues.
         except Exception:
             pass
