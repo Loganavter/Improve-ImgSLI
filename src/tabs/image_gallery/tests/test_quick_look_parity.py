@@ -943,6 +943,9 @@ def test_strip_region_click_switches_preview(qtbot, tmp_path):
         if b.property("gallery_path") == str(p1):
             b.click()
             break
+    # Series switch buttons defer clicked until the press ripple finishes
+    # (defer_click="ripple") — wait out the toolkit delay before asserting.
+    qtbot.wait(450)
     QApplication.processEvents()
     assert ov._current_item.path == p1
     ov.hide()

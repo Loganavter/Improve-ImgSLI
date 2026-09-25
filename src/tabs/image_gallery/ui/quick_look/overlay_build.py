@@ -545,7 +545,7 @@ def build_overlay_ui(overlay) -> None:
     _nav_border = _token_color("gallery.nav.border", "#d7dade")
     # W11: glyph rows size up to QUICK_LOOK_NAV_GLYPH_PT (ratio=1.0 keeps
     # them centered, ring intact in both states) — 36px circles unchanged.
-    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
+    overlay._prev_btn = Button(rows=[ButtonRow(text="‹", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay, defer_click="ripple")
     overlay._prev_btn.setObjectName("quicklook_prev")
     try:
         if _nav_fill is not None:
@@ -628,7 +628,7 @@ def build_overlay_ui(overlay) -> None:
     fname_row.addStretch(1)
     preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
-    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay)
+    overlay._next_btn = Button(rows=[ButtonRow(text="›", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay, defer_click="ripple")
     overlay._next_btn.setObjectName("quicklook_next")
     try:
         if _nav_fill is not None:
@@ -769,7 +769,10 @@ def build_overlay_ui(overlay) -> None:
     accent = _token_color("accent", "#0078D4" if not dark_bottom else "#0096FF")
     danger = _token_color("gallery.status.danger", "#c0392b" if not dark_bottom else "#d64545")
     warning = _token_color("gallery.status.warn", "#b77900" if not dark_bottom else "#d9a441")
-    overlay._compare_btn = Button(text="Compare →", variant="surface", parent=bar)
+    # Heavy bar actions run after the press ripple finishes (defer_click):
+    # _populate / carry flows block the GUI thread for hundreds of ms, and
+    # a synchronous clicked would freeze mid-ripple with no press feedback.
+    overlay._compare_btn = Button(text="Compare →", variant="surface", parent=bar, defer_click="ripple")
     overlay._compare_btn.setObjectName("quicklook_compare")
     try:
         if accent is not None:
@@ -779,11 +782,11 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._compare_btn.clicked.connect(overlay._on_compare)
     bar_lay.addWidget(overlay._compare_btn)
-    overlay._multi_btn = Button(text="Add to Multi Compare", variant="surface", parent=bar)
+    overlay._multi_btn = Button(text="Add to Multi Compare", variant="surface", parent=bar, defer_click="ripple")
     overlay._multi_btn.setObjectName("quicklook_multi")
     overlay._multi_btn.clicked.connect(overlay._on_multi)
     bar_lay.addWidget(overlay._multi_btn)
-    overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar)
+    overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar, defer_click="ripple")
     overlay._reject_btn.setObjectName("quicklook_reject")
     overlay._reject_text_color = danger
     try:
@@ -794,7 +797,7 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._reject_btn.clicked.connect(overlay._on_reject)
     bar_lay.addWidget(overlay._reject_btn)
-    overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar)
+    overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
     overlay._set_source_btn.setObjectName("quicklook_set_source")
     try:
         if warning is not None:
