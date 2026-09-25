@@ -127,7 +127,9 @@ class OnboardingPlugin(Plugin):
         self._overlay.prepare_for_display()
         stack.setCurrentWidget(self._overlay)
         self._overlay.raise_()
-        self._overlay.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        # In-stack raise only: focus stays inside the overlay (OtherFocusReason)
+        # — host-window activation belongs to the host shell (dialog_manager).
+        self._overlay.setFocus(Qt.FocusReason.OtherFocusReason)
 
         hide_cover = getattr(getattr(window, "startup_runtime", None), "hide_cover", None)
         if callable(hide_cover):
