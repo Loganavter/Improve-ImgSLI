@@ -320,6 +320,11 @@ def create_service(
     if service_id == "is_canvas_content_ready":
         return tab._is_canvas_content_ready()
     if service_id == "toast_anchor_widget":
+        # Content-below-strip contract (wave C): the toast anchor is this
+        # tab's own canvas, which lives inside workspace_stack /
+        # workspace_content_widget below the tab strip. The host
+        # (ui.sync_session_mode) only accepts anchors from that subtree
+        # and never anchors to the window itself.
         if tab._widget is None:
             return None
         return tab._widget.image_label

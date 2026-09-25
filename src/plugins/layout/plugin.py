@@ -3,6 +3,41 @@ from typing import Any
 from plugins.settings.events import SettingsUIModeChangedEvent
 from core.plugin_system import Plugin, plugin
 
+
+def _widget_in_content_subtree(widget, content) -> bool:
+    """True when ``widget`` renders inside the below-strip content area.
+
+    Mirrors ``ui.main_window.ui._widget_in_content_subtree`` (kept local:
+    plugins must not import presenter internals). Fail-open (True) for
+    non-widget doubles and when the content host is not built yet
+    (startup fallback).
+    """
+    if content is None or not hasattr(content, "parentWidget"):
+        return True
+    if widget is None or not hasattr(widget, "parentWidget"):
+        return True
+    node = widget
+    for _ in range(100):
+        if node is content:
+            return True
+        try:
+            node = node.parentWidget()
+        except RuntimeError:
+            return False
+        if node is None:
+            return False
+    return False
+
+
+def _resolve_content_host(parent_window):
+    """Below-strip content host if built, else None (startup fallback)."""
+    content = getattr(parent_window, "workspace_content_widget", None)
+    if content is not None:
+        return content
+    ui_obj = getattr(parent_window, "ui", None)
+    return getattr(ui_obj, "workspace_content_widget", None)
+
+
 @plugin(name="layout", version="1.0", startup_tier="bootstrap")
 class LayoutPlugin(Plugin):
     def __init__(self):
@@ -43,7 +78,9 @@ class LayoutPlugin(Plugin):
                 anchor = registry.create_service("toast_anchor_widget")
             except Exception:
                 anchor = None
-            if anchor is not None:
+            if anchor is not None and _widget_in_content_subtree(
+                anchor, _resolve_content_host(parent_window)
+            ):
                 self._toast_manager.set_anchor(anchor)
 
     @property

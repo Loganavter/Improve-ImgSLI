@@ -231,6 +231,17 @@ def _cover_transition_for_session(presenter, session_id: str) -> None:
         return
 
     stack = getattr(presenter.ui, "workspace_stack", None)
+    content = getattr(presenter.ui, "workspace_content_widget", None)
+    if not _cover_target_below_strip(stack, content):
+        logger.warning(
+            "[workspace-transition] cover skipped: target outside "
+            "workspace content below the tab strip "
+            "(target=%r content=%r session_type=%r)",
+            type(stack).__name__ if stack is not None else None,
+            type(content).__name__ if content is not None else None,
+            session_type,
+        )
+        return
     logger.debug(
         "[workspace-transition] requesting cover session_type=%r "
         "hint=(min=%s max=%s) mask_id=%s host=%r stack=%r",
@@ -247,6 +258,35 @@ def _cover_transition_for_session(presenter, session_id: str) -> None:
         max_duration_ms=hint.max_duration_ms,
         session_type=session_type,
     )
+
+
+def _cover_target_below_strip(target, content) -> bool:
+    """True when ``target`` lives in the content area below the tab strip.
+
+    The transition cover may only target ``workspace_stack`` (or one of its
+    children), which itself lives inside ``workspace_content_widget`` below
+    the strip. A window-level target (e.g. the main window) would paint the
+    mask over the strip — refuse it with a cover-skipped warning instead.
+
+    Fail-open (True) for non-widget test doubles and when the content host
+    is not built yet (startup): the mask's own None-target warning still
+    applies, and legacy callers passing opaque doubles keep working.
+    """
+    if content is None or not hasattr(content, "parentWidget"):
+        return True
+    if target is None or not hasattr(target, "parentWidget"):
+        return True
+    node = target
+    for _ in range(100):
+        if node is content:
+            return True
+        try:
+            node = node.parentWidget()
+        except RuntimeError:
+            return False
+        if node is None:
+            return False
+    return False
 
 
 def _resolve_workspace_transition_mask(presenter):
