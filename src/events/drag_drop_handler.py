@@ -4,7 +4,7 @@ import shiboken6 as sip
 from PySide6.QtCore import QObject, QPointF, QTimer
 from PySide6.QtWidgets import QApplication
 from ui.widgets.drag_ghost_widget import DragGhostWidget, make_count_slot_pixmap
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from shared_toolkit.ui.overlay_layer import get_content_overlay_layer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -54,6 +54,7 @@ class DragAndDropService(QObject):
         self._is_dragging = False
         self._source_data = None
         self._ghost_widget = None
+        self._ghost_layer = None
         self._drag_start_pos_global = QPointF()
         self._hotspot = QPointF()
         self._current_target = None
@@ -155,10 +156,21 @@ class DragAndDropService(QObject):
             _cancel_ripple(source_widget)
             pixmap = source_widget.grab()
 
-        ghost_parent = None
-        if self.main_window is not None:
-            overlay = get_overlay_layer(self.main_window)
-            ghost_parent = overlay.host if overlay is not None else self.main_window
+        # Wave B (content-below-strip): ghosts parent to the content overlay
+        # host below AdaptiveTabStrip, never the window overlay host, so a
+        # ghost dragged across the strip band cannot paint over it. Resolve
+        # from the drag source (deepest content context); when no layer
+        # exists at all (bare test/startup widgets) keep the legacy window
+        # fallback instead of crashing.
+        anchor = source_widget if source_widget is not None else self.main_window
+        overlay = get_content_overlay_layer(anchor)
+        if overlay is not None:
+            ghost_parent = overlay.host
+        else:
+            ghost_parent = anchor.window() if anchor is not None else None
+            if ghost_parent is None:
+                ghost_parent = self.main_window
+        self._ghost_layer = overlay
 
         self._ghost_widget = DragGhostWidget(ghost_parent)
         self._ghost_widget.set_pixmap(pixmap)
@@ -168,6 +180,8 @@ class DragAndDropService(QObject):
         )
 
         self._ghost_widget.move(desired_top_left_global)
+        if overlay is not None:
+            overlay.ensure_visible(self._ghost_widget)
         self._ghost_widget.show()
         self._ghost_widget.raise_()
 
@@ -192,6 +206,12 @@ class DragAndDropService(QObject):
             )
             self._ghost_widget.move(desired_top_left_global)
             self._ghost_widget.raise_()
+            layer = getattr(self, "_ghost_layer", None)
+            if layer is not None:
+                try:
+                    layer.ensure_visible(self._ghost_widget)
+                except RuntimeError:
+                    pass
 
         try:
             ui_manager = None
@@ -326,6 +346,7 @@ class DragAndDropService(QObject):
         if self._ghost_widget:
             self._ghost_widget.deleteLater()
             self._ghost_widget = None
+        self._ghost_layer = None
 
         if self._source_widget and sip.isValid(self._source_widget):
             try:
