@@ -23,5 +23,6 @@ cloc.txt
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+wayland.log
 
 venv/
