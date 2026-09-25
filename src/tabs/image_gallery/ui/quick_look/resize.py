@@ -337,6 +337,69 @@ def _resize_dbg():
     return False, None
 
 
+def _cursor_name(cursor) -> str:
+    """Human-readable cursor shape (ArrowCursor for None)."""
+    if cursor is None:
+        return "arrow"
+    try:
+        shape = cursor.shape() if hasattr(cursor, "shape") else cursor
+        return str(shape).split(".")[-1]
+    except Exception:
+        return "?"
+
+
+def apply_resize_cursor(overlay, target, slot: str, cursor) -> None:
+    """Set/unset a resize cursor, logging the ACTUAL change (ql-resize).
+
+    ``slot`` is ``plate`` (``_content``) or ``overlay``. Logs only on change
+    (per slot), so plain hovers don't spam — you see exactly when the visible
+    cursor flips and on which widget. No-op overhead when the debug flag is
+    unset (one env check).
+    """
+    _dbg_on, _dbg = _resize_dbg()
+    try:
+        if not _dbg_on:
+            if cursor is None:
+                try:
+                    target.unsetCursor()
+                except Exception:
+                    pass
+            else:
+                try:
+                    target.setCursor(cursor)
+                except Exception:
+                    pass
+            return
+        want = _cursor_name(cursor)
+        try:
+            state = getattr(overlay, "_dbg_cursor_state", None)
+            if not isinstance(state, dict):
+                state = {}
+                overlay._dbg_cursor_state = state
+            prev = state.get(slot)
+        except Exception:
+            state, prev = None, None
+        try:
+            if cursor is None:
+                target.unsetCursor()
+            else:
+                target.setCursor(cursor)
+        except Exception:
+            pass
+        if want != prev:
+            try:
+                if isinstance(state, dict):
+                    state[slot] = want
+            except Exception:
+                pass
+            try:
+                _dbg("ql-resize cursor %s -> %s", slot, want)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def handle_border_press(overlay, event) -> bool:
     """Start a full-border drag on left-press inside the strip (W9).
 
@@ -395,11 +458,7 @@ def handle_border_press(overlay, event) -> bool:
         if _dbg_on:
             _dbg("ql-resize drag start zone=%s (inner strip)", zone)
         cursor = resize_cursor_for(zone)
-        if cursor is not None:
-            try:
-                content.setCursor(cursor)
-            except Exception:
-                pass
+        apply_resize_cursor(overlay, content, "plate", cursor)
         try:
             event.accept()
         except Exception:
@@ -468,21 +527,12 @@ def handle_border_move(overlay, event) -> bool:
         # W11: arrow rects never show a resize cursor (plain arrow instead).
         try:
             if nav_button_at(overlay, content.mapTo(overlay, local)) is not None:
-                try:
-                    content.unsetCursor()
-                except Exception:
-                    pass
+                apply_resize_cursor(overlay, content, "plate", None)
                 return False
         except Exception:
             pass
         cursor = resize_cursor_for(resize_zone_at(content, local))
-        try:
-            if cursor is not None:
-                content.setCursor(cursor)
-            else:
-                content.unsetCursor()
-        except Exception:
-            pass
+        apply_resize_cursor(overlay, content, "plate", cursor)
         try:
             _dbg_on, _dbg = _resize_dbg()
             if _dbg_on:
@@ -521,7 +571,7 @@ def handle_border_release(overlay, event) -> bool:
         try:
             content = getattr(overlay, "_content", None)
             if content is not None:
-                content.unsetCursor()
+                apply_resize_cursor(overlay, content, "plate", None)
         except Exception:
             pass
         try:
@@ -665,11 +715,7 @@ def handle_ring_press(overlay, event) -> bool:
         if _dbg_on:
             _dbg("ql-resize drag start zone=%s (outer ring)", zone)
         cursor = resize_cursor_for(zone)
-        if cursor is not None:
-            try:
-                overlay.setCursor(cursor)
-            except Exception:
-                pass
+        apply_resize_cursor(overlay, overlay, "overlay", cursor)
         try:
             event.accept()
         except Exception:
@@ -703,21 +749,12 @@ def handle_ring_hover(overlay, event) -> bool:
         # W11: arrow rects never show a resize cursor (plain arrow instead).
         try:
             if nav_button_at(overlay, local) is not None:
-                try:
-                    overlay.unsetCursor()
-                except Exception:
-                    pass
+                apply_resize_cursor(overlay, overlay, "overlay", None)
                 return False
         except Exception:
             pass
         cursor = resize_cursor_for(ring_zone_at(overlay, local))
-        try:
-            if cursor is not None:
-                overlay.setCursor(cursor)
-            else:
-                overlay.unsetCursor()
-        except Exception:
-            pass
+        apply_resize_cursor(overlay, overlay, "overlay", cursor)
         try:
             _dbg_on, _dbg = _resize_dbg()
             if _dbg_on:
@@ -762,14 +799,11 @@ def handle_ring_release(overlay, event) -> bool:
             _dbg("ql-resize drag end zone=%s (outer ring)", zone)
         overlay._border_drag = None
         _repin_after_card_resize(overlay)
-        try:
-            overlay.unsetCursor()
-        except Exception:
-            pass
+        apply_resize_cursor(overlay, overlay, "overlay", None)
         try:
             content = getattr(overlay, "_content", None)
             if content is not None:
-                content.unsetCursor()
+                apply_resize_cursor(overlay, content, "plate", None)
         except Exception:
             pass
         try:

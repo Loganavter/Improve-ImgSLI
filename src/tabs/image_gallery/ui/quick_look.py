@@ -179,7 +179,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 elif t == QEvent.Type.Leave:
                     try:
                         if getattr(self, "_border_drag", None) is None:
-                            self._content.unsetCursor()
+                            from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
+
+                            apply_resize_cursor(self, self._content, "plate", None)
                     except Exception:
                         pass
         except Exception:
@@ -250,7 +252,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def leaveEvent(self, event) -> None:  # noqa: N802
         try:
             if getattr(self, "_border_drag", None) is None:
-                self.unsetCursor()
+                from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
+
+                apply_resize_cursor(self, self, "overlay", None)
         except Exception:
             pass
         super().leaveEvent(event)
