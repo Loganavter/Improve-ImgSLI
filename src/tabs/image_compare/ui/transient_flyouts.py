@@ -11,22 +11,36 @@ class FlyoutController:
         self.manager = manager
         self.widget = widget
         self._context_menu_provider = None
-        flyout = getattr(manager.host, "unified_flyout", None)
-        if flyout is not None and hasattr(flyout, "set_list_anchors"):
-            left = getattr(widget, "combo_image1", None)
-            right = getattr(widget, "combo_image2", None)
-            if left is not None and right is not None:
-                flyout.set_list_anchors(left, right)
+        self._sync_flyout_anchors()
         self._install_context_menu()
 
     def _sync_flyout_anchors(self) -> None:
-        flyout = getattr(self.manager.host, "unified_flyout", None)
+        """Re-read the list anchors from the current combo widgets.
+
+        Runs lazily on every ``show_flyout`` (and once at construction), so
+        anchors are never cached across a tab switch that hid the flyout —
+        the next show re-syncs from whatever combos exist now. Fail-open:
+        missing manager/host/widget refs never crash the show path.
+        """
+        try:
+            manager = getattr(self, "manager", None)
+            host = getattr(manager, "host", None)
+            flyout = getattr(host, "unified_flyout", None)
+        except Exception:
+            return
         if flyout is None or not hasattr(flyout, "set_list_anchors"):
             return
-        left = getattr(self.widget, "combo_image1", None)
-        right = getattr(self.widget, "combo_image2", None)
+        try:
+            widget = getattr(self, "widget", None)
+            left = getattr(widget, "combo_image1", None)
+            right = getattr(widget, "combo_image2", None)
+        except Exception:
+            return
         if left is not None and right is not None:
-            flyout.set_list_anchors(left, right)
+            try:
+                flyout.set_list_anchors(left, right)
+            except Exception:
+                pass
 
     def _install_context_menu(self) -> None:
         from tabs.image_compare.ui.context_menu import (
@@ -90,30 +104,44 @@ class FlyoutController:
         self._sync_flyout_anchors()
         from ui.widgets.unified_list_picker import FlyoutMode
 
-        host = self.manager.host
-        if host.unified_flyout:
-            time_since_close = time.monotonic() - host.unified_flyout.last_close_timestamp
-            is_same_list = host.unified_flyout.source_list_num == image_number
+        host = getattr(getattr(self, "manager", None), "host", None)
+        widget = getattr(self, "widget", None)
+        if host is None or widget is None:
+            return
+        unified = getattr(host, "unified_flyout", None)
+        if unified is not None:
+            try:
+                time_since_close = time.monotonic() - unified.last_close_timestamp
+                is_same_list = unified.source_list_num == image_number
+                last_close_mode = unified.last_close_mode
+            except Exception:
+                return
             if (
-                host.unified_flyout.last_close_mode == FlyoutMode.DOUBLE
+                last_close_mode == FlyoutMode.DOUBLE
                 and time_since_close < 0.2
             ) or (is_same_list and time_since_close < 0.2):
                 return
 
-        if host.unified_flyout is not None and host.unified_flyout.isVisible():
-            if host.unified_flyout.mode == FlyoutMode.DOUBLE:
-                self.widget.combo_image1.setFlyoutOpen(False)
-                self.widget.combo_image2.setFlyoutOpen(False)
-                host.unified_flyout.start_closing_animation()
+        try:
+            unified_visible = (
+                bool(unified.isVisible()) if unified is not None else False
+            )
+        except Exception:
+            return
+        if unified is not None and unified_visible:
+            if unified.mode == FlyoutMode.DOUBLE:
+                widget.combo_image1.setFlyoutOpen(False)
+                widget.combo_image2.setFlyoutOpen(False)
+                unified.start_closing_animation()
                 return
 
             if (
-                host.unified_flyout.mode in (FlyoutMode.SINGLE_LEFT, FlyoutMode.SINGLE_RIGHT)
-                and host.unified_flyout.source_list_num == image_number
+                unified.mode in (FlyoutMode.SINGLE_LEFT, FlyoutMode.SINGLE_RIGHT)
+                and unified.source_list_num == image_number
             ):
-                button = self.widget.combo_image1 if image_number == 1 else self.widget.combo_image2
+                button = widget.combo_image1 if image_number == 1 else widget.combo_image2
                 button.setFlyoutOpen(False)
-                host.unified_flyout.start_closing_animation()
+                unified.start_closing_animation()
                 return
 
         document = host.store.get_session_state_slot("document")
@@ -121,23 +149,36 @@ class FlyoutController:
         if len(target_list) == 0:
             return
 
-        button = self.widget.combo_image1 if image_number == 1 else self.widget.combo_image2
-        other_button = self.widget.combo_image2 if image_number == 1 else self.widget.combo_image1
+        button = widget.combo_image1 if image_number == 1 else widget.combo_image2
+        other_button = widget.combo_image2 if image_number == 1 else widget.combo_image1
         other_button.setFlyoutOpen(False)
         button.setFlyoutOpen(True)
 
-        if host.unified_flyout is not None:
-            host.unified_flyout.showAsSingle(image_number, button)
+        if unified is not None:
+            unified.showAsSingle(image_number, button)
 
         QTimer.singleShot(0, self.sync_flyout_combo_status)
 
     def sync_flyout_combo_status(self):
         from ui.widgets.unified_list_picker import FlyoutMode
 
-        host = self.manager.host
-        if host.unified_flyout.mode == FlyoutMode.DOUBLE:
-            self.widget.combo_image1.setFlyoutOpen(True)
-            self.widget.combo_image2.setFlyoutOpen(True)
+        host = getattr(getattr(self, "manager", None), "host", None)
+        unified = getattr(host, "unified_flyout", None) if host is not None else None
+        if unified is None:
+            return
+        try:
+            is_double = unified.mode == FlyoutMode.DOUBLE
+        except Exception:
+            return
+        if is_double:
+            widget = getattr(self, "widget", None)
+            if widget is None:
+                return
+            try:
+                widget.combo_image1.setFlyoutOpen(True)
+                widget.combo_image2.setFlyoutOpen(True)
+            except Exception:
+                pass
 
     def repopulate_flyouts(self):
         from ui.widgets.unified_list_picker import FlyoutMode
