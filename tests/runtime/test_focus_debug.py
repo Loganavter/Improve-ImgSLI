@@ -26,6 +26,19 @@ def _flag_off(monkeypatch):
     assert not focus_debug_enabled()
 
 
+@pytest.fixture(autouse=True)
+def _restore_global_logger_level():
+    """install_focus_tracer() permanently drops the ImproveImgSLI logger to
+    DEBUG (by design, app-lifetime). Without a restore, every LATER test in
+    the pytest process runs with DEBUG on — e.g. thumbnail warm-run asserts
+    on caplog.text start seeing worker_start lines (order-dependent flake:
+    test_focus_debug.py x test_warm_run_emits_without_workers)."""
+    conventional = logging.getLogger("ImproveImgSLI")
+    level = conventional.level
+    yield
+    conventional.setLevel(level)
+
+
 def test_install_is_idempotent(qapp, _flag_on):
     assert install_focus_tracer(qapp) is True
     assert install_focus_tracer(qapp) is True
