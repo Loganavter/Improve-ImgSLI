@@ -1,0 +1,144 @@
+{
+  "strip_overlaps": {
+    "families": [
+      {
+        "name": "strip",
+        "by": "objectname",
+        "pattern": "WorkspaceTabsBar|WorkspaceTabs",
+        "justification": "The strip band itself (strip + tab bar children)."
+      },
+      {
+        "name": "menu",
+        "by": "classname",
+        "pattern": "QMenu",
+        "justification": "Global menus open over any chrome including the strip."
+      },
+      {
+        "name": "dialog",
+        "by": "flag",
+        "pattern": "QDialog",
+        "justification": "Top-level dialogs (settings/help/video-editor/export/color-picker/palette) are window-owned, not tab-owned."
+      },
+      {
+        "name": "csd",
+        "by": "objectname",
+        "pattern": "TitleBar|title_bar|CsdDecoration|window_controls|WindowControls",
+        "justification": "Client-side window chrome lives above the strip band."
+      },
+      {
+        "name": "help",
+        "by": "classname",
+        "pattern": "HelpDialog|HelpBackBar|HelpDocumentView",
+        "justification": "Help is a host shell dialog, window-parented by design."
+      },
+      {
+        "name": "settings",
+        "by": "classname",
+        "pattern": "SettingsDialog|SettingsShell|SidebarDialogShell",
+        "justification": "Settings is a host shell dialog, window-parented by design."
+      }
+    ],
+    "tab_modals": [
+      {
+        "class": "QuickLookOverlay",
+        "module": "tabs.image_gallery.ui.quick_look",
+        "reason": "grandfathered-quicklook-window-parent",
+        "dismissal": "dismiss",
+        "dismissal_proof": "show_overlay/dismiss pair on TopLevelInWindowOverlay + hideEvent filter removal"
+      },
+      {
+        "class": "CleanReviewOverlay",
+        "module": "tabs.image_gallery.ui.clean_review",
+        "reason": "grandfathered-clean-review-window-parent",
+        "dismissal": "dismiss",
+        "dismissal_proof": "hideEvent releases overlay state; dismissed signal shadowed for compat"
+      },
+      {
+        "class": "PasteDirectionOverlay",
+        "module": "services.system.paste_direction_overlay",
+        "reason": "grandfathered-paste-direction-site-context-menu",
+        "site": "tabs/image_compare/ui/context_menu.py",
+        "dismissal": "dismiss",
+        "dismissal_proof": "direction_selected/cancelled signals close the overlay"
+      },
+      {
+        "class": "PasteDirectionOverlay",
+        "module": "services.system.paste_direction_overlay",
+        "reason": "grandfathered-paste-direction-site-pending-insert",
+        "site": "tabs/image_compare/pending_image_insert.py",
+        "dismissal": "dismiss",
+        "dismissal_proof": "direction_selected/cancelled signals close the overlay"
+      },
+      {
+        "class": "PasteDirectionOverlay",
+        "module": "services.system.paste_direction_overlay",
+        "reason": "grandfathered-paste-direction-site-clipboard-service",
+        "site": "tabs/image_compare/services/clipboard.py",
+        "dismissal": "dismiss",
+        "dismissal_proof": "direction_selected/cancelled signals close the overlay"
+      },
+      {
+        "class": "VideoEditorDialog",
+        "module": "tabs.image_compare.plugins.video_editor.dialog.shell",
+        "reason": "grandfathered-video-editor-dialog",
+        "dismissal": "close",
+        "dismissal_proof": "QDialog close path; non-modal window flags"
+      },
+      {
+        "class": "HelpDialog",
+        "module": "plugins.help.dialog",
+        "reason": "grandfathered-help-dialog",
+        "dismissal": "close",
+        "dismissal_proof": "hideEvent + closeEvent + deleteLater all release the mouse-nav app filter"
+      }
+    ]
+  },
+  "app_filters": {
+    "src/plugins/help/dialog.py": {
+      "justification": "Mouse back/forward navigation while Help is visible; child filter object released on hide/close/delete."
+    },
+    "src/shared_toolkit/ui/decorate_dialog.py": {
+      "justification": "App-wide CSD auto-decoration interceptor (idempotent, single install)."
+    },
+    "src/ui/context_menu/line_edit_menu.py": {
+      "justification": "Global line-edit context-menu interceptor (idempotent, single install)."
+    },
+    "src/ui/actions/palette/dialog.py": {
+      "justification": "Command palette owns its app filter while open; removed on hide/close."
+    },
+    "src/ui/focus_debug.py": {
+      "justification": "Dev-only window-state debug filter (focus-debug tooling)."
+    },
+    "src/ui/main_window/startup.py": {
+      "justification": "Main-window EventHandler on app + window (host shell input routing)."
+    },
+    "src/ui/managers/ui_manager_parts/bootstrap.py": {
+      "justification": "UI manager app filter for focus-change routing."
+    }
+  },
+  "focus_reasons": {
+    "src/tabs/image_gallery/ui/quick_look.py": {
+      "reason": "grandfathered-quicklook-focus",
+      "justification": "QuickLookOverlay raise+focus on show; window-parented (see tab_modals)."
+    },
+    "src/tabs/image_gallery/ui/clean_review.py": {
+      "reason": "grandfathered-clean-review-focus",
+      "justification": "CleanReviewOverlay raise+focus on show; window-parented (see tab_modals)."
+    },
+    "src/shared_toolkit/ui/text_input_dialog.py": {
+      "justification": "Modal text-input dialog focuses its line edit on open (dialog family)."
+    },
+    "src/plugins/onboarding/overlay.py": {
+      "reason": "grandfathered-onboarding-activation",
+      "justification": "Onboarding overlay activation on first-run show."
+    },
+    "src/plugins/onboarding/plugin.py": {
+      "reason": "grandfathered-onboarding-activation",
+      "justification": "Onboarding plugin activates its overlay on show."
+    },
+    "src/tabs/image_compare/plugins/video_editor/dialog/shell.py": {
+      "reason": "grandfathered-video-editor-focus",
+      "justification": "Video editor dialog focuses timeline/self on show; dismissal asserted."
+    }
+  }
+}
