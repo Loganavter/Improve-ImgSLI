@@ -1382,10 +1382,9 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
 
 
 def test_pinned_close_policy_x_only(qtbot):
-    """W11 pinned policy (InfoHUD analog), veil-click exception: X closes,
-    veil click closes (W6/W11 background-click ban reversed), but Esc,
-    window deactivate/focus loss, and minimize/restore must all leave
-    the card open.
+    """Close policy (ex-W11 pinned): X closes, veil click closes, Esc
+    closes (W6/W11 bans reversed). Window deactivate/focus loss and
+    minimize/restore must still leave the card open.
     """
     from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
@@ -1394,13 +1393,9 @@ def test_pinned_close_policy_x_only(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert ov._close_on_background is False
-    assert ov._close_on_escape is False
+    assert ov._close_on_escape is True
     assert ov._close_on_deactivate is False
-    assert ov._hint_label.text() == "X / veil click closes · ←→ walk series"
-    assert ov.isVisible() is True
-    # Esc must NOT close.
-    ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
-    QApplication.processEvents()
+    assert ov._hint_label.text() == "X / Esc / veil closes · ←→ walk series"
     assert ov.isVisible() is True
     # Window/focus loss must NOT close (deactivation filter is inert, and
     # no deferred dismiss is queued — flush the singleShot queue to prove it).
@@ -1420,7 +1415,14 @@ def test_pinned_close_policy_x_only(qtbot):
     QApplication.processEvents()
     QApplication.processEvents()
     assert ov.isVisible() is True
+    # Esc closes (W11 Esc ban reversed).
+    ov.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+    QApplication.processEvents()
+    assert ov.isVisible() is False
     # X button path still closes.
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    assert ov.isVisible() is True
     assert ov._close_btn is not None
     ov._close_btn.click()
     QApplication.processEvents()
