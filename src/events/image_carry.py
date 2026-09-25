@@ -15,7 +15,7 @@ import shiboken6 as sip
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt
 from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtWidgets import QApplication
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from shared_toolkit.ui.overlay_layer import get_content_overlay_layer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -48,6 +48,7 @@ class ImageCarryService(QObject):
         self._arm_origin = QPoint()
         self._paths: list[Path] = []
         self._ghost_widget = None
+        self._ghost_layer = None
         self._hotspot = QPointF()
         self._tab_hint = None
 
@@ -103,14 +104,27 @@ class ImageCarryService(QObject):
 
         from ui.widgets.drag_ghost_widget import DragGhostWidget
 
-        ghost_parent = None
-        if self.main_window is not None:
-            overlay = get_overlay_layer(self.main_window)
-            ghost_parent = overlay.host if overlay is not None else self.main_window
+        # Wave B (content-below-strip): ghost parents to the content overlay
+        # host below AdaptiveTabStrip, never the window overlay host.
+        # get_content_overlay_layer() already falls back to the window layer
+        # with a warning when the content host is not built yet (startup);
+        # only when no layer exists at all (bare test widgets) keep the
+        # legacy window fallback instead of failing the carry.
+        overlay = get_content_overlay_layer(self.main_window)
+        if overlay is not None:
+            ghost_parent = overlay.host
+        else:
+            window = (
+                self.main_window.window()
+                if self.main_window is not None
+                else None
+            )
+            ghost_parent = window if window is not None else self.main_window
         if ghost_parent is None:
             self._active = False
             self._paths = []
             return False
+        self._ghost_layer = overlay
 
         self._ghost_widget = DragGhostWidget(ghost_parent)
         self._ghost_widget.set_pixmap(preview)
@@ -158,6 +172,12 @@ class ImageCarryService(QObject):
         top_left = global_pos - self._hotspot.toPoint()
         self._ghost_widget.move(top_left)
         self._ghost_widget.raise_()
+        layer = getattr(self, "_ghost_layer", None)
+        if layer is not None:
+            try:
+                layer.ensure_visible(self._ghost_widget)
+            except RuntimeError:
+                pass
 
     def _start_tab_hint(self) -> None:
         try:
@@ -300,6 +320,7 @@ class ImageCarryService(QObject):
             except RuntimeError:
                 pass
             self._ghost_widget = None
+        self._ghost_layer = None
         self._active = False
         self._armed = False
         self._arm_origin = QPoint()

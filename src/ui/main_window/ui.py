@@ -13,6 +13,31 @@ from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _widget_in_content_subtree(widget, content) -> bool:
+    """True when ``widget`` renders inside the below-strip content area.
+
+    Toast anchors must be tab-owned canvas widgets (inside
+    ``workspace_content_widget``), never the window itself: a window-level
+    anchor would let toasts overlap the tab strip. Fail-open (True) for
+    non-widget doubles and when the content host is not built yet.
+    """
+    if content is None or not hasattr(content, "parentWidget"):
+        return True
+    if widget is None or not hasattr(widget, "parentWidget"):
+        return True
+    node = widget
+    for _ in range(100):
+        if node is content:
+            return True
+        try:
+            node = node.parentWidget()
+        except RuntimeError:
+            return False
+        if node is None:
+            return False
+    return False
+
+
 class Ui_ImageComparisonApp:
     """Owns widget construction and exposes the update API used by the presenter.
 
@@ -122,7 +147,24 @@ class Ui_ImageComparisonApp:
                 if toast_manager is not None:
                     anchor = self._tab_registry.create_service("toast_anchor_widget")
                     if anchor is not None:
-                        toast_manager.set_anchor(anchor)
+                        # Content-below-strip: the anchor comes only from the
+                        # active tab's own canvas via create_service — never
+                        # window-parented. Refuse anything outside the
+                        # below-strip content subtree so toasts can't cover
+                        # the tab strip.
+                        content = getattr(
+                            self, "workspace_content_widget", None
+                        )
+                        if _widget_in_content_subtree(anchor, content):
+                            toast_manager.set_anchor(anchor)
+                        else:
+                            logger.warning(
+                                "sync_session_mode(%r): toast anchor outside "
+                                "workspace content — keeping previous anchor "
+                                "(anchor=%r)",
+                                session_type,
+                                type(anchor).__name__,
+                            )
 
         handled = (
             self._tab_registry.apply_host_session_mode(

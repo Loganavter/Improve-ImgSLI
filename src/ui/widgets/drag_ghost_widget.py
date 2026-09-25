@@ -83,7 +83,12 @@ def make_count_slot_pixmap(template: QWidget, count: int) -> QPixmap:
 class DragGhostWidget(QWidget):
     def __init__(self, parent=None):
         if parent is None:
-            raise ValueError("DragGhostWidget requires an in-window parent widget")
+            raise ValueError(
+                "DragGhostWidget requires an in-content parent widget "
+                "(content overlay host below AdaptiveTabStrip, via "
+                "get_content_overlay_layer()); got None. Tab-owned ghosts "
+                "must never parent to the window overlay host."
+            )
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.Widget)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
