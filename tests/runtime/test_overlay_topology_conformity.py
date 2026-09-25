@@ -38,10 +38,11 @@ STRIP_H = 60
 # Grandfathered window-parented modals: tab-switch ownership violations are
 # known, documented, and pinned (strict xfail). Fixing the parenting removes
 # the marker; XPASS-strict then goes red to force marker removal.
-GRANDFATHERED_MODALS = {
-    "QuickLookOverlay": "grandfathered-quicklook-window-parent",
-    "CleanReviewOverlay": "grandfathered-clean-review-window-parent",
-    "PasteDirectionOverlay": "grandfathered-paste-direction-window-parent",
+GRANDFATHERED_MODALS: dict[str, str] = {
+    # Empty: all previously grandfathered tab modals (QuickLook,
+    # CleanReview, PasteDirection) are dismissed on tab switch since the
+    # modal-lifetime waves. Keep the dict + loop as the pinning mechanism:
+    # re-adding a modal here re-arms its strict-xfail.
 }
 
 
@@ -274,8 +275,8 @@ def show_overlays_for(session_type: str, window: QWidget) -> list[QWidget]:
 # JOURNEYS: one entry per tab session_type. The meta-assert below forces
 # every current AND future TabRegistry tab to add a journey here.
 JOURNEYS: dict[str, dict] = {
-    "image_gallery": {"grandfathered_modals": ["QuickLookOverlay", "CleanReviewOverlay"]},
-    "image_compare": {"grandfathered_modals": ["PasteDirectionOverlay"]},
+    "image_gallery": {"grandfathered_modals": []},
+    "image_compare": {"grandfathered_modals": []},
     "multi_compare": {"grandfathered_modals": []},
     "session_picker": {"grandfathered_modals": []},
 }

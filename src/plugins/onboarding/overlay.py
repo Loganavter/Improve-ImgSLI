@@ -138,9 +138,10 @@ class OnboardingOverlay(QWidget):
 
     def showEvent(self, event: QShowEvent):
         super().showEvent(event)
+        # In-stack raise only: never escalate to host-window activation
+        # (the host shell owns window activation).
         self.raise_()
-        self.activateWindow()
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
         self.prepare_for_display()
 
     def resizeEvent(self, event: QResizeEvent):

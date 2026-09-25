@@ -124,14 +124,14 @@ def on_workspace_tab_changed(presenter, index: int):
         index,
         session_id,
     )
-    _dismiss_ordinary_flyouts_on_tab_change()
+    _dismiss_ordinary_flyouts_on_tab_change(presenter)
     # Cover runs from on_store_state_changed(workspace) so session-picker /
     # Find Action / create-session paths also get the flash (workspace tabs
     # strip is often hidden).
     presenter.main_controller.workspace.switch_workspace_session(session_id)
 
 
-def _dismiss_ordinary_flyouts_on_tab_change() -> None:
+def _dismiss_ordinary_flyouts_on_tab_change(presenter=None) -> None:
     """Close every non-pinned flyout when the active workspace tab changes.
 
     Flyouts (font settings, interpolation, unified lists, ...) are all
@@ -148,6 +148,14 @@ def _dismiss_ordinary_flyouts_on_tab_change() -> None:
     (see ``ImageCompareWidget``/``MultiCompareWidget``), since they need to
     reappear from current state when the tab is shown again, not just stay
     hidden.
+
+    The unified list picker is a plain ``QWidget`` rather than a toolkit
+    flyout, so hide it explicitly together with the anchored overlay
+    popups — the manager's passive sweep only reaches registered flyouts.
+    Toasts are deliberately untouched here: they persist across tabs and
+    only repoint at the new tab's anchor (see ``sync_session_mode``'s
+    toast repoint). Anchors re-sync lazily on the next show via the tab's
+    own anchor sync; nothing is cached here.
     """
     from sli_ui_toolkit.managers import FlyoutManager
 
@@ -155,6 +163,127 @@ def _dismiss_ordinary_flyouts_on_tab_change() -> None:
     dismiss_passive = getattr(manager, "_dismiss_passive", None)
     if callable(dismiss_passive):
         dismiss_passive()
+    _hide_unified_list_on_tab_change(presenter)
+
+
+def _hide_unified_list_on_tab_change(presenter=None) -> None:
+    """Hide the unified list picker and anchored overlay popups on switch.
+
+    Mirror of the toast discipline with opposite polarity: toasts persist
+    and repoint, transient flyouts close. Fail-open throughout, no focus
+    changes, no reparenting.
+    """
+    ui_manager = getattr(presenter, "ui_manager", None) if presenter is not None else None
+    direct = None
+    if ui_manager is not None:
+        try:
+            direct = getattr(ui_manager, "unified_flyout", None)
+        except Exception:
+            pass
+    if direct is not None:
+        _hide_one_unified_list(direct)
+    window = _resolve_tab_switch_window(presenter, ui_manager)
+    if window is None:
+        return
+    for picker in _unified_lists_under(window):
+        if picker is not direct:
+            _hide_one_unified_list(picker)
+    for layer in _overlay_layers_for_hosts((window,)):
+        try:
+            hide_all = getattr(layer, "hide_all_popups", None)
+        except Exception:
+            continue
+        if callable(hide_all):
+            try:
+                hide_all()
+            except Exception:
+                pass
+
+
+def _hide_one_unified_list(flyout) -> None:
+    """Close one unified list picker without touching focus or parenting."""
+    try:
+        visible = flyout.isVisible()
+    except Exception:
+        return
+    if not visible:
+        return
+    try:
+        close = getattr(flyout, "start_closing_animation", None)
+        if callable(close):
+            close()
+        else:
+            flyout.hide()
+    except Exception:
+        pass
+
+
+def _resolve_tab_switch_window(presenter, ui_manager):
+    """Owning window: explicit refs first, sanctioned resolver fallback."""
+    candidates = []
+    if presenter is not None:
+        candidates.append(getattr(presenter, "main_window_app", None))
+        ui = getattr(presenter, "ui", None)
+        candidates.append(getattr(ui, "main_window", None) if ui is not None else None)
+    if ui_manager is not None:
+        candidates.append(getattr(ui_manager, "parent_widget", None))
+    for candidate in candidates:
+        if candidate is not None:
+            return candidate
+    try:
+        from ui.helpers.window_resolver import find_main_window
+
+        return find_main_window()
+    except Exception:
+        return None
+
+
+def _unified_lists_under(window) -> list:
+    """Visible unified list pickers parented under the given window."""
+    try:
+        from ui.widgets.unified_list_picker import UnifiedListPicker
+
+        children = list(window.findChildren(UnifiedListPicker))
+    except Exception:
+        return []
+    found = []
+    for child in children:
+        try:
+            if child.isVisible():
+                found.append(child)
+        except Exception:
+            continue
+    return found
+
+
+def _overlay_layers_for_hosts(hosts) -> list:
+    """Overlay layers attached to the given hosts (window + content)."""
+    layers = []
+    seen: set[int] = set()
+
+    def _take(layer) -> None:
+        if layer is None or id(layer) in seen:
+            return
+        seen.add(id(layer))
+        layers.append(layer)
+
+    for host in hosts:
+        try:
+            _take(getattr(host, "overlay_layer", None))
+            _take(getattr(host, "content_overlay_layer", None))
+            ui = getattr(host, "ui", None)
+            content = (
+                getattr(ui, "workspace_content_widget", None)
+                if ui is not None
+                else None
+            )
+            if content is None:
+                content = getattr(host, "workspace_content_widget", None)
+            if content is not None:
+                _take(getattr(content, "content_overlay_layer", None))
+        except Exception:
+            continue
+    return layers
 
 
 def cover_active_session_transition(presenter) -> None:
@@ -190,7 +319,7 @@ def cover_active_session_transition(presenter) -> None:
     # log: opening a brand-new tab produces an "active session change" line
     # here with no matching "tab_changed" line at all, so a flyout left
     # open on the old tab never got dismissed for that path.
-    _dismiss_ordinary_flyouts_on_tab_change()
+    _dismiss_ordinary_flyouts_on_tab_change(presenter)
     presenter._last_covered_session_id = active.id
     _cover_transition_for_session(presenter, active.id)
 
