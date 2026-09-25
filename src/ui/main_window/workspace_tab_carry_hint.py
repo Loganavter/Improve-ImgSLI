@@ -19,6 +19,12 @@ _WIGGLE_PX = 2.5
 
 
 class _TabCarryHintOverlay(QWidget):
+    """Paints ON the strip tabs BY DESIGN — the intentional exception to the
+    content-below-strip rule (plan-2026-09-25-content-below-strip, phase 2):
+    this hint wiggles the strip tab rings that accept an in-progress image
+    Move, so it must live on the tab-strip band itself. Host resolution stays
+    window-layer; only the overlay geometry is narrowed to the tabs rect."""
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("WorkspaceTabCarryHint")
@@ -30,17 +36,64 @@ class _TabCarryHintOverlay(QWidget):
         self.hide()
 
     def set_targets(self, rects: list[tuple[QRect, bool]], *, phase: float) -> None:
-        self._rects = list(rects)
-        self._phase = phase
         parent = self.parentWidget()
-        if parent is not None:
-            self.setGeometry(parent.rect())
+        if parent is None:
+            self._rects = list(rects)
+            self._phase = phase
+            if self._rects:
+                self.show()
+                self.update()
+            else:
+                self.hide()
+            return
+        try:
+            geometry = self._tabs_geometry(parent)
+        except Exception:
+            geometry = None
+        if geometry is None:
+            geometry = parent.rect()
+        self.setGeometry(geometry)
+        # Incoming rects arrive in parent coords (tab_bar.mapTo(parent));
+        # re-base them to overlay-local coords so the paint output is
+        # identical now that the overlay origin is the tabs top-left.
+        try:
+            offset = geometry.topLeft()
+            if offset != QPoint(0, 0):
+                self._rects = [
+                    (QRect(r.topLeft() - offset, r.size()), hovered)
+                    for r, hovered in rects
+                    if isinstance(r, QRect) and r.isValid()
+                ]
+            else:
+                self._rects = list(rects)
+        except Exception:
+            self._rects = list(rects)
+        self._phase = phase
         if self._rects:
             self.show()
             self.raise_()
             self.update()
         else:
             self.hide()
+
+    @staticmethod
+    def _tabs_geometry(parent: QWidget) -> QRect | None:
+        """Tabs widget rect mapped into parent coords; None → legacy host rect."""
+        try:
+            ui = getattr(parent, "ui", None)
+            tabs = getattr(ui, "workspace_tabs", None)
+            if tabs is None:
+                tabs = getattr(parent, "workspace_tabs", None)
+            if tabs is None:
+                return None
+            top_left = tabs.mapTo(parent, QPoint(0, 0))
+            tabs_rect = QRect(top_left, tabs.size())
+            if not tabs_rect.isValid():
+                return None
+            clipped = tabs_rect.intersected(parent.rect())
+            return clipped if not clipped.isNull() else None
+        except Exception:
+            return None
 
     def paintEvent(self, _event) -> None:  # noqa: ARG002 — Qt API
         if not self._rects:
