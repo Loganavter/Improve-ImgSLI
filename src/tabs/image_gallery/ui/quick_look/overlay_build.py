@@ -816,6 +816,29 @@ def build_overlay_ui(overlay) -> None:
     bar_lay.addWidget(overlay._hint_label)
     outer.addWidget(bar)
     overlay.add_widget(overlay._content, slot=None)
+    # D1: interactive buttons keep an explicit arrow cursor so a stale plate
+    # resize cursor never leaks onto them (they inherit otherwise). The grip
+    # keeps its own SizeFDiag affordance.
+    try:
+        from PySide6.QtCore import Qt as _Qt
+
+        for _btn_attr in (
+            "_compare_btn",
+            "_multi_btn",
+            "_reject_btn",
+            "_set_source_btn",
+            "_prev_btn",
+            "_next_btn",
+            "_close_btn",
+        ):
+            try:
+                _btn = getattr(overlay, _btn_attr, None)
+                if _btn is not None:
+                    _btn.setCursor(_Qt.CursorShape.ArrowCursor)
+            except Exception:
+                pass
+    except Exception:
+        pass
     # W8: bottom-right drag handle — painter-painted, absolute child of the
     # card plate, pinned by reposition_grip (Resize filter / resizeEvent).
     overlay._resize_grip = _ResizeGrip(overlay, overlay._content)

@@ -438,3 +438,126 @@ def test_grow_shrink_roundtrip_restores_proportions(qtbot, tmp_path):
 
 def sa_min_hint(scroll):
     return scroll.widget().minimumSizeHint().width()
+
+
+# -- D1-D4 drag/cursor lifecycle guards (recon ql-resize-recon-01) --------------
+
+
+def _synth_move(pos, buttons):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    return QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(float(pos.x()), float(pos.y())),
+        Qt.MouseButton.NoButton,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def _synth_press(pos):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    return QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(float(pos.x()), float(pos.y())),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def _synth_release(pos):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    return QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(float(pos.x()), float(pos.y())),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_interior_hover_clears_stale_plate_cursor(qtbot):
+    """D1: a stale plate resize cursor must not leak over card content."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QCursor
+
+    from tabs.image_gallery.ui.quick_look.resize import handle_ring_hover
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    card = ov._content.geometry()
+    # Simulate the leak: strip hover left SizeHor on the plate.
+    ov._content.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+    assert ov._content.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    # Hover deep interior (moves over ignoring children propagate here).
+    center = QPoint(card.x() + card.width() // 2, card.y() + card.height() // 2)
+    assert handle_ring_hover(ov, _synth_move(center, Qt.MouseButton.NoButton)) is False
+    assert ov._content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_button_free_move_cancels_live_drag(qtbot):
+    """D2: a move with no buttons held ends a stranded drag (no grabMouse)."""
+    from PySide6.QtCore import QPoint, Qt
+
+    from tabs.image_gallery.ui.quick_look.resize import handle_border_move
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    w0 = ov._content.width()
+    ov._border_drag = ("left", QPoint(0, 0), ov._content.geometry())
+    center = ov._content.geometry().center()
+    assert handle_border_move(ov, _synth_move(center, Qt.MouseButton.NoButton)) is False
+    assert ov._border_drag is None
+    assert ov._content.width() == w0
+    ov.hide()
+
+
+def test_release_clears_both_cursor_slots(qtbot):
+    """D3: releasing an outer-ring drag over the card clears plate+overlay."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QCursor
+
+    from tabs.image_gallery.ui.quick_look.resize import handle_border_release
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    ov.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+    ov._content.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+    ov._border_drag = ("bottom", ov._content.geometry().center(), ov._content.geometry())
+    center = ov._content.geometry().center()
+    assert handle_border_release(ov, _synth_release(center)) is True
+    assert ov._border_drag is None
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
+    assert ov._content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_second_press_keeps_first_drag(qtbot):
+    """D4: a second press during a live drag must not silently re-anchor."""
+    from PySide6.QtCore import QPoint, Qt
+
+    from tabs.image_gallery.ui.quick_look.resize import handle_border_press
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    first = ("left", QPoint(10, 10), ov._content.geometry())
+    ov._border_drag = first
+    # Bottom-edge middle: inside the strip, far from nav circles (mid-height)
+    # and the grip (corner) so the press reaches the zone path, not WALK.
+    content = ov._content
+    pt = QPoint(content.width() // 2, content.height() - 4)
+    assert handle_border_press(ov, _synth_press(pt)) is True
+    assert ov._border_drag == first
+    ov._border_drag = None
+    ov.hide()

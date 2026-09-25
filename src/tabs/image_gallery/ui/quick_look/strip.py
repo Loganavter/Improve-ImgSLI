@@ -102,6 +102,14 @@ def rebuild_strip(overlay) -> None:
         else:
             btn = Button(text="", variant="surface", size=(66, 44), parent=container, badge=badge_text, defer_click="ripple")
         btn.setObjectName(f"quicklook_strip_{idx}")
+        # D1: explicit arrow — strip thumbs are rebuilt per populate and
+        # would otherwise inherit a stale plate resize cursor.
+        try:
+            from PySide6.QtCore import Qt as _Qt
+
+            btn.setCursor(_Qt.CursorShape.ArrowCursor)
+        except Exception:
+            pass
         try:
             if pending:
                 btn.setBadge("…")

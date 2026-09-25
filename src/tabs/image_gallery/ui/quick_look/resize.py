@@ -413,6 +413,20 @@ def handle_border_press(overlay, event) -> bool:
 
         if event.button() != Qt.MouseButton.LeftButton:
             return False
+        # D4: a second press while a drag is live must not silently re-anchor
+        # it (multi-touch / accidental re-press jump). Swallow, keep the
+        # first drag; its own release still ends it.
+        if getattr(overlay, "_border_drag", None) is not None:
+            if _dbg_on:
+                try:
+                    _dbg("ql-resize press ignored (drag already live)")
+                except Exception:
+                    pass
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return True
         content = getattr(overlay, "_content", None)
         if content is None:
             return False
@@ -478,6 +492,28 @@ def handle_border_move(overlay, event) -> bool:
             return False
         drag = getattr(overlay, "_border_drag", None)
         if drag is not None:
+            # D2: no grabMouse is used (Wayland-safe), so a release landing
+            # outside the window strands _border_drag. A button-free move
+            # means the press is gone — cancel instead of resizing, or every
+            # later free hover would move the card.
+            try:
+                held = event.buttons()
+            except Exception:
+                held = Qt.MouseButton.NoButton
+            if held == Qt.MouseButton.NoButton:
+                _dbg_on, _dbg = _resize_dbg()
+                if _dbg_on:
+                    try:
+                        _dbg("ql-resize drag cancel (no buttons held)")
+                    except Exception:
+                        pass
+                overlay._border_drag = None
+                try:
+                    apply_resize_cursor(overlay, overlay, "overlay", None)
+                    apply_resize_cursor(overlay, content, "plate", None)
+                except Exception:
+                    pass
+                return False
             try:
                 cur = event.globalPosition().toPoint()
             except Exception:
@@ -574,6 +610,14 @@ def handle_border_release(overlay, event) -> bool:
                 apply_resize_cursor(overlay, content, "plate", None)
         except Exception:
             pass
+        # D3: an outer-ring drag can end over the card (plate path), leaving
+        # the overlay cursor stale. Clearing both slots is safe: during an
+        # inner drag the overlay slot is untouched (arrow), so this is a no-op
+        # there and a real clear here.
+        try:
+            apply_resize_cursor(overlay, overlay, "overlay", None)
+        except Exception:
+            pass
         try:
             event.accept()
         except Exception:
@@ -664,6 +708,18 @@ def handle_ring_press(overlay, event) -> bool:
 
         if event.button() != Qt.MouseButton.LeftButton:
             return False
+        # D4: see handle_border_press — never re-anchor a live drag.
+        if getattr(overlay, "_border_drag", None) is not None:
+            if _dbg_on:
+                try:
+                    _dbg("ql-resize press ignored (drag already live)")
+                except Exception:
+                    pass
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return True
         content = getattr(overlay, "_content", None)
         if content is None:
             return False
@@ -751,6 +807,26 @@ def handle_ring_hover(overlay, event) -> bool:
             if nav_button_at(overlay, local) is not None:
                 apply_resize_cursor(overlay, overlay, "overlay", None)
                 return False
+        except Exception:
+            pass
+        # D1: moves over ignoring plate children (labels, scroll areas)
+        # propagate here. Deep interior (not the strip the plate owns) must
+        # clear a stale plate cursor, or a resize arrow leaks over content.
+        # The strip itself is left alone — the plate filter owns it.
+        try:
+            content = getattr(overlay, "_content", None)
+            if content is not None and getattr(overlay, "_border_drag", None) is None:
+                try:
+                    mapped = content.mapFrom(overlay, local)
+                except Exception:
+                    mapped = None
+                if mapped is not None:
+                    try:
+                        inside = 0 <= mapped.x() < content.width() and 0 <= mapped.y() < content.height()
+                    except Exception:
+                        inside = False
+                    if inside and resize_zone_at(content, mapped) is None:
+                        apply_resize_cursor(overlay, content, "plate", None)
         except Exception:
             pass
         cursor = resize_cursor_for(ring_zone_at(overlay, local))
