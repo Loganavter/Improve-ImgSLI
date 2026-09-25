@@ -1,10 +1,14 @@
-"""Overlay topology conformity (Wave E): default-deny harness.
+"""Overlay topology conformity (Wave E/C): default-deny harness.
 
 Default-deny over ALL current and future overlays, regardless of class
-names: every tab in ``TabRegistry`` must own >=1 ``JOURNEYS`` entry
-(meta-assert — a future tab without a journey fails the suite). Each
-journey runs against a REAL shell (``WorkspaceTabStrip`` + ``QStackedWidget``
-+ real tab pages, no fake doubles):
+names: every tab in ``TabRegistry`` owns a journey (parametrized from
+``registered_types`` — a future tab becomes a journey automatically),
+and every tab answers the generic
+``create_service("topology_overlays", parent)`` hook with the list of
+its window-parented modals (``[]`` when it owns none). The meta-assert
+guards the hook instead of a table: a tab without the branch fails it.
+Each journey runs against a REAL shell (``WorkspaceTabStrip`` +
+``QStackedWidget`` + real tab pages, no fake doubles):
 
 - snapshot globals before/after (focusWidget, activeWindow, mouse/keyboard
   grabbers, overrideCursor, topLevelWidgets set) and assert restored;
@@ -18,7 +22,9 @@ journey runs against a REAL shell (``WorkspaceTabStrip`` + ``QStackedWidget``
   violation is documented. Grandfathered modals are NOT exempt from
   dismissal asserts.
 
-Dogma source: Wave E topology conformity (default-deny harness).
+Dogma source: Wave E topology conformity (default-deny harness),
+Wave C isolation closure (generic hook consumption, zero concrete
+tab references in tests/).
 """
 
 from __future__ import annotations
@@ -232,66 +238,70 @@ def assert_no_previous_tab_widgets(window: QWidget, previous_tab: str, context: 
 
 
 def show_overlays_for(session_type: str, window: QWidget) -> list[QWidget]:
-    """Real grandfathered modals for the journey's tab (window-parented: the disease).
+    """Tab-owned overlays for the journey's tab via the generic hook.
 
-    Uses production construction paths: plain ctors where production uses
-    plain ctors, the shared factory where production uses the factory.
-    Every overlay is tagged owner_tab=<journey tab> for the switch-step assert.
+    The tab's ``create_service("topology_overlays", parent)`` builds and
+    shows its own grandfathered modals (or answers ``[]`` when it owns
+    none). Unknown tabs fail open to ``[]`` without crashing. Every
+    overlay is tagged owner_tab=<journey tab> for the switch-step assert.
     """
-    overlays: list[QWidget] = []
-    if session_type == "image_gallery":
-        from tabs.image_gallery.ui.clean_review import CleanReviewOverlay
-        from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+    from tabs.registry import TabRegistry
 
-        overlays = [QuickLookOverlay(window), CleanReviewOverlay(window)]
-        for overlay in overlays:
-            overlay.setProperty("owner_tab", session_type)
-            overlay.show_overlay()
-    elif session_type == "image_compare":
-        from PySide6.QtWidgets import QLabel
-
-        from services.system.paste_direction_overlay import (
-            show_paste_direction_overlay,
-        )
-
-        anchor = QLabel("canvas", parent=window)
-        anchor.setObjectName("PasteDirectionAnchor")
-        # Production path (context_menu / pending_insert / clipboard all route
-        # through this factory).
-        overlay = show_paste_direction_overlay(
-            parent=window,
-            image_label=anchor,
-            is_horizontal=False,
-            language="en",
-            on_direction=lambda _d: None,
-        )
+    tab = TabRegistry().get_tab(session_type)
+    if tab is None:
+        return []
+    overlays = list(tab.create_service("topology_overlays", window) or [])
+    for overlay in overlays:
         overlay.setProperty("owner_tab", session_type)
-        overlays = [overlay]
     QApplication.processEvents()
     return overlays
 
 
-# JOURNEYS: one entry per tab session_type. The meta-assert below forces
-# every current AND future TabRegistry tab to add a journey here.
-JOURNEYS: dict[str, dict] = {
-    "image_gallery": {"grandfathered_modals": ["QuickLookOverlay", "CleanReviewOverlay"]},
-    "image_compare": {"grandfathered_modals": ["PasteDirectionOverlay"]},
-    "multi_compare": {"grandfathered_modals": []},
-    "session_picker": {"grandfathered_modals": []},
-}
+def test_meta_every_registry_tab_answers_topology_overlays_hook(qapp):
+    """Every registered tab answers the generic overlays hook with a list.
+
+    Guards the hook instead of a table: a future tab without a
+    ``create_service("topology_overlays", parent)`` branch fails here
+    (the base contract answers None) and must add one — ``[]`` when it
+    owns no window-parented modals. Shown overlays are dismissed after
+    the isinstance check so the meta-assert leaves no globals behind.
+    """
+    from tabs.registry import TabRegistry
+
+    window = QWidget()
+    shown: list[QWidget] = []
+    try:
+        registry = TabRegistry()
+        registry.discover()
+        missing = [t for t in registry.registered_types if registry.get_tab(t) is None]
+        assert not missing, f"registered tabs without an instance: {missing}"
+        for journey_tab in registry.registered_types:
+            tab = registry.get_tab(journey_tab)
+            assert tab is not None
+            result = tab.create_service("topology_overlays", window)
+            assert isinstance(result, list), (
+                f"{journey_tab!r} does not answer "
+                "create_service('topology_overlays', parent) with a list: "
+                f"{result!r}"
+            )
+            shown.extend(result)
+    finally:
+        for overlay in shown:
+            try:
+                if hasattr(overlay, "dismiss"):
+                    overlay.dismiss()
+                else:
+                    overlay.close()
+            except RuntimeError:
+                pass
+        QApplication.processEvents()
+        window.close()
+        window.deleteLater()
 
 
-def test_meta_every_registry_tab_has_a_journey():
-    missing = [t for t in registry_types() if t not in JOURNEYS]
-    assert not missing, (
-        f"tabs without a topology journey (add one to JOURNEYS): {missing}"
-    )
-
-
-@pytest.mark.parametrize("session_type", sorted(JOURNEYS))
+@pytest.mark.parametrize("session_type", sorted(registry_types()))
 def test_journey_topology_conformity(qapp, session_type):
     allowlist = load_allowlist()
-    journey = JOURNEYS[session_type]
     window, strip, content, stack, pages = make_shell()
     try:
         assert session_type in pages, f"no real page for {session_type!r}"
@@ -319,10 +329,16 @@ def test_journey_topology_conformity(qapp, session_type):
 
         # Step 4: previous-tab ownership. Grandfathered modals violate by
         # design (window-parented): pinned strict-xfail, suite stays green.
-        # Manual strict semantics (pytest.xfail has no strict kwarg here):
-        # XPASS fails the suite to force marker removal once fixed.
-        for modal in journey["grandfathered_modals"]:
-            assert modal in GRANDFATHERED_MODALS, f"journey lists unknown modal {modal!r}"
+        # The grandfathered set derives from the shown overlays' runtime
+        # class names — no per-tab tables. Manual strict semantics
+        # (pytest.xfail has no strict kwarg here): XPASS fails the suite
+        # to force marker removal once fixed.
+        grandfathered = [
+            type(overlay).__name__
+            for overlay in overlays
+            if type(overlay).__name__ in GRANDFATHERED_MODALS
+        ]
+        for modal in grandfathered:
             try:
                 assert_no_previous_tab_widgets(window, session_type, f"{session_type}:switched")
             except AssertionError:
@@ -334,7 +350,7 @@ def test_journey_topology_conformity(qapp, session_type):
                 f"XPASS(strict): {modal} no longer lingers after tab switch — "
                 "remove the grandfathered xfail marker"
             )
-        if not journey["grandfathered_modals"]:
+        if not grandfathered:
             assert_no_previous_tab_widgets(window, session_type, f"{session_type}:switched")
 
         # Step 5: dismissal proof — grandfathered modals are NOT exempt.

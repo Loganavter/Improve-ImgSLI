@@ -456,6 +456,20 @@ class ImageGalleryTab(TabContract):
     # -- services / cleanup ------------------------------------------------
 
     def create_service(self, service_id: str, *args, **kwargs):
+        if service_id == "topology_overlays":
+            # Topology conformity hook: build + show this tab's
+            # grandfathered window-parented modals, return them as a list.
+            # Fail-open: no parent means no overlay.
+            parent = args[0] if args else kwargs.get("parent")
+            if parent is None:
+                return []
+            from tabs.image_gallery.ui.clean_review import CleanReviewOverlay
+            from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+
+            overlays = [QuickLookOverlay(parent), CleanReviewOverlay(parent)]
+            for overlay in overlays:
+                overlay.show_overlay()
+            return overlays
         if service_id == "clipboard_paste_service":
             if self._controller is None:
                 return None

@@ -19,6 +19,29 @@ def create_service(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
+    if service_id == "topology_overlays":
+        # Topology conformity hook: build + show this tab's grandfathered
+        # window-parented modal via the shared production factory, return
+        # it as a list. Fail-open: no parent means no overlay.
+        parent = args[0] if args else kwargs.get("parent")
+        if parent is None:
+            return []
+        from PySide6.QtWidgets import QLabel
+
+        from services.system.paste_direction_overlay import (
+            show_paste_direction_overlay,
+        )
+
+        anchor = QLabel("canvas", parent=parent)
+        anchor.setObjectName("PasteDirectionAnchor")
+        overlay = show_paste_direction_overlay(
+            parent=parent,
+            image_label=anchor,
+            is_horizontal=False,
+            language="en",
+            on_direction=lambda _d: None,
+        )
+        return [overlay]
     if service_id == "contribute_settings":
         # Typed path: caller collects return value (no registry arg).
         # Keep deprecated registry-mutation for transitional callers that still

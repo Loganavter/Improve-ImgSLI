@@ -308,6 +308,10 @@ class MultiCompareTab(TabContract):
         return SettingsContribution(owner_tab=self.session_type, sections=(), extras=())
 
     def create_service(self, service_id: str, *args, **kwargs):
+        if service_id == "topology_overlays":
+            # Topology conformity hook: this tab owns no window-parented
+            # modals — fail-open empty list.
+            return []
         if service_id == "contribute_settings":
             legacy_registry = args[0] if args else kwargs.get("registry")
             if legacy_registry is not None:
