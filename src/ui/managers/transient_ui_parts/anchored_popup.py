@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QPoint, QRect, QSize
 
 from sli_ui_toolkit.managers import DelayedActionTimer
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from shared_toolkit.ui.overlay_layer import (
+    content_bounds,
+    get_content_overlay_layer,
+    get_overlay_layer,
+)
 
 class AnchoredPopupBubbleController:
     def __init__(
@@ -57,7 +61,81 @@ class AnchoredPopupBubbleController:
             timeout_ms=0,
         )
         self.restart_auto_hide()
+        self._clamp_to_content_below_strip(overlay_layer, anchor_widget)
         return True
+
+    def _clamp_to_content_below_strip(self, overlay_layer, anchor_widget) -> None:
+        """Clamp a content-anchored popup below the AdaptiveTabStrip band.
+
+        CLAMP ONLY, NO REPARENT: the popup keeps its window-layer parent and
+        legacy placement; when the anchor lives in the below-strip content
+        subtree we only pull the shown global geometry out of the strip
+        band (intersect against the content global rect). Anchors in global
+        chrome (menus, dialogs, CSD, startup with no content host yet) keep
+        byte-identical legacy geometry. Fail-open everywhere.
+        """
+        try:
+            content_layer = get_content_overlay_layer(anchor_widget)
+        except Exception:
+            return
+        if content_layer is None:
+            return
+        try:
+            is_content = bool(getattr(content_layer, "_is_content_layer", False))
+        except Exception:
+            return
+        if not is_content:
+            return  # global chrome / startup fallback: legacy behavior
+        try:
+            popups = getattr(overlay_layer, "_value_popups", None)
+            popup = popups.get(self.popup_key) if popups else None
+            if popup is None:
+                return
+            geom = popup.geometry()
+            if not geom.isValid():
+                return
+            host = content_layer.host
+            bounds = content_bounds(anchor_widget)
+            if bounds.isNull() or bounds.width() <= 0 or bounds.height() <= 0:
+                return
+            content_top_left = host.mapToGlobal(QPoint(0, 0))
+            content_rect = QRect(content_top_left, bounds.size())
+            strip_rect = self._strip_global_rect(anchor_widget)
+            clamped = self._clamp_global_to_content(geom, content_rect)
+            if strip_rect is not None and clamped.intersects(strip_rect):
+                # Content starts below the strip, so pinning above the
+                # strip band's bottom edge restores disjointness.
+                clamped.moveTop(max(clamped.top(), strip_rect.bottom() + 1))
+                clamped = self._clamp_global_to_content(clamped, content_rect)
+            if clamped != geom:
+                popup.setGeometry(clamped)
+        except Exception:
+            return
+
+    @staticmethod
+    def _strip_global_rect(anchor_widget):
+        """workspace_tabs mapped to global; None when unresolvable (doubles)."""
+        try:
+            window = anchor_widget.window()
+        except Exception:
+            return None
+        try:
+            tabs = getattr(getattr(window, "ui", None), "workspace_tabs", None)
+            if tabs is None:
+                tabs = getattr(window, "workspace_tabs", None)
+            if tabs is None:
+                return None
+            return QRect(tabs.mapToGlobal(QPoint(0, 0)), tabs.size())
+        except Exception:
+            return None
+
+    @staticmethod
+    def _clamp_global_to_content(geom: QRect, content_rect: QRect) -> QRect:
+        width = min(geom.width(), content_rect.width())
+        height = min(geom.height(), content_rect.height())
+        x = max(content_rect.left(), min(geom.x(), content_rect.right() - width + 1))
+        y = max(content_rect.top(), min(geom.y(), content_rect.bottom() - height + 1))
+        return QRect(x, y, width, height)
 
     def restart_auto_hide(self) -> None:
         self._auto_hide_timer.stop()
