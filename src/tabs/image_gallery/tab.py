@@ -15,6 +15,8 @@ from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
 
+from PySide6.QtCore import QObject
+
 from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.state.models import (
     GalleryItemMeta,
@@ -23,6 +25,33 @@ from tabs.image_gallery.state.models import (
 )
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+class _ModalLifetimeHideFilter(QObject):
+    """Fail-open page-Hide watcher (modal-lifetime W1).
+
+    Explicit page hide (``isHidden()``) means the tab left the visible
+    stack — dismiss its modals. Ancestor-driven hides (window minimize:
+    ``isHidden()`` False) are ignored. Page-local only: never an app
+    filter, no focus calls.
+    """
+
+    def __init__(self, on_hidden, parent=None):
+        super().__init__(parent)
+        self._on_hidden = on_hidden
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            from PySide6.QtCore import QEvent
+
+            if event.type() == QEvent.Type.Hide and watched.isHidden():
+                try:
+                    self._on_hidden()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
 
 # Legacy folder-only slot (pre-Redux sessions). Read-only fallback for
@@ -107,6 +136,7 @@ class ImageGalleryTab(TabContract):
             self._active_session_id = session_id
             self._restore_from(context, session_id)
 
+        self._install_modal_lifetime_watch()
         return self._widget
 
     @property
@@ -180,6 +210,31 @@ class ImageGalleryTab(TabContract):
             except Exception:
                 pass
         # No snapshot (see on_active_session_changed): slot is authoritative.
+        self._dismiss_tab_modals()
+
+    def _dismiss_tab_modals(self) -> None:
+        """Modal-lifetime (W1): QuickLook/CleanReview must not outlive the tab."""
+        try:
+            if self._widget is None:
+                return
+            from tabs.image_gallery.use_cases import triage_ui
+
+            triage_ui.dismiss_gallery_modals(self._widget)
+        except Exception:
+            pass
+
+    def _install_modal_lifetime_watch(self) -> None:
+        """Watch explicit page hides (stack switches bypassing lifecycle)."""
+        try:
+            if self._widget is None:
+                return
+            if getattr(self._widget, "_modal_lifetime_watch", None) is not None:
+                return
+            filt = _ModalLifetimeHideFilter(self._dismiss_tab_modals, self._widget)
+            self._widget.installEventFilter(filt)
+            self._widget._modal_lifetime_watch = filt  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
@@ -188,6 +243,7 @@ class ImageGalleryTab(TabContract):
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:
             self._active_session_id = None
+        self._dismiss_tab_modals()
 
     def _resolve_active_session_id(self, context: TabContext) -> str | None:
         store = getattr(context, "store", None)

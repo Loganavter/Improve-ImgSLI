@@ -250,8 +250,9 @@ def _add_expert_demo(overlay, page, demo_container, demo_layout, current_lang: s
 def _show_color_dialog(overlay, button, current_color, current_lang: str) -> None:
     existing = getattr(button, "_color_dialog", None)
     if existing is not None and existing.isVisible():
+        # In-stack raise only: bringing the dialog forward must not
+        # escalate to host-window activation.
         existing.raise_()
-        existing.activateWindow()
         return
 
     from ui.widgets.color import ColorPickerDialog

@@ -44,10 +44,11 @@ STRIP_H = 60
 # Grandfathered window-parented modals: tab-switch ownership violations are
 # known, documented, and pinned (strict xfail). Fixing the parenting removes
 # the marker; XPASS-strict then goes red to force marker removal.
-GRANDFATHERED_MODALS = {
-    "QuickLookOverlay": "grandfathered-quicklook-window-parent",
-    "CleanReviewOverlay": "grandfathered-clean-review-window-parent",
-    "PasteDirectionOverlay": "grandfathered-paste-direction-window-parent",
+GRANDFATHERED_MODALS: dict[str, str] = {
+    # Empty: all previously grandfathered tab modals (QuickLook,
+    # CleanReview, PasteDirection) are dismissed on tab switch since the
+    # modal-lifetime waves. Keep the dict + loop as the pinning mechanism:
+    # re-adding a modal here re-arms its strict-xfail.
 }
 
 
@@ -297,8 +298,6 @@ def test_meta_every_registry_tab_answers_topology_overlays_hook(qapp):
         QApplication.processEvents()
         window.close()
         window.deleteLater()
-
-
 @pytest.mark.parametrize("session_type", sorted(registry_types()))
 def test_journey_topology_conformity(qapp, session_type):
     allowlist = load_allowlist()

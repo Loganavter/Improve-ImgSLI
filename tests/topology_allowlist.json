@@ -128,14 +128,6 @@
     "src/shared_toolkit/ui/text_input_dialog.py": {
       "justification": "Modal text-input dialog focuses its line edit on open (dialog family)."
     },
-    "src/plugins/onboarding/overlay.py": {
-      "reason": "grandfathered-onboarding-activation",
-      "justification": "Onboarding overlay activation on first-run show."
-    },
-    "src/plugins/onboarding/plugin.py": {
-      "reason": "grandfathered-onboarding-activation",
-      "justification": "Onboarding plugin activates its overlay on show."
-    },
     "src/tabs/image_compare/plugins/video_editor/dialog/shell.py": {
       "reason": "grandfathered-video-editor-focus",
       "justification": "Video editor dialog focuses timeline/self on show; dismissal asserted."
