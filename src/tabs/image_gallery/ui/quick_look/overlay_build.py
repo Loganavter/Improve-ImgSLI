@@ -212,7 +212,11 @@ class _CardPlate(QWidget):
                 try:
                     p.setBrush(Qt.BrushStyle.NoBrush)
                     p.setPen(QPen(border, 1))
-                    p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), rx, rx)
+                    # Border fully inside the widget rect (not straddling):
+                    # the outer half of a straddled 1px pen is clipped and
+                    # its AA fade makes the visible line sit ~1px off the
+                    # hit-band boundary. Experimental, revert if worse.
+                    p.drawRoundedRect(r.adjusted(1, 1, -1, -1), rx, rx)
                 except Exception:
                     pass
             finally:
