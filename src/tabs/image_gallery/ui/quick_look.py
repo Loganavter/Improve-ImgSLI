@@ -195,9 +195,32 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     # the helpers (arrows never start a drag).
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:
-            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press
+            from tabs.image_gallery.debug import gallery_debug as _dbg
+            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press, ring_zone_at
+
+            _press_dbg = _dbg_enabled()
+            _press_pos = event.position().toPoint()
+            _press_zone = ring_zone_at(self, _press_pos) if _press_dbg else None
             if handle_ring_press(self, event):
                 return
+            if _press_dbg:
+                try:
+                    _receiver = self.childAt(_press_pos)
+                    _receiver_name = (
+                        f"{type(_receiver).__name__}:{_receiver.objectName()}"
+                        if _receiver is not None
+                        else "veil"
+                    )
+                except Exception:
+                    _receiver_name = "?"
+                _dbg(
+                    "ql-resize veil press declined zone=%s pos=(%d,%d) receiver=%s",
+                    _press_zone,
+                    _press_pos.x(),
+                    _press_pos.y(),
+                    _receiver_name,
+                )
         except Exception:
             pass
         super().mousePressEvent(event)

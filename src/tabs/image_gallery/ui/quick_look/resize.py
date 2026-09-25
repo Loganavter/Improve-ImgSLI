@@ -323,6 +323,20 @@ def _relayout_on_card_resize(overlay) -> None:
     _reflow_footer(overlay)
 
 
+def _resize_dbg():
+    """Debug helper pair (IMGSLI_GALLERY_DEBUG=1): [gallery-debug] ql-resize
+    traces for edge press/drag/hover diagnosis. Returns (enabled, dbg)."""
+    try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _enabled
+
+        if _enabled():
+            return True, _dbg
+    except Exception:
+        pass
+    return False, None
+
+
 def handle_border_press(overlay, event) -> bool:
     """Start a full-border drag on left-press inside the strip (W9).
 
@@ -330,6 +344,7 @@ def handle_border_press(overlay, event) -> bool:
     consumed (never a drag). Returns True when the press was consumed
     (caller must accept it).
     """
+    _dbg_on, _dbg = _resize_dbg()
     try:
         from PySide6.QtCore import Qt
 
@@ -347,6 +362,13 @@ def handle_border_press(overlay, event) -> bool:
         except Exception:
             nav_hit = None
         if nav_hit is not None:
+            if _dbg_on:
+                _dbg(
+                    "ql-resize plate press WALK nav=%s content-local=(%d,%d)",
+                    nav_hit,
+                    local.x(),
+                    local.y(),
+                )
             _walk_for_nav_button(overlay, nav_hit)
             try:
                 event.accept()
@@ -354,6 +376,15 @@ def handle_border_press(overlay, event) -> bool:
                 pass
             return True
         zone = resize_zone_at(content, local)
+        if _dbg_on:
+            _dbg(
+                "ql-resize plate press zone=%s content-local=(%d,%d) card=%dx%d",
+                zone,
+                local.x(),
+                local.y(),
+                content.width(),
+                content.height(),
+            )
         if zone is None:
             return False
         try:
@@ -361,6 +392,8 @@ def handle_border_press(overlay, event) -> bool:
         except Exception:
             return False
         overlay._border_drag = (zone, start_global, content.geometry())
+        if _dbg_on:
+            _dbg("ql-resize drag start zone=%s (inner strip)", zone)
         cursor = resize_cursor_for(zone)
         if cursor is not None:
             try:
@@ -450,6 +483,21 @@ def handle_border_move(overlay, event) -> bool:
                 content.unsetCursor()
         except Exception:
             pass
+        try:
+            _dbg_on, _dbg = _resize_dbg()
+            if _dbg_on:
+                zone_name = resize_zone_at(content, local)
+                last = getattr(overlay, "_dbg_resize_hover", None)
+                if zone_name != last:
+                    overlay._dbg_resize_hover = zone_name
+                    _dbg(
+                        "ql-resize hover inner zone=%s content-local=(%d,%d)",
+                        zone_name,
+                        local.x(),
+                        local.y(),
+                    )
+        except Exception:
+            pass
         return False
     except Exception:
         return False
@@ -457,10 +505,17 @@ def handle_border_move(overlay, event) -> bool:
 
 def handle_border_release(overlay, event) -> bool:
     """End a full-border drag (W9). True when a drag was active."""
+    _dbg_on, _dbg = _resize_dbg()
     try:
         drag = getattr(overlay, "_border_drag", None)
         if drag is None:
             return False
+        if _dbg_on:
+            try:
+                zone = drag[0]
+            except Exception:
+                zone = "?"
+            _dbg("ql-resize drag end zone=%s", zone)
         overlay._border_drag = None
         _repin_after_card_resize(overlay)
         try:
@@ -553,6 +608,7 @@ def handle_ring_press(overlay, event) -> bool:
     W11: presses inside either nav-arrow rect walk the series and are
     consumed (arrows never start a drag).
     """
+    _dbg_on, _dbg = _resize_dbg()
     try:
         from PySide6.QtCore import Qt
 
@@ -565,8 +621,25 @@ def handle_ring_press(overlay, event) -> bool:
             local = event.position().toPoint()
         except Exception:
             return False
+        try:
+            receiver = overlay.childAt(local)
+            receiver_name = (
+                f"{type(receiver).__name__}:{receiver.objectName()}"
+                if receiver is not None
+                else "veil"
+            )
+        except Exception:
+            receiver_name = "?"
         nav_hit = nav_button_at(overlay, local)
         if nav_hit is not None:
+            if _dbg_on:
+                _dbg(
+                    "ql-resize veil press WALK nav=%s overlay-local=(%d,%d) receiver=%s",
+                    nav_hit,
+                    local.x(),
+                    local.y(),
+                    receiver_name,
+                )
             _walk_for_nav_button(overlay, nav_hit)
             try:
                 event.accept()
@@ -574,6 +647,14 @@ def handle_ring_press(overlay, event) -> bool:
                 pass
             return True
         zone = ring_zone_at(overlay, local)
+        if _dbg_on:
+            _dbg(
+                "ql-resize veil press zone=%s overlay-local=(%d,%d) receiver=%s",
+                zone,
+                local.x(),
+                local.y(),
+                receiver_name,
+            )
         if zone is None:
             return False
         try:
@@ -581,6 +662,8 @@ def handle_ring_press(overlay, event) -> bool:
         except Exception:
             return False
         overlay._border_drag = (zone, start_global, content.geometry())
+        if _dbg_on:
+            _dbg("ql-resize drag start zone=%s (outer ring)", zone)
         cursor = resize_cursor_for(zone)
         if cursor is not None:
             try:
@@ -635,6 +718,31 @@ def handle_ring_hover(overlay, event) -> bool:
                 overlay.unsetCursor()
         except Exception:
             pass
+        try:
+            _dbg_on, _dbg = _resize_dbg()
+            if _dbg_on:
+                zone_name = ring_zone_at(overlay, local)
+                last = getattr(overlay, "_dbg_resize_hover", None)
+                if zone_name != last:
+                    overlay._dbg_resize_hover = zone_name
+                    try:
+                        receiver = overlay.childAt(local)
+                        receiver_name = (
+                            f"{type(receiver).__name__}:{receiver.objectName()}"
+                            if receiver is not None
+                            else "veil"
+                        )
+                    except Exception:
+                        receiver_name = "?"
+                    _dbg(
+                        "ql-resize hover outer zone=%s overlay-local=(%d,%d) receiver=%s",
+                        zone_name,
+                        local.x(),
+                        local.y(),
+                        receiver_name,
+                    )
+        except Exception:
+            pass
         return False
     except Exception:
         return False
@@ -642,9 +750,16 @@ def handle_ring_hover(overlay, event) -> bool:
 
 def handle_ring_release(overlay, event) -> bool:
     """End an outer-ring drag (W10). True when a drag was active."""
+    _dbg_on, _dbg = _resize_dbg()
     try:
         if getattr(overlay, "_border_drag", None) is None:
             return False
+        if _dbg_on:
+            try:
+                zone = getattr(overlay, "_border_drag")[0]
+            except Exception:
+                zone = "?"
+            _dbg("ql-resize drag end zone=%s (outer ring)", zone)
         overlay._border_drag = None
         _repin_after_card_resize(overlay)
         try:
