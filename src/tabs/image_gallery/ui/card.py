@@ -264,6 +264,10 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         corner_radius=10,
         overlay_painter=_gallery_card_overlay_painter,
         parent=actual_parent,
+        # LMB activation (toggle/quicklook, hundreds of ms) runs after the
+        # press ripple finishes. rightClicked (context menu) is unaffected:
+        # the toolkit only defers left-click paths.
+        defer_click="ripple",
     )
     card._rows_compact = True  # type: ignore[attr-defined]
     # Ensure text rows are centered vertically within text region (not top)
