@@ -110,6 +110,13 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "image_compare video editor; splitting per-tab would defeat the "
         "single-contract purpose"
     ),
+    "tests/runtime/test_overlay_topology_conformity.py": (
+        "cross-cutting overlay-topology conformity contract (default-deny "
+        "strip-band walk + tab-switch dismissal + globals snapshot over a "
+        "live shell); gallery QuickLook/CleanReview are the exercised "
+        "grandfathered modals, image_compare the paste-overlay fixture; "
+        "splitting per-tab would defeat the single-conformity purpose"
+    ),
 }
 
 
