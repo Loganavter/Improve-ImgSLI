@@ -221,7 +221,6 @@ class MultiCompareController:
         existing = getattr(self, "_divider_color_dialog", None)
         if existing is not None and existing.isVisible():
             existing.raise_()
-            existing.activateWindow()
             return
 
         from ui.widgets.color import ColorPickerDialog
