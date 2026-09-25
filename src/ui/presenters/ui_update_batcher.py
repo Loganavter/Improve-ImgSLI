@@ -6,6 +6,57 @@ import logging
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Capability ID for the Qt-liveness probe (TabContract.create_service).
+# The tab that owns the shiboken lifetime mechanism answers with a
+# callable(obj) -> bool. Unknown to every tab today, so the lookup is
+# fail-open None and the host-local shiboken check below preserves the
+# exact verdicts the old inlined tab import used to give — until a tab
+# provides the capability, no concrete tab is named anywhere here.
+_LIVENESS_CAPABILITY_ID = "qt_liveness_probe"
+
+# Cached capability resolution (_UNRESOLVED = not yet probed). This path
+# is HOT (every flush), so the registry is probed once at most — never
+# per-frame. The cached value may be None (no tab provides it yet).
+_UNRESOLVED = object()
+_cached_liveness_probe = _UNRESOLVED
+
+
+def _is_qt_alive_local(obj) -> bool:
+    """Host-local shiboken validity check (fail-open True).
+
+    Same verdicts as the tab-owned probe: False only when a PySide6
+    wrapper outlived its C++ object. Used when no tab provides the
+    liveness capability — names no concrete tab.
+    """
+    try:
+        import shiboken6
+    except Exception:
+        return True
+    try:
+        return bool(shiboken6.isValid(obj))
+    except Exception:
+        return True
+
+
+def _resolve_liveness_probe():
+    """Return the tab-provided liveness callable, or None (resolved once)."""
+    global _cached_liveness_probe
+    if _cached_liveness_probe is _UNRESOLVED:
+        probe = None
+        try:
+            from tabs.registry import get_shared_tab_registry
+
+            probe = get_shared_tab_registry().create_startup_service(
+                _LIVENESS_CAPABILITY_ID
+            )
+        except Exception:
+            probe = None
+        if not callable(probe):
+            probe = None
+        _cached_liveness_probe = probe
+    return _cached_liveness_probe
+
+
 # A branch that keeps failing is requeued at most this many consecutive
 # flushes, then dropped with an error log — unbounded requeue would reschedule
 # a flush every tick forever (flush live-lock).
@@ -57,21 +108,19 @@ class UIUpdateBatcher:
         # Guard: singleShot(0) is not parented — presenter/window may be
         # deleted before the timer fires (tab switch, window close). Prevent
         # libshiboken "Internal C++ object already deleted" storm.
-        # Single mechanism: tabs.image_compare.canvas.live_handles (lazy
-        # import — host must not bind a concrete tab at module level, see
-        # tests/contracts/test_ui_tab_sandbox.py). Fail-open: any import or
-        # guard failure falls through to the per-update RuntimeError catches.
+        # Routed via the ``qt_liveness_probe`` TabContract capability
+        # (resolved once and cached — this path is HOT, no per-frame
+        # registry scans). When no tab provides it, the host-local
+        # shiboken check gives identical verdicts. Fail-open: any guard
+        # failure falls through to the per-update RuntimeError catches.
         try:
-            import importlib
-
-            live_handles = importlib.import_module(
-                "tabs.image_compare.canvas.live_handles"
-            )
+            probe = _resolve_liveness_probe()
+            is_alive = probe if probe is not None else _is_qt_alive_local
             presenter = getattr(self, "_presenter", None)
             win = getattr(presenter, "main_window_app", None) if presenter is not None else None
-            if win is not None and not live_handles.is_qt_alive(win):
+            if win is not None and not is_alive(win):
                 return
-            if presenter is not None and not live_handles.is_qt_alive(presenter):
+            if presenter is not None and not is_alive(presenter):
                 return
         except Exception:
             pass
