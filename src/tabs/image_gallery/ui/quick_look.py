@@ -639,11 +639,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def _on_compare(self) -> None:
         if self._current_item is None:
             return
-        try:
-            p = Path(getattr(self._current_item, "path", ""))
-            self.compareRequested.emit(p)
-        except Exception:
-            pass
+        # No compareRequested.emit here: the direct path below already sets
+        # selection {p} and runs carry_selected, and the only subscriber
+        # (on_quick_compare) would run carry_selected a SECOND time
+        # (double ImageCarryService.begin). on_quick_compare stays for the
+        # _on_multi path, which relies on it for the carry step.
         try:
             owner = self._owner
             if owner is not None and hasattr(owner, "state"):

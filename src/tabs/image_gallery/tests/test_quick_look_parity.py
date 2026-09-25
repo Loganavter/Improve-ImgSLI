@@ -2262,6 +2262,31 @@ def test_reject_button_toggles_once_with_production_wiring(qtbot):
     ov.hide()
 
 
+def test_compare_button_carries_once_with_production_wiring(qtbot, monkeypatch):
+    """Single-fire guard: one `_on_compare` runs `carry_selected` exactly
+    once even with production `compareRequested -> on_quick_compare` connected.
+
+    Regression: `_on_compare` emitted `compareRequested` AND ran the direct
+    select-{p} + `carry_selected` path, so the carry flow started twice
+    (double `ImageCarryService.begin`).
+    """
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+    from tabs.image_gallery.use_cases import carry as _carry
+
+    calls: list = []
+    monkeypatch.setattr(_carry, "carry_selected", lambda owner, *a, **k: calls.append(owner))
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    ov.compareRequested.connect(lambda p: _qlh.on_quick_compare(ov._owner, p))
+    ov._on_compare()
+    QApplication.processEvents()
+    assert len(calls) == 1
+    assert ov.isHidden()
+
+
 def test_set_source_button_stays_open(qtbot):
     """W12-A: `Set as source` keeps triaging — overlay stays open."""
     a = _item("a.png")
