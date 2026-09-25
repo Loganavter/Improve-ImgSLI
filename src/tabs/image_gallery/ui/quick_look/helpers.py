@@ -250,6 +250,84 @@ def _thumb_pixmap(item, size: int = 66) -> QPixmap | None:
     return None
 
 
+def _fast_image_size(path: Path | str) -> tuple[int, int] | None:
+    """Image dimensions without a full decode (QImageReader.size fast path).
+
+    Falls back to QPixmap dims only when the reader cannot determine size.
+    Never raises — returns None on any failure.
+    """
+    try:
+        from PySide6.QtGui import QImageReader
+
+        reader = QImageReader(str(path))
+        try:
+            reader.setAutoTransform(True)
+        except Exception:
+            pass
+        size = reader.size()
+        if size is not None and not size.isEmpty() and size.width() > 0 and size.height() > 0:
+            return int(size.width()), int(size.height())
+    except Exception:
+        pass
+    try:
+        pm = QPixmap(str(path))
+        if pm is not None and not pm.isNull():
+            return int(pm.width()), int(pm.height())
+    except Exception:
+        pass
+    return None
+
+
+def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixmap | None:
+    """Small pixmap via QImageReader scaled read — avoids a full-res QPixmap decode.
+
+    Falls back to QPixmap + scaled() when the reader path fails.
+    """
+    try:
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QImageReader, QPixmap as _PM
+
+        reader = QImageReader(str(path))
+        try:
+            reader.setAutoTransform(True)
+        except Exception:
+            pass
+        try:
+            reader.setScaledSize(QSize(int(target_w), int(target_h)))
+        except Exception:
+            pass
+        img = reader.read()
+        if img is not None and not img.isNull():
+            pm = _PM.fromImage(img)
+            if pm is not None and not pm.isNull():
+                # Reader scaled read may not preserve aspect — fit inside target.
+                try:
+                    if pm.width() > target_w or pm.height() > target_h:
+                        pm = pm.scaled(
+                            int(target_w),
+                            int(target_h),
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                except Exception:
+                    pass
+                return pm
+    except Exception:
+        pass
+    try:
+        pm = QPixmap(str(path))
+        if pm is not None and not pm.isNull():
+            return pm.scaled(
+                int(target_w),
+                int(target_h),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+    except Exception:
+        pass
+    return None
+
+
 def _theme_color(token: str, fallback: str) -> object:
     """Resolve ThemeManager token with fallback hex via ui.theming wrapper (contract-safe)."""
     try:
@@ -1408,7 +1486,7 @@ class _ResizeGrip(QWidget):
 
 
 def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
-    """Source image dimensions: metrics width/height first, QPixmap fallback."""
+    """Source image dimensions: metrics width/height first, QImageReader fast path."""
     metrics = getattr(src_item, "metrics", None) if src_item is not None else None
     if isinstance(metrics, dict):
         try:
@@ -1420,9 +1498,16 @@ def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
             pass
     try:
         if src_path is not None:
-            pm = QPixmap(str(src_path))
-            if not pm.isNull():
-                return pm.width(), pm.height()
+            dims = _fast_image_size(src_path)
+            if dims is not None:
+                # Cache for the next open — avoids even the reader hit.
+                try:
+                    if isinstance(metrics, dict):
+                        metrics.setdefault("width", dims[0])
+                        metrics.setdefault("height", dims[1])
+                except Exception:
+                    pass
+                return dims
     except Exception:
         pass
     return None
@@ -1827,6 +1912,8 @@ def populate_preview(overlay, item) -> None:
     # ``_rescale_preview_to_host`` can re-derive the shown pixmap at the
     # live label size on every card resize (preview stretches with aspect,
     # export-window idiom). The initial shown pixmap keeps the old size.
+    # Perf: single QPixmap decode — the shown pixmap is scaled from the
+    # stashed full instead of a second QPixmap(path) load (was ~2x decode).
     try:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt
@@ -1851,7 +1938,20 @@ def populate_preview(overlay, item) -> None:
                     overlay._preview_full = thumb
             except Exception:
                 pass
-        pm = _load_preview_pixmap(Path(getattr(item, "path", "")), scaled_px(640), scaled_px(456))
+        pm = None
+        try:
+            stashed = getattr(overlay, "_preview_full", None)
+            if stashed is not None and not stashed.isNull():
+                pm = stashed.scaled(
+                    scaled_px(640),
+                    scaled_px(456),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+        except Exception:
+            pm = None
+        if pm is None or pm.isNull():
+            pm = _load_preview_pixmap(Path(getattr(item, "path", "")), scaled_px(640), scaled_px(456))
         if pm is not None and not pm.isNull():
             overlay._preview_label.setPixmap(pm)
         else:
@@ -1899,14 +1999,38 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
             pass
         pix = None
         if src_item is not None:
-            pix = _thumb_pixmap(src_item, scaled_px(150))
+            try:
+                thumb = getattr(src_item, "thumbnail", None)
+                if thumb is not None and not thumb.isNull():
+                    pix = thumb.scaled(
+                        scaled_px(150),
+                        scaled_px(84),
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.FastTransformation,
+                    )
+                else:
+                    # No thumbnail yet (fresh drop) — scaled reader read
+                    # instead of a full QPixmap decode + smooth scale.
+                    pix = _load_scaled_pixmap(Path(getattr(src_item, "path", src)), scaled_px(150), scaled_px(84))
+            except Exception:
+                pix = None
+            if pix is None:
+                try:
+                    pix = _thumb_pixmap(src_item, scaled_px(150))
+                except Exception:
+                    pix = None
         elif src is not None:
             try:
-                pm2 = QPixmap(str(src))
-                if not pm2.isNull():
-                    pix = pm2.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                pix = _load_scaled_pixmap(src, scaled_px(150), scaled_px(84))
             except Exception:
-                pass
+                pix = None
+            if pix is None:
+                try:
+                    pm2 = QPixmap(str(src))
+                    if not pm2.isNull():
+                        pix = pm2.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                except Exception:
+                    pass
         if pix is not None and not pix.isNull():
             overlay._source_inset_pix.setPixmap(pix)
         else:
@@ -1937,8 +2061,22 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QPixmap
-        pm_full = QPixmap(str(getattr(item, "path", "")))
-        if not pm_full.isNull():
+        # Reuse the already-decoded preview when possible — avoids a
+        # second full QPixmap load for the non-fidelity crop inset.
+        pm_full = getattr(overlay, "_preview_full", None)
+        try:
+            if pm_full is None or pm_full.isNull():
+                pm_full = None
+        except Exception:
+            pm_full = None
+        if pm_full is None:
+            try:
+                pm_full = QPixmap(str(getattr(item, "path", "")))
+                if pm_full is not None and pm_full.isNull():
+                    pm_full = None
+            except Exception:
+                pm_full = None
+        if pm_full is not None and not pm_full.isNull():
             w = pm_full.width()
             h = pm_full.height()
             cw = max(1, w // 3)
@@ -1964,8 +2102,8 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
     except Exception:
         pass
     try:
-        from PySide6.QtGui import QPixmap
         # S4 mockup meta order: dims · format · size (+ upscale suffix).
+        # Perf: dims via QImageReader.size (no full decode) + metrics cache.
         dims_txt: str | None = None
         fmt_txt: str | None = None
         size_txt: str | None = None
@@ -1981,9 +2119,25 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
                 else:
                     size_txt = f"{sz/1024/1024:.1f} MB"
                 fmt_txt = p.suffix.lstrip(".").upper() or "IMG"
-            pm_meta = QPixmap(str(p))
-            if not pm_meta.isNull():
-                dims_txt = f"{pm_meta.width()} × {pm_meta.height()}"
+            dims = None
+            try:
+                metrics_pre = getattr(item, "metrics", None)
+                if isinstance(metrics_pre, dict) and metrics_pre.get("width") and metrics_pre.get("height"):
+                    dims = (int(metrics_pre["width"]), int(metrics_pre["height"]))
+            except Exception:
+                dims = None
+            if dims is None:
+                dims = _fast_image_size(p)
+                if dims is not None:
+                    try:
+                        metrics_pre = getattr(item, "metrics", None)
+                        if isinstance(metrics_pre, dict):
+                            metrics_pre.setdefault("width", dims[0])
+                            metrics_pre.setdefault("height", dims[1])
+                    except Exception:
+                        pass
+            if dims is not None:
+                dims_txt = f"{dims[0]} × {dims[1]}"
         except Exception:
             pass
         metrics = getattr(item, "metrics", None) or {}
