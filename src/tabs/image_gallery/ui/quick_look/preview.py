@@ -29,14 +29,48 @@ def _load_preview_pixmap(path: Path, target_w: int = 640, target_h: int = 456) -
         return None
 
 
-def _thumb_pixmap(item, size: int = 66) -> QPixmap | None:
+def _thumb_pixmap(item, w: int = 66, h: int = 44) -> QPixmap | None:
+    """Series-strip thumb: cover-scale to w×h, then center-crop to exactly w×h.
+
+    Deterministic crop independent of the painter (the thumb region still
+    paints ``image_fill="cover"``, but the pixmap itself already fills the
+    66×44 frame, so no letterbox/pillarbox can leak through).
+    """
+
+    def _cover_crop(src: QPixmap | None) -> QPixmap | None:
+        try:
+            if src is None or src.isNull():
+                return None
+            w_i, h_i = int(w), int(h)
+            scaled = src.scaled(w_i, h_i, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            try:
+                if scaled.isNull():
+                    return None
+            except Exception:
+                pass
+            # ByExpanding guarantees scaled >= target on both axes; the
+            # center copy below is then exactly w×h (min-guarded anyway).
+            x = max(0, (scaled.width() - w_i) // 2)
+            y = max(0, (scaled.height() - h_i) // 2)
+            cw = min(w_i, scaled.width())
+            ch = min(h_i, scaled.height())
+            if cw <= 0 or ch <= 0:
+                return scaled
+            return scaled.copy(x, y, cw, ch)
+        except Exception:
+            return None
+
     try:
         thumb = getattr(item, "thumbnail", None)
         if thumb is not None and not thumb.isNull():
-            return thumb.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            out = _cover_crop(thumb)
+            if out is not None:
+                return out
         pm = QPixmap(str(getattr(item, "path", "")))
         if pm is not None and not pm.isNull():
-            return pm.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            out = _cover_crop(pm)
+            if out is not None:
+                return out
     except Exception:
         pass
     return None
@@ -309,7 +343,7 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
                 pix = None
             if pix is None:
                 try:
-                    pix = _thumb_pixmap(src_item, scaled_px(150))
+                    pix = _thumb_pixmap(src_item, scaled_px(150), scaled_px(84))
                 except Exception:
                     pix = None
         elif src is not None:

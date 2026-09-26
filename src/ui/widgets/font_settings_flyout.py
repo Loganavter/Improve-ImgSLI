@@ -63,12 +63,12 @@ class FontSettingsFlyout(BaseFlyout):
         self.bg_color_swatch = ColorSwatch(QColor("#000000"), parent=self)
         self.draw_bg_switch = Switch(parent=self)
 
-        self._size_label = self.add_row("", self.size_slider, label_pixel_size=13)
-        self._weight_label = self.add_row("", self.weight_slider, label_pixel_size=13)
-        self._opacity_label = self.add_row("", self.opacity_slider, label_pixel_size=13)
-        self._color_label = self.add_row("", self.color_swatch, label_pixel_size=13)
-        self._bg_label = self.add_row("", self.bg_color_swatch, label_pixel_size=13)
-        self._draw_bg_label = self.add_row("", self.draw_bg_switch, label_pixel_size=13)
+        self._size_label = self.add_row("", self.size_slider, label_pixel_size=14)
+        self._weight_label = self.add_row("", self.weight_slider, label_pixel_size=14)
+        self._opacity_label = self.add_row("", self.opacity_slider, label_pixel_size=14)
+        self._color_label = self.add_row("", self.color_swatch, label_pixel_size=14)
+        self._bg_label = self.add_row("", self.bg_color_swatch, label_pixel_size=14)
+        self._draw_bg_label = self.add_row("", self.draw_bg_switch, label_pixel_size=14)
         self._placement_label, self._pos_group, self._pos_radios = self.add_radio_row(
             "",
             [
@@ -77,7 +77,7 @@ class FontSettingsFlyout(BaseFlyout):
             ],
             default="edges",
         )
-        self._placement_label.setPixelSize(13)
+        self._placement_label.setPixelSize(14)
         self._tag_find_action_chrome()
         self._retranslate()
 

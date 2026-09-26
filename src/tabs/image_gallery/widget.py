@@ -143,6 +143,7 @@ class ImageGalleryWidget(QWidget):
         # Wire strip signals -> use_cases (keep_best_of_series etc).
         try:
             self.stats_strip.keepBestClicked.connect(lambda: self._on_keep_best())
+            self.stats_strip.showAllClicked.connect(lambda: self._on_show_all())
             self.stats_strip.cleanClicked.connect(lambda: self._on_clean_rejected())
             self.stats_strip.compareClicked.connect(lambda: self._on_compare_finalists())
         except Exception:
@@ -159,6 +160,9 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
         self._empty_text = _tr("image_gallery.empty_state", "Pick a folder to see images here.")
+        # Shown when the grid is emptied by removals (reject/Space/Delete) —
+        # files stay on disk, so "pick a folder" would mislead.
+        self._empty_view_text = _tr("image_gallery.empty_view", "No images in view.")
         # Not added to layout to match svg (no extra label row) — kept as hidden compat shim
         # root.addWidget(self._folder_label)  # svg v2 has no folder label, only stats
 
@@ -206,8 +210,8 @@ class ImageGalleryWidget(QWidget):
 
         # Footer — SVG y822 10.5px italic #8a8a8a
         self._footer = Label(
-            "keys: Space reject · B best · Enter compare selected · dbl-click quick look (TopLevelInWindowOverlay) · quality dots: ● sharpness ● exposure ● noise (outlier shown warm/red)",
-            pixel_size=10,
+            "keys: Space/Delete remove · B best · Enter compare selected · dbl-click quick look (TopLevelInWindowOverlay) · quality dots: ● sharpness ● exposure ● noise (outlier shown warm/red)",
+            pixel_size=11,
             parent=self,
         )
         self._footer.setObjectName("image_gallery_footer")
@@ -330,6 +334,15 @@ class ImageGalleryWidget(QWidget):
         # Update initial state
         self._empty_state.set_state("empty")
         self._grid_view.hide()
+
+        # Raw input firehose (DEBUGGING.md rule 5): app-wide, env-gated,
+        # session-only. Installed, never consumed.
+        try:
+            from tabs.image_gallery.ui.events_firehose import install_events_firehose
+
+            install_events_firehose()
+        except Exception:
+            pass
 
         # Wave 2c: subscribe renders to the ``gallery`` slot (fail-open —
         # no store in tests / unbootstrapped tabs means no subscription).
@@ -515,6 +528,7 @@ class ImageGalleryWidget(QWidget):
             return
         if slot_paths == cur_paths:
             return
+        _dbg("_render_gallery_pool reconcile slot=%d local=%d", len(slot_paths), len(cur_paths))
         try:
             from tabs.image_gallery.state import selectors as _sel3
 
@@ -769,7 +783,7 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-    # -- keyboard: Space reject toggle, B make best, Enter compare, Esc close/back, arrows navigate
+    # -- keyboard: Space/Delete remove card, B make best, Enter compare, Esc close/back, arrows navigate
     # widget keyPressEvent -> triage functions (design.md:129) ----------------
 
     def _owner_for_triage(self):
@@ -857,8 +871,39 @@ class ImageGalleryWidget(QWidget):
         self._folder_label.setText(str(folder))
 
     def rebuild_grid(self, items: list[GalleryItem]) -> None:
+        had_items = bool(self._items)
+        # Snapshot the active series view — the flat rebuild below clears
+        # grid_view._series (headers). Every triage action funnels through
+        # here (toggle/make-best/keep-best/remove), so without a re-apply
+        # any of them flattens the SERIES grouping.
+        saved_series = None
+        try:
+            gv = getattr(self, "_grid_view", None)
+            if gv is not None and getattr(gv, "_series", None) is not None:
+                saved_series = (
+                    list(gv._series),
+                    list(getattr(gv, "_hub_names", []) or []),
+                    dict(getattr(gv, "_collapsed", {}) or {}),
+                )
+        except Exception:
+            saved_series = None
         self._items = list(items)
+        _dbg("rebuild_grid n=%d branch=%s", len(self._items), "empty" if not items else "grid")
         if not items:
+            if had_items:
+                # Emptied by removals (reject/Space/Delete) — files stay on
+                # disk, so the pick-a-folder message would mislead.
+                try:
+                    self._empty_state.set_empty_message(self._empty_view_text)
+                except Exception:
+                    pass
+                empty_text = self._empty_view_text
+            else:
+                try:
+                    self._empty_state.restore_empty_message()
+                except Exception:
+                    pass
+                empty_text = self._empty_text
             self._empty_state.set_state("empty")
             try:
                 if hasattr(self, "_content_stack"):
@@ -868,8 +913,10 @@ class ImageGalleryWidget(QWidget):
                     self._grid_view.hide()
             except Exception:
                 pass
-            self._empty_label.setText(self._empty_text)
-            self._empty_label.show()
+            # Compat shim only (never in a layout — show() would pin it at
+            # (0,0) over the corner). S0 visuals belong to _empty_state.
+            self._empty_label.setText(empty_text)
+            self._empty_label.hide()
             # Clear grid
             try:
                 self._grid_view.rebuild_grid([])
@@ -904,6 +951,81 @@ class ImageGalleryWidget(QWidget):
             self.refresh_card(item)
 
         # Hook double-click → quick look
+        try:
+            self._install_quick_look_hooks()
+        except Exception:
+            pass
+
+        # Re-apply the series view snapshotted above (if clusters survive).
+        if saved_series is not None:
+            try:
+                self._restore_series_view(saved_series)
+            except Exception:
+                pass
+
+    def _restore_series_view(self, saved) -> None:
+        """Re-apply a series view snapshot taken before the flat rebuild.
+
+        Clusters are pruned to current membership (removals); clusters
+        shrinking below 2 members fall out — ``set_series`` lands their
+        survivors in the UNGROUPED tail. Nothing surviving → stay flat
+        (e.g. folder switch keeps its current flat behavior).
+        """
+        try:
+            series, hub_names, collapsed = saved
+        except Exception:
+            return
+        alive: set[str] = set()
+        for it in (self._items or []):
+            try:
+                alive.add(str(it.path))
+            except Exception:
+                continue
+        kept: list = []
+        kept_hubs: list = []
+        for idx, cl in enumerate(list(series or [])):
+            try:
+                members = [m for m in list(cl) if str(getattr(m, "path", None)) in alive]
+            except Exception:
+                continue
+            if len(members) >= 2:
+                kept.append(members)
+                try:
+                    if idx < len(hub_names):
+                        kept_hubs.append(hub_names[idx])
+                except Exception:
+                    pass
+        if not kept:
+            return
+        try:
+            collapsed = {int(k): bool(v) for k, v in dict(collapsed or {}).items() if 0 <= int(k) < len(kept)}
+        except Exception:
+            collapsed = {}
+        _dbg("rebuild_grid restore series clusters=%d", len(kept))
+        try:
+            self._grid_view.set_series(kept, hub_names=kept_hubs, collapsed=collapsed)
+        except Exception:
+            return
+        try:
+            self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
+        except Exception:
+            pass
+        # set_series recycled cards again — re-sync compat dicts (mirrors set_triage).
+        try:
+            self._cards.clear()
+            self._card_labels.clear()
+            for it in (self._items or []):
+                card = self._grid_view.card_for(it.path)
+                if card is not None:
+                    self._cards[it.path] = card
+                    self._card_labels[it.path] = card  # type: ignore[assignment]
+        except Exception:
+            pass
+        try:
+            for item in (self._items or []):
+                self.refresh_card(item)
+        except Exception:
+            pass
         try:
             self._install_quick_look_hooks()
         except Exception:
@@ -979,6 +1101,14 @@ class ImageGalleryWidget(QWidget):
             from tabs.image_gallery.use_cases import triage as _triage
 
             _triage.keep_best_of_series(self._owner_for_triage())
+        except Exception:
+            pass
+
+    def _on_show_all(self) -> None:
+        try:
+            from tabs.image_gallery.use_cases import triage as _triage
+
+            _triage.show_all(self._owner_for_triage())
         except Exception:
             pass
 
@@ -1087,6 +1217,23 @@ class ImageGalleryWidget(QWidget):
                 pass
             self.stats_strip.set_stats(total, series_cnt, redundant)
             self.stats_strip.set_rejected_count(rejected_n)
+            try:
+                from tabs.image_gallery.use_cases.triage import should_show_all as _should_show_all
+
+                groups = [cl for cl in (filtered or []) if len(cl) >= 2]
+                if not groups:
+                    # Flat fallback: group grid items by series_id.
+                    try:
+                        from tabs.image_gallery.use_cases.triage import _flat_series_groups
+
+                        groups = _flat_series_groups(self._items or [])
+                    except Exception:
+                        groups = []
+                self.stats_strip.set_keep_mode(
+                    "show" if _should_show_all(self._items or [], groups) else "keep"
+                )
+            except Exception:
+                pass
             self.stats_strip.set_mode(str(mode or "fidelity"), self._source_path)
             self.stats_strip.show()
         except Exception:

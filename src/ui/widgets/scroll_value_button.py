@@ -98,7 +98,7 @@ class _ValueOverUnderlineLayer(Layer):
         backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
         if not backgrounds:
             return
-        font = ui_font(pixel_size=12)
+        font = ui_font(pixel_size=14)
         fm = QFontMetrics(font)
         pad_x = scaled_px(_CAPSULE_PAD_X)
         pad_y = scaled_px(_CAPSULE_PAD_Y)

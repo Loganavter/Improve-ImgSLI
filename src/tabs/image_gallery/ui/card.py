@@ -301,6 +301,12 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         card._gallery_hover_filter = filt  # type: ignore[attr-defined]
     except Exception:
         pass
+    try:
+        from tabs.image_gallery.ui.card.delete_button import wire_card_delete_button
+
+        wire_card_delete_button(card, owner)
+    except Exception:
+        pass
     if on_activate is not None or on_context_menu is not None:
         _bind_gallery_card(card, on_activate=on_activate, on_context_menu=on_context_menu)
     if on_context_menu is None:
@@ -378,6 +384,13 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None) ->
             pass
     rows = _text_rows(item, translate=None, mode=_mode)
     card.update_region("text", rows=rows)
+    # Re-pin the delete ✕ (visibility incl. rejected rule lives in sync).
+    try:
+        from tabs.image_gallery.ui.card.delete_button import sync_card_delete_button
+
+        sync_card_delete_button(card)
+    except Exception:
+        pass
     try:
         parts = [item.name]
         analysis = getattr(item, "analysis", None)

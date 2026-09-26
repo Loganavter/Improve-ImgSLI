@@ -203,6 +203,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Plan: Image Gallery — parity close-out (S2/S3/S4)](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)** — `src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md`
   Referenced by: [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
 - **[Plan: Quick look S4 visual parity close-out (LIGHT)](../../src/tabs/image_gallery/docs/plan_quicklook_s4_parity_2026-09-23.md)** — `src/tabs/image_gallery/docs/plan_quicklook_s4_parity_2026-09-23.md`
+- **[Plan: S3 clean-review overlay — visual parity with mockup v3 (QuickLook idiom)](../../src/tabs/image_gallery/docs/plan_s3_parity_2026-09-26.md)** — `src/tabs/image_gallery/docs/plan_s3_parity_2026-09-26.md`
 
 ## src/tabs/image_gallery/docs/plugins/
 

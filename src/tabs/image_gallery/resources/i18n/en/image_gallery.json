@@ -4,6 +4,7 @@
     "pick_folder": "Pick folder…",
     "filter_placeholder": "Filter by tag/description…",
     "empty_state": "Pick a folder to see images here.",
+    "empty_view": "No images in view.",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
     "settings": {

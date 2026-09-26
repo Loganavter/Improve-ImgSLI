@@ -345,7 +345,7 @@ class FindActionDialog(ThemedDialog):
         self._empty = Label(
             tr_action("action.palette.empty", "No matching actions"),
             variant="caption",
-            pixel_size=12,
+            pixel_size=14,
             color_token="list_item.text.rating",
             parent=self,
         )

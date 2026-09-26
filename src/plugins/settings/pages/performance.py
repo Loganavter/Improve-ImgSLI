@@ -10,11 +10,16 @@ import sys
 
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import ComboBox, Label
+from sli_ui_toolkit.widgets import ComboBox
 
 from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
+from plugins.settings.typography import (
+    apply_settings_body,
+    settings_caption_label,
+    settings_group,
+)
 from ui.icon_manager import AppIcon
 
 RENDER_BACKEND = group(
@@ -52,16 +57,11 @@ def build(dialog, p):
 
 
 def _build_render_backend_group(dialog, layout, p, builder):
-    dialog.render_backend_group = RENDER_BACKEND.widget(dialog)
+    dialog.render_backend_group = settings_group(dialog, RENDER_BACKEND)
     row = QHBoxLayout()
-    row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
-    dialog.lbl_rhi_backend = Label(
-        RENDER_BACKEND.text(dialog, "settings.render_backend_label") + ":"
-    )
-    RENDER_BACKEND.tag_member(
-        dialog.lbl_rhi_backend, "settings.render_backend_label"
-    )
+    row.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
     dialog.combo_rhi_backend = ComboBox()
+    apply_settings_body(dialog.combo_rhi_backend)
     RENDER_BACKEND.tag_combo(dialog.combo_rhi_backend)
     dialog.combo_rhi_backend.setMinimumWidth(scaled_px(180))
     dialog.combo_rhi_backend.setSizePolicy(
@@ -94,12 +94,11 @@ def _build_render_backend_group(dialog, layout, p, builder):
     idx = dialog.combo_rhi_backend.findData(p.rhi_backend or "default")
     if idx != -1:
         dialog.combo_rhi_backend.setCurrentIndex(idx)
-    row.addWidget(dialog.lbl_rhi_backend)
     row.addWidget(dialog.combo_rhi_backend, 1)
     backend_row = builder.row(row)
     dialog.render_backend_group.add_widget(backend_row)
 
-    dialog.lbl_rhi_backend_hint = Label(
+    dialog.lbl_rhi_backend_hint = settings_caption_label(
         RENDER_BACKEND.text(dialog, "settings.render_backend_restart_hint")
     )
     RENDER_BACKEND.tag_member(

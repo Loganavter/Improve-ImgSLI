@@ -174,7 +174,7 @@ def current_path(owner) -> Path | None:
 
 
 def handle_key(owner, event) -> None:
-    """Handle gallery keyboard: Space/B/Enter/Esc/arrows → triage. Delegated from widget.keyPressEvent."""
+    """Handle gallery keyboard: Space/Delete/B/Enter/Esc/arrows → triage. Delegated from widget.keyPressEvent."""
     # Let embedded filter edit handle typing when focused (except Esc)
     try:
         filter_edit = owner._filter_edit  # type: ignore[attr-defined]
@@ -228,14 +228,14 @@ def handle_key(owner, event) -> None:
         QWidget.keyPressEvent(owner, event)
         return
 
-    # Space → reject toggle on current
-    if key == Qt.Key.Key_Space:
+    # Space / Delete / Backspace → remove current card from the grid
+    if key in (Qt.Key.Key_Space, Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
         cur = current_path(owner)
         if cur is not None:
             try:
                 from tabs.image_gallery.use_cases import triage as _triage
 
-                _triage.toggle_reject(owner_for_triage(owner), cur)
+                _triage.remove_from_grid(owner_for_triage(owner), cur)
                 event.accept()
                 return
             except Exception:

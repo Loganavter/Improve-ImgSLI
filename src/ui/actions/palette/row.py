@@ -359,7 +359,7 @@ class ActionPaletteRow(Button):
         plate_rows = [
             ButtonRow(
                 text=title,
-                size=13,
+                size=14,
                 weight="bold",
                 h_align=Qt.AlignmentFlag.AlignLeft,
             )

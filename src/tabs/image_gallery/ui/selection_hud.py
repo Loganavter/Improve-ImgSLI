@@ -234,6 +234,12 @@ class SelectionHudController:
         A newer notify wins: stale timers are ignored via token.
         """
         try:
+            from tabs.image_gallery.debug import gallery_debug as _dbg
+
+            _dbg("hud notify text=%r", str(text)[:120])
+        except Exception:
+            pass
+        try:
             self._notify_token += 1
             token = self._notify_token
             self._notify_active = True

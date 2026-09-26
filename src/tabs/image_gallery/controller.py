@@ -1375,10 +1375,20 @@ class GalleryController:
 
         return bool(_toggle(self, path))
 
+    def remove_from_grid(self, path: Path) -> bool:
+        from tabs.image_gallery.use_cases.triage import remove_from_grid as _remove
+
+        return bool(_remove(self, path))
+
     def keep_best_of_series(self) -> dict:
         from tabs.image_gallery.use_cases.triage import keep_best_of_series as _keep
 
         return _keep(self)
+
+    def show_all(self) -> int:
+        from tabs.image_gallery.use_cases.triage import show_all as _show
+
+        return int(_show(self))
 
     def clean_rejected(self) -> list[dict]:
         from tabs.image_gallery.use_cases.triage import clean_rejected as _clean

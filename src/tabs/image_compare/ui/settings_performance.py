@@ -10,7 +10,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 from sli_ui_toolkit.managers import as_nav_row, scaled_px
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, Label, SpinBox
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, SpinBox
+
+from plugins.settings.typography import (
+    apply_settings_body,
+    settings_body_label,
+    settings_group,
+)
 
 from core.constants import AppConstants
 from plugins.settings.search import SearchIndex, group
@@ -47,16 +53,17 @@ def build_image_perf_extras(dialog, p) -> list:
 
 
 def _build_interactive_optimization_group(dialog, layout, p):
-    dialog.interactive_opt_group = INTERACTIVE.widget(dialog)
+    dialog.interactive_opt_group = settings_group(dialog, INTERACTIVE)
     rows = []
 
     row_zoom = QHBoxLayout()
     row_zoom.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
-    dialog.lbl_zoom_interp = Label(
-        INTERACTIVE.text(dialog, "settings.zoom_interpolation")
+    dialog.lbl_zoom_interp = settings_body_label(
+        INTERACTIVE.text(dialog, "settings.zoom_interpolation"),
     )
     INTERACTIVE.tag_member(dialog.lbl_zoom_interp, "settings.zoom_interpolation")
     dialog.combo_zoom_interp = ComboBox()
+    apply_settings_body(dialog.combo_zoom_interp)
     INTERACTIVE.tag_combo(dialog.combo_zoom_interp, "settings.zoom_interpolation")
     dialog.combo_zoom_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_zoom_interp.setSizePolicy(
@@ -73,11 +80,13 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.optimize_movement_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_magnifier_movement")
     )
+    apply_settings_body(dialog.optimize_movement_checkbox)
     dialog.optimize_movement_checkbox.setChecked(p.optimize_magnifier_movement)
     INTERACTIVE.tag_member(
         dialog.optimize_movement_checkbox, "settings.optimize_magnifier_movement"
     )
     dialog.combo_mag_interp = ComboBox()
+    apply_settings_body(dialog.combo_mag_interp)
     dialog.combo_mag_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_mag_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -94,11 +103,13 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.laser_smoothing_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_laser_smoothing")
     )
+    apply_settings_body(dialog.laser_smoothing_checkbox)
     dialog.laser_smoothing_checkbox.setChecked(p.optimize_laser_smoothing)
     INTERACTIVE.tag_member(
         dialog.laser_smoothing_checkbox, "settings.optimize_laser_smoothing"
     )
     dialog.combo_laser_interp = ComboBox()
+    apply_settings_body(dialog.combo_laser_interp)
     dialog.combo_laser_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_laser_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -113,6 +124,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.magnifier_intersection_highlight_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.magnifier_intersection_highlight")
     )
+    apply_settings_body(dialog.magnifier_intersection_highlight_checkbox)
     dialog.magnifier_intersection_highlight_checkbox.setChecked(
         p.magnifier_intersection_highlight_enabled
     )
@@ -127,6 +139,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.magnifier_auto_color_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.magnifier_auto_color_new_instances")
     )
+    apply_settings_body(dialog.magnifier_auto_color_checkbox)
     dialog.magnifier_auto_color_checkbox.setChecked(
         p.magnifier_auto_color_new_instances
     )
@@ -194,11 +207,14 @@ def _populate_interpolation_combos(dialog, p):
 
 
 def _build_video_group(dialog, layout, p):
-    dialog.video_group = VIDEO.widget(dialog)
+    dialog.video_group = settings_group(dialog, VIDEO)
     video_layout = QHBoxLayout()
-    video_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
-    dialog.lbl_fps = Label(VIDEO.text(dialog, "image_compare.settings.recording_fps") + ":")
+    video_layout.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
+    # Bare "FPS" — universal abbreviation, no translation needed (and the
+    # spin keeps the Find Action member key for discoverability).
+    dialog.lbl_fps = settings_body_label("FPS:")
     dialog.spin_fps = SpinBox(default_value=60)
+    apply_settings_body(dialog.spin_fps)
     VIDEO.tag_member(dialog.spin_fps, "image_compare.settings.recording_fps")
     dialog.spin_fps.setRange(10, 144)
     dialog.spin_fps.setValue(p.current_video_fps)

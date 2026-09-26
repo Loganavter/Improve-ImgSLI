@@ -439,6 +439,13 @@ class GalleryGridView(QWidget):
         *collapsed* — mapping of series index → collapsed bool (or set of collapsed indices).
         *mode* — gallery mode for per-dot colors (fidelity/camera/batch_synthetic), proxied to cards.
         """
+        # Full rebuild like rebuild_grid — cancel a pending chunked rebuild
+        # first, or its QTimer tick would re-add cards on top of the series.
+        try:
+            self._rebuild_pending = None
+            self._rebuild_index = 0
+        except Exception:
+            pass
         if mode is not None:
             self._mode = mode
         else:

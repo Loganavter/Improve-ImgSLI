@@ -436,6 +436,160 @@ def toggle_reject(owner, path: Path) -> bool:
     return False
 
 
+def remove_from_grid(owner, path: Path) -> bool:
+    """Remove *path* from the gallery grid (Reject-button behavior).
+
+    File on disk is untouched — only the grid mirror + slot membership
+    change. Mirrors the controller write path: mutate the local
+    ``state.items`` mirror first, prune selection/order + series clusters,
+    emit ``GalleryItemsRemoved`` so the slot stays in sync, then refresh
+    the grid. Returns True when a card was removed.
+    """
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+
+    try:
+        target = Path(path) if not isinstance(path, Path) else path
+    except Exception:
+        return False
+    target_s = str(target)
+    _dbg(
+        "remove_from_grid ENTER path=%s owner=%s",
+        target_s,
+        type(owner).__name__,
+    )
+    # Resolve the state holder that owns .items (controller.state,
+    # widget._state fallback inside _items_of).
+    st = getattr(owner, "state", None)
+    if st is None or not hasattr(st, "items"):
+        w = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
+        if w is not None:
+            st = getattr(w, "_state", None) or getattr(getattr(w, "_controller", None), "state", None)
+        if st is None and hasattr(owner, "_state"):
+            st = getattr(owner, "_state", None)
+    if st is None or not hasattr(st, "items"):
+        _dbg("remove_from_grid MISS-NOSTATE path=%s", target_s)
+        return False
+    try:
+        before = len(list(getattr(st, "items", []) or []))
+    except Exception:
+        before = -1
+    removed = False
+    try:
+        kept = []
+        for it in list(getattr(st, "items", []) or []):
+            try:
+                if Path(getattr(it, "path")) == target:
+                    removed = True
+                    continue
+            except Exception:
+                pass
+            kept.append(it)
+        if removed:
+            try:
+                st.items[:] = kept
+            except Exception:
+                try:
+                    st.items = kept
+                except Exception:
+                    return False
+    except Exception:
+        return False
+    if not removed:
+        _dbg("remove_from_grid MISS path=%s pool=%d", target_s, before)
+        return False
+    # Prune selection / order.
+    for attr in ("selected_paths", "selected_order"):
+        try:
+            cur = getattr(st, attr, None)
+            if cur is None:
+                continue
+            if isinstance(cur, set):
+                cur.discard(target)
+                try:
+                    cur.discard(Path(target_s))
+                except Exception:
+                    pass
+                for cand in list(cur):
+                    try:
+                        if Path(cand) == target:
+                            cur.discard(cand)
+                    except Exception:
+                        continue
+            elif isinstance(cur, list):
+                kept_sel = []
+                for cand in cur:
+                    try:
+                        if Path(cand) == target:
+                            continue
+                    except Exception:
+                        pass
+                    kept_sel.append(cand)
+                try:
+                    cur[:] = kept_sel
+                except Exception:
+                    setattr(st, attr, kept_sel)
+        except Exception:
+            pass
+    # Prune series clusters holding the same item objects (owner + state).
+    for holder in (owner, st):
+        for attr in ("_triage_series", "triage_series", "_series", "series"):
+            try:
+                clusters = getattr(holder, attr, None)
+                if not clusters:
+                    continue
+                pruned_clusters = []
+                changed = False
+                for cl in list(clusters):
+                    try:
+                        if hasattr(cl, "members"):
+                            members = [m for m in list(getattr(cl, "members", []) or []) if Path(getattr(m, "path")) != target]
+                            if len(members) != len(list(getattr(cl, "members", []) or [])):
+                                changed = True
+                                try:
+                                    cl.members[:] = members
+                                except Exception:
+                                    try:
+                                        cl.members = members
+                                    except Exception:
+                                        pass
+                            pruned_clusters.append(cl)
+                        elif isinstance(cl, (list, tuple)):
+                            members = [m for m in list(cl) if Path(getattr(m, "path")) != target]
+                            if len(members) != len(list(cl)):
+                                changed = True
+                            if members:
+                                pruned_clusters.append(members)
+                            # Empty clusters drop out.
+                        else:
+                            pruned_clusters.append(cl)
+                    except Exception:
+                        try:
+                            pruned_clusters.append(cl)
+                        except Exception:
+                            pass
+                if changed:
+                    try:
+                        if isinstance(clusters, list):
+                            clusters[:] = pruned_clusters
+                        else:
+                            setattr(holder, attr, pruned_clusters)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    try:
+        _emit_gallery(owner, GalleryItemsRemoved(paths=[target_s]))
+    except Exception:
+        pass
+    try:
+        remaining = len(list(getattr(st, "items", []) or []))
+    except Exception:
+        remaining = -1
+    _dbg("remove_from_grid applied path=%s pool=%d remaining=%d", target_s, before, remaining)
+    _refresh_owner_grid(owner)
+    return True
+
+
 def clean_rejected(owner) -> list[dict]:
     """Move rejected files to <folder>/_rejected/ (move-only, never delete).
 
@@ -586,11 +740,14 @@ def compare_finalists(owner) -> bool:
 
 
 def _refresh_owner_grid(owner) -> None:
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+
     w = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
     if w is None:
         # owner may be widget itself
         w = owner if hasattr(owner, "rebuild_grid") else None
     if w is None:
+        _dbg("_refresh_owner_grid NOWIDGET owner=%s", type(owner).__name__)
         return
     try:
         st = getattr(owner, "state", None)
@@ -598,6 +755,7 @@ def _refresh_owner_grid(owner) -> None:
             st = getattr(w, "_state", None)
         if st is not None and hasattr(st, "items"):
             items = list(getattr(st, "items", []) or [])
+            _dbg("_refresh_owner_grid n=%d widget=%s", len(items), type(w).__name__)
             if hasattr(w, "rebuild_grid"):
                 w.rebuild_grid(items)
             # Notify card refresh for rejected/badge
@@ -613,6 +771,15 @@ def _refresh_owner_grid(owner) -> None:
                 if callable(setter):
                     n = sum(1 for it in items if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False))))
                     setter(int(n))
+            except Exception:
+                pass
+            # Keep best ↔ Show all: when every series has exactly one
+            # non-rejected left, the strip button flips to "Show all".
+            try:
+                strip = getattr(w, "stats_strip", None)
+                mode_setter = getattr(strip, "set_keep_mode", None) if strip is not None else None
+                if callable(mode_setter):
+                    mode_setter("show" if is_keep_best_done(owner) else "keep")
             except Exception:
                 pass
     except Exception:
@@ -732,6 +899,117 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
     except Exception:
         pass
     return {}
+
+
+def _is_rejected(it) -> bool:
+    """Single rejected predicate shared by keep/show-all helpers."""
+    try:
+        return bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))
+    except Exception:
+        return False
+
+
+def should_show_all(items, groups) -> bool:
+    """Pure predicate: every series (≥2 members) has exactly one survivor.
+
+    *groups* are member lists (series clusters or series_id groupings).
+    Returns True only when at least one group has ≥2 members, every such
+    group keeps exactly one non-rejected item, and at least one item is
+    rejected (i.e. ``keep_best`` output — not an untouched gallery).
+    """
+    series_groups = [list(g) for g in (groups or []) if len(list(g or [])) >= 2]
+    if not series_groups:
+        return False
+    any_rejected = False
+    for members in series_groups:
+        survivors = 0
+        for m in members:
+            if _is_rejected(m):
+                any_rejected = True
+            else:
+                survivors += 1
+        if survivors != 1:
+            return False
+    return any_rejected
+
+
+def _flat_series_groups(items) -> list[list]:
+    """Group *items* by ``provenance_series_id``/``series_id`` (≥2 kept)."""
+    groups: dict[str, list] = {}
+    for it in items or []:
+        try:
+            key = getattr(it, "provenance_series_id", None) or getattr(it, "series_id", None)
+        except Exception:
+            key = None
+        if key is None:
+            continue
+        groups.setdefault(str(key), []).append(it)
+    return [members for members in groups.values() if len(members) >= 2]
+
+
+def is_keep_best_done(owner) -> bool:
+    """True when every series has exactly one non-rejected item left."""
+    try:
+        items = _items_of(owner)
+    except Exception:
+        items = []
+    try:
+        clusters = _series_of(owner)
+    except Exception:
+        clusters = []
+    # Normalize clusters to member lists (Series dataclass or plain list).
+    groups: list[list] = []
+    for cl in clusters or []:
+        try:
+            if hasattr(cl, "members"):
+                members = list(getattr(cl, "members", []) or [])
+            elif isinstance(cl, (list, tuple)):
+                members = list(cl)
+            else:
+                continue
+            if len(members) >= 2:
+                groups.append(members)
+        except Exception:
+            continue
+    if not groups:
+        # No cluster view (flat grid) — fall back to series_id grouping,
+        # mirroring keep_best_of_series.
+        try:
+            groups = _flat_series_groups(items)
+        except Exception:
+            groups = []
+    try:
+        return bool(should_show_all(items, groups))
+    except Exception:
+        return False
+
+
+def show_all(owner) -> int:
+    """Clear all rejected flags (inverse of ``keep_best_of_series``).
+
+    Returns number of items restored.
+    """
+    items = _items_of(owner)
+    restored = 0
+    for it in items:
+        if not _is_rejected(it):
+            continue
+        try:
+            it.rejected = False
+        except Exception:
+            pass
+        try:
+            it.triage_rejected = False  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        restored += 1
+    _refresh_owner_grid(owner)
+    try:
+        _emit_rank_snapshot(owner)
+    except Exception:
+        pass
+    logger.debug("triage.show_all: restored %d", restored)
+    return restored
 
 
 # Ensure provenance fields are present on GalleryItem (Stage 2 safety model)

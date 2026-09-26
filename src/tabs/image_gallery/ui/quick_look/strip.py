@@ -11,6 +11,35 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, Label
 
 
+def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """Strip thumb overlay: card hover wash + strip-size badge pill.
+
+    Visual hover only (no IconActionFlyout/capsule on strip thumbs) plus
+    the ``_gallery_badge`` pill drawn by the strip-size painter from
+    ``ui/card/painters.py``.
+    """
+    try:
+        from tabs.image_gallery.ui.card.painters import _gallery_hover_wash
+
+        _gallery_hover_wash(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.card.painters import _strip_badge_painter
+
+        widget = getattr(ctx, "widget", None)
+        if widget is None:
+            return
+        b_text = getattr(widget, "_gallery_badge", None)
+        b_style = getattr(widget, "_gallery_badge_style", None)
+        if b_text and b_style is not None:
+            rect = getattr(ctx, "rect", None)
+            if rect is not None:
+                _strip_badge_painter(painter, rect, str(b_text), b_style)
+    except Exception:
+        pass
+
+
 def rebuild_strip(overlay) -> None:
     # W6: svg pitch is 76px (thumbs x=816/892/968/1044, 66 wide) — the
     # HBox spacing is pinned here so 4 thumbs span 4*66+3*10=294px and
@@ -55,22 +84,11 @@ def rebuild_strip(overlay) -> None:
             pass
         rejected = bool(getattr(m, "rejected", False))
         pending = bool(getattr(m, "vlm_tie_pending", False))
-        # W4 item 9: SOURCE / #N / ✕ ride as badge overlays, not button
-        # text. Text-under-button survives only for tie-break pending and
-        # the strip hint. The checked + accent border still marks viewing.
-        if pending:
-            badge_text = "…"
-        elif is_source:
-            badge_text = "SOURCE"
-        elif rejected:
-            badge_text = "✕"
-        else:
-            badge_text = f"#{idx+1}"
         thumb_pm = None
         try:
             from tabs.image_gallery.ui.quick_look.helpers import _thumb_pixmap
 
-            thumb_pm = _thumb_pixmap(m, scaled_px(66))
+            thumb_pm = _thumb_pixmap(m, scaled_px(66), scaled_px(44))
         except Exception:
             thumb_pm = None
         container = QWidget(overlay._strip_host)
@@ -98,9 +116,11 @@ def rebuild_strip(overlay) -> None:
             # W6: 66px thumbs per svg (x=816/892/968/1044 w=66 h=44).
             # Series switch re-populates the overlay (~300ms) — let the
             # ripple finish first (same defer_click as the bar buttons).
-            btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, badge=badge_text, defer_click="ripple")
+            # overlay_painter: card hover wash + strip badge pill (visual
+            # hover only, no flyout/capsule on strip thumbs).
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, defer_click="ripple", overlay_painter=_strip_overlay_painter)
         else:
-            btn = Button(text="", variant="surface", size=(66, 44), parent=container, badge=badge_text, defer_click="ripple")
+            btn = Button(text="", variant="surface", size=(66, 44), parent=container, defer_click="ripple", overlay_painter=_strip_overlay_painter)
         btn.setObjectName(f"quicklook_strip_{idx}")
         # D1: explicit arrow — strip thumbs are rebuilt per populate and
         # would otherwise inherit a stale plate resize cursor.
@@ -137,6 +157,61 @@ def rebuild_strip(overlay) -> None:
                     if bg is None:
                         bg = _QC(90, 90, 90)
                     btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Card-style overlay pills (visuals.py contract): btn._gallery_badge
+        # + btn._gallery_badge_style, drawn by _strip_badge_painter. The
+        # toolkit badge=/setBadge path is used ONLY for the … pending case
+        # above. Priority: pending (toolkit) > rejected (none — the dim 0.4
+        # opacity effect carries the signal) > SOURCE > ★ BEST > #N.
+        try:
+            if not pending:
+                btn.setBadge(None)
+        except Exception:
+            pass
+        try:
+            from PySide6.QtGui import QColor as _QC
+
+            from tabs.image_gallery.ui.card.dots import _accent_color as _strip_accent
+            from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
+            from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
+
+            _strip_is_dark = _strip_dark()
+            _badge_text = None
+            _badge_style = None
+            if pending:
+                pass  # toolkit … badge above; no overlay pill
+            elif rejected:
+                pass  # no badge — dim effect below carries the signal
+            elif is_source:
+                _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
+                _badge_text = "SOURCE"
+                _badge_style = (True, _gold, _gold, _QC("#000000"))
+            else:
+                _is_best = bool(getattr(m, "is_best", False))
+                _rank = getattr(m, "rank", None)
+                _crown = getattr(m, "crown_rank", None)
+                if _is_best or _rank == 1 or _crown == 1:
+                    _acc = _strip_accent()
+                    _badge_text = "★ BEST"
+                    _badge_style = (True, _acc, _acc, _QC("#ffffff"))
+                else:
+                    _rv = _crown if _crown is not None else _rank
+                    if _rv is not None:
+                        try:
+                            _badge_text = f"#{int(_rv)}"
+                        except Exception:
+                            _badge_text = str(_rv)
+                        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+                        _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
+            if _badge_text is not None:
+                btn._gallery_badge = _badge_text
+                btn._gallery_badge_style = _badge_style
+            else:
+                try:
+                    btn._gallery_badge = None
                 except Exception:
                     pass
         except Exception:
@@ -201,7 +276,19 @@ def rebuild_strip(overlay) -> None:
                 overlay._populate()
             return _do
 
-        btn.clicked.connect(_make_switch())
+        _switch = _make_switch()
+        # Card wiring pattern (ui/card.py::_bind_gallery_card): region
+        # clicks emit regionClicked while clicked fires ONLY for region
+        # _main. The strip thumb region id is "thumb", so clicked alone
+        # never switched — connect both; exactly one fires per click.
+        try:
+            btn.regionClicked.connect(lambda _region_id=None: _switch())
+        except Exception:
+            pass
+        try:
+            btn.clicked.connect(_switch)
+        except Exception:
+            pass
         cont_lay.addWidget(btn)
         caption_text = ""
         if pending:
@@ -214,51 +301,12 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 _strip_label = Label  # type: ignore
             if _strip_label is Label:
-                cap = Label(caption_text, pixel_size=9, parent=container)
+                cap = Label(caption_text, pixel_size=11, parent=container)
             else:
-                cap = _strip_label(caption_text, parent=container, pixel_size=10, pt=10)
+                cap = _strip_label(caption_text, parent=container, pixel_size=11, pt=11.5)
             cap.setObjectName(f"quicklook_strip_cap_{idx}")
             cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cont_lay.addWidget(cap)
             overlay._strip_caption_labels.append(cap)
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
-    try:
-        has_pending = any(bool(getattr(m, "vlm_tie_pending", False)) for m in overlay._series_items)
-        if not has_pending and overlay._series_items:
-            try:
-                from tabs.image_gallery.ui.quick_look.helpers import _make_label as _strip_hint_label
-            except Exception:
-                _strip_hint_label = Label  # type: ignore
-            # W6: the hint lives BELOW the thumbs (svg:170 y=588, under the
-            # 516..560 thumb row), not inside the strip HBox — in-row it
-            # cost ~175px and pushed 4x66px thumbs over the 296px column
-            # into h-scroll. Parented to the right column right after the
-            # strip host; the caption cleanup above detaches it via
-            # setParent(None) regardless of which layout holds it.
-            strip_parent = overlay._strip_host.parentWidget()
-            if _strip_hint_label is Label:
-                hint = Label("click thumb = switch preview", pixel_size=9, parent=strip_parent)
-            else:
-                hint = _strip_hint_label("click thumb = switch preview", parent=strip_parent, pixel_size=10, pt=10)
-            hint.setObjectName("quicklook_strip_hint")
-            placed = False
-            try:
-                parent_lay = strip_parent.layout() if strip_parent is not None else None
-                if parent_lay is not None:
-                    at = parent_lay.indexOf(overlay._strip_host)
-                    if at >= 0:
-                        parent_lay.insertWidget(at + 1, hint)
-                        placed = True
-            except Exception:
-                placed = False
-            if not placed:
-                # Structural fallback: keep the hint visible in-row rather
-                # than dropping it if the column layout ever changes shape.
-                try:
-                    overlay._strip_layout.addWidget(hint)
-                except Exception:
-                    pass
-            overlay._strip_caption_labels.append(hint)
-    except Exception:
-        pass

@@ -45,7 +45,7 @@ class SliderHintFlyout(BaseFlyout):
         super().__init__(parent)
         self._label = QLabel(self)
         # _ScrollValueFlyout's own label (the actual analogous flyout --
-        # not _draw_capsule's pixel_size=12, which paints an unrelated
+        # not _draw_capsule's pixel_size=14, which paints an unrelated
         # smaller in-place digit directly on the button) sets no explicit
         # font at all, just the default widget/base UI font -- match that
         # here. apply_ui_font (not a bare setFont(ui_font(...))) so this

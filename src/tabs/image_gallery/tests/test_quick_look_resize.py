@@ -245,7 +245,7 @@ def test_right_contents_fill_stretched_column(qtbot, tmp_path):
 
 
 def test_footer_reflows_hint_right_on_resize(qtbot, tmp_path):
-    """W-B: footer actions stay left, the hint stays pinned right on resize."""
+    """W-B: footer actions stay left with no overlaps on resize (hint gone)."""
     src_p = _real_png(tmp_path, "src.png")
     v_p = _real_png(tmp_path, "v.png")
     src = GalleryItem(path=src_p, mtime_ns=1, metrics={})
@@ -256,18 +256,13 @@ def test_footer_reflows_hint_right_on_resize(qtbot, tmp_path):
     def _assert_bar():
         bar = ov._content.findChild(QWidget, "quicklook_bottom_bar")
         assert bar is not None
-        hint = ov._hint_label
+        # No hint anywhere on the bar.
+        assert getattr(ov, "_hint_label", None) is None
+        assert bar.findChild(QWidget, "quicklook_hint") is None
         compare = ov._compare_btn
-        # Hint is the last bar item and hugs the bar's right edge.
-        lay = bar.layout()
-        assert lay.itemAt(lay.count() - 1).widget() is hint
-        hint_right = hint.mapTo(ov._content, hint.rect().topRight()).x()
-        bar_right = bar.mapTo(ov._content, bar.rect().topRight()).x()
-        assert abs(hint_right - bar_right) <= 20
-        # Actions stay left of the hint with no overlaps.
+        # Actions stay ordered left-to-right with no overlaps.
         cmp_left = compare.mapTo(ov._content, compare.rect().topLeft()).x()
-        hint_left = hint.mapTo(ov._content, hint.rect().topLeft()).x()
-        assert cmp_left < hint_left
+        assert cmp_left >= 0
         prev_right = -1
         for btn in (ov._compare_btn, ov._multi_btn, ov._reject_btn, ov._set_source_btn):
             left = btn.mapTo(ov._content, btn.rect().topLeft()).x()

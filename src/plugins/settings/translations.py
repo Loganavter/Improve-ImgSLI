@@ -27,7 +27,6 @@ def apply_translations(dialog, lang: str) -> None:
     _apply_buttons(dialog, lang)
     _apply_simple_texts(dialog, lang)
     _apply_group_titles(dialog, lang)
-    _apply_label_with_colon(dialog, lang)
     _rebuild_theme_combo(dialog, lang)
     _rebuild_font_family_combo(dialog, lang)
     _rebuild_interpolation_combos(dialog, lang)
@@ -94,12 +93,6 @@ def _apply_group_titles(dialog, lang: str) -> None:
         group = getattr(dialog, attr_name, None)
         if group is not None:
             group.set_title(dialog._tr(key, lang))
-
-
-def _apply_label_with_colon(dialog, lang: str) -> None:
-    rhi_label = getattr(dialog, "lbl_rhi_backend", None)
-    if rhi_label is not None:
-        rhi_label.setText(dialog._tr("settings.render_backend_label", lang) + ":")
 
 
 _RHI_BACKEND_KEY_MAP = {

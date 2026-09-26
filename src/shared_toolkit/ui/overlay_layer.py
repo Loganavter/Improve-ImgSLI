@@ -64,7 +64,7 @@ class _PopupBubble(QWidget):
         self.hide()
 
     def _apply_label_typography(self) -> None:
-        apply_ui_font(self.label, pixel_size=13, bold=True)
+        apply_ui_font(self.label, pixel_size=14, bold=True)
         apply_text_color(
             self.label, ThemeManager.get_instance().get_color("dialog.text")
         )

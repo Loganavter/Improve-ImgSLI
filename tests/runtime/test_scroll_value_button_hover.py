@@ -124,7 +124,7 @@ def test_digit_capsule_stays_inside_value_region(qtbot):
             break
     assert value_rect is not None
 
-    font = ui_font(pixel_size=12)
+    font = ui_font(pixel_size=14)
     fm = QFontMetrics(font)
     width = fm.horizontalAdvance("10") + 2 * scaled_px(_CAPSULE_PAD_X)
     height = fm.height() + 2 * scaled_px(_CAPSULE_PAD_Y)

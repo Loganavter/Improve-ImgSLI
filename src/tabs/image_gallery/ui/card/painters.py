@@ -93,7 +93,7 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
         from PySide6.QtGui import QColor, QPen
 
         filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=10, bold=True)
+        f = ui_font(pixel_size=11, bold=True)
         painter.save()
         try:
             painter.setFont(f)
@@ -102,6 +102,48 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
             h = 18
             x = rect.x() + 8
             y = rect.y() + 8 + 6
+            r = QRectF(x, y, w, h)
+            # background via theme tokens
+            if filled:
+                painter.setBrush(bg if isinstance(bg, QColor) else _resolve_badge_accent())
+            else:
+                painter.setBrush(_resolve_unfilled_bg())
+            # border
+            if border is not None:
+                painter.setPen(QPen(border, 1))
+            else:
+                painter.setPen(QColor(0, 0, 0, 0))
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.drawRoundedRect(r, 9, 9)
+            painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
+            painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
+        finally:
+            painter.restore()
+    except Exception:
+        pass
+
+
+def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type: ignore[no-untyped-def]
+    """Draw pill badge at strip-thumb left 4 top 4 (66x44 thumb).
+
+    Same rounded-pill recipe as ``_left_badge_painter``, sized for the
+    quick-look series strip: ~9px font, 4px offsets. Style shape mirrors
+    ``ui/card/visuals.py``: ``(filled, bg, border, text_color)``.
+    """
+    try:
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QPen
+
+        filled, bg, border, txt_col = style
+        f = ui_font(pixel_size=9, bold=True)
+        painter.save()
+        try:
+            painter.setFont(f)
+            fm = painter.fontMetrics()
+            w = max(28, fm.horizontalAdvance(text) + 12)
+            h = 18
+            x = rect.x() + 4
+            y = rect.y() + 4
             r = QRectF(x, y, w, h)
             # background via theme tokens
             if filled:
@@ -348,5 +390,106 @@ def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-
         pass
     try:
         _dots_overlay_painter(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        _gallery_rejected_dim(painter, ctx, tm)
+    except Exception:
+        pass
+
+
+def _rejected_substrate_color(tm=None):  # type: ignore[no-untyped-def]
+    """Grid substrate behind the cards (same chain as the grid host fill).
+
+    Chain: ``gallery.grid.background`` → ``surface.background`` →
+    ``#ffffff`` (light) / ``#2b2b2b`` (dark). Duplicated from
+    ``grid_view._grid_substrate_color`` (importing the grid here would
+    cycle: grid → card → painters).
+    """
+    try:
+        from PySide6.QtGui import QColor as _QC
+
+        from sli_ui_toolkit.managers import ThemeManager
+        from ui.theming import try_resolve_theme_color
+
+        if tm is None:
+            try:
+                tm = ThemeManager.get_instance()
+            except Exception:
+                tm = None
+        if tm is not None:
+            for tok in ("gallery.grid.background", "surface.background"):
+                try:
+                    c = try_resolve_theme_color(tm, tok)
+                except Exception:
+                    c = None
+                if c is not None:
+                    return _QC(c) if isinstance(c, str) else c
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QColor as _QC2
+
+        return _QC2("#2b2b2b") if _theme_is_dark() else _QC2("#ffffff")
+    except Exception:
+        return None
+
+
+# Effect-equivalent alpha: QGraphicsOpacityEffect(0.38) blends src*0.38 +
+# dst*0.62; the wash over the card reaches the same mix with the substrate
+# at 0.62 while the backdrop behind the card is the grid substrate.
+_REJECTED_DIM_ALPHA = 0.62
+
+
+def _gallery_rejected_dim(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """Painter-level rejected dim (no QGraphicsOpacityEffect).
+
+    The effect dimmed the whole subtree INCLUDING the hover capsule (a
+    child of the card) — on rejected cards the capsule washed out to
+    near-invisible. The overlay wash dims only the card's own paint
+    (pixmap, text, dots, hover bar); children (capsule flyout, delete
+    badge) stay crisp. Runs last so it covers dots/badge like the effect
+    did. Clickability is untouched (no setEnabled games, no effect).
+    """
+    try:
+        widget = getattr(ctx, "widget", None)
+        if widget is None:
+            return
+        item = getattr(widget, "_gallery_item", None)
+        if not bool(getattr(item, "rejected", False)):
+            return
+        rect = getattr(ctx, "rect", None)
+        if rect is None:
+            return
+        base = _rejected_substrate_color(tm)
+        if base is None:
+            return
+        from PySide6.QtGui import QBrush as _QBrush
+        from PySide6.QtGui import QColor as _QC
+        from PySide6.QtGui import QPainterPath as _QPath
+
+        wash = _QC(base)
+        try:
+            wash.setAlphaF(_REJECTED_DIM_ALPHA)
+        except Exception:
+            return
+        radii = getattr(ctx, "corner_radii", None) or (10, 10, 10, 10)
+        try:
+            radius = float(radii[0])
+        except Exception:
+            radius = 10.0
+        painter.save()
+        try:
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(_QBrush(wash))
+            try:
+                path = _QPath()
+                path.addRoundedRect(rect, radius, radius)
+                painter.drawPath(path)
+            except Exception:
+                painter.drawRect(rect)
+        finally:
+            painter.restore()
     except Exception:
         pass

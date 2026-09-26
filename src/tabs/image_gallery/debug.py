@@ -62,3 +62,20 @@ def gallery_debug(msg: str, *args, **kwargs) -> None:
 def gallery_dnd_debug(msg: str, *args, **kwargs) -> None:
     if gallery_dnd_debug_enabled():
         _emit("[gallery-dnd]", msg, *args, **kwargs)
+
+
+def gallery_events_enabled() -> bool:
+    """Raw Qt input firehose — separate flag per DEBUGGING.md rule 5.
+
+    The causal tracer only sees dispatches; hover never dispatches, so it
+    is invisible there by construction. This stream logs every Enter/Leave
+    / mouse press-release-move with position + receiver instead. Default
+    off, session-only, never mixed into the curated ``[gallery-debug]``
+    stream.
+    """
+    return _env_flag("IMGSLI_GALLERY_EVENTS_DEBUG")
+
+
+def gallery_event(msg: str, *args, **kwargs) -> None:
+    if gallery_events_enabled():
+        logger.warning("[gallery-events] " + msg, *args, **kwargs)

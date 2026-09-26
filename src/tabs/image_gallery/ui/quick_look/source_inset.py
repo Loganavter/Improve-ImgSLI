@@ -60,12 +60,12 @@ class _InsetCaptionStrip(QWidget):
             pass
         try:
             self.label = _make_label(
-                "SOURCE", parent=self, pixel_size=9, pt=9, color=amber, elide=True
+                "SOURCE", parent=self, pixel_size=11, pt=11.5, color=amber, elide=True
             )
         except Exception:
             from sli_ui_toolkit.widgets import Label
 
-            self.label = Label("SOURCE", pixel_size=9, parent=self)
+            self.label = Label("SOURCE", pixel_size=11, parent=self)
         self.label.setObjectName("quicklook_source_inset_title")
         try:
             self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)

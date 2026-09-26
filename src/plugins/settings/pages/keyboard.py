@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QFontMetrics, QKeySequence
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QSizePolicy,
@@ -14,7 +14,14 @@ from PySide6.QtWidgets import (
 from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit, Label
+from plugins.settings.typography import (
+    SETTINGS_BODY_PX,
+    SettingsGroupWidget,
+    settings_body_label,
+)
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
+from sli_ui_toolkit.widgets import Button, CustomLineEdit
 from ui.actions.keymap import (
     KeymapDefaultsRegistry,
     effective_shortcut_for_id,
@@ -69,17 +76,28 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
 
 
 class _ShortcutCaptureButton(Button):
+    #: Designed cell — all capture buttons share it regardless of chord text.
+    _CELL_W = 140
+    _CELL_H = 28
+
     def __init__(self, parent=None):
         super().__init__(
             text="",
             variant="secondary",
-            size=(140, 28),
+            size=(self._CELL_W, self._CELL_H),
             parent=parent,
         )
         self._chord = ""
         self._listening = False
         self._on_changed = None
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        # The base class clears fixed min/max on the first empty→text
+        # transition; without re-pinning, heights stretch after wrapped
+        # (two-line) labels and widths follow the chord text.
+        self.setFixedSize(scaled_px(self._CELL_W), scaled_px(self._CELL_H))
 
     def set_on_changed(self, callback) -> None:
         self._on_changed = callback
@@ -218,6 +236,9 @@ def build(dialog, p):
 
     row_widgets: list[tuple[QWidget, object, object]] = []
     dialog._keyboard_filter_rows = row_widgets
+    # Uniform rows: two BODY lines. Single-line labels would leave 28px
+    # rows next to 44px wrapped ones and the rhythm falls apart.
+    _row_min_height = QFontMetrics(ui_font(pixel_size=SETTINGS_BODY_PX)).lineSpacing() * 2
 
     def _refresh_capture_labels() -> None:
         for entry in defaults.all_entries():
@@ -244,23 +265,24 @@ def build(dialog, p):
 
     for owner, entries in by_owner.items():
         group_title = owner_titles.get(owner, owner or "Platform")
-        group = CustomGroupWidget(group_title)
+        group = SettingsGroupWidget(group_title)
         group_key = owner_group_keys.get(owner)
         if group_key:
             group.setProperty(PROP_GROUP, group_key)
             dialog._keyboard_owner_groups.append((group, group_key))
         group_layout = QVBoxLayout()
-        group_layout.setContentsMargins(4, 4, 4, 4)
+        group_layout.setContentsMargins(0, 4, 0, 4)
         group_layout.setSpacing(4)
         for entry in entries:
             row = QWidget()
             row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            row.setMinimumHeight(_row_min_height)
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(8)
 
             label_text = _tr(dialog, entry.label_key, entry.label_key)
-            name = Label(label_text)
+            name = settings_body_label(label_text)
             name.setWordWrap(True)
             row_layout.addWidget(name, 1)
             dialog._keyboard_action_labels.append((name, entry.label_key))

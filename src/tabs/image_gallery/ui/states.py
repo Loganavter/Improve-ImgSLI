@@ -66,6 +66,7 @@ class GalleryEmptyState(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         empty_text = _tr("image_gallery.empty_state", "Drop folder or images here")
+        self._default_empty_text = empty_text
         hint = _tr("image_gallery.drop_hint", "or pick a folder to start triage")
         # DropZoneLabel is the S0 drop surface — make it prominent, like session_picker empty.
         # W12 W-C: expanding zone that fills available space — no fixed
@@ -188,13 +189,30 @@ class GalleryEmptyState(QWidget):
         # DropZoneLabel already updates its own _drag_active via dragEnter/Leave
         # and repaints with accent fill; no extra overlay needed.
 
+    # -- empty message ------------------------------------------------------
+
+    def set_empty_message(self, text: str) -> None:
+        """Swap the drop-zone message (e.g. view emptied by removals — files stay on disk)."""
+        try:
+            self._drop_label.setText(text)
+        except Exception:
+            pass
+
+    def restore_empty_message(self) -> None:
+        """Restore the default pick-a-folder message (pristine empty, nothing ever opened)."""
+        try:
+            self._drop_label.setText(self._default_empty_text)
+        except Exception:
+            pass
+
     # -- state machine ----------------------------------------------------
 
     def set_state(self, state: str, n: int = 0, total: int | None = None) -> None:
         """Switch between ``empty`` / ``scanning`` / ``ready``.
 
         * ``empty``  — S0: drop zone visible, spinner hidden.
-        * ``scanning`` — S1: spinner + ``Scanning n/N`` visible, drop zone dimmed/hidden.
+        * ``scanning`` — S1: spinner + ``Scanning n/N`` only, drop zone hidden
+          (drops still land via the whole-widget drop handling).
         * ``ready``  — S2: hide the whole widget (grid owns content).
         """
         state = str(state).lower()
@@ -221,9 +239,9 @@ class GalleryEmptyState(QWidget):
                     pass
         elif state == "scanning":
             self.show()
-            # Keep drop zone visible but hint scanning.
-            self._drop_label.show()
-            self._hint_label.show()
+            # Drop zone stays hidden while scanning — spinner + count only.
+            self._drop_label.hide()
+            self._hint_label.hide()
             try:
                 self._open_button.hide()
             except Exception:

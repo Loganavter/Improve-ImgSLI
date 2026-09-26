@@ -187,6 +187,7 @@ class StatsStrip(QWidget):
     """Top strip: stats label + actions + mode chip."""
 
     keepBestClicked = Signal()
+    showAllClicked = Signal()  # Keep best ↔ Show all (mode via set_keep_mode)
     cleanClicked = Signal()
     compareClicked = Signal()
 
@@ -195,6 +196,7 @@ class StatsStrip(QWidget):
         self.setObjectName("GalleryStatsStrip")
         self._tr = translate
         self._rejected = 0
+        self._keep_mode = "keep"
         # Cached surface color; repainted explicitly in paintEvent (never via
         # palette/auto-fill — see THEMING.md warm-up quirk).
         self._stats_bg = _stats_bg_color()
@@ -252,7 +254,7 @@ class StatsStrip(QWidget):
                 self._keep_btn.setBorderColor(_thin_border_color())
             except Exception:
                 pass
-        self._keep_btn.clicked.connect(self.keepBestClicked.emit)
+        self._keep_btn.clicked.connect(self._on_keep_btn_clicked)
         layout.addWidget(self._keep_btn)
 
         self._clean_btn = Button(
@@ -304,7 +306,7 @@ class StatsStrip(QWidget):
         self._compare_btn.clicked.connect(self.compareClicked.emit)
         layout.addWidget(self._compare_btn)
 
-        self._mode_chip = Label("FIDELITY MODE · source: …", pixel_size=10, parent=self)
+        self._mode_chip = Label("FIDELITY MODE · source: …", pixel_size=11, parent=self)
         self._mode_chip.setObjectName("gallery_mode_chip")
         try:
             self._mode_chip.setColorToken("accent")
@@ -319,6 +321,23 @@ class StatsStrip(QWidget):
         layout.addWidget(self._mode_chip)
         try:
             self._mode_chip.setVisible(False)
+        except Exception:
+            pass
+
+    def _on_keep_btn_clicked(self) -> None:
+        """Route the keep-button click by mode (Keep best ↔ Show all)."""
+        try:
+            sig = self.showAllClicked if self._keep_mode == "show" else self.keepBestClicked
+            sig.emit()
+        except Exception:
+            pass
+
+    def set_keep_mode(self, mode: str) -> None:
+        """Flip the keep button between "Keep best" and "Show all"."""
+        show = str(mode or "keep").strip().lower().startswith("show")
+        self._keep_mode = "show" if show else "keep"
+        try:
+            self._keep_btn.setText("Show all" if show else "Keep best")
         except Exception:
             pass
 

@@ -275,10 +275,10 @@ def _reflow_footer(overlay) -> None:
     """Reflow the bottom action bar after a card resize (W-B).
 
     Export-window idiom: action buttons keep their natural widths on the
-    left, the hint stays pinned right via the bar stretch. The layout does
-    the reflow itself; this hook guarantees its invariants (hint is the
-    last bar item, bar geometry is refreshed) so a resize can never strand
-    the hint mid-bar. Never hides or closes anything.
+    left, the trailing stretch pins them there. The layout does the reflow
+    itself; this hook only refreshes bar geometry so a resize can never
+    strand the bar mid-layout. The bar hint is gone (no hint re-pin).
+    Never hides or closes anything.
     """
     try:
         bar = None
@@ -290,18 +290,6 @@ def _reflow_footer(overlay) -> None:
             bar = None
         if bar is None:
             return
-        hint = getattr(overlay, "_hint_label", None)
-        try:
-            lay = bar.layout()
-        except Exception:
-            lay = None
-        if lay is not None and hint is not None:
-            try:
-                if lay.count() > 0 and lay.itemAt(lay.count() - 1).widget() is not hint:
-                    lay.removeWidget(hint)
-                    lay.addWidget(hint)
-            except Exception:
-                pass
         try:
             bar.updateGeometry()
         except Exception:

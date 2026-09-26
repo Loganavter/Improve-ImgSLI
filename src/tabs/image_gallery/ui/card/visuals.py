@@ -46,8 +46,8 @@ def _card_border_color() -> QColor:
 
     Frozen seam: tokens only via ``try_resolve_theme_color``. Rule A: fallback
     keyed on ``is_dark()`` (light default) — ``#e2e4e8`` light / white@0.12
-    dark (mockup 1px card edges, v2/v3/v4-light). BEST accent 2px and the
-    rejected/danger paths are untouched — only default borders route here.
+    dark (mockup 1px card edges, v2/v3/v4-light). The rejected/danger paths
+    are untouched — only default borders route here.
     """
     try:
         from sli_ui_toolkit.managers import ThemeManager
@@ -95,27 +95,17 @@ def apply_fixed_gallery_card_size(
 
 
 def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
-    """Rejected = opacity 0.38 + strike-through + ✕ badge (setBadge).
+    """Rejected = opacity 0.38 + strike-through (no toolkit badge).
 
-    Stage 3 extension: ``AI tie-break…`` pending badge takes precedence
-    over normal rank badges — shown on both top-2 candidates until resolved,
-    degraded silent-but-visible (cleared) if VLM unresolved.
-
-    Opacity 0.38 is imitated via ``setEnabled(False)`` (disabled dim) plus
-    ``set_show_strike_through`` and ``ButtonRow(strikethrough=True)`` — the
-    latter is marked in ``_text_rows``. Badge: ``★ BEST`` accent pill or
-    ``#N`` gray via ``Button.setBadge``/``setBadgeStyle``. Crown ``★ BEST``
-    uses badge as well — rejected takes precedence, tie-break pending takes
-    even higher precedence (unless rejected).
+    No mode switch on the corner: rejected cards keep the same hover-only
+    delete ✕ as normal cards (see ``sync_card_delete_button``) — the only
+    rejected signals are the dim + strike-through. The toolkit ``setBadge``
+    pill is never used here (it painted an almost-glyphless red oval).
     """
     from PySide6.QtGui import QColor as _QColor
 
     # Lazy imports to avoid cycles at module import.
-    from tabs.image_gallery.ui.card.dots import (
-        _accent_color,
-        _error_line_color,
-        _token_color,
-    )
+    from tabs.image_gallery.ui.card.dots import _accent_color
 
     # Local theme helpers already defined at module level (_token_qcolor etc.)
     # but keep _QColor alias for accent lighter derivation.
@@ -133,18 +123,16 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
     except Exception:
         tie_pending = False
 
-    # Badge priority: rejected (right top red) > AI tie-break (right) > BEST/#N (left per real_design.md:2.5)
+    # Badge priority: AI tie-break > BEST/#N overlay pills. Rejected sets no
+    # toolkit badge (no corner mode switch) but still suppresses the BEST
+    # overlay pill; dim + strike-through carry the rejected signal.
     try:
         if rejected:
-            card.setBadge("✕")
             try:
-                _danger = _error_line_color()
-                card.setBadgeStyle(
-                    filled=True,
-                    background_color=_danger,
-                    border_color=_danger,
-                    text_color=_token_qcolor("button.primary.text", "#ffffff"),
-                )
+                card.setBadge(None)
+            except Exception:
+                pass
+            try:
                 card.setBorderColor(_token_rgba_qcolor("button.dialog.default.border", (255, 255, 255, 30)))
             except Exception:
                 pass
@@ -172,18 +160,21 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
             except Exception:
                 pass
         elif is_best or (not rejected and not tie_pending and getattr(item, "rank", None) == 1) or (not rejected and not tie_pending and getattr(item, "crown_rank", None) == 1):
-            # Left top per spec — overlay for leader (is_best or rank 1), clear toolkit right badge + accent border 2px
+            # Left top per spec — overlay for leader (is_best or rank 1), clear toolkit right badge.
+            # No accent outline: best is signaled by the ★ BEST pill alone,
+            # the frame stays the default card border.
             try:
                 card.setBadge(None)
             except Exception:
                 pass
             try:
                 card._gallery_badge = "★ BEST"  # type: ignore[attr-defined]
-                card._gallery_badge_style = (True, _accent_color(), _accent_color(), _token_qcolor("button.primary.text", "#ffffff"))  # type: ignore[attr-defined]
-                # Accent border 2px for BEST
+                # Pill text is always white: the "primary.text"/"stats.text"
+                # tokens resolve to black in the light theme (black on blue).
+                card._gallery_badge_style = (True, _accent_color(), _accent_color(), QColor("#ffffff"))  # type: ignore[attr-defined]
                 try:
-                    card.setBorderColor(_accent_color())
-                    card.setProperty("borderWidth", 2)
+                    card.setBorderColor(_card_border_color())
+                    card.setProperty("borderWidth", 1)
                 except Exception:
                     pass
             except Exception:
@@ -203,7 +194,8 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 try:
                     card._gallery_badge = badge_text  # type: ignore[attr-defined]
                     rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
-                    card._gallery_badge_style = (True, rank_bg, rank_bg, _token_qcolor("gallery.stats.text", "#dfdfdf"))  # type: ignore[attr-defined]
+                    # Rank pill text is always black (both themes).
+                    card._gallery_badge_style = (True, rank_bg, rank_bg, QColor("#000000"))  # type: ignore[attr-defined]
                     card.setBorderColor(_card_border_color())
                 except Exception:
                     pass
@@ -227,29 +219,24 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
     except Exception:
         pass
 
-    # Rejected must remain clickable: only QGraphicsOpacityEffect 0.38 + strike.
+    # Rejected must remain clickable: dim is painter-level (overlay wash
+    # in painters._gallery_rejected_dim) + strike-through. No
+    # QGraphicsOpacityEffect here on purpose: the effect dims the whole
+    # subtree INCLUDING the hover capsule (child of the card), washing it
+    # out to near-invisible on rejected cards. The wash dims only the
+    # card's own paint; children stay crisp.
     # Ensure enabled (A2 spec: убрать setEnabled(False)).
     try:
         card.setEnabled(True)
     except Exception:
         pass
 
-    # Keep QGraphicsOpacityEffect as additional dim for fidelity (0.38) via ThemeManager tokens (no manual palette).
+    # Drop any legacy opacity effect (e.g. from pool-recycled cards that
+    # were dimmed before the painter wash replaced the effect).
     try:
         current_effect = card.graphicsEffect()
-        if rejected:
-            if not isinstance(current_effect, QGraphicsOpacityEffect):
-                eff = QGraphicsOpacityEffect(card)
-                eff.setOpacity(0.38)
-                card.setGraphicsEffect(eff)
-            else:
-                current_effect.setOpacity(0.38)
-        else:
-            if isinstance(current_effect, QGraphicsOpacityEffect):
-                # Remove effect to restore full opacity.
-                card.setGraphicsEffect(None)
-        # If rejected, disabled + effect together give 0.38 look; effect alone
-        # also works when disabled is not enough. Keep both for robustness.
+        if isinstance(current_effect, QGraphicsOpacityEffect):
+            card.setGraphicsEffect(None)
     except Exception:
         pass
 

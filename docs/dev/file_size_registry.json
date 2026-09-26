@@ -673,7 +673,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 1495,
+      "lines": 1505,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -708,8 +708,20 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/card/hover.py",
+      "lines": 829,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"single card-hover lifecycle — hover filter, capsule show/hide, post-action suppression and tri-color icons share one owner-resolution path; splitting spreads suppression windows across modules\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "single card-hover lifecycle — hover filter, capsule show/hide, post-action suppression and tri-color icons share one owner-resolution path; splitting spreads suppression windows across modules"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 807,
+      "lines": 1812,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -721,7 +733,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 965,
+      "lines": 972,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -744,7 +756,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 858,
+      "lines": 895,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -756,7 +768,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/resize.py",
-      "lines": 959,
+      "lines": 947,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one card-resize concern: grip/border/ring share one clamp + repin idiom\"",
@@ -780,7 +792,7 @@
     },
     {
       "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 738,
+      "lines": 1016,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
@@ -792,7 +804,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1165,
+      "lines": 1312,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

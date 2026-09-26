@@ -901,7 +901,7 @@ def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
     _w3_png(p2, (30, 200, 30))
     src = _item("s1.png")
     src.path = p1
-    viewing = _item("s2.png")
+    viewing = _item("s2.png", rank=2)
     viewing.path = p2
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [src, viewing], source=src.path)
@@ -916,11 +916,13 @@ def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
         assert len(regions) == 1
         assert regions[0].pixmap is not None and not regions[0].pixmap.isNull()
         assert regions[0].image_fill == "cover"
-    # Badge text preserved as badge overlays (W4 item 9): SOURCE on source,
-    # #N on viewing — not Button text.
+    # Card-style badge contract: SOURCE on source, #N on ranked viewing —
+    # overlay pills (_gallery_badge), never the toolkit badge or Button text.
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path[str(p1)]._badge == "SOURCE"
-    assert by_path[str(p2)]._badge == "#2"
+    assert by_path[str(p1)]._gallery_badge == "SOURCE"
+    assert by_path[str(p2)]._gallery_badge == "#2"
+    assert by_path[str(p1)]._badge is None
+    assert by_path[str(p2)]._badge is None
     assert by_path[str(p1)]._text == ""
     ov.hide()
 
@@ -1075,18 +1077,18 @@ def test_right_column_scroll_frameless(qtbot):
 
 
 def test_hint_at_right_end_of_button_bar(qtbot):
-    """W4 item 4: the Esc hint is the last widget of the bottom bar row."""
+    """Hints removed: the bottom bar carries no hint label at all."""
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     bar = ov.findChild(QWidget, "quicklook_bottom_bar")
     assert bar is not None
-    assert ov._hint_label.parentWidget() is bar
-    lay = bar.layout()
-    assert lay.itemAt(lay.count() - 1).widget() is ov._hint_label
-    # Out of the left column.
+    assert ov.findChild(QWidget, "quicklook_hint") is None
+    assert getattr(ov, "_hint_label", None) is None
+    # Out of the left column too (nothing hint-like anywhere on the card).
     left = ov.findChild(QWidget, "QuickLookLeft")
-    assert ov._hint_label not in left.findChildren(type(ov._hint_label))
+    assert left is not None
+    assert ov._content.findChild(QWidget, "quicklook_hint") is None
     ov.hide()
 
 
@@ -1112,9 +1114,8 @@ def test_labels_render_at_mockup_point_sizes(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
     assert ov._report_title.font().pointSizeF() == pytest.approx(13)
-    assert ov._filename_label.font().pointSizeF() == pytest.approx(12)
-    assert ov._mode_chip.font().pointSizeF() == pytest.approx(10)
-    assert ov._hint_label.font().pointSizeF() == pytest.approx(10)
+    assert ov._filename_label.font().pointSizeF() == pytest.approx(14)
+    assert ov._mode_chip.font().pointSizeF() == pytest.approx(11.5)
     assert ov._brief_label.font().pointSizeF() == pytest.approx(11.5)
     ov.hide()
 
@@ -1168,7 +1169,7 @@ def test_upscale_factor_uses_long_side(tmp_path):
 
 
 def test_strip_rejected_badge_is_x(qtbot, tmp_path):
-    """W4 item 9: rejected thumbs carry the ✕ badge overlay, no text."""
+    """Rejected thumbs carry NO badge pill — dim + no pill (card contract)."""
     from sli_ui_toolkit.widgets import Button
 
     p1 = tmp_path / "r1.png"
@@ -1186,7 +1187,8 @@ def test_strip_rejected_badge_is_x(qtbot, tmp_path):
         for b in ov._strip_host.findChildren(Button)
         if b.objectName().startswith("quicklook_strip_")
     }
-    assert by_path[str(p2)]._badge == "✕"
+    assert getattr(by_path[str(p2)], "_gallery_badge", None) is None
+    assert by_path[str(p2)]._badge is None
     assert by_path[str(p2)]._text == ""
     ov.hide()
 
@@ -1298,7 +1300,8 @@ def test_right_column_stretches_with_full_content(qtbot):
         for lbl in w.findChildren(Label)
         if "gradient histogram" in getattr(lbl, "_original_text", "")
     ]
-    assert captions == ["gradient histogram — comb spikes = banding steps (sky)"]
+    # Banding caption removed — the histogram widget itself stays, no note label.
+    assert captions == []
     # W13: the column honors the mockup 296px floor and stretches with
     # the card (never a fixed width); the layout hint fits it, and both
     # scrollbars stay hidden with zero range.
@@ -1324,28 +1327,14 @@ def test_right_column_stretches_with_full_content(qtbot):
 
 
 def test_strip_hint_below_thumbs_not_in_row(qtbot):
-    """W6 item 1: the hint sits BELOW the thumb row (svg:170, y=588 under
-    the 516..560 thumbs), not inside the strip HBox."""
-    from sli_ui_toolkit.widgets import Label
-
+    """Hints removed: no strip-hint widget exists anywhere on the overlay."""
     a = _item("a.png")
     b = _item("b.png")
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b])
     QApplication.processEvents()
-    hint = ov.findChild(QWidget, "quicklook_strip_hint")
-    assert hint is not None
-    # Out of the strip HBox.
-    assert ov._strip_layout.indexOf(hint) == -1
-    assert hint.parentWidget() is not ov._strip_host
-    # In the right column, directly after the strip host.
-    assert hint.parentWidget() is ov._strip_host.parentWidget()
-    parent_lay = hint.parentWidget().layout()
-    assert parent_lay.indexOf(hint) == parent_lay.indexOf(ov._strip_host) + 1
-    # Below the thumbs (same parent coords as the strip host).
-    assert hint.y() >= ov._strip_host.y() + ov._strip_host.height()
-    assert isinstance(hint, Label)
-    assert hint.text() == "click thumb = switch preview"
+    assert ov.findChild(QWidget, "quicklook_strip_hint") is None
+    assert getattr(ov, "_hint_label", None) is None
     ov.hide()
 
 
@@ -1357,7 +1346,7 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
     from sli_ui_toolkit.managers import scaled_px
     from sli_ui_toolkit.widgets import Button
 
-    items = [_item(f"{c}.png") for c in "abcd"]
+    items = [_item(f"{c}.png", rank=i + 1) for i, c in enumerate("abcd")]
     ov = _make_overlay(qtbot)
     _show(ov, items[0], items)
     QApplication.processEvents()
@@ -1375,9 +1364,11 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
     assert scroll.horizontalScrollBar().isVisible() is False
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().isVisible() is False
-    # Badge contract still holds at the new size.
+    # Badge contract still holds at the new size (card-style overlay pills).
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path["/gallery/a.png"]._badge == "#1"
+    assert by_path["/gallery/a.png"]._gallery_badge == "★ BEST"
+    assert by_path["/gallery/b.png"]._gallery_badge == "#2"
+    assert by_path["/gallery/a.png"]._badge is None
     ov.hide()
 
 
@@ -1395,7 +1386,7 @@ def test_pinned_close_policy_x_only(qtbot):
     assert ov._close_on_background is False
     assert ov._close_on_escape is True
     assert ov._close_on_deactivate is False
-    assert ov._hint_label.text() == "X / Esc / veil closes · ←→ walk series"
+    assert getattr(ov, "_hint_label", None) is None
     assert ov.isVisible() is True
     # Window/focus loss must NOT close (deactivation filter is inert, and
     # no deferred dismiss is queued — flush the singleShot queue to prove it).
@@ -2339,3 +2330,46 @@ def test_set_source_button_stays_open(qtbot):
     QApplication.processEvents()
     assert ov.isVisible()
     ov.hide()
+
+
+def test_no_bold_type_anywhere(qtbot):
+    """Quick Look is all regular weight: no bold Labels, no bold rows."""
+    from PySide6.QtWidgets import QLabel
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    try:
+        for label in ov.findChildren(QLabel):
+            assert label.font().bold() is False, label.text()[:40]
+        for button in ov.findChildren(QWidget):
+            regions = getattr(button, "regions", None)
+            if not callable(regions):
+                continue
+            try:
+                rows = [row for region in regions() for row in (getattr(region, "rows", None) or [])]
+            except Exception:
+                continue
+            for row in rows:
+                assert getattr(row, "weight", "normal") != "bold", getattr(row, "text", "")
+    finally:
+        ov.hide()
+
+
+def test_crop_title_has_capsule_backing(qtbot):
+    """SHARPNESS CROP rides an opaque white capsule hugging the label."""
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    try:
+        pill = ov.findChild(QWidget, "quicklook_crop_title_pill")
+        assert pill is not None
+        assert ov._crop_title.parentWidget() is pill
+        assert not pill.grab().isNull()
+        assert pill._bg.name().lower() == "#ffffff"
+        assert pill._bg.alpha() == 255
+        assert ov._crop_title.palette().color(ov._crop_title.foregroundRole()).name().lower() == "#23262b"
+        QApplication.processEvents()
+        assert pill.width() < ov._crop_host.width()
+    finally:
+        ov.hide()

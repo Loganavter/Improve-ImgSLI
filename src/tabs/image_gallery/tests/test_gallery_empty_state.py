@@ -71,6 +71,41 @@ def test_right_click_does_not_request_open(qtbot) -> None:
     assert count == []
 
 
+def test_emptied_by_removals_shows_empty_view_text(qtbot) -> None:
+    """Grid emptied by removals must not claim no folder is picked.
+
+    Regression: reject on the last card showed S0 "Pick a folder…"
+    although files stay on disk — the view just has nothing to show.
+    """
+    from pathlib import Path
+
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    item = GalleryItem(path=Path("/gallery/a.png"), mtime_ns=1)
+    w.rebuild_grid([item])
+    w.rebuild_grid([])
+    assert w._empty_state._drop_label.get_original_text() == "No images in view."
+    assert w._empty_label.get_original_text() == "No images in view."
+    # Compat shim is never shown: it has no layout slot and would pin at (0,0).
+    assert not w._empty_label.isVisible()
+
+
+def test_pristine_empty_shows_pick_folder_text(qtbot) -> None:
+    """Never-opened grid keeps the default pick-a-folder message."""
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.rebuild_grid([])
+    # Drop zone keeps its construction default (no translate in this context).
+    assert w._empty_state._drop_label.get_original_text() == "Drop folder or images here"
+    assert w._empty_label.get_original_text() == "Pick a folder to see images here."
+    assert not w._empty_label.isVisible()
+
+
 def test_drop_zone_expands_to_fill(qtbot) -> None:
     """Zone fills available space: expanding policy, no fixed height."""
     state = GalleryEmptyState()
@@ -88,3 +123,19 @@ def test_drop_zone_expands_to_fill(qtbot) -> None:
     idx = layout.indexOf(zone)
     assert idx >= 0
     assert layout.stretch(idx) >= 1
+
+
+def test_scanning_hides_drop_zone(qtbot) -> None:
+    """S1 shows spinner + count only — no DnD zone while loading/scanning."""
+    state = GalleryEmptyState()
+    qtbot.addWidget(state)
+    state.set_state("scanning", 2, 4)
+    assert not state._drop_label.isVisible()
+    assert not state._hint_label.isVisible()
+    assert state._spinner.isVisible()
+    assert state._scanning_label.isVisible()
+    assert "2/4" in state._scanning_label.text()
+    # Back to empty restores the zone.
+    state.set_state("empty")
+    assert state._drop_label.isVisible()
+    assert not state._spinner.isVisible()

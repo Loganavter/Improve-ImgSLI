@@ -238,7 +238,7 @@ def test_keep_best_reads_controller_state_series(tmp_path: Path):
 
 def test_strip_count_grows_after_reject_toggle(tmp_path: Path):
     """P0-2: ``toggle_reject`` → ``_refresh_owner_grid`` pushes the rejected
-    count to ``stats_strip.set_rejected_count`` (Space-reject updates the
+    count to ``stats_strip.set_rejected_count`` (S3-review toggles update the
     strip immediately)."""
     a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
     b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
@@ -267,6 +267,36 @@ def test_strip_count_grows_after_reject_toggle(tmp_path: Path):
     assert owner.stats_strip.counts and owner.stats_strip.counts[-1] == 1
     assert triage_uc.toggle_reject(owner, a.path) is False
     assert owner.stats_strip.counts[-1] == 0
+
+
+def test_space_delete_backspace_remove_card(tmp_path: Path):
+    """Space / Delete / Backspace remove the current card from the grid
+    (reject-toggle on Space is gone — buttons and keys share remove_from_grid)."""
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import Qt
+
+    from tabs.image_gallery.use_cases import triage_ui
+
+    def _owner():
+        a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
+        b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
+        return SimpleNamespace(
+            state=SimpleNamespace(
+                items=[a, b],
+                selected_paths={a.path},
+                selected_order=[a.path],
+            ),
+            rebuild_grid=lambda items: None,
+        )
+
+    for key in (Qt.Key.Key_Space, Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+        owner = _owner()
+        accepted: list[bool] = []
+        event = SimpleNamespace(key=lambda key=key: key, accept=lambda: accepted.append(True))
+        triage_ui.handle_key(owner, event)
+        assert accepted == [True]
+        assert [str(it.path) for it in owner.state.items] == [str(tmp_path / "b.jpg")]
 
 
 # --- S4 parity (W2): fidelity pipeline refreshes the open overlay ----------

@@ -4,6 +4,7 @@
     "pick_folder": "选择文件夹…",
     "filter_placeholder": "按标签/描述筛选…",
     "empty_state": "选择一个文件夹以查看图片。",
+    "empty_view": "暂无可显示的图片。",
     "analyze": "分析",
     "analyzing": "分析中…",
     "settings": {

@@ -114,6 +114,9 @@
     },
     "src/ui/managers/ui_manager_parts/bootstrap.py": {
       "justification": "UI manager app filter for focus-change routing."
+    },
+    "src/tabs/image_gallery/ui/events_firehose.py": {
+      "justification": "Dev-only raw input firehose (env-gated IMGSLI_EVENTS_FIREHOSE, single install, session-only trace aid)."
     }
   },
   "focus_reasons": {

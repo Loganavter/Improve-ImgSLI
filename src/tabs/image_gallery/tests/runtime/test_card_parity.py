@@ -240,7 +240,23 @@ def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp, _production_dar
     card.deleteLater()
 
 
-def test_rank_badge_text_is_muted_not_white(qapp):
+def test_best_card_has_no_accent_outline(qapp, _production_dark_palettes):
+    from tabs.image_gallery.ui.card.visuals import _card_border_color
+
+    item = _item(is_best=True)
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, item)
+    # The ★ BEST pill marks the leader; the frame stays default.
+    assert getattr(card, "_gallery_badge", None) == "★ BEST"
+    _filled, _bg, _bd, txt = card._gallery_badge_style
+    assert txt.name().lower() == "#ffffff"
+    assert card.property("borderWidth") == 1
+    assert card.borderColor().name().lower() == _card_border_color().name().lower()
+    card.deleteLater()
+
+
+def test_rank_badge_text_is_black(qapp):
     from types import SimpleNamespace
 
     card = build_gallery_card(_item(), parent=None)
@@ -251,7 +267,7 @@ def test_rank_badge_text_is_muted_not_white(qapp):
     )
     assert getattr(card, "_gallery_badge", None) == "#3"
     _filled, _bg, _bd, txt = card._gallery_badge_style
-    assert txt.name().lower() == "#dfdfdf"
+    assert txt.name().lower() == "#000000"
     card.deleteLater()
 
 
@@ -268,16 +284,44 @@ def test_unreadable_cover_has_plate_background(qapp):
     card.deleteLater()
 
 
-def test_rejected_badge_uses_danger_token(qapp, _production_dark_palettes):
+def test_rejected_sets_no_toolkit_badge(qapp):
+    """Rejected cards carry no toolkit badge — dim + strike signal the state.
+
+    No corner mode switch: the hover-only delete ✕ stays the single corner
+    control in both modes (see ``sync_card_delete_button``).
+    """
     item = _item(rejected=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # Badge resolves the real gallery.status.danger token (dark #D93025);
-    # the bare "danger" alias never exists in themes.json.
-    danger = _token_color("gallery.status.danger", "#D93025")
-    assert danger.name().lower() == "#d93025"  # live dark production hex
-    assert card.property("badgeBackgroundColor").name().lower() == danger.name().lower()
+    assert getattr(card, "_badge", None) is None
+    assert getattr(card, "_gallery_badge", None) is None
+    card.deleteLater()
+
+
+def test_rejected_dim_is_painter_wash_not_effect(qapp):
+    """Rejected dim must not use QGraphicsOpacityEffect (it dimmed children).
+
+    The effect covered the whole subtree INCLUDING the hover capsule (a
+    child of the card), washing it out to near-invisible. The overlay
+    wash dims only the card's own paint: effect-equivalent mix
+    (substrate @0.62 over black cover ≈ 158 gray), children crisp.
+    """
+    from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+    item = _item(rejected=True)
+    card = build_gallery_card(item, parent=None)
+    card.resize(250, 170)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, item)
+    assert not isinstance(card.graphicsEffect(), QGraphicsOpacityEffect)
+    card.show()
+    qapp.processEvents()
+    px = card.grab().toImage().pixelColor(125, 60)
+    # Black cover blended toward the light substrate: clearly lifted from
+    # 0 (dim applied) but far from plain white (not a white-out).
+    assert 80 <= px.red() <= 220
+    assert abs(px.red() - px.green()) <= 8 and abs(px.red() - px.blue()) <= 8
     card.deleteLater()
 
 

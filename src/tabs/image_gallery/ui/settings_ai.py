@@ -16,7 +16,14 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtCore import Qt
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CheckBox, CustomGroupWidget, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import CheckBox, CustomLineEdit
+
+from plugins.settings.typography import (
+    apply_settings_body,
+    settings_body_label,
+    settings_caption_label,
+    settings_group,
+)
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
@@ -48,11 +55,10 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     store = AiSettingsStore()
     current = store.load()
 
-    group_widget = AI_GROUP.widget(dialog)
+    group_widget = settings_group(dialog, AI_GROUP)
     # Title note inside group
-    warning = Label(
+    warning = settings_caption_label(
         AI_GROUP.text(dialog, "image_gallery.settings.api_key_warning") if hasattr(AI_GROUP, "text") else "Stored unencrypted on this device.",
-        pixel_size=10,
         parent=dialog,
     )
     try:
@@ -65,6 +71,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     dialog.gallery_ai_enabled = CheckBox(
         AI_GROUP.text(dialog, "image_gallery.settings.enable_ai") if hasattr(AI_GROUP, "text") else "Enable AI image analysis"
     )
+    apply_settings_body(dialog.gallery_ai_enabled)
     try:
         AI_GROUP.tag_member(dialog.gallery_ai_enabled, "image_gallery.settings.enable_ai")
     except Exception:
@@ -73,15 +80,18 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
 
     # Base URL
     url_row = QHBoxLayout()
-    url_row.setContentsMargins(scaled_px(5), scaled_px(4), scaled_px(5), scaled_px(4))
+    url_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
     url_row.setSpacing(scaled_px(8))
-    url_label = Label(
+    url_label = settings_body_label(
         AI_GROUP.text(dialog, "image_gallery.settings.base_url") if hasattr(AI_GROUP, "text") else "API base URL",
-        pixel_size=11,
         parent=dialog,
     )
-    url_label.setFixedWidth(scaled_px(110))
+    # 150px fits the longest label ("Название модели", 139px at BODY size)
+    # in every UI language — narrower clips Cyrillic under the edit.
+    url_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_base_url_label = url_label
     dialog.gallery_ai_base_url = CustomLineEdit(parent=dialog)
+    apply_settings_body(dialog.gallery_ai_base_url)
     dialog.gallery_ai_base_url.setText(current.base_url or DEFAULT_BASE_URL)
     dialog.gallery_ai_base_url.setPlaceholderText(DEFAULT_BASE_URL)
     try:
@@ -93,15 +103,16 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
 
     # API key (echoMode password)
     key_row = QHBoxLayout()
-    key_row.setContentsMargins(scaled_px(5), scaled_px(4), scaled_px(5), scaled_px(4))
+    key_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
     key_row.setSpacing(scaled_px(8))
-    key_label = Label(
+    key_label = settings_body_label(
         AI_GROUP.text(dialog, "image_gallery.settings.api_key") if hasattr(AI_GROUP, "text") else "API key",
-        pixel_size=11,
         parent=dialog,
     )
-    key_label.setFixedWidth(scaled_px(110))
+    key_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_api_key_label = key_label
     dialog.gallery_ai_api_key = CustomLineEdit(parent=dialog)
+    apply_settings_body(dialog.gallery_ai_api_key)
     dialog.gallery_ai_api_key.setText(current.api_key)
     dialog.gallery_ai_api_key.setPlaceholderText("sk-…")
     try:
@@ -117,15 +128,16 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
 
     # Model
     model_row = QHBoxLayout()
-    model_row.setContentsMargins(scaled_px(5), scaled_px(4), scaled_px(5), scaled_px(4))
+    model_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
     model_row.setSpacing(scaled_px(8))
-    model_label = Label(
+    model_label = settings_body_label(
         AI_GROUP.text(dialog, "image_gallery.settings.model_name") if hasattr(AI_GROUP, "text") else "Model name",
-        pixel_size=11,
         parent=dialog,
     )
-    model_label.setFixedWidth(scaled_px(110))
+    model_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_model_label = model_label
     dialog.gallery_ai_model = CustomLineEdit(parent=dialog)
+    apply_settings_body(dialog.gallery_ai_model)
     dialog.gallery_ai_model.setText(current.model)
     dialog.gallery_ai_model.setPlaceholderText("openrouter/auto or vendor/model")
     try:
