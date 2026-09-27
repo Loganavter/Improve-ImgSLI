@@ -579,7 +579,7 @@ class GalleryGridView(QWidget):
             btn.update_region(
                 "_main",
                 rows=[ButtonRow(
-                    text=display.upper(), size=11, color=_gallery_header_text_color(),
+                    text=display.upper(), size=13, color=_gallery_header_text_color(),
                     h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0,
                 )],
             )
@@ -969,7 +969,7 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=11, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=13, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",
@@ -998,7 +998,7 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=11, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=13, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",
@@ -1025,7 +1025,7 @@ class GalleryGridView(QWidget):
             lay = QHBoxLayout(container)
             lay.setContentsMargins(scaled_px(8), scaled_px(4), scaled_px(8), scaled_px(4))
             lay.setSpacing(0)
-            lbl = Label(display, pixel_size=11, parent=container)
+            lbl = Label(display, pixel_size=13, parent=container)
             lbl.setObjectName("GallerySeriesHeaderLabel")
             try:
                 lbl.setBold(True)

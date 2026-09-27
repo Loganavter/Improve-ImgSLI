@@ -391,27 +391,34 @@ def build_overlay_ui(overlay) -> None:
     # (If bold ever returns: pass it through the _make_label constructor,
     # never setBold after — setBold re-runs Label's pixel-based _apply_style
     # and would revert the mockup-pt font.)
-    overlay._mode_chip = _make_label("FIDELITY MODE", parent=overlay._content, pixel_size=11, pt=11.5, color_token="accent")
-    overlay._mode_chip.setObjectName("quicklook_mode_chip")
-    # S4 mockup: accent-tinted pill behind the chip (fill accent @ 0.2).
-    # Painted host (explicit paintEvent, theme-subscribed) — no QSS, no palette.
+    # Filename caption lives here, centered, where the mode pill used to be
+    # (the report title already carries the mode: Fidelity/Camera/Batch).
+    # S4 mockup meta order: name · dims · format · size (populated by
+    # populate_filename_meta). Both labels keep natural widths so the pair
+    # centers as one line; the name elides only when genuinely squeezed
+    # (Preferred, not Ignored — Ignored parks labels at minimum width and
+    # the caption collapses to "114…"). The leading spacer balances the
+    # trailing close button (28 + 8 spacing) so the group is truly centered.
+    overlay._filename_label = _make_label("", parent=overlay._content, pixel_size=14, pt=14, elide=True, minimum_width=40)
+    overlay._filename_label.setObjectName("quicklook_filename")
     try:
-        pill = _AccentPillHost(overlay._content)
-        pill.setObjectName("quicklook_mode_chip_pill")
-        pill_lay = QHBoxLayout(pill)
-        pill_lay.setContentsMargins(scaled_px(10), scaled_px(2), scaled_px(10), scaled_px(2))
-        pill_lay.setSpacing(0)
-        overlay._mode_chip.setParent(pill)
-        pill_lay.addWidget(overlay._mode_chip)
-        overlay._mode_chip_pill = pill
-        chip_row.addWidget(pill)
-        # Reparenting resets the explicit font — re-assert the pt size after.
-        _apply_point_size(overlay._mode_chip, 11.5)
+        overlay._filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     except Exception:
-        try:
-            chip_row.addWidget(overlay._mode_chip)
-        except Exception:
-            pass
+        pass
+    try:
+        overlay._filename_label.setSizePolicy(QSizePolicy.Policy.Preferred, overlay._filename_label.sizePolicy().verticalPolicy())
+    except Exception:
+        pass
+    overlay._meta_label = _make_label("", parent=overlay._content, pixel_size=11, pt=11.5, minimum_width=40)
+    overlay._meta_label.setObjectName("quicklook_meta")
+    try:
+        overlay._meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    except Exception:
+        pass
+    chip_row.addSpacing(36)
+    chip_row.addStretch(1)
+    chip_row.addWidget(overlay._filename_label)
+    chip_row.addWidget(overlay._meta_label)
     chip_row.addStretch(1)
     overlay._close_btn = Button(text="✕", variant="surface", size=(28, 28), parent=overlay._content)
     overlay._close_btn.setObjectName("quicklook_close")
@@ -621,17 +628,6 @@ def build_overlay_ui(overlay) -> None:
     crop_lay.addWidget(overlay._crop_pix)
     overlay._crop_host.raise_()
     overlay._crop_host.hide()
-    fname_row = QHBoxLayout()
-    fname_row.setContentsMargins(0, 0, 0, 0)
-    fname_row.setSpacing(scaled_px(8))
-    overlay._filename_label = _make_label("", parent=preview_host, pixel_size=14, pt=14)
-    overlay._filename_label.setObjectName("quicklook_filename")
-    fname_row.addWidget(overlay._filename_label)
-    overlay._meta_label = _make_label("", parent=preview_host, pixel_size=11, pt=11.5)
-    overlay._meta_label.setObjectName("quicklook_meta")
-    fname_row.addWidget(overlay._meta_label)
-    fname_row.addStretch(1)
-    preview_host_lay.addLayout(fname_row)
     preview_row.addWidget(preview_host, 1)
     overlay._next_btn = Button(rows=[ButtonRow(text="›", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay, defer_click="ripple")
     overlay._next_btn.setObjectName("quicklook_next")
@@ -717,18 +713,37 @@ def build_overlay_ui(overlay) -> None:
     overlay._series_sub = _make_label("", parent=right_host, pixel_size=11, pt=11.0, elide=True, minimum_width=40)
     overlay._series_sub.setObjectName("quicklook_series_sub")
     right_lay.addWidget(overlay._series_sub)
-    overlay._strip_host = QWidget(right_host)
+    # Strip lives in its own horizontal scroller: 4×66px thumbs span 294px
+    # and fit the 296px column, but 5+ thumbs (6×66+5×10=446px) forced the
+    # whole right_host to 446px while the viewport is ~329px — every row
+    # painted ~117px past the card edge. OverlayScrollArea (toolkit,
+    # horizontal overlay bar + auto-hide included) confines the overflow
+    # to the strip so the column never exceeds the viewport.
+    from sli_ui_toolkit.widgets import OverlayScrollArea
+
+    overlay._strip_scroll = OverlayScrollArea(
+        right_host, widget_resizable=False, corner_radius=0
+    )
+    overlay._strip_scroll.setObjectName("quicklook_strip_scroll")
+    try:
+        # Ignored: the 446px strip content must never widen the column —
+        # same trick as the elided labels (sizeHint ignored, minimum floors).
+        overlay._strip_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        overlay._strip_scroll.setMinimumWidth(scaled_px(120))
+        overlay._strip_scroll.setMinimumHeight(scaled_px(48))
+    except Exception:
+        pass
+    overlay._strip_host = QWidget(overlay._strip_scroll)
     overlay._strip_host.setObjectName("quicklook_strip_host")
     overlay._strip_layout = QHBoxLayout(overlay._strip_host)
     overlay._strip_layout.setContentsMargins(0, 0, 0, 0)
     overlay._strip_layout.setSpacing(scaled_px(6))
     overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-    right_lay.addWidget(overlay._strip_host)
-    # S4 mockup divider before the compare-brief teaser (svg:600) — painted
-    # rule, see _div_series.
-    overlay._div_brief = _RuleWidget(right_host)
-    overlay._div_brief.setObjectName("quicklook_div_brief")
-    right_lay.addWidget(overlay._div_brief)
+    try:
+        overlay._strip_scroll.setWidget(overlay._strip_host)
+    except Exception:
+        pass
+    right_lay.addWidget(overlay._strip_scroll)
     overlay._brief_label = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
     overlay._brief_label.setObjectName("quicklook_brief")
     overlay._brief_label.setWordWrap(True)

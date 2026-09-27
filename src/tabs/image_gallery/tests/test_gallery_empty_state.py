@@ -1,8 +1,7 @@
-"""W12 W-C: empty-state single-flight open + expanding drop zone.
+"""Empty-state single-flight open + expanding drop zone.
 
-Regression: one LMB click on the DnD zone opened TWO folder pickers
-sequentially (``_open_button.clicked`` + the zone ``mousePressEvent``
-override both emitted ``openRequested`` for a single click). The zone
+Zone click does NOT open the folder dialog — only the Open Folder button.
+Single-flight collapses rapid button double-clicks into one emit. The zone
 also had a fixed minimum height instead of filling available space.
 """
 
@@ -27,20 +26,15 @@ def _press(widget, button: Qt.MouseButton):
 
 
 def test_one_lmb_click_emits_open_once(qtbot) -> None:
-    """Both click paths firing together collapse to exactly one emit."""
+    """Zone is drop-only: LMB/RMB presses never emit openRequested."""
     state = GalleryEmptyState()
     qtbot.addWidget(state)
     count = []
     state.openRequested.connect(lambda: count.append(1))
 
-    # Simulate the double path: zone press AND button click for one LMB click.
+    # Zone click must NOT request open — drag&drop only (no button anymore).
     _press(state._drop_label, Qt.MouseButton.LeftButton)
-    try:
-        state._open_button.click()
-    except Exception:
-        state._open_button.clicked.emit()
-
-    assert len(count) == 1
+    assert count == []
 
 
 def test_rapid_double_request_single_flights(qtbot) -> None:
@@ -131,7 +125,8 @@ def test_scanning_hides_drop_zone(qtbot) -> None:
     qtbot.addWidget(state)
     state.set_state("scanning", 2, 4)
     assert not state._drop_label.isVisible()
-    assert not state._hint_label.isVisible()
+    assert getattr(state, "_hint_label", None) is None
+    assert getattr(state, "_open_button", None) is None
     assert state._spinner.isVisible()
     assert state._scanning_label.isVisible()
     assert "2/4" in state._scanning_label.text()

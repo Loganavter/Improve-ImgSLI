@@ -367,3 +367,25 @@ def rebuild_strip(overlay) -> None:
             overlay._strip_caption_labels.append(cap)
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
+        # First build is shown later via an ancestor show(); on every later
+        # rebuild (walk) the host is already visible yet new children stay
+        # hidden (no implicit show) — excluded from layout hints, host
+        # collapses to 0 and the strip "disappears". Show explicitly.
+        try:
+            container.show()
+        except Exception:
+            pass
+    # Fixed-content host inside a non-resizable scroller: size it to its
+    # contents explicitly (the area never stretches it). The area observes
+    # the host (Resize/LayoutRequest) and re-syncs ranges itself.
+    # activate() first: on rebuild the layout can report a stale 0 hint
+    # (measured live: 2 fresh 44px containers, host hint 0 → adjustSize
+    # collapses the strip to 0 and it "disappears" on every walk).
+    try:
+        overlay._strip_layout.activate()
+    except Exception:
+        pass
+    try:
+        overlay._strip_host.adjustSize()
+    except Exception:
+        pass

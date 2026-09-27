@@ -25,6 +25,39 @@ def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
         pass
 
 
+def _member_dims(item) -> tuple[int, int] | None:
+    """Member dimensions: metrics width/height first, QImageReader fast path."""
+    try:
+        metrics = getattr(item, "metrics", None)
+        if isinstance(metrics, dict):
+            w = metrics.get("width")
+            h = metrics.get("height")
+            if w and h:
+                return int(w), int(h)
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.quick_look.preview import _fast_image_size
+
+        dims = _fast_image_size(getattr(item, "path", ""))
+        if dims is not None:
+            return dims
+    except Exception:
+        pass
+    return None
+
+
+def _size_note(items) -> str:
+    """Size tracker: 'same size WxH' / 'mixed sizes' / '' when unknown."""
+    dims_list = [_member_dims(m) for m in items]
+    if not dims_list or any(d is None for d in dims_list):
+        return ""
+    first = dims_list[0]
+    if all(d == first for d in dims_list):
+        return f" · same size {first[0]}×{first[1]}"
+    return " · mixed sizes"
+
+
 def populate_series_header(overlay) -> None:
     """S4 mockup series context: ``Series 1 · <hub>`` + fidelity subline."""
     try:
@@ -77,10 +110,29 @@ def populate_series_header(overlay) -> None:
                 is_fidelity = bool(getattr(overlay, "_source_path", None) is not None)
             except Exception:
                 is_fidelity = False
+            size_note = _size_note(items)
             if is_fidelity:
-                sub = f"{n} upscales of one source · rank by fidelity · {rejected_cnt} rejected"
+                # Honest label: "upscales" only when members are actually
+                # larger than the source (long side). Same-size FullHD sets
+                # or unknown dims are "images", never fabricated upscales.
+                label = f"{n} images of one source"
+                try:
+                    from tabs.image_gallery.ui.quick_look.preview import _fast_image_size
+
+                    src_dims = _fast_image_size(getattr(overlay, "_source_path", ""))
+                    member_dims = [_member_dims(m) for m in items]
+                    if (
+                        src_dims is not None
+                        and member_dims
+                        and all(d is not None for d in member_dims)
+                        and all(max(d[0], d[1]) > max(src_dims[0], src_dims[1]) for d in member_dims)  # type: ignore[index]
+                    ):
+                        label = f"{n} upscales of one source"
+                except Exception:
+                    pass
+                sub = f"{label} · {rejected_cnt} rejected{size_note}"
             else:
-                sub = f"rank by fidelity · {rejected_cnt} rejected"
+                sub = f"{n} images · {rejected_cnt} rejected{size_note}"
             if pending:
                 sub += f" · {pending} tie-break pending"
             overlay._series_sub.setText(sub)
