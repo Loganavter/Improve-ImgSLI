@@ -4,10 +4,10 @@ Audit-Meta: pattern=state-machine size=exempt reason="single virtualized grid vi
 Uses ``OverlayScrollArea`` + ``OpaqueFillHost`` + ``QGridLayout`` with a
 reused ``Button`` pool (4 columns, rebuild_grid / refresh_card /
 set_card_visible / apply_selection). Keeps the same contracts as
-``session_picker/recent/items_view.py`` but simplified for a flat 4-column
-layout (no list mode, no virtual row window for Stage 1). ``scaled_px`` is
-used for every geometry constant; no ad-hoc stylesheets — painter pipeline
-owns visuals.
+``session_picker/recent/items_view.py``: list mode reuses this ONE view and
+only swaps the card builders (``ui/list_card.py``) + placement columns.
+``scaled_px`` is used for every geometry constant; no ad-hoc stylesheets —
+painter pipeline owns visuals.
 """
 
 from __future__ import annotations
@@ -29,7 +29,16 @@ from tabs.image_gallery.ui.card import (
     gallery_selection_accent,
     update_gallery_card,
 )
+from tabs.image_gallery.ui.list_card import (
+    LIST_CARD_H,
+    build_gallery_list_card,
+    update_gallery_list_card,
+)
 from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
+
+# View modes (recent items_view parity): one view, builders + columns swap.
+VIEW_GRID = "grid"
+VIEW_LIST = "list"
 
 # real_design.md:2.3 — gap 24, root pad already 24, inner margins 0
 GRID_COLUMNS = 4
@@ -244,6 +253,9 @@ class GalleryGridView(QWidget):
         self._hub_names: list[str | None] = []
         self._collapsed: dict[int, bool] = {}
         self._series_cards: dict[int, list[object]] = {}
+        # View mode: grid (4-col cards) or list (1-col rows). Pool is
+        # flushed on switch so builders never mix (see set_view_mode).
+        self._view_mode: str = VIEW_GRID
         # A2: mode for per-dot card colors (fidelity/camera/batch_synthetic) — proxied from widget set_triage.
         self._mode: object = None
         try:
@@ -290,6 +302,60 @@ class GalleryGridView(QWidget):
     def configure(self, *, on_toggle=None, on_context_menu=None) -> None:
         self._on_toggle = on_toggle
         self._on_context_menu = on_context_menu
+
+    # -- view mode (recent items_view parity) --------------------------------
+
+    def set_view_mode(self, mode: object) -> None:
+        """Switch grid/list builders + placement (one view, recent parity).
+
+        Accepts ``"grid"``/``"list"`` (``VIEW_GRID``/``VIEW_LIST``) or bool
+        (``True`` = list, matching the toolbar toggle). Destroys the card
+        pool and live cards (builders must never mix), then rebuilds from
+        the current items and re-applies the live series state.
+        """
+        try:
+            if isinstance(mode, bool):
+                want = VIEW_LIST if mode else VIEW_GRID
+            else:
+                want = VIEW_LIST if str(mode).lower() == VIEW_LIST else VIEW_GRID
+        except Exception:
+            want = VIEW_GRID
+        if want == self._view_mode and self._cards_by_path:
+            return
+        try:
+            series = list(self._series) if self._series is not None else None
+            hubs = list(self._hub_names)
+            collapsed = dict(self._collapsed)
+        except Exception:
+            series, hubs, collapsed = None, [], {}
+        # Destroy pool (mixed builders must never share it).
+        try:
+            for card in list(self._pool):
+                try:
+                    card.setParent(None)
+                    card.deleteLater()
+                except Exception:
+                    pass
+            self._pool = []
+        except Exception:
+            pass
+        self._view_mode = want
+        try:
+            items = list(self._items)
+        except Exception:
+            items = []
+        try:
+            self.rebuild_grid(items)
+        except Exception:
+            return
+        if series is not None:
+            try:
+                self.set_series(series, hub_names=hubs, collapsed=collapsed)
+            except Exception:
+                pass
+
+    def _card_height_px(self) -> int:
+        return scaled_px(LIST_CARD_H) if self._view_mode == VIEW_LIST else scaled_px(GALLERY_CARD_H)
 
     # -- public API expected by controller/widget --------------------------
 
@@ -393,7 +459,7 @@ class GalleryGridView(QWidget):
         for idx, item in enumerate(items):
             card = self._acquire_card(item)
             self._cards_by_path[str(item.path)] = card
-            r, c = divmod(idx, GRID_COLUMNS)
+            r, c = divmod(idx, self.grid_columns)
             self.items_layout.addWidget(card, r, c)
             card.show()
 
@@ -411,7 +477,7 @@ class GalleryGridView(QWidget):
             item = pending[idx]
             card = self._acquire_card(item)
             self._cards_by_path[str(item.path)] = card
-            r, c = divmod(idx, GRID_COLUMNS)
+            r, c = divmod(idx, self.grid_columns)
             self.items_layout.addWidget(card, r, c)
             card.show()
         self._rebuild_index = end
@@ -759,7 +825,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 continue
             try:
-                self.items_layout.addWidget(header, current_row, 0, 1, GRID_COLUMNS)
+                self.items_layout.addWidget(header, current_row, 0, 1, self.grid_columns)
                 header.show()
             except Exception:
                 pass
@@ -774,12 +840,12 @@ class GalleryGridView(QWidget):
                 if card is None:
                     continue
                 try:
-                    r, c = divmod(pos, GRID_COLUMNS)
+                    r, c = divmod(pos, self.grid_columns)
                     self.items_layout.addWidget(card, current_row + r, c)
                     card.show()
                 except Exception:
                     pass
-            rows_needed = (len(sec["items"]) + GRID_COLUMNS - 1) // GRID_COLUMNS if sec["items"] else 0
+            rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
             current_row += rows_needed
 
         self.apply_selection(self._selection)
@@ -822,7 +888,7 @@ class GalleryGridView(QWidget):
                 for pos, item in enumerate(fresh):
                     card = self._acquire_card(item)
                     self._cards_by_path[str(item.path)] = card
-                    r, c = divmod(start + pos, GRID_COLUMNS)
+                    r, c = divmod(start + pos, self.grid_columns)
                     self.items_layout.addWidget(card, r, c)
                     card.show()
             except Exception:
@@ -840,7 +906,7 @@ class GalleryGridView(QWidget):
                         hub_name=None, collapsed=False, index=None,
                     )
                     self._series_headers.append(header)
-                    self.items_layout.addWidget(header, row, 0, 1, GRID_COLUMNS)
+                    self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
                     header.show()
                 else:
                     self._refresh_ungrouped_header_count(len(list(getattr(self, "_ungrouped", []) or [])) + len(fresh))
@@ -849,7 +915,7 @@ class GalleryGridView(QWidget):
                 for pos, item in enumerate(fresh):
                     card = self._acquire_card(item)
                     self._cards_by_path[str(item.path)] = card
-                    r, c = divmod(pos0 + pos, GRID_COLUMNS)
+                    r, c = divmod(pos0 + pos, self.grid_columns)
                     self.items_layout.addWidget(card, base + r, c)
                     card.show()
                 try:
@@ -906,7 +972,7 @@ class GalleryGridView(QWidget):
             try:
                 if row is None:
                     row = int(self.items_layout.rowCount())
-                self.items_layout.addWidget(header, row, 0, 1, GRID_COLUMNS)
+                self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
                 header.show()
             except Exception:
                 pass
@@ -1088,7 +1154,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             return
-        # Each header is one row of fixed 24px; cards still use GALLERY_CARD_H.
+        # Each header is one row of fixed 24px; cards use the mode height.
         # Count headers vs card rows: headers already counted in total_rows.
         # Approximate: total_rows includes header rows (1 row each) + card rows.
         # For precise height, sum header heights + card rows heights + spacings.
@@ -1096,7 +1162,7 @@ class GalleryGridView(QWidget):
         # total_rows = num_headers + card_grid_rows
         card_rows = total_rows - num_headers
         header_h = scaled_px(24)
-        card_h = scaled_px(GALLERY_CARD_H)
+        card_h = self._card_height_px()
         spacing = scaled_px(GRID_SPACING)
         margins = scaled_px(GRID_MARGIN_TOP) + scaled_px(GRID_MARGIN_BOTTOM)
         # Header rows: header_h each; card rows: card_h each; spacing between every row.
@@ -1118,7 +1184,10 @@ class GalleryGridView(QWidget):
         if card is None:
             return
         try:
-            update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
+            if self._view_mode == VIEW_LIST:
+                update_gallery_list_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
+            else:
+                update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
         except Exception:
             pass
         # Re-apply selection tint in case accent changed.
@@ -1152,7 +1221,10 @@ class GalleryGridView(QWidget):
             if card is None:
                 continue
             try:
-                update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
+                if self._view_mode == VIEW_LIST:
+                    update_gallery_list_card(card, item, mode=mode)  # type: ignore[arg-type]
+                else:
+                    update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
             except Exception:
                 pass
         try:
@@ -1217,26 +1289,54 @@ class GalleryGridView(QWidget):
 
     def _acquire_card(self, item: GalleryItem):
         _mode = self._resolve_mode()
-        if self._pool:
+        want_list = self._view_mode == VIEW_LIST
+        updater = update_gallery_list_card if want_list else update_gallery_card
+        while self._pool:
             card = self._pool.pop()
+            # Pool must never mix grid/list builders (different regions).
+            if getattr(card, "_gallery_view_mode", VIEW_GRID) != self._view_mode:
+                try:
+                    card.setParent(None)
+                    card.deleteLater()
+                except Exception:
+                    pass
+                continue
             try:
                 card.setParent(self.items_host)
             except Exception:
                 pass
             try:
-                update_gallery_card(card, item, mode=_mode)  # type: ignore[arg-type]
+                updater(card, item, mode=_mode)  # type: ignore[arg-type]
             except Exception:
                 pass
             # Rebind click to current toggle handler (pool may carry old closure).
             self._rebind_card(card)
+            try:
+                card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]
+            except Exception:
+                pass
             return card
-        return build_gallery_card(
-            item,
-            parent=self.items_host,
-            on_activate=self._handle_toggle,
-            on_context_menu=self._handle_context_menu,
-            mode=_mode,
-        )
+        if want_list:
+            card = build_gallery_list_card(
+                item,
+                parent=self.items_host,
+                on_activate=self._handle_toggle,
+                on_context_menu=self._handle_context_menu,
+                mode=_mode,
+            )
+        else:
+            card = build_gallery_card(
+                item,
+                parent=self.items_host,
+                on_activate=self._handle_toggle,
+                on_context_menu=self._handle_context_menu,
+                mode=_mode,
+            )
+        try:
+            card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return card
 
     def _recycle_card(self, str_path: str) -> None:
         card = self._cards_by_path.pop(str_path, None)  # type: ignore[arg-type]
@@ -1311,10 +1411,10 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             return
-        rows = (item_count + GRID_COLUMNS - 1) // GRID_COLUMNS
-        stride = scaled_px(GALLERY_CARD_H) + scaled_px(GRID_SPACING)
+        rows = (item_count + self.grid_columns - 1) // self.grid_columns
+        stride = self._card_height_px() + scaled_px(GRID_SPACING)
         margins = scaled_px(GRID_MARGIN_TOP) + scaled_px(GRID_MARGIN_BOTTOM)
-        needed = margins + rows * scaled_px(GALLERY_CARD_H) + max(0, rows - 1) * scaled_px(GRID_SPACING)
+        needed = margins + rows * self._card_height_px() + max(0, rows - 1) * scaled_px(GRID_SPACING)
         # Also ensure stride accounts for content padding already in card height.
         _ = stride  # keep for future virtualization parity
         try:
@@ -1326,7 +1426,7 @@ class GalleryGridView(QWidget):
 
     @property
     def grid_columns(self) -> int:
-        return GRID_COLUMNS
+        return 1 if self._view_mode == VIEW_LIST else GRID_COLUMNS
 
     @property
     def items(self) -> list[GalleryItem]:
