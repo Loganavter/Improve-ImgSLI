@@ -1,11 +1,14 @@
 """Gallery list cards — row Button for list view mode (recent pattern).
 
-Recent-projects precedent (session_picker/recent/cards.py build_list_card):
-list mode reuses the SAME view/pool/selection/marquee and only swaps the
-card builders + placement. A list card is one ``Button`` with horizontal
-regions: fixed thumb (cover) + text rows (name/badges) + meta rows
-(artifacts/VLM, right-aligned). Sizes come from hints (width free), so rows
-hug the widest label instead of a fixed grid cell.
+List mode reuses the SAME view/pool/selection/marquee and only swaps the
+card builders + placement. A list card is one ``Button``: fixed thumb
+(contain, whole image fits) + ONE title row (name + badges inline) + ONE
+meta row (artifacts + VLM). Row actions (make-best / reject / compare) are
+small child Buttons inside the card with hover-only visibility, following
+``card/delete_button.py`` wire/sync/pin (fail-open, per-click live
+item/owner resolve) and the palette-row capsule idea (one capsule, inner
+targets routed by id). Each capsule button has a stable objectName and
+calls the same use-case functions as the card context menu.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 
@@ -27,12 +30,26 @@ LIST_THUMB_W = 56
 
 _GALLERY_LIST_PADDING: tuple[float, float, float, float] = (6.0, 6.0, 6.0, 6.0)
 
+_ROW_ACT_BEST = "gallery_row_act_best"
+_ROW_ACT_REJECT = "gallery_row_act_reject"
+_ROW_ACT_COMPARE = "gallery_row_act_compare"
+_ROW_ACT_ATTRS = ("_gallery_row_act_best", "_gallery_row_act_reject", "_gallery_row_act_compare")
+_ROW_ACT_SIZE = 24
+_ROW_ACT_GAP = 4
+
 
 def _badges_text(item: GalleryItem) -> str:
+    """Inline badges, grid parity: single ``#N`` (crown_rank ?? rank) + ★ + ✕."""
     parts: list[str] = []
     try:
-        if getattr(item, "rejected", False):
-            parts.append("✕")
+        rank_val = getattr(item, "crown_rank", None)
+        if rank_val is None:
+            rank_val = getattr(item, "rank", None)
+        if rank_val is not None:
+            try:
+                parts.append(f"#{int(rank_val)}")
+            except Exception:
+                parts.append(f"#{rank_val}")
     except Exception:
         pass
     try:
@@ -41,22 +58,15 @@ def _badges_text(item: GalleryItem) -> str:
     except Exception:
         pass
     try:
-        rank = getattr(item, "rank", None)
-        if rank is not None:
-            parts.append(f"R{int(rank)}")
-    except Exception:
-        pass
-    try:
-        crown = getattr(item, "crown_rank", None)
-        if crown is not None and not getattr(item, "is_best", False):
-            parts.append(f"C{int(crown)}")
+        if getattr(item, "rejected", False):
+            parts.append("✕")
     except Exception:
         pass
     return " ".join(parts)
 
 
 def _artifacts_text(item: GalleryItem) -> str:
-    """Compact artifact summary: F<n> flagged / M<n> mild / OK / …."""
+    """Plain-words artifact summary: flagged×n / mild×n / OK / …."""
     try:
         artifacts = getattr(item, "artifacts", None) or {}
         flagged = mild = 0
@@ -70,9 +80,9 @@ def _artifacts_text(item: GalleryItem) -> str:
             elif s == "mild":
                 mild += 1
         if flagged:
-            return f"F{flagged}"
+            return f"flagged×{flagged}"
         if mild:
-            return f"M{mild}"
+            return f"mild×{mild}"
         try:
             from tabs.image_gallery.models import AnalysisStatus
 
@@ -86,14 +96,14 @@ def _artifacts_text(item: GalleryItem) -> str:
 
 
 def _vlm_text(item: GalleryItem) -> str:
-    """Compact VLM state: err > tie… > tie-done/brief > ''."""
+    """Compact VLM state: err > tie… > tie-ok / brief > ''."""
     try:
         if getattr(item, "vlm_tie_error", None) or getattr(item, "vlm_brief_error", None):
             return "err"
         if getattr(item, "vlm_tie_pending", False):
             return "tie…"
         if getattr(item, "vlm_tie_result", None) is not None:
-            return "tie✓"
+            return "tie-ok"
         try:
             status = str(getattr(item, "vlm_brief_status", None) or "none")
         except Exception:
@@ -106,74 +116,34 @@ def _vlm_text(item: GalleryItem) -> str:
 
 
 def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
+    """ONE title row: name + badges inline, normal weight, grid parity size."""
+    text = item.name
     badges = _badges_text(item)
-    rows = [
-        ButtonRow(
-            text=item.name,
-            size=13,
-            weight="bold",
-            h_align=Qt.AlignmentFlag.AlignLeft,
-            marquee=True,
-        ),
-    ]
     if badges:
-        rows.append(
-            ButtonRow(
-                text=badges,
-                size=11,
-                h_align=Qt.AlignmentFlag.AlignLeft,
-            )
-        )
-    return rows
+        text = f"{text} {badges}"
+    return [ButtonRow(text=text, size=12, weight="normal", h_align=Qt.AlignmentFlag.AlignLeft, marquee=True)]
 
 
 def _list_meta_rows(item: GalleryItem) -> list[ButtonRow]:
-    rows = [
-        ButtonRow(
-            text=_artifacts_text(item),
-            size=11,
-            h_align=Qt.AlignmentFlag.AlignRight,
-        ),
-    ]
-    vlm = _vlm_text(item)
-    if vlm:
-        rows.append(
-            ButtonRow(
-                text=vlm,
-                size=11,
-                h_align=Qt.AlignmentFlag.AlignRight,
-            )
-        )
-    return rows
+    """ONE meta row: artifacts + VLM combined with spaces, right-aligned."""
+    parts = [p for p in (_artifacts_text(item), _vlm_text(item)) if p]
+    return [ButtonRow(text=" ".join(parts), size=11, h_align=Qt.AlignmentFlag.AlignRight)]
 
 
 def _thumb_region(item: GalleryItem) -> ButtonRegion:
-    """Fixed-width cover thumb (unreadable → '!' like grid covers)."""
+    """Fixed-width contain thumb (unreadable → '!' like grid covers)."""
     from tabs.image_gallery.ui.card.regions import _item_unreadable
 
     thumb = getattr(item, "thumbnail", None)
     if thumb is not None and not thumb.isNull():
-        return ButtonRegion(
-            id="thumb",
-            pixmap=thumb,
-            image_fill="cover",
-            weight=0.0,
-            group="card",
-            corner_radii=(8, 0, 0, 8),
-            hover_color=QColor(0, 0, 0, 0),
-        )
+        return ButtonRegion(id="thumb", pixmap=thumb, image_fill="contain", weight=0.0,
+                            group="card", corner_radii=(8, 0, 0, 8), hover_color=QColor(0, 0, 0, 0))
     try:
         unreadable = bool(_item_unreadable(item))
     except Exception:
         unreadable = False
-    return ButtonRegion(
-        id="thumb",
-        text="!" if unreadable else "",
-        weight=0.0,
-        group="card",
-        corner_radii=(8, 0, 0, 8),
-        hover_color=QColor(0, 0, 0, 0),
-    )
+    return ButtonRegion(id="thumb", text="!" if unreadable else "", weight=0.0,
+                        group="card", corner_radii=(8, 0, 0, 8), hover_color=QColor(0, 0, 0, 0))
 
 
 def _thumb_rect(r: QRectF) -> QRectF:
@@ -191,6 +161,191 @@ def _meta_rect(r: QRectF) -> QRectF:
     return QRectF(r.width() - meta_w - 4, 4, meta_w, r.height() - 8)
 
 
+def _resolve_capsule_target(card: Button):
+    """Live (owner, path) per click — pool-safe (delete_button parity)."""
+    item = getattr(card, "_gallery_item", None)
+    path = getattr(item, "path", None) if item is not None else None
+    if path is None:
+        try:
+            raw = card.property("gallery_path") or ""
+            path = Path(str(raw)) if str(raw) else None
+        except Exception:
+            path = None
+    owner = getattr(card, "_gallery_owner", None)
+    if owner is None:
+        try:
+            win = card.window()
+            owner = getattr(win, "_gallery_controller", None) or getattr(win, "_gallery_owner", None)
+        except Exception:
+            owner = None
+    if path is not None and not isinstance(path, Path):
+        try:
+            path = Path(path)
+        except Exception:
+            path = None
+    return owner, path
+
+
+def _fire_capsule_action(card: Button, kind: str) -> None:
+    """Run one capsule action via the context-menu use-case path (fail-open)."""
+    owner, path = _resolve_capsule_target(card)
+    if owner is None or path is None:
+        return
+    try:
+        from tabs.image_gallery.use_cases import triage as _triage
+
+        if kind == "best":
+            _triage.make_best(owner, path)
+        elif kind == "reject":
+            _triage.toggle_reject(owner, path)
+        elif kind == "compare":
+            try:
+                if hasattr(owner, "state") and hasattr(owner.state, "selected_paths"):
+                    owner.state.selected_paths.add(Path(path))
+            except Exception:
+                pass
+            from tabs.image_gallery.use_cases import carry as _carry
+
+            _carry.carry_selected(owner)
+    except Exception:
+        pass
+
+
+def _cursor_over_capsule(card: Button) -> bool:
+    """Cursor over the card or a visible capsule button (fail-open False)."""
+    try:
+        from PySide6.QtGui import QCursor
+
+        import shiboken6
+
+        if not shiboken6.isValid(card):
+            return False
+        pos = QCursor.pos()
+        if bool(card.rect().contains(card.mapFromGlobal(pos))):
+            return True
+        for attr in _ROW_ACT_ATTRS:
+            btn = getattr(card, attr, None)
+            if btn is None or not btn.isVisible():
+                continue
+            try:
+                if bool(btn.rect().contains(btn.mapFromGlobal(pos))):
+                    return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return False
+
+
+class _RowCapsuleFilter(QObject):
+    """Hover-only capsule visibility + re-pin (delete_button parity)."""
+
+    def __init__(self, card: Button) -> None:
+        super().__init__(card)
+        self._card = card
+
+    def _is_capsule_target(self, watched) -> bool:
+        try:
+            if watched is self._card:
+                return True
+            return any(watched is getattr(self._card, a, None) for a in _ROW_ACT_ATTRS)
+        except Exception:
+            return False
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        try:
+            t = event.type()
+            card = self._card
+            if t == QEvent.Type.Enter and self._is_capsule_target(watched):
+                card._gallery_row_capsule_hovered = True  # type: ignore[attr-defined]
+                sync_row_capsule_buttons(card)
+            elif t == QEvent.Type.Leave and self._is_capsule_target(watched):
+                if not _cursor_over_capsule(card):
+                    card._gallery_row_capsule_hovered = False  # type: ignore[attr-defined]
+                    sync_row_capsule_buttons(card)
+            elif watched is card and t in (QEvent.Type.Move, QEvent.Type.Resize,
+                                           QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.ParentChange):
+                sync_row_capsule_buttons(card)
+        except Exception:
+            pass
+        return False
+
+
+def sync_row_capsule_buttons(card: Button) -> None:
+    """Reposition + hover-gate the row action capsule (fail-open)."""
+    try:
+        import shiboken6
+
+        btns = []
+        for attr in _ROW_ACT_ATTRS:
+            btn = getattr(card, attr, None)
+            if btn is None or not shiboken6.isValid(btn):
+                return
+            btns.append(btn)
+        size = int(scaled_px(_ROW_ACT_SIZE))
+        hovered = bool(getattr(card, "_gallery_row_capsule_hovered", False))
+        w, h = int(card.width()), int(card.height())
+        total = len(btns) * size + (len(btns) - 1) * _ROW_ACT_GAP
+        x, y = max(0, w - total - 8), max(0, (h - size) // 2)
+        for i, btn in enumerate(btns):
+            btn.move(x + i * (size + _ROW_ACT_GAP), y)
+            if hovered:
+                if not btn.isVisible():
+                    btn.show()
+                btn.raise_()
+            elif btn.isVisible():
+                btn.hide()
+    except Exception:
+        pass
+
+
+def wire_row_capsule_buttons(card: Button, owner) -> None:
+    """Attach the hover-only ★/✕/⇄ capsule to *card* (in-rect children)."""
+    _ = owner
+    try:
+        size = int(scaled_px(_ROW_ACT_SIZE))
+    except Exception:
+        size = _ROW_ACT_SIZE
+    specs = (
+        (_ROW_ACT_BEST, "★", "Make best", "best", "_gallery_row_act_best"),
+        (_ROW_ACT_REJECT, "✕", "Reject", "reject", "_gallery_row_act_reject"),
+        (_ROW_ACT_COMPARE, "⇄", "Compare", "compare", "_gallery_row_act_compare"),
+    )
+    for object_name, text, tip, kind, attr in specs:
+        try:
+            if getattr(card, attr, None) is not None:
+                continue
+            btn = Button(text=text, variant="ghost", parent=card)
+            btn.setObjectName(object_name)
+            btn.setFixedSize(size, size)
+            btn.setToolTip(tip)
+            btn.hide()
+        except Exception:
+            continue
+
+        def _slot(_checked=False, c=card, k=kind) -> None:
+            _fire_capsule_action(c, k)
+
+        try:
+            btn.clicked.connect(_slot)
+            setattr(card, attr, btn)
+            card.destroyed.connect(btn.deleteLater)
+        except Exception:
+            pass
+    try:
+        card._gallery_row_capsule_hovered = False  # type: ignore[attr-defined]
+        filt = _RowCapsuleFilter(card)
+        card._gallery_row_capsule_filter = filt  # type: ignore[attr-defined]
+        card.installEventFilter(filt)
+        for attr in _ROW_ACT_ATTRS:
+            btn = getattr(card, attr, None)
+            if btn is not None:
+                btn.installEventFilter(filt)
+    except Exception:
+        pass
+    sync_row_capsule_buttons(card)
+
+
 def build_gallery_list_card(
     item: GalleryItem,
     parent: QWidget | None = None,
@@ -206,22 +361,10 @@ def build_gallery_list_card(
     card = Button(
         regions=[
             _thumb_region(item),
-            ButtonRegion(
-                id="text",
-                rows=_list_text_rows(item),
-                weight=1.0,
-                group="card",
-                corner_radii=(0, 0, 0, 0),
-                hover_color=QColor(0, 0, 0, 0),
-            ),
-            ButtonRegion(
-                id="meta",
-                rows=_list_meta_rows(item),
-                weight=0.0,
-                group="card",
-                corner_radii=(0, 8, 8, 0),
-                hover_color=QColor(0, 0, 0, 0),
-            ),
+            ButtonRegion(id="text", rows=_list_text_rows(item), weight=1.0, group="card",
+                         corner_radii=(0, 0, 0, 0), hover_color=QColor(0, 0, 0, 0)),
+            ButtonRegion(id="meta", rows=_list_meta_rows(item), weight=0.0, group="card",
+                         corner_radii=(0, 8, 8, 0), hover_color=QColor(0, 0, 0, 0)),
         ],
         split=CustomSplit(rect_fns=[_thumb_rect, _text_rect, _meta_rect]),
         variant="default",
@@ -233,10 +376,7 @@ def build_gallery_list_card(
     )
     try:
         card.setProperty("_rows_compact", True)
-    except Exception:
-        pass
-    _attach_list_item(card, item)
-    try:
+        _attach_list_item(card, item)
         _apply_rejected_visuals(card, item)
     except Exception:
         pass
@@ -250,6 +390,7 @@ def build_gallery_list_card(
         from tabs.image_gallery.ui.card.delete_button import wire_card_delete_button
 
         wire_card_delete_button(card, None)
+        wire_row_capsule_buttons(card, None)
     except Exception:
         pass
     if on_activate is not None or on_context_menu is not None:
@@ -281,7 +422,7 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
         except Exception:
             current = None
         if current is not thumb:
-            card.update_region("thumb", pixmap=thumb, image_fill="cover")
+            card.update_region("thumb", pixmap=thumb, image_fill="contain")
     else:
         from tabs.image_gallery.ui.card.regions import _item_unreadable
 
@@ -289,16 +430,13 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
             unreadable = bool(_item_unreadable(item))
         except Exception:
             unreadable = False
-        card.update_region("thumb", pixmap=None, image_fill="cover")
+        card.update_region("thumb", pixmap=None, image_fill="contain")
         try:
             card.update_region("thumb", text="!" if unreadable else "")
         except Exception:
             pass
     try:
         card.update_region("text", rows=_list_text_rows(item))
-    except Exception:
-        pass
-    try:
         card.update_region("meta", rows=_list_meta_rows(item))
     except Exception:
         pass
@@ -306,6 +444,7 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
         from tabs.image_gallery.ui.card.delete_button import sync_card_delete_button
 
         sync_card_delete_button(card)
+        sync_row_capsule_buttons(card)
     except Exception:
         pass
     try:
