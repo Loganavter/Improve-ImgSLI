@@ -94,6 +94,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._artifact_rows: list = []
         if not hasattr(self, "_strip_caption_labels"):
             self._strip_caption_labels: list = []
+        # Canvas preview slot defaults (build_overlay_ui sets them too; the
+        # inline-minimal fallback above does not).
+        if not hasattr(self, "_preview_canvas"):
+            self._preview_canvas = None
+        if not hasattr(self, "_preview_store"):
+            self._preview_store = None
         # W8: the resizable card plate is a plain child widget — its own
         # resizes never reach the overlay's resizeEvent, so watch it and
         # re-run the pin hooks (nav circles, source inset, resize grip).
@@ -449,6 +455,31 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         super().leaveEvent(event)
 
+    def _release_preview_resources(self) -> None:
+        """Canvas lifecycle: clear_source() + close store, restore the label.
+
+        Idempotent; no-op when the canvas path was never taken (label-only).
+        """
+        try:
+            from tabs.image_gallery.ui.quick_look.preview import release_preview_canvas
+            release_preview_canvas(self)
+        except Exception:
+            pass
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._release_preview_resources()
+        except Exception:
+            pass
+        super().hideEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._release_preview_resources()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
     def show_for(self, item, owner=None) -> None:
         import time as _time
 
@@ -699,6 +730,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
+        # Populate-next lifecycle: drop the previous GPU source + store before
+        # re-acquiring (no fd/memmap leaks across walks); no-op label-only.
+        try:
+            self._release_preview_resources()
+        except Exception:
+            pass
         mode_str = ""
         try:
             if self._mode is not None:

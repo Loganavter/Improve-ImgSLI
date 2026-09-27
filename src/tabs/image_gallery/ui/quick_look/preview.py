@@ -278,7 +278,146 @@ def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
 # -- populate helpers -------------------------------------------------------
 
 
+def _close_preview_store(overlay) -> None:
+    """Close + drop the stashed TiledPixelStore (fd/memmap hygiene)."""
+    try:
+        store = getattr(overlay, "_preview_store", None)
+    except Exception:
+        store = None
+    try:
+        overlay._preview_store = None
+    except Exception:
+        pass
+    if store is not None:
+        try:
+            store.close()
+        except Exception:
+            pass
+
+
+def release_preview_canvas(overlay) -> None:
+    """Lifecycle release (hide/close/populate-next); no-op off the GPU path."""
+    try:
+        canvas = getattr(overlay, "_preview_canvas", None)
+        if canvas is not None:
+            try:
+                canvas.clear_source()
+            except Exception:
+                pass
+            try:
+                canvas.hide()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    _close_preview_store(overlay)
+    try:
+        label = getattr(overlay, "_preview_label", None)
+        if label is not None:
+            label.show()
+    except Exception:
+        pass
+
+
+def _ensure_preview_canvas(overlay):
+    """Create/reuse the canvas child in the preview slot; None if unavailable."""
+    try:
+        canvas = getattr(overlay, "_preview_canvas", None)
+        if canvas is not None:
+            return canvas
+        try:
+            from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget as _Canvas
+        except Exception:
+            return None
+        host = getattr(overlay, "_preview_host", None)
+        if host is None:
+            return None
+        canvas = _Canvas(host)
+        try:
+            from PySide6.QtWidgets import QSizePolicy as _SP
+
+            from sli_ui_toolkit.managers import scaled_px as _spx
+
+            canvas.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
+            canvas.setMinimumSize(_spx(640), _spx(456))
+            lay = host.layout()
+            if lay is not None:
+                lay.addWidget(canvas, 1)
+        except Exception:
+            pass
+        try:
+            overlay._preview_canvas = canvas
+        except Exception:
+            pass
+        return canvas
+    except Exception:
+        return None
+
+
+def _populate_preview_canvas(overlay, item) -> bool:
+    """GPU branch: TiledPixelStore (no crop_service) into the canvas slot."""
+    canvas = _ensure_preview_canvas(overlay)
+    if canvas is None:
+        return False
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
+    except Exception:
+        return False
+    try:
+        raw = getattr(item, "path", "")
+        if not raw:
+            return False
+        _close_preview_store(overlay)  # never stack stores (fd/memmap leak)
+        store = _TPS.from_path(raw, crop_service=None)
+        if store is None:
+            return False
+        try:
+            overlay._preview_store = store
+        except Exception:
+            pass
+        try:
+            canvas.set_source(store)
+        except Exception:
+            _close_preview_store(overlay)
+            return False
+        try:
+            label = getattr(overlay, "_preview_label", None)
+            if label is not None:
+                label.hide()
+            canvas.show()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        try:
+            _close_preview_store(overlay)
+        except Exception:
+            pass
+        return False
+
+
 def populate_preview(overlay, item) -> None:
+    # GPU branch first; any failure degrades to the QLabel path below.
+    try:
+        if _populate_preview_canvas(overlay, item):
+            return
+    except Exception:
+        pass
+    _populate_preview_label(overlay, item)
+
+
+def _populate_preview_label(overlay, item) -> None:
+    # Fallback: restore the label (the canvas branch may have hidden it).
+    try:
+        canvas = getattr(overlay, "_preview_canvas", None)
+        if canvas is not None:
+            canvas.hide()
+    except Exception:
+        pass
+    try:
+        overlay._preview_label.show()
+    except Exception:
+        pass
     # W-B: stash the unscaled source in ``overlay._preview_full`` so
     # ``_rescale_preview_to_host`` can re-derive the shown pixmap at the
     # live label size on every card resize (preview stretches with aspect,
