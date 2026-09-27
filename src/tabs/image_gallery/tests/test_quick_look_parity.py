@@ -16,6 +16,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Mode, Severity
+from sli_ui_toolkit.widgets import Label as _QlLabel
 from tabs.image_gallery.ui.quick_look import (
     DIM_VEIL_ALPHA,
     QuickLookOverlay,
@@ -117,7 +118,7 @@ def test_no_region_suffix_on_any_artifact(qtbot):
         texts = [
             lbl.text()
             for w in ov._artifact_rows
-            for lbl in w.findChildren(type(ov._mode_chip))
+            for lbl in w.findChildren(_QlLabel)
         ]
         assert "mild" in texts
         assert all("sky region" not in t for t in texts)
@@ -139,9 +140,9 @@ def test_all_artifact_rows_shown_including_clean(qtbot):
     texts = [
         lbl.text()
         for w in ov._artifact_rows
-        for lbl in w.findChildren(type(ov._mode_chip))
+        for lbl in w.findChildren(_QlLabel)
     ]
-    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(type(ov._mode_chip))]
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
     assert any("Banding" in t for t in titles)
     assert any("Halo" in t for t in titles)
     assert "clean" in texts
@@ -165,7 +166,7 @@ def test_non_clean_artifact_rows_shown(qtbot):
     texts = [
         lbl.text()
         for w in ov._artifact_rows
-        for lbl in w.findChildren(type(ov._mode_chip))
+        for lbl in w.findChildren(_QlLabel)
     ]
     assert "mild" in texts and "flagged" in texts
     ov.hide()
@@ -180,7 +181,7 @@ def test_halo_renders_as_bar_widget(qtbot):
     _show(ov, item, [item])
     halo_rows = [
         w for w in ov._artifact_rows
-        if any("Halo" in lbl.text() for lbl in w.findChildren(type(ov._mode_chip)))
+        if any("Halo" in lbl.text() for lbl in w.findChildren(_QlLabel))
     ]
     assert len(halo_rows) == 1
     assert halo_rows[0].findChild(_BarWidget) is not None
@@ -277,7 +278,7 @@ def test_camera_noise_and_wb_rows_present_when_metrics_exist(qtbot):
     texts = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     assert "Noise" in texts
     assert any("warm" in t for t in texts)
@@ -291,7 +292,7 @@ def test_camera_noise_and_wb_rows_skipped_when_missing(qtbot):
     texts = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     assert "Noise" not in texts
     assert "WB shift" not in texts
@@ -353,17 +354,6 @@ def test_bottom_bar_button_colors(qtbot):
     assert ov._reject_btn.borderColor() is not None
     # Set as source: amber stroke.
     assert ov._set_source_btn.borderColor() is not None
-    ov.hide()
-
-
-# -- S4-9: FIDELITY MODE chip accent color ---------------------------------------
-
-
-def test_mode_chip_uses_accent_token(qtbot):
-    item = _item("v.png", metrics={})
-    ov = _make_overlay(qtbot)
-    _show(ov, item, [item])
-    assert ov._mode_chip._color_token_override == "accent"
     ov.hide()
 
 
@@ -451,14 +441,14 @@ def test_quick_compare_hook_merges_instead_of_clobbering():
     assert len(owner.state.selected_paths) >= 2
 
 
-def test_set_source_flips_chip_to_fidelity(qtbot):
+def test_set_source_flips_report_to_fidelity(qtbot):
     a = _item("a.png")
     b = _item("b.png")
     ov = _make_overlay(qtbot)
     _show(ov, b, [a, b], mode=Mode.CAMERA)
-    assert "CAMERA" in ov._mode_chip.text()
+    assert "Camera" in ov._report_title.text()
     ov._on_set_source()
-    assert "FIDELITY" in ov._mode_chip.text()
+    assert "Fidelity" in ov._report_title.text()
     assert ov._owner.state.mode == Mode.FIDELITY
     assert ov._owner.state.source_path == b.path
     ov.hide()
@@ -492,7 +482,7 @@ def test_meta_order_dims_format_size(qtbot, tmp_path):
     item = GalleryItem(path=p, mtime_ns=1, metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    assert ov._meta_label.text().startswith("64 × 32 · PNG · ")
+    assert ov._meta_label._original_text.startswith("64 × 32 · PNG · ")
     ov.hide()
 
 
@@ -799,7 +789,7 @@ def test_crop_hidden_in_fidelity(qtbot):
     viewing = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [src, viewing], source=src.path)
-    assert "FIDELITY" in ov._mode_chip.text()
+    assert "Fidelity" in ov._report_title.text()
     assert ov._crop_host.isVisible() is False
     ov.hide()
 
@@ -830,7 +820,7 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
     before = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     assert any("not measured" in t for t in before)
     # Fidelity delivery mutates metrics in place (service contract), then W2
@@ -840,11 +830,11 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
     after = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     assert any("0.94" in t for t in after)
     assert not any("not measured" in t for t in after)
-    assert "upscale ×4" in ov._meta_label.text()
+    assert "upscale ×4" in ov._meta_label._original_text
     assert ov._brief_label.text().startswith("vs #2:")
     assert ov._brief_label.isVisible()
     assert ov._crop_host.isVisible() is False
@@ -873,13 +863,13 @@ def test_refresh_metrics_ignores_other_item(qtbot):
     before = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     ov.refresh_metrics(other)
     after = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(type(ov._mode_chip))
+        for lbl in row.findChildren(_QlLabel)
     ]
     # Path-guarded: another item's delivery changes nothing on the open card.
     assert after == before
@@ -1102,7 +1092,7 @@ def test_dividers_are_painted_widgets(qtbot):
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    for name in ("quicklook_div_series", "quicklook_div_brief", "quicklook_div_bar"):
+    for name in ("quicklook_div_series", "quicklook_div_bar"):
         div = ov.findChild(QWidget, name)
         assert isinstance(div, _RuleWidget), name
         assert div.styleSheet() == ""
@@ -1118,7 +1108,6 @@ def test_labels_render_at_mockup_point_sizes(qtbot):
     _show(ov, item, [item])
     assert ov._report_title.font().pointSizeF() == pytest.approx(13)
     assert ov._filename_label.font().pointSizeF() == pytest.approx(14)
-    assert ov._mode_chip.font().pointSizeF() == pytest.approx(11.5)
     assert ov._brief_label.font().pointSizeF() == pytest.approx(11.5)
     ov.hide()
 
@@ -1192,8 +1181,8 @@ def test_meta_same_size_when_factor_one(qtbot):
     item = _item("v.png", metrics={"upscale_factor": 1})
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
-    assert "same size as source" in ov._meta_label.text()
-    assert "upscale ×" not in ov._meta_label.text()
+    assert "same size as source" in ov._meta_label._original_text
+    assert "upscale ×" not in ov._meta_label._original_text
     ov.hide()
 
 
@@ -1279,8 +1268,8 @@ def test_meta_smaller_than_source(tmp_path, qtbot):
     item = GalleryItem(path=small, mtime_ns=2, metrics={"upscale_factor": 1})
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
-    assert "smaller than source" in ov._meta_label.text()
-    assert "same size as source" not in ov._meta_label.text()
+    assert "smaller than source" in ov._meta_label._original_text
+    assert "same size as source" not in ov._meta_label._original_text
     ov.hide()
 
 
@@ -1333,7 +1322,7 @@ def test_right_column_stretches_with_full_content(qtbot):
     assert ov._brief_label.isVisible() and ov._brief_label.text()
     # W7 LIVE-long texts (verbatim full copies, painting elides them).
     assert ov._report_sub._original_text == "vs SOURCE 2x-Futsuu-Anime(1).png · shared/analysis engine"
-    assert ov._series_sub._original_text == "4 upscales of one source · rank by fidelity · 1 rejected"
+    assert ov._series_sub._original_text == "4 images of one source · 1 rejected"
     sublines = [
         lbl._original_text
         for w in ov._metric_rows
@@ -2414,3 +2403,36 @@ def test_crop_title_has_capsule_backing(qtbot):
         assert pill.width() < ov._crop_host.width()
     finally:
         ov.hide()
+
+
+def test_filename_centered_in_top_row_no_mode_chip_no_brief_divider(qtbot):
+    """Filename caption lives centered in the top row (mode pill removed —
+    the report title already carries the mode); no brief divider."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    item = _item("1x-HurrDeblur-SuperUltraCompact.png", metrics={"width": 1440, "height": 1080})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    assert getattr(ov, "_mode_chip", None) is None
+    assert ov.findChild(QWidget, "quicklook_mode_chip") is None
+    assert ov.findChild(QWidget, "quicklook_div_brief") is None
+    assert "HurrDeblur" in ov._filename_label._original_text
+    assert ov._filename_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert ov._meta_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    # Centered group: balance spacer, stretch, name, meta, stretch, close.
+    outer = ov._content.layout()
+    assert outer is not None
+    lay = outer.itemAt(0).layout()
+    assert lay is not None
+    assert lay.itemAt(0).spacerItem() is not None
+    assert lay.itemAt(1).spacerItem() is not None
+    assert lay.itemAt(2).widget() is ov._filename_label
+    assert lay.itemAt(3).widget() is ov._meta_label
+    assert lay.itemAt(4).spacerItem() is not None
+    assert lay.itemAt(5).widget() is ov._close_btn
+    # Full name reads (not collapsed to "114…"): natural widths center as
+    # one line, elide only when genuinely squeezed.
+    assert "1x-HurrDeblur-SuperUltraCompact.png" in ov._filename_label.text()
+    ov.hide()

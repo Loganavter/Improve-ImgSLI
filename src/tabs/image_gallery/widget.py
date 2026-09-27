@@ -208,32 +208,6 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-        # Footer — SVG y822 10.5px italic #8a8a8a
-        self._footer = Label(
-            "keys: Space/Delete remove · B best · Enter compare selected · dbl-click quick look (TopLevelInWindowOverlay) · quality dots: ● sharpness ● exposure ● noise (outlier shown warm/red)",
-            pixel_size=11,
-            parent=self,
-        )
-        self._footer.setObjectName("image_gallery_footer")
-        self._footer.setWordWrap(True)
-        try:
-            self._footer.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        except Exception:
-            pass
-        try:
-            f = self._footer.font()
-            f.setItalic(True)
-            self._footer.setFont(f)
-            from PySide6.QtGui import QColor as _QCFooter
-
-            try:
-                self._footer.setColor(_QCFooter("#8a8a8a"))
-            except Exception:
-                pass
-        except Exception:
-            pass
-        root.addWidget(self._footer)
-
         # Internal card tracking mirrors grid_view for refresh_card compatibility
         self._cards: dict[Path, object] = {}
         self._card_labels: dict[Path, object] = {}
@@ -893,7 +867,7 @@ class ImageGalleryWidget(QWidget):
             pass
 
     def set_triage_done(self) -> None:
-        """S2: triage complete — hide spinner, show ✓."""
+        """S2: triage complete — hide spinner."""
         try:
             self.toolbar.set_triage_done()
         except Exception:

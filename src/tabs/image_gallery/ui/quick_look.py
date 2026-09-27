@@ -101,6 +101,47 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             content = getattr(self, "_content", None)
             if content is not None:
                 content.installEventFilter(self)
+                # D5: fast border→child jumps can skip content-Leave delivery,
+                # stranding a set plate cursor over inheriting children
+                # (proven live: qtbot jump border→thumb/label keeps SizeHor).
+                # One filter over the whole subtree recomputes the slot on
+                # every landing move, so staleness heals on arrival.
+                self._install_subtree_hover_watch(content)
+        except Exception:
+            pass
+
+    def _install_subtree_hover_watch(self, root) -> None:
+        """Install this overlay as MouseMove observer on a content subtree.
+
+        Idempotent (remove-then-install): ChildAdded storms must never stack
+        duplicate filter entries on the same widget.
+        """
+        try:
+            from PySide6.QtWidgets import QWidget as _QW
+
+            stack = [root]
+            seen = set()
+            while stack:
+                w = stack.pop()
+                try:
+                    if w is None or id(w) in seen:
+                        continue
+                    seen.add(id(w))
+                    if w is not self:
+                        try:
+                            w.removeEventFilter(self)
+                        except Exception:
+                            pass
+                        try:
+                            w.installEventFilter(self)
+                        except Exception:
+                            pass
+                    try:
+                        stack.extend(w.findChildren(_QW))
+                    except Exception:
+                        pass
+                except Exception:
+                    continue
         except Exception:
             pass
 
@@ -142,6 +183,19 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             from PySide6.QtCore import QEvent
 
+            _watched_content = getattr(self, "_content", None)
+            if event.type() == QEvent.Type.ChildAdded and (
+                watched is _watched_content
+                or (_watched_content is not None and _watched_content.isAncestorOf(watched))
+            ):
+                # D5: rows/strip/buttons are rebuilt per populate — watch
+                # newcomers the same way as the initial subtree.
+                try:
+                    child = event.child()
+                    if child is not None:
+                        self._install_subtree_hover_watch(child)
+                except Exception:
+                    pass
             if watched is getattr(self, "_content", None):
                 t = event.type()
                 if t == QEvent.Type.Resize:
@@ -189,6 +243,71 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                             apply_resize_cursor(self, self._content, "plate", None)
                     except Exception:
                         pass
+            # D5: landing moves on content descendants (buttons, labels,
+            # viewports, bars) never reach the plate filter above, so a
+            # border→child jump strands a set plate cursor with no clear
+            # path. Recompute the slot from the landing position; hover-only,
+            # never consumed (drags keep the existing plate/ring paths).
+            try:
+                from PySide6.QtCore import QEvent as _QE2
+
+                _content = getattr(self, "_content", None)
+                _in_content = (
+                    _content is not None
+                    and watched is not _content
+                    and _content.isAncestorOf(watched)
+                )
+                if event.type() == _QE2.Type.MouseMove and _in_content:
+                    try:
+                        from PySide6.QtCore import Qt as _Qt2
+
+                        from tabs.image_gallery.ui.quick_look.helpers import (
+                            apply_resize_cursor as _arc2,
+                        )
+                        from tabs.image_gallery.ui.quick_look.helpers import (
+                            nav_button_at as _nba2,
+                        )
+                        from tabs.image_gallery.ui.quick_look.helpers import (
+                            resize_zone_at as _rza2,
+                        )
+
+                        if getattr(self, "_border_drag", None) is None:
+                            try:
+                                _held = event.buttons()
+                            except Exception:
+                                _held = _Qt2.MouseButton.NoButton
+                            if _held == _Qt2.MouseButton.NoButton:
+                                try:
+                                    _global = event.globalPosition().toPoint()
+                                except Exception:
+                                    _global = None
+                                if _global is not None:
+                                    try:
+                                        _ov_local = self.mapFromGlobal(_global)
+                                    except Exception:
+                                        _ov_local = None
+                                    try:
+                                        _c_local = _content.mapFromGlobal(_global)
+                                    except Exception:
+                                        _c_local = None
+                                    if _ov_local is not None and _c_local is not None:
+                                        # W11: nav-arrow rects never show resize.
+                                        try:
+                                            _nav = _nba2(self, _ov_local)
+                                        except Exception:
+                                            _nav = None
+                                        if _nav is not None:
+                                            _arc2(self, _content, "plate", None)
+                                        else:
+                                            from tabs.image_gallery.ui.quick_look.helpers import (
+                                                resize_cursor_for as _rcf2,
+                                            )
+
+                                            _arc2(self, _content, "plate", _rcf2(_rza2(_content, _c_local)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # Self-healing preview fit: layout passes (post-show settle,
             # floor yields, wraps) resize the label without a card resize —
             # re-derive the pixmap. The size cache inside
@@ -591,10 +710,6 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 mode_str = f"{mode_str} MODE"
         except Exception:
             mode_str = "FIDELITY MODE"
-        try:
-            self._mode_chip.setText(mode_str)
-        except Exception:
-            pass
         is_fidelity = "FIDELITY" in mode_str
         # Delegate populated sections
         if _dbg_on:
@@ -654,9 +769,10 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         self._rebuild_strip()
         if _dbg_on:
             _dbg(
-                "quick look populate strip=%.1fms n_series=%d total_populate=%.1fms",
+                "quick look populate strip=%.1fms n_series=%d n_thumbs=%d total_populate=%.1fms",
                 (_time.perf_counter() - _t) * 1000.0,
                 len(self._series_items),
+                len(getattr(self, "_strip_buttons", [])),
                 (_time.perf_counter() - _tp0) * 1000.0,
             )
         try:

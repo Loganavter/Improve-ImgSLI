@@ -556,3 +556,75 @@ def test_second_press_keeps_first_drag(qtbot):
     assert ov._border_drag == first
     ov._border_drag = None
     ov.hide()
+
+
+def test_fast_jump_to_child_clears_plate_cursor(qtbot):
+    """D5: a fast border→child jump must not strand a set plate cursor.
+
+    Live-proof (see gallery-hover-loss lineage): fast parent→child jumps
+    can skip content-Leave delivery, so the plate slot stays set over
+    inheriting children (labels, thumbs). Uses qtbot.mouseMove (real
+    crossing synthesis), not synthetic QMouseEvent. Verified failing
+    pre-fix (SizeHor stuck after both jumps), passing post-fix.
+    """
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtWidgets import QApplication
+
+    from sli_ui_toolkit.widgets import Button
+
+    mates = [_item(f"up{i}.png", rank=i) for i in (1, 2, 3, 4, 5, 6)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    content = ov._content
+    # Right-edge strip, away from the nav circles (mid-height).
+    qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
+    QApplication.processEvents()
+    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    # Jump straight onto a tracking strip thumb (accepts moves).
+    thumbs = [
+        b for b in ov._strip_host.findChildren(Button)
+        if b.objectName().startswith("quicklook_strip_")
+    ]
+    assert thumbs
+    qtbot.mouseMove(thumbs[0], thumbs[0].rect().center())
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    # Re-arm on the strip, jump onto the preview label (no tracking).
+    qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
+    QApplication.processEvents()
+    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    lbl = ov._preview_label
+    qtbot.mouseMove(lbl, lbl.rect().center())
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    ov.hide()
+
+
+def test_strip_uses_overlay_area_with_autohiding_h_bar(qtbot):
+    """Strip scrolls via toolkit OverlayScrollArea (thin bar, auto-hide)."""
+    from PySide6.QtWidgets import QApplication
+
+    from sli_ui_toolkit.widgets import MinimalistScrollBar, OverlayScrollArea
+
+    mates = [_item(f"up{i}.png", rank=i) for i in (1, 2, 3, 4, 5, 6)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    scroll = ov._strip_scroll
+    assert isinstance(scroll, OverlayScrollArea)
+    assert scroll.widgetResizable() is False
+    hbar = scroll.custom_h_scrollbar
+    assert isinstance(hbar, MinimalistScrollBar)
+    assert hbar.maximum() > hbar.minimum()  # overflow: 6 thumbs
+    assert hbar.isVisible()
+    # Column containment holds (the original 446-vs-329 overflow fix).
+    assert ov._report_host.minimumSizeHint().width() <= scroll.viewport().width()
+    # Idle auto-hide + scroll re-show.
+    hbar.set_auto_hide(0.15)
+    qtbot.waitUntil(lambda: not hbar.isVisible(), timeout=2000)
+    scroll.horizontalScrollBar().setValue(50)
+    assert hbar.isVisible()
+    ov.hide()

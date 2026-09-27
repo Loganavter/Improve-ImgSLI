@@ -3,7 +3,7 @@
 Provides ``GalleryToolbar`` with surface Button + CustomLineEdit (+ optional
 ScrollableComboBox). Signals: ``openClicked`` and ``filterChanged(str)``,
 plus ``sortChanged(str)`` and ``viewToggled(bool)``.
-Audit-Meta: pattern=compound-widget size=exempt reason="toolbar + view-switch + triage indicator sharing one paint/theme lifecycle — split tracked post light-theme epic"
+Audit-Meta: pattern=compound-widget size=exempt reason="toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic"
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, LoadingSpinner, ScrollableComboBox
+from sli_ui_toolkit.widgets import Button, ComboBox, CustomLineEdit, Label, LoadingSpinner, SimpleOptionsFlyout
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
 
@@ -37,18 +37,6 @@ def _is_dark_theme() -> bool:
         pass
     return True
 
-
-def _resolve_toolbar_triage_color() -> QColor:
-    try:
-        from sli_ui_toolkit.managers import ThemeManager
-        from ui.theming import try_resolve_theme_color
-        c = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.status.ok")
-        if c is not None:
-            return QColor(c) if isinstance(c, str) else c
-    except Exception:
-        pass
-    # NOTE: was #3fbf5f (dark-only fallback) — now gallery.status.ok light/dark chain.
-    return QColor("#2e7d32" if not _is_dark_theme() else "#43a047")
 
 def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
     """S2 mockup x1130 y74: active view segment is a fill-chip (blue 0.2), not a border."""
@@ -220,35 +208,47 @@ class GalleryToolbar(QWidget):
             self._filter_edit.setFixedWidth(scaled_px(280))
         except Exception:
             pass
+        # Toolbar row is 34px — match the buttons (CustomLineEdit defaults
+        # to HEIGHT=32; instance override survives on_scale_changed).
+        try:
+            self._filter_edit.HEIGHT = 34  # type: ignore[attr-defined]
+            self._filter_edit.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
         layout.addWidget(self._filter_edit)
 
-        # Sort combo — 140×33 bg.band custom dropdown
-        self._sort_combo = ScrollableComboBox(self)
+        # Sort picker — surface button + SimpleOptionsFlyout (mode_picker.py
+        # precedent: button, populate(labels, current), show_below, item_chosen).
+        self._sort_items = ["Sort: Rank", "Sort: Name", "Sort: Date"]
+        self._sort_index = 0
+        self._sort_flyout: SimpleOptionsFlyout | None = None
+        self._sort_combo = Button(
+            text="Sort: Rank ▾",
+            variant="surface",
+            width_texts=[f"{text} ▾" for text in self._sort_items],
+            size=(0, scaled_px(34)),
+            corner_radius=6,
+            parent=self,
+        )
         self._sort_combo.setObjectName("gallery_toolbar_sort")
-        # Same thief as the filter edit above: combo popups accept drags by
-        # default and would steal the drop target from the gallery routing
-        # whenever the cursor crosses the toolbar.
+        # Same drop-thief rationale as filter edit above.
         try:
             self._sort_combo.setAcceptDrops(False)
         except Exception:
             pass
+        # Height fixed to the 34px row (Open Folder + filter); width comes
+        # from the width_texts hints (widest option), not a hardcoded 140.
         try:
-            self._sort_combo.setFixedWidth(scaled_px(140))
+            self._sort_combo.setFixedHeight(scaled_px(34))
         except Exception:
             pass
-        for label in ("Sort: Rank", "Sort: Name", "Sort: Date"):
-            self._sort_combo.addItem(label)
-        self._sort_combo.setCurrentIndex(0)
         try:
-            self._sort_combo.currentTextChanged.connect(self.sortChanged.emit)  # type: ignore[attr-defined]
+            self._sort_combo.clicked.connect(self._on_sort_clicked)
         except Exception:
-            try:
-                self._sort_combo.currentIndexChanged.connect(lambda _i: self.sortChanged.emit(self._sort_combo.currentText()))  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            pass
         layout.addWidget(self._sort_combo)
 
-        # Scanning near Sort (S1), triage centered-right (S2) — SVG x660 green ✓
+        # Scanning near Sort (S1)
         try:
             layout.setSpacing(scaled_px(20))
         except Exception:
@@ -276,29 +276,7 @@ class GalleryToolbar(QWidget):
             pass
         layout.addWidget(self._scanning_label)
 
-        # Stretch pushes triage indicator to center/right (SVG: x660, status-ok green, 12px)
-        layout.addStretch(1)
-
-        # Triage indicator — centered/right, green check via gallery.status.ok token
-        self._triage_indicator = Label(
-            "✓ triage complete", pixel_size=12, color=_resolve_toolbar_triage_color(), parent=self
-        )
-        self._triage_indicator.setObjectName("gallery_triage_indicator")
-        try:
-            self._triage_indicator.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        except Exception:
-            pass
-        try:
-            self._triage_indicator.hide()
-        except Exception:
-            pass
-        layout.addWidget(self._triage_indicator)
-        try:
-            layout.setAlignment(self._triage_indicator, Qt.AlignmentFlag.AlignVCenter)
-        except Exception:
-            pass
-
-        # Small stretch before view-switcher keeps triage not jammed to edge
+        # Stretch pushes view-switcher to the right edge
         layout.addStretch(1)
 
         # View switch — segmented 106×32 bg.band (real_design.md:49) — rounded r8 via paintEvent, no QSS
@@ -398,9 +376,9 @@ class GalleryToolbar(QWidget):
         self._apply_view = _apply_view  # type: ignore[attr-defined]
         layout.addWidget(self._view_switch_container)
 
-        self._mode_combo: ScrollableComboBox | None = None
+        self._mode_combo: ComboBox | None = None
         if with_mode_combo:
-            self._mode_combo = ScrollableComboBox(self)
+            self._mode_combo = ComboBox(self)
             self._mode_combo.setObjectName("gallery_toolbar_mode_combo")
             # Same drop-thief rationale as sort combo / filter edit above.
             try:
@@ -433,22 +411,6 @@ class GalleryToolbar(QWidget):
     def _on_theme_changed(self) -> None:
         """Re-resolve token colors and repaint (no palette, no QSS)."""
         try:
-            col = _resolve_toolbar_triage_color()
-            ind = self._triage_indicator
-            try:
-                if hasattr(ind, "setColor"):
-                    ind.setColor(col)
-                elif hasattr(ind, "apply_text_color"):
-                    ind.apply_text_color(col)
-            except Exception:
-                pass
-            try:
-                ind.update()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
             apply_view = getattr(self, "_apply_view", None)
             if callable(apply_view):
                 apply_view(bool(getattr(self, "_is_list", False)))
@@ -477,8 +439,35 @@ class GalleryToolbar(QWidget):
         return self._filter_edit
 
     @property
-    def sort_combo(self) -> ScrollableComboBox:
+    def sort_combo(self) -> Button:
         return self._sort_combo
+
+    @property
+    def sort_index(self) -> int:
+        return int(self._sort_index)
+
+    def sort_text(self) -> str:
+        try:
+            return str(self._sort_items[int(self._sort_index)])
+        except Exception:
+            return "Sort: Rank"
+
+    def set_sort_index(self, index: int) -> None:
+        """Select a sort option by index (emits sortChanged on change)."""
+        try:
+            index = int(index)
+        except Exception:
+            return
+        if 0 <= index < len(self._sort_items) and index != self._sort_index:
+            self._sort_index = index
+            try:
+                self._sort_combo.setText(f"{self._sort_items[index]} ▾")
+            except Exception:
+                pass
+            try:
+                self.sortChanged.emit(self._sort_items[index])
+            except Exception:
+                pass
 
     @property
     def view_switch(self) -> Button:
@@ -495,10 +484,6 @@ class GalleryToolbar(QWidget):
     @property
     def scanning_label(self) -> Label:
         return self._scanning_label
-
-    @property
-    def triage_indicator(self) -> Label:
-        return self._triage_indicator
 
     def set_scanning(self, n: int, total: int) -> None:
         """Show S1 scanning state: spinner + Label n/N."""
@@ -528,13 +513,9 @@ class GalleryToolbar(QWidget):
             self._spinner.start()
         except Exception:
             pass
-        try:
-            self._triage_indicator.hide()
-        except Exception:
-            pass
 
     def set_triage_done(self) -> None:
-        """S2: hide scanning, show ✓ triage complete."""
+        """S2: hide scanning (triage indicator removed)."""
         try:
             self._spinner.stop()
         except Exception:
@@ -548,10 +529,53 @@ class GalleryToolbar(QWidget):
             self._scanning_label.setText("")
         except Exception:
             pass
+
+    # -- sort picker (Button + SimpleOptionsFlyout) ------------------------
+
+    def _sort_flyout_ensure(self) -> SimpleOptionsFlyout | None:
+        parent = None
         try:
-            self._triage_indicator.show()
+            parent = self.window()
+        except Exception:
+            parent = None
+        if parent is None:
+            try:
+                parent = self
+            except Exception:
+                return None
+        flyout = getattr(self, "_sort_flyout", None)
+        if flyout is None:
+            try:
+                flyout = SimpleOptionsFlyout(parent_widget=parent)
+            except Exception:
+                return None
+            try:
+                flyout.item_chosen.connect(self._on_sort_chosen)
+            except Exception:
+                pass
+            self._sort_flyout = flyout
+        return flyout
+
+    def _on_sort_clicked(self) -> None:
+        """Open the sort flyout under the button (toggles on re-click)."""
+        try:
+            flyout = self._sort_flyout_ensure()
+            if flyout is None:
+                return
+            # Match the button metrics (transient_interpolation.py precedent:
+            # set_row_height takes design px, button height is 34 design).
+            try:
+                flyout.set_row_height(34)
+            except Exception:
+                pass
+            flyout.populate(list(self._sort_items), int(self._sort_index))
+            # Card-match: the white card (not the shadow halo) equals the button.
+            flyout.show_below(self._sort_combo, match_card_width=True)
         except Exception:
             pass
+
+    def _on_sort_chosen(self, index: int) -> None:
+        self.set_sort_index(index)
 
     def retranslate(self, translate: Callable[[str, str], str] | None = None) -> None:
         """Update translatable texts in place."""

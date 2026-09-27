@@ -196,3 +196,25 @@ def test_click_viewing_thumb_skips_full_repopulate(qtbot, tmp_path):
     assert calls == []
     assert ov._current_idx == 0
     ov.hide()
+
+
+def test_walk_keeps_strip_visible(qtbot):
+    """Rebuilt strip children must be shown: the first build is revealed by
+    a later ancestor show(), but on walk the host is already visible while
+    new containers stay hidden — excluded from layout hints, the host
+    collapses to 0 and the strip "disappears". Verified failing pre-fix
+    (host_h 0 after walk), passing post-fix."""
+    mates = [_item(f"up{i}.png", rank=i) for i in (1, 2)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov._strip_host.height() > 0
+    ov._walk(1)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert len(_strip_buttons(ov)) == 2
+    assert ov._strip_host.height() > 0
+    for b in _strip_buttons(ov):
+        assert b.isVisible()
+    ov.hide()

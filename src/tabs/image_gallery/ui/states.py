@@ -16,28 +16,26 @@ from typing import Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from sli_ui_toolkit.widgets import Button, DragDropOverlay, DropZoneLabel, Label, LoadingSpinner
+from sli_ui_toolkit.widgets import DragDropOverlay, DropZoneLabel, Label, LoadingSpinner
 
 
 class GalleryEmptyState(QWidget):
     """S0 empty state plus scanning/ready handling.
 
-    Contains a ``DropZoneLabel`` (drag target + textual hint) and a
+    Contains a ``DropZoneLabel`` (drag target) and a
     ``DragDropOverlay`` (window overlay painter for S0). Also shows a
     ``LoadingSpinner`` + count label during scanning.
 
     Signals:
         fileDropped(str) — path dropped onto the zone.
-        openRequested — user wants to pick a folder (e.g. click on zone).
+        openRequested — legacy (Open Folder button removed; never emitted).
     """
 
     fileDropped = Signal(str)
     openRequested = Signal()
 
-    # W12 W-C: single-flight window for open requests. One LMB click on the
-    # zone can reach us twice (``_open_button.clicked`` + the zone
-    # ``mousePressEvent`` override below) — collapse bursts into one emit
-    # so exactly one folder dialog opens per click.
+    # Single-flight window for open requests (legacy — Open Folder button
+    # removed; kept so rapid programmatic _request_open calls still collapse).
     _OPEN_SINGLE_FLIGHT_S = 0.6
 
     def __init__(
@@ -67,7 +65,6 @@ class GalleryEmptyState(QWidget):
 
         empty_text = _tr("image_gallery.empty_state", "Drop folder or images here")
         self._default_empty_text = empty_text
-        hint = _tr("image_gallery.drop_hint", "or pick a folder to start triage")
         # DropZoneLabel is the S0 drop surface — make it prominent, like session_picker empty.
         # W12 W-C: expanding zone that fills available space — no fixed
         # minimum height (toolkit default 80px floor applies); the layout
@@ -75,39 +72,25 @@ class GalleryEmptyState(QWidget):
         self._drop_label = DropZoneLabel(empty_text, self)
         self._drop_label.setObjectName("gallery_empty_drop_zone")
         self._drop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        try:
+            self._drop_label.setPixelSize(16)
+        except Exception:
+            pass
         # Make it expand to fill width AND height while keeping centered
         try:
             from PySide6.QtWidgets import QSizePolicy as _QSP
             self._drop_label.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Expanding)
         except Exception:
             pass
-        # Hint label below the zone for extra context (optional, painter-pipeline Label).
-        self._hint_label = Label(hint, pixel_size=11)
-        self._hint_label.setObjectName("gallery_empty_hint")
-        self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # S0 action: centered Open Folder button (single action per design.md:89)
-        open_text = _tr("image_gallery.pick_folder", "Open Folder…")
-        self._open_button = Button(text=open_text, variant="surface", size=(160, 36), parent=self)
-        self._open_button.setObjectName("gallery_empty_open_button")
-        try:
-            self._open_button.clicked.connect(self._request_open)
-        except Exception:
-            pass
-        try:
-            self._drop_label.setCursor(Qt.CursorShape.PointingHandCursor)
-            # Click on zone also opens — routed through the single-flight
-            # guard so one LMB click yields exactly one dialog even if both
-            # this handler and the button's clicked signal fire together.
-            self._drop_label.mousePressEvent = lambda e, _old=getattr(self._drop_label, "mousePressEvent", None): (self._request_open(), e.accept()) if e.button() == Qt.MouseButton.LeftButton else (_old(e) if _old else None)
-        except Exception:
-            pass
+        # No hint label, no Open Folder button — drop-only zone.
+        # Zone click does NOT open the folder dialog.
 
         # Scanning row: spinner + "Scanning… n"
         self._spinner = LoadingSpinner(self)
         self._spinner.setObjectName("gallery_scanning_spinner")
         self._spinner.hide()
-        self._scanning_label = Label("", pixel_size=12)
+        self._scanning_label = Label("", pixel_size=16)
         self._scanning_label.setObjectName("gallery_scanning_label")
         self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._scanning_label.hide()
@@ -115,8 +98,6 @@ class GalleryEmptyState(QWidget):
         # Add with stretch to center vertically
         layout.addStretch(1)
         layout.addWidget(self._drop_label, 1)
-        layout.addWidget(self._hint_label)
-        layout.addWidget(self._open_button, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self._scanning_label)
         layout.addStretch(1)
@@ -140,11 +121,6 @@ class GalleryEmptyState(QWidget):
             self._drop_label.drop_zone_drag_active.connect(self._on_drag_active)
         except Exception:
             pass
-        # Click on the empty zone also requests open (DropZoneLabel is a Label subclass).
-        try:
-            self._drop_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        except Exception:
-            pass
 
         self._ensure_overlay_parent()
 
@@ -153,9 +129,8 @@ class GalleryEmptyState(QWidget):
     def _request_open(self) -> None:
         """Emit ``openRequested`` at most once per single-flight window.
 
-        Both the Open button's ``clicked`` and the zone's ``mousePressEvent``
-        override call this; a single LMB click that reaches both paths
-        emits exactly once (W12 W-C: one click = one folder dialog).
+        Legacy — Open Folder button removed, kept for compat (e.g. toolbar
+        still emits ``folder_pick_requested`` directly).
         """
         now = time.monotonic()
         if now - self._last_open_emit < self._OPEN_SINGLE_FLIGHT_S:
@@ -220,11 +195,6 @@ class GalleryEmptyState(QWidget):
         if state == "empty":
             self.show()
             self._drop_label.show()
-            self._hint_label.show()
-            try:
-                self._open_button.show()
-            except Exception:
-                pass
             self._spinner.hide()
             try:
                 self._spinner.stop()
@@ -241,11 +211,6 @@ class GalleryEmptyState(QWidget):
             self.show()
             # Drop zone stays hidden while scanning — spinner + count only.
             self._drop_label.hide()
-            self._hint_label.hide()
-            try:
-                self._open_button.hide()
-            except Exception:
-                pass
             self._spinner.show()
             try:
                 self._spinner.start()
@@ -291,16 +256,11 @@ class GalleryEmptyState(QWidget):
                 self._spinner.stop()
             except Exception:
                 pass
-            try:
-                self._open_button.hide()
-            except Exception:
-                pass
             self.hide()
         else:
             # Unknown state — treat as empty.
             self.show()
             self._drop_label.show()
-            self._hint_label.show()
 
     @property
     def current_state(self) -> str:

@@ -936,13 +936,14 @@ class GalleryController:
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 
     def _run_triage_sync(self, items: list[GalleryItem]) -> tuple[list[Series], Path | None, Mode]:
-        """Pure pipeline for GenericWorker: cluster → hub → mode."""
+        """Pure pipeline for GenericWorker: cluster → mode (no auto hub)."""
         from tabs.image_gallery.services.clustering import cluster_items
-        from tabs.image_gallery.services.hub_detection import detect_source
         from tabs.image_gallery.services.mode import select_mode
 
         series = cluster_items(items)
-        source = detect_source(series, items)
+        # No auto source: hub_detection disabled — source stays None until
+        # the user picks one explicitly ("Set as source" / context menu).
+        source = None
         mode = select_mode(series, items, source)
         return (series, source, mode)
 
@@ -1226,7 +1227,7 @@ class GalleryController:
             self.widget.set_triage(series, mode, source)
         except Exception:
             logger.debug("widget.set_triage failed", exc_info=True)
-        # A1: toolbar ✓ triage complete
+        # A1: hide toolbar scanning spinner
         try:
             # Prefer widget helper, fallback to toolbar directly
             if hasattr(self.widget, "set_triage_done"):

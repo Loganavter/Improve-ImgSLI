@@ -75,20 +75,19 @@ def _layout_widgets(toolbar: GalleryToolbar) -> list[object]:
 
 
 def test_s2_11_toolbar_layout_order(toolbar: GalleryToolbar) -> None:
-    """pick, filter, sort, [indicator group], view_switch — switch rightmost."""
+    """pick, filter, sort, [scanning group], view_switch — switch rightmost."""
     widgets = _layout_widgets(toolbar)
     assert widgets.index(toolbar.pick_button) < widgets.index(toolbar.filter_edit)
     assert widgets.index(toolbar.filter_edit) < widgets.index(toolbar.sort_combo)
     assert widgets.index(toolbar.sort_combo) < widgets.index(toolbar.spinner)
     assert widgets.index(toolbar.spinner) < widgets.index(toolbar.scanning_label)
-    assert widgets.index(toolbar.scanning_label) < widgets.index(toolbar.triage_indicator)
     # view_switch may be inside segmented container
     try:
         idx_view = widgets.index(toolbar.view_switch)
     except ValueError:
         # fallback: container is last
         idx_view = widgets.index(toolbar.findChild(object, "gallery_toolbar_view_switch_container"))
-    assert widgets.index(toolbar.triage_indicator) < idx_view
+    assert widgets.index(toolbar.scanning_label) < idx_view
     # View switch (or its container) is the last widget in the row (right-aligned via stretch).
     assert widgets[-1] is toolbar.view_switch or widgets[-1].objectName() == "gallery_toolbar_view_switch_container" or widgets[-1] is toolbar.view_switch_list
 
@@ -129,17 +128,6 @@ def test_s2_8_view_switch_icon_pair(toolbar: GalleryToolbar) -> None:
     toolbar._apply_view(False)
     assert checked == [False]
     assert grid_btn.isChecked() is True
-
-
-def test_s2_7_triage_indicator_green(qtbot, _w1_light_palettes) -> None:
-    # gallery.status.ok token under the registered light palette (#3fbf5f —
-    # white-cards norm: light converges with the dark value), resolved live
-    # via the theme token, not a fallback literal.
-    toolbar = GalleryToolbar()
-    qtbot.addWidget(toolbar)
-    color = toolbar.triage_indicator._color_override
-    assert color is not None
-    assert color.name().lower() == "#3fbf5f"
 
 
 def test_s2_6_stats_segments(strip: StatsStrip) -> None:
@@ -195,3 +183,37 @@ def test_s2_series_header_has_no_raw_hex() -> None:
     src = Path(__file__).resolve().parents[1] / "ui" / "grid_view.py"
     text = src.read_text(encoding="utf-8")
     assert "#9a9a9a" not in text.lower()
+
+
+def test_sort_combo_opens_dropdown_and_emits(qtbot) -> None:
+    """Clicking Sort opens the options flyout; picking a row emits sortChanged.
+
+    Regression: the toolbar used ScrollableComboBox (wheel-only field, no
+    popup), so clicks did nothing. Verified failing pre-fix (no popup),
+    passing post-fix with Button + SimpleOptionsFlyout.
+    """
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtWidgets import QApplication
+
+    toolbar = GalleryToolbar()
+    qtbot.addWidget(toolbar)
+    toolbar.show()
+    qtbot.waitExposed(toolbar)
+    got: list[str] = []
+    toolbar.sortChanged.connect(got.append)
+    qtbot.mouseClick(toolbar.sort_combo, Qt.MouseButton.LeftButton, pos=QPoint(70, 17))
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert toolbar.sort_combo.property("cornerRadiusPx") == 6
+    flyout = toolbar._sort_flyout
+    assert flyout is not None and flyout.isVisible()
+    assert flyout._options == ["Sort: Rank", "Sort: Name", "Sort: Date"]
+    assert flyout.container.width() == toolbar.sort_combo.width()
+    rows = flyout._rows
+    assert len(rows) == 3
+    qtbot.mouseClick(rows[1], Qt.MouseButton.LeftButton, pos=rows[1].rect().center())
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert toolbar.sort_text() == "Sort: Name"
+    assert got == ["Sort: Name"]
+    assert not flyout.isVisible()
