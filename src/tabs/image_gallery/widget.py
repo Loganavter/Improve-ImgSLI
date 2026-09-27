@@ -352,6 +352,24 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+        # TEMP-DIAG (remove after load-cycle diagnosed): per-turn visibility
+        # sampler. Logs the actually-painted signature whenever it changes —
+        # catches flat-grid paints from ANY path, including ones with no
+        # view-cycle line. Gated by IMGSLI_GALLERY_DEBUG=1, zero impact off.
+        try:
+            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_on
+
+            if _dbg_on():
+                from PySide6.QtCore import QTimer as _QTimer
+
+                self._view_frame_sig: str | None = None
+                self._view_frame_timer = _QTimer(self)
+                self._view_frame_timer.setInterval(50)
+                self._view_frame_timer.timeout.connect(self._sample_view_frame)
+                self._view_frame_timer.start()
+        except Exception:
+            pass
+
     # -- Redux: gesture dispatch + subscribed renders (Wave 2c) -------------
 
     def _on_filter_text_dispatch(self, text: str) -> None:
@@ -829,6 +847,7 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             n_i = int(n) if isinstance(n, int) else 0
             t_i = int(total) if isinstance(total, int) else 0
+        _dbg("view-cycle scanning cover n=%d total=%d", n_i, t_i)
         try:
             self.toolbar.set_scanning(n_i, t_i)
         except Exception:
@@ -851,6 +870,25 @@ class ImageGalleryWidget(QWidget):
             else:
                 self._empty_state.show()
                 self._grid_view.hide()
+        except Exception:
+            pass
+
+    def set_background_scanning(self, n: int, total: int) -> None:
+        """S1 progress without hiding the grid (append path).
+
+        Same toolbar spinner as :meth:`set_scanning`, but the current
+        series view stays visible — appending one image must not tear
+        down good groups behind a spinner while the pool retriages.
+        """
+        try:
+            n_i = int(n)
+            t_i = int(total)
+        except Exception:
+            n_i = int(n) if isinstance(n, int) else 0
+            t_i = int(total) if isinstance(total, int) else 0
+        _dbg("view-cycle scanning background n=%d total=%d", n_i, t_i)
+        try:
+            self.toolbar.set_scanning(n_i, t_i)
         except Exception:
             pass
 
@@ -877,6 +915,7 @@ class ImageGalleryWidget(QWidget):
         # here (toggle/make-best/keep-best/remove), so without a re-apply
         # any of them flattens the SERIES grouping.
         saved_series = None
+        pre_paths: set[str] = set()
         try:
             gv = getattr(self, "_grid_view", None)
             if gv is not None and getattr(gv, "_series", None) is not None:
@@ -887,8 +926,79 @@ class ImageGalleryWidget(QWidget):
                 )
         except Exception:
             saved_series = None
+        try:
+            for it in (self._items or []):
+                pre_paths.add(str(getattr(it, "path", None)))
+        except Exception:
+            pass
+        # Append fast-path: pure pool growth with a live series view keeps
+        # every painted card/header in place (no flat teardown + restore —
+        # that demolished headers twice per drop). New cards land in the
+        # UNGROUPED tail via grid_view.append_new_cards; the imminent
+        # background triage regroups once if clustering actually moved them.
+        # Strict order check: old pool must appear first and unchanged
+        # (reorders still take the full path).
+        try:
+            gv_fast = getattr(self, "_grid_view", None)
+            if saved_series is not None and pre_paths and (items or []):
+                try:
+                    new_paths = [str(getattr(it, "path", None)) for it in list(items)]
+                    old_paths = [str(getattr(it, "path", None)) for it in list(self._items or [])]
+                except Exception:
+                    new_paths, old_paths = [], []
+                if (
+                    len(new_paths) > len(old_paths)
+                    and gv_fast is not None
+                    and getattr(gv_fast, "_rebuild_pending", None) is None
+                    and [p for p in new_paths if p in set(old_paths)] == list(old_paths)
+                ):
+                    try:
+                        old_set = set(old_paths)
+                        fresh = [it for it in list(items) if str(getattr(it, "path", None)) not in old_set]
+                    except Exception:
+                        fresh = []
+                    if fresh:
+                        self._items = list(items)
+                        _dbg(
+                            "view-cycle rebuild n=%d append-fast-path new=%d",
+                            len(self._items),
+                            len(fresh),
+                        )
+                        try:
+                            gv_fast.append_new_cards(fresh)
+                        except Exception:
+                            gv_fast = None
+                        if gv_fast is not None:
+                            try:
+                                for it in fresh:
+                                    card = gv_fast.card_for(it.path)
+                                    if card is not None:
+                                        self._cards[it.path] = card
+                                        self._card_labels[it.path] = card  # type: ignore[assignment]
+                            except Exception:
+                                pass
+                            # Fresh cards are content-current from acquire;
+                            # tooltips only (no sweep: selection untouched).
+                            try:
+                                for item in fresh:
+                                    self._refresh_tooltip(item)
+                            except Exception:
+                                pass
+                            try:
+                                self._install_quick_look_hooks()
+                            except Exception:
+                                pass
+                            return
+        except Exception:
+            pass
         self._items = list(items)
         _dbg("rebuild_grid n=%d branch=%s", len(self._items), "empty" if not items else "grid")
+        _dbg(
+            "view-cycle rebuild n=%d saved_series=%s pre=%d",
+            len(self._items),
+            "yes" if saved_series is not None else "no",
+            len(pre_paths),
+        )
         if not items:
             if had_items:
                 # Emptied by removals (reject/Space/Delete) — files stay on
@@ -934,7 +1044,11 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
         try:
-            self._grid_view.rebuild_grid(items)
+            try:
+                self._grid_view.rebuild_grid(items, paint_selection=saved_series is None)
+            except TypeError:
+                # Legacy doubles predate the paint_selection kwarg.
+                self._grid_view.rebuild_grid(items)
         except Exception:
             pass
         # Keep compat dicts in sync with grid_view's pool
@@ -947,29 +1061,35 @@ class ImageGalleryWidget(QWidget):
                 # card is Button, not QLabel — store dummy for refresh compatibility
                 self._card_labels[it.path] = card  # type: ignore[assignment]
 
-        for item in items:
-            self.refresh_card(item)
-
-        # Hook double-click → quick look
-        try:
-            self._install_quick_look_hooks()
-        except Exception:
-            pass
-
         # Re-apply the series view snapshotted above (if clusters survive).
+        # The restore paints via set_series when it acts (returns True) —
+        # only a non-restored flat grid needs the post-build paint below.
+        restored = False
         if saved_series is not None:
             try:
-                self._restore_series_view(saved_series)
+                restored = bool(self._restore_series_view(saved_series, pre_paths=pre_paths))
+            except Exception:
+                restored = False
+        if not restored:
+            self._refresh_rebuilt_cards(items, sweep=True)
+            # Hook double-click → quick look (restored views hook inside).
+            try:
+                self._install_quick_look_hooks()
             except Exception:
                 pass
 
-    def _restore_series_view(self, saved) -> None:
+    def _restore_series_view(self, saved, pre_paths=None) -> bool:
         """Re-apply a series view snapshot taken before the flat rebuild.
 
         Clusters are pruned to current membership (removals); clusters
         shrinking below 2 members fall out — ``set_series`` lands their
-        survivors in the UNGROUPED tail. Nothing surviving → stay flat
-        (e.g. folder switch keeps its current flat behavior).
+        survivors in the UNGROUPED tail. When every cluster dissolved but
+        items remain from the same pool (pure removal, e.g. deleted a
+        whole group), survivors get an explicit UNGROUPED view instead of
+        hanging header-less. A wholly new pool (folder switch — every
+        alive path is new) stays flat, no stale headers.
+
+        Returns True when the view was (re)painted via set_series.
         """
         try:
             series, hub_names, collapsed = saved
@@ -996,16 +1116,74 @@ class ImageGalleryWidget(QWidget):
                 except Exception:
                     pass
         if not kept:
-            return
+            # Every cluster dissolved. Same-pool removals (no brand-new
+            # paths) → explicit UNGROUPED so survivors don't hang without
+            # a series; replacement pool (folder switch) → stay flat.
+            try:
+                alive_paths = {str(getattr(it, "path", None)) for it in (self._items or [])}
+            except Exception:
+                alive_paths = set(alive)
+            if not alive_paths:
+                _dbg("view-cycle restore dissolved pool=empty → empty-state")
+                return False
+            try:
+                pre = set(pre_paths or set())
+            except Exception:
+                pre = set()
+            try:
+                added = set(alive_paths) - set(pre)
+            except Exception:
+                added = set()
+            if added:
+                _dbg("view-cycle restore dissolved added=%d → flat (replacement pool)", len(added))
+                return False
+            _dbg("view-cycle restore dissolved same-pool → UNGROUPED n=%d", len(alive_paths))
+            try:
+                self._grid_view.set_series([], hub_names=[], collapsed={})
+            except Exception:
+                return False
+            try:
+                self._series = []
+            except Exception:
+                pass
+            try:
+                self._stats_sync_after_dissolve()
+            except Exception:
+                pass
+            try:
+                self._cards.clear()
+                self._card_labels.clear()
+                for it in (self._items or []):
+                    card = self._grid_view.card_for(it.path)
+                    if card is not None:
+                        self._cards[it.path] = card
+                        self._card_labels[it.path] = card  # type: ignore[assignment]
+            except Exception:
+                pass
+            try:
+                for item in (self._items or []):
+                    self._refresh_tooltip(item)
+            except Exception:
+                pass
+            try:
+                self._install_quick_look_hooks()
+            except Exception:
+                pass
+            return True
+        try:
+            self._series = [list(cl) for cl in kept]
+        except Exception:
+            pass
         try:
             collapsed = {int(k): bool(v) for k, v in dict(collapsed or {}).items() if 0 <= int(k) < len(kept)}
         except Exception:
             collapsed = {}
         _dbg("rebuild_grid restore series clusters=%d", len(kept))
+        _dbg("view-cycle restore kept=%d alive=%d → set_series", len(kept), len(alive))
         try:
             self._grid_view.set_series(kept, hub_names=kept_hubs, collapsed=collapsed)
         except Exception:
-            return
+            return False
         try:
             self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
         except Exception:
@@ -1021,13 +1199,64 @@ class ImageGalleryWidget(QWidget):
                     self._card_labels[it.path] = card  # type: ignore[assignment]
         except Exception:
             pass
+        # set_series already swept selection once — tooltips only (no O(N²)).
         try:
             for item in (self._items or []):
-                self.refresh_card(item)
+                self._refresh_tooltip(item)
         except Exception:
             pass
         try:
             self._install_quick_look_hooks()
+        except Exception:
+            pass
+        return True
+
+    def _sample_view_frame(self) -> None:
+        """TEMP-DIAG: log the painted signature on change (see __init__)."""
+        try:
+            gv = getattr(self, "_grid_view", None)
+            if gv is None:
+                return
+            try:
+                cur = self._content_stack.currentWidget()
+                stack = type(cur).__name__
+            except Exception:
+                stack = "?"
+            try:
+                series = getattr(gv, "_series", None)
+                series_n = None if series is None else len(series)
+            except Exception:
+                series_n = "?"
+            try:
+                headers = [(h, bool(h.isVisible())) for h in list(getattr(gv, "_series_headers", []) or [])]
+                n_hdr_vis = sum(1 for _, v in headers if v)
+            except Exception:
+                n_hdr_vis = "?"
+            try:
+                cards = list(getattr(gv, "_cards_by_path", {}).values())
+                n_cards_vis = sum(1 for c in cards if bool(c.isVisible()))
+                n_cards = len(cards)
+            except Exception:
+                n_cards_vis, n_cards = "?", "?"
+            sig = f"stack={stack} series={series_n} headers={n_hdr_vis} cards={n_cards_vis}/{n_cards}"
+            if sig != getattr(self, "_view_frame_sig", None):
+                self._view_frame_sig = sig
+                _dbg("view-frame %s", sig)
+        except Exception:
+            pass
+
+    def _stats_sync_after_dissolve(self) -> None:
+        """Sync the stats strip after all series dissolved to UNGROUPED.
+
+        The strip otherwise keeps showing the pre-removal series count
+        next to a grid that has no SERIES headers left.
+        """
+        try:
+            total = len(list(self._items or []))
+        except Exception:
+            return
+        try:
+            self.stats_strip.set_stats(int(total), 0, 0)
         except Exception:
             pass
 
@@ -1041,7 +1270,14 @@ class ImageGalleryWidget(QWidget):
         thumb = self._card_labels.get(item.path)
         # If thumb is actually a Button, grid_view already handled pixmap; no QLabel logic needed.
         # Keep tooltip logic for Button cards
-        card = self._cards.get(item.path) or self._grid_view.card_for(item.path)
+        self._refresh_tooltip(item)
+
+    def _refresh_tooltip(self, item: GalleryItem) -> None:
+        """Sync the card tooltip for *item* (no content update, no sweep)."""
+        try:
+            card = self._cards.get(item.path) or self._grid_view.card_for(item.path)
+        except Exception:
+            return
         if card is not None:
             try:
                 tip_parts = [item.name]
@@ -1054,6 +1290,45 @@ class ImageGalleryWidget(QWidget):
                 card.setToolTip("\n".join(tip_parts))
             except Exception:
                 pass
+
+    def _refresh_rebuilt_cards(self, items, *, sweep: bool) -> None:
+        """Post-(re)build paint without the O(N²) sweep cascade.
+
+        Content is already current from the acquire/update pass — only
+        tooltips (stale on pool-recycled cards) plus a single selection
+        sweep. Replaces per-item ``refresh_card`` loops, each of which
+        re-swept selection over the whole grid.
+        """
+        try:
+            for item in list(items or []):
+                self._refresh_tooltip(item)
+        except Exception:
+            pass
+        if sweep:
+            try:
+                self._grid_view.apply_selection(None)
+            except Exception:
+                pass
+
+    def refresh_cards(self, items) -> None:
+        """Batch passthrough to ``grid_view.refresh_cards`` (single selection sweep).
+
+        Falls back to per-card refresh when the grid view predates the batch
+        API (tests with stubbed grid views). Single-card semantics (incl.
+        the legacy tooltip tail) live in ``refresh_card``.
+        """
+        try:
+            batch = getattr(self._grid_view, "refresh_cards", None)
+            if callable(batch):
+                batch(items)
+                return
+        except Exception:
+            pass
+        try:
+            for item in list(items or []):
+                self.refresh_card(item)
+        except Exception:
+            pass
 
     def set_card_visible(self, path: Path, visible: bool) -> None:
         try:
@@ -1141,6 +1416,108 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def _series_view_matches(self, norm_series, prev_mode, prev_source, mode, source) -> bool:
+        """True when the painted series view already equals the incoming one.
+
+        Compares ordered cluster membership (path strings), the UNGROUPED
+        tail derived from ``self._items``, object identity per path (fresh
+        objects need card refresh, not a skip), plus mode/source (dot
+        palette + strip label depend on them). Lets repeat triage over an
+        unchanged pool skip the full card recycle.
+        """
+        try:
+            if mode != prev_mode:
+                return False
+        except Exception:
+            return False
+        try:
+            if str(source) != str(prev_source):
+                return False
+        except Exception:
+            return False
+        try:
+            gv = getattr(self, "_grid_view", None)
+            if gv is None:
+                return False
+            cur_clusters = [list(cl) for cl in (getattr(gv, "_series", None) or [])]
+            new_clusters = [list(cl) for cl in (norm_series or []) if len(list(cl)) >= 2]
+            if len(cur_clusters) != len(new_clusters):
+                return False
+            try:
+                by_path = {}
+                for it in (self._items or []):
+                    try:
+                        by_path[str(it.path)] = it
+                    except Exception:
+                        continue
+            except Exception:
+                by_path = {}
+            for cur_cl, new_cl in zip(cur_clusters, new_clusters):
+                try:
+                    cur_paths = [str(getattr(m, "path", None)) for m in list(cur_cl)]
+                    new_paths = [str(getattr(m, "path", None)) for m in list(new_cl)]
+                except Exception:
+                    return False
+                if cur_paths != new_paths:
+                    return False
+                for m in list(new_cl):
+                    try:
+                        if m is not by_path.get(str(getattr(m, "path", None))):
+                            return False
+                    except Exception:
+                        return False
+            try:
+                cur_members = {p for cl in cur_clusters for p in [str(getattr(m, "path", None)) for m in list(cl)]}
+                new_members = {p for cl in new_clusters for p in [str(getattr(m, "path", None)) for m in list(cl)]}
+                cur_all = set(by_path)
+            except Exception:
+                return False
+            if cur_members != new_members:
+                return False
+            if (cur_all - cur_members) != (cur_all - new_members):
+                return False
+            return True
+        except Exception:
+            return False
+
+    def _rebuild_series_view(self, norm_series, hub_names, collapsed) -> None:
+        """Paint the series-grouped grid (extracted from set_triage)."""
+        try:
+            if norm_series:
+                self._grid_view.set_series(norm_series, hub_names=hub_names, collapsed=collapsed)
+                # Sync collapsed back (grid may have normalized)
+                try:
+                    self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
+                except Exception:
+                    pass
+            else:
+                # No series: show UNGROUPED header for all items (real_design.md:59)
+                self._grid_view.set_series([], hub_names=[], collapsed=collapsed)
+            # set_scanning hid the grid for S1 — S2 content exists again, show it
+            if self._items or norm_series:
+                try:
+                    if hasattr(self, "_content_stack"):
+                        self._content_stack.setCurrentWidget(self._grid_view)
+                    else:
+                        self._grid_view.show()
+                except Exception:
+                    pass
+            # Keep compat dicts in sync after series rebuild
+            self._cards.clear()
+            self._card_labels.clear()
+            for it in (self._items or []):
+                card = self._grid_view.card_for(it.path)
+                if card is not None:
+                    self._cards[it.path] = card
+                    self._card_labels[it.path] = card  # type: ignore[assignment]
+            # Re-hook double-click for newly pooled cards
+            try:
+                self._install_quick_look_hooks()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def set_triage(self, series, mode, source) -> None:
         """Stage 2: update stats strip + series-grouped grid.
 
@@ -1171,11 +1548,25 @@ class ImageGalleryWidget(QWidget):
             self._series = list(norm_series)
         except Exception:
             self._series = []
+        try:
+            prev_mode = self._mode
+        except Exception:
+            prev_mode = None
+        try:
+            prev_source = self._source_path
+        except Exception:
+            prev_source = None
         self._mode = mode
         try:
             self._source_path = Path(source) if source is not None else None
         except Exception:
             self._source_path = None
+        try:
+            view_unchanged = self._series_view_matches(
+                norm_series, prev_mode, prev_source, mode, source
+            )
+        except Exception:
+            view_unchanged = False
 
         # Stats strip — "40 images · 7 series · 33 redundant" synced with grid (real_design §2.3)
         try:
@@ -1268,41 +1659,20 @@ class ImageGalleryWidget(QWidget):
             collapsed = {}
 
         # Series-grouped grid — headers only for clusters ≥2, singles under UNGROUPED tail.
-        try:
-            if norm_series:
-                self._grid_view.set_series(norm_series, hub_names=hub_names, collapsed=collapsed)
-                # Sync collapsed back (grid may have normalized)
-                try:
-                    self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
-                except Exception:
-                    pass
-            else:
-                # No series: show UNGROUPED header for all items (real_design.md:59)
-                self._grid_view.set_series([], hub_names=[], collapsed=collapsed)
-            # set_scanning hid the grid for S1 — S2 content exists again, show it
-            if self._items or norm_series:
-                try:
-                    if hasattr(self, "_content_stack"):
-                        self._content_stack.setCurrentWidget(self._grid_view)
-                    else:
-                        self._grid_view.show()
-                except Exception:
-                    pass
-            # Keep compat dicts in sync after series rebuild
-            self._cards.clear()
-            self._card_labels.clear()
-            for it in (self._items or []):
-                card = self._grid_view.card_for(it.path)
-                if card is not None:
-                    self._cards[it.path] = card
-                    self._card_labels[it.path] = card  # type: ignore[assignment]
-            # Re-hook double-click for newly pooled cards
+        # Identical re-triage (append/change that moved nothing) skips the
+        # full recycle: stats above already synced, cards are current.
+        if view_unchanged:
+            _dbg("set_triage skip rebuild: view identical")
+            _dbg("view-cycle triage series=%d → skip (identical)", len([cl for cl in norm_series if len(cl) >= 2]))
+        else:
+            _dbg(
+                "view-cycle triage series=%d → rebuild",
+                len([cl for cl in norm_series if len(cl) >= 2]),
+            )
             try:
-                self._install_quick_look_hooks()
+                self._rebuild_series_view(norm_series, hub_names, collapsed)
             except Exception:
                 pass
-        except Exception:
-            pass
         # No setStyleSheet — painter pipeline owns visuals.
         # Mark triage done (S2) — toolbar ✓
         try:

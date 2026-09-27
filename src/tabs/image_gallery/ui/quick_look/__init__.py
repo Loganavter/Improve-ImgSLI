@@ -27,7 +27,6 @@ try:
             for _name in (
                 "QuickLookOverlay",
                 "DIM_VEIL_ALPHA",
-                "_SourceInsetHost",
                 "_BarWidget",
                 "_DualRestoredInventedBar",
                 "_BandingCombHistogram",

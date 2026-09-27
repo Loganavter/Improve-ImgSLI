@@ -71,7 +71,7 @@ def _make_ctrl(widget):
     ctrl = GalleryController(
         widget, thread_pool=QThreadPool.globalInstance(), context=context
     )
-    ctrl._start_triage = lambda items: None  # type: ignore[method-assign]
+    ctrl._start_triage = lambda items, **kw: None  # type: ignore[method-assign]
     ctrl._load_thumbnail = lambda item: None  # type: ignore[method-assign]
     return ctrl, store
 

@@ -1,5 +1,5 @@
 """Stage 2 S4 quick look — TopLevelInWindowOverlay with two-panel layout.
-Audit-Meta: pattern=thin-owner reason="thin owner delegating to ui/quick_look/* helpers,bars,histograms,source_inset,metrics,artifacts,strip"
+Audit-Meta: pattern=thin-owner reason="thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip"
 
 Left: large preview (pixmap, source inset for fidelity mode, sharpness-crop inset)
      + prev/next walk the series (←→).
@@ -49,10 +49,6 @@ try:
     )
 except Exception:
     _load_preview_pixmap = _thumb_pixmap = _theme_color = _token_color = _set_colored_text = _source_dimensions = None  # type: ignore
-try:
-    from tabs.image_gallery.ui.quick_look.source_inset import _SourceInsetHost
-except Exception:
-    _SourceInsetHost = QWidget  # type: ignore
 try:
     from tabs.image_gallery.ui.quick_look.bars import _BarWidget, _DualRestoredInventedBar
     from tabs.image_gallery.ui.quick_look.histograms import _BandingCombHistogram, _GenericHistogram, _HistogramStub
@@ -109,13 +105,15 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
 
     def _reposition_source_inset(self) -> None:
+        # Source/crop inset blocks are absolute children of the preview
+        # (bottom-left over the image) — re-pin with every resize, then nav.
         try:
-            from tabs.image_gallery.ui.quick_look.source_inset import reposition_source_inset
-            reposition_source_inset(self)
+            from tabs.image_gallery.ui.quick_look.insets import reposition_preview_insets
+            reposition_preview_insets(self)
         except Exception:
             pass
         # W4 item 6: nav circles are absolute card children — re-pin with
-        # every resize (like the source inset).
+        # every resize.
         try:
             from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
             reposition_nav_buttons(self)
@@ -191,6 +189,26 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                             apply_resize_cursor(self, self._content, "plate", None)
                     except Exception:
                         pass
+            # Self-healing preview fit: layout passes (post-show settle,
+            # floor yields, wraps) resize the label without a card resize —
+            # re-derive the pixmap. The size cache inside
+            # _rescale_preview_to_host skips no-op steps; setting a pixmap
+            # changes no geometry, so this cannot loop.
+            try:
+                from PySide6.QtCore import QEvent as _QE
+
+                if watched is getattr(self, "_preview_label", None) and event.type() == _QE.Type.Resize:
+                    from tabs.image_gallery.ui.quick_look.helpers import _rescale_preview_to_host
+                    _rescale_preview_to_host(self)
+                    # Same passes settle the label size the inset anchor
+                    # reads — re-pin so a pre-layout measurement (top-left
+                    # fallback) heals once the live height lands.
+                    try:
+                        self._reposition_source_inset()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         except Exception:
             pass
         return super().eventFilter(watched, event)
@@ -235,6 +253,35 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         # Plain veil press (ring declined above, children eat their own
         # presses): dismiss the overlay. Reverses the W6/W11 background-click
         # ban; Esc/deactivate stay pinned (flags unchanged).
+        # NOTE: non-interactive children (Labels, histograms, scroll
+        # viewport gaps) do NOT accept presses — those bubble up here.
+        # A press inside the card is content, not veil: swallow it instead
+        # of dismissing, otherwise every click on metrics/headers/preview
+        # closes the overlay.
+        try:
+            _pos = event.position().toPoint()
+            _content = getattr(self, "_content", None)
+            if _content is not None:
+                try:
+                    import shiboken6 as _shib
+
+                    _valid = bool(_shib.isValid(_content))
+                except Exception:
+                    _valid = True
+                if _valid:
+                    try:
+                        _geo = _content.geometry()
+                    except Exception:
+                        _geo = None
+                    if _geo is not None and int(_geo.width()) > 0 and int(_geo.height()) > 0:
+                        if _geo.contains(_pos):
+                            try:
+                                event.accept()
+                            except Exception:
+                                pass
+                            return
+        except Exception:
+            pass
         try:
             self.dismiss()
         except Exception:

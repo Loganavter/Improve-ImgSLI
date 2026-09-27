@@ -236,6 +236,68 @@ def test_non_image_drop_ignored_on_zone_and_widget(qapp, qtbot, tmp_path):
 
 
 # --------------------------------------------------------------------------
+# single-writer: controller-consumed drops must not eager-dispatch the slot
+# --------------------------------------------------------------------------
+
+
+def test_files_drop_with_controller_skips_eager_dispatch(qapp, qtbot, tmp_path, monkeypatch):
+    """One drop → one writer. Eager slot dispatch + open_paths rebuilt the
+    same pool twice (log-proven: 4 flat-first rebuilds per drop, headers
+    demolished each time). With a controller present it emits after mirroring.
+    """
+    from tabs.image_gallery.ui import drag_drop as dnd
+
+    a = _img(tmp_path, "a.png")
+    b = _img(tmp_path, "b.png")
+    eager: list = []
+    monkeypatch.setattr(
+        dnd, "_dispatch_drop_pool", lambda *a_, **k: eager.append((a_, k))
+    )
+    opened: list = []
+    owner = SimpleNamespace(_controller=SimpleNamespace(
+        open_paths=lambda ps, **kw: opened.append(list(ps)),
+        open_folder=lambda f: (_ for _ in ()).throw(AssertionError("no folder expected")),
+    ))
+    assert dnd._route_paths(owner, [a, b]) is True
+    assert [p.name for p in opened[0]] == ["a.png", "b.png"]
+    assert eager == []
+
+
+def test_files_drop_without_controller_eager_dispatches(qapp, qtbot, tmp_path, monkeypatch):
+    """Storeless contexts keep the eager dispatch as the sole writer."""
+    from tabs.image_gallery.ui import drag_drop as dnd
+
+    a = _img(tmp_path, "a.png")
+    b = _img(tmp_path, "b.png")
+    eager: list = []
+    monkeypatch.setattr(
+        dnd, "_dispatch_drop_pool", lambda *a_, **k: eager.append((a_, k))
+    )
+    owner = SimpleNamespace()
+    assert dnd._route_paths(owner, [a, b]) is False
+    assert len(eager) == 1
+
+
+def test_folder_drop_with_controller_skips_eager_dispatch(qapp, qtbot, tmp_path, monkeypatch):
+    from tabs.image_gallery.ui import drag_drop as dnd
+
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    _img(sub, "f.png")
+    eager: list = []
+    monkeypatch.setattr(
+        dnd, "_dispatch_drop_pool", lambda *a_, **k: eager.append((a_, k))
+    )
+    opened: list = []
+    owner = SimpleNamespace(_controller=SimpleNamespace(
+        open_folder=lambda f: opened.append(Path(f)),
+    ))
+    assert dnd._route_paths(owner, [sub]) is True
+    assert opened == [sub]
+    assert eager == []
+
+
+# --------------------------------------------------------------------------
 # single-image special case (intentional, tested) + fallback consistency
 # --------------------------------------------------------------------------
 

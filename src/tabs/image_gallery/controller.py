@@ -91,6 +91,13 @@ class GalleryController:
         # contexts (context=None) keep pure-local behavior, verbatim.
         self._pending_thumb_ready: list[tuple[str, str]] = []
         self._thumb_flush_scheduled = False
+        # Card-repaint coalescing: thumbnail deliveries used to call
+        # widget.refresh_card per item, each re-sweeping selection over the
+        # whole grid (O(N) repaints per delivery → stalled UI thread while
+        # quick look is open). Repaints accumulate here (path → item) and
+        # flush once per tick via refresh_cards (single selection sweep).
+        self._pending_card_items: dict[str, object] = {}
+        self._card_flush_scheduled = False
         self._subscribed_gallery_store = None
         # Own-dispatch accounting: dispatch → emit is synchronous, so each
         # successful _emit/_transact arms one light (no-op) reconcile; any
@@ -489,6 +496,46 @@ class GalleryController:
     def flush_pending_thumbnails(self) -> None:
         """Flush a coalesced turn synchronously (tests / teardown)."""
         self._flush_pending_thumbnails()
+        self._flush_pending_card_refresh()
+
+    def _queue_card_refresh(self, item) -> None:
+        """Defer one card repaint into the per-tick batch (see __init__)."""
+        try:
+            self._pending_card_items[str(getattr(item, "path", item))] = item
+        except Exception:
+            return
+        if self._card_flush_scheduled:
+            return
+        self._card_flush_scheduled = True
+        try:
+            if QCoreApplication.instance() is None:
+                # No event loop (headless unit context) — flush synchronously.
+                self._flush_pending_card_refresh()
+            else:
+                QTimer.singleShot(0, self._flush_pending_card_refresh)
+        except Exception:
+            try:
+                self._flush_pending_card_refresh()
+            except Exception:
+                pass
+
+    def _flush_pending_card_refresh(self) -> None:
+        self._card_flush_scheduled = False
+        if not self._pending_card_items:
+            return
+        batch, self._pending_card_items = list(self._pending_card_items.values()), {}
+        try:
+            refresh_cards = getattr(self.widget, "refresh_cards", None)
+            if callable(refresh_cards):
+                refresh_cards(batch)
+                return
+        except Exception:
+            pass
+        for item in batch:
+            try:
+                self.widget.refresh_card(item)
+            except Exception:
+                pass
 
     def _emit_triage_finished(self, triage_state: str) -> bool:
         """Dispatch GalleryTriageFinished from the local summary + ranks."""
@@ -634,6 +681,21 @@ class GalleryController:
                 uniq.append(it)
         # Append: old pool first, truly-new drops at the end.
         merged: list[GalleryItem] = list(old_items) + uniq
+        if not uniq and not replace:
+            # Pure no-op (re-drop of known files): pool, label and folder are
+            # already current — rebuilding would demolish headers for nothing.
+            # Still ensure grouping: flat cards that never got triaged (e.g.
+            # materialized by an external sync first) need their first pass;
+            # a live series view needs nothing at all.
+            try:
+                gv = getattr(self.widget, "_grid_view", None)
+                grouped = bool(getattr(gv, "_series", None))
+            except Exception:
+                grouped = False
+            if grouped or not merged:
+                return
+            self._start_triage(merged, cover_grid=False)
+            return
         # For explicit file drops, don't set folder to parent — keep it None
         # so we don't imply the whole parent folder was opened (fixes "установил путь на папку"
         # when user dropped a single image). Folder is only set when a directory
@@ -698,7 +760,9 @@ class GalleryController:
             self._load_thumbnail(item)
         # Triage series/mode/source describe the whole pool (set wholesale on
         # ready), so re-run over the merged pool, not just the drop.
-        self._start_triage(merged)
+        # Append into a live pool keeps its groups on screen (background
+        # progress only); a fresh pool (or replace) covers until first groups.
+        self._start_triage(merged, cover_grid=bool(replace) or not old_items)
 
     def _on_pick_folder(self) -> None:
         start_dir = str(self.state.folder) if self.state.folder else ""
@@ -760,7 +824,9 @@ class GalleryController:
             else:
                 item.thumbnail = pixmap
                 item.thumbnail_status = ThumbnailStatus.LOADED
-        self.widget.refresh_card(item)
+        # Card repaint is coalesced per tick (see _queue_card_refresh) — a
+        # per-item refresh_card here re-swept selection over the whole grid.
+        self._queue_card_refresh(item)
         # Per-item completion coalesces to ONE GalleryThumbnailsReady per turn.
         try:
             self._queue_thumb_ready(path, item.thumbnail_status.value)
@@ -774,7 +840,7 @@ class GalleryController:
         if item is None:
             return
         item.thumbnail_status = ThumbnailStatus.ERROR
-        self.widget.refresh_card(item)
+        self._queue_card_refresh(item)
         try:
             self._queue_thumb_ready(path, ThumbnailStatus.ERROR.value)
         except Exception:
@@ -880,7 +946,15 @@ class GalleryController:
         mode = select_mode(series, items, source)
         return (series, source, mode)
 
-    def _start_triage(self, items: list[GalleryItem]) -> None:
+    def _start_triage(self, items: list[GalleryItem], *, cover_grid: bool = True) -> None:
+        """Cluster in a worker, then ``set_triage`` on delivery.
+
+        ``cover_grid=True`` (folder switch / replace) hides the grid behind
+        the S1 scanning state until groups are ready. ``False`` (appending
+        to a live pool) keeps the current groups visible and only spins the
+        toolbar — tearing down a good view for one new image is the jump
+        users see on every drop.
+        """
         if not items:
             self.state.triage_state = TriageState.DONE
             self.state.series = []
@@ -894,10 +968,25 @@ class GalleryController:
             return
         self.state.triage_state = TriageState.RUNNING
         # A1: S1 scanning n/N in toolbar + empty state (progressive grid)
-        try:
-            self.widget.set_scanning(0, len(items))
-        except Exception:
-            logger.debug("widget.set_scanning failed", exc_info=True)
+        if cover_grid:
+            try:
+                self.widget.set_scanning(0, len(items))
+            except Exception:
+                logger.debug("widget.set_scanning failed", exc_info=True)
+        else:
+            background = getattr(self.widget, "set_background_scanning", None)
+            if callable(background):
+                try:
+                    background(0, len(items))
+                except Exception:
+                    logger.debug("widget.set_background_scanning failed", exc_info=True)
+            else:
+                # Legacy doubles predate the background API — same covering
+                # behavior as before rather than no progress at all.
+                try:
+                    self.widget.set_scanning(0, len(items))
+                except Exception:
+                    logger.debug("widget.set_scanning failed", exc_info=True)
         worker = GenericWorker(self._run_triage_sync, list(items))
         gen = self._folder_gen
         worker.signals.result.connect(lambda res, g=gen: self._on_triage_ready(res, g))
@@ -945,24 +1034,71 @@ class GalleryController:
         # result: dict[str(path), dict[Artifact, Severity]]
         if not isinstance(result, dict):
             return
+        # Batch the card refresh: per-item refresh_card re-sweeps selection
+        # over the whole grid (O(N^2) repaints in one delivery → stalled UI
+        # thread → compositor busy cursor + dropped quick-look frames at the
+        # clean→flagged flip). Items whose severities did not change skip the
+        # repaint entirely.
+        changed: list = []
         for item in self.state.items:
             key = str(item.path)
             arts = result.get(key)
             if arts is None:
                 continue
             try:
+                new_norm = {}
+                for k, v in dict(arts).items():
+                    kk = k.value if hasattr(k, "value") else str(k)
+                    vv = v.value if hasattr(v, "value") else str(v)
+                    new_norm[str(kk).lower()] = str(vv).lower()
+            except Exception:
+                continue
+            try:
+                old_metrics_map = None
+                if isinstance(item.metrics, dict):
+                    old_metrics_map = item.metrics.get("artifacts")
+                old_norm: dict[str, str] = {}
+                try:
+                    old_raw = getattr(item, "artifacts", None)
+                    if isinstance(old_raw, dict):
+                        for k, v in old_raw.items():
+                            kk = k.value if hasattr(k, "value") else str(k)
+                            vv = v.value if hasattr(v, "value") else str(v)
+                            old_norm[str(kk).lower()] = str(vv).lower()
+                except Exception:
+                    pass
+                if isinstance(old_metrics_map, dict):
+                    try:
+                        for k, v in old_metrics_map.items():
+                            lk = str(k).lower()
+                            if lk not in old_norm:
+                                old_norm[lk] = str(v).lower()
+                    except Exception:
+                        pass
+                if old_norm and old_norm == new_norm:
+                    continue
+            except Exception:
+                pass
+            try:
                 # Keep Enum values as-is (models.Severity)
                 item.artifacts = dict(arts)  # type: ignore[assignment]
                 # Also mirror into metrics for persistence / quick look fallback
                 if isinstance(item.metrics, dict):
                     item.metrics["artifacts"] = {str(k): (v.value if hasattr(v, "value") else str(v)) for k, v in arts.items()}
-                # Refresh card dots (warm/red flagged, yellow mild, gray clean)
-                try:
-                    self.widget.refresh_card(item)
-                except Exception:
-                    logger.debug("widget.refresh_card failed for artifact %s", item.path, exc_info=True)
-                # Quick look report: if widget has quick look overlay visible, refresh it.
-                try:
+                changed.append(item)
+            except Exception:
+                logger.debug("artifact apply failed for %s", item.path, exc_info=True)
+        if changed:
+            try:
+                self.widget.refresh_cards(changed)  # type: ignore[attr-defined]
+            except Exception:
+                for item in changed:
+                    try:
+                        self.widget.refresh_card(item)
+                    except Exception:
+                        logger.debug("widget.refresh_card failed for artifact %s", item.path, exc_info=True)
+        # Quick look report: if widget has quick look overlay visible, refresh it.
+        for item in changed:
                     # Widget owns _quick_look_overlay (QuickLookOverlay).
                     for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
                         ql = getattr(self.widget, attr, None)
@@ -982,10 +1118,6 @@ class GalleryController:
                             self.widget.refresh_artifacts_for(item)  # type: ignore[attr-defined]
                         except Exception:
                             pass
-                except Exception:
-                    pass
-            except Exception:
-                logger.debug("artifact apply failed for %s", item.path, exc_info=True)
 
     def _on_artifacts_error(self, error_info: object) -> None:
         logger.debug("artifact worker error: %r", error_info, exc_info=True)
@@ -1021,6 +1153,10 @@ class GalleryController:
             return  # folder switched — late fidelity metrics dropped
         if not isinstance(result, dict):
             return
+        # Same batching as _on_artifacts_ready: skip items whose 4 keys did
+        # not change, refresh the rest with one selection sweep.
+        required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+        changed: list = []
         for item in self.state.items:
             try:
                 key = str(item.path)
@@ -1031,33 +1167,44 @@ class GalleryController:
                 continue
             # Identity fail-closed: entry key came from this item's own path;
             # write the 4 keys only when all measured, never a partial copy.
-            required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
             if not all(k in entry for k in required):
                 continue
             try:
                 if not isinstance(item.metrics, dict):
                     continue
-                for k in required:
-                    item.metrics[k] = entry[k]
                 try:
-                    self.widget.refresh_card(item)
-                except Exception:
-                    logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
-                # Quick look report: overlay opened before delivery shows the
-                # numbers without reopen (mirrors _on_artifacts_ready above;
-                # refresh_metrics itself no-ops when hidden or on another item).
-                try:
-                    for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
-                        ql = getattr(self.widget, attr, None)
-                        if ql is not None and hasattr(ql, "refresh_metrics"):
-                            try:
-                                ql.refresh_metrics(item)
-                            except Exception:
-                                pass
+                    if all(item.metrics.get(k) == entry[k] for k in required):
+                        continue
                 except Exception:
                     pass
+                for k in required:
+                    item.metrics[k] = entry[k]
+                changed.append(item)
             except Exception:
                 logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
+        if changed:
+            try:
+                self.widget.refresh_cards(changed)  # type: ignore[attr-defined]
+            except Exception:
+                for item in changed:
+                    try:
+                        self.widget.refresh_card(item)
+                    except Exception:
+                        logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
+        # Quick look report: overlay opened before delivery shows the
+        # numbers without reopen (mirrors _on_artifacts_ready above;
+        # refresh_metrics itself no-ops when hidden or on another item).
+        for item in changed:
+            try:
+                for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
+                    ql = getattr(self.widget, attr, None)
+                    if ql is not None and hasattr(ql, "refresh_metrics"):
+                        try:
+                            ql.refresh_metrics(item)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
     def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1379,6 +1526,11 @@ class GalleryController:
         from tabs.image_gallery.use_cases.triage import remove_from_grid as _remove
 
         return bool(_remove(self, path))
+
+    def remove_paths_from_grid(self, paths) -> int:
+        from tabs.image_gallery.use_cases.triage import remove_paths_from_grid as _remove_many
+
+        return int(_remove_many(self, paths))
 
     def keep_best_of_series(self) -> dict:
         from tabs.image_gallery.use_cases.triage import keep_best_of_series as _keep

@@ -33,15 +33,6 @@ def rebuild_artifacts(overlay, item) -> None:
     # Rows live flat in right_lay (see helpers.relayout_report_rows).
     host = getattr(overlay, "_report_host", None)
     lay = getattr(overlay, "_right_lay", None)
-    for w in list(overlay._artifact_rows):
-        try:
-            if lay is not None:
-                lay.removeWidget(w)
-            w.setParent(None)
-            w.deleteLater()
-        except Exception:
-            pass
-    overlay._artifact_rows.clear()
     metrics = getattr(item, "metrics", None) or {}
     if not isinstance(metrics, dict):
         metrics = {}
@@ -111,6 +102,28 @@ def rebuild_artifacts(overlay, item) -> None:
         return "clean"
 
     shown: list[tuple[str, str]] = [(aid, _sev_for(aid)) for aid in artifacts]
+
+    # Delivery handlers fire per worker result: rebuilding identical rows
+    # (widget teardown + creation + layout activation) in the same tick as
+    # the grid repaint storm stalls the loop. Skip when nothing changed.
+    try:
+        if list(getattr(overlay, "_artifact_sevs", None) or []) == shown:
+            return
+    except Exception:
+        pass
+    try:
+        overlay._artifact_sevs = list(shown)
+    except Exception:
+        pass
+    for w in list(overlay._artifact_rows):
+        try:
+            if lay is not None:
+                lay.removeWidget(w)
+            w.setParent(None)
+            w.deleteLater()
+        except Exception:
+            pass
+    overlay._artifact_rows.clear()
 
     for aid, lvl in shown:
         row = QWidget(host)

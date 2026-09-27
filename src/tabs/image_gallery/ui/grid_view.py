@@ -336,10 +336,13 @@ class GalleryGridView(QWidget):
             pass
         return None
 
-    def rebuild_grid(self, items: list[GalleryItem], mode: object = None) -> None:
+    def rebuild_grid(self, items: list[GalleryItem], mode: object = None, *, paint_selection: bool = True) -> None:
         """Clear and rebuild the 4-column grid from *items* (pool-reusing Buttons).
 
         ``mode`` controls per-dot artifact palette; proxied to ``build_gallery_card``.
+        ``paint_selection=False`` skips the closing selection sweep — the
+        widget passes it when a series restore follows in the same tick and
+        sweeps once itself (else every rebuild pays two full sweeps).
         """
         if mode is not None:
             self._mode = mode
@@ -394,7 +397,8 @@ class GalleryGridView(QWidget):
             self.items_layout.addWidget(card, r, c)
             card.show()
 
-        self.apply_selection(self._selection)
+        if paint_selection:
+            self.apply_selection(self._selection)
         self._update_host_height(len(items))
 
     def _rebuild_next_chunk(self) -> None:
@@ -534,67 +538,391 @@ class GalleryGridView(QWidget):
         self._collapsed = norm_collapsed
         self._rebuild_series()
 
+    def _retitle_header(self, header, text: str, index, collapsed: bool = False) -> None:
+        """Refresh a reused series header in place (no destroy/create).
+
+        Updates the label text, object names and the collapse-button closure
+        (which captures the section index — a reused widget at a new
+        position must toggle the new section). UNGROUPED headers (index
+        None) get their toggle disconnected.
+        """
+        display = str(text or "").strip()
+        is_collapsible = index is not None
+        arrow = "▸" if collapsed else "▾"
+        if is_collapsible:
+            if not display.endswith("▾") and not display.endswith("▸"):
+                display = f"{display} {arrow}"
+            elif display[-1] in ("▾", "▸"):
+                display = display[:-1].strip() + f" {arrow}"
+        else:
+            if display.endswith("▾") or display.endswith("▸"):
+                display = display[:-1].strip()
+        try:
+            header.setObjectName(
+                f"GallerySeriesHeader_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped"
+            )
+        except Exception:
+            pass
+        try:
+            btn = header.findChild(Button)
+        except Exception:
+            btn = None
+        if btn is None:
+            return
+        try:
+            btn.setObjectName(
+                f"GallerySeriesHeaderBtn_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped_btn"
+            )
+        except Exception:
+            pass
+        try:
+            btn.update_region(
+                "_main",
+                rows=[ButtonRow(
+                    text=display.upper(), size=11, color=_gallery_header_text_color(),
+                    h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0,
+                )],
+            )
+        except Exception:
+            pass
+        try:
+            btn.clicked.disconnect()
+        except Exception:
+            pass
+        if is_collapsible:
+            try:
+                btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
+            except Exception:
+                pass
+
     def _rebuild_series(self) -> None:
         """Internal: rebuild with series headers + UNGROUPED tail."""
-        # Recycle cards.
-        for path in list(self._cards_by_path):
-            self._recycle_card(path)
-        self._clear_series_headers()
-        while self.items_layout.count():
-            item = self.items_layout.takeAt(0)
-            w = item.widget()
-            if w is not None and w not in list(self._cards_by_path.values()) and w not in self._pool:
-                w.setParent(None)
-        self._cards_by_path.clear()
-        self._series_cards = {}
+        # Preserve scroll + keyboard focus across the teardown: heights land
+        # identical, but the intermediate collapse clamps the scrollbar to 0
+        # and reparenting drops focus to None (keyboard dead until a click).
+        try:
+            _bar = self.scroll_area.verticalScrollBar()
+            _saved_scroll = int(_bar.value())
+        except Exception:
+            _bar = None
+            _saved_scroll = 0
+        _focus_path: str | None = None
+        try:
+            from PySide6.QtWidgets import QApplication as _QApp
 
+            _fw = _QApp.focusWidget()
+            _host = getattr(self, "items_host", None)
+            if _fw is not None and _host is not None and _host.isAncestorOf(_fw):
+                try:
+                    _prop = _fw.property("gallery_path")
+                    _focus_path = str(_prop) if _prop else None
+                except Exception:
+                    _focus_path = None
+                if not _focus_path:
+                    try:
+                        _ip = getattr(getattr(_fw, "_gallery_item", None), "path", None)
+                        _focus_path = str(_ip) if _ip else None
+                    except Exception:
+                        _focus_path = None
+        except Exception:
+            _focus_path = None
+        # --- surgical reconcile (no teardown) ---
+        # Reuses header widgets (text refreshed in place) and surviving
+        # cards (content updated, never hidden/reparented). Previously every
+        # regroup destroyed all headers (deleteLater) and round-tripped all
+        # cards through hide+reparent+show — per-card ParentChange storms,
+        # badge resyncs, focus loss and header-button blink, log-proven on
+        # every drop.
         if self._series is None:
+            for path in list(self._cards_by_path):
+                self._recycle_card(path)
+            self._clear_series_headers()
+            while self.items_layout.count():
+                try:
+                    self.items_layout.takeAt(0)
+                except Exception:
+                    break
+            self._cards_by_path.clear()
+            self._series_cards = {}
             return
-        current_row = 0
-        # Series sections
-        for idx, cluster in enumerate(self._series):
+        try:
+            _mode = self._resolve_mode()
+        except Exception:
+            _mode = None
+        # 1. plan sections (same order/texts as the old full rebuild).
+        _sections: list[dict] = []
+        for idx, cluster in enumerate(list(self._series or [])):
             hub = self._hub_names[idx] if idx < len(self._hub_names) else None
             is_collapsed = bool(self._collapsed.get(idx, False))
-            # Build header text: SERIES i · {hub_name} · {n} VARIANTS
             if hub:
                 header_text = f"SERIES {idx + 1} · {hub} · {len(cluster)} VARIANTS"
             else:
                 header_text = f"SERIES {idx + 1} · {len(cluster)} images"
-            header = self._make_series_header(header_text, len(cluster), hub_name=hub, collapsed=is_collapsed, index=idx)
-            self._series_headers.append(header)
-            self.items_layout.addWidget(header, current_row, 0, 1, GRID_COLUMNS)
-            current_row += 1
-            if is_collapsed:
-                # Skip cards for collapsed section
+            _sections.append({
+                "kind": "series", "index": idx, "hub": hub,
+                "collapsed": is_collapsed, "text": header_text,
+                "items": list(cluster) if not is_collapsed else [],
+            })
+        if list(getattr(self, "_ungrouped", []) or []):
+            _sections.append({
+                "kind": "tail", "index": None, "hub": None,
+                "collapsed": False,
+                "text": f"UNGROUPED · {len(list(getattr(self, '_ungrouped', []) or []))}",
+                "items": list(getattr(self, "_ungrouped", []) or []),
+            })
+        # 2. cards: recycle gone paths only.
+        try:
+            _wanted = {str(getattr(it, "path", None)) for s in _sections for it in s["items"]}
+        except Exception:
+            _wanted = set()
+        for path in list(self._cards_by_path):
+            try:
+                if str(path) not in _wanted:
+                    self._recycle_card(path)
+            except Exception:
+                continue
+        # 3. cards: update kept in place (no hide/reparent — filters, pins
+        # and focus survive), acquire genuinely new ones.
+        self._series_cards = {}
+        for sec in _sections:
+            if sec["kind"] == "series" and sec["collapsed"]:
                 continue
             cards: list[object] = []
-            for pos, item in enumerate(cluster):
-                card = self._acquire_card(item)
-                self._cards_by_path[str(item.path)] = card
+            for item in sec["items"]:
+                try:
+                    sp = str(item.path)
+                except Exception:
+                    continue
+                card = self._cards_by_path.get(sp)
+                if card is None:
+                    try:
+                        card = self._acquire_card(item)
+                    except Exception:
+                        continue
+                    self._cards_by_path[sp] = card
+                else:
+                    try:
+                        update_gallery_card(card, item, mode=_mode)  # type: ignore[arg-type]
+                    except Exception:
+                        pass
                 cards.append(card)
-                r, c = divmod(pos, GRID_COLUMNS)
-                self.items_layout.addWidget(card, current_row + r, c)
-                card.show()
-            self._series_cards[idx] = cards
-            rows_needed = (len(cluster) + GRID_COLUMNS - 1) // GRID_COLUMNS if cluster else 0
-            current_row += rows_needed
-        # UNGROUPED tail — format "UNGROUPED · N" (real_design.md:59, no "images")
-        if self._ungrouped:
-            header = self._make_series_header(f"UNGROUPED · {len(self._ungrouped)}", len(self._ungrouped), hub_name=None, collapsed=False, index=None)
-            self._series_headers.append(header)
-            self.items_layout.addWidget(header, current_row, 0, 1, GRID_COLUMNS)
+            if sec["kind"] == "series":
+                self._series_cards[sec["index"]] = cards
+        # 4. headers: reuse by position (text refreshed, collapse rebound),
+        # destroy extras, create missing.
+        try:
+            _old_headers = list(getattr(self, "_series_headers", []) or [])
+        except Exception:
+            _old_headers = []
+        _new_headers: list = []
+        for pos, sec in enumerate(_sections):
+            if pos < len(_old_headers):
+                hdr = _old_headers[pos]
+                try:
+                    self._retitle_header(hdr, sec["text"], sec["index"], sec["collapsed"])
+                except Exception:
+                    pass
+                _new_headers.append(hdr)
+            else:
+                try:
+                    hdr = self._make_series_header(
+                        sec["text"], len(sec["items"]), hub_name=sec["hub"],
+                        collapsed=sec["collapsed"], index=sec["index"],
+                    )
+                except Exception:
+                    continue
+                _new_headers.append(hdr)
+        for hdr in _old_headers[len(_new_headers):]:
+            try:
+                self.items_layout.removeWidget(hdr)
+            except Exception:
+                pass
+            try:
+                hdr.setParent(None)
+                hdr.deleteLater()
+            except Exception:
+                pass
+        self._series_headers = _new_headers
+        # 5. relayout: drop layout items only (widgets stay alive/parented),
+        # re-add per plan with the same row math as before.
+        while self.items_layout.count():
+            try:
+                self.items_layout.takeAt(0)
+            except Exception:
+                break
+        current_row = 0
+        _hdr_pos = 0
+        for sec in _sections:
+            try:
+                header = _new_headers[_hdr_pos]
+                _hdr_pos += 1
+            except Exception:
+                continue
+            try:
+                self.items_layout.addWidget(header, current_row, 0, 1, GRID_COLUMNS)
+                header.show()
+            except Exception:
+                pass
             current_row += 1
-            for pos, item in enumerate(self._ungrouped):
-                card = self._acquire_card(item)
-                self._cards_by_path[str(item.path)] = card
-                r, c = divmod(pos, GRID_COLUMNS)
-                self.items_layout.addWidget(card, current_row + r, c)
-                card.show()
-            rows_needed = (len(self._ungrouped) + GRID_COLUMNS - 1) // GRID_COLUMNS
+            if sec["kind"] == "series" and sec["collapsed"]:
+                continue
+            for pos, item in enumerate(sec["items"]):
+                try:
+                    card = self._cards_by_path.get(str(item.path))
+                except Exception:
+                    card = None
+                if card is None:
+                    continue
+                try:
+                    r, c = divmod(pos, GRID_COLUMNS)
+                    self.items_layout.addWidget(card, current_row + r, c)
+                    card.show()
+                except Exception:
+                    pass
+            rows_needed = (len(sec["items"]) + GRID_COLUMNS - 1) // GRID_COLUMNS if sec["items"] else 0
             current_row += rows_needed
 
         self.apply_selection(self._selection)
         self._update_host_height_for_series(current_row)
+        try:
+            if _bar is not None:
+                _bar.setValue(min(int(_saved_scroll), int(_bar.maximum())))
+        except Exception:
+            pass
+        try:
+            if _focus_path:
+                _card = self._cards_by_path.get(_focus_path)
+                if _card is not None and _card.isVisible() and _card.isEnabled():
+                    _card.setFocus()
+        except Exception:
+            pass
+
+    def append_new_cards(self, items: list[GalleryItem]) -> None:
+        """Append-only fast path for pool growth (drop-append).
+
+        Keeps every painted card/header in place — no flat teardown, no
+        restore pass. New cards land in the UNGROUPED tail when a series
+        view is live (creating the tail header on first use), else at the
+        flat grid end. Falls back to a full ``rebuild_grid`` when there is
+        no safe incremental plan (e.g. a chunked rebuild still in flight).
+        """
+        fresh = [it for it in (items or [])]
+        if not fresh:
+            return
+        if getattr(self, "_rebuild_pending", None) is not None:
+            self.rebuild_grid(list(getattr(self, "_items", []) or []) + list(fresh))
+            return
+        try:
+            self._items = list(getattr(self, "_items", []) or []) + list(fresh)
+        except Exception:
+            pass
+        if getattr(self, "_series", None) is None:
+            try:
+                start = max(0, len(list(getattr(self, "_items", []) or [])) - len(fresh))
+                for pos, item in enumerate(fresh):
+                    card = self._acquire_card(item)
+                    self._cards_by_path[str(item.path)] = card
+                    r, c = divmod(start + pos, GRID_COLUMNS)
+                    self.items_layout.addWidget(card, r, c)
+                    card.show()
+            except Exception:
+                pass
+            try:
+                self._update_host_height(len(list(getattr(self, "_items", []) or [])))
+            except Exception:
+                pass
+        else:
+            try:
+                if not list(getattr(self, "_ungrouped", []) or []):
+                    row = int(self.items_layout.rowCount())
+                    header = self._make_series_header(
+                        f"UNGROUPED · {len(fresh)}", len(fresh),
+                        hub_name=None, collapsed=False, index=None,
+                    )
+                    self._series_headers.append(header)
+                    self.items_layout.addWidget(header, row, 0, 1, GRID_COLUMNS)
+                    header.show()
+                else:
+                    self._refresh_ungrouped_header_count(len(list(getattr(self, "_ungrouped", []) or [])) + len(fresh))
+                base = int(self.items_layout.rowCount())
+                pos0 = len(list(getattr(self, "_ungrouped", []) or []))
+                for pos, item in enumerate(fresh):
+                    card = self._acquire_card(item)
+                    self._cards_by_path[str(item.path)] = card
+                    r, c = divmod(pos0 + pos, GRID_COLUMNS)
+                    self.items_layout.addWidget(card, base + r, c)
+                    card.show()
+                try:
+                    self._ungrouped = list(getattr(self, "_ungrouped", []) or []) + list(fresh)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            try:
+                self._update_host_height_for_series(int(self.items_layout.rowCount()))
+            except Exception:
+                pass
+        try:
+            self.apply_selection(self._selection)
+        except Exception:
+            pass
+
+    def _refresh_ungrouped_header_count(self, total: int) -> None:
+        """Recreate only the UNGROUPED tail header with a fresh count.
+
+        One widget swapped in place (layout row preserved) — not the full
+        teardown ``_rebuild_series`` performs. Everything else (series
+        headers, all cards) is untouched.
+        """
+        try:
+            headers = list(getattr(self, "_series_headers", []) or [])
+            pos = next(
+                (i for i, h in enumerate(headers)
+                 if getattr(h, "objectName", lambda: "")() == "GallerySeriesHeader_ungrouped"),
+                None,
+            )
+            if pos is None:
+                return
+            old = headers[pos]
+            try:
+                row = self._row_of(old)
+            except Exception:
+                row = None
+            try:
+                self.items_layout.removeWidget(old)
+            except Exception:
+                pass
+            try:
+                old.setParent(None)
+                old.deleteLater()
+            except Exception:
+                pass
+            header = self._make_series_header(
+                f"UNGROUPED · {int(total)}", int(total),
+                hub_name=None, collapsed=False, index=None,
+            )
+            headers[pos] = header
+            self._series_headers = headers
+            try:
+                if row is None:
+                    row = int(self.items_layout.rowCount())
+                self.items_layout.addWidget(header, row, 0, 1, GRID_COLUMNS)
+                header.show()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _row_of(self, widget) -> int | None:
+        """Layout row of *widget* in the items grid (None when absent)."""
+        try:
+            idx = self.items_layout.indexOf(widget)
+            if idx < 0:
+                return None
+            r, _, _, _ = self.items_layout.getItemPosition(idx)
+            return int(r)
+        except Exception:
+            return None
 
     def _make_series_header(
         self,
@@ -796,6 +1124,42 @@ class GalleryGridView(QWidget):
         # Re-apply selection tint in case accent changed.
         self.apply_selection(self._selection)
 
+    def refresh_cards(self, items) -> None:
+        """Batch card refresh: one content update per card, ONE selection sweep.
+
+        Delivery handlers (artifact/fidelity analysis) used to call
+        ``refresh_card`` per item, each re-running ``apply_selection`` over
+        the whole grid — O(N^2) region updates + repaints on the UI thread
+        in a single delivery, stalling the event loop (compositor busy
+        cursor, dropped overlay frames) exactly when quick look shows new
+        severities. Single-call behavior of ``refresh_card`` is unchanged.
+        """
+        try:
+            items = list(items or [])
+        except Exception:
+            return
+        if not items:
+            return
+        try:
+            mode = self._resolve_mode()
+        except Exception:
+            mode = None
+        for item in items:
+            try:
+                card = self._cards_by_path.get(str(item.path))
+            except Exception:
+                continue
+            if card is None:
+                continue
+            try:
+                update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
+            except Exception:
+                pass
+        try:
+            self.apply_selection(self._selection)
+        except Exception:
+            pass
+
     def set_card_visible(self, path: Path, visible: bool) -> None:
         card = self._cards_by_path.get(str(path))
         if card is not None:
@@ -813,9 +1177,30 @@ class GalleryGridView(QWidget):
             norm.add(str(p))
         self._selection = set(norm)
         accent = self._selection_accent
+        try:
+            accent_key = None if accent is None else (
+                int(accent.red()), int(accent.green()),
+                int(accent.blue()), int(accent.alpha()),
+            )
+        except Exception:
+            accent_key = None
         for str_path, card in self._cards_by_path.items():
+            want = str_path in norm
+            # Idempotence stamp: repeat sweeps (thumbnail ticks, rebuild
+            # tails) skip cards whose tint is already correct — otherwise
+            # every sweep repaints every card (O(N²) per load cycle).
             try:
-                apply_gallery_selection(card, str_path in norm, accent=accent)  # type: ignore[arg-type]
+                stamp = getattr(card, "_gallery_sel_applied", None)
+            except Exception:
+                stamp = None
+            if stamp == (want, accent_key):
+                continue
+            try:
+                apply_gallery_selection(card, want, accent=accent)  # type: ignore[arg-type]
+            except Exception:
+                pass
+            try:
+                card._gallery_sel_applied = (want, accent_key)  # type: ignore[attr-defined]
             except Exception:
                 pass
 

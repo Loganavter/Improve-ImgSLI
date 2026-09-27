@@ -154,6 +154,16 @@ def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixm
     return None
 
 
+def _preview_drag_live(overlay) -> bool:
+    """True while a card-resize drag is live (border/ring ``_border_drag``)."""
+    try:
+        if getattr(overlay, "_border_drag", None) is not None:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _rescale_preview_to_host(overlay) -> None:
     """Rescale the stashed full preview pixmap to the live label size (W-B).
 
@@ -163,6 +173,13 @@ def _rescale_preview_to_host(overlay) -> None:
     ``overlay._preview_full``; this re-derives the shown pixmap from it on
     every card resize. No-op when nothing populatable is stashed (fake
     paths, null pixmaps) or the label has no size yet.
+
+    Drag economy: repeated moves at one size (clamp-standstill leftovers,
+    sub-pixel drag noise) skip the scale via ``_preview_scaled_for``; while
+    a drag is live the cheap ``FastTransformation`` keeps the UI thread
+    free, and the release path re-renders once with ``SmoothTransformation``
+    (release clears the drag flag first, so the cached-Fast entry is
+    re-done smooth — see the ``_preview_scaled_smooth`` guard below).
     """
     try:
         full = getattr(overlay, "_preview_full", None)
@@ -186,17 +203,33 @@ def _rescale_preview_to_host(overlay) -> None:
         try:
             from PySide6.QtCore import Qt
 
+            live = _preview_drag_live(overlay)
+            want_smooth = not live
+            try:
+                cached_for = getattr(overlay, "_preview_scaled_for", None)
+                cached_smooth = bool(getattr(overlay, "_preview_scaled_smooth", False))
+            except Exception:
+                cached_for, cached_smooth = None, False
+            if cached_for == (int(target_w), int(target_h)) and (cached_smooth or not want_smooth):
+                return
             scaled = full.scaled(
                 target_w,
                 target_h,
                 Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+                Qt.TransformationMode.SmoothTransformation
+                if want_smooth
+                else Qt.TransformationMode.FastTransformation,
             )
         except Exception:
             return
         try:
             if scaled is not None and not scaled.isNull():
                 label.setPixmap(scaled)
+                try:
+                    overlay._preview_scaled_for = (int(target_w), int(target_h))
+                    overlay._preview_scaled_smooth = bool(want_smooth)
+                except Exception:
+                    pass
         except Exception:
             pass
     except Exception:
@@ -250,6 +283,11 @@ def populate_preview(overlay, item) -> None:
         except Exception:
             pass
         try:
+            overlay._preview_scaled_for = None
+            overlay._preview_scaled_smooth = False
+        except Exception:
+            pass
+        try:
             full = QPixmap(str(getattr(item, "path", "")))
             if full is not None and not full.isNull():
                 try:
@@ -298,126 +336,7 @@ def populate_preview(overlay, item) -> None:
         pass
 
 
-def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
-    try:
-        overlay._source_inset_host.setVisible(bool(is_fidelity))
-        if is_fidelity:
-            from tabs.image_gallery.ui.quick_look.source_inset import reposition_source_inset
-            reposition_source_inset(overlay)
-    except Exception:
-        pass
-    if not is_fidelity:
-        return
-    try:
-        from sli_ui_toolkit.managers import scaled_px
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QPixmap
-        src = overlay._source_path
-        src_item = None
-        owner = overlay._owner
-        try:
-            items = list(getattr(getattr(owner, "state", None), "items", []) or []) if owner is not None else []
-            if src is not None:
-                for it2 in items:
-                    if Path(getattr(it2, "path", "")) == Path(src):
-                        src_item = it2
-                        break
-        except Exception:
-            pass
-        pix = None
-        if src_item is not None:
-            try:
-                thumb = getattr(src_item, "thumbnail", None)
-                if thumb is not None and not thumb.isNull():
-                    pix = thumb.scaled(
-                        scaled_px(150),
-                        scaled_px(84),
-                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                        Qt.TransformationMode.FastTransformation,
-                    )
-                else:
-                    # No thumbnail yet (fresh drop) — scaled reader read
-                    # instead of a full QPixmap decode + smooth scale.
-                    pix = _load_scaled_pixmap(Path(getattr(src_item, "path", src)), scaled_px(150), scaled_px(84))
-            except Exception:
-                pix = None
-            if pix is None:
-                try:
-                    pix = _thumb_pixmap(src_item, scaled_px(150), scaled_px(84))
-                except Exception:
-                    pix = None
-        elif src is not None:
-            try:
-                pix = _load_scaled_pixmap(src, scaled_px(150), scaled_px(84))
-            except Exception:
-                pix = None
-            if pix is None:
-                try:
-                    pm2 = QPixmap(str(src))
-                    if not pm2.isNull():
-                        pix = pm2.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-                except Exception:
-                    pass
-        if pix is not None and not pix.isNull():
-            overlay._source_inset_pix.setPixmap(pix)
-        else:
-            overlay._source_inset_pix.setText("—")
-        src_name = Path(src).name if src is not None else "source"
-        caption = f"SOURCE · {src_name}"
-        dims = _source_dimensions(src_item, src)
-        if dims is not None:
-            caption += f" · {dims[0]}×{dims[1]}"
-        overlay._source_inset_label.setText(caption)
-    except Exception:
-        pass
+# Inset populates (source + sharpness-crop) live in ``insets.py``
+# (CODE_PATTERNS.md thin-owner split — this file hit the 500-line
+# contract gate); import paths are unchanged via ``helpers.py``.
 
-
-def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
-    """Sharpness-crop inset — non-fidelity modes only.
-
-    S4 v2 LIGHT is fidelity mode and draws no ``SHARPNESS CROP`` inset
-    (camera/batch modes keep it). Hidden in fidelity, shown otherwise.
-    """
-    try:
-        overlay._crop_host.setVisible(not bool(is_fidelity))
-    except Exception:
-        pass
-    if is_fidelity:
-        return
-    try:
-        from sli_ui_toolkit.managers import scaled_px
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QPixmap
-        # Reuse the already-decoded preview when possible — avoids a
-        # second full QPixmap load for the non-fidelity crop inset.
-        pm_full = getattr(overlay, "_preview_full", None)
-        try:
-            if pm_full is None or pm_full.isNull():
-                pm_full = None
-        except Exception:
-            pm_full = None
-        if pm_full is None:
-            try:
-                pm_full = QPixmap(str(getattr(item, "path", "")))
-                if pm_full is not None and pm_full.isNull():
-                    pm_full = None
-            except Exception:
-                pm_full = None
-        if pm_full is not None and not pm_full.isNull():
-            w = pm_full.width()
-            h = pm_full.height()
-            cw = max(1, w // 3)
-            ch = max(1, h // 3)
-            x = max(0, (w - cw) // 2)
-            y = max(0, (h - ch) // 2)
-            crop = pm_full.copy(x, y, cw, ch)
-            crop_scaled = crop.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            overlay._crop_pix.setPixmap(crop_scaled)
-        else:
-            thumb = getattr(item, "thumbnail", None)
-            if thumb is not None and not thumb.isNull():
-                overlay._crop_pix.setPixmap(thumb.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
-            else:
-                overlay._crop_pix.setText("—")
-    except Exception:
-        pass

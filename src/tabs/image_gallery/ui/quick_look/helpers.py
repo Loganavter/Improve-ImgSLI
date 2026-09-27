@@ -8,7 +8,7 @@ import populate_preview`` keeps working via these re-exports.
 Homes: ``labels_theme`` (labels + theme tokens), ``overlay_build`` (painted
 chrome + ``build_overlay_ui``), ``preview`` (preview pixmaps + source dims),
 ``meta`` (filename meta + brief), ``headers`` (report/series headers),
-``nav`` (prev/next), ``resize`` (grip/border/ring + card re-layout).
+``nav`` (prev/next), ``resize`` (border/ring + card re-layout).
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ from tabs.image_gallery.ui.quick_look.overlay_build import (
     QUICK_LOOK_NAV_GLYPH_PT,
     _CardPlate,
     _RuleWidget,
-    _ResizeGrip,
     build_overlay_ui,
 )
 from tabs.image_gallery.ui.quick_look.preview import (
@@ -40,6 +39,8 @@ from tabs.image_gallery.ui.quick_look.preview import (
     _rescale_preview_to_host,
     _source_dimensions,
     populate_preview,
+)
+from tabs.image_gallery.ui.quick_look.insets import (
     populate_source_inset,
     populate_crop,
 )
@@ -94,7 +95,6 @@ __all__ = [
     "QUICK_LOOK_NAV_GLYPH_PT",
     "_CardPlate",
     "_RuleWidget",
-    "_ResizeGrip",
     "build_overlay_ui",
     "_load_preview_pixmap",
     "_thumb_pixmap",

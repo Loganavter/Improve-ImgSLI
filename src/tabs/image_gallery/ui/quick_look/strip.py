@@ -108,6 +108,10 @@ def rebuild_strip(overlay) -> None:
                         pixmap=thumb_pm,
                         image_fill="cover",
                         group="card",
+                        # Like the tab cards (cover r8) and clean-review
+                        # thumbs (top r10): the painter clips the cover to
+                        # these radii (PixmapContent rounded path).
+                        corner_radii=(6, 6, 6, 6),
                     )
                 ]
             except Exception:
@@ -239,6 +243,12 @@ def rebuild_strip(overlay) -> None:
                 gold = _token_color("gallery.status.warn", "#b77900" if not dark2 else "#d9a441")
                 if gold is not None:
                     btn.set_border_color(gold)
+                    # BorderLayer honors color only with an explicit width —
+                    # without it the source/viewing outline is invisible.
+                    try:
+                        btn.setProperty("borderWidth", 2)
+                    except Exception:
+                        pass
             elif is_viewing:
                 from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark3
                 from tabs.image_gallery.ui.quick_look.helpers import _token_color
@@ -247,6 +257,10 @@ def rebuild_strip(overlay) -> None:
                 accent_c = _token_color("accent", "#0078D4" if not dark3 else "#0096FF")
                 if accent_c is not None:
                     btn.set_border_color(accent_c)
+                    try:
+                        btn.setProperty("borderWidth", 2)
+                    except Exception:
+                        pass
         except Exception:
             pass
         try:
@@ -265,6 +279,46 @@ def rebuild_strip(overlay) -> None:
 
         def _make_switch(target=m):
             def _do():
+                try:
+                    from tabs.image_gallery.debug import gallery_debug as _dbg
+
+                    _dbg(
+                        "strip switch click path=%s current=%s idx=%s",
+                        getattr(target, "path", "?"),
+                        getattr(getattr(overlay, "_current_item", None), "path", "?"),
+                        getattr(overlay, "_current_idx", "?"),
+                    )
+                except Exception:
+                    pass
+                try:
+                    target_idx = None
+                    for i, mm in enumerate(overlay._series_items):
+                        if Path(getattr(mm, "path", "")) == Path(getattr(target, "path", "")):
+                            target_idx = i
+                            break
+                    # Clicking the already-viewing thumb: re-assert strip
+                    # visuals only (badges/checked), skip the full repopulate
+                    # (preview+metrics+artifacts rebuild looks like a blink
+                    # with zero content change). Path equality is the item
+                    # identity here (objects are re-resolved across layers).
+                    cur = getattr(overlay, "_current_item", None)
+                    same_path = (
+                        cur is not None
+                        and str(getattr(cur, "path", None) or "")
+                        == str(getattr(target, "path", "") or "")
+                    )
+                    if (
+                        target_idx is not None
+                        and target_idx == getattr(overlay, "_current_idx", None)
+                        and same_path
+                    ):
+                        try:
+                            overlay._rebuild_strip()
+                        except Exception:
+                            pass
+                        return
+                except Exception:
+                    pass
                 overlay._current_item = target
                 try:
                     for i, mm in enumerate(overlay._series_items):
@@ -281,8 +335,11 @@ def rebuild_strip(overlay) -> None:
         # clicks emit regionClicked while clicked fires ONLY for region
         # _main. The strip thumb region id is "thumb", so clicked alone
         # never switched — connect both; exactly one fires per click.
+        # NOTE: bind _switch EAGERLY (default arg): a bare closure over
+        # the loop variable would resolve to the LAST button's switch
+        # at emit time (every thumb led to the last series member).
         try:
-            btn.regionClicked.connect(lambda _region_id=None: _switch())
+            btn.regionClicked.connect(lambda _region_id=None, _sw=_switch: _sw())
         except Exception:
             pass
         try:

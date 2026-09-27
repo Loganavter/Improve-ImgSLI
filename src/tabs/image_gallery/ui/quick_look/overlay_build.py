@@ -1,8 +1,8 @@
 """Quick look overlay chrome + construction — plain functions (no owner state).
 Audit-Meta: pattern=thin-owner-target size=exempt reason="one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout"
 
-Painted widgets (``_AccentPillHost`` / ``_CardPlate`` / ``_RuleWidget`` /
-``_ResizeGrip`` — painter pipeline, no QSS) plus ``build_overlay_ui``.
+Painted widgets (``_AccentPillHost`` / ``_CardPlate`` / ``_RuleWidget`` —
+painter pipeline, no QSS) plus ``build_overlay_ui``.
 Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
 """
 
@@ -20,8 +20,6 @@ from tabs.image_gallery.ui.quick_look.labels_theme import (
     _token_color,
 )
 from tabs.image_gallery.ui.quick_look.resize import (
-    _repin_after_card_resize,
-    clamp_card_size,
     reposition_grip,
 )
 
@@ -39,6 +37,7 @@ class _AccentPillHost(QWidget):
         super().__init__(parent)
         self._fill = fill
         self._bg = self._resolve_bg(fill)
+        self._border = self._resolve_border(fill)
         try:
             from sli_ui_toolkit.managers import ThemeManager
 
@@ -89,15 +88,33 @@ class _AccentPillHost(QWidget):
         except Exception:
             pass
         try:
+            self._border = self._resolve_border(self._fill)
+        except Exception:
+            pass
+        try:
             self.update()
         except Exception:
             pass
+
+    @staticmethod
+    def _resolve_border(fill: str = "accent"):
+        """Hairline for white pills: opaque white is invisible on the light
+        card, so white capsules get a 1px separator border (both themes).
+        Accent pills already read via their tint — no border."""
+        if fill != "white":
+            return None
+        try:
+            return _token_color("separator.color", "#e5e5e5")
+        except Exception:
+            return None
 
     def on_theme_changed(self) -> None:
         self._on_theme_changed()
 
     def paintEvent(self, event) -> None:  # noqa: N802
         try:
+            from PySide6.QtCore import QRectF
+            from PySide6.QtGui import QPen
             from sli_ui_toolkit.managers import scaled_px
 
             p = QPainter(self)
@@ -106,6 +123,15 @@ class _AccentPillHost(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(self._bg)
                 p.drawRoundedRect(self.rect(), scaled_px(8), scaled_px(8))
+                try:
+                    border = getattr(self, "_border", None)
+                except Exception:
+                    border = None
+                if border is not None:
+                    half = max(1.0, scaled_px(1)) / 2.0
+                    p.setPen(QPen(border, max(1.0, scaled_px(1))))
+                    p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.drawRoundedRect(QRectF(self.rect()).adjusted(half, half, -half, -half), scaled_px(8), scaled_px(8))
             finally:
                 p.end()
         except Exception:
@@ -318,143 +344,9 @@ class _RuleWidget(QWidget):
             pass
 
 
-class _ResizeGrip(QWidget):
-    """Bottom-right drag handle for the resizable quick look card (W8).
-
-    Painter-painted (three diagonal grip lines in the ``separator.color``
-    token, theme-subscribed) — no QSS, no palette. Dragging resizes the
-    card plate in place (top-left anchored): minimum 1040×620, clamped to
-    the overlay size minus margin; session-only, nothing persisted. After
-    every step the existing reposition hooks (nav circles, source inset)
-    re-run via ``overlay._reposition_source_inset()`` plus
-    ``reposition_grip``.
-    """
-
-    GRIP_PX = 20
-
-    def __init__(self, overlay, parent=None) -> None:
-        super().__init__(parent)
-        self._overlay_ref = overlay
-        from sli_ui_toolkit.managers import scaled_px
-
-        self.setFixedSize(scaled_px(self.GRIP_PX), scaled_px(self.GRIP_PX))
-        self.setObjectName("quicklook_resize_grip")
-        try:
-            from PySide6.QtCore import Qt
-
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        except Exception:
-            pass
-        self._color = self._resolve_color()
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
-        except Exception:
-            pass
-        self._drag_start = None
-        self._drag_size = None
-
-    @staticmethod
-    def _resolve_color():
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            from ui.theming import try_resolve_theme_color
-
-            c = try_resolve_theme_color(ThemeManager.get_instance(), "separator.color")
-            if c is not None:
-                return c if isinstance(c, QColor) else QColor(c)
-        except Exception:
-            pass
-        return _token_color("separator.color", "#e5e5e5")
-
-    def _on_theme_changed(self) -> None:
-        try:
-            self._color = self._resolve_color()
-        except Exception:
-            pass
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def on_theme_changed(self) -> None:
-        self._on_theme_changed()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtGui import QPen
-
-            from sli_ui_toolkit.managers import scaled_px
-
-            p = QPainter(self)
-            try:
-                color = self._color
-                if color is None:
-                    # Contract-safe re-resolve (token helper, never a
-                    # bare literal — test_no_hardcoded_qcolor ratchet).
-                    color = _token_color("separator.color", "#e5e5e5")
-                pen = QPen(color if color is not None else QColor(0, 0, 0, 0))
-                pen.setWidthF(max(1.0, scaled_px(1)))
-                p.setPen(pen)
-                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-                w = self.width()
-                h = self.height()
-                step = scaled_px(4)
-                for i in range(3):
-                    off = step * (i + 1)
-                    p.drawLine(w - off, h, w, h - off)
-            finally:
-                p.end()
-        except Exception:
-            pass
-        try:
-            super().paintEvent(event)
-        except Exception:
-            pass
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtCore import Qt
-
-            if event.button() == Qt.MouseButton.LeftButton:
-                self._drag_start = event.globalPosition().toPoint()
-                content = getattr(self._overlay_ref, "_content", None)
-                if content is not None:
-                    self._drag_size = content.size()
-                event.accept()
-                return
-        except Exception:
-            pass
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        try:
-            if self._drag_start is not None and self._drag_size is not None:
-                overlay = self._overlay_ref
-                content = getattr(overlay, "_content", None)
-                if content is not None:
-                    delta = event.globalPosition().toPoint() - self._drag_start
-                    want_w = self._drag_size.width() + delta.x()
-                    want_h = self._drag_size.height() + delta.y()
-                    # W9: shared session-only clamp (floor 1040×620, ceiling
-                    # overlay minus 16px margin) — same as the border drag.
-                    new_w, new_h = clamp_card_size(overlay, want_w, want_h)
-                    content.resize(new_w, new_h)
-                    # The _content Resize filter re-runs nav/inset/grip
-                    # hooks; belt-and-braces for paths that compress events.
-                    _repin_after_card_resize(overlay)
-                event.accept()
-                return
-        except Exception:
-            pass
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._drag_start = None
-        self._drag_size = None
-        super().mouseReleaseEvent(event)
+# NOTE: the W8 corner _ResizeGrip was removed — the full-border (W9) and
+# outer-ring (W10) drags remain the resize paths. ``overlay._resize_grip``
+# stays None; ``reposition_grip`` keeps the card re-layout entry.
 
 
 # -- UI construction helpers (thin owner delegation) -------------------------
@@ -470,15 +362,7 @@ def build_overlay_ui(overlay) -> None:
     from PySide6.QtWidgets import QHBoxLayout, QLabel, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button, ButtonRow
-
-    try:
-        from tabs.image_gallery.ui.quick_look.source_inset import _InsetCaptionStrip, _SourceInsetHost
-    except Exception:
-        from PySide6.QtWidgets import QWidget as _W
-
-        _SourceInsetHost = _W  # type: ignore
-        _InsetCaptionStrip = _W  # type: ignore
+    from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, CustomSplit
 
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
@@ -490,7 +374,7 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._border_drag = None
     # S4 mockup panel is 1040x620 — minimum (floor), not a suggestion.
-    # W8: NO maximum — the user drag-resizes via the corner grip handle.
+    # W8: NO maximum — the user drag-resizes via the card border / ring.
     overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
     outer = QVBoxLayout(overlay._content)
     outer.setContentsMargins(scaled_px(16), scaled_px(12), scaled_px(16), scaled_px(12))
@@ -600,32 +484,107 @@ def build_overlay_ui(overlay) -> None:
         overlay._preview_label.setScaledContents(False)
     except Exception:
         pass
+    # Label Resize → preview refit (quick_look.eventFilter): layout passes
+    # settle the label without a card resize; the size cache keeps it cheap.
+    try:
+        overlay._preview_label.installEventFilter(overlay)
+    except Exception:
+        pass
     preview_host_lay.addWidget(overlay._preview_label, 1)
-    overlay._source_inset_host = _SourceInsetHost(overlay._preview_label)
+    # Source inset, SHARPNESS-CROP parity: an absolute block bottom-left
+    # OVER the preview image (not in the flow) — title pill above the
+    # pixmap, like the crop block.
+    overlay._source_inset_host = QWidget(overlay._preview_label)
     overlay._source_inset_host.setObjectName("quicklook_source_inset_host")
     src_lay = QVBoxLayout(overlay._source_inset_host)
-    src_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
+    src_lay.setContentsMargins(0, 0, 0, 0)
     src_lay.setSpacing(scaled_px(2))
-    # W4 item 5: caption is an amber-on-dark strip overlaid at the inset
-    # bottom (svg:53-64), elided to the strip width — not a VBox label.
-    # The attribute name stays _source_inset_label (tests + populate read it).
+    overlay._source_inset_title = _make_label("SOURCE", parent=overlay._source_inset_host, pixel_size=11, pt=11.5, elide=True)
+    overlay._source_inset_title.setObjectName("quicklook_source_inset_title")
     try:
-        overlay._source_inset_caption = _InsetCaptionStrip(overlay._source_inset_host)
-        overlay._source_inset_label = overlay._source_inset_caption.label
+        glyph = _token_color("gallery.nav.glyph", "#23262b")
+        if glyph is not None:
+            overlay._source_inset_title.setTextColor(glyph)
     except Exception:
-        overlay._source_inset_label = _make_label("SOURCE", parent=overlay._source_inset_host, pixel_size=11, pt=11.5)
-        overlay._source_inset_label.setObjectName("quicklook_source_inset_title")
-    overlay._source_inset_pix = QLabel(overlay._source_inset_host)
+        pass
+    try:
+        src_pill = _AccentPillHost(overlay._source_inset_host, fill="white")
+        src_pill.setObjectName("quicklook_source_inset_title_pill")
+        src_pill_lay = QHBoxLayout(src_pill)
+        src_pill_lay.setContentsMargins(scaled_px(10), scaled_px(2), scaled_px(10), scaled_px(2))
+        src_pill_lay.setSpacing(0)
+        overlay._source_inset_title.setParent(src_pill)
+        src_pill_lay.addWidget(overlay._source_inset_title)
+        overlay._source_inset_title_pill = src_pill
+        src_lay.addWidget(src_pill, 0, Qt.AlignmentFlag.AlignLeft)
+        # Reparenting resets the explicit font — re-assert the pt size after.
+        _apply_point_size(overlay._source_inset_title, 11.5)
+    except Exception:
+        try:
+            src_lay.addWidget(overlay._source_inset_title)
+        except Exception:
+            pass
+    # Compat: populate + tests read the caption through _source_inset_label.
+    overlay._source_inset_label = overlay._source_inset_title
+    overlay._source_inset_caption = None
+    # Inset thumbs are inert card Buttons (gallery-card idiom): surface bg
+    # region with 4px padding around the cover pixmap, rounded + bordered
+    # by the painter pipeline — contrast without clickability (no
+    # callbacks, no hover overlays via bg_locked, arrow cursor).
+    from PySide6.QtCore import QRectF as _QRectF
+
+    _inset_pad = 4
+
+    def _inset_bg_rect(r):
+        return _QRectF(0, 0, r.width(), r.height())
+
+    def _inset_thumb_rect(r):
+        return _QRectF(
+            _inset_pad, _inset_pad,
+            r.width() - _inset_pad * 2, r.height() - _inset_pad * 2,
+        )
+
+    def _make_inset_thumb_button(parent):
+        btn = Button(
+            text="",
+            variant="surface",
+            size=(scaled_px(150) + _inset_pad * 2, scaled_px(84) + _inset_pad * 2),
+            parent=parent,
+            regions=[
+                ButtonRegion(
+                    id="bg",
+                    group="card",
+                    corner_radii=(8, 8, 8, 8),
+                    hover_color=QColor(0, 0, 0, 0),
+                    bg_locked=True,
+                ),
+                ButtonRegion(
+                    id="thumb",
+                    pixmap=None,
+                    image_fill="cover",
+                    group="card",
+                    corner_radii=(5, 5, 5, 5),
+                    hover_color=QColor(0, 0, 0, 0),
+                    bg_locked=True,
+                ),
+            ],
+            split=CustomSplit(rect_fns=[_inset_bg_rect, _inset_thumb_rect]),
+            corner_radius=8,
+        )
+        try:
+            btn.setCursor(Qt.CursorShape.ArrowCursor)
+        except Exception:
+            pass
+        return btn
+
+    overlay._source_inset_pix = _make_inset_thumb_button(overlay._source_inset_host)
     overlay._source_inset_pix.setObjectName("quicklook_source_inset_pix")
-    overlay._source_inset_pix.setFixedSize(scaled_px(150), scaled_px(84))
-    overlay._source_inset_pix.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    overlay._source_inset_pix.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    # Background fill is painted by _SourceInsetHost itself (theme-subscribed
-    # paintEvent) — no palette here.
     src_lay.addWidget(overlay._source_inset_pix)
     overlay._source_inset_host.raise_()
     overlay._source_inset_host.hide()
-    overlay._crop_host = QWidget(preview_host)
+    # Crop block: absolute bottom-left over the preview, like the source
+    # inset (not in the flow).
+    overlay._crop_host = QWidget(overlay._preview_label)
     overlay._crop_host.setObjectName("quicklook_crop_host")
     crop_lay = QVBoxLayout(overlay._crop_host)
     crop_lay.setContentsMargins(0, 0, 0, 0)
@@ -657,13 +616,11 @@ def build_overlay_ui(overlay) -> None:
             crop_lay.addWidget(overlay._crop_title)
         except Exception:
             pass
-    overlay._crop_pix = QLabel(overlay._crop_host)
+    overlay._crop_pix = _make_inset_thumb_button(overlay._crop_host)
     overlay._crop_pix.setObjectName("quicklook_crop_pix")
-    overlay._crop_pix.setFixedSize(scaled_px(150), scaled_px(84))
-    overlay._crop_pix.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    overlay._crop_pix.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     crop_lay.addWidget(overlay._crop_pix)
-    preview_host_lay.addWidget(overlay._crop_host)
+    overlay._crop_host.raise_()
+    overlay._crop_host.hide()
     fname_row = QHBoxLayout()
     fname_row.setContentsMargins(0, 0, 0, 0)
     fname_row.setSpacing(scaled_px(8))
@@ -859,8 +816,7 @@ def build_overlay_ui(overlay) -> None:
     outer.addWidget(bar)
     overlay.add_widget(overlay._content, slot=None)
     # D1: interactive buttons keep an explicit arrow cursor so a stale plate
-    # resize cursor never leaks onto them (they inherit otherwise). The grip
-    # keeps its own SizeFDiag affordance.
+    # resize cursor never leaks onto them (they inherit otherwise).
     try:
         from PySide6.QtCore import Qt as _Qt
 
@@ -881,14 +837,10 @@ def build_overlay_ui(overlay) -> None:
                 pass
     except Exception:
         pass
-    # W8: bottom-right drag handle — painter-painted, absolute child of the
-    # card plate, pinned by reposition_grip (Resize filter / resizeEvent).
-    overlay._resize_grip = _ResizeGrip(overlay, overlay._content)
+    # No corner grip: border (W9) + outer ring (W10) are the resize paths.
+    # The attribute stays None so grip-aware helpers no-op cleanly.
+    overlay._resize_grip = None
     reposition_grip(overlay)
-    try:
-        overlay._resize_grip.raise_()
-    except Exception:
-        pass
     overlay._strip_buttons: list = []
     overlay._metric_rows: list = []
     overlay._artifact_rows: list = []

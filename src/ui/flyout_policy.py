@@ -81,6 +81,7 @@ def install_flyout_show_policy() -> GroupShowPolicy:
     # (pinned only exempts a flyout from *its own* passive-dismiss paths,
     # not from being named/DISMISS_ALL-targeted by another flyout opening).
     policy.configure_group("scroll_value", dismisses=(), claim_active=False)
+    _configure_gallery_hover_rules(policy)
 
     manager = FlyoutManager.get_instance()
     manager.set_show_policy(policy)
@@ -109,6 +110,24 @@ def _configure_pinned_hud_rules(policy: GroupShowPolicy) -> None:
     """
     policy.configure_group("info_hud", dismisses=(), claim_active=False)
     policy.configure_group("zoom_indicator", dismisses=(), claim_active=False)
+
+
+def _configure_gallery_hover_rules(policy: GroupShowPolicy) -> None:
+    """The gallery hover capsule (``gallery_card``) must never kill the
+    selection HUD (``gallery_selection``) and vice versa.
+
+    Both groups were unconfigured, so the exclusive fallback fired in both
+    directions: hovering any card dismissed the HUD ("4 selected" died on
+    the first hover after selecting), and every HUD re-show dismissed the
+    capsule under the cursor. The capsule even dismissed open context
+    menus on hover. Same hover-frequency rationale as ``slider_hint`` /
+    ``scroll_value`` above: show/hide lifecycle is hover-driven, so opening
+    must be a no-op for every other flyout (exclusivity between capsules
+    of different cards stays hover-filter-driven, not policy-driven).
+    """
+    policy.configure_group("gallery_card", dismisses=(), claim_active=False)
+    policy.configure_group("gallery_selection", dismisses=(), claim_active=False)
+    policy.coexists_with("gallery_card", "gallery_selection")
 
 
 def _title_bar_resize_needs_context_menu_patch() -> bool:
