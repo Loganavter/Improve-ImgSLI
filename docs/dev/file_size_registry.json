@@ -780,7 +780,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
-      "lines": 589,
+      "lines": 601,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
