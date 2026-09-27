@@ -461,7 +461,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         Idempotent; no-op when the canvas path was never taken (label-only).
         """
         try:
-            from tabs.image_gallery.ui.quick_look.preview import release_preview_canvas
+            from tabs.image_gallery.ui.quick_look.preview_canvas_host import release_preview_canvas
             release_preview_canvas(self)
         except Exception:
             pass
