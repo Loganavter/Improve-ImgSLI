@@ -5,24 +5,10 @@ aspect-fit image quad. It is intentionally far lighter than the compare
 tabs: no scene tree, no feature passes, no gestures, no overlays, no
 labels.
 
-Seam rules (frozen with worker B / worker C):
-
-- One textured quad only, sourced from ``widget._active_composition``
-  (a single ``ResolvedLayer``). The composition value is produced only
-  through the shared applicator
-  (``ui.canvas_presentation.plan_applicator.apply_canvas_render_plan``);
-  this module never resolves or builds compositions itself.
-- Pixels come from a caller-provided ``TiledPixelStore`` (created via
-  ``TiledPixelStore.from_path`` with no crop service — worker B owns
-  that call). This widget only adopts the store: the previously held
-  store is closed in ``set_source`` / ``clear_source``.
-- Per-frame host pixels go through ``HostTextureUploadCache``
-  (``cache_for_host``) + ``qimage_from_pixel_source``. GPU objects
-  (RGB8/RGBA texture, sampler, buffers, pipeline, bindings) are owned
-  exclusively by the engine shell (``engine.overlay.TexturedOverlayShell``):
-  this file mints no GPU resources itself.
-- Fail open: with no source, no RHI, or no render target the widget
-  records nothing (transparent clear at most) and never raises.
+Seam rules (frozen with host/tests): one quad from _active_composition
+via the shared applicator only; pixels from a caller-provided
+TiledPixelStore; GPU objects belong to TexturedOverlayShell only.
+Fail open; previewFailed → QLabel fallback, firstFramePresented → cover drop.
 """
 
 from __future__ import annotations
@@ -30,8 +16,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QRhiDepthStencilClearValue
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QImage, QRhiDepthStencilClearValue
 from PySide6.QtWidgets import QRhiWidget, QSizePolicy
 
 from engine.gpu.host_texture_cache import cache_for_host
@@ -56,17 +42,20 @@ _IDENTITY_CLIP = (
     0.0, 0.0, 0.0, 1.0,
 )
 
-_CLEAR_TRANSPARENT = QColor(0, 0, 0, 0)
+_CLEAR_OPAQUE = QColor(0, 0, 0, 255)
+
+# No-present watchdog: a canvas that shows no frame within this window is
+# presumed broken (dead RHI, missing shaders) and must yield to QLabel —
+# a transparent widget shows the windows behind it as "garbage".
+_NO_FRAME_TIMEOUT_MS = 1500
+
+# Host decode cap: the letterbox only needs framebuffer resolution; a full
+# 40k decode here would repeat the QLabel-path OOM this canvas replaces.
+_DECODE_EDGE_CAP = 2048
 
 
 def _overlay_shader_dir() -> Path | None:
-    """Filesystem location of the shared textured-quad shaders.
-
-    Resolved by path only (no cross-tab import): prefer the
-    multi-compare copy, mirroring the retired overlay base fallback.
-    Returns ``None`` when neither copy exists — the widget then stays
-    inert (fail open) instead of raising.
-    """
+    """Shared quad shaders by path (no cross-tab import); None = inert."""
     try:
         tabs = Path(__file__).resolve().parents[3]
     except Exception:
@@ -84,42 +73,13 @@ def _overlay_shader_dir() -> Path | None:
     return None
 
 
-def _packed_bytes(image: QImage) -> tuple[int, int, bytes] | None:
-    """Pack a premultiplied host image into shell frame bytes."""
-    try:
-        width, height = int(image.width()), int(image.height())
-    except Exception:
-        return None
-    if width <= 0 or height <= 0:
-        return None
-    try:
-        stride = width * 4
-        raw = bytes(image.constBits())
-        row_stride = int(image.bytesPerLine())
-    except Exception:
-        return None
-    try:
-        if row_stride == stride:
-            pixels = raw[: stride * height]
-        else:
-            pixels = b"".join(
-                raw[y * row_stride: y * row_stride + stride] for y in range(height)
-            )
-        if len(pixels) != stride * height:
-            return None
-        return (width, height, pixels)
-    except Exception:
-        return None
 
 
 class QuickLookCanvasWidget(QRhiWidget):
-    """Minimal single-quad GPU preview for Quick Look.
+    """Minimal single-quad GPU preview (set_source/clear_source + repaint)."""
 
-    Lifecycle: ``set_source(store)`` adopts a pixel store (closing the
-    previously held one), ``clear_source()`` releases it. Either call
-    schedules a repaint. ``QLabel`` fallback in the overlay stays
-    authoritative whenever this canvas cannot initialize.
-    """
+    previewFailed = Signal()
+    firstFramePresented = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -134,6 +94,12 @@ class QuickLookCanvasWidget(QRhiWidget):
         self._shell_ready = False
         self._frame_key = None
         self._frame_bytes: tuple[int, int, bytes] | None = None
+        self._zoom = 1.0
+        self._pan_x = 0.0
+        self._pan_y = 0.0
+        self._drag_last = None
+        self._frame_ok = False
+        self._watchdog_armed = False
         try:
             configure_rhi_widget(self)
         except Exception:
@@ -142,11 +108,7 @@ class QuickLookCanvasWidget(QRhiWidget):
     # -- source lifetime --------------------------------------------------------
 
     def set_source(self, store) -> None:
-        """Adopt ``store`` (a ``TiledPixelStore`` or ``None``).
-
-        The previously held store is closed first when it is a different
-        object. Never raises.
-        """
+        """Adopt ``store`` (closes the previous one). Never raises."""
         try:
             if store is self._store:
                 self._refresh_plan()
@@ -159,12 +121,59 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             logger.debug("QuickLook preview: set_source failed open", exc_info=True)
         try:
+            self._frame_ok = False
+            self._zoom = 1.0
+            self._pan_x = 0.0
+            self._pan_y = 0.0
+            self._drag_last = None
+            self._frame_key = None
+            self._arm_watchdog()
+        except Exception:
+            pass
+        try:
             self.update()
         except Exception:
             pass
 
+    def _arm_watchdog(self) -> None:
+        """Yield to QLabel when no frame presents in time (never raises)."""
+        try:
+            if self._watchdog_armed:
+                return
+            self._watchdog_armed = True
+        except Exception:
+            return
+        try:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(_NO_FRAME_TIMEOUT_MS, self._on_watchdog)
+        except Exception:
+            try:
+                self._watchdog_armed = False
+            except Exception:
+                pass
+
+    def _on_watchdog(self) -> None:
+        try:
+            self._watchdog_armed = False
+            if self._frame_ok:
+                return
+            try:
+                import shiboken6
+
+                if not shiboken6.isValid(self):
+                    return
+            except Exception:
+                pass
+            try:
+                self.previewFailed.emit()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def clear_source(self) -> None:
-        """Release the held store and drop the composition. Never raises."""
+        """Release the held store + composition. Never raises."""
         try:
             self._close_held_store()
             self._active_composition = None
@@ -191,13 +200,7 @@ class QuickLookCanvasWidget(QRhiWidget):
     # -- shared-applicator plan -------------------------------------------------
 
     def _refresh_plan(self) -> None:
-        """Rebuild the single-layer composition through the shared applicator.
-
-        The only plan-apply path in this module: a ``CanvasRenderPlan``
-        carrying a one-``LayerNode`` ``composition_root`` is handed to
-        ``apply_canvas_render_plan``, which resolves and stashes
-        ``_active_composition``. Nothing is resolved or stashed here.
-        """
+        """Single-LayerNode plan via the shared applicator (only apply path)."""
         try:
             store = self._store
             if store is None:
@@ -258,6 +261,13 @@ class QuickLookCanvasWidget(QRhiWidget):
         try:
             if not self._shell_ready or command_buffer is None:
                 return
+            try:  # letterbox tone = host Window color (QLabel bars parity)
+                from PySide6.QtGui import QPalette as _QP
+
+                clear = self.palette().color(_QP.ColorRole.Window)
+                clear.setAlpha(255)
+            except Exception:
+                clear = QColor(_CLEAR_OPAQUE)
             try:
                 rhi = self.rhi()
                 target = self.renderTarget()
@@ -282,7 +292,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             try:
                 command_buffer.beginPass(
                     target,
-                    _CLEAR_TRANSPARENT,
+                    clear,
                     QRhiDepthStencilClearValue(1.0, 0),
                     updates,
                 )
@@ -296,6 +306,18 @@ class QuickLookCanvasWidget(QRhiWidget):
                     except Exception:
                         fb_w, fb_h = 1.0, 1.0
                     self._shell.draw(command_buffer, width=fb_w, height=fb_h)
+                    try:
+                        if not self._frame_ok:
+                            self._frame_ok = True
+                            try:
+                                self.firstFramePresented.emit()
+                            except Exception:
+                                pass
+                    except Exception:
+                        try:
+                            self._frame_ok = True
+                        except Exception:
+                            pass
             finally:
                 try:
                     command_buffer.endPass()
@@ -317,14 +339,7 @@ class QuickLookCanvasWidget(QRhiWidget):
     # -- frame raster -----------------------------------------------------------
 
     def _raster_frame(self, target) -> tuple[int, int, bytes] | None:
-        """Aspect-fit letterboxed framebuffer raster for the active layer.
-
-        Reads the single ``ResolvedLayer`` from ``_active_composition``,
-        decodes through the host upload cache, and letterboxes the image
-        (contain) onto a transparent framebuffer-sized surface. Returns
-        shell frame bytes, or ``None`` when there is nothing drawable.
-        A per-size frame cache skips the QPainter raster on steady frames.
-        """
+        """Frame raster: single ResolvedLayer → cache → zoom/pan crop."""
         try:
             composition = self._active_composition
             layers = getattr(composition, "layers", ()) or ()
@@ -345,13 +360,18 @@ class QuickLookCanvasWidget(QRhiWidget):
                 generation = int(getattr(source, "generation", 0))
             except Exception:
                 generation = 0
-            key = (id(source), generation, int(src_w), int(src_h), fb_w, fb_h)
+            key = (id(source), generation, int(src_w), int(src_h), fb_w, fb_h,
+                   round(self._zoom, 4), round(self._pan_x, 4), round(self._pan_y, 4))
             if key == self._frame_key and self._frame_bytes is not None:
                 return self._frame_bytes
             full = self._decoded_image(source, src_w, src_h)
             if full is None or full.isNull():
                 return None
-            frame = self._letterbox(full, fb_w, fb_h)
+            try:
+                from tabs.image_gallery.ui.quick_look.preview_zoom import zoomed_frame
+            except Exception:
+                return None
+            frame = zoomed_frame(full, fb_w, fb_h, self._zoom, self._pan_x, self._pan_y)
             if frame is None:
                 return None
             self._frame_key = key
@@ -362,7 +382,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             return None
 
     def _decoded_image(self, source, src_w: int, src_h: int) -> QImage | None:
-        """Full-res host image via the shared upload cache."""
+        """Host image via upload cache, edge-capped (no 40k holds)."""
         try:
             cache = cache_for_host(self)
         except Exception:
@@ -372,7 +392,8 @@ class QuickLookCanvasWidget(QRhiWidget):
             try:
                 hit = cache.touch(role)
                 if hit is not None and not hit.isNull():
-                    if int(hit.width()) == int(src_w) and int(hit.height()) == int(src_h):
+                    # Stored capped (see below): accept any hit that fits the cap.
+                    if max(int(hit.width()), int(hit.height())) <= _DECODE_EDGE_CAP:
                         return hit
             except Exception:
                 pass
@@ -380,6 +401,22 @@ class QuickLookCanvasWidget(QRhiWidget):
             image = qimage_from_pixel_source(source)
         except Exception:
             return None
+        if image is None or image.isNull():
+            return None
+        try:
+            # Never hold a 40k host image for a ~640px pane: downscale once.
+            edge = max(int(image.width()), int(image.height()))
+            if edge > _DECODE_EDGE_CAP and edge > 0:
+                small = image.scaled(
+                    _DECODE_EDGE_CAP,
+                    _DECODE_EDGE_CAP,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                if small is not None and not small.isNull():
+                    image = small
+        except Exception:
+            pass
         if cache is not None and image is not None:
             try:
                 cache.store(role, image)
@@ -387,35 +424,67 @@ class QuickLookCanvasWidget(QRhiWidget):
                 pass
         return image
 
-    @staticmethod
-    def _letterbox(full: QImage, fb_w: int, fb_h: int) -> tuple[int, int, bytes] | None:
-        """Contain-fit ``full`` onto a transparent ``fb_w`` x ``fb_h`` surface."""
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        """Wheel = cursor-anchored zoom (MC parity); floor snaps pan to origin."""
         try:
-            src_w, src_h = int(full.width()), int(full.height())
-            if src_w <= 0 or src_h <= 0:
-                return None
-            scale = min(float(fb_w) / float(src_w), float(fb_h) / float(src_h))
-            if not (scale > 0):
-                return None
-            dest_w = max(1, int(round(src_w * scale)))
-            dest_h = max(1, int(round(src_h * scale)))
-            dest_x = max(0, (fb_w - dest_w) // 2)
-            dest_y = max(0, (fb_h - dest_h) // 2)
-            canvas = QImage(fb_w, fb_h, QImage.Format.Format_RGBA8888_Premultiplied)
-            canvas.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(canvas)
-            try:
-                painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform, True
-                )
-                painter.drawImage(
-                    dest_x, dest_y, dest_w, dest_h, full, 0, 0, src_w, src_h
-                )
-            finally:
-                painter.end()
-            premult = canvas.convertToFormat(
-                QImage.Format.Format_RGBA8888_Premultiplied
+            from tabs.image_gallery.ui.quick_look.preview_zoom import wheel_zoom_pan
+
+            pos = event.position()
+            got = wheel_zoom_pan(
+                getattr(self, "_zoom", 1.0), getattr(self, "_pan_x", 0.0),
+                getattr(self, "_pan_y", 0.0), event.angleDelta().y(),
+                float(pos.x()) / max(1, int(self.width())),
+                float(pos.y()) / max(1, int(self.height())),
             )
-            return _packed_bytes(premult)
+            if got is not None:
+                self._zoom, self._pan_x, self._pan_y = got
+                self._frame_key = None
+                self.update()
+            event.accept()
         except Exception:
-            return None
+            pass
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtCore import Qt as _Qt
+
+            if event.button() == _Qt.MouseButton.MiddleButton:
+                pos = event.position()
+                self._drag_last = (float(pos.x()), float(pos.y()))
+                self.setCursor(_Qt.CursorShape.ClosedHandCursor)
+            super().mousePressEvent(event)
+        except Exception:
+            pass
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            last = getattr(self, "_drag_last", None)
+            if last is not None:
+                from tabs.image_gallery.ui.quick_look.preview_zoom import drag_pan
+
+                pos = event.position()
+                got = drag_pan(
+                    getattr(self, "_pan_x", 0.0), getattr(self, "_pan_y", 0.0),
+                    float(pos.x()) - last[0], float(pos.y()) - last[1],
+                    max(1, int(self.width())), max(1, int(self.height())),
+                    getattr(self, "_zoom", 1.0),
+                )
+                if got is not None:
+                    self._pan_x, self._pan_y = got
+                    self._frame_key = None
+                    self.update()
+                self._drag_last = (float(pos.x()), float(pos.y()))
+            super().mouseMoveEvent(event)
+        except Exception:
+            pass
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtCore import Qt as _Qt
+
+            if event.button() == _Qt.MouseButton.MiddleButton:
+                self._drag_last = None
+                self.setCursor(_Qt.CursorShape.ArrowCursor)
+            super().mouseReleaseEvent(event)
+        except Exception:
+            pass
