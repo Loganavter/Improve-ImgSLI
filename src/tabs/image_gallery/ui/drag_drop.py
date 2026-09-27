@@ -129,11 +129,13 @@ def _fallback_folder(paths: list[Path]) -> Path:
 def _dispatch_drop_pool(owner, *, all_files: bool, has_dir: bool, paths: list[Path], folder: Path | None) -> None:
     """Dispatch the pool action matching this drop (fail-open, Wave 2c).
 
-    Mirrors the routing below: file-only drops append, mixed folder+files
-    replace, pure folders open. Entries are ``[(path, mtime_ns), ...]`` —
-    plain scalars per the frozen seam. The legacy ``ctrl.open_*`` calls
-    stay (controller-owned thumbnail/triage side-effects until W2b reads
-    the slot); the reducer dedups re-drops, so dispatch is idempotent.
+    Sole-writer failover only: called when no controller synchronously
+    consumes the drop (storeless contexts). When a controller takes the drop
+    (``_route_paths`` branches below), it emits the pool action itself after
+    mirroring — dispatching here too would materialize the same pool twice
+    (log-proven: 4 flat-first rebuilds per single drop). Entries are
+    ``[(path, mtime_ns), ...]`` — plain scalars per the frozen seam. The
+    reducer dedups re-drops, so dispatch is idempotent.
     """
     try:
         from core.state_management.gallery_actions import (
@@ -220,23 +222,15 @@ def _route_paths(owner, paths: list[Path]) -> bool:
         has_dir = False
     _dnd_log("dropEvent decision: all_files=%s has_dir=%s", all_files, has_dir)
     ctrl = _controller_of(owner)
-    # Redux first (fail-open): the gesture's state change is a dispatched
-    # pool action; the controller calls below stay for pixmap/thumbnail
-    # side-effects until the controller reads the slot (W2b).
-    _folder_hint: Path | None = None
-    for p in paths:
-        try:
-            if p.is_dir():
-                _folder_hint = p
-                break
-        except Exception:
-            continue
-    if _folder_hint is None and not (all_files and not has_dir):
-        try:
-            _folder_hint = _fallback_folder(paths)
-        except Exception:
-            _folder_hint = None
-    _dispatch_drop_pool(owner, all_files=all_files, has_dir=has_dir, paths=list(paths), folder=_folder_hint)
+    # Single-writer rule: when the controller synchronously consumes the drop
+    # in the branches below, IT dispatches the pool action after mirroring
+    # (open_paths / open_folder both emit). The eager _dispatch_drop_pool then
+    # stays off — otherwise the same pool materializes twice: widget
+    # slot-render + controller external sync each rebuild flat first
+    # (headers demolished), then open_* rebuilds a third time before triage
+    # regroups a fourth (log-proven: 4 rebuilds per single drop). The eager
+    # dispatch stays only as the sole writer when no controller consumes the
+    # drop (storeless contexts) or the controller call throws.
     if all_files and not has_dir:
         _dnd_log("dropEvent single/multi image %d files -> open_paths (not parent folder)", len(paths))
         if ctrl is not None and hasattr(ctrl, "open_paths"):
@@ -245,6 +239,8 @@ def _route_paths(owner, paths: list[Path]) -> bool:
                 return True
             except Exception:
                 _dnd_log("open_paths failed", exc_info=True)
+        else:
+            _dispatch_drop_pool(owner, all_files=all_files, has_dir=has_dir, paths=list(paths), folder=None)
         try:
             from PySide6.QtCore import QTimer
 
@@ -284,6 +280,9 @@ def _route_paths(owner, paths: list[Path]) -> bool:
                 return True
             except Exception:
                 _dbg("open_folder failed", exc_info=True)
+        if ctrl is None or not (hasattr(ctrl, "open_paths") or hasattr(ctrl, "open_folder")):
+            # No controller consumed the drop: eager dispatch is the sole writer.
+            _dispatch_drop_pool(owner, all_files=all_files, has_dir=has_dir, paths=list(paths), folder=folder)
         try:
             from PySide6.QtCore import QTimer
 

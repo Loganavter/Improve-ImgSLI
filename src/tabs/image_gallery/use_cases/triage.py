@@ -440,21 +440,46 @@ def remove_from_grid(owner, path: Path) -> bool:
     """Remove *path* from the gallery grid (Reject-button behavior).
 
     File on disk is untouched — only the grid mirror + slot membership
+    change. Single-path wrapper over :func:`remove_paths_from_grid`.
+    Returns True when a card was removed.
+    """
+    return remove_paths_from_grid(owner, [path]) > 0
+
+
+def remove_paths_from_grid(owner, paths) -> int:
+    """Remove every path in *paths* from the gallery grid in one batch.
+
+    File on disk is untouched — only the grid mirror + slot membership
     change. Mirrors the controller write path: mutate the local
     ``state.items`` mirror first, prune selection/order + series clusters,
-    emit ``GalleryItemsRemoved`` so the slot stays in sync, then refresh
-    the grid. Returns True when a card was removed.
+    emit a single ``GalleryItemsRemoved`` so the slot stays in sync, then
+    refresh the grid once. Returns the number of cards removed.
     """
     from tabs.image_gallery.debug import gallery_debug as _dbg
 
     try:
-        target = Path(path) if not isinstance(path, Path) else path
+        targets: list = []
+        for p in list(paths or []):
+            try:
+                targets.append(Path(p) if not isinstance(p, Path) else p)
+            except Exception:
+                continue
     except Exception:
-        return False
-    target_s = str(target)
+        return 0
+    if not targets:
+        return 0
+    try:
+        target_set = set(targets)
+    except Exception:
+        target_set = set()
+        for t in targets:
+            try:
+                target_set.add(t)
+            except Exception:
+                continue
     _dbg(
-        "remove_from_grid ENTER path=%s owner=%s",
-        target_s,
+        "remove_paths_from_grid ENTER n=%d owner=%s",
+        len(targets),
         type(owner).__name__,
     )
     # Resolve the state holder that owns .items (controller.state,
@@ -467,36 +492,38 @@ def remove_from_grid(owner, path: Path) -> bool:
         if st is None and hasattr(owner, "_state"):
             st = getattr(owner, "_state", None)
     if st is None or not hasattr(st, "items"):
-        _dbg("remove_from_grid MISS-NOSTATE path=%s", target_s)
-        return False
+        _dbg("remove_paths_from_grid MISS-NOSTATE n=%d", len(targets))
+        return 0
     try:
         before = len(list(getattr(st, "items", []) or []))
     except Exception:
         before = -1
-    removed = False
+    doomed_s: set[str] = set()
     try:
         kept = []
         for it in list(getattr(st, "items", []) or []):
             try:
-                if Path(getattr(it, "path")) == target:
-                    removed = True
+                if Path(getattr(it, "path")) in target_set:
+                    try:
+                        doomed_s.add(str(getattr(it, "path")))
+                    except Exception:
+                        pass
                     continue
             except Exception:
                 pass
             kept.append(it)
-        if removed:
+        if len(kept) == before:
+            _dbg("remove_paths_from_grid MISS pool=%d", before)
+            return 0
+        try:
+            st.items[:] = kept
+        except Exception:
             try:
-                st.items[:] = kept
+                st.items = kept
             except Exception:
-                try:
-                    st.items = kept
-                except Exception:
-                    return False
+                return 0
     except Exception:
-        return False
-    if not removed:
-        _dbg("remove_from_grid MISS path=%s pool=%d", target_s, before)
-        return False
+        return 0
     # Prune selection / order.
     for attr in ("selected_paths", "selected_order"):
         try:
@@ -504,14 +531,9 @@ def remove_from_grid(owner, path: Path) -> bool:
             if cur is None:
                 continue
             if isinstance(cur, set):
-                cur.discard(target)
-                try:
-                    cur.discard(Path(target_s))
-                except Exception:
-                    pass
                 for cand in list(cur):
                     try:
-                        if Path(cand) == target:
+                        if Path(cand) in target_set:
                             cur.discard(cand)
                     except Exception:
                         continue
@@ -519,7 +541,7 @@ def remove_from_grid(owner, path: Path) -> bool:
                 kept_sel = []
                 for cand in cur:
                     try:
-                        if Path(cand) == target:
+                        if Path(cand) in target_set:
                             continue
                     except Exception:
                         pass
@@ -542,7 +564,7 @@ def remove_from_grid(owner, path: Path) -> bool:
                 for cl in list(clusters):
                     try:
                         if hasattr(cl, "members"):
-                            members = [m for m in list(getattr(cl, "members", []) or []) if Path(getattr(m, "path")) != target]
+                            members = [m for m in list(getattr(cl, "members", []) or []) if Path(getattr(m, "path")) not in target_set]
                             if len(members) != len(list(getattr(cl, "members", []) or [])):
                                 changed = True
                                 try:
@@ -554,7 +576,7 @@ def remove_from_grid(owner, path: Path) -> bool:
                                         pass
                             pruned_clusters.append(cl)
                         elif isinstance(cl, (list, tuple)):
-                            members = [m for m in list(cl) if Path(getattr(m, "path")) != target]
+                            members = [m for m in list(cl) if Path(getattr(m, "path")) not in target_set]
                             if len(members) != len(list(cl)):
                                 changed = True
                             if members:
@@ -578,16 +600,16 @@ def remove_from_grid(owner, path: Path) -> bool:
             except Exception:
                 pass
     try:
-        _emit_gallery(owner, GalleryItemsRemoved(paths=[target_s]))
+        _emit_gallery(owner, GalleryItemsRemoved(paths=sorted(doomed_s)))
     except Exception:
         pass
     try:
         remaining = len(list(getattr(st, "items", []) or []))
     except Exception:
         remaining = -1
-    _dbg("remove_from_grid applied path=%s pool=%d remaining=%d", target_s, before, remaining)
+    _dbg("remove_paths_from_grid applied n=%d pool=%d remaining=%d", len(doomed_s), before, remaining)
     _refresh_owner_grid(owner)
-    return True
+    return len(doomed_s)
 
 
 def clean_rejected(owner) -> list[dict]:

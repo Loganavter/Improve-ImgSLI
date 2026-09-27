@@ -228,18 +228,60 @@ def handle_key(owner, event) -> None:
         QWidget.keyPressEvent(owner, event)
         return
 
-    # Space / Delete / Backspace → remove current card from the grid
+    # Space / Delete / Backspace → remove ALL selected cards from the grid.
+    # Empty selection is a no-op (never fall back to the first item).
     if key in (Qt.Key.Key_Space, Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-        cur = current_path(owner)
-        if cur is not None:
+        try:
+            triage_owner = owner_for_triage(owner)
+            targets: list = []
             try:
-                from tabs.image_gallery.use_cases import triage as _triage
+                sel = triage_owner.state.selected_paths  # type: ignore[attr-defined]
+            except Exception:
+                sel = None
+            if sel:
+                try:
+                    order = triage_owner.state.selected_order  # type: ignore[attr-defined]
+                except Exception:
+                    order = None
+                try:
+                    sel_set = {Path(p) if not isinstance(p, Path) else p for p in sel}
+                except Exception:
+                    sel_set = set()
+                if order:
+                    try:
+                        ordered = [Path(p) if not isinstance(p, Path) else p for p in order]
+                        targets = [p for p in ordered if p in sel_set]
+                        # Survivors missing from order (shouldn't happen) — append sorted.
+                        missing = [p for p in sel_set if p not in set(targets)]
+                        try:
+                            missing = sorted(missing, key=str)
+                        except Exception:
+                            pass
+                        targets.extend(missing)
+                    except Exception:
+                        try:
+                            targets = sorted(sel_set, key=str)
+                        except Exception:
+                            targets = list(sel_set)
+                else:
+                    try:
+                        targets = sorted(sel_set, key=str)
+                    except Exception:
+                        targets = list(sel_set)
+            if not targets:
+                # Nothing selected → ignore, don't delete the first card.
+                QWidget.keyPressEvent(owner, event)
+                return
+            from tabs.image_gallery.use_cases import triage as _triage
 
-                _triage.remove_from_grid(owner_for_triage(owner), cur)
+            removed = _triage.remove_paths_from_grid(triage_owner, targets)
+            if removed:
                 event.accept()
                 return
-            except Exception:
-                pass
+        except Exception:
+            pass
+        QWidget.keyPressEvent(owner, event)
+        return
     # B → make best
     if key == Qt.Key.Key_B:
         cur = current_path(owner)

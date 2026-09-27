@@ -66,6 +66,210 @@ def test_info_hud_is_tagged_and_never_a_dismiss_target():
         manager.set_layer_stack(previous_stack)
 
 
+def test_gallery_hover_capsule_coexists_with_selection_hud():
+    """Hover capsule must not kill the selection HUD (and vice versa).
+
+    Regression: both groups were unconfigured, so the exclusive fallback
+    fired both ways — hovering any card dismissed "N selected" on the
+    first hover after selecting, and every HUD re-show dismissed the
+    capsule under the cursor. The capsule even dismissed open context
+    menus on hover.
+    """
+    manager = FlyoutManager.get_instance()
+    previous = manager.show_policy()
+    try:
+        policy = install_flyout_show_policy()
+
+        capsule = type("C", (), {"flyout_group": "gallery_card"})()
+        hud = type("H", (), {"flyout_group": "gallery_selection"})()
+        menu = type("M", (), {"flyout_group": "context_menu"})()
+        listing = type("L", (), {"flyout_group": "unified_list"})()
+
+        assert policy.should_dismiss(capsule, hud) is False
+        assert policy.should_dismiss(hud, capsule) is False
+        assert policy.should_claim_active(capsule, None) is False
+        assert policy.should_claim_active(hud, None) is False
+        # Hover-frequency pill must not kill context menus either.
+        assert policy.should_dismiss(capsule, menu) is False
+        # Exclusive groups still dismiss each other (policy not blunted).
+        assert policy.should_dismiss(listing, hud) is False
+        assert policy.should_dismiss(
+            type("O", (), {"flyout_group": "options"})(), listing
+        ) is True
+    finally:
+        manager.set_show_policy(previous)
+
+
+def test_every_flyout_group_is_policy_known():
+    """Guard: no flyout may rely on the exclusive "default" fallback.
+
+    Regression rationale: ``gallery_selection`` + ``gallery_card`` were
+    unconfigured, so the exclusive fallback killed the selection HUD on
+    every hover. Every ``flyout_group`` literal in app code must be
+    explicitly configured in the host policy (``src/ui/flyout_policy.py``),
+    and every bare ``BaseFlyout(...)`` / ``IconActionFlyout(...)`` call
+    must carry a resolvable explicit tag in its own function (module
+    constant, string literal, or ``self.X`` backed by a class literal) —
+    otherwise it lands in "default" and dismisses everything on show.
+
+    Pure ``ast`` scan (no Qt, no imports): fails CI instead of HUDs in prod.
+    """
+    import ast
+    from pathlib import Path
+
+    manager = FlyoutManager.get_instance()
+    previous = manager.show_policy()
+    try:
+        policy = install_flyout_show_policy()
+        known: set[str] = set()
+        for table in (
+            "_group_dismisses",
+            "_group_claim_active",
+            "_group_coexist",
+            "_group_parent",
+        ):
+            try:
+                known.update(getattr(policy, table, {}) or {})
+            except Exception:
+                continue
+        assert known, "policy exposes no configured groups"
+
+        src_root = Path(__file__).resolve().parents[2] / "src"
+        assert src_root.is_dir(), f"app src not found at {src_root}"
+
+        literals: set[str] = set()
+        bare_call_sites: list[tuple[str, int, str]] = []
+
+        def _resolve_tag(value: ast.expr, tree: ast.Module,
+                         parents: dict[ast.AST, ast.AST],
+                         call: ast.Call) -> str | None:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return value.value
+            if isinstance(value, ast.Name):
+                for node in tree.body:
+                    if (
+                        isinstance(node, ast.Assign)
+                        and isinstance(node.value, ast.Constant)
+                        and isinstance(node.value.value, str)
+                        and any(isinstance(t, ast.Name) and t.id == value.id
+                                for t in node.targets)
+                    ):
+                        return node.value.value
+                return None
+            if (
+                isinstance(value, ast.Attribute)
+                and isinstance(value.value, ast.Name)
+                and value.value.id == "self"
+            ):
+                owner: ast.AST | None = call
+                while owner is not None and not isinstance(owner, ast.ClassDef):
+                    owner = parents.get(owner)
+                if owner is None:
+                    return None
+                for stmt in owner.body:
+                    targets = (
+                        stmt.targets
+                        if isinstance(stmt, ast.Assign)
+                        else [stmt.target]
+                        if isinstance(stmt, ast.AnnAssign)
+                        else []
+                    )
+                    if stmt.value is None:
+                        continue
+                    if (
+                        isinstance(stmt.value, ast.Constant)
+                        and isinstance(stmt.value.value, str)
+                        and any(isinstance(t, ast.Name) and t.id == value.attr
+                                for t in targets)
+                    ):
+                        return stmt.value.value
+            return None
+
+        offenders: list[str] = []
+        for path in sorted(src_root.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            parents: dict[ast.AST, ast.AST] = {}
+            for node in ast.walk(tree):
+                for child in ast.iter_child_nodes(node):
+                    parents[child] = node
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    targets = (
+                        node.targets
+                        if isinstance(node, ast.Assign)
+                        else [node.target]
+                    )
+                    if node.value is None:
+                        continue
+                    for target in targets:
+                        is_tag = (
+                            isinstance(target, ast.Name)
+                            and target.id == "flyout_group"
+                        ) or (
+                            isinstance(target, ast.Attribute)
+                            and target.attr == "flyout_group"
+                        )
+                        if is_tag and isinstance(node.value, ast.Constant) \
+                                and isinstance(node.value.value, str):
+                            literals.add(node.value.value)
+                elif isinstance(node, ast.Call):
+                    func = node.func
+                    name = (
+                        func.id
+                        if isinstance(func, ast.Name)
+                        else func.attr
+                        if isinstance(func, ast.Attribute)
+                        else ""
+                    )
+                    if name in ("BaseFlyout", "IconActionFlyout"):
+                        bare_call_sites.append((str(path), node.lineno, name))
+                        owner: ast.AST | None = node
+                        while owner is not None and not isinstance(
+                            owner, ast.FunctionDef
+                        ):
+                            owner = parents.get(owner)
+                        resolved: set[str] = set()
+                        if owner is not None:
+                            for sub in ast.walk(owner):
+                                if not isinstance(sub, (ast.Assign, ast.AnnAssign)):
+                                    continue
+                                sub_targets = (
+                                    sub.targets
+                                    if isinstance(sub, ast.Assign)
+                                    else [sub.target]
+                                )
+                                if sub.value is None:
+                                    continue
+                                if any(
+                                    isinstance(t, ast.Attribute)
+                                    and t.attr == "flyout_group"
+                                    for t in sub_targets
+                                ):
+                                    tag = _resolve_tag(sub.value, tree, parents, node)
+                                    if tag is not None:
+                                        resolved.add(tag)
+                        if not resolved or not resolved <= known or "default" in resolved:
+                            offenders.append(
+                                f"{path}:{node.lineno}: bare {name}(...) tags "
+                                f"{sorted(resolved) or 'UNRESOLVED'} — give it an "
+                                f"explicit policy-known flyout_group"
+                            )
+
+        unknown = {lit for lit in literals if lit not in known}
+        assert not unknown, (
+            "flyout_group literals without policy rules (exclusive fallback "
+            f"would dismiss HUDs): {sorted(unknown)} — configure them in "
+            "src/ui/flyout_policy.py"
+        )
+        assert "default" not in literals, "explicit 'default' group tag found"
+        assert not offenders, "untagged bare flyout constructions:\n" + "\n".join(offenders)
+    finally:
+        manager.set_show_policy(previous)
+
+
 def test_native_title_bar_resize_keeps_pinned_flyouts(qapp):
     """CustomTitleBar's Resize/Move sweep must not close pinned flyouts.
 

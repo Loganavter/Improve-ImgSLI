@@ -69,3 +69,70 @@ def test_folder_switch_stays_flat(qtbot) -> None:
     fresh = _items("x.png", "y.png")
     w.rebuild_grid(fresh)
     assert w._grid_view._series is None
+
+
+def test_regroup_reuses_headers_and_cards(qtbot) -> None:
+    """Regroup must not demolish widgets: headers retitled, cards kept."""
+    items = _items("a.png", "b.png", "c.png", "d.png")
+    w = _grouped_widget(qtbot, items)
+    headers_before = list(w._grid_view._series_headers)
+    cards_before = {str(p): w._grid_view.card_for(p) for p in [it.path for it in items]}
+    assert len(headers_before) == 2
+    # Absorb c into the first cluster; d falls to UNGROUPED.
+    w.set_triage([[items[0], items[1], items[2]]], w._mode, w._source_path)
+    headers_after = list(w._grid_view._series_headers)
+    assert len(headers_after) == 2  # SERIES + UNGROUPED
+    assert headers_after[0] is headers_before[0]
+    assert headers_after[1] is headers_before[1]
+    for it in items:
+        assert w._grid_view.card_for(it.path) is cards_before[str(it.path)]
+    assert [str(m.path) for m in w._grid_view._ungrouped] == [str(items[3].path)]
+
+
+def test_reused_header_collapse_toggles_current_section(qtbot) -> None:
+    """Retitled headers toggle their NEW section (closure rebound)."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt as _Qt
+
+    items = _items("a.png", "b.png", "c.png", "d.png")
+    w = _grouped_widget(qtbot, items)
+    # Swap cluster order: header slot 0 now fronts [c, d].
+    w.set_triage([[items[2], items[3]], [items[0], items[1]]], w._mode, w._source_path)
+    btn = w._grid_view.findChild(object, "GallerySeriesHeaderBtn_0")
+    assert btn is not None
+    card_c = w._grid_view.card_for(items[2].path)
+    card_a = w._grid_view.card_for(items[0].path)
+    QTest.mouseClick(btn, _Qt.MouseButton.LeftButton)
+    assert w._grid_view._collapsed.get(0) is True
+    assert not card_c.isVisible()
+    assert card_a.isVisible()
+    QTest.mouseClick(btn, _Qt.MouseButton.LeftButton)
+    assert w._grid_view._collapsed.get(0) is False
+    assert w._grid_view.card_for(items[2].path).isVisible()
+
+
+def test_dissolved_last_cluster_goes_ungrouped(qtbot) -> None:
+    """Deleting a whole group leaves the ex-member under UNGROUPED, not header-less."""
+    items = _items("a.png", "b.png", "c.png", "d.png")
+    w = _grouped_widget(qtbot, items)
+    w.rebuild_grid(items[:1])  # groups [a,b] and [c,d] both dissolved
+    assert w._grid_view._series == []
+    assert [str(m.path) for m in w._grid_view._ungrouped] == [str(items[0].path)]
+    assert len(w._grid_view._series_headers) == 1
+    assert w._grid_view.card_for(items[0].path) is not None
+
+
+def test_dissolve_to_tail_only_goes_ungrouped(qtbot) -> None:
+    """Deleting the only cluster keeps never-grouped tail survivors under UNGROUPED."""
+    items = _items("a.png", "b.png", "c.png")
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1280, 800)
+    w.show()
+    w.rebuild_grid(items)
+    w._grid_view.set_series([[items[0], items[1]]], hub_names=["HUB-A"], collapsed={})
+    assert [str(m.path) for m in w._grid_view._ungrouped] == [str(items[2].path)]
+    w.rebuild_grid(items[2:])
+    assert w._grid_view._series == []
+    assert [str(m.path) for m in w._grid_view._ungrouped] == [str(items[2].path)]
+    assert len(w._grid_view._series_headers) == 1

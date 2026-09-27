@@ -74,7 +74,7 @@ def _make_ctrl() -> tuple[GalleryController, _WidgetStub]:
         widget, thread_pool=QThreadPool.globalInstance(), context=context
     )
     # Silence real background triage/thumbnails: this test drives handlers directly.
-    ctrl._start_triage = lambda items: None  # type: ignore[method-assign]
+    ctrl._start_triage = lambda items, **kw: None  # type: ignore[method-assign]
     ctrl._load_thumbnail = lambda item: None  # type: ignore[method-assign]
     return ctrl, widget
 

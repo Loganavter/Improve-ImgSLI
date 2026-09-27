@@ -26,6 +26,10 @@ def _item(name: str, **kwargs) -> GalleryItem:
 
 
 def _real_png(tmp_path: Path, name: str, w: int = 200, h: int = 100) -> Path:
+    # QPixmap fatals without a QApplication; the full suite usually has one
+    # by now, but standalone runs of this file must not depend on that.
+    if QApplication.instance() is None:
+        QApplication([])
     pm = QPixmap(w, h)
     pm.fill(QColor("#3a6ea5"))
     p = tmp_path / name
@@ -85,18 +89,33 @@ def test_thumb_pixmap_cover_crops_to_exact_66x44(tmp_path):
     assert (pm.width(), pm.height()) == (100, 60)
 
 
-def test_region_clicked_switches_preview(qtbot, tmp_path):
-    """Emitting regionClicked on a strip thumb switches _current_item/idx."""
-    p1 = _real_png(tmp_path, "c1.png")
-    p2 = _real_png(tmp_path, "c2.png")
-    first = GalleryItem(path=p1, mtime_ns=1)
-    second = GalleryItem(path=p2, mtime_ns=2)
+def test_thumb_region_has_rounded_corners(qtbot, tmp_path):
+    """Strip thumb cover region carries corner radii (painter clips to them)."""
+    p1 = _real_png(tmp_path, "v.png")
+    viewing = GalleryItem(path=p1, mtime_ns=1)
     ov = _make_overlay(qtbot)
-    _show(ov, first, [first, second])
+    _show(ov, viewing, [viewing])
+    for b in _strip_buttons(ov):
+        regions = [r for r in b.regions() if r.id == "thumb"]
+        assert regions, "thumb region missing"
+        assert tuple(regions[0].corner_radii) == (6, 6, 6, 6)
+    ov.hide()
+
+
+def test_region_clicked_switches_preview(qtbot, tmp_path):
+    """Emitting regionClicked on a strip thumb switches _current_item/idx.
+
+    Clicks the MIDDLE thumb of three: with late binding every thumb would
+    lead to the last member, so only a non-last target proves the mapping.
+    """
+    paths = [_real_png(tmp_path, f"c{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
     assert ov._current_idx == 0
     target = None
     for b in _strip_buttons(ov):
-        if b.property("gallery_path") == str(p2):
+        if b.property("gallery_path") == str(paths[1]):
             target = b
             break
     assert target is not None
@@ -104,7 +123,7 @@ def test_region_clicked_switches_preview(qtbot, tmp_path):
     # Series switch re-populates after the press ripple (defer_click).
     qtbot.wait(450)
     QApplication.processEvents()
-    assert ov._current_item.path == p2
+    assert ov._current_item.path == paths[1]
     assert ov._current_idx == 1
     ov.hide()
 
@@ -145,4 +164,35 @@ def test_leader_badge_is_best_and_ranked_is_n(qtbot, tmp_path):
     # Overlay pills, never the toolkit badge.
     assert by_path[str(paths[0])]._badge is None
     assert by_path[str(paths[1])]._badge is None
+    ov.hide()
+
+
+def test_viewing_thumb_has_visible_outline(qtbot, tmp_path):
+    """Viewing thumb carries accent border WITH width (BorderLayer needs it)."""
+    p1 = _real_png(tmp_path, "v.png")
+    p2 = _real_png(tmp_path, "o.png")
+    viewing = GalleryItem(path=p1, mtime_ns=1)
+    other = GalleryItem(path=p2, mtime_ns=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, other])
+    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert int(by_path[str(p1)].property("borderWidth") or 0) >= 2
+    ov.hide()
+
+
+def test_click_viewing_thumb_skips_full_repopulate(qtbot, tmp_path):
+    """Clicking the already-viewing thumb must not run _populate (no blink)."""
+    p1 = _real_png(tmp_path, "v.png")
+    p2 = _real_png(tmp_path, "o.png")
+    viewing = GalleryItem(path=p1, mtime_ns=1)
+    other = GalleryItem(path=p2, mtime_ns=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, other])
+    calls = []
+    ov._populate = lambda: calls.append(1)  # type: ignore[method-assign]
+    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    by_path[str(p1)].regionClicked.emit("thumb")
+    QApplication.processEvents()
+    assert calls == []
+    assert ov._current_idx == 0
     ov.hide()

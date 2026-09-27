@@ -143,6 +143,11 @@ class _BarWidget(QWidget):
     def __init__(self, fraction: float = 0.0, fill_color=None, parent=None) -> None:
         super().__init__(parent)
         self._fraction = max(0.0, min(1.0, float(fraction)))
+        # Last painted width: resizeEvent storms (one per mouse-move, plus
+        # layout feedback) must not re-pin the fill for sub-pixel noise —
+        # every setFixedWidth invalidates the parent layout and feeds the
+        # next resize at the minimum card size (histogram jitter).
+        self._last_pw = -1
         # Explicit caller color is kept as-is; None means "default ok token"
         # which is re-resolved on every theme change.
         self._explicit_fill = fill_color
@@ -219,6 +224,9 @@ class _BarWidget(QWidget):
         try:
             pw = self.width()
             if pw > 0:
+                if abs(pw - self._last_pw) < 1:
+                    return
+                self._last_pw = pw
                 fw = int(pw * self._fraction)
                 _set_painted_width(self._fill, fw, scaled_px(4))
             else:
@@ -230,6 +238,9 @@ class _BarWidget(QWidget):
         super().resizeEvent(event)
         try:
             pw = self.width()
+            if abs(pw - self._last_pw) < 1:
+                return
+            self._last_pw = pw
             fw = int(pw * self._fraction) if pw > 0 else scaled_px(40)
             _set_painted_width(self._fill, fw, scaled_px(4))
         except Exception:
@@ -246,6 +257,8 @@ class _DualRestoredInventedBar(QWidget):
     def __init__(self, hf_ratio: float = 0.18, parent=None) -> None:
         super().__init__(parent)
         self._hf = float(hf_ratio)
+        # Same 1px storm guard as _BarWidget (see above).
+        self._last_pw = -1
         self.setFixedHeight(scaled_px(6))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         outer = QHBoxLayout(self)
@@ -313,6 +326,9 @@ class _DualRestoredInventedBar(QWidget):
                 # fixed-296 column. The bar fills whatever width the
                 # stretched layout gives it once shown (Expanding policy).
                 return
+            if abs(pw - self._last_pw) < 1:
+                return
+            self._last_pw = pw
             total = pw
             marker_x = int(total * frac)
             left_w = max(scaled_px(4), marker_x)

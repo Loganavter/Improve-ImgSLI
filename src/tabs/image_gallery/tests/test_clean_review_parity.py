@@ -1002,9 +1002,10 @@ def test_minimize_hide_does_not_dismiss(qtbot, tmp_path):
     overlay.hide()
 
 
-def test_resize_grip_drags_card(qtbot, tmp_path):
+def test_no_resize_grip_border_drag_still_resizes(qtbot, tmp_path):
     from PySide6.QtCore import QPoint, QEvent
     from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QWidget
 
     owner = _make_owner(tmp_path, [str(tmp_path / "a.jpg")])
     overlay = _make_overlay(qtbot, owner)
@@ -1014,45 +1015,45 @@ def test_resize_grip_drags_card(qtbot, tmp_path):
     overlay.show_for(owner)
     qtbot.waitExposed(overlay)
     content = overlay._content
-    grip = overlay._resize_grip
+    # No corner grip: border strip + outer ring are the resize paths.
+    assert overlay.findChild(QWidget, "clean_review_resize_grip") is None
+    assert getattr(overlay, "_resize_grip", None) is None
     start_size = content.size()
     assert start_size.width() >= 1 and start_size.height() >= 1
 
-    center = grip.rect().center()
+    press_at = QPoint(content.width() - 4, content.height() - 4)
     press = QMouseEvent(
         QEvent.Type.MouseButtonPress,
-        center,
-        grip.mapToGlobal(center),
+        press_at,
+        content.mapToGlobal(press_at),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    grip.mousePressEvent(press)
-    assert press.isAccepted()
-    moved = center + QPoint(120, 80)
+    assert overlay.eventFilter(content, press)
+    moved = press_at + QPoint(120, 80)
     move = QMouseEvent(
         QEvent.Type.MouseMove,
         moved,
-        grip.mapToGlobal(moved),
+        content.mapToGlobal(moved),
         Qt.MouseButton.NoButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    grip.mouseMoveEvent(move)
+    assert overlay.eventFilter(content, move)
     release = QMouseEvent(
         QEvent.Type.MouseButtonRelease,
         moved,
-        grip.mapToGlobal(moved),
+        content.mapToGlobal(moved),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    grip.mouseReleaseEvent(release)
+    assert overlay.eventFilter(content, release)
     grown = content.size()
     assert grown.width() == start_size.width() + 120
     assert grown.height() == start_size.height() + 80
-    # Grip stays pinned to the card's bottom-right corner.
-    assert grip.pos() == content.rect().bottomRight() - grip.rect().bottomRight()
+    assert overlay._border_drag is None
     overlay.hide()
 
 

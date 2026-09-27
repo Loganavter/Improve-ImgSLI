@@ -80,7 +80,7 @@ def _make_ctrl() -> tuple[GalleryController, _WidgetStub, dict, FakeGalleryStore
         widget, thread_pool=QThreadPool.globalInstance(), context=context
     )
     calls: dict = {"triage": [], "thumbs": []}
-    ctrl._start_triage = lambda items: calls["triage"].append(list(items))  # type: ignore[method-assign]
+    ctrl._start_triage = lambda items, **kw: calls["triage"].append(list(items))  # type: ignore[method-assign]
     ctrl._load_thumbnail = lambda item: calls["thumbs"].append(item.path)  # type: ignore[method-assign]
     return ctrl, widget, calls, store
 

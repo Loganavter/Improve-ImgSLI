@@ -579,6 +579,33 @@ def ensure_gallery_card_flyout(parent: QWidget):  # type: ignore[no-untyped-def]
             flyout.flyout_group = GALLERY_CARD_FLYOUT_GROUP  # type: ignore[attr-defined]
         except Exception:
             pass
+        # Hover-frequency pill: one bare show() per card Enter, and cards
+        # also sweep under a stationary cursor during grid scroll. Never
+        # kick window activation from it — under Wayland Qt reports
+        # inactive mid-scroll, so every show would mint a stale
+        # xdg-activation request and the compositor answers the storm
+        # with busy-cursor feedback (MC-zoom precedent:
+        # test_mc_zoom_no_busy_cursor.py). Clicks focus the pill buttons
+        # naturally, so nothing is lost by staying quiet.
+        try:
+            flyout._no_window_activate = True  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # Hover-only pill: never steal keyboard focus on show. The stock
+        # show() grabs focus into the pill and weakens StrongFocus
+        # ancestors (grid included) until hide — so Space activated the
+        # focused pill button instead of deleting the selection, arrows
+        # navigated within the pill instead of the grid, and Del lived or
+        # died by focus-propagation luck (stale focus after rebuild churn
+        # swallowed it). _skip_focus_grab also skips nav-section
+        # registration, so arrows stay with the gallery while hovering.
+        # Clicks still focus pill buttons naturally (and Del from there
+        # propagates up to the grid), keyboard users lose nothing: every
+        # pill action has a grid key (B / Space-Del / Enter-compare).
+        try:
+            flyout._skip_focus_grab = True  # type: ignore[attr-defined]
+        except Exception:
+            pass
         flyout.set_actions(_gallery_card_actions_spec())
         try:
             parent._gallery_card_flyout = flyout  # type: ignore[attr-defined]

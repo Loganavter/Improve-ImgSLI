@@ -19,7 +19,6 @@ from tabs.image_gallery.models import Artifact, GalleryItem, Mode, Severity
 from tabs.image_gallery.ui.quick_look import (
     DIM_VEIL_ALPHA,
     QuickLookOverlay,
-    _SourceInsetHost,
     _source_dimensions,
 )
 
@@ -188,15 +187,39 @@ def test_halo_renders_as_bar_widget(qtbot):
     ov.hide()
 
 
-# -- S4-1: source inset border host + caption dimensions ---------------------
+# -- source inset: crop-parity display (no painted frame) --------------------
 
 
-def test_source_inset_host_paints_border(qtbot):
-    host = _SourceInsetHost()
-    host.resize(100, 80)
-    qtbot.addWidget(host)
-    pm = host.grab()  # paintEvent smoke — border painter must not raise
-    assert not pm.isNull()
+def test_source_inset_matches_crop_display(qtbot):
+    """Source inset shares the SHARPNESS-CROP display: plain host (default
+    QWidget paint, no amber frame), title pill above the pixmap, full
+    caption kept as tooltip since the pill elides the tail."""
+    src = _item("src.png", metrics={"width": 960, "height": 540})
+    item = _item("v.png", metrics={})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    QApplication.processEvents()
+    host = ov._source_inset_host
+    assert type(host) is QWidget
+    pill = ov.findChild(QWidget, "quicklook_source_inset_title_pill")
+    assert pill is not None
+    assert ov._source_inset_title.parentWidget() is pill
+    assert pill._bg.name().lower() == "#ffffff"
+    # Hairline so the white capsule reads on the light card too.
+    assert pill._border is not None
+    assert pill.width() <= host.width()
+    full = ov._source_inset_label._original_text
+    assert full.startswith("SOURCE · src.png")
+    assert "960×540" in full
+    assert ov._source_inset_host.toolTip() == full
+    assert ov._source_inset_pix.toolTip() == full
+    assert ov._source_inset_label.toolTip() == full
+    # Short caption: the pill hugs the label (crop parity).
+    ov._source_inset_label.setText("SOURCE")
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert pill.width() < host.width()
+    ov.hide()
 
 
 def test_source_dimensions_prefers_metrics(monkeypatch):
@@ -628,25 +651,29 @@ def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
     card = content.geometry()
     assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
     assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
-    # Grip re-pinned to the new bottom-right corner.
-    grip = ov._resize_grip
-    assert grip.parentWidget() is content
-    assert grip.geometry().topLeft() == QPoint(
-        content.width() - grip.width(), content.height() - grip.height()
-    )
+    # No corner grip: border (W9) + outer ring (W10) are the resize paths.
+    from PySide6.QtWidgets import QWidget as _QW
+
+    assert ov.findChild(_QW, "quicklook_resize_grip") is None
+    assert getattr(ov, "_resize_grip", None) is None
     ov.hide()
 
 
-def test_resize_grip_drag_clamp_floor_and_paint(qtbot):
-    """W8 drag handle: painter-painted (no QSS), bottom-right child of the
-    card; dragging clamps to the overlay minus margin and floors at the
-    1040x620 minimum; nothing is persisted (session-only size)."""
-    from PySide6.QtCore import QEvent, QPointF, Qt
-    from PySide6.QtGui import QMouseEvent
-    from PySide6.QtWidgets import QWidget
+def test_no_resize_grip_border_ring_remain(qtbot):
+    """No W8 corner grip: resize lives on the border strip + outer ring.
+
+    The card has no ``quicklook_resize_grip`` child (and ``_resize_grip``
+    is None), yet a border drag still clamps to the overlay minus margin
+    and floors at the 1040x620 minimum, session-only.
+    """
+    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 
     from sli_ui_toolkit.managers import scaled_px
-    from tabs.image_gallery.ui.quick_look.helpers import _ResizeGrip
+    from tabs.image_gallery.ui.quick_look.resize import (
+        handle_border_move,
+        handle_border_press,
+        handle_border_release,
+    )
 
     src = _item("src.png", metrics={"width": 960, "height": 540})
     item = _item("v.png", metrics={})
@@ -654,63 +681,39 @@ def test_resize_grip_drag_clamp_floor_and_paint(qtbot):
     _show(ov, item, [src, item], source=src.path)
     QApplication.processEvents()
     QApplication.processEvents()
-    grip = ov._resize_grip
-    assert isinstance(grip, _ResizeGrip)
-    assert _ResizeGrip.paintEvent is not QWidget.paintEvent
-    assert grip.styleSheet() == ""
-    assert grip.objectName() == "quicklook_resize_grip"
-    assert not grip.grab().isNull()  # paintEvent smoke — must not raise
-
-    def _press_move_release(dx: int, dy: int):
-        from PySide6.QtCore import QPoint
-
-        start_global = grip.mapToGlobal(grip.rect().center())
-        end_global = start_global + QPoint(dx, dy)
-        local = QPointF(grip.rect().center())
-        press = QMouseEvent(
-            QEvent.Type.MouseButtonPress,
-            local,
-            QPointF(start_global),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        grip.mousePressEvent(press)
-        move = QMouseEvent(
-            QEvent.Type.MouseMove,
-            local,
-            QPointF(end_global),
-            Qt.MouseButton.NoButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        grip.mouseMoveEvent(move)
-        release = QMouseEvent(
-            QEvent.Type.MouseButtonRelease,
-            local,
-            QPointF(end_global),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.NoButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        grip.mouseReleaseEvent(release)
-        QApplication.processEvents()
+    assert ov.findChild(QWidget, "quicklook_resize_grip") is None
+    assert getattr(ov, "_resize_grip", None) is None
 
     content = ov._content
-    # Drag far past the window: clamped to overlay minus the 16px margin.
-    _press_move_release(1000, 1000)
+    _ly = content.mapFrom(ov, QPoint(0, _ring_y_clear_of_nav(ov, content.geometry()))).y()
+
+    def _drag(lx, ly, dx, dy):
+        start = content.mapToGlobal(QPoint(lx, ly))
+        end = start + QPoint(dx, dy)
+        press = _w9_mouse_event(
+            QEvent.Type.MouseButtonPress, (lx, ly), (start.x(), start.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        )
+        assert handle_border_press(ov, press) is True
+        move = _w9_mouse_event(
+            QEvent.Type.MouseMove, (lx + dx, ly + dy), (end.x(), end.y()),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        )
+        assert handle_border_move(ov, move) is True
+        release = _w9_mouse_event(
+            QEvent.Type.MouseButtonRelease, (lx + dx, ly + dy), (end.x(), end.y()),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+        )
+        assert handle_border_release(ov, release) is True
+        QApplication.processEvents()
+
+    # Right edge far past the window: clamped to overlay minus margin.
+    _drag(content.width() - 4, _ly, 1000, 0)
     margin = scaled_px(16)
     assert content.width() == ov.width() - margin * 2
-    assert content.height() == ov.height() - margin * 2
-    # Drag far the other way: floored at the 1040x620 minimum.
-    _press_move_release(-2000, -2000)
+    # Far the other way (left edge rightwards): floored at 1040x620.
+    _drag(4, _ly, 2000, 0)
     assert content.size() == QSize(scaled_px(1040), scaled_px(620))
-    # Grip followed the card back to the minimum corner.
-    from PySide6.QtCore import QPoint
-
-    assert grip.geometry().topLeft() == QPoint(
-        content.width() - grip.width(), content.height() - grip.height()
-    )
     ov.hide()
 
 
@@ -1120,23 +1123,67 @@ def test_labels_render_at_mockup_point_sizes(qtbot):
     ov.hide()
 
 
-def test_inset_caption_is_bottom_overlay_strip(qtbot):
-    """W4 item 5: caption is an overlaid strip at the inset bottom, not a
-    VBox label — full width, bottom edge, eliding."""
+def test_insets_overlay_bottom_left_over_preview(qtbot):
+    """Source/crop blocks overlay the preview bottom-left (not in the flow):
+    title pill above the pixmap, host parented to the preview label and
+    absent from the preview-host layout, pinned to the bottom-left."""
+    from PySide6.QtWidgets import QWidget as _QW2
+
+    for mode, host_attr, pix_attr in (
+        ("src", "_source_inset_host", "_source_inset_pix"),
+        ("crop", "_crop_host", "_crop_pix"),
+    ):
+        if mode == "src":
+            src = _item("src.png", metrics={"width": 960, "height": 540})
+            item = _item("v.png", metrics={})
+            ov = _make_overlay(qtbot)
+            _show(ov, item, [src, item], source=src.path)
+        else:
+            item = _item("v.png", metrics={})
+            ov = _make_overlay(qtbot)
+            _show(ov, item, [item], mode=Mode.CAMERA)
+        QApplication.processEvents()
+        QApplication.processEvents()
+        try:
+            host = getattr(ov, host_attr)
+            pix = getattr(ov, pix_attr)
+            label = ov._preview_label
+            assert host.parentWidget() is label
+            # Not in the preview-host flow layout.
+            assert ov._preview_host.layout().indexOf(host) == -1
+            # Bottom-left with the 12px margin.
+            from sli_ui_toolkit.managers import scaled_px as _spx
+
+            m = _spx(12)
+            assert host.x() == m
+            assert host.y() + host.height() == label.height() - m
+            assert isinstance(pix, _QW2)
+        finally:
+            ov.hide()
+
+
+def test_inset_thumbs_are_inert_cards(qtbot):
+    """Inset thumbs are non-clickable card Buttons (S3-card parity): bg +
+    thumb regions, hover overlays locked, arrow cursor, no callbacks —
+    contrast without clickability."""
+    from PySide6.QtCore import Qt as _Qt2
+
+    from sli_ui_toolkit.widgets import Button as _Btn
+
     src = _item("src.png", metrics={"width": 960, "height": 540})
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
     QApplication.processEvents()
-    host = ov._source_inset_host
-    cap = ov._source_inset_caption
-    assert cap.parentWidget() is host
-    # Not managed by the host VBox layout.
-    assert host.layout().indexOf(cap) == -1
-    # Pinned to the inset bottom, full inset width.
-    assert cap.y() + cap.height() == host.height()
-    assert cap.width() == host.width()
-    ov.hide()
+    try:
+        btn = ov._source_inset_pix
+        assert isinstance(btn, _Btn)
+        assert [r.id for r in btn.regions()] == ["bg", "thumb"]
+        assert all(getattr(r, "bg_locked", False) for r in btn.regions())
+        assert btn.cursor().shape() == _Qt2.CursorShape.ArrowCursor
+        assert not btn.grab().isNull()  # paint smoke — must not raise
+    finally:
+        ov.hide()
 
 
 def test_meta_same_size_when_factor_one(qtbot):
@@ -1698,12 +1745,8 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     # Far corner drag floors at the 1040×620 minimum.
     _press_move_release(4, 4, 3000, 3000)
     assert content.size() == QSize(scaled_px(1040), scaled_px(620))
-    # Absolute children re-pinned: grip at the corner, nav on the edges
+    # Absolute children re-pinned: nav on the edges
     # (W10 overlay coords — centers on the card left/right edges).
-    assert ov._resize_grip.geometry().topLeft() == QPoint(
-        content.width() - ov._resize_grip.width(),
-        content.height() - ov._resize_grip.height(),
-    )
     card = content.geometry()
     assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
     assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
@@ -1921,11 +1964,7 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
     _press_move_release(card.x() - 4, card.y() - 4, 3000, 3000)
     assert content.size() == QSize(scaled_px(1040), scaled_px(620))
     assert getattr(ov, "_border_drag", None) is None
-    # Absolute children re-pinned: grip at the corner, nav on the edges.
-    assert ov._resize_grip.geometry().topLeft() == QPoint(
-        content.width() - ov._resize_grip.width(),
-        content.height() - ov._resize_grip.height(),
-    )
+    # Absolute children re-pinned: nav on the edges.
     card = content.geometry()
     assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
     assert abs(ov._next_btn.geometry().center().x() - (card.x() + card.width())) <= 2
@@ -2368,6 +2407,8 @@ def test_crop_title_has_capsule_backing(qtbot):
         assert not pill.grab().isNull()
         assert pill._bg.name().lower() == "#ffffff"
         assert pill._bg.alpha() == 255
+        # Hairline so the white capsule reads on the light card too.
+        assert pill._border is not None
         assert ov._crop_title.palette().color(ov._crop_title.foregroundRole()).name().lower() == "#23262b"
         QApplication.processEvents()
         assert pill.width() < ov._crop_host.width()

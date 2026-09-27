@@ -1,8 +1,8 @@
 """Quick look card resize — plain functions (no owner state).
-Audit-Meta: pattern=thin-owner-target size=exempt reason="one card-resize concern: grip/border/ring share one clamp + repin idiom"
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one card-resize concern: border/ring share one clamp + repin idiom"
 
-Corner grip pin, session-only clamp (floor 1040x620), 8px inner border
-strip + outer ring drags, card re-layout entry (``_relayout_on_card_resize``).
+Session-only clamp (floor 1040x620), 8px inner border strip + outer ring
+drags, card re-layout entry (``_relayout_on_card_resize``).
 Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
 """
 
@@ -15,33 +15,28 @@ from tabs.image_gallery.ui.quick_look.preview import _rescale_preview_to_host
 
 
 def reposition_grip(overlay) -> None:
-    """Pin the drag-resize grip to the card's bottom-right corner (W8).
+    """Card re-layout entry invoked on every resize path (W-B; keeps the
+    historical name so all ``quick_look.py`` hooks stay untouched).
 
-    Absolute child of the card plate (same idiom as
-    ``reposition_nav_buttons`` / ``reposition_source_inset``). Runs from the
-    overlay's ``_content`` Resize filter, ``resizeEvent``, and the grip's
-    own drag handler.
-
-    W-B: ends with the card re-layout (preview-with-aspect rescale + footer
-    reflow). This function is the one resize entry point that lives in this
-    module AND is already invoked on every resize path by ``quick_look.py``
-    (``_content`` Resize filter + overlay ``resizeEvent``, both out of W-B
-    scope), so the re-layout rides all resizes with no new hooks and no
-    out-of-scope edits.
+    The W8 corner grip is gone (border W9 + ring W10 are the resize paths),
+    so there is nothing to pin — the function ends with the card re-layout
+    (preview-with-aspect rescale + footer reflow). It is already invoked on
+    every resize path by ``quick_look.py`` (``_content`` Resize filter +
+    overlay ``resizeEvent``), so the re-layout rides all resizes with no
+    new hooks.
     """
     try:
         content = getattr(overlay, "_content", None)
         grip = getattr(overlay, "_resize_grip", None)
-        if content is None or grip is None:
-            return
-        grip.move(
-            max(0, content.width() - grip.width()),
-            max(0, content.height() - grip.height()),
-        )
-        try:
-            grip.raise_()
-        except Exception:
-            pass
+        if content is not None and grip is not None:
+            grip.move(
+                max(0, content.width() - grip.width()),
+                max(0, content.height() - grip.height()),
+            )
+            try:
+                grip.raise_()
+            except Exception:
+                pass
     except Exception:
         pass
     try:
@@ -54,8 +49,8 @@ def clamp_card_size(overlay, want_w: int, want_h: int) -> tuple[int, int]:
     """Clamp a wanted card size to the session-only resize bounds (W8/W9).
 
     Floor: the S4 mockup 1040×620 card. Ceiling: the overlay (parent/window)
-    minus the 16px margin on each side. Shared by the corner grip drag and
-    the full-border drag so both handles agree exactly.
+    minus the 16px margin on each side. Shared by the border and ring drags
+    so both handles agree exactly.
     """
     try:
         from sli_ui_toolkit.managers import scaled_px
@@ -80,8 +75,7 @@ def clamp_card_size(overlay, want_w: int, want_h: int) -> tuple[int, int]:
 # W9: full-border resize — an 8px hit strip along the WHOLE card border
 # (4 edges + 4 corners, 8 drag directions). Zones are hit-tested from the
 # overlay's _content eventFilter (quick_look.py) and reuse the W8 clamp +
-# reposition idiom. No QSS: hover affordance is cursor-only, and the
-# painted _ResizeGrip stays as the SE corner's visual affordance.
+# reposition idiom. No QSS: hover affordance is cursor-only (no corner grip).
 RESIZE_BORDER_PX = 8
 
 
@@ -258,7 +252,7 @@ def _repin_after_card_resize(overlay) -> None:
 
     W-B: the card re-layout (preview-with-aspect rescale + footer reflow)
     rides along via ``reposition_grip`` (called below), so the drag paths
-    (grip / border / ring) and the overlay Resize paths all re-layout
+    (border / ring) and the overlay Resize paths all re-layout
     through this one entry.
     """
     try:
@@ -326,16 +320,74 @@ def _resize_dbg():
 
 
 def _resize_trace_on() -> bool:
-    """Full firehose (IMGSLI_QL_RESIZE_TRACE=1): log EVERYObserved move with
-    receiver + effective cursor, no change-gating. For when the filtered
-    ql-resize logs hide the picture (steady states and child-swallowed
-    events are silent there by design)."""
+    """Full firehose (IMGSLI_QL_RESIZE_TRACE=1): log EVERY observed move with
+    receiver + effective cursor + app override cursor + window-filter state,
+    no change-gating. For when the filtered ql-resize logs hide the picture
+    (steady states and child-swallowed events are silent there by design).
+
+    The ``override=`` column is the decisive one for "wrong cursor"
+    reports: ``QApplication.overrideCursor()`` beats every widget cursor,
+    so a line reading ``cursor=SizeHorCursor override=WaitCursor`` means
+    the screen shows waiting while the card logic holds a resize arrow.
+    ``winfilter=`` mirrors the main-window toolkit ``_ResizeFilter``
+    (manual edges / native resize / override pushed) — the only other
+    override-cursor owner besides project busy."""
     try:
         from shared.debug_flags import env_flag as _env_flag
 
         return bool(_env_flag("IMGSLI_QL_RESIZE_TRACE"))
     except Exception:
         return False
+
+
+def _override_cursor_name() -> str:
+    """App-wide override cursor shape (``none`` when the stack is empty).
+
+    Deliberately NOT reusing ``_cursor_name``'s ``None → arrow`` mapping:
+    an empty stack and a pushed ArrowCursor look identical on screen but
+    mean different things (the latter still shadows widget cursors while
+    pushed, and a leak would show here first).
+    """
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return "no-app"
+        cur = app.overrideCursor()
+        if cur is None:
+            return "none"
+        try:
+            shape = cur.shape() if hasattr(cur, "shape") else cur
+            return str(shape).split(".")[-1]
+        except Exception:
+            return "?"
+    except Exception:
+        return "?"
+
+
+def _winfilter_state(overlay) -> str:
+    """Compact main-window ``_ResizeFilter`` state for the trace line."""
+    try:
+        win = overlay.window() if hasattr(overlay, "window") else None
+        if win is None:
+            return "no-win"
+        try:
+            from sli_ui_toolkit.ui.windows.frameless.resize_filter import (
+                _ResizeFilter,
+            )
+
+            f = win.findChild(_ResizeFilter)
+        except Exception:
+            return "no-filter"
+        if f is None:
+            return "no-filter"
+        return (
+            f"manual={f._manual_edges} native={f._native_resizing} "
+            f"pushed={f._override_pushed} armed={f._cursor_armed}"
+        )
+    except Exception:
+        return "?"
 
 
 def _effective_cursor_name(widget) -> str:
@@ -374,14 +426,34 @@ def trace_move(overlay, where: str, pos, receiver=None) -> None:
             drag_s = drag[0] if drag is not None else "-"
         except Exception:
             drag_s = "?"
+        try:
+            ovr = _override_cursor_name()
+        except Exception:
+            ovr = "?"
+        try:
+            wfs = _winfilter_state(overlay)
+        except Exception:
+            wfs = "?"
+        try:
+            content = getattr(overlay, "_content", None)
+            if content is not None:
+                cg = content.geometry()
+                geos = f"card=({cg.x()},{cg.y()},{cg.width()}x{cg.height()})"
+            else:
+                geos = "card=?"
+        except Exception:
+            geos = "card=?"
         _dbg(
-            "ql-resize trace %s pos=(%d,%d) receiver=%s cursor=%s drag=%s",
+            "ql-resize trace %s pos=(%d,%d) receiver=%s cursor=%s drag=%s override=%s winfilter=(%s) %s",
             where,
             pos.x(),
             pos.y(),
             recv_name,
             eff,
             drag_s,
+            ovr,
+            wfs,
+            geos,
         )
     except Exception:
         pass
@@ -520,7 +592,7 @@ def handle_border_press(overlay, event) -> bool:
             return False
         overlay._border_drag = (zone, start_global, content.geometry())
         if _dbg_on:
-            _dbg("ql-resize drag start zone=%s (inner strip)", zone)
+            _dbg("ql-resize drag start zone=%s (inner strip) override=%s", zone, _override_cursor_name())
         cursor = resize_cursor_for(zone)
         apply_resize_cursor(overlay, content, "plate", cursor)
         try:
@@ -554,7 +626,7 @@ def handle_border_move(overlay, event) -> bool:
                 _dbg_on, _dbg = _resize_dbg()
                 if _dbg_on:
                     try:
-                        _dbg("ql-resize drag cancel (no buttons held)")
+                        _dbg("ql-resize drag cancel (no buttons held) override=%s", _override_cursor_name())
                     except Exception:
                         pass
                 overlay._border_drag = None
@@ -583,14 +655,70 @@ def handle_border_move(overlay, event) -> bool:
                 want_h = start_geom.height() + dy
             new_w, new_h = clamp_card_size(overlay, want_w, want_h)
             try:
+                # Clamp-standstill: pushing further into the floor keeps
+                # returning the same size — resizing to it again would only
+                # fire resizeEvent → full relayout (Smooth preview rescale +
+                # footer reflow + bar geometry) per mouse-move with zero
+                # visual change, stalling the drag exactly at the minimum.
+                cur_w = content.width()
+                cur_h = content.height()
+                if new_w == cur_w and new_h == cur_h:
+                    try:
+                        event.accept()
+                    except Exception:
+                        pass
+                    return True
                 # Anchor the opposite edge: left/top drags move the card
                 # so the edge under the cursor tracks it (right/bottom
-                # drags keep the W8 top-left anchor).
-                new_x = start_geom.x() + (start_geom.width() - new_w) if "left" in zone else start_geom.x()
-                new_y = start_geom.y() + (start_geom.height() - new_h) if "top" in zone else start_geom.y()
-                if new_x != start_geom.x() or new_y != start_geom.y():
-                    content.move(new_x, new_y)
+                # drags keep the W8 top-left anchor). The move is computed
+                # from the ACTUAL size after resize (not the requested
+                # one): if minimums/rounding expanded the resize, the
+                # opposite edge still lands on start_right/start_bottom
+                # instead of drifting with the expansion.
                 content.resize(new_w, new_h)
+                try:
+                    actual_w = content.width()
+                    actual_h = content.height()
+                except Exception:
+                    actual_w, actual_h = new_w, new_h
+                if "left" in zone:
+                    new_x = start_geom.x() + (start_geom.width() - actual_w)
+                else:
+                    new_x = start_geom.x()
+                if "top" in zone:
+                    new_y = start_geom.y() + (start_geom.height() - actual_h)
+                else:
+                    new_y = start_geom.y()
+                try:
+                    cur_x = content.x()
+                    cur_y = content.y()
+                except Exception:
+                    cur_x, cur_y = start_geom.x(), start_geom.y()
+                if new_x != cur_x or new_y != cur_y:
+                    content.move(new_x, new_y)
+                try:
+                    if _resize_trace_on():
+                        from tabs.image_gallery.debug import gallery_debug as _dbg2
+
+                        try:
+                            end_g = content.geometry()
+                            end_right = end_g.x() + end_g.width()
+                        except Exception:
+                            end_right = "?"
+                        _dbg2(
+                            "ql-resize drag zone=%s start_right=%d want=%dx%d req=%dx%d actual=%dx%d end_right=%s",
+                            zone,
+                            start_geom.x() + start_geom.width(),
+                            want_w,
+                            want_h,
+                            new_w,
+                            new_h,
+                            actual_w,
+                            actual_h,
+                            end_right,
+                        )
+                except Exception:
+                    pass
             except Exception:
                 pass
             _repin_after_card_resize(overlay)
@@ -651,7 +779,7 @@ def handle_border_release(overlay, event) -> bool:
                 zone = drag[0]
             except Exception:
                 zone = "?"
-            _dbg("ql-resize drag end zone=%s", zone)
+            _dbg("ql-resize drag end zone=%s override=%s", zone, _override_cursor_name())
         overlay._border_drag = None
         _repin_after_card_resize(overlay)
         try:
@@ -825,7 +953,7 @@ def handle_ring_press(overlay, event) -> bool:
             return False
         overlay._border_drag = (zone, start_global, content.geometry())
         if _dbg_on:
-            _dbg("ql-resize drag start zone=%s (outer ring)", zone)
+            _dbg("ql-resize drag start zone=%s (outer ring) override=%s", zone, _override_cursor_name())
         cursor = resize_cursor_for(zone)
         apply_resize_cursor(overlay, overlay, "overlay", cursor)
         try:
@@ -928,7 +1056,7 @@ def handle_ring_release(overlay, event) -> bool:
                 zone = getattr(overlay, "_border_drag")[0]
             except Exception:
                 zone = "?"
-            _dbg("ql-resize drag end zone=%s (outer ring)", zone)
+            _dbg("ql-resize drag end zone=%s (outer ring) override=%s", zone, _override_cursor_name())
         overlay._border_drag = None
         _repin_after_card_resize(overlay)
         apply_resize_cursor(overlay, overlay, "overlay", None)

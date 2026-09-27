@@ -375,7 +375,15 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None) ->
         pass
     thumb = getattr(item, "thumbnail", None)
     if thumb is not None and not thumb.isNull():
-        card.update_region("cover", pixmap=thumb, image_fill="cover")
+        # Delivery batches re-run this per item: re-setting the IDENTICAL
+        # pixmap still costs a full set_regions (rects + repaint). Skip when
+        # the region already shows this exact object.
+        try:
+            current = card.region("cover").pixmap
+        except Exception:
+            current = None
+        if current is not thumb:
+            card.update_region("cover", pixmap=thumb, image_fill="cover")
     else:
         card.update_region("cover", pixmap=None, image_fill="cover")
         try:

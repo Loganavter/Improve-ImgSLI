@@ -420,29 +420,7 @@ def _clamp_clean_review_size(overlay, want_w: int, want_h: int) -> tuple[int, in
         return int(want_w), int(want_h)
 
 
-def reposition_clean_review_grip(overlay) -> None:
-    """Pin the drag-resize grip to the S3 card's bottom-right corner.
-
-    Runs from the ``_content`` Resize filter, ``resizeEvent``, and after
-    ``show_overlay`` (mirrors quick-look ``reposition_grip``).
-    """
-    try:
-        content = getattr(overlay, "_content", None)
-        grip = getattr(overlay, "_resize_grip", None)
-        if content is None or grip is None:
-            return
-        grip.move(
-            max(0, content.width() - grip.width()),
-            max(0, content.height() - grip.height()),
-        )
-        try:
-            grip.raise_()
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-
+# -- Quick Look-identical resize (W9 8px border strip + W10 outer ring) -----
 # -- Quick Look-identical resize (W9 8px border strip + W10 outer ring) -----
 # Same zones, cursors, clamp idiom, and D2/D4 guards as quick-look
 # ``resize.py``; S3 has no nav arrows (no W11 branches) and repins through
@@ -652,17 +630,41 @@ def s3_handle_border_move(overlay, event) -> bool:
                 want_h = start_geom.height() + dy
             new_w, new_h = _clamp_clean_review_size(overlay, want_w, want_h)
             try:
-                # Anchor the opposite edge: left/top drags move the card
-                # so the edge under the cursor tracks it (right/bottom
-                # drags keep the top-left anchor).
-                new_x = start_geom.x() + (start_geom.width() - new_w) if "left" in zone else start_geom.x()
-                new_y = start_geom.y() + (start_geom.height() - new_h) if "top" in zone else start_geom.y()
-                if new_x != start_geom.x() or new_y != start_geom.y():
-                    content.move(new_x, new_y)
+                # Clamp-standstill (Quick Look idiom): pushing further into
+                # the floor returns the same size — skip the resize/repin so
+                # a minimum drag doesn't fire a full relayout per move.
+                if new_w == content.width() and new_h == content.height():
+                    try:
+                        event.accept()
+                    except Exception:
+                        pass
+                    return True
+                # Anchor the opposite edge from the ACTUAL size after resize
+                # (Quick Look idiom): minimums/rounding expanding the resize
+                # must not drag the anchored edge along.
                 content.resize(new_w, new_h)
+                try:
+                    actual_w = content.width()
+                    actual_h = content.height()
+                except Exception:
+                    actual_w, actual_h = new_w, new_h
+                if "left" in zone:
+                    new_x = start_geom.x() + (start_geom.width() - actual_w)
+                else:
+                    new_x = start_geom.x()
+                if "top" in zone:
+                    new_y = start_geom.y() + (start_geom.height() - actual_h)
+                else:
+                    new_y = start_geom.y()
+                try:
+                    cur_x = content.x()
+                    cur_y = content.y()
+                except Exception:
+                    cur_x, cur_y = start_geom.x(), start_geom.y()
+                if new_x != cur_x or new_y != cur_y:
+                    content.move(new_x, new_y)
             except Exception:
                 pass
-            reposition_clean_review_grip(overlay)
             try:
                 event.accept()
             except Exception:
@@ -691,7 +693,6 @@ def s3_handle_border_release(overlay, event) -> bool:
         if getattr(overlay, "_border_drag", None) is None:
             return False
         overlay._border_drag = None
-        reposition_clean_review_grip(overlay)
         try:
             content = getattr(overlay, "_content", None)
             if content is not None:
@@ -799,7 +800,6 @@ def s3_handle_ring_release(overlay, event) -> bool:
         if getattr(overlay, "_border_drag", None) is None:
             return False
         overlay._border_drag = None
-        reposition_clean_review_grip(overlay)
         _s3_apply_cursor(overlay, None)
         try:
             content = getattr(overlay, "_content", None)
@@ -816,129 +816,8 @@ def s3_handle_ring_release(overlay, event) -> bool:
         return False
 
 
-class _CleanReviewResizeGrip(QWidget):
-    """Bottom-right drag handle for the resizable S3 card (Quick Look parity).
-
-    Painter-painted diagonal grip lines in the ``separator.color`` token,
-    theme-subscribed — no QSS, no palette. Dragging resizes the card plate
-    in place (top-left anchored) through ``_clamp_clean_review_size``.
-    """
-
-    GRIP_PX = 20
-
-    def __init__(self, overlay, parent=None) -> None:
-        super().__init__(parent)
-        self._overlay_ref = overlay
-        self.setFixedSize(scaled_px(self.GRIP_PX), scaled_px(self.GRIP_PX))
-        self.setObjectName("clean_review_resize_grip")
-        try:
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        except Exception:
-            pass
-        self._color = self._resolve_color()
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
-        except Exception:
-            pass
-        self._drag_start = None
-        self._drag_size = None
-
-    @staticmethod
-    def _resolve_color():
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            from ui.theming import try_resolve_theme_color
-
-            c = try_resolve_theme_color(ThemeManager.get_instance(), "separator.color")
-            if c is not None:
-                return c if isinstance(c, QColor) else QColor(c)
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.ui.quick_look.labels_theme import _token_color
-
-            return _token_color("separator.color", "#e5e5e5")
-        except Exception:
-            pass
-        return QColor(0, 0, 0, 0)
-
-    def _on_theme_changed(self) -> None:
-        try:
-            self._color = self._resolve_color()
-        except Exception:
-            pass
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def on_theme_changed(self) -> None:
-        self._on_theme_changed()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtGui import QPen
-
-            p = QPainter(self)
-            try:
-                color = self._color
-                pen = QPen(color if color is not None else QColor(0, 0, 0, 0))
-                pen.setWidthF(max(1.0, scaled_px(1)))
-                p.setPen(pen)
-                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-                w = self.width()
-                h = self.height()
-                step = scaled_px(4)
-                for i in range(3):
-                    off = step * (i + 1)
-                    p.drawLine(w - off, h, w, h - off)
-            finally:
-                p.end()
-        except Exception:
-            pass
-        try:
-            super().paintEvent(event)
-        except Exception:
-            pass
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        try:
-            if event.button() == Qt.MouseButton.LeftButton:
-                self._drag_start = event.globalPosition().toPoint()
-                content = getattr(self._overlay_ref, "_content", None)
-                if content is not None:
-                    self._drag_size = content.size()
-                event.accept()
-                return
-        except Exception:
-            pass
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        try:
-            if self._drag_start is not None and self._drag_size is not None:
-                overlay = self._overlay_ref
-                content = getattr(overlay, "_content", None)
-                if content is not None:
-                    delta = event.globalPosition().toPoint() - self._drag_start
-                    want_w = self._drag_size.width() + delta.x()
-                    want_h = self._drag_size.height() + delta.y()
-                    new_w, new_h = _clamp_clean_review_size(overlay, want_w, want_h)
-                    content.resize(new_w, new_h)
-                    reposition_clean_review_grip(overlay)
-                event.accept()
-                return
-        except Exception:
-            pass
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._drag_start = None
-        self._drag_size = None
-        super().mouseReleaseEvent(event)
+# NOTE: the corner _CleanReviewResizeGrip was removed (Quick Look parity) —
+# the full-border strip + outer ring remain the resize paths.
 
 
 class CleanReviewOverlay(TopLevelInWindowOverlay):
@@ -946,7 +825,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
     Close/resize parity with Quick Look: veil click, Esc, and the top-right
     ✕ close; minimize/focus loss stay pinned (tab-lifetime paths in
-    ``tab.py`` still hide explicitly); the corner grip resizes the card.
+    ``tab.py`` still hide explicitly); the card border/ring resizes it.
 
     Use ``show_for(owner)`` to populate and show.
     Emits ``cleaned(list)`` after a successful move batch (for tests).
@@ -1129,20 +1008,18 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             self._content.setMinimumHeight(scaled_px(REVIEW_CARD_HEIGHT_PX))
         except Exception:
             pass
-        # Quick Look parity: corner resize grip (absolute child of the
-        # plate, repinned on every resize) + content Resize filter.
+        # Quick Look parity: content Resize filter for the border drag
+        # (no corner grip — border strip + outer ring are the resize paths).
         self._border_drag = None
         try:
             self._content.setMouseTracking(True)
         except Exception:
             pass
-        self._resize_grip = _CleanReviewResizeGrip(self, self._content)
-        self._resize_grip.raise_()
+        self._resize_grip = None
         try:
             self._content.installEventFilter(self)
         except Exception:
             pass
-        reposition_clean_review_grip(self)
         self._row_widgets: list[QWidget] = []
         self._toast_manager: ToastManager | None = None
         self._ql_return = None
@@ -1200,10 +1077,6 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # bare show() leaves the overlay at stale geometry, painting ~nothing.
         try:
             self.show_overlay()
-        except Exception:
-            pass
-        try:
-            reposition_clean_review_grip(self)
         except Exception:
             pass
         _t3 = time.perf_counter()
@@ -1278,9 +1151,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
                 return False
             if watched is getattr(self, "_content", None):
                 t = event.type()
-                if t == QEvent.Type.Resize:
-                    reposition_clean_review_grip(self)
-                elif t == QEvent.Type.MouseButtonPress:
+                if t == QEvent.Type.MouseButtonPress:
                     if s3_handle_border_press(self, event):
                         return True
                 elif t == QEvent.Type.MouseMove:
@@ -1365,12 +1236,8 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         super().leaveEvent(event)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
-        # Base recenters the card; the grip re-pins after.
+        # Base recenters the card.
         super().resizeEvent(event)
-        try:
-            reposition_clean_review_grip(self)
-        except Exception:
-            pass
 
     def hideEvent(self, event) -> None:  # noqa: N802
         # Restore HUD suppression after overlay hides.
