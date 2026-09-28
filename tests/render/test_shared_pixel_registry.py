@@ -236,6 +236,24 @@ def test_release_foreign_store_closes_like_today(tmp_path):
     assert spr.entry_count() == 0
 
 
+def test_release_store_view_drops_ref_foreign_closes(tmp_path):
+    p = _png(tmp_path / "a.png")
+    h1 = spr.publish(p, TiledPixelStore.from_path(p))
+    h2 = spr.acquire(p)
+    assert h1 is not None and h2 is not None
+    spr.release_store(h1.store)  # wave-3 tab path: raw store form
+    assert spr.live_refs() == 1
+    assert h2.store.is_open
+    spr.release_store(None)
+    spr.release_store(object())  # type: ignore[arg-type]
+    direct = TiledPixelStore.from_path(p)
+    spill = direct.path
+    spr.release_store(direct)  # foreign: identical to close()
+    assert not direct.is_open and not os.path.exists(spill)
+    spr.release(h2)
+    assert spr.entry_count() == 0
+
+
 def test_views_share_uid_so_pyramids_dedupe(tmp_path):
     p = _png(tmp_path / "a.png")
     h1 = spr.publish(p, TiledPixelStore.from_path(p))

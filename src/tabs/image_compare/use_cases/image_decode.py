@@ -352,7 +352,6 @@ def on_image_loaded(controller, result):
         else:
             from engine.store.tiled_pixel_store import (
                 TiledPixelStore,
-                close_pixel_store,
                 maybe_wrap_pixel_store,
             )
 

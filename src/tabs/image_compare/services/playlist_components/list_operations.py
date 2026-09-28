@@ -28,9 +28,9 @@ def _close_outgoing_store(document, image_number: int, outgoing_store) -> None:
     # SlotSource: other slot sharing same path is handled by PipelineCache refcount;
     # direct document pixel fields removed (Phase 3).
     try:
-        from engine.store.tiled_pixel_store import close_pixel_store
+        from engine.store.shared_pixel_registry import release_store
 
-        close_pixel_store(outgoing_store)
+        release_store(outgoing_store)
     except Exception:
         pass
 
@@ -434,11 +434,12 @@ class PlaylistListOperations:
                 # pixel store for non-current removals: close the item's own store if tiled
                 if not is_current_removal:
                     try:
-                        from engine.store.tiled_pixel_store import TiledPixelStore, close_pixel_store
+                        from engine.store.shared_pixel_registry import release_store
+                        from engine.store.tiled_pixel_store import TiledPixelStore
 
                         item_img = getattr(outgoing_item, "image", None)
                         if isinstance(item_img, TiledPixelStore):
-                            close_pixel_store(item_img)
+                            release_store(item_img)
                     except Exception:
                         pass
                 else:

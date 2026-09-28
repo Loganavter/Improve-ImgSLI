@@ -363,6 +363,23 @@ def release(handle: SharedHandle | None) -> None:
         store = getattr(handle, "store", None)
         if store is None:
             return
+        release_store(store)
+    except Exception:
+        pass
+
+
+def release_store(store: TiledPixelStore | None) -> None:
+    """Raw-store form of :func:`release` for tab-owned lifecycle ends.
+
+    Wave-3 migration target: every IC/MC site that ends a funnel-sourced
+    store's life calls this instead of ``close_pixel_store``/``close``.
+    Views detach + drop one registry ref (``_SharedView.close``); foreign
+    (directly decoded, embedded, coarse) stores close exactly like today.
+    Never raises.
+    """
+    try:
+        if store is None:
+            return
         if isinstance(store, TiledPixelStore):
             try:
                 store.close()  # views release their ref via _SharedView.close()

@@ -80,7 +80,7 @@ class PipelineCacheState:
     """Store slot for PipelineCache — Bucket C (plan_render_dispatch_and_gap_fix.md).
 
     Holds the three LRU tiers as frozen copies. Reducer owns lifecycle
-    (max 8 each) and ``close_pixel_store`` defer, not direct ``cache.put_*``.
+    (max 8 each) and ``release_store`` defer, not direct ``cache.put_*``.
     ``ImagePipeline.peek`` reads from this slot when a Store is present
     (falls back to the legacy ``PipelineCache`` for headless tests).
     """

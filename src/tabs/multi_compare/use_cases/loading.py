@@ -434,10 +434,10 @@ def apply_full_resolution(
             if existing is not None and existing is not store:
                 # Same-path sibling already cached (double-add dedup):
                 # share it, close the duplicate decode.
-                from engine.store.tiled_pixel_store import close_pixel_store
+                from engine.store.shared_pixel_registry import release_store
 
                 try:
-                    close_pixel_store(store)
+                    release_store(store)
                 except Exception:
                     pass
                 store = existing
