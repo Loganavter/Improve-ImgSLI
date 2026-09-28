@@ -61,7 +61,10 @@ class GalleryEmptyState(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(scaled_px(32), scaled_px(32), scaled_px(32), scaled_px(32))
         layout.setSpacing(scaled_px(16))
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # No layout-level alignment: AlignCenter would pin every item to its
+        # sizeHint and kill the expanding stretches (squashed zone). The
+        # top/bottom stretches center vertically; spinner/scanning label
+        # carry their own centering.
 
         empty_text = _tr("image_gallery.empty_state", "Drop folder or images here")
         self._default_empty_text = empty_text
@@ -95,9 +98,10 @@ class GalleryEmptyState(QWidget):
         self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._scanning_label.hide()
 
-        # Add with stretch to center vertically
+        # The zone dominates the free space (4/6); the 1-stretch spacers
+        # keep it visually centered and center the spinner row in scanning.
         layout.addStretch(1)
-        layout.addWidget(self._drop_label, 1)
+        layout.addWidget(self._drop_label, 4)
         layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self._scanning_label)
         layout.addStretch(1)
