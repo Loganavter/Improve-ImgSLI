@@ -134,3 +134,23 @@ def test_scanning_hides_drop_zone(qtbot) -> None:
     state.set_state("empty")
     assert state._drop_label.isVisible()
     assert not state._spinner.isVisible()
+def test_drop_zone_takes_majority_of_height(qtbot) -> None:
+    """Zone dominates free space: spacers must not eat it down to a strip.
+
+    Regression: 1:1:1 stretches gave the zone one third of the height
+    (178px in a 600px window). The zone stretch dominates (4/6).
+    """
+    from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+
+    parent = QWidget()
+    lay = QVBoxLayout(parent)
+    lay.setContentsMargins(0, 0, 0, 0)
+    state = GalleryEmptyState()
+    lay.addWidget(state)
+    qtbot.addWidget(parent)
+    parent.resize(800, 600)
+    parent.show()
+    qtbot.waitExposed(parent)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert state._drop_label.height() > 300
