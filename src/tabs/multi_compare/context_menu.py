@@ -60,6 +60,14 @@ class MultiCompareContextMenuProvider:
                 enabled=bool(slot.path),
                 data=slot.id,
             ),
+            ContextMenuAction(
+                "multi_compare.crop_slot",
+                self._tr("context.crop", "Crop"),
+                icon=getattr(Icon, "SCISSORS", None),
+                checkable=True,
+                checked=self._crop_effective(slot),
+                data=slot.id,
+            ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "multi_compare.remove_slot",
@@ -89,6 +97,9 @@ class MultiCompareContextMenuProvider:
             return True
         if action_id == "multi_compare.carry_slot":
             self._begin_carry(slot)
+            return True
+        if action_id == "multi_compare.crop_slot":
+            self._toggle_crop(slot)
             return True
         if action_id == "multi_compare.remove_slot":
             self._remove_slot(slot)
@@ -225,6 +236,70 @@ class MultiCompareContextMenuProvider:
         from events.image_carry import begin_image_carry
 
         begin_image_carry([slot.path], image=self._pixel_source(slot))
+
+    def _global_crop_enabled(self) -> bool:
+        """Global ``auto_crop_black_borders`` fallback for Auto (None) slots."""
+        try:
+            ctrl = getattr(self.widget, "_controller", None)
+            store = getattr(ctrl, "store", None)
+            settings = getattr(store, "settings", None)
+            if settings is None:
+                store = getattr(self.widget, "store", None)
+                settings = getattr(store, "settings", None)
+            return bool(getattr(settings, "auto_crop_black_borders", True))
+        except Exception:
+            return True
+
+    def _crop_effective(self, slot: CompareSlot) -> bool:
+        """Effective crop toggle state: explicit override, else global setting."""
+        try:
+            override = getattr(slot, "crop_override", None)
+        except Exception:
+            return self._global_crop_enabled()
+        if override is None:
+            return self._global_crop_enabled()
+        try:
+            return bool(override)
+        except Exception:
+            return self._global_crop_enabled()
+
+    def _toggle_crop(self, slot: CompareSlot) -> None:
+        """Flip the effective crop state into an explicit override (fail-soft).
+
+        Mirrors IC ``_cycle_crop_override``: the menu always writes an
+        explicit bool (Auto is not reachable from the menu, but a stored
+        None keeps following the global setting and toggles from its
+        effective state). Prefers the controller path (canvas refresh
+        included); the widget dispatch is the headless fallback.
+        """
+        try:
+            nxt = not self._crop_effective(slot)
+        except Exception:
+            return
+        if getattr(slot, "path", None) is None:
+            return  # imageless slot: nothing to crop, keep Auto
+        try:
+            ctrl = getattr(self.widget, "_controller", None)
+            setter = getattr(ctrl, "set_slot_crop_override", None)
+            if callable(setter):
+                setter(slot.id, nxt)
+                return
+        except Exception:
+            pass
+        try:
+            self.widget.store.dispatch(actions.set_crop_override(slot.id, nxt))
+        except Exception:
+            return
+        try:
+            canvas = getattr(self.widget, "canvas", None)
+            if canvas is not None:
+                update = getattr(canvas, "request_view_update", None)
+                if callable(update):
+                    update()
+                else:
+                    canvas.update()
+        except Exception:
+            pass
 
     def _show_properties(self, slot: CompareSlot) -> None:
         ordered = [leaf.slot_id for leaf in leaves(self.widget.state.root)]
