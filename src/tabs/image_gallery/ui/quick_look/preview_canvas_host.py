@@ -9,6 +9,25 @@ open to the QLabel path — import this module lazily and treat ``None``
 from __future__ import annotations
 
 
+def _qlc_enabled() -> bool:
+    """[ql-cover] warmup trace gate (IMGSLI_QL_COVER_DEBUG=1), fail-open."""
+    try:
+        from tabs.image_gallery.debug import ql_cover_enabled
+
+        return bool(ql_cover_enabled())
+    except Exception:
+        return False
+
+
+def _qlc_log(msg: str, *args) -> None:
+    try:
+        from tabs.image_gallery.debug import ql_cover
+
+        ql_cover(msg, *args)
+    except Exception:
+        pass
+
+
 def _close_preview_store(overlay) -> None:
     """Close + drop the stashed TiledPixelStore (fd/memmap hygiene)."""
     try:
@@ -28,6 +47,7 @@ def _close_preview_store(overlay) -> None:
 
 def release_preview_canvas(overlay) -> None:
     """Lifecycle release (hide/close/populate-next); no-op off the GPU path."""
+    _drop_cover(overlay, "release")
     try:
         overlay._preview_canvas_pending = None
     except Exception:
@@ -56,6 +76,15 @@ def release_preview_canvas(overlay) -> None:
 
 def _ensure_preview_canvas(overlay):
     """Create/reuse the canvas child in the preview slot; None if unavailable."""
+    try:
+        from shared.debug_flags import env_flag as _env_flag
+
+        if _env_flag("IMGSLI_QL_NO_GPU"):
+            if _qlc_enabled():
+                _qlc_log("NO_GPU kill-switch -> label fallback")
+            return None
+    except Exception:
+        pass
     try:
         canvas = getattr(overlay, "_preview_canvas", None)
         if canvas is not None:
@@ -88,6 +117,12 @@ def _ensure_preview_canvas(overlay):
             lay = host.layout()
             if lay is not None:
                 lay.addWidget(canvas, 1)
+        except Exception:
+            pass
+        try:
+            # Canvas moves/resizes (layout settle, card drags) re-fit the
+            # first-frame cover while it is up — see _fit_cover.
+            canvas.installEventFilter(overlay)
         except Exception:
             pass
         try:
@@ -161,6 +196,9 @@ def _populate_preview_canvas(overlay, item) -> bool:
             label = getattr(overlay, "_preview_label", None)
             pm = label.pixmap() if label is not None else None
             if label is not None:
+                # The label leaves the layout flow here: the sibling cover
+                # below owns the pane (same pixmap) until the first GPU
+                # frame, so the slot never splits between label + canvas.
                 label.hide()
             reveal_preview_canvas(overlay, canvas)
             _wire_canvas_fallback(overlay, canvas, item)
@@ -234,9 +272,45 @@ def reveal_pending_preview_canvas(overlay) -> None:
         canvas.show()
     except Exception:
         pass
+    _fit_cover(overlay)
 
 
-def _drop_cover(overlay) -> None:
+def _fit_cover(overlay) -> None:
+    """Cover == live canvas geometry + aspect-fit pixmap (fail-open)."""
+    try:
+        cover = getattr(overlay, "_preview_cover", None)
+        canvas = getattr(overlay, "_preview_canvas", None)
+        if cover is None or canvas is None:
+            return
+        try:
+            w, h = int(canvas.width()), int(canvas.height())
+            assert w > 0 and h > 0
+        except Exception:
+            return
+        try:
+            cover.setGeometry(canvas.geometry())
+        except Exception:
+            pass
+        try:
+            if getattr(cover, "_ql_fit_for", None) != (w, h):
+                src = getattr(overlay, "_preview_full", None)
+                if src is not None and not src.isNull():
+                    from PySide6.QtCore import Qt as _Qt
+
+                    cover.setPixmap(src.scaled(w, h, _Qt.AspectRatioMode.KeepAspectRatio, _Qt.TransformationMode.SmoothTransformation))
+                cover._ql_fit_for = (w, h)
+        except Exception:
+            pass
+        try:
+            cover.show()
+            cover.raise_()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _drop_cover(overlay, reason: str = "") -> None:
     """Drop the first-frame cover (fail-open)."""
     try:
         cover = getattr(overlay, "_preview_cover", None)
@@ -245,6 +319,8 @@ def _drop_cover(overlay) -> None:
         except Exception:
             pass
         if cover is not None:
+            if _qlc_enabled():
+                _qlc_log("drop cover reason=%s", reason or "unspecified")
             try:
                 cover.hide()
             except Exception:
@@ -258,36 +334,66 @@ def _drop_cover(overlay) -> None:
 
 
 def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
-    """Cover the canvas with the QLabel pixmap until its first GPU frame."""
-    _drop_cover(overlay)
+    """Opaque sibling cover over the canvas slot until its first GPU frame.
+
+    Startup-placeholder pattern (compare tabs): the cover is a raster
+    QLabel parented to ``_preview_host`` — a layout-external sibling of the
+    canvas, never a child of the ``QRhiWidget`` itself. A child of the
+    canvas inherits the canvas's own transparency window (no
+    ``beginPass``/clear before the shell mounts, so the slot is a
+    see-through hole until the first present); a sibling paints opaquely
+    from the overlay's first paint regardless of RHI state. Dropped on
+    ``firstFramePresented``, failure, and release; null pixmap still yields
+    an opaque plate cover — never a transparent hole.
+    """
+    _drop_cover(overlay, "re-cover")
     try:
-        if pixmap is None or pixmap.isNull():
+        host = getattr(overlay, "_preview_host", None)
+        if host is None:
             return
         from PySide6.QtCore import Qt as _Qt
         from PySide6.QtWidgets import QLabel as _QLabel
-        from PySide6.QtWidgets import QVBoxLayout as _QVL
 
-        cover = _QLabel(canvas)
+        cover = _QLabel(host)
         try:
-            cover.setAlignment(_Qt.AlignmentFlag.AlignCenter)
-            cover.setPixmap(pixmap)
+            cover.setObjectName("quicklook_preview_cover")
         except Exception:
             pass
         try:
-            lay = canvas.layout()
-            if lay is None:
-                lay = _QVL(canvas)
+            cover.setAlignment(_Qt.AlignmentFlag.AlignCenter)
+        except Exception:
+            pass
+        try:
+            if pixmap is not None and not pixmap.isNull():
+                cover.setPixmap(pixmap)
+        except Exception:
+            pass
+        try:
+            # Opaque plate fill under the pixmap: letterbox margins (and a
+            # null pixmap) show card background, never the desktop through
+            # an unpresented canvas. Same tone as the QLabel-path margins.
+            from tabs.image_gallery.ui.quick_look.labels_theme import _token_color
+
+            bg = _token_color("gallery.card.background", "#ffffff")
+            if bg is not None:
                 try:
-                    lay.setContentsMargins(0, 0, 0, 0)
+                    pal = cover.palette()
+                    pal.setColor(cover.backgroundRole(), bg)
+                    cover.setPalette(pal)
                 except Exception:
                     pass
-                canvas.setLayout(lay)
-            lay.addWidget(cover)
-        except Exception:
             try:
-                cover.setGeometry(canvas.rect())
+                # Always: letterbox margins stay opaque even if the token
+                # above ever resolves to nothing (palette default is opaque).
+                cover.setAutoFillBackground(True)
             except Exception:
                 pass
+        except Exception:
+            pass
+        try:
+            cover.setGeometry(canvas.geometry())
+        except Exception:
+            pass
         try:
             cover.show()
             cover.raise_()
@@ -297,8 +403,53 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
             overlay._preview_cover = cover
         except Exception:
             pass
+        # Fit the stashed full pixmap to the live slot (label pixmap predates layout).
+        _fit_cover(overlay)
     except Exception:
         pass
+
+
+def settle_first_frame(canvas) -> None:
+    """Restack the compositor, then report the first settled frame.
+
+    MC parity (``multi_compare/ui/canvas_widget.py``): on Wayland/Vulkan a
+    presented frame is recorded while the compositor still shows the
+    untouched surface — only a restack makes it visible, so the cover drops
+    after the flush, never on the present itself. Deferred one event-loop
+    turn; ``activate=False`` (the overlay already has focus).
+    """
+    try:
+        if getattr(canvas, "_settle_scheduled", False):
+            return
+        canvas._settle_scheduled = True
+    except Exception:
+        pass
+
+    def _flush_emit() -> None:
+        try:
+            from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+            flush_qrhi_compositor(canvas, reason="ql-first-present", activate=False)
+        except Exception:
+            pass
+        if _qlc_enabled():
+            _qlc_log("settle flush ran -> emit firstFramePresented")
+        try:
+            if not canvas._frame_ok:
+                canvas._frame_ok = True
+                try:
+                    canvas.firstFramePresented.emit()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    try:
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, _flush_emit)
+    except Exception:
+        _flush_emit()
 
 
 def _wire_canvas_fallback(overlay, canvas, item) -> None:
@@ -311,7 +462,9 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
         return
 
     def _on_first_frame(*_args) -> None:
-        _drop_cover(overlay)
+        if _qlc_enabled():
+            _qlc_log("firstFramePresented -> drop cover")
+        _drop_cover(overlay, "first-frame")
 
     try:
         canvas.firstFramePresented.connect(_on_first_frame)
@@ -319,12 +472,14 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
         pass
 
     def _fall_back(*_args) -> None:
+        if _qlc_enabled():
+            _qlc_log("fallback (previewFailed/renderFailed) -> label path")
         for _sig in ("previewFailed", "renderFailed"):
             try:
                 getattr(canvas, _sig).disconnect(_fall_back)
             except Exception:
                 pass
-        _drop_cover(overlay)
+        _drop_cover(overlay, "fallback")
         try:
             from tabs.image_gallery.ui.quick_look.preview import _populate_preview_label
         except Exception:
