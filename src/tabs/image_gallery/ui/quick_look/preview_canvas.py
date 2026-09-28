@@ -6,9 +6,14 @@ tabs: no scene tree, no feature passes, no gestures, no overlays, no
 labels.
 
 Seam rules (frozen with host/tests): one quad from _active_composition
-via the shared applicator only; pixels from a caller-provided
-TiledPixelStore; GPU objects belong to TexturedOverlayShell only.
-Fail open; previewFailed → QLabel fallback, firstFramePresented → cover drop.
+via the shared applicator only; pixels from the caller-provided store
+sampled verbatim through ``PyramidPixelStore.best_pixels`` (bounded
+``read_array`` only — never ``qimage_from_pixel_source``, never a host
+upload cache, never a full-frame materialize); GPU objects belong to
+TexturedOverlayShell only. The host hands this widget a bounded coarse
+store (``preview_canvas_host._coarse_store_for``); a miss samples to
+None and the frame is skipped. Fail open; previewFailed → QLabel
+fallback, firstFramePresented → cover drop.
 """
 
 from __future__ import annotations
@@ -20,18 +25,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QImage, QRhiDepthStencilClearValue
 from PySide6.QtWidgets import QRhiWidget, QSizePolicy
 
-from engine.gpu.host_texture_cache import cache_for_host
 from engine.overlay import TexturedOverlayBinding, TexturedOverlayShell
-from engine.store.tiled_pixel_store import pixel_source_size, qimage_from_pixel_source
+from engine.store.tiled_pixel_store import pixel_source_size
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.canvas_presentation.composition import LayerNode
 from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
 
 logger = logging.getLogger("ImproveImgSLI")
-
-# Host-cache role key for the decoded preview image.
-_PREVIEW_ROLE_KEY = "quicklook_preview"
 
 # Identity clip matrix for the fullscreen shell quad (the preview has no
 # viewport transform — aspect-fit is baked into the uploaded raster).
@@ -382,23 +383,30 @@ class QuickLookCanvasWidget(QRhiWidget):
             return None
 
     def _decoded_image(self, source, src_w: int, src_h: int) -> QImage | None:
-        """Host image via upload cache, edge-capped (no 40k holds)."""
+        """Host image via the frozen pyramid seam (bounded, no full frame).
+
+        Samples the held (coarse, edge-capped by the host) store verbatim
+        through ``PyramidPixelStore.best_pixels`` — ``read_array`` only, so
+        no full-frame materialize and no second cache. Miss (stale/unbuilt
+        level, unreadable box) fails closed to None; the frame is skipped
+        and the QLabel fallback owns the pane.
+        """
         try:
-            cache = cache_for_host(self)
+            from engine.store.pyramid_pixel_store import PyramidPixelStore
         except Exception:
-            cache = None
-        role = f"{_PREVIEW_ROLE_KEY}:{id(source)}"
-        if cache is not None:
-            try:
-                hit = cache.touch(role)
-                if hit is not None and not hit.isNull():
-                    # Stored capped (see below): accept any hit that fits the cap.
-                    if max(int(hit.width()), int(hit.height())) <= _DECODE_EDGE_CAP:
-                        return hit
-            except Exception:
-                pass
+            return None
         try:
-            image = qimage_from_pixel_source(source)
+            w, h = int(src_w), int(src_h)
+            if w <= 0 or h <= 0:
+                return None
+            pyramid = PyramidPixelStore(source)
+            try:
+                image = pyramid.best_pixels((0, 0, w, h), 1.0)
+            finally:
+                try:
+                    pyramid.close()  # derived levels only; base owned by host
+                except Exception:
+                    pass
         except Exception:
             return None
         if image is None or image.isNull():
@@ -417,11 +425,6 @@ class QuickLookCanvasWidget(QRhiWidget):
                     image = small
         except Exception:
             pass
-        if cache is not None and image is not None:
-            try:
-                cache.store(role, image)
-            except Exception:
-                pass
         return image
 
     def wheelEvent(self, event) -> None:  # noqa: N802
