@@ -255,6 +255,10 @@ class StatsStrip(QWidget):
             except Exception:
                 pass
         self._keep_btn.clicked.connect(self._on_keep_btn_clicked)
+        try:
+            self._keep_btn.setEnabled(False)
+        except Exception:
+            pass
         layout.addWidget(self._keep_btn)
 
         self._clean_btn = Button(
@@ -304,6 +308,10 @@ class StatsStrip(QWidget):
             except Exception:
                 pass
         self._compare_btn.clicked.connect(self.compareClicked.emit)
+        try:
+            self._compare_btn.setEnabled(False)
+        except Exception:
+            pass
         layout.addWidget(self._compare_btn)
 
         self._mode_chip = Label("FIDELITY MODE · source: …", pixel_size=11, parent=self)
@@ -338,6 +346,17 @@ class StatsStrip(QWidget):
         self._keep_mode = "show" if show else "keep"
         try:
             self._keep_btn.setText("Show all" if show else "Keep best")
+        except Exception:
+            pass
+
+    def set_action_states(self, *, keep_best: bool, compare_finalists: bool) -> None:
+        """Enable/disable Keep best + Compare finalists (dead buttons stay off)."""
+        try:
+            self._keep_btn.setEnabled(bool(keep_best))
+        except Exception:
+            pass
+        try:
+            self._compare_btn.setEnabled(bool(compare_finalists))
         except Exception:
             pass
 
