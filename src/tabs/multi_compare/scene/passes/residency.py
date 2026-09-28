@@ -80,6 +80,32 @@ def _sid_from_key(key: object) -> int:
     return int(key.base) if isinstance(key, LevelKey) else int(key)  # type: ignore[call-overload]
 
 
+def is_lod_key_stale(key: object, live_source: object | None) -> bool:
+    """True when ``key`` is a ``LevelKey`` that must not be sampled or drawn.
+
+    The stale verdict compares the key's generation against the live
+    pyramid for ``live_source`` and re-checks ``is_level_built``: a
+    reunified base (fresh generation), a swept pyramid, or a level closed
+    between pick and sample all verdict stale, so a reunified base never
+    aliases live entries and callers degrade to a gap/placeholder instead
+    of a neighbor's content. Bare (non-level) keys are never stale here --
+    level 0 is the base itself, validated by the downstream size checks.
+    """
+    if not isinstance(key, LevelKey):
+        return False
+    if not isinstance(live_source, TiledPixelStore):
+        return True
+    pyramid = pyramid_for(live_source)
+    if pyramid is None:
+        return True
+    try:
+        if key.generation != pyramid.generation:
+            return True
+        return not pyramid.is_level_built(key.level)
+    except Exception:
+        return True
+
+
 def lod_key_and_source(
     sid: int,
     base_source: TiledPixelStore | object | None,
@@ -100,6 +126,10 @@ def lod_key_and_source(
     pyramid = pyramid_for(base_source)
     if pyramid is None or pyramid.level_count <= 1:
         return sid, base_source
+    if not pyramid.valid:
+        # Base closed or re-unified since resolve (resolve->use race):
+        # stay native; the next frame re-resolves once live.
+        return sid, base_source
     src_w, src_h = base_source.size
     if src_w <= 0 or src_h <= 0:
         return sid, base_source
@@ -110,8 +140,12 @@ def lod_key_and_source(
     level = pyramid.best_level_for_scale(dest_scale)
     if level <= 0:
         return sid, base_source
-    level_store = pyramid.level(level)
-    key = LevelKey(sid, level)
+    level_store = pyramid.level_if_built(level)
+    if level_store is None:
+        # Unbuilt upper level: fall back to the built native level, never
+        # a neighbor's content. The slot retries next frame once built.
+        return sid, base_source
+    key = LevelKey(sid, level, pyramid.generation)
     slot_lod_keys.setdefault(sid, set()).add(key)
     return key, level_store
 

@@ -15,8 +15,10 @@ from __future__ import annotations
 import time
 
 from engine.cache.image_identity import image_uid
+from engine.cache.lod import LevelKey
 from engine.cache.tile_constants import LOD_FETCH_SETTLE_MS
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.store.pyramid_registry import pyramid_for
 
 from ..draw_plan import resolve_lod_texture_keys
 
@@ -37,6 +39,44 @@ except Exception:  # pragma: no cover
 
 # Throttle per-frame committed-sources log — state lives in loupe_trace's
 # centralized throttle store (stream "lod_commit.sources_committed").
+
+
+def committed_lod_baseline_stale(committed_keys, texture_keys, sources) -> bool:
+    """True when a previously committed ``LevelKey`` no longer names live content.
+
+    Compares each committed level key's generation against the live pyramid
+    for its base source (``texture_keys``/``sources`` run parallel, so the
+    base maps positionally) and re-checks ``is_level_built``: a reunified
+    base (fresh generation), a swept pyramid, or a level closed between
+    pick and sample all verdict stale. Stale baselines must never be drawn
+    or promoted -- the caller re-commits the freshly resolved keys
+    immediately instead of waiting out the settle window. Fails open
+    (False) on any lookup surprise: the sample-time guard
+    (``_pil_image_for_texture_key`` -> gap) still covers what this misses.
+    """
+    if not committed_keys:
+        return False
+    try:
+        base_by_key = dict(zip(texture_keys, sources))
+    except Exception:
+        return False
+    for key in committed_keys:
+        if not isinstance(key, LevelKey):
+            continue
+        try:
+            pyramid = pyramid_for(base_by_key.get(key.base))
+        except Exception:
+            continue
+        if pyramid is None:
+            continue
+        try:
+            if key.generation != pyramid.generation:
+                return True
+            if not pyramid.is_level_built(key.level):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def commit_lod_keys(
@@ -126,9 +166,17 @@ def commit_lod_keys(
     # rendering/tile-array-atlas-plan.md Phase 9 "image swap tiles
     # full source under stale committed key" finding).
     source_changed = source_ids != renderer._lod_committed_source_ids
+    # A stale committed baseline (reunified base / swept pyramid / level
+    # closed since it committed) commits the fresh resolve immediately,
+    # like a source change: holding it through the settle window would pin
+    # a key the sample-time guard can only render as a gap.
+    stale_baseline = committed_lod_baseline_stale(
+        renderer._lod_committed_keys, texture_keys, sources
+    )
     if (
         renderer._lod_committed_keys is None
         or source_changed
+        or stale_baseline
         or (now - renderer._lod_pending_since) * 1000.0 >= LOD_FETCH_SETTLE_MS
     ):
         renderer._lod_committed_keys = raw_texture_keys

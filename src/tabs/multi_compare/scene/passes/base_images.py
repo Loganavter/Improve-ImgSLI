@@ -643,6 +643,15 @@ class BaseImagesPass(CanvasRenderPass):
             # tile set doesn't already cover, underneath the current tiles.
             key_more_pending = self._key_more_pending.get(key, False)
             old_key = self._last_good_key.get(sid)
+            if residency.is_lod_key_stale(
+                old_key, self.slot_pixel_sources.get(sid)
+            ):
+                # Reunified base / swept pyramid / closed level since this
+                # baseline promoted: never draw it as fallback (it would
+                # alias live entries or sample dead bytes). Drop to no
+                # baseline this frame; the per-frame re-resolve retries
+                # next frame, so nothing stays permanently stale.
+                old_key = None
 
             def _build_fallback_items(prior_key, _pan=pan, _fit=fit, _zoom=layer.zoom):
                 raw = [
