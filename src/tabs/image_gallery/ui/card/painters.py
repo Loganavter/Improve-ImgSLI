@@ -93,7 +93,7 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
         from PySide6.QtGui import QColor, QPen
 
         filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=11, bold=True)
+        f = ui_font(pixel_size=11, bold=False)
         painter.save()
         try:
             painter.setFont(f)
@@ -135,7 +135,7 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
         from PySide6.QtGui import QColor, QPen
 
         filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=9, bold=True)
+        f = ui_font(pixel_size=9, bold=False)
         painter.save()
         try:
             painter.setFont(f)

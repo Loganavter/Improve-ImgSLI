@@ -3,9 +3,10 @@
 - Thumb pixmaps cover-crop to exactly 66×44 (``_thumb_pixmap`` w/h contract).
 - ``regionClicked`` on a strip thumb switches the preview (clicked alone
   never fired: the thumb region id is ``"thumb"``, not ``"_main"``).
-- Card-style badge contract: rejected → no pill, leader → ``★ BEST``,
-  ranked → ``#N`` (``_gallery_badge`` + ``_gallery_badge_style`` overlay
-  pills; the toolkit badge stays ``None`` except tie-break pending).
+- Card-style badge contract: rejected → no pill, leader → ``#N`` like every
+  ranked item (no BEST pill), ranked → ``#N`` (``_gallery_badge`` +
+  ``_gallery_badge_style`` overlay pills; the toolkit badge stays ``None``
+  except tie-break pending).
 """
 
 from __future__ import annotations
@@ -142,8 +143,8 @@ def test_rejected_thumb_has_no_badge(qtbot, tmp_path):
     ov.hide()
 
 
-def test_leader_badge_is_best_and_ranked_is_n(qtbot, tmp_path):
-    """Leader → ★ BEST (white on accent); ranked → #N (black on toggle bg)."""
+def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
+    """Leader → #N like every ranked item (no BEST pill); ranked → #N (black on toggle bg)."""
     paths = [_real_png(tmp_path, f"s{i}.png") for i in range(3)]
     leader = GalleryItem(path=paths[0], mtime_ns=1, is_best=True)
     ranked = GalleryItem(path=paths[1], mtime_ns=2, rank=3)
@@ -151,7 +152,7 @@ def test_leader_badge_is_best_and_ranked_is_n(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, leader, [leader, ranked, plain])
     by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    assert by_path[str(paths[0])]._gallery_badge == "★ BEST"
+    assert by_path[str(paths[0])]._gallery_badge == "#1"
     assert by_path[str(paths[1])]._gallery_badge == "#3"
     assert getattr(by_path[str(paths[2])], "_gallery_badge", None) is None
     # Style shape mirrors visuals.py: (filled, bg, border, text_color).
@@ -159,7 +160,7 @@ def test_leader_badge_is_best_and_ranked_is_n(qtbot, tmp_path):
         style = by_path[key]._gallery_badge_style
         assert isinstance(style, tuple) and len(style) == 4
         assert style[0] is True
-    assert by_path[str(paths[0])]._gallery_badge_style[3] == QColor("#ffffff")
+    assert by_path[str(paths[0])]._gallery_badge_style[3] == QColor("#000000")
     assert by_path[str(paths[1])]._gallery_badge_style[3] == QColor("#000000")
     # Overlay pills, never the toolkit badge.
     assert by_path[str(paths[0])]._badge is None

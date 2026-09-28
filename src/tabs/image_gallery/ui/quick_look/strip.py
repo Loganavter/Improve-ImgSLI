@@ -178,7 +178,6 @@ def rebuild_strip(overlay) -> None:
         try:
             from PySide6.QtGui import QColor as _QC
 
-            from tabs.image_gallery.ui.card.dots import _accent_color as _strip_accent
             from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
             from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
 
@@ -194,22 +193,20 @@ def rebuild_strip(overlay) -> None:
                 _badge_text = "SOURCE"
                 _badge_style = (True, _gold, _gold, _QC("#000000"))
             else:
-                _is_best = bool(getattr(m, "is_best", False))
+                # Synced with grid cards (ui/card/visuals.py): no BEST pill —
+                # the leader shows its #N rank like every ranked item.
                 _rank = getattr(m, "rank", None)
                 _crown = getattr(m, "crown_rank", None)
-                if _is_best or _rank == 1 or _crown == 1:
-                    _acc = _strip_accent()
-                    _badge_text = "★ BEST"
-                    _badge_style = (True, _acc, _acc, _QC("#ffffff"))
-                else:
-                    _rv = _crown if _crown is not None else _rank
-                    if _rv is not None:
-                        try:
-                            _badge_text = f"#{int(_rv)}"
-                        except Exception:
-                            _badge_text = str(_rv)
-                        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-                        _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
+                _rv = _crown if _crown is not None else _rank
+                if _rv is None and bool(getattr(m, "is_best", False)):
+                    _rv = 1
+                if _rv is not None:
+                    try:
+                        _badge_text = f"#{int(_rv)}"
+                    except Exception:
+                        _badge_text = str(_rv)
+                    _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+                    _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
             if _badge_text is not None:
                 btn._gallery_badge = _badge_text
                 btn._gallery_badge_style = _badge_style
