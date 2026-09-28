@@ -95,21 +95,44 @@ def _ensure_preview_canvas(overlay):
         return None
 
 
+def _coarse_store_for(path, *, long_edge: int = 1024):
+    """Bounded coarse store via the frozen wave-A1 pyramid seam.
+
+    ``PyramidPixelStore.coarse_from_source`` never materializes a full
+    frame (shrink-on-load / bounded scaled read); None on any miss so
+    callers degrade to the QLabel ladder. No second LOD entry, no
+    ``TiledPixelStore.from_path`` full decode on this path.
+    """
+    try:
+        from engine.store.pyramid_pixel_store import PyramidPixelStore
+    except Exception:
+        return None
+    try:
+        cap = max(1, int(long_edge))
+    except Exception:
+        return None
+    try:
+        return PyramidPixelStore.coarse_from_source(str(path), long_edge=cap)
+    except Exception:
+        return None
+
+
 def _populate_preview_canvas(overlay, item) -> bool:
-    """GPU branch: TiledPixelStore (no crop_service) into the canvas slot."""
+    """GPU branch: bounded coarse store (frozen seam) into the canvas slot.
+
+    Miss (empty path, unreadable source, unbuilt coarse) fails closed to
+    False — the caller keeps its QLabel fallback; never a neighbor's
+    content, never a full-frame decode.
+    """
     canvas = _ensure_preview_canvas(overlay)
     if canvas is None:
-        return False
-    try:
-        from engine.store.tiled_pixel_store import TiledPixelStore as _TPS
-    except Exception:
         return False
     try:
         raw = getattr(item, "path", "")
         if not raw:
             return False
         _close_preview_store(overlay)  # never stack stores (fd/memmap leak)
-        store = _TPS.from_path(raw, crop_service=None)
+        store = _coarse_store_for(raw)
         if store is None:
             return False
         try:
