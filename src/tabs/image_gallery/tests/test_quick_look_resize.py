@@ -7,7 +7,7 @@ expanding, mid-layout stretch on both sides with the preview keeping
 priority) — its bars/histograms fill the live column width while strip
 thumbs keep their fixed size. The footer reflows (actions left, hint
 right), and all existing reposition hooks re-run on every resize. W8
-min-only stays (minimum 1040×620, no maximum); no new close paths.
+min-only stays (minimum 1040×680, no maximum); no new close paths.
 """
 
 from __future__ import annotations
@@ -331,13 +331,13 @@ def test_resize_without_stash_is_noop(qtbot):
 
 
 def test_min_only_no_max_regression(qtbot):
-    """W-B: W8 min-only stays — minimum 1040×620, no maximum cap."""
+    """W-B: W8 min-only stays — minimum 1040×680, no maximum cap."""
     from sli_ui_toolkit.managers import scaled_px
 
     ov = _make_overlay(qtbot)
-    assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(680))
     assert ov._content.maximumSize() == QSize(16777215, 16777215)
-    assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(680))
     ov.hide()
 
 
@@ -417,7 +417,8 @@ def test_grow_shrink_roundtrip_restores_proportions(qtbot, tmp_path):
     scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
     _grow(qtbot, ov, dw=400, dh=200)
     assert content.width() == scaled_px(1040) + scaled_px(400)
-    content.resize(scaled_px(1040), scaled_px(620))
+    # Settled height fits three artifact rows (was two at 620px).
+    content.resize(scaled_px(1040), scaled_px(700))
     QApplication.processEvents()
     QApplication.processEvents()
     QApplication.processEvents()

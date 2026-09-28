@@ -125,17 +125,17 @@ def test_no_region_suffix_on_any_artifact(qtbot):
         ov.hide()
 
 
-# -- S4-4: mockup artifact rows (Banding + Halo) incl. clean ---------------
+# -- S4-4: mode-triplet artifact rows incl. clean ------------------------------
 # (W4 item 8: hiding clean rows hid the banding base on all-clean items.
-# W5: the overlay shows the mockup set only — Banding + Halo. The full
-# 7-key catalog stays in the card dots/tooltip, untouched.)
+# Rows mirror the card dots triple (use_cases/quality.MODE_ARTIFACTS).)
 
 
 def test_all_artifact_rows_shown_including_clean(qtbot):
     item = _item("c.png", artifacts={}, metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    assert len(ov._artifact_rows) == 2
+    # Fidelity triple (same three as the card dots).
+    assert len(ov._artifact_rows) == 3
     assert ov._artifact_rows and all(w.isVisibleTo(ov._report_host) for w in ov._artifact_rows)
     texts = [
         lbl.text()
@@ -145,6 +145,7 @@ def test_all_artifact_rows_shown_including_clean(qtbot):
     titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
     assert any("Banding" in t for t in titles)
     assert any("Halo" in t for t in titles)
+    assert any("Blocking" in t for t in titles)
     assert "clean" in texts
     ov.hide()
 
@@ -160,14 +161,38 @@ def test_non_clean_artifact_rows_shown(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    # Mockup set only (Banding + Halo); severities read severity-only.
-    assert len(ov._artifact_rows) == 2
+    # Fidelity triple; severities read severity-only.
+    assert len(ov._artifact_rows) == 3
     assert ov._artifact_rows and all(w.isVisibleTo(ov._report_host) for w in ov._artifact_rows)
     texts = [
         lbl.text()
         for w in ov._artifact_rows
         for lbl in w.findChildren(_QlLabel)
     ]
+    assert "mild" in texts and "flagged" in texts
+    ov.hide()
+
+
+def test_camera_triplet_rows_match_card_dots(qtbot):
+    """Camera rows are noise/chroma/halo — the same triple as the dots."""
+    item = _item(
+        "cm.png",
+        artifacts={
+            Artifact.NOISE_AMPLIFICATION: Severity.MILD,
+            Artifact.CHROMA_FRINGING: Severity.CLEAN,
+            Artifact.HALO: Severity.FLAGGED,
+        },
+        metrics={},
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item], mode=Mode.CAMERA)
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
+    assert len(ov._artifact_rows) == 3
+    assert any("Noise" in t for t in titles)
+    assert any("Chroma" in t for t in titles)
+    assert any("Halo" in t for t in titles)
+    assert not any("Banding" in t for t in titles)
+    texts = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
     assert "mild" in texts and "flagged" in texts
     ov.hide()
 
@@ -605,15 +630,15 @@ def test_card_plate_paints_fill(qtbot, _w1_light_palettes):
     assert pixel.alpha() == 255
 
 
-def test_card_geometry_min_1040x620_no_max(qtbot):
-    """W8: S4 mockup panel 1040x620 (svg:31) is the card MINIMUM — the card
+def test_card_geometry_min_1040x680_no_max(qtbot):
+    """W8: card MINIMUM 1040x680 (mockup svg:31 was 1040x620; +60 for the third artifact row) — the card
     is user-resizable, so there is no maximum (was: fixed min == max)."""
     from sli_ui_toolkit.managers import scaled_px
 
     ov = _make_overlay(qtbot)
-    assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov._content.minimumSize() == QSize(scaled_px(1040), scaled_px(680))
     assert ov._content.maximumSize() == QSize(16777215, 16777215)
-    assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(620))
+    assert ov.sizeHint() == QSize(scaled_px(1040), scaled_px(680))
 
 
 def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
@@ -651,7 +676,7 @@ def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
     monkeypatch.setattr(_ql_helpers, "reposition_grip", _spy_grip)
     preview_before = ov._preview_host.size()
     base_w, base_h = content.width(), content.height()
-    assert (base_w, base_h) == (scaled_px(1040), scaled_px(620))
+    assert (base_w, base_h) == (scaled_px(1040), scaled_px(680))
     # W13: column floor 296px, stretches with the card (never fixed width).
     scroll_before = ov.findChild(QScrollArea, "quicklook_right_scroll")
     assert scroll_before.minimumWidth() >= scaled_px(296)
@@ -693,7 +718,7 @@ def test_no_resize_grip_border_ring_remain(qtbot):
 
     The card has no ``quicklook_resize_grip`` child (and ``_resize_grip``
     is None), yet a border drag still clamps to the overlay minus margin
-    and floors at the 1040x620 minimum, session-only.
+    and floors at the 1040x680 minimum, session-only.
     """
     from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 
@@ -740,9 +765,9 @@ def test_no_resize_grip_border_ring_remain(qtbot):
     _drag(content.width() - 4, _ly, 1000, 0)
     margin = scaled_px(16)
     assert content.width() == ov.width() - margin * 2
-    # Far the other way (left edge rightwards): floored at 1040x620.
+    # Far the other way (left edge rightwards): floored at 1040x680.
     _drag(4, _ly, 2000, 0)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
     ov.hide()
 
 
@@ -1314,7 +1339,7 @@ def test_meta_smaller_than_source(tmp_path, qtbot):
 
 def test_right_column_stretches_with_full_content(qtbot):
     """W5 item 3 + W7 + W13: full right column (metrics + 2 artifact rows +
-    series + brief) fits the 1040×620 card with both scrollbars hidden
+    series + brief) fits the 1040×680 card with both scrollbars hidden
     (mockup: none). Value/subline labels elide to the live column width
     (floor 296px) instead of forcing width; the full copy stays in
     _original_text.
@@ -1351,9 +1376,9 @@ def test_right_column_stretches_with_full_content(qtbot):
     _show(ov, viewing, [[src], list(mates)], source=src.path)
     QApplication.processEvents()
     QApplication.processEvents()
-    # Full content is really there.
+    # Full content is really there (fidelity triple, same as the dots).
     assert len(ov._metric_rows) >= 3
-    assert len(ov._artifact_rows) == 2
+    assert len(ov._artifact_rows) == 3
     thumbs = [
         b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
     ]
@@ -1633,7 +1658,7 @@ def test_resize_border_zones_and_cursors(qtbot):
     QApplication.processEvents()
     content = ov._content
     w, h = content.width(), content.height()
-    assert (w, h) == (scaled_px(1040), scaled_px(620))
+    assert (w, h) == (scaled_px(1040), scaled_px(680))
     assert _ql_helpers.RESIZE_BORDER_PX == 8
     strip = scaled_px(8)
     cases = {
@@ -1713,7 +1738,7 @@ def test_resize_border_hover_cursor_through_filter(qtbot):
 
 
 def test_resize_border_drag_clamps_and_repins(qtbot):
-    """W9 item 1: border drags clamp like the W8 grip (min 1040×620,
+    """W9 item 1: border drags clamp like the W8 grip (min 1040×680,
     overlay minus 16px margin), re-pin grip + nav, stay session-only."""
     from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 
@@ -1770,9 +1795,9 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     assert _press_move_release(4, _ly, 200, 0) is True
     assert content.width() < w2
     assert content.geometry().right() == right2
-    # Far corner drag floors at the 1040×620 minimum.
+    # Far corner drag floors at the 1040×680 minimum.
     _press_move_release(4, 4, 3000, 3000)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
     # Absolute children re-pinned: nav on the edges
     # (W10 overlay coords — centers on the card left/right edges).
     card = content.geometry()
@@ -1931,7 +1956,7 @@ def test_boundary_row_press_starts_ring_drag(qtbot):
 
 def test_outer_ring_drag_clamps_and_repins(qtbot):
     """W10 item 1: outer-ring drags clamp like the W9 plate drags (min
-    1040×620, overlay minus 16px margin), re-pin grip + nav, stay
+    1040×680, overlay minus 16px margin), re-pin grip + nav, stay
     session-only."""
     from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 
@@ -1987,10 +2012,10 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
     assert started is True
     assert content.width() < w2
     assert content.geometry().right() == right2
-    # Far corner drag floors at the 1040×620 minimum.
+    # Far corner drag floors at the 1040×680 minimum.
     card = content.geometry()
     _press_move_release(card.x() - 4, card.y() - 4, 3000, 3000)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(620))
+    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
     assert getattr(ov, "_border_drag", None) is None
     # Absolute children re-pinned: nav on the edges.
     card = content.geometry()

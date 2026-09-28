@@ -1061,4 +1061,5 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().keyPressEvent(event)
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        return QSize(scaled_px(1040), scaled_px(620))
+        # Matches the content floor (1040x680 for three artifact rows).
+        return QSize(scaled_px(1040), scaled_px(680))

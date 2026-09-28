@@ -373,12 +373,13 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     overlay._border_drag = None
-    # S4 mockup panel is 1040x620 — minimum (floor), not a suggestion.
+    # S4 mockup panel was 1040x620 — the floor grew to 680 for the third
+    # artifact row (report rows = card dots triple). Minimum, not a suggestion.
     # W8: NO maximum — the user drag-resizes via the card border / ring.
-    overlay._content.setMinimumSize(scaled_px(1040), scaled_px(620))
+    overlay._content.setMinimumSize(scaled_px(1040), scaled_px(680))
     outer = QVBoxLayout(overlay._content)
     outer.setContentsMargins(scaled_px(16), scaled_px(12), scaled_px(16), scaled_px(12))
-    # W5: the 620-tall card must fit without scrollbars (S4 mockup: none) —
+    # W5: the 680-tall card must fit without scrollbars (S4 mockup: none) —
     # the W4 pt fonts cost ~95px of row height vs the mockup's px lines,
     # so the column/mode chrome gaps densify instead of scrolling. Budget:
     # content min-height must stay under the mid-row viewport (~505px);
@@ -684,7 +685,7 @@ def build_overlay_ui(overlay) -> None:
     right_lay = QVBoxLayout(right_host)
     right_lay.setContentsMargins(0, 0, 0, 0)
     # W5: 10→4 (see outer spacing note — the 296px column must fit the
-    # 620 card with metrics + 2 artifact rows + series + brief, no scroll).
+    # 680 card with metrics + 3 artifact rows + series + brief, no scroll).
     right_lay.setSpacing(scaled_px(4))
     right_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
     overlay._report_title = _make_label("Fidelity report", parent=right_host, pixel_size=13, pt=13)
@@ -761,7 +762,7 @@ def build_overlay_ui(overlay) -> None:
         pass
     # W7: QLabel.minimumSizeHint for wrapped text is the height at the
     # LONGEST-WORD width (2 phantom lines here) — the layout reserves it
-    # and the 620px card gains a 4px v-scroll. The label always lays out
+    # and the 680px card gains a 4px v-scroll. The label always lays out
     # at the column width, so pin the minimum width to the column floor:
     # minimumSizeHint becomes the height AT that width (honest, grows
     # with real line count) and the column minimum stays 296. W13: the
@@ -775,7 +776,7 @@ def build_overlay_ui(overlay) -> None:
     right_scroll.setWidget(right_host)
     # W13: the right column takes resize space too (stretch 1) — the
     # preview keeps priority with its own stretch 1 plus the larger
-    # expanding preview pane. W8 min-only stays (minimum 1040×620, no
+    # expanding preview pane. W8 min-only stays (minimum 1040×680, no
     # maximum); the column floor is the 296px minimum above.
     mid.addWidget(right_scroll, 1)
     outer.addLayout(mid, 1)
