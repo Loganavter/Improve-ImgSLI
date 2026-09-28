@@ -274,6 +274,41 @@ def set_artifacts(item, mapping: dict) -> bool:
     return True
 
 
+#: Scalar metric keys the quick-look camera report reads. Writers land
+#: them here so rows stop saying "not measured" (see services/camera_metrics).
+CAMERA_METRIC_KEYS = ("sharpness", "exposure", "clipping_pct")
+
+
+def set_metrics(item, mapping: dict) -> bool:
+    """Scalar metric writer (the artifacts counterpart): merge + change flag.
+
+    Only float-able values land; unusable entries are skipped (fail-closed).
+    Returns True when at least one key changed.
+    """
+    try:
+        metrics = getattr(item, "metrics", None)
+        if not isinstance(metrics, dict):
+            return False
+        entries = dict(mapping)
+    except Exception:
+        return False
+    changed = False
+    for key, value in entries.items():
+        try:
+            name = str(key)
+            number = float(value)  # type: ignore[arg-type]
+        except Exception:
+            continue
+        try:
+            if name in metrics and metrics[name] == number:
+                continue
+            metrics[name] = number
+            changed = True
+        except Exception:
+            continue
+    return changed
+
+
 def artifacts_equal(item, mapping: dict) -> bool:
     """True when the normalized write would change nothing (skip repaints)."""
     try:

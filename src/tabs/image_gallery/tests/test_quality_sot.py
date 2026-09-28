@@ -118,3 +118,18 @@ def test_artifacts_equal_skip_logic() -> None:
     assert q.artifacts_equal(item, {Artifact.HALO: Severity.FLAGGED}) is True
     assert q.artifacts_equal(item, {"halo": "flagged"}) is True
     assert q.artifacts_equal(item, {Artifact.HALO: Severity.MILD}) is False
+def test_set_metrics_merges_and_reports_change() -> None:
+    item = _item()
+    assert q.set_metrics(item, {"sharpness": 210.0, "exposure": 0.48}) is True
+    assert item.metrics["sharpness"] == 210.0
+    assert q.set_metrics(item, {"sharpness": 210.0, "exposure": 0.48}) is False
+    assert q.set_metrics(item, {"sharpness": 220.0}) is True
+    assert item.metrics["sharpness"] == 220.0
+
+
+def test_set_metrics_skips_garbage() -> None:
+    item = _item()
+    assert q.set_metrics(item, {"sharpness": "n/a", "exposure": 0.5}) is True
+    assert "sharpness" not in item.metrics
+    assert item.metrics["exposure"] == 0.5
+    assert q.set_metrics(item, {}) is False

@@ -1123,6 +1123,10 @@ class GalleryController:
         # Same batching as _on_artifacts_ready: skip items whose 4 keys did
         # not change, refresh the rest with one selection sweep.
         required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+        try:
+            from tabs.image_gallery.use_cases import quality as _quality
+        except Exception:
+            _quality = None  # type: ignore[assignment]
         changed: list = []
         for item in self.state.items:
             try:
@@ -1136,19 +1140,42 @@ class GalleryController:
             # write the 4 keys only when all measured, never a partial copy.
             if not all(k in entry for k in required):
                 continue
+            if _quality is None:
+                continue
             try:
-                if not isinstance(item.metrics, dict):
-                    continue
-                try:
-                    if all(item.metrics.get(k) == entry[k] for k in required):
-                        continue
-                except Exception:
-                    pass
-                for k in required:
-                    item.metrics[k] = entry[k]
-                changed.append(item)
+                if _quality.set_metrics(item, {k: entry[k] for k in required}):
+                    changed.append(item)
             except Exception:
                 logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
+        # Shared delivery tail: repaint cards + live-refresh an open overlay.
+        self._refresh_changed_metrics(changed, "fidelity")
+
+    def _start_camera_metrics_analysis(self, items: list[GalleryItem]) -> None:
+        """Background camera scalars (sharpness/exposure/clipping) — GenericWorker.
+
+        Camera mode only (the report rows exist only there); unreadable items
+        land nothing and keep "not measured" rows (fail-closed per item).
+        """
+        if not items:
+            return
+        try:
+            from tabs.image_gallery.services.camera_metrics import run_camera_metrics_sync
+
+            gen = self._folder_gen
+            worker = GenericWorker(run_camera_metrics_sync, list(items))
+            worker.signals.result.connect(lambda res, g=gen: self._on_camera_metrics_ready(res, g))
+            worker.signals.error.connect(
+                lambda err: logger.debug("camera metrics worker error: %r", err, exc_info=True)
+            )
+            try:
+                self._thread_pool.start(worker, 1)
+            except TypeError:
+                self._thread_pool.start(worker)
+        except Exception:
+            logger.debug("camera metrics worker start failed", exc_info=True)
+
+    def _refresh_changed_metrics(self, changed: list, tag: str) -> None:
+        """Shared delivery tail: repaint cards + live-refresh an open overlay."""
         if changed:
             try:
                 self.widget.refresh_cards(changed)  # type: ignore[attr-defined]
@@ -1157,10 +1184,7 @@ class GalleryController:
                     try:
                         self.widget.refresh_card(item)
                     except Exception:
-                        logger.debug("widget.refresh_card failed for fidelity %s", item.path, exc_info=True)
-        # Quick look report: overlay opened before delivery shows the
-        # numbers without reopen (mirrors _on_artifacts_ready above;
-        # refresh_metrics itself no-ops when hidden or on another item).
+                        logger.debug("widget.refresh_card failed for %s %s", tag, item.path, exc_info=True)
         for item in changed:
             try:
                 for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
@@ -1172,6 +1196,31 @@ class GalleryController:
                             pass
             except Exception:
                 pass
+
+    def _on_camera_metrics_ready(self, result: object, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late camera metrics dropped
+        if not isinstance(result, dict):
+            return
+        try:
+            from tabs.image_gallery.use_cases import quality as _quality
+        except Exception:
+            return
+        changed: list = []
+        for item in self.state.items:
+            try:
+                key = str(item.path)
+            except Exception:
+                continue
+            entry = result.get(key)
+            if not isinstance(entry, dict):
+                continue
+            try:
+                if _quality.set_metrics(item, entry):
+                    changed.append(item)
+            except Exception:
+                logger.debug("camera metrics apply failed for %s", item.path, exc_info=True)
+        self._refresh_changed_metrics(changed, "camera")
 
     def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1212,6 +1261,13 @@ class GalleryController:
             self._start_fidelity_analysis(list(self.state.items), source)
         except Exception:
             logger.debug("fidelity analysis start failed", exc_info=True)
+        # Stage 2 camera scalars (sharpness/exposure/clipping) — camera mode
+        # only; the report rows exist only there, other modes stay unmeasured.
+        try:
+            if mode == Mode.CAMERA:
+                self._start_camera_metrics_analysis(list(self.state.items))
+        except Exception:
+            logger.debug("camera metrics analysis start failed", exc_info=True)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:
