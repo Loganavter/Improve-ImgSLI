@@ -194,7 +194,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         else:
             de_frac = max(0.0, min(1.0, de_f / 10.0))
             de_label = f"{de_f:.1f} · " + ("imperceptible" if de_f < 2.3 else "visible" if de_f < 5 else "strong")
-            _add_metric_row("Color shift ΔE", de_label, de_frac, _ok_color() if de_f < 3 else _warn_color())
+            _add_metric_row("Color shift ΔE", de_label, de_frac, _ok_color() if de_f < 3 else _warn_color(),
+            value_color=_ok_color() if de_f < 3 else _warn_color())
     elif "CAMERA" in mode_str:
         sharp = metrics.get("sharpness")
         sharp_f = None
@@ -207,7 +208,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             _add_unmeasured_row("Sharpness (Laplacian var)")
         else:
             frac = max(0.0, min(1.0, sharp_f / 400.0))
-            _add_metric_row("Sharpness (Laplacian var)", f"{sharp_f:.0f}", frac, _ok_color() if sharp_f > 100 else _warn_color())
+            _add_metric_row("Sharpness (Laplacian var)", f"{sharp_f:.0f}", frac, _ok_color() if sharp_f > 100 else _warn_color(),
+            value_color=_ok_color() if sharp_f > 100 else _warn_color())
         exposure = metrics.get("exposure")
         exp_f = None
         if exposure is not None:
@@ -234,7 +236,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             frac3 = max(0.0, min(1.0, clip_f / 10 if clip_f > 1 else clip_f))
             # A few percent of clipped speculars/lamps is normal in photos —
             # warn only from 5% (was 2%, flagging ordinary stage lights).
-            _add_metric_row("Clipping %", f"{clip_f:.1f}%", frac3, _warn_color() if clip_f > 5 else _ok_color())
+            _add_metric_row("Clipping %", f"{clip_f:.1f}%", frac3, _warn_color() if clip_f > 5 else _ok_color(),
+            value_color=_warn_color() if clip_f > 5 else _ok_color())
         noise = None
         for nk in ("noise", "noise_estimate", "noise_level"):
             if metrics.get(nk) is not None:
@@ -252,7 +255,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 else:
                     n_frac = max(0.0, min(1.0, n_f / 100.0))
                     n_text = f"{n_f:.0f}%"
-                _add_metric_row("Noise", n_text, n_frac, _warn_color() if n_frac > 0.5 else _ok_color())
+                _add_metric_row("Noise", n_text, n_frac, _warn_color() if n_frac > 0.5 else _ok_color(),
+            value_color=_warn_color() if n_frac > 0.5 else _ok_color())
             except Exception:
                 pass
         wb = None
@@ -270,7 +274,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 else:
                     wb_text = f"{wb_f:+.2f} · neutral"
                 wb_frac = max(0.0, min(1.0, abs(wb_f)))
-                _add_metric_row("WB shift", wb_text, wb_frac, _warn_color() if wb_frac > 0.15 else _ok_color())
+                _add_metric_row("WB shift", wb_text, wb_frac, _warn_color() if wb_frac > 0.15 else _ok_color(),
+            value_color=_warn_color() if wb_frac > 0.15 else _ok_color())
             except Exception:
                 try:
                     wb_text = str(wb)
