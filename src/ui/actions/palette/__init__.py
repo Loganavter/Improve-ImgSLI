@@ -54,7 +54,14 @@ def show_command_palette(
     preselect_action_id: str | None = None,
     auto_pulse: bool = False,
     active_tab: str | None = None,
-) -> None:
+) -> FindActionDialog:
+    """Show the Find Action palette as a non-modal window (HelpDialog scheme).
+
+    Returns the dialog (``WA_DeleteOnClose`` — it destroys itself on close).
+    Never maps parentless: falls back to the active window (xdg-activation
+    grants attached dialogs freely; parentless top-levels mapped off-gesture
+    are denied and park the host as demanding-attention).
+    """
     # Transient-parent to the focused/main window (not a root-level orphan):
     # an attached dialog of the focused window activates freely under
     # xdg-activation; ``parent`` doubles as the centering reference.
@@ -83,7 +90,15 @@ def show_command_palette(
         active_tab=active_tab,
     )
     center_on_reference(dialog, parent)
-    dialog.exec()
+    dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+    dialog.show()
+    dialog.raise_()
+    # Guarded activation (no unconditional activateWindow() — kicking an
+    # already-active window flashes a busy frame on Wayland; see
+    # tests/contracts/test_no_unconditional_activation.py).
+    if not dialog.isActiveWindow():
+        dialog.activateWindow()
+    return dialog
 
 
 def _transient_owner(reference: QWidget | None) -> QWidget | None:

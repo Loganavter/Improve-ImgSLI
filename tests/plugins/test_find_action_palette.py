@@ -24,6 +24,120 @@ def dark_theme(qapp):
     return tm
 
 
+def test_find_action_rows_match_viewport_with_scrollbar_gutter(qtbot):
+    """Rows must not stay wider than the viewport once the overlay bar reserves its gutter.
+
+    The toolkit applies viewport margins asynchronously after show (overflow
+    detection); the row layout used to miss that shrink, leaving the right
+    chrome (run/learn) clipped until the first manual resize.
+    """
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    for i in range(40):
+        registry.register(
+            ActionDescriptor(
+                action_id=f"probe.row.{i:02d}",
+                label_key="menu.settings",
+                run=lambda: None,
+            )
+        )
+
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    qtbot.wait(300)
+
+    viewport_width = dialog._scroll.viewport().width()
+    assert dialog._list_host.width() == viewport_width
+    assert dialog._rows, "expected overflow rows for the gutter case"
+    for row in dialog._rows:
+        assert row.width() == dialog._list_host.width()
+        for rect in row._controller.rects.values():
+            assert rect.right() <= viewport_width + 0.5
+
+
+def test_find_action_dialog_is_non_modal_window(qtbot):
+    """Non-modal port: Window flag + NonModal, never blocks the owner."""
+    from PySide6.QtWidgets import QWidget
+
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(
+            action_id="a.first",
+            label_key="menu.settings",
+            run=lambda: None,
+        )
+    )
+
+    owner = QWidget()
+    qtbot.addWidget(owner)
+    owner.show()
+    qtbot.waitExposed(owner)
+
+    dialog = FindActionDialog(owner, query="")
+    # Not qtbot.addWidget: the owner (already added above) owns the C++ object —
+    # registering both makes qtbot teardown touch an already-deleted child.
+
+    # Plain Qt.Window, never Dialog/Popup/Tool hints. The type hints share
+    # the Window bit (Dialog == 0x3), so `flags & Dialog` is truthy even
+    # for a plain window — compare the low type nibble (Window == 0x1).
+    flags = dialog.windowFlags()
+    assert (int(flags) & 0x0F) == 0x01
+    # NonModal: never blocks the owner.
+    assert not dialog.isModal()
+    assert dialog.windowModality() == Qt.WindowModality.NonModal
+    # Transient parent carried for xdg-activation.
+    assert dialog.parent() is owner
+
+    # Flags survive decorate_dialog (ctor re-asserts after CSD chrome).
+    from shared_toolkit.ui.decorate_dialog import decorate_dialog
+
+    decorate_dialog(dialog, title="Find Action", resizable=True)
+    dialog._apply_non_modal_window_flags()
+    assert (int(dialog.windowFlags()) & 0x0F) == 0x01
+    assert dialog.windowModality() == Qt.WindowModality.NonModal
+
+    # Esc closes without running; Enter runs; arrows move.
+    ran: list[str] = []
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(
+            action_id="a.first",
+            label_key="menu.settings",
+            run=lambda: ran.append("run"),
+        )
+    )
+    registry.register(
+        ActionDescriptor(
+            action_id="b.second",
+            label_key="menu.show_help",
+            run=lambda: None,
+        )
+    )
+    dialog2 = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog2)
+    dialog2.show()
+    qtbot.waitExposed(dialog2)
+    assert dialog2._current_index == 0
+    qtbot.keyClick(dialog2._search, Qt.Key.Key_Down)
+    assert dialog2._current_index == 1
+    qtbot.keyClick(dialog2._search, Qt.Key.Key_Up)
+    assert dialog2._current_index == 0
+    qtbot.keyClick(dialog2._search, Qt.Key.Key_Return)
+    qtbot.waitUntil(lambda: ran == ["run"], timeout=1000)
+    assert not dialog2.isVisible()
+
+    dialog3 = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog3)
+    dialog3.show()
+    qtbot.waitExposed(dialog3)
+    qtbot.keyClick(dialog3._search, Qt.Key.Key_Escape)
+    assert not dialog3.isVisible()
+
+
 def test_find_action_dialog_lists_filters_and_runs(qtbot):
     reset_action_registry_for_tests()
     registry = get_action_registry()
