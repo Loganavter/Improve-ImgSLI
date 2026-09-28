@@ -151,3 +151,87 @@ def test_remove_action_calls_remove_from_grid(monkeypatch) -> None:
     trig = captured["on_triggered"]
     trig("gallery.remove", None)
     assert removed == ["/a.png"]
+def test_remove_action_has_icon(monkeypatch) -> None:
+    """Remove from view must render an icon like the glyph-led rows."""
+    from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
+
+    captured = _capture_menu(monkeypatch)
+    owner = _owner(set())
+    popup_gallery_card_context_menu(
+        card=SimpleNamespace(), owner=owner, path=Path("/a.png"),
+        global_pos=None, selection_count=0,
+    )
+    for e in captured["entries"]:
+        items = e.entries if isinstance(e, ContextMenuSection) else (e,)
+        for a in items:
+            if isinstance(a, ContextMenuAction) and a.action_id == "gallery.remove":
+                assert a.icon, "gallery.remove needs an icon"
+                return
+    raise AssertionError("gallery.remove entry missing")
+
+
+def _hover_card():
+    return SimpleNamespace(
+        _hover_blue_bar=False,
+        _gallery_item=SimpleNamespace(path=Path("/a.png")),
+        update=lambda: None,
+        setShowUnderline=lambda _v: None,
+    )
+
+
+def _leave_event():
+    from PySide6.QtCore import QEvent
+
+    return SimpleNamespace(type=lambda: QEvent.Type.Leave)
+
+
+def _hover_filter_for(card):
+    from tabs.image_gallery.ui.card.hover import _CardHoverFilter
+
+    filt = _CardHoverFilter.__new__(_CardHoverFilter)
+    filt._card = card
+    filt._owner = None
+    return filt
+
+
+def test_leave_keeps_hover_while_menu_open() -> None:
+    """Popup steals the mouse (card gets Leave) — underline must stay."""
+    card = _hover_card()
+    card._hover_blue_bar = True
+    card._gallery_open_menu = SimpleNamespace(isVisible=lambda: True)
+    filt = _hover_filter_for(card)
+    filt.eventFilter(card, _leave_event())
+    assert card._hover_blue_bar is True
+
+
+def test_leave_hides_after_menu_closed_and_cleans_ref() -> None:
+    """Stale menu refs are dropped and the normal hide path resumes."""
+    card = _hover_card()
+    card._hover_blue_bar = True
+    card._gallery_open_menu = SimpleNamespace(isVisible=lambda: False)
+    filt = _hover_filter_for(card)
+    filt.eventFilter(card, _leave_event())
+    assert card._hover_blue_bar is False
+    assert getattr(card, "_gallery_open_menu", None) is None
+
+
+def test_track_open_menu_restores_hover_on_hide(monkeypatch) -> None:
+    """aboutToHide clears the ref and repaints the highlight."""
+    from tabs.image_gallery.ui.card.context_menu import _track_open_menu
+
+    card = _hover_card()
+    slots: list = []
+
+    class _FakeSignal:
+        def connect(self, slot):
+            slots.append(slot)
+
+    menu = SimpleNamespace(isVisible=lambda: True, aboutToHide=_FakeSignal())
+    _track_open_menu(card, menu)
+    assert getattr(card, "_gallery_open_menu", None) is menu
+    assert card._hover_blue_bar is True  # forced on while menu open
+    assert len(slots) == 1
+    card._hover_blue_bar = False
+    slots[0]()
+    assert getattr(card, "_gallery_open_menu", None) is None
+    assert card._hover_blue_bar is True
