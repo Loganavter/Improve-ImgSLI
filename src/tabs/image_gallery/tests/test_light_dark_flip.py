@@ -128,8 +128,8 @@ def test_normal_card_shows_border_edge_in_light(qtbot, qapp, _w1_palettes) -> No
     """Normal (non-BEST, non-rejected) cards render a visible edge in light.
 
     ``visuals._card_border_color`` repoints the default border to
-    ``gallery.card.border`` (``#e2e4e8``); BEST cards share the same default
-    frame (only the ★ BEST pill marks them) and rejected/danger paths are
+    ``gallery.card.border`` (``#e2e4e8``); leader cards share the same default
+    frame (only the #N pill marks them) and rejected/danger paths are
     untouched. Asserts the override resolves hex-exact AND that an
     offscreen grab shows an edge pixel distinct from the card fill (the
     painter blends the 1px hairline, so the pixel need not equal the hex —

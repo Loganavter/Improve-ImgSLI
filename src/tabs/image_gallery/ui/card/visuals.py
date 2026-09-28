@@ -102,13 +102,6 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
     rejected signals are the dim + strike-through. The toolkit ``setBadge``
     pill is never used here (it painted an almost-glyphless red oval).
     """
-    from PySide6.QtGui import QColor as _QColor
-
-    # Lazy imports to avoid cycles at module import.
-    from tabs.image_gallery.ui.card.dots import _accent_color
-
-    # Local theme helpers already defined at module level (_token_qcolor etc.)
-    # but keep _QColor alias for accent lighter derivation.
 
     try:
         rejected = bool(getattr(item, "rejected", False))
@@ -118,14 +111,13 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         is_best = bool(getattr(item, "is_best", False))
     except Exception:
         is_best = False
-    try:
-        tie_pending = bool(getattr(item, "vlm_tie_pending", False))
-    except Exception:
-        tie_pending = False
 
-    # Badge priority: AI tie-break > BEST/#N overlay pills. Rejected sets no
-    # toolkit badge (no corner mode switch) but still suppresses the BEST
-    # overlay pill; dim + strike-through carry the rejected signal.
+    # Badge priority: #N rank pills only. The leader-star and tie-break
+    # pills were dropped by design verdict (#N stays): tie-pending items fall
+    # through to the rank path (#N if ranked, else no badge), and the
+    # leader (is_best / rank 1) shows its #N. Rejected sets no toolkit
+    # badge (no corner mode switch); dim + strike-through carry the
+    # rejected signal.
     try:
         if rejected:
             try:
@@ -140,48 +132,14 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
                 card._gallery_badge = None  # type: ignore[attr-defined]
             except Exception:
                 pass
-        elif tie_pending:
-            # S2 mockup: AI tie-break is an in-thumbnail pill (left overlay,
-            # like ★ BEST) — not a top-right toolkit badge.
-            try:
-                card.setBadge(None)
-            except Exception:
-                pass
-            try:
-                _accent = _accent_color()
-                _accent_text = _QColor(_accent)
-                try:
-                    _accent_text = _accent_text.lighter(150)
-                except Exception:
-                    pass
-                card._gallery_badge = "AI tie-break…"  # type: ignore[attr-defined]
-                card._gallery_badge_style = (False, None, _accent, _accent_text)  # type: ignore[attr-defined]
-                card.setBorderColor(_card_border_color())
-            except Exception:
-                pass
-        elif is_best or (not rejected and not tie_pending and getattr(item, "rank", None) == 1) or (not rejected and not tie_pending and getattr(item, "crown_rank", None) == 1):
-            # Left top per spec — overlay for leader (is_best or rank 1), clear toolkit right badge.
-            # No accent outline: best is signaled by the ★ BEST pill alone,
-            # the frame stays the default card border.
-            try:
-                card.setBadge(None)
-            except Exception:
-                pass
-            try:
-                card._gallery_badge = "★ BEST"  # type: ignore[attr-defined]
-                # Pill text is always white: the "primary.text"/"stats.text"
-                # tokens resolve to black in the light theme (black on blue).
-                card._gallery_badge_style = (True, _accent_color(), _accent_color(), QColor("#ffffff"))  # type: ignore[attr-defined]
-                try:
-                    card.setBorderColor(_card_border_color())
-                    card.setProperty("borderWidth", 1)
-                except Exception:
-                    pass
-            except Exception:
-                pass
         else:
+            # Left top per spec — overlay for ranked cards, clear toolkit right badge.
+            # No accent outline: the frame stays the default card border.
             cr = getattr(item, "crown_rank", None)
             rank_val = cr if cr is not None else getattr(item, "rank", None)
+            if rank_val is None and is_best:
+                # Leader without an explicit rank still shows #1.
+                rank_val = 1
             if rank_val is not None:
                 try:
                     badge_text = f"#{int(rank_val)}"
