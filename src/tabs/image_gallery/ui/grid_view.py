@@ -18,7 +18,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Label, OverlayScrollArea
+from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Label, Layer, OverlayScrollArea
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui.card import (
@@ -141,57 +141,33 @@ def _grid_substrate_color():
     return _QC(0xFF, 0xFF, 0xFF)
 
 
-class _SeriesHeaderBar(QWidget):
-    """3×14 section bar painted explicitly from a cached theme color.
+class _SeriesHeaderAccentLayer(Layer):
+    """Section bar painted on the header button's own left edge.
 
-    Replaces the palette/auto-fill path (THEMING.md warm-up quirk):
-    background is painted in ``paintEvent`` from a cached ``QColor`` and
-    re-resolved on ``theme_changed``.
+    Simple-flyout pattern (``_CurrentIndicatorLayer``): the 3×14 accent bar
+    is a painter layer of the header ``Button`` itself, not a sibling widget —
+    bar and label share one geometry/hover lifecycle and can never drift
+    apart. Color resolves per-paint, so theme flips need no cached state
+    (the button repaints via its ``theme_changed`` → ``update`` hookup).
     """
 
-    def __init__(self, parent: QWidget | None = None, *, collapsible: bool = True) -> None:
-        super().__init__(parent)
-        self.setObjectName("GallerySeriesHeaderBar")
+    scope = "widget"
+
+    def __init__(self, collapsible: bool = True) -> None:
         self._collapsible = bool(collapsible)
-        self._bar_color = _resolve_section_bar_color(self._collapsible)
-        try:
-            self.setFixedSize(scaled_px(3), scaled_px(14))
-        except Exception:
-            pass
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
 
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
-        except Exception:
-            pass
-
-    def _on_theme_changed(self) -> None:
+    def draw(self, ctx, tm) -> None:  # type: ignore[no-untyped-def]
         try:
-            self._bar_color = _resolve_section_bar_color(self._collapsible)
-        except Exception:
-            pass
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtGui import QPainter
-
-            p = QPainter(self)
+            rect = ctx.rect.toRect() if hasattr(ctx.rect, "toRect") else ctx.rect
+            color = _resolve_section_bar_color(self._collapsible)
             try:
-                p.fillRect(self.rect(), self._bar_color)
+                bar_w = int(scaled_px(3))
+                bar_h = int(scaled_px(14))
             except Exception:
-                pass
-            try:
-                p.end()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            super().paintEvent(event)
+                bar_w, bar_h = 3, 14
+            x = int(rect.left())
+            y = int(rect.top() + (rect.height() - bar_h) // 2)
+            ctx.painter.fillRect(x, y, bar_w, bar_h, color)
         except Exception:
             pass
 
@@ -358,6 +334,38 @@ class GalleryGridView(QWidget):
     def _card_height_px(self) -> int:
         return scaled_px(LIST_CARD_H) if self._view_mode == VIEW_LIST else scaled_px(GALLERY_CARD_H)
 
+    def _sync_series_column_widths(self, *, series_mode: bool) -> None:
+        """Keep series headers full-width when clusters collapse.
+
+        A header spans ``grid_columns``. With every cluster collapsed the
+        layout holds no cards, so ``QGridLayout`` shrinks its columns to
+        zero and the header ``Button`` elides its text (``ElideRight``) —
+        e.g. ``SERIES 1 · hub · 3 VARIANTS ▼`` degrades to ``SERIES 1 ·``.
+        Pinning each column to the card width in series mode keeps the
+        header at the full grid width; flat mode resets to 0 so a
+        partially-filled last row does not force extra width.
+        """
+        try:
+            cols = int(self.grid_columns)
+        except Exception:
+            return
+        if not series_mode or cols <= 1 or self._view_mode == VIEW_LIST:
+            for c in range(max(int(cols or 1), 1)):
+                try:
+                    self.items_layout.setColumnMinimumWidth(c, 0)
+                except Exception:
+                    continue
+            return
+        try:
+            card_w = int(scaled_px(GALLERY_CARD_W))
+        except Exception:
+            return
+        for c in range(cols):
+            try:
+                self.items_layout.setColumnMinimumWidth(c, card_w)
+            except Exception:
+                continue
+
     # -- public API expected by controller/widget --------------------------
 
     # Systemic fix 2026-08-26: O(N) sync rebuild blocked UI for 1k+ items
@@ -444,6 +452,7 @@ class GalleryGridView(QWidget):
         self._cards_by_path.clear()
 
         if not items:
+            self._sync_series_column_widths(series_mode=False)
             self._update_host_height(0)
             return
 
@@ -466,6 +475,7 @@ class GalleryGridView(QWidget):
 
         if paint_selection:
             self.apply_selection(self._selection)
+        self._sync_series_column_widths(series_mode=False)
         self._update_host_height(len(items))
 
     def _rebuild_next_chunk(self) -> None:
@@ -615,14 +625,14 @@ class GalleryGridView(QWidget):
         """
         display = str(text or "").strip()
         is_collapsible = index is not None
-        arrow = "▸" if collapsed else "▾"
+        arrow = "▶" if collapsed else "▼"
         if is_collapsible:
-            if not display.endswith("▾") and not display.endswith("▸"):
+            if not display.endswith("▼") and not display.endswith("▶"):
                 display = f"{display} {arrow}"
-            elif display[-1] in ("▾", "▸"):
+            elif display[-1] in ("▼", "▶"):
                 display = display[:-1].strip() + f" {arrow}"
         else:
-            if display.endswith("▾") or display.endswith("▸"):
+            if display.endswith("▼") or display.endswith("▶"):
                 display = display[:-1].strip()
         try:
             header.setObjectName(
@@ -646,10 +656,20 @@ class GalleryGridView(QWidget):
             btn.update_region(
                 "_main",
                 rows=[ButtonRow(
-                    text=display.upper(), size=13, color=_gallery_header_text_color(),
+                    text=display.upper(), size=16, color=_gallery_header_text_color(),
                     h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0,
                 )],
             )
+        except Exception:
+            pass
+        try:
+            # A reused header slot may flip series ↔ UNGROUPED: repoint the
+            # accent layer's palette (accent vs dialog.border) with it.
+            _painter = getattr(btn, "_painter", None)
+            for _layer in list(getattr(_painter, "layers", None) or []):
+                if isinstance(_layer, _SeriesHeaderAccentLayer):
+                    _layer._collapsible = bool(is_collapsible)
+            btn.update()
         except Exception:
             pass
         try:
@@ -711,6 +731,7 @@ class GalleryGridView(QWidget):
                     break
             self._cards_by_path.clear()
             self._series_cards = {}
+            self._sync_series_column_widths(series_mode=False)
             return
         try:
             _mode = self._resolve_mode()
@@ -849,6 +870,7 @@ class GalleryGridView(QWidget):
             rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
             current_row += rows_needed
 
+        self._sync_series_column_widths(series_mode=True)
         self.apply_selection(self._selection)
         self._update_host_height_for_series(current_row)
         try:
@@ -999,36 +1021,33 @@ class GalleryGridView(QWidget):
         collapsed: bool = False,
         index: int | None = None,
     ) -> QWidget:
-        """Series header — accent bar 3×14 + ghost Button (real_design.md:59)."""
+        """Series header — ghost Button with the 3×14 accent bar as its own layer (real_design.md:59)."""
         is_collapsible = index is not None
-        arrow = "▸" if collapsed else "▾"
+        arrow = "▶" if collapsed else "▼"
         display = text.strip()
         # Only collapsible series get arrow; UNGROUPED has no arrow (SVG)
         if is_collapsible:
-            if not display.endswith("▾") and not display.endswith("▸"):
+            if not display.endswith("▼") and not display.endswith("▶"):
                 display = f"{display} {arrow}"
             else:
-                if display[-1] in ("▾", "▸"):
+                if display[-1] in ("▼", "▶"):
                     display = display[:-1].strip() + f" {arrow}"
         else:
             # Strip any arrow for UNGROUPED
-            if display.endswith("▾") or display.endswith("▸"):
+            if display.endswith("▼") or display.endswith("▶"):
                 display = display[:-1].strip()
         # Container with 3×14 bar
         container = QWidget(self.items_host)
         container.setObjectName(f"GallerySeriesHeader_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped")
+        try:
+            container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass
         from PySide6.QtWidgets import QHBoxLayout
 
         lay = QHBoxLayout(container)
         lay.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
-        lay.setSpacing(scaled_px(12))
-        # Accent bar 3×14 — explicitly painted themed widget (no palette fill).
-        bar = _SeriesHeaderBar(container, collapsible=is_collapsible)
-        lay.addWidget(bar)
-        try:
-            lay.setAlignment(bar, Qt.AlignmentFlag.AlignVCenter)
-        except Exception:
-            pass
+        lay.setSpacing(0)
         if is_collapsible:
             _header_col3 = _gallery_header_text_color()
 
@@ -1036,14 +1055,23 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=13, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",
                 size=(0, scaled_px(24)),
+                # 3px bar + 12px gap the sibling widget used to occupy.
+                content_padding=(scaled_px(15), 0, 0, 0),
+                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible)],
                 parent=container,
             )
             btn.setObjectName(f"GallerySeriesHeaderBtn_{index}")
+            try:
+                from sli_ui_toolkit.managers import ThemeManager
+
+                ThemeManager.get_instance().theme_changed.connect(btn.update)
+            except Exception:
+                pass
             try:
                 btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
             except Exception:
@@ -1065,14 +1093,23 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=13, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
                     )
                 ],
                 variant="ghost",
                 size=(0, scaled_px(24)),
+                # 3px bar + 12px gap the sibling widget used to occupy.
+                content_padding=(scaled_px(15), 0, 0, 0),
+                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible)],
                 parent=container,
             )
             btn.setObjectName("GallerySeriesHeader_ungrouped_btn")
+            try:
+                from sli_ui_toolkit.managers import ThemeManager
+
+                ThemeManager.get_instance().theme_changed.connect(btn.update)
+            except Exception:
+                pass
             try:
                 btn.setEnabled(False)
             except Exception:
@@ -1092,7 +1129,7 @@ class GalleryGridView(QWidget):
             lay = QHBoxLayout(container)
             lay.setContentsMargins(scaled_px(8), scaled_px(4), scaled_px(8), scaled_px(4))
             lay.setSpacing(0)
-            lbl = Label(display, pixel_size=13, parent=container)
+            lbl = Label(display, pixel_size=16, parent=container)
             lbl.setObjectName("GallerySeriesHeaderLabel")
             try:
                 lbl.setBold(True)

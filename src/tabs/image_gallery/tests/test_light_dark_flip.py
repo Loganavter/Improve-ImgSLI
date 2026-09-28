@@ -2,8 +2,8 @@
 
 Asserts that gallery token resolution tracks ``src/resources/themes.json``
 hex-for-hex in BOTH themes, and that the key repaint-subscribed widgets
-(``StatsStrip``, grid ``_SeriesHeaderBar``) re-resolve and repaint without
-crashing offscreen across a light → dark → light round-trip.
+(``StatsStrip``, grid series-header accent layers) re-resolve and repaint
+without crashing offscreen across a light → dark → light round-trip.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import pytest
 from PySide6.QtGui import QColor
 
-from tabs.image_gallery.ui.grid_view import _SeriesHeaderBar
+from tabs.image_gallery.ui.grid_view import _resolve_section_bar_color
 from tabs.image_gallery.ui.stats_strip import StatsStrip
 
 # Gallery + substrate tokens whose W1 light values carry the contrast norm
@@ -97,31 +97,43 @@ def test_gallery_tokens_match_themes_json_in_both_themes(qapp, _w1_palettes) -> 
 
 def test_stats_strip_and_section_bars_repaint_on_flip(qtbot, qapp, _w1_palettes) -> None:
     """StatsStrip + grid section bars track the flip and repaint offscreen."""
+    from pathlib import Path
+
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    def _hex(color) -> str:
+        return (color if isinstance(color, QColor) else QColor(color)).name().lower()
+
     tm = _w1_palettes
     data = _themes_data()
 
     strip = StatsStrip()
     qtbot.addWidget(strip)
     strip.set_stats(40, 7, 33)
-    accent_bar = _SeriesHeaderBar(collapsible=True)
-    qtbot.addWidget(accent_bar)
-    plain_bar = _SeriesHeaderBar(collapsible=False)
-    qtbot.addWidget(plain_bar)
+    items = [GalleryItem(path=Path(f"/gallery/{n}.png"), mtime_ns=i) for i, n in enumerate("abcd")]
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1280, 800)
+    w.show()
+    w.rebuild_grid(items)
+    w._grid_view.set_series([items[:2]], hub_names=["HUB-A"], collapsed={})
+    btn = w._grid_view.findChild(object, "GallerySeriesHeaderBtn_0")
+    assert btn is not None
 
     for theme in ("light", "dark", "light"):
         _set_theme(tm, qapp, theme)
         light = data[theme]
         assert strip._stats_bg.name().lower() == QColor(light["gallery.stats.background"]).name().lower()
-        assert accent_bar._bar_color.name().lower() == QColor(light["gallery.accent.bar"]).name().lower()
-        assert plain_bar._bar_color.name().lower() == QColor(light["dialog.border"]).name().lower()
+        assert _hex(_resolve_section_bar_color(True)) == QColor(light["gallery.accent.bar"]).name().lower()
+        assert _hex(_resolve_section_bar_color(False)) == QColor(light["dialog.border"]).name().lower()
         # Repaint paths must not crash offscreen on any theme.
         assert not strip.grab().isNull()
-        assert not accent_bar.grab().isNull()
-        assert not plain_bar.grab().isNull()
+        assert not btn.grab().isNull()
 
     # Round-trip lands back on the light production values.
     assert strip._stats_bg.name().lower() == "#ffffff"
-    assert accent_bar._bar_color.name().lower() == "#0096ff"
+    assert _hex(_resolve_section_bar_color(True)) == "#0096ff"
 
 
 def test_normal_card_shows_border_edge_in_light(qtbot, qapp, _w1_palettes) -> None:
