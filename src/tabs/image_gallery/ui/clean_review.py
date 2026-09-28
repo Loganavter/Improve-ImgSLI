@@ -357,26 +357,19 @@ def _rounded_top_pixmap(pix: QPixmap, w: int, h: int) -> QPixmap:
 def _display_folder_for_items(owner, items: list) -> str:
     """Folder shown in the subtitle/move title.
 
-    State folder first; file-drop sessions carry no folder context, so fall
-    back to the rejected items' common parent; the ``<folder>`` literal is
-    the last resort (no paths at all or parents disagree).
+    Resolves through the same helper as the move itself
+    (``triage.resolve_move_folder``), so the subtitle can never promise a
+    target the move refuses; the ``<folder>`` literal is the last resort
+    (no paths at all or parents disagree).
     """
     try:
-        folder = getattr(getattr(owner, "state", None), "folder", None)
+        from tabs.image_gallery.use_cases.triage import resolve_move_folder
+
+        folder = resolve_move_folder(owner, items)
+        if folder is not None:
+            return str(folder)
     except Exception:
-        folder = None
-    if folder:
-        return str(folder)
-    try:
-        parents = {
-            str(Path(getattr(it, "path", None)).parent)
-            for it in list(items or [])
-            if getattr(it, "path", None)
-        }
-    except Exception:
-        parents = set()
-    if len(parents) == 1:
-        return next(iter(parents))
+        pass
     return "<folder>"
 
 

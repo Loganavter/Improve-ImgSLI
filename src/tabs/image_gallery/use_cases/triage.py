@@ -612,6 +612,38 @@ def remove_paths_from_grid(owner, paths) -> int:
     return len(doomed_s)
 
 
+def resolve_move_folder(owner, rejected: list | None = None) -> Path | None:
+    """Folder whose ``_rejected/`` receives the move (single source of truth).
+
+    State folder first; file-drop sessions carry no folder context, so fall
+    back to the rejected items' common parent. None when neither resolves
+    (the overlay subtitle shows the ``<folder>`` literal in that case).
+    """
+    try:
+        folder = getattr(getattr(owner, "state", None), "folder", None)
+    except Exception:
+        folder = None
+    if folder:
+        try:
+            return Path(folder)
+        except Exception:
+            pass
+    try:
+        parents = {
+            str(Path(getattr(it, "path", None)).parent)
+            for it in list(rejected or [])
+            if getattr(it, "path", None)
+        }
+    except Exception:
+        parents = set()
+    if len(parents) == 1:
+        try:
+            return Path(next(iter(parents)))
+        except Exception:
+            return None
+    return None
+
+
 def clean_rejected(owner) -> list[dict]:
     """Move rejected files to <folder>/_rejected/ (move-only, never delete).
 
@@ -620,13 +652,12 @@ def clean_rejected(owner) -> list[dict]:
     st = getattr(owner, "state", None)
     if st is None:
         return []
-    folder = getattr(st, "folder", None)
-    if folder is None:
-        logger.warning("triage.clean_rejected: no folder")
-        return []
-    folder = Path(folder)
     rejected = [it for it in _items_of(owner) if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))]
     if not rejected:
+        return []
+    folder = resolve_move_folder(owner, rejected)
+    if folder is None:
+        logger.warning("triage.clean_rejected: no folder")
         return []
     target = folder / "_rejected"
     try:
