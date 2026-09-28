@@ -12,6 +12,7 @@ from pathlib import Path
 
 from tabs.image_gallery.ui.quick_look.preview import (
     _load_scaled_pixmap,
+    _pyramid_pixmap_for,
     _source_dimensions,
     _thumb_pixmap,
 )
@@ -111,9 +112,30 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
                         Qt.TransformationMode.FastTransformation,
                     )
                 else:
-                    # No thumbnail yet (fresh drop) — scaled reader read
-                    # instead of a full QPixmap decode + smooth scale.
-                    pix = _load_scaled_pixmap(Path(getattr(src_item, "path", src)), scaled_px(150), scaled_px(84))
+                    # Coarse-direct first (bounded pyramid sample); the
+                    # scaled-reader ladder below stays as fallback.
+                    try:
+                        _pyr = _pyramid_pixmap_for(getattr(src_item, "path", src), long_edge=512)
+                    except Exception:
+                        _pyr = None
+                    try:
+                        _pyr_ok = _pyr is not None and not _pyr.isNull()
+                    except Exception:
+                        _pyr_ok = False
+                    if _pyr_ok:
+                        try:
+                            pix = _pyr.scaled(
+                                scaled_px(150),
+                                scaled_px(84),
+                                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                Qt.TransformationMode.FastTransformation,
+                            )
+                        except Exception:
+                            pix = None
+                    if pix is None:
+                        # No thumbnail yet (fresh drop) — scaled reader read
+                        # instead of a full QPixmap decode + smooth scale.
+                        pix = _load_scaled_pixmap(Path(getattr(src_item, "path", src)), scaled_px(150), scaled_px(84))
             except Exception:
                 pix = None
             if pix is None:
@@ -179,6 +201,24 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
         except Exception:
             pm_full = None
         if pm_full is None:
+            # Coarse-direct center crop (bounded — no full decode). Success
+            # populates straight from the level's own bytes and returns; any
+            # miss falls through to the QPixmap/thumb ladder below.
+            try:
+                _direct = _pyramid_pixmap_for(getattr(item, "path", ""), center_third=True, long_edge=512)
+            except Exception:
+                _direct = None
+            try:
+                _direct_ok = _direct is not None and not _direct.isNull()
+            except Exception:
+                _direct_ok = False
+            if _direct_ok:
+                try:
+                    crop_scaled = _direct.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    overlay._crop_pix.update_region("thumb", pixmap=crop_scaled)
+                except Exception:
+                    pass
+                return
             try:
                 pm_full = QPixmap(str(getattr(item, "path", "")))
                 if pm_full is not None and pm_full.isNull():

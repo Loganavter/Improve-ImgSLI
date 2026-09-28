@@ -110,6 +110,12 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "image_compare video editor; splitting per-tab would defeat the "
         "single-contract purpose"
     ),
+    "tests/render/test_pyramid_stale_guard.py": (
+        "cross-tab pyramid stale-guard parity contract (LOD-resolve + "
+        "fallback call sites in image_compare and multi_compare over the "
+        "shared engine seam); splitting per-tab would defeat the "
+        "single-contract purpose"
+    ),
 }
 
 

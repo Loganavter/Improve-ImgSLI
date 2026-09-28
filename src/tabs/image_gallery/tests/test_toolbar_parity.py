@@ -191,9 +191,14 @@ def test_sort_combo_opens_dropdown_and_emits(qtbot) -> None:
     Regression: the toolbar used ScrollableComboBox (wheel-only field, no
     popup), so clicks did nothing. Verified failing pre-fix (no popup),
     passing post-fix with Button + SimpleOptionsFlyout.
+
+    Flake-hardened (wave-B1): the click targets the button's live center
+    (width derives from font/scale-dependent text hints, so a hardcoded
+    QPoint can miss), and popup show/hide synchronize via qtbot wait
+    primitives instead of a fixed number of processEvents calls, which race
+    under full-suite load and offscreen popup timing.
     """
-    from PySide6.QtCore import QPoint, Qt
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
 
     toolbar = GalleryToolbar()
     qtbot.addWidget(toolbar)
@@ -201,19 +206,26 @@ def test_sort_combo_opens_dropdown_and_emits(qtbot) -> None:
     qtbot.waitExposed(toolbar)
     got: list[str] = []
     toolbar.sortChanged.connect(got.append)
-    qtbot.mouseClick(toolbar.sort_combo, Qt.MouseButton.LeftButton, pos=QPoint(70, 17))
-    QApplication.processEvents()
-    QApplication.processEvents()
-    assert toolbar.sort_combo.property("cornerRadiusPx") == 6
+    qtbot.mouseClick(
+        toolbar.sort_combo,
+        Qt.MouseButton.LeftButton,
+        pos=toolbar.sort_combo.rect().center(),
+    )
     flyout = toolbar._sort_flyout
-    assert flyout is not None and flyout.isVisible()
+    assert flyout is not None
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    if flyout.isWindow():
+        qtbot.waitExposed(flyout)
+    assert toolbar.sort_combo.property("cornerRadiusPx") == 6
+    assert flyout.isVisible()
     assert flyout._options == ["Sort: Rank", "Sort: Name", "Sort: Date"]
     assert flyout.container.width() == toolbar.sort_combo.width()
     rows = flyout._rows
     assert len(rows) == 3
+    qtbot.waitUntil(lambda: rows[1].isVisible(), timeout=5000)
     qtbot.mouseClick(rows[1], Qt.MouseButton.LeftButton, pos=rows[1].rect().center())
-    QApplication.processEvents()
-    QApplication.processEvents()
+    qtbot.waitUntil(lambda: got == ["Sort: Name"], timeout=5000)
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
     assert toolbar.sort_text() == "Sort: Name"
     assert got == ["Sort: Name"]
     assert not flyout.isVisible()

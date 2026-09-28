@@ -48,6 +48,81 @@ def _is_valid_cached_file(cache_path: Path) -> bool:
         return False
 
 
+def _try_pyramid_render(path: Path, cache_path: Path, size: tuple[int, int]) -> bool:
+    """Coarse-direct thumbnail render via the frozen wave-A1 pyramid seam.
+
+    Bounded decode (``coarse_from_source`` never materializes a full frame)
+    sampled verbatim through ``PyramidPixelStore.best_pixels``, fit-scaled to
+    ``size`` and saved as PNG. True on success; False on any miss (the caller
+    keeps the PIL ladder below). Disk keying untouched — only the pixel
+    pipeline is replaced. Runs on a worker thread (QImage only, no pixmaps).
+    """
+    coarse = None
+    try:
+        from engine.store.pyramid_pixel_store import PyramidPixelStore
+    except Exception:
+        return False
+    try:
+        try:
+            tw, th = max(1, int(size[0])), max(1, int(size[1]))
+        except Exception:
+            return False
+        try:
+            coarse = PyramidPixelStore.coarse_from_source(
+                str(path), long_edge=max(256, 2 * max(tw, th))
+            )
+        except Exception:
+            return False
+        if coarse is None:
+            return False
+        try:
+            base_w, base_h = coarse.size
+        except Exception:
+            return False
+        if base_w <= 0 or base_h <= 0:
+            return False
+        try:
+            pyramid = PyramidPixelStore(coarse)
+        except Exception:
+            return False
+        try:
+            # Single-level pyramid (coarse base is already complete), so the
+            # scale only satisfies the seam signature — L0 is always served.
+            img = pyramid.best_pixels((0, 0, base_w, base_h), 1.0)
+        except Exception:
+            img = None
+        finally:
+            try:
+                pyramid.close()
+            except Exception:
+                pass
+        if img is None:
+            return False
+        try:
+            if img.isNull():
+                return False
+            if img.width() > tw or img.height() > th:
+                from PySide6.QtCore import Qt
+
+                img = img.scaled(
+                    tw,
+                    th,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            return bool(img.save(str(cache_path), "PNG"))
+        except Exception:
+            return False
+    except Exception:
+        return False
+    finally:
+        if coarse is not None:
+            try:
+                coarse.close()
+            except Exception:
+                pass
+
+
 def render_and_cache_thumbnail(
     path: Path, mtime_ns: int, *, size: tuple[int, int] = THUMBNAIL_SIZE
 ) -> Path | None:
@@ -66,6 +141,8 @@ def render_and_cache_thumbnail(
                 cache_path,
                 exc_info=True,
             )
+    if _try_pyramid_render(path, cache_path, size):
+        return cache_path
     try:
         with Image.open(path) as image:
             image = image.convert("RGB")
