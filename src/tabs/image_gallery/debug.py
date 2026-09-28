@@ -79,3 +79,19 @@ def gallery_events_enabled() -> bool:
 def gallery_event(msg: str, *args, **kwargs) -> None:
     if gallery_events_enabled():
         logger.warning("[gallery-events] " + msg, *args, **kwargs)
+
+
+def ql_cover_enabled() -> bool:
+    """First-frame warmup trace — separate flag per DEBUGGING.md rule 5.
+
+    Env var:
+        IMGSLI_QL_COVER_DEBUG=1 — quick-look canvas warmup timeline:
+        populate (canvas/store/pixmap/warm-cold), cover create/sync/drop,
+        canvas initialize/render/first-frame, watchdog/fallback.
+    """
+    return _env_flag("IMGSLI_QL_COVER_DEBUG")
+
+
+def ql_cover(msg: str, *args, **kwargs) -> None:
+    if ql_cover_enabled():
+        logger.warning("[ql-cover] " + msg, *args, **kwargs)

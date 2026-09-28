@@ -7,13 +7,14 @@ labels.
 
 Seam rules (frozen with host/tests): one quad from _active_composition
 via the shared applicator only; pixels from the caller-provided store
-sampled verbatim through ``PyramidPixelStore.best_pixels`` (bounded
-``read_array`` only — never ``qimage_from_pixel_source``, never a host
-upload cache, never a full-frame materialize); GPU objects belong to
-TexturedOverlayShell only. The host hands this widget a bounded coarse
-store (``preview_canvas_host._coarse_store_for``); a miss samples to
-None and the frame is skipped. Fail open; previewFailed → QLabel
-fallback, firstFramePresented → cover drop.
+ sampled verbatim through ``PyramidPixelStore.best_pixels`` (bounded
+ ``read_array`` only — never ``qimage_from_pixel_source``, never a host
+ upload cache, never a full-frame materialize); GPU objects belong to
+ TexturedOverlayShell only. The host hands this widget a bounded coarse
+ store (``preview_canvas_host._coarse_store_for``); a miss samples to
+ None and the frame is skipped. Fail open; previewFailed → QLabel
+ fallback, firstFramePresented (settled present + restack, MC parity)
+ → cover drop.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.canvas_presentation.composition import LayerNode
 from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
+from tabs.image_gallery.ui.quick_look.preview_canvas_host import settle_first_frame
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -123,6 +125,8 @@ class QuickLookCanvasWidget(QRhiWidget):
             logger.debug("QuickLook preview: set_source failed open", exc_info=True)
         try:
             self._frame_ok = False
+            self._settle_pumped = False
+            self._settle_scheduled = False
             self._zoom = 1.0
             self._pan_x = 0.0
             self._pan_y = 0.0
@@ -307,18 +311,18 @@ class QuickLookCanvasWidget(QRhiWidget):
                     except Exception:
                         fb_w, fb_h = 1.0, 1.0
                     self._shell.draw(command_buffer, width=fb_w, height=fb_h)
-                    try:
-                        if not self._frame_ok:
-                            self._frame_ok = True
-                            try:
-                                self.firstFramePresented.emit()
-                            except Exception:
-                                pass
-                    except Exception:
+                    # Settle gate (MC parity): present #1 pumps one more frame
+                    # (the compositor may still show the untouched surface);
+                    # the cover drops only on the settled present #2.
+                    pumped = bool(getattr(self, "_settle_pumped", False))
+                    if not self._frame_ok and not pumped:
+                        self._settle_pumped = True
                         try:
-                            self._frame_ok = True
+                            self.update()
                         except Exception:
                             pass
+                    elif pumped and not self._frame_ok:
+                        settle_first_frame(self)
             finally:
                 try:
                     command_buffer.endPass()

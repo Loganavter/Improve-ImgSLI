@@ -279,6 +279,248 @@ def test_zoomed_frame_sizes():
     assert zoomed_frame(full, 0, 100, 1.0) is None
 
 
+def test_cover_is_opaque_host_sibling_not_canvas_child(qtbot):
+    """First-frame cover: layout-external sibling in _preview_host.
+
+    Regression: the old cover was parented to the QRhiWidget itself, so it
+    inherited the canvas's transparency window (no beginPass/clear before
+    the shell mounts) and the slot showed through for a frame. A sibling
+    paints opaquely from the overlay's first paint regardless of RHI state.
+    """
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    canvas = _W(ov._preview_host)
+    canvas.setGeometry(10, 10, 320, 240)
+    pm = QPixmap(64, 48)
+    pm.fill(QColor("#3a6ea5"))
+
+    _host._cover_until_first_frame(ov, canvas, pm)
+    cover = ov._preview_cover
+    assert cover is not None
+    assert cover.parent() is ov._preview_host
+    assert cover.parent() is not canvas
+    assert cover.geometry() == canvas.geometry()
+    assert not cover.isHidden(), "cover must be up while no GPU frame presented"
+    assert cover.pixmap() is not None and not cover.pixmap().isNull()
+    ov.hide()
+
+
+def test_cover_opaque_without_pixmap(qtbot):
+    """Null pixmap still yields an opaque cover — never a transparent hole."""
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    canvas = _W(ov._preview_host)
+    canvas.setGeometry(0, 0, 320, 240)
+
+    _host._cover_until_first_frame(ov, canvas, QPixmap())
+    cover = ov._preview_cover
+    assert cover is not None, "null pixmap must not mean no cover"
+    assert cover.autoFillBackground(), "null-pixmap cover must be opaque-filled"
+    assert not cover.isHidden()
+    ov.hide()
+
+
+def test_sync_re_pins_cover_on_canvas_move(qtbot):
+    """Layout settle / card drags move the canvas under the cover — re-fit."""
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    canvas = _W(ov._preview_host)
+    canvas.setGeometry(0, 0, 320, 240)
+    pm = QPixmap(64, 48)
+    pm.fill(QColor("#3a6ea5"))
+    _host._cover_until_first_frame(ov, canvas, pm)
+
+    canvas.setGeometry(5, 5, 400, 300)
+    ov._preview_canvas = canvas
+    _host._fit_cover(ov)
+    assert ov._preview_cover.geometry() == canvas.geometry()
+    assert not ov._preview_cover.isHidden()
+    ov.hide()
+
+
+def test_cover_pixmap_fits_live_slot(qtbot):
+    """Cover pixmap aspect-fits the live canvas size (no stale 640px patch).
+
+    Regression: the cover pixmap froze at label-populate size while the slot
+    settled larger — the canvas looked bigger than the patch. _fit_cover
+    re-derives the shown pixmap from the stashed full at the live size.
+    """
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    full = QPixmap(800, 600)
+    full.fill(QColor("#3a6ea5"))
+    ov._preview_full = full
+    canvas = _W(ov._preview_host)
+    canvas.setGeometry(0, 0, 663, 566)
+    ov._preview_canvas = canvas
+    pm = QPixmap(64, 48)
+    pm.fill(QColor("#3a6ea5"))
+    _host._cover_until_first_frame(ov, canvas, pm)
+
+    shown = ov._preview_cover.pixmap()
+    assert shown is not None and not shown.isNull()
+    # Aspect-fit into 663x566: height binds (566), width follows (754>663? no:
+    # 800x600 ratio into 663x566 -> 663x497 wide-bind). Either way, one axis
+    # must equal the slot and neither may exceed it.
+    assert shown.width() <= 663 and shown.height() <= 566
+    assert shown.width() == 663 or shown.height() == 566
+    ov.hide()
+
+
+def test_release_drops_cover(qtbot):
+    """Leaving the GPU path (hide/close/populate-next) must drop the cover."""
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    canvas = _W(ov._preview_host)
+    pm = QPixmap(64, 48)
+    pm.fill(QColor("#3a6ea5"))
+    _host._cover_until_first_frame(ov, canvas, pm)
+    cover = ov._preview_cover
+    assert cover is not None
+
+    ov._preview_canvas = None
+    ov._preview_store = None
+    _host.release_preview_canvas(ov)
+    assert ov._preview_cover is None
+    assert cover.isHidden()
+    ov.hide()
+
+
+def test_cover_slot_opaque_pixels(qtbot):
+    """Pixel-level: the covered slot has no alpha hole (offscreen grab).
+
+    Raster proof for the warmup cover — every sampled pixel inside the
+    cover rect must be fully opaque, so no desktop can show through while
+    the canvas has presented nothing yet.
+    """
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    canvas = _W(ov._preview_host)
+    canvas.setGeometry(0, 0, 640, 456)
+    pm = QPixmap(64, 48)
+    pm.fill(QColor("#3a6ea5"))
+    _host._cover_until_first_frame(ov, canvas, pm)
+    ov._preview_canvas = canvas
+    ov._parity_test_parent.show()
+    qtbot.waitExposed(ov._parity_test_parent)
+    from PySide6.QtWidgets import QApplication as _QA
+
+    _QA.processEvents()
+
+    cover = ov._preview_cover
+    img = ov._preview_host.grab().toImage()
+    cg = cover.geometry()
+    hole = 0
+    checked = 0
+    for y in range(cg.y(), cg.y() + cg.height(), 7):
+        for x in range(cg.x(), cg.x() + cg.width(), 7):
+            checked += 1
+            if img.pixelColor(x, y).alpha() < 255:
+                hole += 1
+    assert checked > 0
+    assert hole == 0, f"cover slot must be fully opaque, {hole}/{checked} transparent"
+    ov.hide()
+
+
+def test_first_frame_emitted_on_settled_second_present(qtbot):
+    """Settle gate: the cover drops on present #2, never #1 (MC parity).
+
+    Regression for the first-frame see-through: present #1 is recorded
+    while the compositor may still show the untouched surface, so present
+    #1 only pumps one more frame and the emit waits for the settled #2.
+    """
+    from types import SimpleNamespace
+
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+
+    updates: list = []
+    canvas.update = lambda *a, **k: updates.append(True)  # type: ignore[method-assign]
+
+    class _FakeSize:
+        def width(self):
+            return 8
+
+        def height(self):
+            return 6
+
+    class _FakeTarget:
+        def pixelSize(self):
+            return _FakeSize()
+
+    class _FakeCB:
+        def beginPass(self, *a, **k):
+            pass
+
+        def endPass(self, *a, **k):
+            pass
+
+    class _FakeShell:
+        def stage_quad(self, u):
+            pass
+
+        def stage_clip(self, u, c):
+            pass
+
+        def upload_frame(self, u, t, f):
+            pass
+
+        def draw(self, cb, width, height):
+            pass
+
+    canvas._shell_ready = True
+    canvas._shell = _FakeShell()
+    canvas.rhi = lambda: SimpleNamespace(nextResourceUpdateBatch=lambda: object())  # type: ignore[method-assign]
+    canvas.renderTarget = lambda: _FakeTarget()  # type: ignore[method-assign]
+    canvas._raster_frame = lambda target: (8, 6, bytes(8 * 6 * 4))  # type: ignore[method-assign]
+
+    fired: list = []
+    canvas.firstFramePresented.connect(lambda: fired.append(True))
+    cb = _FakeCB()
+    canvas.render(cb)
+    assert fired == [], "present #1 must not drop the cover"
+    assert updates, "present #1 must pump one more frame"
+    assert getattr(canvas, "_settle_pumped", False) is True
+    canvas.render(cb)
+    assert fired == [], "emit waits for the deferred settle flush"
+    QApplication.processEvents()
+    assert fired == [True], "settled present + restack drops the cover"
+    assert canvas._frame_ok is True
+
+    # Walk to a new source: the gate resets, two fresh presents required.
+    canvas.set_source(SimpleNamespace(close=lambda: None, generation=0))
+    assert canvas._frame_ok is False and canvas._settle_pumped is False
+    canvas.render(cb)
+    assert fired == [True], "new source: present #1 pumps only"
+    canvas.render(cb)
+    QApplication.processEvents()
+    assert fired == [True, True], "new source: settled present #2 emits"
+
+
 def test_wire_connects_and_first_frame_drops_cover(qtbot):
     """_wire_canvas_fallback hooks signals; first frame drops the cover."""
     from types import SimpleNamespace

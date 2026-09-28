@@ -332,6 +332,18 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                         self._reposition_source_inset()
                     except Exception:
                         pass
+                # While the first-frame cover is up it is a layout-external
+                # sibling — canvas moves/resizes (layout settle, card drags)
+                # slide the canvas under it, so re-fit the cover geometry
+                # and pixmap here.
+                if watched is getattr(self, "_preview_canvas", None) and event.type() in (_QE.Type.Resize, _QE.Type.Move):
+                    try:
+                        from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
+                            _fit_cover,
+                        )
+                        _fit_cover(self)
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
@@ -689,6 +701,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             # Chrome painted: a cold-open canvas staged in populate may show.
             if getattr(self, "_preview_canvas_pending", None) is not None:
+                try:
+                    from tabs.image_gallery.debug import ql_cover as _qlc
+                    from tabs.image_gallery.debug import ql_cover_enabled as _qlc_on
+
+                    if _qlc_on():
+                        _qlc("overlay paintEvent pending canvas -> reveal")
+                except Exception:
+                    pass
                 from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
                     reveal_pending_preview_canvas,
                 )

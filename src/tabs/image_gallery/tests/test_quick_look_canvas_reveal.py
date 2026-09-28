@@ -71,6 +71,29 @@ def test_hidden_overlay_restages_instead_of_showing() -> None:
     assert getattr(ov, "_preview_canvas_pending", None) is canvas
 
 
+def test_first_paint_syncs_cover_over_canvas() -> None:
+    """Pending reveal re-pins the first-frame cover over live canvas geometry."""
+    calls: list = []
+    canvas, shown, _hidden = _canvas()
+    canvas.geometry = lambda: "geom"  # type: ignore[attr-defined]
+    canvas.width = lambda: 64  # type: ignore[attr-defined]
+    canvas.height = lambda: 48  # type: ignore[attr-defined]
+    cover = SimpleNamespace(
+        setGeometry=lambda g: calls.append(("geom", g)),
+        show=lambda: calls.append(("show",)),
+        raise_=lambda: calls.append(("raise",)),
+    )
+    ov = _overlay(visible=True)
+    ov._preview_canvas = canvas
+    ov._preview_cover = cover
+    ov._preview_canvas_pending = canvas
+    reveal_pending_preview_canvas(ov)
+    assert shown == [True]
+    assert ("geom", "geom") in calls
+    assert ("show",) in calls
+    assert ("raise",) in calls
+
+
 def test_release_drops_staged_canvas() -> None:
     canvas, _shown, _hidden = _canvas()
     ov = _overlay(visible=False)
