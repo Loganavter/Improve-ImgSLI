@@ -215,6 +215,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md), [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
 - **[Multi Compare](../../src/tabs/multi_compare/docs/README.md)** — `src/tabs/multi_compare/docs/README.md`
   Referenced by: [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
+- **[Plan: MC parametric crop — context-menu crop like IC, no baked re-decode](../../src/tabs/multi_compare/docs/plan_parametric_crop.md)** — `src/tabs/multi_compare/docs/plan_parametric_crop.md`
 
 ## src/tabs/multi_compare/docs/plugins/
 
