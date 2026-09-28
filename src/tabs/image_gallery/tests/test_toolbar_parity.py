@@ -219,13 +219,42 @@ def test_sort_combo_opens_dropdown_and_emits(qtbot) -> None:
     assert toolbar.sort_combo.property("cornerRadiusPx") == 6
     assert flyout.isVisible()
     assert flyout._options == ["Sort: Rank", "Sort: Name", "Sort: Date"]
-    assert flyout.container.width() == toolbar.sort_combo.width()
+    # Content width (width_mode="content"): uniform rows on the widest
+    # label, tight card — no trailing slack by construction. Red pre-fix
+    # (anchor-matched card wider than any row needs).
+    assert flyout.container.width() == flyout.content_width_hint()
     rows = flyout._rows
     assert len(rows) == 3
+    assert len({r.width() for r in rows}) == 1
     qtbot.waitUntil(lambda: rows[1].isVisible(), timeout=5000)
     qtbot.mouseClick(rows[1], Qt.MouseButton.LeftButton, pos=rows[1].rect().center())
     qtbot.waitUntil(lambda: got == ["Sort: Name"], timeout=5000)
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
     assert toolbar.sort_text() == "Sort: Name"
     assert got == ["Sort: Name"]
+    assert not flyout.isVisible()
+
+
+def test_sort_combo_second_click_closes(qtbot) -> None:
+    """Same-anchor re-click closes (manual toggle; show_aligned has none)."""
+    from PySide6.QtCore import Qt
+
+    toolbar = GalleryToolbar()
+    qtbot.addWidget(toolbar)
+    toolbar.show()
+    qtbot.waitExposed(toolbar)
+    qtbot.mouseClick(
+        toolbar.sort_combo,
+        Qt.MouseButton.LeftButton,
+        pos=toolbar.sort_combo.rect().center(),
+    )
+    flyout = toolbar._sort_flyout
+    assert flyout is not None
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    qtbot.mouseClick(
+        toolbar.sort_combo,
+        Qt.MouseButton.LeftButton,
+        pos=toolbar.sort_combo.rect().center(),
+    )
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
     assert not flyout.isVisible()

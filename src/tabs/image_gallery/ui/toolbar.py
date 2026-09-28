@@ -562,6 +562,14 @@ class GalleryToolbar(QWidget):
             flyout = self._sort_flyout_ensure()
             if flyout is None:
                 return
+            # Manual same-anchor toggle: a visible flyout closes on re-click
+            # (deterministic here; show_below toggles same-anchor too).
+            try:
+                if flyout.isVisible():
+                    flyout.hide()
+                    return
+            except Exception:
+                pass
             # Match the button metrics (transient_interpolation.py precedent:
             # set_row_height takes design px, button height is 34 design).
             try:
@@ -569,8 +577,10 @@ class GalleryToolbar(QWidget):
             except Exception:
                 pass
             flyout.populate(list(self._sort_items), int(self._sort_index))
-            # Card-match: the white card (not the shadow halo) equals the button.
-            flyout.show_below(self._sort_combo, match_card_width=True)
+            # Content width: uniform rows on the widest label
+            # ("Sort: Name"), tight card. The button carries " ▾" the rows
+            # don't, so anchor-matching leaves trailing slack in every row.
+            flyout.show_below(self._sort_combo, width_mode="content")
         except Exception:
             pass
 

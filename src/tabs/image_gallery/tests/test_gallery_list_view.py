@@ -340,3 +340,65 @@ def test_refresh_in_list_mode(qtbot) -> None:
     assert card is not None
     assert "a.png" in card.toolTip()
     assert LIST_CARD_H == 64
+
+
+def test_switch_state_survives_rebuild(qtbot) -> None:
+    """List mode survives a pool rebuild (new cards use ui/list rows)."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    items = _items("a.png", "b.png")
+    w.rebuild_grid(items)
+    w._on_view_toggled(True)
+    assert w._view_mode is True
+    grown = list(items) + _items("c.png")
+    w.rebuild_grid(grown)
+    gv = w._grid_view
+    assert w._view_mode is True
+    assert gv._view_mode == VIEW_LIST and gv.grid_columns == 1
+    fresh = gv.card_for(grown[2].path)
+    assert fresh is not None
+    assert _grid_ids(fresh) == set(LIST_ROW_REGION_IDS)
+    w._on_view_toggled(False)
+    w.rebuild_grid(grown)
+    assert gv._view_mode == VIEW_GRID and gv.grid_columns == 4
+    assert _grid_ids(gv.card_for(grown[2].path)) == {"bg", "cover", "text"}
+
+
+def test_toolbar_switch_drives_widget_rows(qtbot) -> None:
+    """End-to-end: toolbar segments -> viewToggled -> widget list rows."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    items = _items("a.png", "b.png")
+    w.rebuild_grid(items)
+    got: list[bool] = []
+    w.toolbar.viewToggled.connect(got.append)
+    w.toolbar._apply_view(True)  # type: ignore[attr-defined]
+    assert got == [True]
+    gv = w._grid_view
+    assert w._view_mode is True and gv._view_mode == VIEW_LIST
+    assert _grid_ids(gv.card_for(items[0].path)) == set(LIST_ROW_REGION_IDS)
+    assert gv.card_for(items[0].path).region("thumb").image_fill == "cover"
+    w.toolbar._apply_view(False)  # type: ignore[attr-defined]
+    assert got == [True, False]
+    assert w._view_mode is False and gv._view_mode == VIEW_GRID
+    assert _grid_ids(gv.card_for(items[0].path)) == {"bg", "cover", "text"}
+
+
+def test_marquee_hit_test_in_list_mode(qtbot) -> None:
+    """Marquee band sees list rows through the same card_for map."""
+    from tabs.image_gallery.ui import marquee as _marquee
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.show()
+    qtbot.waitExposed(w)
+    items = _items("a.png", "b.png", "c.png")
+    w.rebuild_grid(items)
+    w._on_view_toggled(True)
+    gv = w._grid_view
+    assert gv._view_mode == VIEW_LIST
+    host = gv.items_host
+    full = host.rect()
+    assert full.height() > 0
+    hits = _marquee.paths_for_rect(gv, full)
+    assert {str(p) for p in hits} == {str(it.path) for it in items}
