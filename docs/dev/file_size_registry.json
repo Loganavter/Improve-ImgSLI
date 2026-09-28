@@ -908,7 +908,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 801,
+      "lines": 836,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
