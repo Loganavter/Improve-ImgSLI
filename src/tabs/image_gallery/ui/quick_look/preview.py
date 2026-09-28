@@ -154,6 +154,88 @@ def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixm
     return None
 
 
+def _pyramid_pixmap_for(path, *, center_third: bool = False, long_edge: int = 1024) -> QPixmap | None:
+    """Coarse-direct pixmap via the frozen wave-A1 pyramid seam.
+
+    Bounded decode (``coarse_from_source`` never materializes a full frame)
+    sampled verbatim through ``PyramidPixelStore.best_pixels``; the returned
+    pixmap holds level-native pixels and callers fit-scale it as before.
+    Any miss — unreadable source, unbuilt level, stale store — fails closed
+    to None so the caller keeps its existing fallback ladder (thumb /
+    scaled-reader / full QPixmap). Never raises; mints no GPU resources;
+    consumes the seam only (``best_pixels`` — no second LOD entry).
+    """
+    try:
+        from engine.store.pyramid_pixel_store import PyramidPixelStore
+    except Exception:
+        return None
+    coarse = None
+    try:
+        try:
+            cap = max(1, int(long_edge))
+        except Exception:
+            return None
+        try:
+            coarse = PyramidPixelStore.coarse_from_source(str(path), long_edge=cap)
+        except Exception:
+            return None
+        if coarse is None:
+            return None
+        try:
+            base_w, base_h = coarse.size
+        except Exception:
+            return None
+        if base_w <= 0 or base_h <= 0:
+            return None
+        if center_third:
+            cw, ch = max(1, base_w // 3), max(1, base_h // 3)
+            x = max(0, (base_w - cw) // 2)
+            y = max(0, (base_h - ch) // 2)
+            box = (x, y, x + cw, y + ch)
+        else:
+            box = (0, 0, base_w, base_h)
+        try:
+            pyramid = PyramidPixelStore(coarse)
+        except Exception:
+            return None
+        try:
+            # Single-level pyramid (coarse base is already complete), so the
+            # scale only satisfies the seam signature — L0 is always served.
+            img = pyramid.best_pixels(box, 1.0)
+        except Exception:
+            img = None
+        finally:
+            try:
+                pyramid.close()
+            except Exception:
+                pass
+        if img is None:
+            return None
+        try:
+            if img.isNull():
+                return None
+        except Exception:
+            return None
+        try:
+            pm = QPixmap.fromImage(img)
+        except Exception:
+            return None
+        try:
+            if pm is None or pm.isNull():
+                return None
+        except Exception:
+            return None
+        return pm
+    except Exception:
+        return None
+    finally:
+        if coarse is not None:
+            try:
+                coarse.close()
+            except Exception:
+                pass
+
+
 def _preview_drag_live(overlay) -> bool:
     """True while a card-resize drag is live (border/ring ``_border_drag``)."""
     try:
@@ -288,7 +370,11 @@ def populate_preview(overlay, item) -> None:
         except Exception:
             pass
         try:
-            full = QPixmap(str(getattr(item, "path", "")))
+            # Coarse-direct first (bounded pyramid sample — no full-frame
+            # decode); the full QPixmap ladder below stays as fallback.
+            full = _pyramid_pixmap_for(getattr(item, "path", ""), long_edge=1024)
+            if full is None or full.isNull():
+                full = QPixmap(str(getattr(item, "path", "")))
             if full is not None and not full.isNull():
                 try:
                     overlay._preview_full = full
