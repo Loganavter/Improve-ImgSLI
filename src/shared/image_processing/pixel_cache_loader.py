@@ -148,6 +148,41 @@ def load_pixel_store(
             )
         return TiledPixelStore.from_embedded_cache(cache_path, width, height)
     autocrop_debug("from_path path=%s crop_service=%s", key, bool(crop_service))
+    # Shared spill registry (plan_shared_pixel_registry, wave 2, decision
+    # A-box): one decoded spill per identical file across tabs. The
+    # fingerprint is the resolved crop box (or None) — never the service
+    # identity — so identical boxes share even across service instances. A
+    # failed probe is *unknown*, not "no crop": bypass the registry entirely
+    # (fail-open, today's behavior) instead of risking a wrong share.
+    _crop_fp = None
+    _registry_ok = True
+    if crop_service is not None:
+        try:
+            _box = crop_service.get(key)
+            _crop_fp = _box.to_tuple() if _box is not None else None
+        except Exception:
+            _registry_ok = False
+    _expected_stat = None
+    if _registry_ok:
+        try:
+            from engine.store import shared_pixel_registry as _spr
+
+            handle = _spr.acquire(key, crop_fingerprint=_crop_fp)
+            if handle is not None:
+                autocrop_debug(
+                    "shared-pixel HIT path=%s crop_fp=%s", key, _crop_fp,
+                )
+                return handle.store
+            try:
+                import os as _os3
+
+                _st = _os3.stat(key)
+                _expected_stat = (int(_st.st_mtime_ns), int(_st.st_size))
+            except OSError:
+                _expected_stat = None
+        except Exception:
+            _registry_ok = False
+            _expected_stat = None
     # Пробуем новый путь, fallback на legacy сигнатуру
     try:
         store = TiledPixelStore.from_path(key, crop_service=crop_service)
@@ -163,6 +198,22 @@ def load_pixel_store(
             "undecodable", key, exc,
         )
         raise
+    if _registry_ok:
+        try:
+            from engine.store import shared_pixel_registry as _spr2
+
+            published = _spr2.publish(
+                key, store,
+                crop_fingerprint=_crop_fp, expected=_expected_stat,
+            )
+            if published is not None:
+                # Registry owns the decoded base now; serve the shared view.
+                autocrop_debug(
+                    "shared-pixel PUBLISH path=%s crop_fp=%s", key, _crop_fp,
+                )
+                store = published.store
+        except Exception:
+            pass
     if crop_service is not None:
         try:
             _box_now = crop_service.get(key)

@@ -611,10 +611,10 @@ def _pump_full_stage(controller) -> None:
             store = load_pixel_store(path_str, crop_service=svc, embedded_cache=_emb_mc2)
             try:
                 if sig_ref.is_aborted():
-                    from engine.store.tiled_pixel_store import close_pixel_store
+                    from engine.store.shared_pixel_registry import release_store
 
                     try:
-                        close_pixel_store(store)
+                        release_store(store)
                     except Exception:
                         pass
                     return None
@@ -677,9 +677,9 @@ def _close_unless_cached(controller, path, store) -> None:
     except Exception:
         pass
     try:
-        from engine.store.tiled_pixel_store import close_pixel_store
+        from engine.store.shared_pixel_registry import release_store
 
-        close_pixel_store(store)
+        release_store(store)
     except Exception:
         pass
 

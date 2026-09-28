@@ -17,7 +17,7 @@ the has_crop slot miss under the boxless shape and can never collide
 with it.
 
 Both memoise by identity; second slot with same path shares the same store
-via refcount (no duplicate decode). Eviction calls close_pixel_store +
+via refcount (no duplicate decode). Eviction calls release_store +
 pyramid_registry sweep + eager-drop unify by uid. Budgets: count AND bytes;
 pinned (currently displayed) entries are never evicted.
 """
@@ -452,9 +452,9 @@ class PipelineCache:
 
     def _close_store(self, store) -> None:
         try:
-            from engine.store.tiled_pixel_store import close_pixel_store
+            from engine.store.shared_pixel_registry import release_store
 
-            close_pixel_store(store)
+            release_store(store)
         except Exception:
             pass
 

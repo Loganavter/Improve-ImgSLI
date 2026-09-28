@@ -569,7 +569,7 @@
     },
     {
       "path": "src/tabs/image_compare/services/playlist_components/list_operations.py",
-      "lines": 706,
+      "lines": 707,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"playlist service — list ops with full slot cleanup via document_store_ops + autocrop/pyramid sweep\"",
@@ -628,7 +628,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 718,
+      "lines": 717,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",

@@ -27,7 +27,7 @@ def _size_or_none(candidate):
     ``image_state.image{1,2}`` is updated by a background unify worker on a
     different schedule than the previous pixel cache (see
     ``_session_controller._unify_images_worker_task`` / ``reducer.py``), so a
-    reference here can outlive ``close_pixel_store()`` closing that same
+    reference here can outlive ``release_store()`` releasing that same
     store from the load path. A closed ``TiledPixelStore`` is still truthy
     (no ``__bool__`` override) but ``.size`` reads ``self._memmap.shape`` on
     a ``None`` memmap and raises -- checked explicitly rather than relying on

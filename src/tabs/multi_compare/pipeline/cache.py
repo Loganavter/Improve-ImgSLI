@@ -8,7 +8,7 @@ Pixels live here — keyed ``(normpath, mtime_ns, size)`` — never in
 - ``preview``: bounded ``QImage`` progressive previews (no lifecycle).
 - ``pixel``: full-res ``TiledPixelStore`` (memmap-backed, must be closed).
 
-Eviction closes the evicted store (``close_pixel_store`` + pyramid sweep,
+Eviction closes the evicted store (``release_store`` + pyramid sweep,
 PipelineCache-shaped). Undo-safety falls out of the shape: Redux snapshots
 hold paths only, so no store referenced by an undo snapshot can ever be
 closed out from under it — the cache is the sole owner, and eviction only
@@ -258,9 +258,9 @@ class MultiComparePixelCache:
         if store is None:
             return
         try:
-            from engine.store.tiled_pixel_store import close_pixel_store
+            from engine.store.shared_pixel_registry import release_store
 
-            close_pixel_store(store)
+            release_store(store)
         except Exception:
             pass
 

@@ -143,7 +143,7 @@ class PipelineCacheReducer:
 
     Owns the three LRU tiers; all ``put_*`` goes via ``Put*Action`` + ``transact``
     (single Store alloc). ``get_pixel`` is_open check lives here as replace +
-    ``close_pixel_store`` defer. ``EvictPipelineAction`` sweeps
+    ``release_store`` defer. ``EvictPipelineAction`` sweeps
     ``pyramid_registry`` + eager-drop unify by uid. Budgets: count AND bytes.
     box_tuple в ключи не входит (см. pipeline/cache._pixel_key).
     """
@@ -182,8 +182,8 @@ class PipelineCacheReducer:
     @staticmethod
     def _close_store(store) -> None:
         try:
-            from engine.store.tiled_pixel_store import close_pixel_store
-            close_pixel_store(store)
+            from engine.store.shared_pixel_registry import release_store
+            release_store(store)
         except Exception:
             pass
 
