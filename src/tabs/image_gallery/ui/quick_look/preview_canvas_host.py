@@ -29,6 +29,10 @@ def _close_preview_store(overlay) -> None:
 def release_preview_canvas(overlay) -> None:
     """Lifecycle release (hide/close/populate-next); no-op off the GPU path."""
     try:
+        overlay._preview_canvas_pending = None
+    except Exception:
+        pass
+    try:
         canvas = getattr(overlay, "_preview_canvas", None)
         if canvas is not None:
             try:
@@ -158,7 +162,7 @@ def _populate_preview_canvas(overlay, item) -> bool:
             pm = label.pixmap() if label is not None else None
             if label is not None:
                 label.hide()
-            canvas.show()
+            reveal_preview_canvas(overlay, canvas)
             _wire_canvas_fallback(overlay, canvas, item)
             _cover_until_first_frame(overlay, canvas, pm)
         except Exception:
@@ -170,6 +174,66 @@ def _populate_preview_canvas(overlay, item) -> bool:
         except Exception:
             pass
         return False
+
+
+def reveal_preview_canvas(overlay, canvas) -> None:
+    """Show the RHI canvas no earlier than the overlay chrome.
+
+    ``QRhiWidget`` presents on its own render-thread clock and can composite
+    a frame before the raster chrome paints. On a cold open (overlay not
+    yet painted once) the canvas stays hidden and is staged for the first
+    ``paintEvent``; once the chrome has painted — including every walk
+    while open — it shows immediately (no added flicker).
+    """
+    try:
+        overlay._preview_canvas_pending = None
+    except Exception:
+        pass
+    try:
+        warm = bool(getattr(overlay, "_ql_chrome_painted", False)) and bool(overlay.isVisible())
+    except Exception:
+        warm = False
+    if warm:
+        try:
+            canvas.show()
+        except Exception:
+            pass
+        return
+    try:
+        canvas.hide()
+    except Exception:
+        pass
+    try:
+        overlay._preview_canvas_pending = canvas
+    except Exception:
+        pass
+
+
+def reveal_pending_preview_canvas(overlay) -> None:
+    """Show a staged cold-open canvas (first chrome paint landed)."""
+    try:
+        canvas = getattr(overlay, "_preview_canvas_pending", None)
+    except Exception:
+        canvas = None
+    try:
+        overlay._preview_canvas_pending = None
+    except Exception:
+        pass
+    if canvas is None:
+        return
+    try:
+        if not bool(overlay.isVisible()):
+            try:
+                overlay._preview_canvas_pending = canvas
+            except Exception:
+                pass
+            return
+    except Exception:
+        pass
+    try:
+        canvas.show()
+    except Exception:
+        pass
 
 
 def _drop_cover(overlay) -> None:
