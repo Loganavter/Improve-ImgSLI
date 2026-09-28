@@ -510,7 +510,7 @@ def test_set_source_flips_report_to_fidelity(qtbot):
     b = _item("b.png")
     ov = _make_overlay(qtbot)
     _show(ov, b, [a, b], mode=Mode.CAMERA)
-    assert "Camera" in ov._report_title.text()
+    assert ov._report_title.text() == "" and not ov._report_title.isVisibleTo(ov._report_host)
     ov._on_set_source()
     assert "Fidelity" in ov._report_title.text()
     assert ov._owner.state.mode == Mode.FIDELITY

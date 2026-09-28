@@ -14,13 +14,31 @@ def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
             overlay._report_title.setText("Fidelity report")
             src_name = Path(overlay._source_path).name if overlay._source_path is not None else "source"
             overlay._report_sub.setText(f"vs SOURCE {src_name} · shared/analysis engine")
+            for w in (overlay._report_title, overlay._report_sub):
+                try:
+                    w.setVisible(True)
+                except Exception:
+                    pass
         else:
             if "CAMERA" in mode_str:
-                overlay._report_title.setText("Camera report")
-                overlay._report_sub.setText("sharpness / exposure profile · local metrics")
+                # No header labels in camera mode (rows are self-evident).
+                for w in (overlay._report_title, overlay._report_sub):
+                    try:
+                        w.setText("")
+                    except Exception:
+                        pass
+                    try:
+                        w.hide()
+                    except Exception:
+                        pass
             else:
                 overlay._report_title.setText("Batch report")
                 overlay._report_sub.setText("distance to centroid · artifact flags")
+                for w in (overlay._report_title, overlay._report_sub):
+                    try:
+                        w.setVisible(True)
+                    except Exception:
+                        pass
     except Exception:
         pass
 
