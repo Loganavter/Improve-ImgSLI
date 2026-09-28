@@ -241,57 +241,9 @@ class ImageGalleryWidget(QWidget):
         self._clean_overlay = None  # type: ignore[assignment]
         # Quick look overlay (S4) — created lazily.
         self._quick_look_overlay = None  # type: ignore[assignment]
-        # Selection HUD collaborator — BaseFlyout pinned bottom-center group gallery_selection (A3)
+        # Selection actions live in the card context menu (ex-HUD flyout removed).
+        # Kept as None for back-compat getattr hooks (hover/list/clean_review).
         self._selection_hud = None  # type: ignore[assignment]
-        try:
-            from tabs.image_gallery.ui.selection_hud import SelectionHudController
-
-            def _hud_clear():
-                try:
-                    from tabs.image_gallery.use_cases import selection as _sel
-
-                    _sel.clear_selection(self._owner_for_triage())
-                except Exception:
-                    pass
-
-            def _hud_carry():
-                try:
-                    from tabs.image_gallery.use_cases import carry as _carry
-
-                    _carry.carry_selected(self._owner_for_triage())
-                except Exception:
-                    pass
-
-            def _hud_analyze():
-                try:
-                    owner = self._owner_for_triage()
-                    # Analyze first selected
-                    sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
-                    if sel:
-                        p = next(iter(sel))
-                        owner.analyze_item_by_path(p)  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-
-            def _hud_find():
-                try:
-                    from tabs.image_gallery.use_cases.carry import find_similar_selected
-
-                    find_similar_selected(self._owner_for_triage())
-                except Exception:
-                    pass
-
-            tr_fn = (context._tr if context is not None else None)
-            self._selection_hud = SelectionHudController(
-                self,
-                translate=tr_fn,
-                on_clear=_hud_clear,
-                on_carry=_hud_carry,
-                on_analyze=_hud_analyze,
-                on_find_similar=_hud_find,
-            )
-        except Exception:
-            self._selection_hud = None
 
         # Enable drops on the whole widget (not just DropZoneLabel) — fixes DnD not working
         try:
@@ -418,7 +370,7 @@ class ImageGalleryWidget(QWidget):
             pass
 
     def _render_gallery_selection(self, selected_ids: list) -> None:
-        """Apply slot selection to grid + HUD (visuals only, no dispatch)."""
+        """Apply slot selection to grid (visuals only, no dispatch)."""
         try:
             wanted = set(str(s) for s in (selected_ids or []))
         except Exception:
@@ -433,26 +385,6 @@ class ImageGalleryWidget(QWidget):
             pass
         try:
             self._grid_view.apply_selection(set(wanted))
-        except Exception:
-            pass
-        try:
-            hud = getattr(self, "_selection_hud", None)
-            if hud is not None:
-                n = len(wanted)
-                try:
-                    if hasattr(hud, "update"):
-                        hud.update(n)
-                    elif hasattr(hud, "set_count"):
-                        hud.set_count(n)
-                except Exception:
-                    pass
-                try:
-                    if n > 0 and hasattr(hud, "show"):
-                        hud.show()
-                    elif n == 0 and hasattr(hud, "hide"):
-                        hud.hide()
-                except Exception:
-                    pass
         except Exception:
             pass
 
@@ -669,7 +601,7 @@ class ImageGalleryWidget(QWidget):
 
     def _on_card_toggle(self, path: Path, additive: bool = False) -> None:
         # Click opens, Ctrl+click selects (manual selection stays orthogonal
-        # to triage — Ctrl-click/marquee → HUD; plain click → quick look).
+        # to triage — Ctrl-click/marquee → selection; plain click → quick look).
         if not additive:
             try:
                 self.show_quick_look(path)
@@ -688,7 +620,7 @@ class ImageGalleryWidget(QWidget):
                 pass
 
     def _on_card_context(self, path: Path) -> None:
-        # S2a: ContextMenu mirrors hover mini-capsule (★ make best · ✕ reject · ⇄ compare).
+        # ContextMenu under cursor: selection section (ex-HUD) + per-card actions.
         # Use public sli_ui_toolkit.widgets ContextMenu via card helper.
         from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
 
@@ -734,7 +666,67 @@ class ImageGalleryWidget(QWidget):
                 gp = QCursor.pos()
             except Exception:
                 gp = None
-            popup_gallery_card_context_menu(anchor, owner, Path(path), global_pos=gp)
+            def _ctx_owner():
+                try:
+                    return self._owner_for_triage()
+                except Exception:
+                    return owner
+
+            def _ctx_clear():
+                try:
+                    from tabs.image_gallery.use_cases import selection as _sel
+
+                    _sel.clear_selection(_ctx_owner())
+                except Exception:
+                    pass
+
+            def _ctx_carry():
+                try:
+                    from tabs.image_gallery.use_cases import carry as _carry
+
+                    _carry.carry_selected(_ctx_owner())
+                except Exception:
+                    pass
+
+            def _ctx_analyze():
+                try:
+                    tri = _ctx_owner()
+                    sel = getattr(getattr(tri, "state", None), "selected_paths", None) or set()
+                    if sel:
+                        tri.analyze_item_by_path(next(iter(sel)))  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
+            def _ctx_find():
+                try:
+                    from tabs.image_gallery.use_cases.carry import find_similar_selected
+
+                    find_similar_selected(_ctx_owner())
+                except Exception:
+                    pass
+
+            try:
+                sel_set = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
+                sel_n = len(sel_set)
+            except Exception:
+                sel_n = 0
+            try:
+                _ctx = getattr(self, "_gallery_context", None)
+                _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
+            except Exception:
+                _tr = None
+            popup_gallery_card_context_menu(
+                anchor,
+                owner,
+                Path(path),
+                global_pos=gp,
+                selection_count=sel_n,
+                on_clear=_ctx_clear,
+                on_carry=_ctx_carry,
+                on_analyze=_ctx_analyze,
+                on_find_similar=_ctx_find,
+                translate=_tr,
+            )
             if _dbg_on:
                 _dbg("ctx menu done total=%.1fms path=%s", (_time.perf_counter() - _t0) * 1000.0, path)
         except Exception:
@@ -776,12 +768,6 @@ class ImageGalleryWidget(QWidget):
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        try:
-            hud = getattr(self, "_selection_hud", None)
-            if hud is not None:
-                hud.reposition()
-        except Exception:
-            pass
 
     # -- keyboard: Space/Delete remove card, B make best, Enter compare, Esc close/back, arrows navigate
     # widget keyPressEvent -> triage functions (design.md:129) ----------------

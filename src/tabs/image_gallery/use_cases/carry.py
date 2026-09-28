@@ -106,9 +106,9 @@ def _dispatch_via_image_carry(paths: list[Path], *, pixmap=None) -> bool:
 
 def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: ignore[no-untyped-def]
     """Intentional placeholder for “Find similar” — semantic search for images
-    similar to selection (parity plan non-goal: HUD button stays a stub).
+    similar to selection (parity plan non-goal: context-menu item stays a stub).
 
-    Prepared HUD API: ``SelectionHudController`` wires ``Find similar`` → this.
+    Context-menu API: ``ui/card/context_menu.py`` wires ``Find similar`` → this.
     Widget/controller integration (coordinator) will handle actual filtering
     (embedding/phash nearest neighbours, threshold) and selection update.
     Currently a stub that validates selection and returns ``False`` so callers

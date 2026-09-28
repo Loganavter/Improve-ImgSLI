@@ -1,19 +1,17 @@
 """Selection state for the gallery — plain functions taking the owner.
 
-Orthogonality (design.md:96-99): selection is about *dispatching* (HUD
+Orthogonality (design.md:96-99): selection is about *dispatching* (context menu
 ``Compare → / Analyze / Find similar``, marquee/Ctrl-click, carry via
 ``events/image_carry.py``) and stays orthogonal to triage mechanics
-(``crown``/``rejected``/``series`` about folder quality). HUD lives in
-``SelectionHudController`` (``ui/selection_hud.py``, ``BaseFlyout`` pinned
-bottom-center group ``gallery_selection``) and is suppressed during S3
-(``clean_review`` overlay) via ``FlyoutManager`` group policy. Thin owner
+(``crown``/``rejected``/``series`` about folder quality). Selection actions live in
+the card context menu (``ui/card/context_menu.py``). Thin owner
 delegates here; widget/controller integration does the coordinator.
 
 Owner shape (duck-typed):
   owner.state.selected_paths: set[Path]
   owner.state.selected_order: list[Path]  (optional, for stable order)
   owner.widget or owner.grid_view: has apply_selection(set[Path]) / rebuild etc.
-  owner._selection_hud: optional SelectionHudController with show/hide/update/set_suppressed
+  owner._selection_hud: legacy attr (always None; kept for back-compat)
 
 No implied lookups — owner and paths are passed explicitly.
 """
@@ -106,23 +104,7 @@ def _notify_selection_changed(owner, selected: set[Path]) -> None:
             owner.apply_selection(selected)  # type: ignore[attr-defined]
         except Exception:
             pass
-    # Selection HUD collaborator.
-    hud = getattr(owner, "_selection_hud", None) or getattr(owner, "selection_hud", None)
-    if hud is not None:
-        try:
-            if hasattr(hud, "update"):
-                hud.update(len(selected))
-            elif hasattr(hud, "set_count"):
-                hud.set_count(len(selected))
-        except Exception:
-            pass
-        try:
-            if len(selected) > 0 and hasattr(hud, "show"):
-                hud.show()
-            elif len(selected) == 0 and hasattr(hud, "hide"):
-                hud.hide()
-        except Exception:
-            pass
+    # No HUD: selection actions live in the card context menu.
 
 
 def commit(owner, paths, additive: bool = False) -> None:  # type: ignore[no-untyped-def]

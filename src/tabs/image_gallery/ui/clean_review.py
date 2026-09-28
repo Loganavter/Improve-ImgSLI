@@ -1057,13 +1057,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
                     continue
         except Exception:
             pass
-        # Also try selection_hud controller if owner has it.
-        try:
-            hud = getattr(owner, "_selection_hud", None) or getattr(getattr(owner, "widget", None), "_selection_hud", None)
-            if hud is not None and hasattr(hud, "set_suppressed"):
-                hud.set_suppressed(True)
-        except Exception:
-            pass
+
         _t1 = time.perf_counter()
         self._populate(owner)
         _t2 = time.perf_counter()
@@ -1240,17 +1234,6 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         super().resizeEvent(event)
 
     def hideEvent(self, event) -> None:  # noqa: N802
-        # Restore HUD suppression after overlay hides.
-        try:
-            owner = self._owner
-            hud = getattr(owner, "_selection_hud", None) if owner is not None else None
-            if hud is None and owner is not None:
-                w = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
-                hud = getattr(w, "_selection_hud", None) if w is not None else None
-            if hud is not None and hasattr(hud, "set_suppressed"):
-                hud.set_suppressed(False)
-        except Exception:
-            pass
         super().hideEvent(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802

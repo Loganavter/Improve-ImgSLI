@@ -1,11 +1,9 @@
-"""Keep best ↔ Show all toggle + rejected capsule state (Stage 2 triage).
+"""Keep best ↔ Show all toggle (Stage 2 triage).
 
 - ``should_show_all`` flips only when every series (≥2 members) keeps
   exactly one non-rejected item.
 - ``keep_best_of_series`` → strip shows "Show all"; ``show_all`` restores
   flags and the strip flips back to "Keep best".
-- Rejected card capsule: pale ✕ (disabled alpha, still clickable) +
-  "↩ Return" tooltip; normal card keeps "✕ Reject".
 """
 
 from __future__ import annotations
@@ -117,38 +115,3 @@ def test_strip_keep_button_routes_by_mode(qtbot) -> None:
 
     strip.set_keep_mode("keep")
     assert strip._keep_btn._text == "Keep best"
-
-
-def test_rejected_capsule_pale_return_tooltip(qtbot) -> None:
-    from tabs.image_gallery.ui.card import build_gallery_card
-    from tabs.image_gallery.ui.card.hover import show_gallery_card_flyout
-
-    card = build_gallery_card(_item("a.png"), parent=None)
-    qtbot.addWidget(card)
-    card.resize(250, 170)
-    qtbot.waitExposed(card) if False else None
-
-    show_gallery_card_flyout(card)
-    flyout = getattr(card, "_gallery_card_flyout", None)
-    assert flyout is not None
-    btn = flyout.action_button("reject")
-    assert btn is not None
-    assert btn.toolTip() == "✕ Reject"
-
-    from tabs.image_gallery.ui.card import update_gallery_card
-
-    bad = _item("a.png", rejected=True)
-    update_gallery_card(card, bad)
-    show_gallery_card_flyout(card)
-    flyout = getattr(card, "_gallery_card_flyout", None)
-    btn = flyout.action_button("reject")
-    assert btn is not None
-    assert btn.toolTip() == "↩ Return"
-    # Pale = danger hue at the toolkit disabled alpha, button stays enabled.
-    assert btn.isEnabled()
-    try:
-        fg = btn.getForegroundColor()
-    except Exception:
-        fg = None
-    assert fg is not None and int(fg.alpha()) == 110
-    card.deleteLater()

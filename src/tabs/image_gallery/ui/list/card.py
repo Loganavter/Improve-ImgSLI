@@ -144,16 +144,9 @@ def _resolve_row_target(card: Button):
 
 
 def _notify_row_hud(owner, text: str) -> None:
-    """Transient HUD notice for row actions (fail-open)."""
-    try:
-        hud = getattr(owner, "_selection_hud", None)
-        if hud is None:
-            w = getattr(owner, "widget", None)
-            hud = getattr(w, "_selection_hud", None) if w is not None else None
-        if hud is not None and hasattr(hud, "notify"):
-            hud.notify(text)
-    except Exception:
-        pass
+    """No-op (ex-HUD transient notice; selection lives in context menu)."""
+    return None
+
 
 
 def _fire_list_action(card: Button, kind: str) -> None:

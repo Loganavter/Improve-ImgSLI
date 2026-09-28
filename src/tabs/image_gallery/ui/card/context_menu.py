@@ -1,4 +1,13 @@
-"""ContextMenu mirror for gallery card (ContextMenu, no QMenu)."""
+"""Context menu for gallery card — per-card + selection actions (toolkit ContextMenu).
+
+Right-click on a card opens a standard toolkit ``ContextMenu`` under the
+cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
+
+1. Selection section (ex-HUD flyout: Clear / Analyze / Find similar /
+   Compare →) — shown only when a non-empty selection exists.
+2. Per-card actions mirroring the hover capsule: Make best / Reject /
+   Compare (+ Set as source in fidelity mode).
+"""
 
 from __future__ import annotations
 
@@ -6,15 +15,61 @@ import time
 from pathlib import Path
 
 
-def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mode=None) -> None:  # type: ignore[no-untyped-def]
-    """Popup ``ContextMenu`` mirroring hover capsule actions for *path*.
+def _t(translate, key: str, default: str) -> str:
+    if translate is None:
+        return default
+    try:
+        return translate(key, default)
+    except Exception:
+        try:
+            return translate(key)  # type: ignore[call-arg]
+        except Exception:
+            return default
 
-    Uses public ``sli_ui_toolkit.widgets`` ContextMenu API (no QMenu).
-    ``mode`` controls inclusion of "Set as source" (fidelity only).
 
-    Slow-open diagnosis (IMGSLI_GALLERY_DEBUG=1): logs per-phase ms
-    (mode-resolve / entries-build / ContextMenu-construct / popup_at)
-    with ``[gallery-debug]`` prefix, see ``docs/dev/LOGGING.md``.
+def _selection_count(owner) -> int:
+    try:
+        sel = getattr(getattr(owner, "state", None), "selected_paths", None)
+        if sel is None:
+            return 0
+        return len(sel)
+    except Exception:
+        return 0
+
+
+def _selection_label(translate, n: int) -> str:
+    if n <= 0:
+        return _t(translate, "image_gallery.selection.none", "No selection")
+    if n == 1:
+        return _t(translate, "image_gallery.selection.one", "1 selected")
+    raw = _t(translate, "image_gallery.selection.many", "{n} selected")
+    try:
+        if "{n}" in raw:
+            return raw.format(n=n)
+        return f"{n} selected"
+    except Exception:
+        return f"{n} selected"
+
+
+def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
+    card,
+    owner,
+    path: Path,
+    global_pos=None,
+    mode=None,
+    *,
+    selection_count: int | None = None,
+    on_clear=None,
+    on_carry=None,
+    on_analyze=None,
+    on_find_similar=None,
+    translate=None,
+):
+    """Popup toolkit ``ContextMenu`` for gallery card at *global_pos*.
+
+    Selection callbacks default to the gallery use-cases resolved from
+    *owner* when not given explicitly (so existing ``_on_card_context``
+    call sites keep working).
     """
     from tabs.image_gallery.debug import gallery_debug as _dbg
     from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
@@ -29,7 +84,12 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
             type(owner).__name__ if owner is not None else "None",
         )
     try:
-        from sli_ui_toolkit.widgets import ContextMenu, ContextMenuAction
+        from sli_ui_toolkit.widgets import (
+            ContextMenu,
+            ContextMenuAction,
+            ContextMenuSection,
+            ContextMenuSeparator,
+        )
 
         # Resolve mode: explicit > card attribute > owner state.
         _mode = mode
@@ -49,108 +109,188 @@ def popup_gallery_card_context_menu(card, owner, path: Path, global_pos=None, mo
         except Exception:
             ms = ""
         include_source = ms == "fidelity"
-        if _dbg_on:
-            _dbg(
-                "card menu phase mode-resolve=%.1fms mode=%r include_source=%d",
-                (time.perf_counter() - _t0) * 1000.0,
-                ms,
-                1 if include_source else 0,
-            )
-            _t_entries = time.perf_counter()
 
-        entries = [
-            ContextMenuAction(
-                action_id="gallery.make_best",
-                label="★ Make best",
-                callback=lambda: _ctx_make_best(owner, path),
-            ),
-            ContextMenuAction(
-                action_id="gallery.reject",
-                label="✕ Reject",
-                callback=lambda: _ctx_toggle_reject(owner, path),
-            ),
-            ContextMenuAction(
-                action_id="gallery.compare",
-                label="⇄ Compare",
-                callback=lambda: _ctx_compare(owner, path),
-            ),
-        ]
+        n = int(selection_count) if selection_count is not None else _selection_count(owner)
+        has_selection = n > 0
+        has_analyze = on_analyze is not None or owner is not None
+
+        def _do_clear() -> None:
+            try:
+                if callable(on_clear):
+                    on_clear()
+                    return
+                from tabs.image_gallery.use_cases import selection as _sel
+
+                _sel.clear_selection(owner)
+            except Exception:
+                pass
+
+        def _do_carry() -> None:
+            try:
+                if callable(on_carry):
+                    on_carry()
+                    return
+                from tabs.image_gallery.use_cases import carry as _carry
+
+                _carry.carry_selected(owner)
+            except Exception:
+                pass
+
+        def _do_analyze() -> None:
+            try:
+                if callable(on_analyze):
+                    on_analyze()
+                    return
+                sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
+                if sel:
+                    p = next(iter(sel))
+                    owner.analyze_item_by_path(p)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        def _do_find_similar() -> None:
+            try:
+                if callable(on_find_similar):
+                    on_find_similar()
+                    return
+                from tabs.image_gallery.use_cases.carry import find_similar_selected
+
+                find_similar_selected(owner)
+            except Exception:
+                pass
+
+        entries: list = []
+        if has_selection:
+            sel_actions = [
+                ContextMenuAction(
+                    "gallery.selection.clear",
+                    _t(translate, "image_gallery.selection.clear", "Clear"),
+                ),
+                ContextMenuAction(
+                    "gallery.selection.analyze",
+                    _t(translate, "image_gallery.selection.analyze", "Analyze"),
+                    enabled=has_analyze,
+                ),
+                ContextMenuAction(
+                    "gallery.selection.find_similar",
+                    _t(translate, "image_gallery.selection.find_similar", "Find similar"),
+                ),
+                ContextMenuAction(
+                    "gallery.selection.compare",
+                    _t(translate, "image_gallery.selection.compare", "Compare →"),
+                ),
+            ]
+            entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
+            entries.append(ContextMenuSeparator())
+
+        entries.extend(
+            [
+                ContextMenuAction(
+                    "gallery.make_best",
+                    "★ Make best",
+                ),
+                ContextMenuAction(
+                    "gallery.reject",
+                    "✕ Reject",
+                ),
+                ContextMenuAction(
+                    "gallery.compare",
+                    "⇄ Compare",
+                ),
+                ContextMenuAction(
+                    "gallery.remove",
+                    "Remove from view",
+                ),
+            ]
+        )
         if include_source:
             entries.append(
                 ContextMenuAction(
-                    action_id="gallery.set_as_source",
-                    label="Set as source",
-                    callback=lambda: _ctx_set_source(owner, path),
+                    "gallery.set_as_source",
+                    "Set as source",
                 )
             )
-        if _dbg_on:
-            _dbg(
-                "card menu phase entries-build=%.1fms n_entries=%d",
-                (time.perf_counter() - _t_entries) * 1000.0,
-                len(entries),
+
+        def _on_triggered(action_id: str, _data: object) -> None:
+            try:
+                if action_id == "gallery.selection.clear":
+                    _do_clear()
+                elif action_id == "gallery.selection.analyze":
+                    _do_analyze()
+                elif action_id == "gallery.selection.find_similar":
+                    _do_find_similar()
+                elif action_id == "gallery.selection.compare":
+                    _do_carry()
+                elif action_id == "gallery.make_best":
+                    _ctx_make_best(owner, path)
+                elif action_id == "gallery.reject":
+                    _ctx_toggle_reject(owner, path)
+                elif action_id == "gallery.compare":
+                    _ctx_compare(owner, path)
+                elif action_id == "gallery.remove":
+                    _ctx_remove(owner, path)
+                elif action_id == "gallery.set_as_source":
+                    _ctx_set_source(owner, path)
+            except Exception:
+                pass
+
+        source = card.window() if card is not None and hasattr(card, "window") else card
+        if source is None:
+            source = card
+        pos = global_pos
+        if pos is None:
+            try:
+                from PySide6.QtGui import QCursor
+
+                pos = QCursor.pos()
+            except Exception:
+                pos = None
+        # Popup surface via the app manager (real Qt.Popup top-level, above
+        # UnifiedFlyout) — never an in-window flyout competing with the capsule.
+        try:
+            from ui.context_menu.manager import open_context_menu_entries
+
+            menu = open_context_menu_entries(
+                source_widget=source or card,
+                global_pos=pos,
+                entries=tuple(entries),
+                key=("gallery-card", str(path), n),
+                on_triggered=_on_triggered,
             )
-            _t_construct = time.perf_counter()
-        menu = ContextMenu(entries=entries)
-        if _dbg_on:
-            _dbg(
-                "card menu phase construct=%.1fms total=%.1fms path=%s owner=%s",
-                (time.perf_counter() - _t_construct) * 1000.0,
-                (time.perf_counter() - _t0) * 1000.0,
-                path,
-                type(owner).__name__ if owner is not None else "None",
-            )
-        # Flyout group identity for policy.
+            if menu is not None:
+                return
+        except Exception:
+            if _dbg_on:
+                _dbg("card menu manager open raised path=%s", path, exc_info=True)
+            pass
+        # Fallback: direct popup (same surface the manager would use).
+        try:
+            menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered, surface="popup")
+        except TypeError:
+            menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered)
         try:
             menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
         except Exception:
             pass
-        if global_pos is not None:
-            if _dbg_on:
-                _t_popup = time.perf_counter()
+        if pos is not None:
             try:
-                menu.popup_at(global_pos)
-                if _dbg_on:
-                    _dbg(
-                        "card menu phase popup_at=%.1fms total=%.1fms path=%s",
-                        (time.perf_counter() - _t_popup) * 1000.0,
-                        (time.perf_counter() - _t0) * 1000.0,
-                        path,
-                    )
+                menu.popup_at(pos)
                 return
             except Exception:
                 if _dbg_on:
                     _dbg("card menu popup_at raised path=%s", path, exc_info=True)
                 pass
-        # Fallback anchor popup.
-        if _dbg_on:
-            _t_fallback = time.perf_counter()
+        # Last resort: anchor-aligned dropdown.
         try:
             from sli_ui_toolkit.widgets import popup_context_menu_for_anchor
 
-            popup_context_menu_for_anchor(card.window() or card, card, entries)
-            if _dbg_on:
-                _dbg(
-                    "card menu phase fallback-anchor=%.1fms total=%.1fms path=%s",
-                    (time.perf_counter() - _t_fallback) * 1000.0,
-                    (time.perf_counter() - _t0) * 1000.0,
-                    path,
-                )
+            popup_context_menu_for_anchor(source or card, card, tuple(entries), on_triggered=_on_triggered)
         except Exception:
             if _dbg_on:
                 _dbg("card menu fallback-anchor raised path=%s", path, exc_info=True)
-            # Last resort: try menu.show
             try:
                 menu.show()
-                if _dbg_on:
-                    _dbg(
-                        "card menu phase show=%.1fms total=%.1fms path=%s",
-                        (time.perf_counter() - _t_fallback) * 1000.0,
-                        (time.perf_counter() - _t0) * 1000.0,
-                        path,
-                    )
             except Exception:
-                if _dbg_on:
-                    _dbg("card menu show raised path=%s", path, exc_info=True)
                 pass
     except Exception:
         if _dbg_on:
@@ -194,6 +334,16 @@ def _ctx_compare(owner, path: Path) -> None:
         except Exception:
             pass
         _carry.carry_selected(owner)
+    except Exception:
+        pass
+
+
+def _ctx_remove(owner, path: Path) -> None:
+    """Remove card from the grid (file on disk stays; ex-delete-badge)."""
+    try:
+        from tabs.image_gallery.use_cases import triage as _triage
+
+        _triage.remove_from_grid(owner, path)
     except Exception:
         pass
 

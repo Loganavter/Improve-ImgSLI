@@ -673,7 +673,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 1658,
+      "lines": 1650,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -709,19 +709,19 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/card/hover.py",
-      "lines": 856,
+      "lines": 237,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"single card-hover lifecycle — hover filter, capsule show/hide, post-action suppression and tri-color icons share one owner-resolution path; splitting spreads suppression windows across modules\"",
+      "raw": "pattern=thin-owner size=exempt reason=\"single card-hover lifecycle — hover filter and underline share one owner-resolution path\"",
       "parsed": {
         "pattern": "thin-owner",
         "size": "exempt",
-        "reason": "single card-hover lifecycle — hover filter, capsule show/hide, post-action suppression and tri-color icons share one owner-resolution path; splitting spreads suppression windows across modules"
+        "reason": "single card-hover lifecycle — hover filter and underline share one owner-resolution path"
       }
     },
     {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 1679,
+      "lines": 1662,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -804,7 +804,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1664,
+      "lines": 1650,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

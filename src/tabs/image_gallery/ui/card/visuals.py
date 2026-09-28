@@ -97,9 +97,8 @@ def apply_fixed_gallery_card_size(
 def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
     """Rejected = opacity 0.38 + strike-through (no toolkit badge).
 
-    No mode switch on the corner: rejected cards keep the same hover-only
-    delete ✕ as normal cards (see ``sync_card_delete_button``) — the only
-    rejected signals are the dim + strike-through. The toolkit ``setBadge``
+    No mode switch on the corner: the only rejected signals are the dim +
+    strike-through (card actions live in the right-click context menu). The toolkit ``setBadge``
     pill is never used here (it painted an almost-glyphless red oval).
     """
 
