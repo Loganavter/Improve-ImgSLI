@@ -1,4 +1,5 @@
 """Quick Look single-quad GPU preview — gallery tab, deliberately canvas-light.
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry"
 
 ``QuickLookCanvasWidget`` is a minimal ``QRhiWidget`` showing one
 aspect-fit image quad. It is intentionally far lighter than the compare
@@ -26,6 +27,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QImage, QRhiDepthStencilClearValue
 from PySide6.QtWidgets import QRhiWidget, QSizePolicy
 
+from engine.frame.present import begin_source, note_presented
 from engine.overlay import TexturedOverlayBinding, TexturedOverlayShell
 from engine.store.tiled_pixel_store import pixel_source_size
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
@@ -103,6 +105,11 @@ class QuickLookCanvasWidget(QRhiWidget):
         self._drag_last = None
         self._frame_ok = False
         self._watchdog_armed = False
+        self._watchdog_gen = 0
+        try:
+            self._present_debt = begin_source(None)
+        except Exception:
+            self._present_debt = None
         try:
             configure_rhi_widget(self)
         except Exception:
@@ -132,7 +139,13 @@ class QuickLookCanvasWidget(QRhiWidget):
             self._pan_y = 0.0
             self._drag_last = None
             self._frame_key = None
-            self._arm_watchdog()
+            try:
+                from tabs.image_gallery.ui.quick_look.preview_watchdog import next_gen
+                # Renews canvas._present_debt (new generation) via begin_source.
+                gen = next_gen(self)
+            except Exception:
+                gen = None
+            self._arm_watchdog(gen)
         except Exception:
             pass
         try:
@@ -140,45 +153,34 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             pass
 
-    def _arm_watchdog(self) -> None:
-        """Yield to QLabel when no frame presents in time (never raises)."""
+    def _arm_watchdog(self, gen=None) -> None:
+        """Yield to QLabel when no frame presents in time (never raises).
+
+        Generation-guarded (see ``preview_watchdog``): a pending timer
+        from a previous source never kills the new one.
+        """
         try:
-            if self._watchdog_armed:
-                return
-            self._watchdog_armed = True
+            from tabs.image_gallery.ui.quick_look.preview_watchdog import arm_watchdog
+            arm_watchdog(self, gen)
         except Exception:
-            return
+            pass
+
+    def _on_watchdog(self, expected_gen=None) -> None:
+        """Fire a pending no-frame timer (never raises)."""
         try:
-            from PySide6.QtCore import QTimer
-
-            QTimer.singleShot(_NO_FRAME_TIMEOUT_MS, self._on_watchdog)
-        except Exception:
-            try:
-                self._watchdog_armed = False
-            except Exception:
-                pass
-
-    def _on_watchdog(self) -> None:
-        try:
-            self._watchdog_armed = False
-            if self._frame_ok:
-                return
-            try:
-                import shiboken6
-
-                if not shiboken6.isValid(self):
-                    return
-            except Exception:
-                pass
-            try:
-                self.previewFailed.emit()
-            except Exception:
-                pass
+            from tabs.image_gallery.ui.quick_look.preview_watchdog import fire_watchdog
+            fire_watchdog(self, expected_gen)
         except Exception:
             pass
 
     def clear_source(self) -> None:
         """Release the held store + composition. Never raises."""
+        try:
+            from tabs.image_gallery.ui.quick_look.preview_watchdog import invalidate
+            # Renews canvas._present_debt (retires the pending timer) + disarms.
+            invalidate(self)
+        except Exception:
+            pass
         try:
             self._close_held_store()
             self._active_composition = None
@@ -240,6 +242,13 @@ class QuickLookCanvasWidget(QRhiWidget):
 
     # -- QRhiWidget entry points ------------------------------------------------
 
+    def _skip_frame(self, reason: str) -> None:
+        """Log a skipped frame at DEBUG (diagnostic-only, never raises)."""
+        try:
+            logger.debug("QuickLook preview: skip frame (%s)", reason)
+        except Exception:
+            pass
+
     def initialize(self, command_buffer) -> None:  # noqa: N802
         try:
             rhi = self.rhi()
@@ -262,10 +271,58 @@ class QuickLookCanvasWidget(QRhiWidget):
             pass
         self._shell_ready = False
 
+    def _pump_next_frame(self) -> None:
+        """Request one more frame on the GUI loop from any thread.
+
+        ``render()`` runs off the GUI thread, so a direct ``update()``
+        here is a cross-thread call and gets lost — fresh widgets
+        survived via the first-exposure auto-render, re-shown ones
+        (every walk) never presented and died by watchdog (2026-09-28).
+        QueuedConnection lands ``update()`` on the GUI loop instead.
+        Never raises.
+        """
+        try:
+            from PySide6.QtCore import QMetaObject, Qt as _Qt
+
+            _posted = QMetaObject.invokeMethod(
+                self, "update", _Qt.ConnectionType.QueuedConnection
+            )
+        except Exception:
+            _posted = False
+        try:
+            logger.debug("QuickLook preview: pump posted=%s", bool(_posted))
+        except Exception:
+            pass
+        if not _posted:
+            try:
+                self.update()
+            except Exception:
+                pass
+
     def render(self, command_buffer) -> None:  # noqa: N802
         try:
+            if not self._frame_ok:
+                try:
+                    from PySide6.QtCore import QThread
+                    from PySide6.QtWidgets import QApplication as _QA
+
+                    _cur = id(QThread.currentThread())
+                    _app = _QA.instance()
+                    _gui = id(_app.thread()) if _app is not None else -1
+                except Exception:
+                    _cur = _gui = -1
+                logger.debug(
+                    "QuickLook preview: render entered shell_ready=%s visible=%s size=%sx%s pumped=%s gui=%s cur=%s",
+                    bool(self._shell_ready),
+                    bool(self.isVisible()),
+                    self.width(),
+                    self.height(),
+                    bool(getattr(self, "_settle_pumped", False)),
+                    _gui,
+                    _cur,
+                )
             if not self._shell_ready or command_buffer is None:
-                return
+                return self._skip_frame("not-ready")
             try:  # letterbox tone = host Window color (QLabel bars parity)
                 from PySide6.QtGui import QPalette as _QP
 
@@ -277,23 +334,25 @@ class QuickLookCanvasWidget(QRhiWidget):
                 rhi = self.rhi()
                 target = self.renderTarget()
             except Exception:
-                return
+                return self._skip_frame("no-rhi-target")
             if rhi is None or target is None:
-                return
+                return self._skip_frame("null-rhi-target")
             try:
                 updates = rhi.nextResourceUpdateBatch()
             except Exception:
-                return
+                return self._skip_frame("no-batch")
             try:
                 self._shell.stage_quad(updates)
                 self._shell.stage_clip(updates, _IDENTITY_CLIP)
             except Exception:
-                return
+                return self._skip_frame("stage-failed")
             frame = self._raster_frame(target)
+            if frame is None:
+                self._skip_frame("raster-no-frame")
             try:
                 self._shell.upload_frame(updates, target, frame)
             except Exception:
-                return
+                return self._skip_frame("upload-failed")
             try:
                 command_buffer.beginPass(
                     target,
@@ -302,7 +361,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                     updates,
                 )
             except Exception:
-                return
+                return self._skip_frame("begin-failed")
             try:
                 if frame is not None:
                     try:
@@ -313,16 +372,32 @@ class QuickLookCanvasWidget(QRhiWidget):
                     self._shell.draw(command_buffer, width=fb_w, height=fb_h)
                     # Settle gate (MC parity): present #1 pumps one more frame
                     # (the compositor may still show the untouched surface);
-                    # the cover drops only on the settled present #2.
-                    pumped = bool(getattr(self, "_settle_pumped", False))
-                    if not self._frame_ok and not pumped:
-                        self._settle_pumped = True
+                    # the cover drops only on the settled present #2. The
+                    # count truth lives in canvas._present_debt via the
+                    # frozen engine ledger; _frame_ok stays the cover-drop
+                    # truth until the deferred flush emits.
+                    if not self._frame_ok:
                         try:
-                            self.update()
+                            debt = getattr(self, "_present_debt", None)
+                            if debt is None:
+                                debt = begin_source(None)
+                                try:
+                                    self._present_debt = debt
+                                except Exception:
+                                    pass
+                            from tabs.image_gallery.ui.quick_look.preview_watchdog import (
+                                QL_SETTLE_COUNT,
+                            )
+                            verdict = note_presented(debt, QL_SETTLE_COUNT)
                         except Exception:
-                            pass
-                    elif pumped and not self._frame_ok:
-                        settle_first_frame(self)
+                            verdict = "waiting"
+                        if verdict == "pumped":
+                            self._settle_pumped = True
+                            self._pump_next_frame()
+                        elif verdict == "settled":
+                            settle_first_frame(self)
+                        # "waiting" → nothing: the emit stays in the
+                        # deferred flush, never at this counting site.
             finally:
                 try:
                     command_buffer.endPass()

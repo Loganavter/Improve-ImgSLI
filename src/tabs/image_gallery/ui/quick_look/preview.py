@@ -299,27 +299,48 @@ def _rescale_preview_to_host(overlay) -> None:
             live = _preview_drag_live(overlay)
             want_smooth = not live
             try:
+                zoom = float(getattr(overlay, "_label_zoom", 1.0) or 1.0)
+            except Exception:
+                zoom = 1.0
+            try:
+                _pan = (
+                    float(getattr(overlay, "_label_pan_x", 0.0) or 0.0),
+                    float(getattr(overlay, "_label_pan_y", 0.0) or 0.0),
+                )
+            except Exception:
+                _pan = (0.0, 0.0)
+            try:
                 cached_for = getattr(overlay, "_preview_scaled_for", None)
                 cached_smooth = bool(getattr(overlay, "_preview_scaled_smooth", False))
             except Exception:
                 cached_for, cached_smooth = None, False
-            if cached_for == (int(target_w), int(target_h)) and (cached_smooth or not want_smooth):
+            _key = (int(target_w), int(target_h), round(zoom, 4), round(_pan[0], 4), round(_pan[1], 4))
+            if cached_for == _key and (cached_smooth or not want_smooth):
                 return
-            scaled = full.scaled(
-                target_w,
-                target_h,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-                if want_smooth
-                else Qt.TransformationMode.FastTransformation,
-            )
+            if zoom > 1.0 + 1e-9:
+                from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
+                    zoomed_label_pixmap,
+                )
+
+                scaled = zoomed_label_pixmap(full, target_w, target_h, zoom, _pan[0], _pan[1])
+                if scaled is None or scaled.isNull():
+                    return
+            else:
+                scaled = full.scaled(
+                    target_w,
+                    target_h,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                    if want_smooth
+                    else Qt.TransformationMode.FastTransformation,
+                )
         except Exception:
             return
         try:
             if scaled is not None and not scaled.isNull():
                 label.setPixmap(scaled)
                 try:
-                    overlay._preview_scaled_for = (int(target_w), int(target_h))
+                    overlay._preview_scaled_for = (int(target_w), int(target_h), round(zoom, 4), round(_pan[0], 4), round(_pan[1], 4))
                     overlay._preview_scaled_smooth = bool(want_smooth)
                 except Exception:
                     pass
@@ -374,6 +395,12 @@ def populate_preview(overlay, item) -> None:
 
 def _populate_preview_label(overlay, item) -> None:
     # Fallback: restore the label (the canvas branch may have hidden it).
+    try:
+        from tabs.image_gallery.ui.quick_look.preview_label_zoom import reset_label_zoom
+
+        reset_label_zoom(overlay)
+    except Exception:
+        pass
     try:
         canvas = getattr(overlay, "_preview_canvas", None)
         if canvas is not None:

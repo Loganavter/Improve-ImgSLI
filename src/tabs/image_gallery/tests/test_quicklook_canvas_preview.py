@@ -253,6 +253,166 @@ def test_watchdog_emits_preview_failed_without_frame(qtbot):
     assert len(fired) == 1, "presented frame must silence the watchdog"
 
 
+def test_watchdog_stale_generation_ignored(qtbot):
+    """Late first-source timer must not kill a healthy new canvas (2026-09-28).
+
+    Regression: set_source reset _frame_ok while the previous source's
+    singleShot was still pending, so the stale fire saw False and emitted
+    previewFailed ~26ms after the new populate.
+    """
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from tabs.image_gallery.ui.quick_look import preview_watchdog as wd
+
+    card = widget_cls(None)
+    qtbot.addWidget(card)
+    fired: list = []
+    card.previewFailed.connect(lambda: fired.append(True))
+    card._frame_ok = False
+    g1 = wd.next_gen(card)
+    wd.arm_watchdog(card, g1)  # T1 pending
+    g2 = wd.next_gen(card)
+    wd.arm_watchdog(card, g2)  # T2 pending, T1 stale
+    assert g2 != g1
+    wd.fire_watchdog(card, g1)
+    assert fired == [], "stale generation must not emit previewFailed"
+    assert card._watchdog_armed is True, "live timer must stay armed"
+    wd.fire_watchdog(card, g2)
+    assert fired == [True], "live generation with no frame must emit"
+
+
+def test_clear_source_invalidates_pending_watchdog(qtbot):
+    """clear_source retires the armed timer (hide/close/populate-next)."""
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from tabs.image_gallery.ui.quick_look import preview_watchdog as wd
+
+    card = widget_cls(None)
+    qtbot.addWidget(card)
+    fired: list = []
+    card.previewFailed.connect(lambda: fired.append(True))
+    card._frame_ok = False
+    g = wd.next_gen(card)
+    wd.arm_watchdog(card, g)
+    card.clear_source()
+    wd.fire_watchdog(card, g)
+    assert fired == [], "timer armed before clear_source must go stale"
+
+
+def test_reveal_warm_shows_and_requests_frame():
+    """Warm reveal (every walk): show() must be followed by update().
+
+    Regression (2026-09-28): set_source's trailing update() lands while
+    the canvas is still hidden (populate release hid it) and is dropped;
+    a re-shown QRhiWidget self-renders only on first exposure, so walks
+    never presented and died by watchdog with shell_ready=True.
+    """
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    calls: list = []
+    canvas = SimpleNamespace(
+        show=lambda: calls.append("show"),
+        hide=lambda: calls.append("hide"),
+        update=lambda: calls.append("update"),
+    )
+    ov = SimpleNamespace(
+        _preview_canvas_pending="stale",
+        _ql_chrome_painted=True,
+        isVisible=lambda: True,
+    )
+    _host.reveal_preview_canvas(ov, canvas)
+    assert calls == ["show", "update"], f"show must request a frame, got {calls}"
+    assert ov._preview_canvas_pending is None
+
+
+def test_reveal_cold_stages_pending_without_frame():
+    """Cold reveal: hide + stage, no update until the chrome paints."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    calls: list = []
+    canvas = SimpleNamespace(
+        show=lambda: calls.append("show"),
+        hide=lambda: calls.append("hide"),
+        update=lambda: calls.append("update"),
+    )
+    ov = SimpleNamespace(
+        _preview_canvas_pending=None,
+        _ql_chrome_painted=False,
+        isVisible=lambda: False,
+    )
+    _host.reveal_preview_canvas(ov, canvas)
+    assert calls == ["hide"]
+    assert ov._preview_canvas_pending is canvas
+
+
+def test_reveal_pending_shows_and_requests_frame():
+    """Staged cold-open canvas: first chrome paint shows + updates."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    calls: list = []
+    canvas = SimpleNamespace(
+        show=lambda: calls.append("show"),
+        hide=lambda: calls.append("hide"),
+        update=lambda: calls.append("update"),
+    )
+    ov = SimpleNamespace(
+        _preview_canvas_pending=canvas,
+        _preview_canvas=None,
+        _preview_cover=None,
+        isVisible=lambda: True,
+    )
+    _host.reveal_pending_preview_canvas(ov)
+    assert calls == ["show", "update"], f"show must request a frame, got {calls}"
+    assert ov._preview_canvas_pending is None
+
+
+def test_fallback_logs_which_signal_fired(qtbot, tmp_path, monkeypatch, caplog):
+    """previewFailed vs renderFailed fallbacks log distinct reasons."""
+    import logging
+
+    from PySide6.QtCore import QObject, Signal
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    monkeypatch.setenv("IMGSLI_QL_COVER_DEBUG", "1")
+
+    class _FakeCanvas(QObject):
+        previewFailed = Signal()
+        renderFailed = Signal()
+
+    def _run(signal: str) -> str:
+        ov = _make_overlay(qtbot)
+        canvas = _FakeCanvas()
+        qtbot.addWidget(ov._parity_test_parent)
+        item = _item(tmp_path / "nope.png")
+        _host._wire_canvas_fallback(ov, canvas, item)
+        with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+            caplog.clear()
+            getattr(canvas, signal).emit()
+            QApplication.processEvents()
+        return caplog.text
+
+    assert "fallback (previewFailed) -> label path" in _run("previewFailed")
+
+    text = _run("renderFailed")
+    assert "fallback (renderFailed) -> label path" in text
+    assert "fallback (previewFailed)" not in text
+
+
 def test_zoom_step_clamps():
     from tabs.image_gallery.ui.quick_look.preview_zoom import ZOOM_MAX, ZOOM_MIN, step_zoom
 
@@ -459,7 +619,7 @@ def test_first_frame_emitted_on_settled_second_present(qtbot):
     qtbot.addWidget(canvas)
 
     updates: list = []
-    canvas.update = lambda *a, **k: updates.append(True)  # type: ignore[method-assign]
+    canvas._pump_next_frame = lambda: updates.append(True)  # type: ignore[method-assign]
 
     class _FakeSize:
         def width(self):
@@ -521,6 +681,82 @@ def test_first_frame_emitted_on_settled_second_present(qtbot):
     assert fired == [True, True], "new source: settled present #2 emits"
 
 
+def test_pump_next_frame_is_queued_not_direct(qtbot):
+    """Settle pump must not call update() synchronously (2026-09-28).
+
+    render() runs off the GUI thread: a direct update() there is a
+    cross-thread call and gets lost (walks never presented). The pump
+    must go through QueuedConnection — a synchronous spy stays empty
+    even after the loop drains (delivery targets the C++ slot).
+    """
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+
+    direct: list = []
+    canvas.update = lambda *a, **k: direct.append(True)  # type: ignore[method-assign]
+    widget_cls._pump_next_frame(canvas)
+    assert direct == [], "pump must not call update() synchronously"
+    QApplication.processEvents()
+    assert direct == [], "queued delivery targets the C++ slot, never the spy"
+
+
+def test_repump_requests_frame_when_pump_lost(qtbot, monkeypatch):
+    """Delayed GUI-thread re-request heals a coalesced pump (2026-09-28).
+
+    Walk pattern: exactly one render, then silence despite a posted
+    update. ensure_repump re-requests once the loop is idle.
+    """
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from tabs.image_gallery.ui.quick_look import preview_watchdog as wd
+
+    monkeypatch.setattr(wd, "_REPUMP_MS", 0)
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+    canvas._frame_ok = False
+    canvas._settle_pumped = True
+    called: list = []
+    canvas.update = lambda *a, **k: called.append(True)  # type: ignore[method-assign]
+    wd.ensure_repump(canvas)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert called, "lost pump must be re-requested from the GUI loop"
+
+
+def test_repump_quiet_when_settled_or_unpumped(qtbot, monkeypatch):
+    """No frame debt → no re-request (settled or pump never ran)."""
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from tabs.image_gallery.ui.quick_look import preview_watchdog as wd
+
+    monkeypatch.setattr(wd, "_REPUMP_MS", 0)
+    for frame_ok, pumped in ((True, True), (False, False)):
+        canvas = widget_cls(None)
+        qtbot.addWidget(canvas)
+        canvas._frame_ok = frame_ok
+        canvas._settle_pumped = pumped
+        called: list = []
+        canvas.update = lambda *a, **k: called.append(True)  # type: ignore[method-assign]
+        wd.ensure_repump(canvas)
+        QApplication.processEvents()
+        QApplication.processEvents()
+        assert called == [], f"no re-request when frame_ok={frame_ok} pumped={pumped}"
+
+
 def test_wire_connects_and_first_frame_drops_cover(qtbot):
     """_wire_canvas_fallback hooks signals; first frame drops the cover."""
     from types import SimpleNamespace
@@ -568,6 +804,82 @@ def test_wheel_anchor_and_floor_snap():
     assert wheel_zoom_pan(1.0, 0.0, 0.0, 0.0001, 0.5, 0.5) is None
     # Floor snap: zooming out to MIN zeroes pan.
     assert wheel_zoom_pan(1.2, 0.3, -0.2, -1200, 0.5, 0.5) == (ZOOM_MIN, 0.0, 0.0)
+
+
+def test_present_debt_renewed_per_set_source(qtbot):
+    """Debt ledger: set_source renews the generation, stale gens stay stale."""
+    from types import SimpleNamespace
+
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from engine.frame.present import PresentDebt
+
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+    assert isinstance(canvas._present_debt, PresentDebt)
+    g0 = int(canvas._present_debt.generation)
+    canvas.set_source(SimpleNamespace(close=lambda: None, generation=0))
+    g1 = int(canvas._present_debt.generation)
+    assert g1 == g0 + 1, "set_source must bump the debt generation"
+    assert int(canvas._present_debt.presented) == 0
+    canvas.set_source(SimpleNamespace(close=lambda: None, generation=0))
+    assert int(canvas._present_debt.generation) == g1 + 1
+    assert int(canvas._watchdog_gen) == int(canvas._present_debt.generation)
+
+
+def test_stale_fire_ignored_via_should_fire(qtbot):
+    """should_fire gates the watchdog: old gen never fires the live debt."""
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from engine.frame.present import should_fire
+    from tabs.image_gallery.ui.quick_look import preview_watchdog as wd
+
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+    fired: list = []
+    canvas.previewFailed.connect(lambda: fired.append(True))
+    canvas._frame_ok = False
+    g1 = wd.next_gen(canvas)
+    live_debt = canvas._present_debt
+    g2 = wd.next_gen(canvas)
+    assert should_fire(g1, canvas._present_debt) is False
+    assert should_fire(g2, canvas._present_debt) is True
+    assert canvas._present_debt is not live_debt, "next_gen must renew the debt"
+    wd.fire_watchdog(canvas, g1)
+    assert fired == [], "stale generation must not emit previewFailed"
+
+
+def test_settle_reached_on_second_present(qtbot):
+    """Verdict ledger: 1st present pumps, 2nd settles (QL_SETTLE_COUNT=2)."""
+    pc_mod = _preview_canvas_module()
+    if pc_mod is None:
+        pytest.skip("preview_canvas.py not on this branch yet")
+    widget_cls = getattr(pc_mod, "QuickLookCanvasWidget", None)
+    if widget_cls is None:
+        pytest.skip("QuickLookCanvasWidget absent")
+    from engine.frame.present import begin_source, note_presented
+    from tabs.image_gallery.ui.quick_look.preview_watchdog import QL_SETTLE_COUNT
+
+    assert QL_SETTLE_COUNT == 2
+    canvas = widget_cls(None)
+    qtbot.addWidget(canvas)
+    debt = begin_source(None)
+    assert note_presented(debt, QL_SETTLE_COUNT) == "pumped"
+    assert debt.pumped is True and debt.settled is False
+    assert note_presented(debt, QL_SETTLE_COUNT) == "settled"
+    assert debt.settled is True
+    # The canvas debt starts unpresented; two presents settle it.
+    assert int(canvas._present_debt.presented) == 0
+    assert note_presented(canvas._present_debt, QL_SETTLE_COUNT) == "pumped"
+    assert note_presented(canvas._present_debt, QL_SETTLE_COUNT) == "settled"
 
 
 def test_drag_pan_follows_cursor():
