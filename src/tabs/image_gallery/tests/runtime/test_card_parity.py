@@ -4,7 +4,8 @@ Covers:
 - S2-1: per-dot quality colors (overlay painter over the single-color row).
 - S2-2: hovered card — accent underline toggling via the hover filter.
 - S2-3: unreadable item — "!" cover placeholder + danger-colored error row.
-- S2-9: AI tie-break badge — accent-stroked (not gray filled).
+- S2-9 (verdict update): tie-pending falls through to the rank path (#N
+  if ranked, else no badge); the leader shows #N — no star/tie-break pills.
 - S2-12: severity/accent colors resolve through ThemeManager tokens.
 """
 
@@ -223,37 +224,68 @@ def test_hover_underline_toggle(qapp):
     card.deleteLater()
 
 
-def test_tie_break_badge_is_accent_stroked_not_gray_filled(qapp, _production_dark_palettes):
+def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes):
+    # Design verdict: the tie-break pill is removed. Tie-pending items fall
+    # through to the rank path — #N if ranked, else no badge (never a
+    # tie-break pill). Toolkit badge stays cleared either way.
     item = _item(vlm_tie_pending=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # S2: AI tie-break is an in-thumbnail pill (left overlay), not a
-    # top-right toolkit badge — toolkit badge cleared, overlay set.
     assert card.property("badgeText") in (None, "")
-    assert getattr(card, "_gallery_badge", None) == "AI tie-break…"
-    filled, _bg, border, _text = card._gallery_badge_style
-    assert filled is False
-    accent = _token_color("accent", "#0096FF")
-    assert accent.name().lower() == "#0096ff"  # live dark production hex
-    assert border.name().lower() == accent.name().lower()
+    assert getattr(card, "_gallery_badge", None) is None
+    card.deleteLater()
+    ranked = _item(vlm_tie_pending=True, rank=3)
+    card = build_gallery_card(ranked, parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, ranked)
+    assert card.property("badgeText") in (None, "")
+    assert getattr(card, "_gallery_badge", None) == "#3"
+    _filled, _bg, _bd, txt = card._gallery_badge_style
+    assert _filled is True
+    assert txt.name().lower() == "#000000"
     card.deleteLater()
 
 
-def test_best_card_has_no_accent_outline(qapp, _production_dark_palettes):
+def test_best_card_shows_rank_pill_with_default_frame(qapp, _production_dark_palettes):
     from tabs.image_gallery.ui.card.visuals import _card_border_color
 
     item = _item(is_best=True)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # The ★ BEST pill marks the leader; the frame stays default.
-    assert getattr(card, "_gallery_badge", None) == "★ BEST"
+    # Design verdict: the leader-star pill is removed — the leader shows
+    # its #N (rank 1 derived when no explicit rank is set). Black text on
+    # the rank bg in both themes; the frame stays the default card border.
+    assert card.property("badgeText") in (None, "")
+    assert getattr(card, "_gallery_badge", None) == "#1"
     _filled, _bg, _bd, txt = card._gallery_badge_style
-    assert txt.name().lower() == "#ffffff"
-    assert card.property("borderWidth") == 1
+    assert _filled is True
+    assert txt.name().lower() == "#000000"
     assert card.borderColor().name().lower() == _card_border_color().name().lower()
     card.deleteLater()
+
+
+def test_leader_rank_pill_text_is_black_in_both_themes(qapp, _production_dark_palettes):
+    """#N text stays black on the rank bg in light and dark themes."""
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    for theme in ("light", "dark"):
+        tm.set_theme(theme, qapp, await_ripples=False)
+        try:
+            tm._flush_pending_theme()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        qapp.processEvents()
+        item = _item(is_best=True)
+        card = build_gallery_card(item, parent=None)
+        qapp.processEvents()
+        _apply_rejected_visuals(card, item)
+        assert getattr(card, "_gallery_badge", None) == "#1"
+        _filled, _bg, _bd, txt = card._gallery_badge_style
+        assert txt.name().lower() == "#000000"
+        card.deleteLater()
 
 
 def test_rank_badge_text_is_black(qapp):
