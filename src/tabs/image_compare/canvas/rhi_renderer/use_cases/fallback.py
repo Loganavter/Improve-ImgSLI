@@ -127,7 +127,7 @@ def resolve_fallback_plan(
                 return rekeyed[k]
             if isinstance(k, LevelKey) and k.base in rekeyed:
                 try:
-                    return LevelKey(rekeyed[k.base], k.level)  # type: ignore[arg-type]
+                    return LevelKey(rekeyed[k.base], k.level, k.generation)  # type: ignore[arg-type]
                 except Exception:
                     return rekeyed[k.base]
             return k

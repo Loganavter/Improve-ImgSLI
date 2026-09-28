@@ -108,6 +108,27 @@ from engine.gpu.host_texture_cache import (
 )
 
 
+def _built_fallback_level(pyramid, level: int) -> int | None:
+    """Nearest built level at or below ``level``, or None when nothing is built.
+
+    Pyramid levels build finest-first, so a selected level that is not built
+    (evicted/closed between resolve and use, or a level_count race) falls
+    back toward level 0 -- never sideways to a neighbor's content. Level 0
+    is the bare base key, so callers map ``0``/``None`` to the bare key and
+    let the downstream size checks turn an unreadable base into a gap."""
+    try:
+        target = int(level)
+    except Exception:
+        return None
+    for candidate in range(target, -1, -1):
+        try:
+            if pyramid.is_level_built(candidate):
+                return candidate
+        except Exception:
+            return None
+    return None
+
+
 def _pil_image_for_texture_key(widget, key):
     """Maps a texture key back to the PIL image it was decoded from, for
     ``realize_tile_plan``'s cache-miss fallback. These PIL images (``state.
@@ -115,15 +136,19 @@ def _pil_image_for_texture_key(widget, key):
     are retained for the widget's whole lifetime independent of
     ``_texture_upload_cache``, so this never misses for a key that was
     ever legitimately uploaded. A ``LevelKey`` resolves through the pyramid
-    registry to that mipmap level's own ``TiledPixelStore`` (None while the
-    level is not built or the pyramid was invalidated — callers then skip
-    the key for this frame; the next frame re-resolves to a live key)."""
+    registry to that mipmap level's own ``TiledPixelStore`` via the sampler
+    idiom (``level_if_built`` + generation verdict: out-of-range, stale
+    generation, invalidated pyramid and closed level all fail closed to
+    None) -- callers then skip the key for this frame; the next frame
+    re-resolves to a live key."""
     if isinstance(key, LevelKey):
         base_source = _pil_image_for_texture_key(widget, key.base)
         pyramid = pyramid_for(base_source)
-        if pyramid is not None and key.level < pyramid.level_count:
-            return pyramid.level(key.level)
-        return None
+        if pyramid is None:
+            return None
+        if key.generation != pyramid.generation:
+            return None
+        return pyramid.level_if_built(key.level)
     state = widget.runtime_state
     if key in widget.texture_ids:
         return state._stored_pil_images[widget.texture_ids.index(key)]
@@ -216,6 +241,12 @@ def resolve_lod_texture_keys(
         if pyramid is None:
             resolved.append(key)
             continue
+        if not pyramid.valid:
+            # Base closed or re-unified since the registry handed this
+            # pyramid out (resolve->use race): stay on the bare key; the
+            # next frame re-resolves once the live pyramid registers.
+            resolved.append(key)
+            continue
         src_w, src_h = source.size
         disp_w = canvas_w_px * float(letterbox[2] or 1.0) * zoom
         disp_h = canvas_h_px * float(letterbox[3] or 1.0) * zoom
@@ -237,7 +268,15 @@ def resolve_lod_texture_keys(
             level,
             pyramid.level_count - 1,
         )
-        resolved.append(key if level == 0 else LevelKey(key, level))
+        built = _built_fallback_level(pyramid, level)
+        if built is None or built == 0:
+            # Unbuilt upper level (or unreadable base): fall back to the
+            # bare base key -- never a neighbor's content. A closed base
+            # then degrades to a gap via the downstream size checks, and
+            # the next frame retries once the level lands.
+            resolved.append(key)
+            continue
+        resolved.append(LevelKey(key, built, pyramid.generation))
     return tuple(resolved)  # type: ignore[return-value]  # tuple of key|LevelKey
 
 
