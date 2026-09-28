@@ -960,6 +960,10 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
         self._items = list(items)
+        try:
+            self._refresh_action_states()
+        except Exception:
+            pass
         _dbg("rebuild_grid n=%d branch=%s", len(self._items), "empty" if not items else "grid")
         _dbg(
             "view-cycle rebuild n=%d saved_series=%s pre=%d",
@@ -1486,6 +1490,58 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def _refresh_action_states(self) -> None:
+        """Gate Keep best / Compare finalists on live content (fail-open).
+
+        Keep best needs a 2+ survivor cluster (or show-mode, where the
+        button reads "Show all"); compare needs 2+ surviving items.
+        Anything unresolvable leaves the buttons as-is (never strand a
+        live action disabled, never arm a dead one on error).
+        """
+        try:
+            strip = self.stats_strip
+            items = list(getattr(self, "_items", None) or [])
+            series = list(getattr(self, "_series", None) or [])
+        except Exception:
+            return
+
+        def _members(cluster):
+            if hasattr(cluster, "members"):
+                return list(getattr(cluster, "members", None) or [])
+            try:
+                return list(cluster)
+            except Exception:
+                return []
+
+        def _alive(members) -> int:
+            count = 0
+            for m in members or []:
+                try:
+                    if not bool(getattr(m, "rejected", getattr(m, "triage_rejected", False))):
+                        count += 1
+                except Exception:
+                    count += 1
+            return count
+
+        try:
+            keep_mode = str(getattr(strip, "_keep_mode", "keep") or "keep")
+        except Exception:
+            keep_mode = "keep"
+        try:
+            keep = keep_mode.strip().lower().startswith("show") or any(
+                _alive(_members(cl)) >= 2 for cl in series if len(_members(cl)) >= 2
+            )
+        except Exception:
+            return
+        try:
+            compare = _alive(items) >= 2
+        except Exception:
+            return
+        try:
+            strip.set_action_states(keep_best=keep, compare_finalists=compare)
+        except Exception:
+            pass
+
     def set_triage(self, series, mode, source) -> None:
         """Stage 2: update stats strip + series-grouped grid.
 
@@ -1595,6 +1651,10 @@ class ImageGalleryWidget(QWidget):
                 pass
             self.stats_strip.set_mode(str(mode or "fidelity"), self._source_path)
             self.stats_strip.show()
+        except Exception:
+            pass
+        try:
+            self._refresh_action_states()
         except Exception:
             pass
 
