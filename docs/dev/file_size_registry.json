@@ -779,6 +779,18 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/stats_strip.py",
+      "lines": 521,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-widget size=exempt reason=\"one stats strip — stats/mode/action buttons share one paint/theme lifecycle\"",
+      "parsed": {
+        "pattern": "compound-widget",
+        "size": "exempt",
+        "reason": "one stats strip — stats/mode/action buttons share one paint/theme lifecycle"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
       "lines": 611,
       "limit": 500,

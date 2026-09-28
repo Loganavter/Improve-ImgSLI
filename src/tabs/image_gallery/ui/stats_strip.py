@@ -1,4 +1,6 @@
 """Stats strip for Stage 2 triage — Label + Buttons + mode chip.
+Audit-Meta: pattern=compound-widget size=exempt reason="one stats strip — stats/mode/action buttons share one paint/theme lifecycle"
+
 
 Painter pipeline only: ``Button`` ``variant="surface"``, ``Label``,
 ``scaled_px`` for every geometry constant, no ad-hoc stylesheets.
