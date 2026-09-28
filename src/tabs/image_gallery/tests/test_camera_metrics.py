@@ -68,7 +68,7 @@ def test_worker_entry_keys_by_path(tmp_path: Path) -> None:
 
     a = SimpleNamespace(path=_paint(tmp_path / "a.png", "gray"))
     out = run_camera_metrics_sync([a])
-    assert set(out[str(a.path)]) == {"sharpness", "exposure", "clipping_pct"}
+    assert set(out[str(a.path)]) == {"sharpness", "exposure", "clipping_pct", "noise"}
 
 
 def test_camera_ready_delivery(tmp_path: Path) -> None:
@@ -113,3 +113,33 @@ def test_camera_ready_stale_gen_dropped(tmp_path: Path) -> None:
     ctrl._folder_gen = 7
     ctrl._on_camera_metrics_ready({str(a.path): {"sharpness": 1.0}}, 6)
     assert a.metrics == {}
+def test_noise_flat_zero_noisy_warns(tmp_path: Path) -> None:
+    """Scalar anchors to the detector: flat ~0, heavy noise saturates 1.0."""
+    import numpy as np
+    from PIL import Image
+
+    from tabs.image_gallery.services.camera_metrics import estimate_noise
+
+    rng = np.random.default_rng(7)
+    flat_p = tmp_path / "flat.png"
+    Image.fromarray(np.full((128, 128), 128, np.uint8)).save(flat_p)
+    noisy_p = tmp_path / "noisy.png"
+    noisy = np.clip(rng.normal(128, 25, (128, 128)), 0, 255).astype(np.uint8)
+    Image.fromarray(noisy).save(noisy_p)
+    flat_n = estimate_noise(flat_p)
+    noisy_n = estimate_noise(noisy_p)
+    assert flat_n is not None and flat_n < 0.5
+    assert noisy_n is not None and noisy_n > 0.5
+
+
+def test_noise_textured_without_flat_is_none(tmp_path: Path) -> None:
+    """Nowhere flat to judge -> None (row hides, never a fabricated zero)."""
+    import numpy as np
+    from PIL import Image
+
+    from tabs.image_gallery.services.camera_metrics import estimate_noise
+
+    rng = np.random.default_rng(11)
+    p = tmp_path / "grain.png"
+    Image.fromarray(rng.integers(0, 256, (64, 64)).astype(np.uint8)).save(p)
+    assert estimate_noise(p) is None
