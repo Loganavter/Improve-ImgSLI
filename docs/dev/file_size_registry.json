@@ -984,7 +984,7 @@
     },
     {
       "path": "src/ui/actions/palette/dialog.py",
-      "lines": 582,
+      "lines": 625,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring size=exempt reason=\"one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px\"",

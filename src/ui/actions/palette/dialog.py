@@ -117,10 +117,11 @@ def open_help_page(
 class FindActionDialog(ThemedDialog):
     """Searchable action palette — Enter runs, Esc closes, ↑↓ moves selection.
 
-    A top-level ``Window`` (never Dialog·Popup·Tool hints) transient-parented
-    to the focused/main window, so the compositor activates it freely under
-    xdg-activation instead of denying a parentless top-level mapped a turn
-    after the user gesture.
+    A non-modal independent top-level window (same scheme as ``HelpDialog``):
+    ``Qt.Window`` flag + ``NonModal``, shown with ``show()`` — never blocks
+    the parent window, so the user can keep working while the palette is
+    open. Transient-parented to the focused/main window so the compositor
+    activates it freely under xdg-activation.
     """
 
     def __init__(
@@ -133,9 +134,9 @@ class FindActionDialog(ThemedDialog):
         auto_pulse: bool = False,
         active_tab: str | None = None,
     ) -> None:
-        # Keep the transient parent (Window flag stays — not a popup); only
-        # the Dialog/Sheet/Tool/Popup bits are stripped in
-        # _apply_independent_window_flags.
+        # Non-modal window like HelpDialog: keep the transient parent and the
+        # Window flag (see _apply_non_modal_window_flags) — never blocks the
+        # owner, activates freely under xdg-activation.
         super().__init__(parent)
         self._find_action_nav_section = None
         self._topic = topic
@@ -155,9 +156,10 @@ class FindActionDialog(ThemedDialog):
         self.setObjectName("FindActionDialog")
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
         self.setWindowTitle(title)
-        self._apply_independent_window_flags()
+        self._apply_non_modal_window_flags()
         self.setSizeGripEnabled(False)
-        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setModal(False)
+        self.setWindowModality(Qt.WindowModality.NonModal)
 
         self._build_ui(query)
         self.setMinimumSize(scaled_px(480), scaled_px(320))
@@ -169,8 +171,8 @@ class FindActionDialog(ThemedDialog):
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
 
         decorate_dialog(self, title=title, resizable=True)
-        # decorate_dialog / frameless may reintroduce Dialog bits — strip again.
-        self._apply_independent_window_flags()
+        # decorate_dialog (frameless) preserves flags — re-assert Window bits.
+        self._apply_non_modal_window_flags()
         self.installEventFilter(self)
         self._app_filter_installed = False
         self._setup_find_action_navigation()
@@ -287,8 +289,13 @@ class FindActionDialog(ThemedDialog):
         QApplication.sendEvent(self._search, clone)
         return True
 
-    def _apply_independent_window_flags(self) -> None:
-        """Force a normal top-level window, not a dialog/popup transient."""
+    def _apply_non_modal_window_flags(self) -> None:
+        """Force a non-modal independent window, same scheme as HelpDialog.
+
+        ``Qt.Window`` (never Dialog·Popup·Tool hints) + ``NonModal``: the
+        palette never blocks its owner. No maximize/minimize hints — unlike
+        Help, the palette is a small fixed-size window.
+        """
         flags = self.windowFlags()
         # Qt::ToolTip (0x00001000) — numeric literal avoids WindowType.ToolTip in
         # source; flag is cleared so the palette is not a tooltip-class window.
@@ -341,6 +348,12 @@ class FindActionDialog(ThemedDialog):
         self._list_layout.addStretch(1)
         self._scroll.setWidget(self._list_host)
         root.addWidget(self._scroll, 1)
+        # The overlay scrollbar reserves its gutter asynchronously after show:
+        # once overflow is detected the toolkit applies viewport margins, the
+        # viewport/host shrink, but this layout does not re-run — rows stay
+        # wider than the viewport (right chrome clipped) until the first
+        # manual resize. Re-activate on every viewport resize instead.
+        self._scroll.viewport().installEventFilter(self)
 
         self._empty = Label(
             tr_action("action.palette.empty", "No matching actions"),
@@ -453,14 +466,16 @@ class FindActionDialog(ThemedDialog):
         def _accept_and_run() -> None:
             if not _is_valid(self):
                 return
-            self.accept()
-            # Defer until the modal palette has closed — otherwise combo/menu
+            # Non-modal window with WA_DeleteOnClose (see show_command_palette):
+            # close() deletes the palette; accept() would only hide it.
+            self.close()
+            # Defer until the palette has closed — otherwise combo/menu
             # overlays opened by ``run`` are killed by the dialog's Hide/Close
             # events (ComboBox installs an app-wide filter while expanded).
             QTimer.singleShot(0, run)
 
-        # Wait for the row's own click ripple to finish before accept()
-        # closes (and destroys) this modal dialog -- otherwise the ripple
+        # Wait for the row's own click ripple to finish before close()
+        # destroys this dialog -- otherwise the ripple
         # never gets to play at all, same rationale as
         # Button(defer_click=DEFER_CLICK_AWAIT_RIPPLE) /
         # ContextMenuAction.defer_trigger.
@@ -482,10 +497,10 @@ class FindActionDialog(ThemedDialog):
         target = getattr(action, "target", None)
         if not target_is_revealable(target):
             return
-        self.accept()
+        self.close()
         from ui.actions.reveal import reveal_action_target
 
-        # Defer until the modal palette has closed and the main window can
+        # Defer until the palette has closed and the main window can
         # show title-bar menus / draw overlays again.
         QTimer.singleShot(0, lambda t=target: reveal_action_target(t))
 
@@ -506,7 +521,7 @@ class FindActionDialog(ThemedDialog):
         anchor = getattr(action, "help_anchor", None)
         video_url = getattr(action, "video_url", None)
         learn_more_url = getattr(action, "learn_more_url", None)
-        self.accept()
+        self.close()
         QTimer.singleShot(
             0,
             lambda p=page, a=anchor, v=video_url, l=learn_more_url: open_help_page(
@@ -529,7 +544,35 @@ class FindActionDialog(ThemedDialog):
 
         QTimer.singleShot(0, lambda w=widget: pulse_widget(w))
 
+    def _activate_row_layout(self) -> None:
+        """Re-run the row layout so rows match the host width.
+
+        Idempotent no-op when the layout is already valid — safe to call
+        from viewport Resize/Show and from a deferred tick.
+        """
+        try:
+            host_layout = getattr(self, "_list_layout", None)
+            if host_layout is not None:
+                host_layout.invalidate()
+                host_layout.activate()
+        except RuntimeError:
+            pass
+
     def eventFilter(self, obj, event):
+        # Viewport shrinks/grows when the overlay scrollbar reserves or
+        # releases its gutter — the list layout does not follow on its own
+        # (see _build_ui), so re-activate it here. Both immediate (steady
+        # state: typing across the overflow boundary) and deferred via
+        # singleShot(0) (first show: the gutter lands between the initial
+        # Resize and Show with no second Resize, and the host settles after
+        # the viewport). No-op when valid.
+        scroll = getattr(self, "_scroll", None)
+        if scroll is not None and obj is scroll.viewport() and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+        ):
+            self._activate_row_layout()
+            QTimer.singleShot(0, self._activate_row_layout)
         # Синхронизируем current_index с фактическим фокусом (NavigationManager двигает фокус на Button-ряд)
         if event.type() == QEvent.Type.FocusIn and isinstance(obj, QWidget):
             # Находим ряд по виджету (row Button или его предок)
@@ -575,7 +618,7 @@ class FindActionDialog(ThemedDialog):
                     self._run_selected()
                 return True
             if key == Qt.Key.Key_Escape:
-                self.reject()
+                self.close()
                 return True
             if self._redirect_typeahead_to_search(event):
                 return True

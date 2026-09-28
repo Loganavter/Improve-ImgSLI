@@ -107,8 +107,20 @@ def test_palette_forwards_transient_parent(qapp, monkeypatch):
         def __init__(self, parent=None, **kwargs):
             seen["parent"] = parent
 
-        def exec(self):
-            return 0
+        def setAttribute(self, *args, **kwargs):
+            pass
+
+        def show(self):
+            pass
+
+        def raise_(self):
+            pass
+
+        def isActiveWindow(self):
+            return False
+
+        def activateWindow(self):
+            pass
 
     monkeypatch.setattr(palette_pkg, "FindActionDialog", _FakePalette)
     monkeypatch.setattr(palette_pkg, "center_on_reference", lambda *a, **k: None)
