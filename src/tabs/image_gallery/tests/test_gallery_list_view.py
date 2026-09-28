@@ -14,16 +14,19 @@ from PySide6.QtGui import QPixmap
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Severity
 from tabs.image_gallery.ui.grid_view import VIEW_GRID, VIEW_LIST
-from tabs.image_gallery.ui.list_card import (
+from tabs.image_gallery.ui.list.card import (
+    LIST_CARD_H,
+    LIST_ROW_REGION_IDS,
+    _bind_list_row,
+    build_gallery_list_card,
+    update_gallery_list_card,
+)
+from tabs.image_gallery.ui.list.regions import (
     _artifacts_text,
     _badges_text,
     _list_meta_rows,
     _list_text_rows,
     _vlm_text,
-    build_gallery_list_card,
-    sync_row_capsule_buttons,
-    update_gallery_list_card,
-    LIST_CARD_H,
 )
 from tabs.image_gallery.widget import ImageGalleryWidget
 
@@ -52,7 +55,7 @@ def test_view_toggle_swaps_builders(qtbot) -> None:
     assert _grid_ids(gv.card_for(items[0].path)) == {"bg", "cover", "text"}
     w._on_view_toggled(True)
     assert gv._view_mode == VIEW_LIST and gv.grid_columns == 1
-    assert _grid_ids(gv.card_for(items[0].path)) == {"thumb", "text", "meta"}
+    assert _grid_ids(gv.card_for(items[0].path)) == set(LIST_ROW_REGION_IDS)
     assert gv.card_for(items[0].path).height() > 0
     w._on_view_toggled(False)
     assert gv._view_mode == VIEW_GRID and gv.grid_columns == 4
@@ -133,10 +136,10 @@ def test_list_row_texts() -> None:
     assert _artifacts_text(_items("d.png")[0]) == "…"
     flagged = _items("e.png")[0]
     flagged.artifacts = {Artifact.BANDING: Severity.FLAGGED, Artifact.HALO: Severity.FLAGGED}
-    assert _artifacts_text(flagged) == "flagged×2"
+    assert _artifacts_text(flagged) == "Artifacts"
     mild = _items("f.png")[0]
     mild.artifacts = {Artifact.NOISE_AMPLIFICATION: Severity.MILD}
-    assert _artifacts_text(mild) == "mild×1"
+    assert _artifacts_text(mild) == "Minor"
     assert _vlm_text(_items("g.png")[0]) == ""
     tie = _items("h.png")[0]
     tie.vlm_tie_pending = True
@@ -153,15 +156,41 @@ def _pixmap() -> QPixmap:
     return pm
 
 
-def test_list_thumb_uses_contain(qtbot) -> None:
+def test_thumb_width_follows_aspect_capped(qtbot) -> None:
+    from tabs.image_gallery.ui.list.card import _thumb_width_for
+
+    assert _thumb_width_for(_items("a.png")[0]) == 56.0  # no thumbnail yet
+    wide = _items("w.png")[0]
+    pm = QPixmap(120, 80)
+    pm.fill(0xFF336699)
+    wide.thumbnail = pm
+    assert _thumb_width_for(wide) == 96.0  # 64 * 1.5
+    pano = _items("p.png")[0]
+    pp = QPixmap(300, 90)
+    pp.fill(0xFF336699)
+    pano.thumbnail = pp
+    assert _thumb_width_for(pano) == 64 * 21 / 9  # capped at 21:9
+    portrait = _items("t.png")[0]
+    tp = QPixmap(40, 100)
+    tp.fill(0xFF336699)
+    portrait.thumbnail = tp
+    assert _thumb_width_for(portrait) == 32.0  # 64 * 0.4 clamped to portrait minimum
+    card = build_gallery_list_card(wide)
+    qtbot.addWidget(card)
+    assert card._gallery_row_state["w"] == 96.0
+    update_gallery_list_card(card, pano)
+    assert card._gallery_row_state["w"] == 64 * 21 / 9
+
+
+def test_list_thumb_uses_cover(qtbot) -> None:
     it = _items("a.png")[0]
     it.thumbnail = _pixmap()
     card = build_gallery_list_card(it)
     qtbot.addWidget(card)
-    assert card.region("thumb").image_fill == "contain"
+    assert card.region("thumb").image_fill == "cover"
     it.thumbnail = _pixmap()
     update_gallery_list_card(card, it)
-    assert card.region("thumb").image_fill == "contain"
+    assert card.region("thumb").image_fill == "cover"
 
 
 def test_list_title_single_row(qtbot) -> None:
@@ -169,7 +198,7 @@ def test_list_title_single_row(qtbot) -> None:
     rows = _list_text_rows(it)
     assert len(rows) == 1
     row = rows[0]
-    assert row.text == "a.png" and row.weight == "normal" and row.size == 12 and row.marquee is True
+    assert row.text == "a.png" and row.weight == "normal" and row.size == 16 and row.marquee is True
     it.rank = 3
     it.is_best = True
     rows = _list_text_rows(it)
@@ -186,48 +215,117 @@ def test_list_meta_single_row() -> None:
     it.artifacts = {Artifact.BLOCKING: Severity.FLAGGED}
     it.vlm_tie_pending = True
     rows = _list_meta_rows(it)
-    assert len(rows) == 1 and rows[0].text == "flagged×1 tie…"
+    assert len(rows) == 1 and rows[0].text == "Artifacts tie…"
 
 
 def _capsule_owner(item: GalleryItem) -> SimpleNamespace:
     return SimpleNamespace(state=SimpleNamespace(items=[item], selected_paths=set()))
 
 
-def test_capsule_buttons_present_and_clickable(qtbot) -> None:
+def test_chrome_regions_present_and_routed(qtbot) -> None:
     it = _items("a.png")[0]
     card = build_gallery_list_card(it)
     qtbot.addWidget(card)
     card.show()
     owner = _capsule_owner(it)
     card._gallery_owner = owner  # type: ignore[attr-defined]
-    best = card.findChild(object, "gallery_row_act_best")
-    reject = card.findChild(object, "gallery_row_act_reject")
-    compare = card.findChild(object, "gallery_row_act_compare")
-    assert best is not None and reject is not None and compare is not None
-    assert not best.isVisible()  # hover-only until hovered
-    card._gallery_row_capsule_hovered = True  # type: ignore[attr-defined]
-    sync_row_capsule_buttons(card)
-    assert best.isVisible() and reject.isVisible() and compare.isVisible()
-    best.click()
+    _bind_list_row(card, on_activate=lambda *_a: None, on_context_menu=lambda *_a: None)
+    for rid in ("act_best", "act_reject", "act_compare", "act_delete"):
+        assert card.region(rid) is not None
+    # Chrome regions are always visible (no hover-only children anymore).
+    assert card.findChild(object, "gallery_row_act_best") is None
+    card.regionClicked.emit("act_best")
     assert it.is_best is True
     update_gallery_list_card(card, it)
     assert "#1" in card.region("text").rows[0].text and "★" in card.region("text").rows[0].text
-    reject.click()
+    card.regionClicked.emit("act_reject")
     assert it.rejected is True
-    compare.click()
+    card.regionClicked.emit("act_compare")
     assert it.path in owner.state.selected_paths
 
 
-def test_capsule_resolves_live_item_per_click(qtbot) -> None:
-    # Pool-safety: swapping _gallery_item retargets the same buttons.
+def test_chrome_resolves_live_item_per_click(qtbot) -> None:
+    # Pool-safety: swapping _gallery_item retargets the same regions.
     first, second = _items("a.png", "b.png")
     card = build_gallery_list_card(first)
     qtbot.addWidget(card)
     owner = SimpleNamespace(state=SimpleNamespace(items=[first, second], selected_paths=set()))
     card._gallery_owner = owner  # type: ignore[attr-defined]
+    _bind_list_row(card, on_activate=lambda *_a: None, on_context_menu=lambda *_a: None)
     update_gallery_list_card(card, second)
-    card.findChild(object, "gallery_row_act_best").click()
+    card.regionClicked.emit("act_best")
     assert second.is_best is True and first.is_best is False
+
+
+def test_plate_click_activates_and_delete_removes(qtbot, monkeypatch) -> None:
+    from tabs.image_gallery.use_cases import triage as _triage
+
+    it = _items("a.png")[0]
+    card = build_gallery_list_card(it)
+    qtbot.addWidget(card)
+    owner = _capsule_owner(it)
+    card._gallery_owner = owner  # type: ignore[attr-defined]
+    got: list = []
+    _bind_list_row(
+        card,
+        on_activate=lambda p, additive=False: got.append((str(p), additive)),
+        on_context_menu=lambda *_a: None,
+    )
+    card.regionClicked.emit("text")
+    assert got == [(str(it.path), False)]
+    removed: list = []
+    monkeypatch.setattr(_triage, "remove_from_grid", lambda _o, p: removed.append(str(p)) or True)
+    card.regionClicked.emit("act_delete")
+    assert removed == [str(it.path)]
+
+
+def test_overlay_no_hover_wash_rejected_dim_only() -> None:
+    """Palette parity: plain rows paint no overlay; rejected rows get the dim."""
+    from tabs.image_gallery.ui.list.painters import _list_row_overlay_painter
+
+    class _Recorder:
+        def __init__(self) -> None:
+            self.ops: list = []
+
+        def __getattr__(self, name: str):
+            def _op(*_a, **_k) -> None:
+                self.ops.append(name)
+
+            return _op
+
+    it = _items("a.png")[0]
+    ctx = SimpleNamespace(widget=SimpleNamespace(_gallery_item=it), rect=SimpleNamespace())
+    plain = _Recorder()
+    _list_row_overlay_painter(plain, ctx, None)
+    assert plain.ops == []
+    it.rejected = True
+    dimmed = _Recorder()
+    _list_row_overlay_painter(dimmed, ctx, None)
+    assert "drawRect" in dimmed.ops
+
+
+def test_view_list_rebind_routes_chrome(qtbot) -> None:
+    """VIEW_LIST rebind path: recycled rows stay list-routed (no grid activate)."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    items = _items("a.png", "b.png")
+    w.rebuild_grid(items)
+    w._on_view_toggled(True)
+    gv = w._grid_view
+    card = gv.card_for(items[0].path)
+    assert card is not None
+    owner = SimpleNamespace(state=SimpleNamespace(items=list(items), selected_paths=set()))
+    card._gallery_owner = owner  # type: ignore[attr-defined]
+    gv._rebind_card(card)
+    activated: list = []
+    orig = w.show_quick_look
+    try:
+        w.show_quick_look = lambda p: activated.append(str(p))  # type: ignore[method-assign]
+        card.regionClicked.emit("act_best")
+    finally:
+        w.show_quick_look = orig  # type: ignore[method-assign]
+    assert items[0].is_best is True
+    assert activated == []
 
 
 def test_refresh_in_list_mode(qtbot) -> None:
