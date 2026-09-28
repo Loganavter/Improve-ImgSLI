@@ -673,7 +673,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 1650,
+      "lines": 1624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",

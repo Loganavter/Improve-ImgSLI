@@ -1033,52 +1033,26 @@ class GalleryController:
         # clean→flagged flip). Items whose severities did not change skip the
         # repaint entirely.
         changed: list = []
+        try:
+            from tabs.image_gallery.use_cases import quality as _quality
+        except Exception:
+            _quality = None  # type: ignore[assignment]
         for item in self.state.items:
             key = str(item.path)
             arts = result.get(key)
             if arts is None:
                 continue
-            try:
-                new_norm = {}
-                for k, v in dict(arts).items():
-                    kk = k.value if hasattr(k, "value") else str(k)
-                    vv = v.value if hasattr(v, "value") else str(v)
-                    new_norm[str(kk).lower()] = str(vv).lower()
-            except Exception:
+            if _quality is None:
                 continue
             try:
-                old_metrics_map = None
-                if isinstance(item.metrics, dict):
-                    old_metrics_map = item.metrics.get("artifacts")
-                old_norm: dict[str, str] = {}
-                try:
-                    old_raw = getattr(item, "artifacts", None)
-                    if isinstance(old_raw, dict):
-                        for k, v in old_raw.items():
-                            kk = k.value if hasattr(k, "value") else str(k)
-                            vv = v.value if hasattr(v, "value") else str(v)
-                            old_norm[str(kk).lower()] = str(vv).lower()
-                except Exception:
-                    pass
-                if isinstance(old_metrics_map, dict):
-                    try:
-                        for k, v in old_metrics_map.items():
-                            lk = str(k).lower()
-                            if lk not in old_norm:
-                                old_norm[lk] = str(v).lower()
-                    except Exception:
-                        pass
-                if old_norm and old_norm == new_norm:
+                # Skip repaints when normalized severities did not change.
+                if _quality.severities(item) and _quality.artifacts_equal(item, arts):
                     continue
             except Exception:
                 pass
             try:
-                # Keep Enum values as-is (models.Severity)
-                item.artifacts = dict(arts)  # type: ignore[assignment]
-                # Also mirror into metrics for persistence / quick look fallback
-                if isinstance(item.metrics, dict):
-                    item.metrics["artifacts"] = {str(k): (v.value if hasattr(v, "value") else str(v)) for k, v in arts.items()}
-                changed.append(item)
+                if _quality.set_artifacts(item, arts):
+                    changed.append(item)
             except Exception:
                 logger.debug("artifact apply failed for %s", item.path, exc_info=True)
         if changed:
