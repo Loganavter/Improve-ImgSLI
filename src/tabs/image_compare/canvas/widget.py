@@ -70,6 +70,7 @@ from engine.cache.first_frame_gate import (
     FIRST_PRESENT_SETTLE_COUNT as _FIRST_PRESENT_SETTLE_COUNT,
     first_visual_present_count as _first_visual_present_count,
 )
+from engine.frame.present import PresentDebt, begin_source, note_presented
 
 # DnD show-edge settle: one delayed compositor kick (drag-scoped).
 # The immediate flush restacks while only the pre-tile buffer exists;
@@ -185,6 +186,7 @@ class CanvasWidget(QRhiWidget):
         configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
         self._rhi_presents_completed = 0
+        self._present_debt: PresentDebt = begin_source(None)
         # DnD show→visible latency probes (env-gated logs only, see
         # set_drag_overlay_state/render — prod-silent without IMGSLI_IC_DEBUG).
         self._dnd_show_t0: float | None = None
@@ -671,7 +673,13 @@ class CanvasWidget(QRhiWidget):
             )
             return
 
-        self._rhi_presents_completed = int(self._rhi_presents_completed) + 1
+        if getattr(self, "_present_debt", None) is None:
+            self._present_debt = begin_source(None)
+        verdict = note_presented(self._present_debt)  # noqa: F841 — verdict
+        # intentionally unused: gates below stay on the mirror count with
+        # their original </<= operators (flush→emit ordering and the ==
+        # extra-settle kick must not move).
+        self._rhi_presents_completed = int(self._present_debt.presented)
         # DnD latency probe: first completed present after the show edge.
         # Deliberately independent of FIRST_FRAME_DEBUG (whose sampler grabs
         # and would itself pump frames, confounding the measurement). Logs
