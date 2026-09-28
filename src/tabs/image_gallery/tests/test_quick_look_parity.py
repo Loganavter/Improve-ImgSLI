@@ -349,6 +349,42 @@ def test_clipping_warn_threshold_is_five_percent(qtbot):
     assert high["Clipping %"] != high["Sharpness (Laplacian var)"]
 
 
+def test_noise_value_color_matches_bar_severity(qtbot):
+    """Value text and bar fill share the severity color (no green/yellow split)."""
+    from PySide6.QtCore import Qt
+
+    from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+
+    def _row_colors(item):
+        ov = _make_overlay(qtbot)
+        _show(ov, item, [item], mode=Mode.CAMERA)
+        try:
+            out = {}
+            for row in ov._metric_rows:
+                labels = row.findChildren(_QlLabel)
+                titles = [lbl.text() for lbl in labels]
+                if "Noise" not in titles:
+                    continue
+                bars = row.findChildren(_BarWidget)
+                value = next(
+                    lbl for lbl in labels
+                    if bool(lbl.alignment() & Qt.AlignmentFlag.AlignRight)
+                )
+                vc = getattr(value, "_color_override", None)
+                fill = getattr(bars[0], "_explicit_fill", None) if bars else None
+                out["value"] = vc.name().lower() if vc is not None else None
+                out["bar"] = fill.name().lower() if fill is not None else None
+                return out
+        finally:
+            ov.hide()
+
+    warn = _row_colors(_item("n1.png", metrics={"sharpness": 150.0, "noise": 0.54}))
+    assert warn["value"] is not None and warn["value"] == warn["bar"]
+    ok = _row_colors(_item("n2.png", metrics={"sharpness": 150.0, "noise": 0.2}))
+    assert ok["value"] == ok["bar"]
+    assert warn["value"] != ok["value"]
+
+
 def test_camera_noise_and_wb_rows_skipped_when_missing(qtbot):
     item = _item("cam.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 0.4})
     ov = _make_overlay(qtbot)
