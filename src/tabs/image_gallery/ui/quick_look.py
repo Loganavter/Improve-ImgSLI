@@ -495,6 +495,10 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 pass
         if owner is not None:
             self._owner = owner
+        try:
+            self._ql_chrome_painted = False
+        except Exception:
+            pass
         self._current_item = item
         owner = self._owner
         mode_val = source = series_raw = None
@@ -680,6 +684,17 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
+        except Exception:
+            pass
+        try:
+            # Chrome painted: a cold-open canvas staged in populate may show.
+            if getattr(self, "_preview_canvas_pending", None) is not None:
+                from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
+                    reveal_pending_preview_canvas,
+                )
+
+                reveal_pending_preview_canvas(self)
+            self._ql_chrome_painted = True
         except Exception:
             pass
         super().paintEvent(event)

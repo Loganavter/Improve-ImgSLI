@@ -197,6 +197,27 @@ class _CardHoverFilter(QObject):
                 except Exception:
                     pass
             elif event.type() == QEvent.Type.Leave:
+                # The context-menu popup takes the mouse and the card gets a
+                # Leave — keep the highlight while the tracked menu is open.
+                try:
+                    _open = getattr(self._card, "_gallery_open_menu", None)
+                    if _open is not None:
+                        try:
+                            _menu_live = bool(_open.isVisible())
+                        except Exception:
+                            _menu_live = False
+                        if _menu_live:
+                            _hdbg(
+                                "card hover leave keep hide-reason=MENU_OPEN card=%s",
+                                getattr(getattr(self._card, "_gallery_item", None), "path", "?"),
+                            )
+                            return False
+                        try:
+                            self._card._gallery_open_menu = None  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 try:
                     _hide_card_hover_underline(self._card)
                 except Exception as exc:

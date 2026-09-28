@@ -199,7 +199,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ),
                 ContextMenuAction(
                     "gallery.remove",
-                    "Remove from view",
+                    "Delete",
+                    icon="delete",
+                    danger=True,
                 ),
             ]
         )
@@ -258,6 +260,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 on_triggered=_on_triggered,
             )
             if menu is not None:
+                _track_open_menu(card, menu)
                 return
         except Exception:
             if _dbg_on:
@@ -275,6 +278,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         if pos is not None:
             try:
                 menu.popup_at(pos)
+                _track_open_menu(card, menu)
                 return
             except Exception:
                 if _dbg_on:
@@ -284,7 +288,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         try:
             from sli_ui_toolkit.widgets import popup_context_menu_for_anchor
 
-            popup_context_menu_for_anchor(source or card, card, tuple(entries), on_triggered=_on_triggered)
+            _anchor_menu = popup_context_menu_for_anchor(
+                source or card, card, tuple(entries), on_triggered=_on_triggered
+            )
+            _track_open_menu(card, _anchor_menu)
         except Exception:
             if _dbg_on:
                 _dbg("card menu fallback-anchor raised path=%s", path, exc_info=True)
@@ -295,6 +302,53 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     except Exception:
         if _dbg_on:
             _dbg("card menu outer raised path=%s", path, exc_info=True)
+        pass
+
+
+def _track_open_menu(card, menu) -> None:
+    """Keep the card hover highlight while its context menu is open.
+
+    The popup takes the mouse, so the card gets a Leave that would clear
+    the underline. The hover filter skips the hide while the tracked menu
+    is visible (see ``_CardHoverFilter``); on hide we restore the highlight
+    and drop the (possibly stale) reference.
+    """
+    try:
+        if card is None or menu is None:
+            return
+        try:
+            card._gallery_open_menu = menu  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.card.hover import _show_card_hover_underline
+
+            _show_card_hover_underline(card)
+        except Exception:
+            pass
+        try:
+            about = getattr(menu, "aboutToHide", None)
+            if about is not None and hasattr(about, "connect"):
+
+                def _on_menu_hidden(c=card, m=menu) -> None:
+                    try:
+                        if getattr(c, "_gallery_open_menu", None) is m:
+                            c._gallery_open_menu = None  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    try:
+                        from tabs.image_gallery.ui.card.hover import (
+                            _show_card_hover_underline as _show,
+                        )
+
+                        _show(c)
+                    except Exception:
+                        pass
+
+                about.connect(_on_menu_hidden)
+        except Exception:
+            pass
+    except Exception:
         pass
 
 
@@ -339,7 +393,7 @@ def _ctx_compare(owner, path: Path) -> None:
 
 
 def _ctx_remove(owner, path: Path) -> None:
-    """Remove card from the grid (file on disk stays; ex-delete-badge)."""
+    """Delete card from the grid (file on disk stays; list-mode parity)."""
     try:
         from tabs.image_gallery.use_cases import triage as _triage
 
