@@ -1,4 +1,5 @@
 """Quick-look GPU preview hosting — canvas slot lifecycle (no owner state).
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one canvas-slot lifecycle: cover/fallback/label-repopulate share one GPU-path attribution"
 
 Split from ``preview.py`` (500-line contract gate): the QLabel preview
 stays there, everything canvas-shaped lives here. All functions fail
@@ -222,6 +223,14 @@ def reveal_preview_canvas(overlay, canvas) -> None:
     yet painted once) the canvas stays hidden and is staged for the first
     ``paintEvent``; once the chrome has painted — including every walk
     while open — it shows immediately (no added flicker).
+
+    Show-then-update (2026-09-28): ``set_source`` ends with ``update()``,
+    but on a walk the canvas is still hidden at that point (the populate
+    release hid it), so the update is dropped; a re-shown ``QRhiWidget``
+    does not render without an explicit update (only first exposure
+    self-renders). Every ``show()`` below is therefore followed by
+    ``update()`` — without it walks never present and die by watchdog
+    with a healthy shell (``shell_ready=True``).
     """
     try:
         overlay._preview_canvas_pending = None
@@ -236,6 +245,25 @@ def reveal_preview_canvas(overlay, canvas) -> None:
             canvas.show()
         except Exception:
             pass
+        try:
+            canvas.update()
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.quick_look.preview_watchdog import ensure_repump
+
+            ensure_repump(canvas)
+        except Exception:
+            pass
+        if _qlc_enabled():
+            try:
+                _qlc_log(
+                    "reveal warm show+update canvas=%sx%s",
+                    int(canvas.width()),
+                    int(canvas.height()),
+                )
+            except Exception:
+                pass
         return
     try:
         canvas.hide()
@@ -270,6 +298,16 @@ def reveal_pending_preview_canvas(overlay) -> None:
         pass
     try:
         canvas.show()
+    except Exception:
+        pass
+    try:
+        canvas.update()
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.quick_look.preview_watchdog import ensure_repump
+
+        ensure_repump(canvas)
     except Exception:
         pass
     _fit_cover(overlay)
@@ -471,12 +509,15 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
     except Exception:
         pass
 
-    def _fall_back(*_args) -> None:
+    def _run_fall_back(reason: str) -> None:
         if _qlc_enabled():
-            _qlc_log("fallback (previewFailed/renderFailed) -> label path")
-        for _sig in ("previewFailed", "renderFailed"):
+            _qlc_log("fallback (%s) -> label path", reason)
+        for _sig, _slot in (
+            ("previewFailed", _on_preview_failed),
+            ("renderFailed", _on_render_failed),
+        ):
             try:
-                getattr(canvas, _sig).disconnect(_fall_back)
+                getattr(canvas, _sig).disconnect(_slot)
             except Exception:
                 pass
         _drop_cover(overlay, "fallback")
@@ -493,8 +534,19 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
         except Exception:
             pass
 
-    for _sig in ("previewFailed", "renderFailed"):
+    def _on_preview_failed(*_args) -> None:
+        """Watchdog no-frame path (1500ms without a presented frame)."""
+        _run_fall_back("previewFailed")
+
+    def _on_render_failed(*_args) -> None:
+        """Qt RHI path (immediate render failure from QRhiWidget)."""
+        _run_fall_back("renderFailed")
+
+    for _sig, _slot in (
+        ("previewFailed", _on_preview_failed),
+        ("renderFailed", _on_render_failed),
+    ):
         try:
-            getattr(canvas, _sig).connect(_fall_back)
+            getattr(canvas, _sig).connect(_slot)
         except Exception:
             pass

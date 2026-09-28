@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 from PySide6.QtGui import QColor
 
+from engine.frame.present import begin_source
+
 
 def test_render_clear_frame_propagates_renderer_bool(monkeypatch):
     from ui.canvas_infra.rhi import rhi_render
@@ -71,6 +73,7 @@ def test_ic_render_skips_signals_when_pass_not_recorded(monkeypatch):
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
     widget._first_frame_rendered_emitted = False
     widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
     widget.firstFrameRendered = SimpleNamespace(emit=lambda: emitted.append("frame"))
     widget.firstVisualFrameReady = SimpleNamespace(
         emit=lambda: emitted.append("visual")
@@ -107,6 +110,7 @@ def test_ic_render_emits_after_settle_flush(monkeypatch):
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
     widget._first_frame_rendered_emitted = False
     widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
     widget.firstFrameRendered = SimpleNamespace(emit=lambda: emitted.append("frame"))
     widget.firstVisualFrameReady = SimpleNamespace(
         emit=lambda: emitted.append("visual")
@@ -143,6 +147,7 @@ def test_ic_render_waits_required_presents_before_flush_emit(monkeypatch):
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
     widget._first_frame_rendered_emitted = False
     widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
     widget.firstFrameRendered = SimpleNamespace(emit=lambda: emitted.append("frame"))
     widget.firstVisualFrameReady = SimpleNamespace(
         emit=lambda: emitted.append("visual")
@@ -193,6 +198,7 @@ def test_ic_settle_flush_skipped_while_drag_visible(monkeypatch):
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
     widget._first_frame_rendered_emitted = False
     widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
     widget._dnd_show_t0 = None
     widget._dnd_first_present_t = None
     widget.runtime_state = SimpleNamespace(_drag_overlay_visible=True)
@@ -209,3 +215,92 @@ def test_ic_settle_flush_skipped_while_drag_visible(monkeypatch):
     scheduled.pop()()  # run the settle flush -> skipped, emit proceeds
     assert flushes == []
     assert emitted == ["frame", "visual"]
+
+
+def test_ic_present_debt_mirror_matches_after_presents(monkeypatch):
+    """The int mirror stays truthful: after N presents it equals debt.presented."""
+    from tabs.image_compare.canvas import widget as widget_mod
+
+    monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+    monkeypatch.setattr(widget_mod.QTimer, "singleShot", lambda _ms, _cb: None)
+
+    widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
+    widget._first_frame_rendered_emitted = False
+    widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
+    widget._request_update = lambda: None
+
+    for expected in (1, 2, 3):
+        widget_mod.CanvasWidget.render(widget, object())
+        assert widget._present_debt.presented == expected
+        assert widget._rhi_presents_completed == expected
+
+
+def test_ic_settle_kick_count_unchanged_with_debt(monkeypatch):
+    """Settle kicks fire for every present <= FIRST_PRESENT_SETTLE_COUNT —
+    the debt swap must not change the kick count (== case still schedules
+    the one extra settle carrying the emit)."""
+    from engine.cache.first_frame_gate import FIRST_PRESENT_SETTLE_COUNT
+    from tabs.image_compare.canvas import widget as widget_mod
+
+    kicks: list[object] = []
+    monkeypatch.setattr(
+        widget_mod.QTimer, "singleShot", lambda _ms, cb: kicks.append(cb)
+    )
+    monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+
+    widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
+    widget._first_frame_rendered_emitted = False
+    widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
+    widget._request_update = lambda: None
+
+    total = FIRST_PRESENT_SETTLE_COUNT + 2
+    for _ in range(total):
+        widget_mod.CanvasWidget.render(widget, object())
+
+    assert widget._rhi_presents_completed == total
+    assert widget._present_debt.presented == total
+    assert len(kicks) == FIRST_PRESENT_SETTLE_COUNT
+
+
+def test_ic_emit_fires_exactly_once_with_debt(monkeypatch):
+    """Emit still fires exactly once no matter how many extra presents and
+    flushes follow (once-flag + flush→emit ordering preserved)."""
+    from tabs.image_compare.canvas import widget as widget_mod
+
+    scheduled: list[object] = []
+    monkeypatch.setattr(widget_mod, "_first_visual_present_count", lambda: 1)
+    monkeypatch.setattr(
+        widget_mod.QTimer, "singleShot", lambda _ms, cb: scheduled.append(cb)
+    )
+    monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+    monkeypatch.setattr(
+        "ui.canvas_infra.rhi.rhi_present_sync.flush_qrhi_compositor",
+        lambda *_a, **_k: None,
+    )
+
+    emitted: list[str] = []
+    widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
+    widget._first_frame_rendered_emitted = False
+    widget._rhi_presents_completed = 0
+    widget._present_debt = begin_source(None)
+    widget.firstFrameRendered = SimpleNamespace(emit=lambda: emitted.append("frame"))
+    widget.firstVisualFrameReady = SimpleNamespace(
+        emit=lambda: emitted.append("visual")
+    )
+    widget._request_update = lambda: None
+
+    for _ in range(3):
+        widget_mod.CanvasWidget.render(widget, object())
+    while scheduled:
+        scheduled.pop()()
+    assert emitted == ["frame", "visual"]
+
+    # Extra presents + flushes after the emit must not re-emit.
+    for _ in range(3):
+        widget_mod.CanvasWidget.render(widget, object())
+    while scheduled:
+        scheduled.pop()()
+    assert emitted == ["frame", "visual"]
+    assert widget._rhi_presents_completed == widget._present_debt.presented == 6

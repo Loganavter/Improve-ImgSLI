@@ -505,6 +505,12 @@ def build_overlay_ui(overlay) -> None:
     # label stays the default visible child.
     overlay._preview_canvas = None
     overlay._preview_store = None
+    # QLabel fallback view (preview_label_zoom): whole-frame until the user
+    # wheel-zooms; reset per populate like the canvas zoom in set_source.
+    overlay._label_zoom = 1.0
+    overlay._label_pan_x = 0.0
+    overlay._label_pan_y = 0.0
+    overlay._label_drag = None
     # Source inset, SHARPNESS-CROP parity: an absolute block bottom-left
     # OVER the preview image (not in the flow) — title pill above the
     # pixmap, like the crop block.

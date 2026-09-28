@@ -436,7 +436,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/widget.py",
-      "lines": 1109,
+      "lines": 1117,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -745,7 +745,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1085,
+      "lines": 1159,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -756,7 +756,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 869,
+      "lines": 875,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -764,6 +764,30 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
+      "lines": 572,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
+      "lines": 552,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: cover/fallback/label-repopulate share one GPU-path attribution\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one canvas-slot lifecycle: cover/fallback/label-repopulate share one GPU-path attribution"
       }
     },
     {

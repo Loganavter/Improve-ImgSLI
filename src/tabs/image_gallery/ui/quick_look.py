@@ -332,6 +332,80 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                         self._reposition_source_inset()
                     except Exception:
                         pass
+                # Label fallback zoom (no GPU path): wheel = cursor-anchored
+                # zoom via preview_label_zoom (canvas parity); LMB/Middle
+                # drag pans while zoomed. At 1.0x every helper no-ops so
+                # label clicks keep the old veil-swallow behavior.
+                _label = getattr(self, "_preview_label", None)
+                if watched is _label and _label is not None:
+                    _et = event.type()
+                    if _et == _QE.Type.Wheel:
+                        try:
+                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
+                                label_wheel,
+                            )
+
+                            _pos = event.position()
+                            _lw = max(1, int(_label.width()))
+                            _lh = max(1, int(_label.height()))
+                            if label_wheel(
+                                self,
+                                event.angleDelta().y(),
+                                float(_pos.x()) / _lw,
+                                float(_pos.y()) / _lh,
+                            ):
+                                try:
+                                    event.accept()
+                                except Exception:
+                                    pass
+                                return True
+                        except Exception:
+                            pass
+                    elif _et == _QE.Type.MouseButtonPress:
+                        try:
+                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
+                                label_press,
+                            )
+
+                            _pos = event.position()
+                            if label_press(self, float(_pos.x()), float(_pos.y()), event.button()):
+                                try:
+                                    event.accept()
+                                except Exception:
+                                    pass
+                                return True
+                        except Exception:
+                            pass
+                    elif _et == _QE.Type.MouseMove:
+                        try:
+                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
+                                label_move,
+                            )
+
+                            _pos = event.position()
+                            if label_move(
+                                self,
+                                float(_pos.x()),
+                                float(_pos.y()),
+                                max(1, int(_label.width())),
+                                max(1, int(_label.height())),
+                            ):
+                                try:
+                                    event.accept()
+                                except Exception:
+                                    pass
+                                return True
+                        except Exception:
+                            pass
+                    elif _et == _QE.Type.MouseButtonRelease:
+                        try:
+                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
+                                label_release,
+                            )
+
+                            label_release(self)
+                        except Exception:
+                            pass
                 # While the first-frame cover is up it is a layout-external
                 # sibling — canvas moves/resizes (layout settle, card drags)
                 # slide the canvas under it, so re-fit the cover geometry
