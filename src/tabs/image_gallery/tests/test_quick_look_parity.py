@@ -285,6 +285,45 @@ def test_camera_noise_and_wb_rows_present_when_metrics_exist(qtbot):
     ov.hide()
 
 
+def test_clipping_warn_threshold_is_five_percent(qtbot):
+    """Clipping <5% (ordinary lamps/speculars) keeps the ok bar, not warn.
+
+    Regression: warn fired above 2%, flagging stage lights at 2.6%.
+    Note: the warn/ok split colors the BAR fill; the value text is always
+    ok-green. Relative assertion (no theme hexes): the 2.6% fill matches
+    the ok Sharpness fill; the 6.0% fill does not.
+    """
+    from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+
+    def _fills(item):
+        ov = _make_overlay(qtbot)
+        _show(ov, item, [item], mode=Mode.CAMERA)
+        try:
+            out = {}
+            for row in ov._metric_rows:
+                titles = [lbl.text() for lbl in row.findChildren(_QlLabel)]
+                bars = row.findChildren(_BarWidget)
+                if not bars:
+                    continue
+                fill = getattr(bars[0], "_explicit_fill", None)
+                for title in ("Sharpness (Laplacian var)", "Clipping %"):
+                    if title in titles:
+                        out[title] = fill.name().lower() if fill is not None else None
+            return out
+        finally:
+            ov.hide()
+
+    low = _fills(
+        _item("low.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 2.6})
+    )
+    high = _fills(
+        _item("high.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 6.0})
+    )
+    assert low["Clipping %"] is not None and high["Clipping %"] is not None
+    assert low["Clipping %"] == low["Sharpness (Laplacian var)"]
+    assert high["Clipping %"] != high["Sharpness (Laplacian var)"]
+
+
 def test_camera_noise_and_wb_rows_skipped_when_missing(qtbot):
     item = _item("cam.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 0.4})
     ov = _make_overlay(qtbot)

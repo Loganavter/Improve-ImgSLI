@@ -232,7 +232,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             _add_unmeasured_row("Clipping %")
         else:
             frac3 = max(0.0, min(1.0, clip_f / 10 if clip_f > 1 else clip_f))
-            _add_metric_row("Clipping %", f"{clip_f:.1f}%", frac3, _warn_color() if clip_f > 2 else _ok_color())
+            # A few percent of clipped speculars/lamps is normal in photos —
+            # warn only from 5% (was 2%, flagging ordinary stage lights).
+            _add_metric_row("Clipping %", f"{clip_f:.1f}%", frac3, _warn_color() if clip_f > 5 else _ok_color())
         noise = None
         for nk in ("noise", "noise_estimate", "noise_level"):
             if metrics.get(nk) is not None:
