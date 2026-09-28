@@ -77,6 +77,10 @@ class ImageGalleryWidget(QWidget):
         super().__init__(parent)
         self._context = context
         self._items: list[GalleryItem] = []
+        # View switch state: False grid, True list. Mirrors the toolbar
+        # segmented switch; grid_view owns the per-card builders
+        # (set_view_mode swaps ui/card <-> ui/list in place).
+        self._view_mode = False
 
         def _tr(key: str, default: str) -> str:
             if context is None:
