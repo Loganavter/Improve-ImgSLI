@@ -498,6 +498,12 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     preview_host_lay.addWidget(overlay._preview_label, 1)
+    # Canvas preview slot: overlay._preview_canvas lives here when the GPU
+    # path is available (preview.populate_preview creates it lazily; QLabel
+    # fallback otherwise). Placeholders keep the slot shape explicit; the
+    # label stays the default visible child.
+    overlay._preview_canvas = None
+    overlay._preview_store = None
     # Source inset, SHARPNESS-CROP parity: an absolute block bottom-left
     # OVER the preview image (not in the flow) — title pill above the
     # pixmap, like the crop block.

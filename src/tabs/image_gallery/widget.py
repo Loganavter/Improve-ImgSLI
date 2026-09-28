@@ -645,13 +645,17 @@ class ImageGalleryWidget(QWidget):
         return None
 
     def _on_view_toggled(self, checked: bool) -> None:
-        # View switch toggle (grid/list) — view-local only (no GALLERY_*
-        # action in the frozen seam); keep state for future parity.
+        # View switch toggle (grid/list) — one view, builders swap inside
+        # GalleryGridView (recent items_view parity). Series, selection and
+        # triage state are untouched; the grid rebuilds its cards in place.
         try:
             self._view_mode = bool(checked)
         except Exception:
             pass
-        # No layout change for Stage 2 — placeholder for parity with mockup toggle.
+        try:
+            self._grid_view.set_view_mode("list" if checked else "grid")
+        except Exception:
+            pass
         try:
             _dbg("view toggled %s", bool(checked))
         except Exception:

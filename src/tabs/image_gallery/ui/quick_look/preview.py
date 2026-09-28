@@ -1,10 +1,12 @@
 """Quick look preview + source dims — plain functions (no owner state).
 
-Single-decode preview (``populate_preview`` stashes ``_preview_full``;
-``_rescale_preview_to_host`` re-derives at live label size), scaled-reader
-loads (``_load_scaled_pixmap``), fast dims (``_fast_image_size`` +
-``_source_dimensions`` with metrics cache). Extracted verbatim from
-``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
+Preview pixels never come from a full-res ``QPixmap`` decode of a huge
+source: dimensions are probed first (``_fast_image_size``, no decode) and
+anything over ``_PREVIEW_FULL_DECODE_EDGE`` goes through the scaled
+``QImageReader`` read (``_load_scaled_pixmap``) — a 40k source would
+otherwise cost ~6 GB for one ``QPixmap``. The stashed ``_preview_full``
+is therefore at most ~2k on the long edge; ``_rescale_preview_to_host``
+re-derives the shown pixmap from it on every card resize.
 """
 
 from __future__ import annotations
@@ -14,9 +16,18 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
+# Full QPixmap decode above this edge is banned (RAM: edge^2 × 4B).
+_PREVIEW_FULL_DECODE_EDGE = 2048
+
 
 def _load_preview_pixmap(path: Path, target_w: int = 640, target_h: int = 456) -> QPixmap | None:
+    """Preview pixmap for *path* without ever full-decoding a huge source."""
     try:
+        dims = _fast_image_size(path)
+        if dims is not None and max(int(dims[0]), int(dims[1])) > _PREVIEW_FULL_DECODE_EDGE:
+            got = _load_scaled_pixmap(path, int(target_w), int(target_h))
+            if got is not None and not got.isNull():
+                return got
         pm = QPixmap(str(path))
         if pm.isNull():
             return None
@@ -350,6 +361,29 @@ def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
 
 
 def populate_preview(overlay, item) -> None:
+    # GPU branch first (host module owns it); any failure degrades to QLabel.
+    try:
+        from tabs.image_gallery.ui.quick_look.preview_canvas_host import _populate_preview_canvas
+
+        if _populate_preview_canvas(overlay, item):
+            return
+    except Exception:
+        pass
+    _populate_preview_label(overlay, item)
+
+
+def _populate_preview_label(overlay, item) -> None:
+    # Fallback: restore the label (the canvas branch may have hidden it).
+    try:
+        canvas = getattr(overlay, "_preview_canvas", None)
+        if canvas is not None:
+            canvas.hide()
+    except Exception:
+        pass
+    try:
+        overlay._preview_label.show()
+    except Exception:
+        pass
     # W-B: stash the unscaled source in ``overlay._preview_full`` so
     # ``_rescale_preview_to_host`` can re-derive the shown pixmap at the
     # live label size on every card resize (preview stretches with aspect,
