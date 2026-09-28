@@ -152,7 +152,7 @@ def test_remove_action_calls_remove_from_grid(monkeypatch) -> None:
     trig("gallery.remove", None)
     assert removed == ["/a.png"]
 def test_remove_action_has_icon(monkeypatch) -> None:
-    """Remove from view must render an icon like the glyph-led rows."""
+    """Delete must render the list-mode trash icon with danger styling."""
     from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
 
     captured = _capture_menu(monkeypatch)
@@ -165,7 +165,9 @@ def test_remove_action_has_icon(monkeypatch) -> None:
         items = e.entries if isinstance(e, ContextMenuSection) else (e,)
         for a in items:
             if isinstance(a, ContextMenuAction) and a.action_id == "gallery.remove":
-                assert a.icon, "gallery.remove needs an icon"
+                assert a.text == "Delete"
+                assert a.icon == "delete", "list-mode trash parity"
+                assert a.danger is True
                 return
     raise AssertionError("gallery.remove entry missing")
 

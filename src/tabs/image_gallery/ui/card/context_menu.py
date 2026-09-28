@@ -199,8 +199,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ),
                 ContextMenuAction(
                     "gallery.remove",
-                    "Remove from view",
-                    icon="remove",
+                    "Delete",
+                    icon="delete",
+                    danger=True,
                 ),
             ]
         )
@@ -392,7 +393,7 @@ def _ctx_compare(owner, path: Path) -> None:
 
 
 def _ctx_remove(owner, path: Path) -> None:
-    """Remove card from the grid (file on disk stays; ex-delete-badge)."""
+    """Delete card from the grid (file on disk stays; list-mode parity)."""
     try:
         from tabs.image_gallery.use_cases import triage as _triage
 
