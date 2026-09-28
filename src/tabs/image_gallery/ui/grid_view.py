@@ -5,7 +5,7 @@ Uses ``OverlayScrollArea`` + ``OpaqueFillHost`` + ``QGridLayout`` with a
 reused ``Button`` pool (4 columns, rebuild_grid / refresh_card /
 set_card_visible / apply_selection). Keeps the same contracts as
 ``session_picker/recent/items_view.py``: list mode reuses this ONE view and
-only swaps the card builders (``ui/list_card.py``) + placement columns.
+only swaps the card builders (``ui/list/``) + placement columns.
 ``scaled_px`` is used for every geometry constant; no ad-hoc stylesheets —
 painter pipeline owns visuals.
 """
@@ -29,8 +29,9 @@ from tabs.image_gallery.ui.card import (
     gallery_selection_accent,
     update_gallery_card,
 )
-from tabs.image_gallery.ui.list_card import (
+from tabs.image_gallery.ui.list.card import (
     LIST_CARD_H,
+    _bind_list_row,
     build_gallery_list_card,
     update_gallery_list_card,
 )
@@ -1383,7 +1384,11 @@ class GalleryGridView(QWidget):
             card.clicked.disconnect()
         except Exception:
             pass
-        # Re-install handlers with current callbacks.
+        # Re-install handlers with current callbacks. List rows route chrome
+        # region clicks to actions — grid binder would activate on every id.
+        if self._view_mode == VIEW_LIST:
+            _bind_list_row(card, on_activate=self._handle_toggle, on_context_menu=self._handle_context_menu)
+            return
         from tabs.image_gallery.ui.card import _bind_gallery_card  # local import to avoid cycle
 
         _bind_gallery_card(card, on_activate=self._handle_toggle, on_context_menu=self._handle_context_menu)
