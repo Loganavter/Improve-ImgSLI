@@ -334,8 +334,19 @@ class PyramidPixelStore:
         """Shrink-on-load coarse decode; raises on any failure."""
         import pyvips
 
+        # Parity decision (pyramid wave-B1): pyvips ``thumbnail`` honors EXIF
+        # orientation tags by default (auto-rotate), but the PIL branch below
+        # (``Image.thumbnail``) and the legacy gallery ladder never transpose
+        # — no ``exif_transpose`` anywhere in the thumb path. Passing
+        # ``no_rotate`` keeps BOTH coarse branches unrotated and identical in
+        # orientation. Honoring orientation everywhere is a deliberate
+        # behavior change and stays a follow-up, not part of this epic.
         thumb = pyvips.Image.thumbnail(
-            str(path), cap, height=cap, size=pyvips.enums.Size.DOWN
+            str(path),
+            cap,
+            height=cap,
+            size=pyvips.enums.Size.DOWN,
+            no_rotate=True,
         )
         if not thumb.hasalpha():
             thumb = thumb.bandjoin(255)

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from PIL import Image
 from PySide6.QtGui import QImage
 
@@ -274,6 +275,14 @@ def test_coarse_factory_scaled_read_without_full_frame(tmp_path, monkeypatch):
 
     monkeypatch.setattr(TiledPixelStore, "materialize_full", _spy_materialize)
     monkeypatch.setattr(tps_module, "to_real_pil_copy", _spy_to_real)
+    # This test covers the bounded-reader (PIL) branch: force it even where
+    # libvips is installed (there PNG/JPEG would stream via vips with a
+    # different downscale kernel, breaking the PIL-identity assert below).
+    # The vips branch has its own coverage further down this file.
+    monkeypatch.setattr(
+        "shared.image_processing.progressive_loader.pyvips_can_stream",
+        lambda path: False,
+    )
 
     rng = np.random.default_rng(11)
     arr = rng.integers(0, 256, size=(1536, 2048, 4), dtype=np.uint8)
@@ -302,3 +311,210 @@ def test_coarse_factory_scaled_read_without_full_frame(tmp_path, monkeypatch):
     assert PyramidPixelStore.coarse_from_source(
         str(src), long_edge="wide", tmp_dir=str(tmp_path)
     ) is None
+
+
+# --- Wave-B1 roughness R1: vips-branch coverage (real pyvips) ---
+#
+# These tests exercise ``_coarse_from_source_vips`` + the streamable path of
+# ``coarse_from_source`` with real files. They degrade via
+# ``pytest.importorskip("pyvips")`` so CI without libvips still runs the file.
+# Identity asserts (dims + content vs an independent PIL downscale), not sizes
+# alone; vips and PIL use different kernels, so content comparisons carry an
+# explicit tolerance instead of byte equality.
+
+
+def _quadrant_file(path, width=2048, height=1536, fmt="JPEG", exif_orientation=None):
+    """Save a 4-block RGB file (red/green/blue/white quadrants); returns path."""
+    half_w, half_h = width // 2, height // 2
+    arr = np.zeros((height, width, 3), dtype=np.uint8)
+    arr[:half_h, :half_w] = (255, 0, 0)
+    arr[:half_h, half_w:] = (0, 255, 0)
+    arr[half_h:, :half_w] = (0, 0, 255)
+    arr[half_h:, half_w:] = (255, 255, 255)
+    img = Image.fromarray(arr, mode="RGB")
+    kwargs = {}
+    if exif_orientation is not None:
+        exif = Image.Exif()
+        exif[0x0112] = int(exif_orientation)
+        kwargs["exif"] = exif
+    img.save(path, fmt, **kwargs)
+    return path
+
+
+def _quadrant_centers(shape):
+    """Interior sample points (y, x) of the four downscaled quadrant blocks."""
+    h, w = shape[:2]
+    return [(h // 4, w // 4), (h // 4, 3 * w // 4), (3 * h // 4, w // 4), (3 * h // 4, 3 * w // 4)]
+
+
+def _assert_quadrant_colors(rgb, jpeg=True):
+    """Quadrant interiors keep their block colors (red/green/blue/white)."""
+    lo, hi = (150, 110) if jpeg else (200, 60)
+    (r_y, r_x), (g_y, g_x), (b_y, b_x), (w_y, w_x) = _quadrant_centers(rgb.shape)
+    assert rgb[r_y, r_x, 0] > lo and rgb[r_y, r_x, 1] < hi and rgb[r_y, r_x, 2] < hi
+    assert rgb[g_y, g_x, 1] > lo and rgb[g_y, g_x, 0] < hi and rgb[g_y, g_x, 2] < hi
+    assert rgb[b_y, b_x, 2] > lo and rgb[b_y, b_x, 0] < hi and rgb[b_y, b_x, 1] < hi
+    assert bool(np.all(rgb[w_y, w_x] > lo))
+
+
+def test_coarse_vips_jpeg_dims_content_and_failure_path(tmp_path):
+    pytest.importorskip("pyvips")
+    from shared.image_processing.progressive_loader import pyvips_can_stream
+
+    src = _quadrant_file(tmp_path / "large.jpg")
+    if not pyvips_can_stream(str(src)):
+        pytest.skip("libvips cannot stream JPEG in this build")
+    cap = 512
+    coarse = PyramidPixelStore.coarse_from_source(
+        str(src), long_edge=cap, tmp_dir=str(tmp_path)
+    )
+    try:
+        assert coarse is not None
+        assert coarse.is_open
+        assert coarse.size == (512, 384)  # long edge capped
+        got = np.asarray(coarse.crop((0, 0, 512, 384)))
+        assert got.shape == (384, 512, 4)  # RGBA bytes, strip-written store valid
+        assert np.all(got[:, :, 3] == 255)
+        _assert_quadrant_colors(got[:, :, :3], jpeg=True)
+        # Independent reference: PIL LANCZOS downscale of the same file.
+        with Image.open(src) as ref_img:
+            ref = np.asarray(
+                ref_img.convert("RGB").resize((512, 384), Image.Resampling.LANCZOS)
+            )
+        mean_abs = np.mean(
+            np.abs(got[:, :, :3].astype(np.int16) - ref.astype(np.int16))
+        )
+        assert mean_abs < 8.0
+    finally:
+        if coarse is not None:
+            coarse.close()
+    # Failure path fails closed to None (streamable ext, so the vips branch).
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"\x00\x11not-a-jpeg" * 64)
+    assert PyramidPixelStore.coarse_from_source(
+        str(corrupt), tmp_dir=str(tmp_path)
+    ) is None
+    assert PyramidPixelStore.coarse_from_source(
+        str(tmp_path / "missing.jpg"), tmp_dir=str(tmp_path)
+    ) is None
+
+
+def test_coarse_vips_png_rgba(tmp_path):
+    pytest.importorskip("pyvips")
+    from shared.image_processing.progressive_loader import pyvips_can_stream
+
+    half_w, half_h, w, h = 1024, 768, 2048, 1536
+    arr = np.zeros((h, w, 4), dtype=np.uint8)
+    arr[:, :, 3] = 255
+    arr[:half_h, :half_w, 0] = 255
+    arr[:half_h, half_w:, 1] = 255
+    arr[half_h:, :half_w, 2] = 255
+    arr[half_h:, half_w:, :3] = 255
+    src = tmp_path / "large.png"
+    Image.fromarray(arr, mode="RGBA").save(src)
+    if not pyvips_can_stream(str(src)):
+        pytest.skip("libvips cannot stream PNG in this build")
+    coarse = PyramidPixelStore.coarse_from_source(
+        str(src), long_edge=512, tmp_dir=str(tmp_path)
+    )
+    try:
+        assert coarse is not None
+        assert coarse.size == (512, 384)
+        got = np.asarray(coarse.crop((0, 0, 512, 384)))
+        assert got.shape == (384, 512, 4)
+        assert np.all(got[:, :, 3] == 255)
+        _assert_quadrant_colors(got[:, :, :3], jpeg=False)
+        with Image.open(src) as ref_img:
+            ref = np.asarray(
+                ref_img.convert("RGB").resize((512, 384), Image.Resampling.LANCZOS)
+            )
+        mean_abs = np.mean(
+            np.abs(got[:, :, :3].astype(np.int16) - ref.astype(np.int16))
+        )
+        assert mean_abs < 5.0  # lossless source: tighter agreement
+    finally:
+        if coarse is not None:
+            coarse.close()
+
+
+def test_coarse_vips_direct_matches_dispatch(tmp_path):
+    """``_coarse_from_source_vips`` direct call == dispatched streamable path."""
+    pytest.importorskip("pyvips")
+    from shared.image_processing.progressive_loader import pyvips_can_stream
+
+    src = _quadrant_file(tmp_path / "direct.jpg")
+    if not pyvips_can_stream(str(src)):
+        pytest.skip("libvips cannot stream JPEG in this build")
+    direct = PyramidPixelStore._coarse_from_source_vips(str(src), 512, str(tmp_path))
+    dispatched = PyramidPixelStore.coarse_from_source(
+        str(src), long_edge=512, tmp_dir=str(tmp_path)
+    )
+    try:
+        assert direct is not None and dispatched is not None
+        assert direct.size == dispatched.size == (512, 384)
+        assert np.array_equal(
+            np.asarray(direct.crop((0, 0, 512, 384))),
+            np.asarray(dispatched.crop((0, 0, 512, 384))),
+        )
+    finally:
+        direct.close()
+        if dispatched is not None:
+            dispatched.close()
+
+
+# --- Wave-B1 roughness R2: EXIF-orientation parity (both branches unrotated) ---
+
+
+def test_coarse_exif_orientation_parity_unrotated(tmp_path, monkeypatch):
+    """EXIF orientation 6: vips branch, PIL branch, and legacy render agree.
+
+    Nothing in the gallery thumb path transposes EXIF today, so both coarse
+    branches must stay unrotated (``no_rotate`` on the vips call). A rotated
+    render of this landscape file would come back portrait (384x512).
+    """
+    pytest.importorskip("pyvips")
+    from shared.image_processing.progressive_loader import pyvips_can_stream
+
+    src = _quadrant_file(tmp_path / "exif6.jpg", 1600, 1200, "JPEG", exif_orientation=6)
+    if not pyvips_can_stream(str(src)):
+        pytest.skip("libvips cannot stream JPEG in this build")
+    cap = 512
+    # Legacy reference: the exact PIL-branch recipe (no exif_transpose).
+    with Image.open(src) as probe:
+        legacy = probe.copy()
+        legacy.thumbnail((cap, cap), Image.Resampling.BILINEAR)
+        legacy = legacy.convert("RGBA")
+    assert legacy.size == (512, 384)  # unrotated landscape stays landscape
+    legacy_arr = np.asarray(legacy)
+    # PIL branch (forced): byte-identical to the legacy render.
+    monkeypatch.setattr(
+        "shared.image_processing.progressive_loader.pyvips_can_stream",
+        lambda path: False,
+    )
+    pil_coarse = PyramidPixelStore.coarse_from_source(
+        str(src), long_edge=cap, tmp_dir=str(tmp_path)
+    )
+    try:
+        assert pil_coarse is not None
+        assert pil_coarse.size == (512, 384)
+        assert np.array_equal(
+            np.asarray(pil_coarse.crop((0, 0, 512, 384))), legacy_arr
+        )
+    finally:
+        if pil_coarse is not None:
+            pil_coarse.close()
+    # Vips branch (direct): identical orientation — also unrotated landscape.
+    vips_coarse = PyramidPixelStore._coarse_from_source_vips(
+        str(src), cap, str(tmp_path)
+    )
+    try:
+        assert vips_coarse.size == (512, 384)  # portrait here == auto-rotated
+        vips_arr = np.asarray(vips_coarse.crop((0, 0, 512, 384)))
+        assert vips_arr.shape == (384, 512, 4)
+        _assert_quadrant_colors(vips_arr[:, :, :3], jpeg=True)
+        mean_abs = np.mean(
+            np.abs(vips_arr[:, :, :3].astype(np.int16) - legacy_arr[:, :, :3].astype(np.int16))
+        )
+        assert mean_abs < 10.0
+    finally:
+        vips_coarse.close()
