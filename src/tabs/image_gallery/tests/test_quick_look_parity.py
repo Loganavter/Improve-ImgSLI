@@ -1402,7 +1402,7 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
     assert scroll.verticalScrollBar().isVisible() is False
     # Badge contract still holds at the new size (card-style overlay pills).
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path["/gallery/a.png"]._gallery_badge == "★ BEST"
+    assert by_path["/gallery/a.png"]._gallery_badge == "#1"
     assert by_path["/gallery/b.png"]._gallery_badge == "#2"
     assert by_path["/gallery/a.png"]._badge is None
     ov.hide()

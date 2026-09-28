@@ -114,15 +114,7 @@ class GalleryController:
         try:
             widget._controller = self  # type: ignore[attr-defined]
             widget._owner = self  # type: ignore[attr-defined]
-            # A3: link selection HUD collaborator (widget owns it) to controller for use_cases/selection
-            try:
-                hud = getattr(widget, "_selection_hud", None)
-                if hud is not None:
-                    self._selection_hud = hud  # type: ignore[attr-defined]
-                    # also expose on widget for widget-side calls
-                    widget._selection_hud = hud  # type: ignore[attr-defined]
-            except Exception:
-                pass
+
             # Marquee owner for grid_view hit-test commit
             try:
                 if hasattr(widget, "_grid_view") and widget._grid_view is not None:

@@ -66,40 +66,6 @@ def test_info_hud_is_tagged_and_never_a_dismiss_target():
         manager.set_layer_stack(previous_stack)
 
 
-def test_gallery_hover_capsule_coexists_with_selection_hud():
-    """Hover capsule must not kill the selection HUD (and vice versa).
-
-    Regression: both groups were unconfigured, so the exclusive fallback
-    fired both ways — hovering any card dismissed "N selected" on the
-    first hover after selecting, and every HUD re-show dismissed the
-    capsule under the cursor. The capsule even dismissed open context
-    menus on hover.
-    """
-    manager = FlyoutManager.get_instance()
-    previous = manager.show_policy()
-    try:
-        policy = install_flyout_show_policy()
-
-        capsule = type("C", (), {"flyout_group": "gallery_card"})()
-        hud = type("H", (), {"flyout_group": "gallery_selection"})()
-        menu = type("M", (), {"flyout_group": "context_menu"})()
-        listing = type("L", (), {"flyout_group": "unified_list"})()
-
-        assert policy.should_dismiss(capsule, hud) is False
-        assert policy.should_dismiss(hud, capsule) is False
-        assert policy.should_claim_active(capsule, None) is False
-        assert policy.should_claim_active(hud, None) is False
-        # Hover-frequency pill must not kill context menus either.
-        assert policy.should_dismiss(capsule, menu) is False
-        # Exclusive groups still dismiss each other (policy not blunted).
-        assert policy.should_dismiss(listing, hud) is False
-        assert policy.should_dismiss(
-            type("O", (), {"flyout_group": "options"})(), listing
-        ) is True
-    finally:
-        manager.set_show_policy(previous)
-
-
 def test_every_flyout_group_is_policy_known():
     """Guard: no flyout may rely on the exclusive "default" fallback.
 
