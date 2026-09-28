@@ -8,18 +8,14 @@ from sli_ui_toolkit.managers import scaled_px
 
 
 def rebuild_artifacts(overlay, item) -> None:
-    """Rebuild artifact rows — Banding + Halo ONLY (W5, S4 v2 LIGHT).
+    """Rebuild artifact rows — the mode triple, same three as the card dots.
 
-    The mockup's right column shows exactly two artifact rows (svg:106-141:
-    the Banding histogram block and the Halo bar); the remaining five
-    catalog keys (over-smoothing, invented texture, blocking, chroma
-    fringing, noise amplification) stay visible in the card quality dots
-    and tooltips (``ui/card/dots.py`` — untouched by this overlay cut).
-    Severities resolve through the single source of truth
-    (``use_cases/quality.py``), shared with the card dots, so a
-    mild/flagged banding or halo reads identically; every shown row
-    renders incl. clean (W4 item 8 — hiding clean rows hid the banding
-    base on all-clean items). Delivery is not racy here:
+    The rows mirror ``use_cases/quality.MODE_ARTIFACTS`` for the overlay
+    mode (fidelity: banding/halo/blocking; camera: noise/chroma/halo), so
+    the dots and the graphs can never disagree on the set. Severities
+    resolve through the single source of truth (``use_cases/quality.py``);
+    every shown row renders incl. clean (W4 item 8 — hiding clean rows hid
+    the banding base on all-clean items). Delivery is not racy here:
     ``refresh_artifacts`` rebuilds the open overlay on every artifacts
     delivery (path-guarded, mirrors ``refresh_metrics``).
     """
@@ -34,14 +30,14 @@ def rebuild_artifacts(overlay, item) -> None:
     # Rows live flat in right_lay (see helpers.relayout_report_rows).
     host = getattr(overlay, "_report_host", None)
     lay = getattr(overlay, "_right_lay", None)
-    # W5: overlay shows the mockup set only (Banding + Halo). The full
-    # 7-key catalog stays in the card dots/tooltip (ui/card/dots.py).
-    artifacts = ["banding", "halo"]
+    # Same triple as the card dots (use_cases/quality.MODE_ARTIFACTS).
     try:
         from tabs.image_gallery.use_cases import quality as _quality
 
+        artifacts = list(_quality.MODE_ARTIFACTS[_quality.normalize_mode(getattr(overlay, "_mode", None))])
         shown = [(aid, _quality.severity(item, aid)) for aid in artifacts]
     except Exception:
+        artifacts = ["banding", "halo"]
         shown = [(aid, "clean") for aid in artifacts]
 
 
@@ -78,6 +74,11 @@ def rebuild_artifacts(overlay, item) -> None:
         title_map = {
             "banding": "Banding",
             "halo": "Halo / overshoot",
+            "over_smoothing": "Over-smoothing",
+            "invented_texture": "Invented texture",
+            "blocking": "Blocking",
+            "chroma_fringing": "Chroma fringing",
+            "noise_amplification": "Noise",
         }
         t = _make_label(title_map.get(aid, aid), parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)

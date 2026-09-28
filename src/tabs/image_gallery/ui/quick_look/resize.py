@@ -1,7 +1,7 @@
 """Quick look card resize — plain functions (no owner state).
 Audit-Meta: pattern=thin-owner-target size=exempt reason="one card-resize concern: border/ring share one clamp + repin idiom"
 
-Session-only clamp (floor 1040x620), 8px inner border strip + outer ring
+Session-only clamp (floor 1040x680), 8px inner border strip + outer ring
 drags, card re-layout entry (``_relayout_on_card_resize``).
 Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
 """
@@ -48,7 +48,7 @@ def reposition_grip(overlay) -> None:
 def clamp_card_size(overlay, want_w: int, want_h: int) -> tuple[int, int]:
     """Clamp a wanted card size to the session-only resize bounds (W8/W9).
 
-    Floor: the S4 mockup 1040×620 card. Ceiling: the overlay (parent/window)
+    Floor: the 1040×680 card (mockup was 1040×620; +60 for the third artifact row). Ceiling: the overlay (parent/window)
     minus the 16px margin on each side. Shared by the border and ring drags
     so both handles agree exactly.
     """
@@ -62,7 +62,7 @@ def clamp_card_size(overlay, want_w: int, want_h: int) -> tuple[int, int]:
         except Exception:
             bound_w, bound_h = 0, 0
         new_w = max(scaled_px(1040), int(want_w))
-        new_h = max(scaled_px(620), int(want_h))
+        new_h = max(scaled_px(680), int(want_h))
         if bound_w > 0:
             new_w = min(new_w, bound_w)
         if bound_h > 0:
@@ -298,7 +298,7 @@ def _relayout_on_card_resize(overlay) -> None:
     Preview stretches with aspect, footer reflows. Called from
     ``reposition_grip`` (the in-scope hook every resize path already runs);
     also reachable directly. No close paths, no size-policy changes (W8
-    min-only stays: minimum 1040×620, no maximum).
+    min-only stays: minimum 1040×680, no maximum).
     """
     _distribute_column_floors(overlay)
     _rescale_preview_to_host(overlay)
