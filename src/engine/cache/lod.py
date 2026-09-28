@@ -18,10 +18,17 @@ class LevelKey(NamedTuple):
     byte-identical; a distinct type (not a plain tuple) keeps these keys
     unambiguous next to ``TileTextureService``'s ``(source_id, row, col)``
     tile keys.
+
+    ``generation`` is the base-store generation the level was sampled from:
+    a reunified base reuses the same ``(base, level)`` pair with a fresh
+    generation, so the key stays ``(uid, level, generation)`` and stale
+    entries never alias live ones. Defaults to ``0`` so existing two-field
+    constructions keep working.
     """
 
     base: object
     level: int
+    generation: int = 0
 
 
 def select_level(dest_scale: float, level_count: int) -> int:

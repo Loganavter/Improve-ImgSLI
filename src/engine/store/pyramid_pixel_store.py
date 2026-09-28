@@ -14,11 +14,15 @@ pyramid owns only its derived levels.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+import operator
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -79,7 +83,41 @@ class PyramidPixelStore:
         base = self._levels[0]
         return base.is_open and base.generation == self._base_generation
 
+    @property
+    def generation(self) -> int:
+        """Base-store generation this pyramid was built against.
+
+        Stable snapshot taken at construction: a reunified base bumps its
+        own generation, so comparing this token against the live base
+        generation tells consumers whether sampled levels are stale.
+        """
+        return self._base_generation
+
     def level(self, k: int) -> TiledPixelStore:
+        return self._levels[k]
+
+    def is_level_built(self, k: int) -> bool:
+        """Whether level ``k`` exists and is readable right now."""
+        if isinstance(k, bool) or not isinstance(k, int):
+            return False
+        if k < 0 or k >= len(self._levels):
+            return False
+        if not self.valid:
+            return False
+        try:
+            return bool(self._levels[k].is_open)
+        except Exception:
+            return False
+
+    def level_if_built(self, k: int) -> TiledPixelStore | None:
+        """Level ``k``'s store, or None when it is not built.
+
+        Sampler idiom: never raises IndexError — out-of-range, wrongly
+        typed, stale-pyramid and closed-level lookups all fail closed to
+        None so callers show a gap instead of a neighbor's bytes.
+        """
+        if not self.is_level_built(k):
+            return None
         return self._levels[k]
 
     def best_level_for_scale(self, dest_scale: float) -> int:
@@ -87,6 +125,83 @@ class PyramidPixelStore:
         from engine.cache.lod import select_level
 
         return select_level(dest_scale, self.level_count)
+
+    def best_pixels(
+        self, rect: tuple[int, int, int, int], dest_scale: float
+    ) -> QImage | None:
+        """Sample ``rect`` from the best built level as a QImage, or None.
+
+        ``rect`` is in level-0 source px (``read_array`` box convention:
+        ``(left, top, right, bottom)``); ``dest_scale`` is display-px per
+        level-0 px and only selects the level via
+        :meth:`best_level_for_scale`. The returned image holds the level's
+        native pixels for the mapped box — no resampling, so content stays
+        bit-identical with what the level store holds.
+
+        Fails closed: invalid/empty/out-of-bounds rects, an unparsable
+        scale, a stale pyramid, or an unreadable selected level all yield
+        None (gap) — never a neighboring level's bytes. Reads through
+        ``read_array`` only; never materializes a full frame.
+        """
+        from PySide6.QtGui import QImage
+
+        try:
+            left, top, right, bottom = (operator.index(v) for v in rect)
+        except Exception:
+            return None
+        if right <= left or bottom <= top:
+            return None
+        try:
+            scale = float(dest_scale)
+        except Exception:
+            return None
+        if not self.valid:
+            return None
+        try:
+            base_w, base_h = self._levels[0].size
+        except Exception:
+            return None
+        left = max(0, left)
+        top = max(0, top)
+        right = min(base_w, right)
+        bottom = min(base_h, bottom)
+        if right <= left or bottom <= top:
+            return None
+        try:
+            k = self.best_level_for_scale(scale)
+        except Exception:
+            return None
+        level = self.level_if_built(k)
+        if level is None:
+            return None
+        try:
+            level_w, level_h = level.size
+        except Exception:
+            return None
+        step = 1 << k
+        level_box = (
+            left // step,
+            top // step,
+            min((right + step - 1) // step, level_w),
+            min((bottom + step - 1) // step, level_h),
+        )
+        ll, lt, lr, lb = level_box
+        if lr <= ll or lb <= lt:
+            return None
+        try:
+            arr = np.ascontiguousarray(level.read_array(level_box))
+        except Exception:
+            return None
+        if arr.shape[0] != lb - lt or arr.shape[1] != lr - ll:
+            return None
+        width, height = lr - ll, lb - lt
+        return QImage(
+            arr.data,
+            width,
+            height,
+            width * 4,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
 
     def is_complete(self) -> bool:
         w, h = self._levels[-1].size
@@ -156,6 +271,101 @@ class PyramidPixelStore:
         pyramid = cls(base, tmp_dir)
         pyramid.build_all(should_abort=should_abort)
         return pyramid
+
+    @classmethod
+    def coarse_from_source(
+        cls, path: str, *, long_edge: int = 1024, tmp_dir: str | None = None
+    ) -> TiledPixelStore | None:
+        """Build a bounded coarse store straight from a source file.
+
+        Phase-1 fast path: a small full-image stand-in (long edge capped at
+        ``long_edge``) decoded without ever materializing the full frame —
+        shrink-on-load via libvips ``thumbnail`` when the format streams,
+        else a bounded reader scaled-read. Fails closed to None when the
+        source cannot be read this way; callers then fall back to the
+        regular base decode plus pyramid build. Spills through
+        ``TiledPixelStore`` strip writes only.
+        """
+        from PIL import Image
+
+        try:
+            cap = max(1, operator.index(long_edge))
+        except Exception:
+            return None
+        try:
+            from shared.image_processing.progressive_loader import (
+                pyvips_can_stream,
+            )
+
+            streamable = pyvips_can_stream(path)
+        except Exception:
+            streamable = False
+        if streamable:
+            try:
+                return cls._coarse_from_source_vips(path, cap, tmp_dir)
+            except Exception:
+                logger.debug("[Pyramid] vips coarse decode failed for %s", path)
+                return None
+        try:
+            with Image.open(path) as probe:
+                src_w, src_h = probe.size
+            from shared.image_processing.progressive_loader import (
+                _ensure_supported_dimensions,
+            )
+
+            _ensure_supported_dimensions(src_w, src_h, str(path))
+            with Image.open(path) as img:
+                try:
+                    img.draft(img.mode, (cap * 2, cap * 2))
+                except Exception:
+                    pass
+                thumb = img.copy()
+                thumb.thumbnail((cap, cap), Image.Resampling.BILINEAR)
+                rgba = thumb.convert("RGBA")
+                return TiledPixelStore.from_pil(rgba, tmp_dir)
+        except Exception:
+            logger.debug("[Pyramid] reader coarse decode failed for %s", path)
+            return None
+
+    @staticmethod
+    def _coarse_from_source_vips(
+        path: str, cap: int, tmp_dir: str | None
+    ) -> TiledPixelStore:
+        """Shrink-on-load coarse decode; raises on any failure."""
+        import pyvips
+
+        thumb = pyvips.Image.thumbnail(
+            str(path), cap, height=cap, size=pyvips.enums.Size.DOWN
+        )
+        if not thumb.hasalpha():
+            thumb = thumb.bandjoin(255)
+        if thumb.format != "uchar":
+            thumb = thumb.cast("uchar")
+        out_w, out_h = int(thumb.width), int(thumb.height)
+        buf = thumb.write_to_memory()
+        plane = np.ndarray(
+            buffer=buf, dtype=np.uint8, shape=(out_h, out_w, thumb.bands)
+        )
+        if plane.shape[2] != 4:
+            fixed = np.empty((out_h, out_w, 4), dtype=np.uint8)
+            fixed[:, :, :3] = plane[:, :, :3]
+            fixed[:, :, 3] = 255
+            plane = fixed
+        store = TiledPixelStore.allocate(out_w, out_h, tmp_dir)
+        try:
+            y = 0
+            while y < out_h:
+                chunk = min(_BUILD_STRIP_ROWS, out_h - y)
+                store.write_array(
+                    (0, y, out_w, y + chunk),
+                    np.ascontiguousarray(plane[y : y + chunk]),
+                )
+                y += chunk
+            store.flush()
+        except Exception:
+            store.close()
+            raise
+        return store
 
     def close(self) -> None:
         """Close derived levels only; the base store is owned by the document."""
