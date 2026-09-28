@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
@@ -71,13 +72,27 @@ def _connect_theme_refresh(slot) -> None:
 def _set_painted_width(block, width: int, floor: int) -> None:
     """Set a fill segment width as paint geometry, never as a layout floor.
 
-    ``setFixedWidth`` pins minimum AND maximum, so a width measured at a grown
-    card size would ratchet the column minimum and the card could never shrink
-    back (sticky-width bug: grow→shrink kept ~496px viewports). Lower the
-    minimum back to a constant floor right after pinning; the next resizeEvent
-    recomputes the real width anyway.
+    The width rides on the block's ``sizeHint`` (see ``_FillBlock``): the
+    layout grants a stretch-0 item exactly its hint, so no fixed min/max
+    pins are needed. Pinning via ``setFixedWidth`` and then lowering the
+    minimum left hint-less blocks collapsing to the minimum on the next
+    layout pass (bars rendered full on the first frame, then ~zero, with
+    the <1px storm guard suppressing every correction). The constant floor
+    minimum stays (no grow→shrink ratchet); ``resizeEvent`` recomputes the
+    hint on real size changes.
     """
     try:
+        block.setMinimumWidth(int(floor))
+    except Exception:
+        pass
+    try:
+        setter = getattr(block, "set_painted_width", None)
+        if callable(setter):
+            setter(max(int(floor), int(width)))
+            return
+    except Exception:
+        pass
+    try:  # legacy fallback for non-_FillBlock callers (none in-tree)
         block.setFixedWidth(max(int(floor), int(width)))
     except Exception:
         return
@@ -97,8 +112,32 @@ class _FillBlock(QWidget):
     def __init__(self, color: QColor | str | None = None, parent=None) -> None:
         super().__init__(parent)
         self._color = QColor(0, 0, 0, 0)
+        self._painted_w: int | None = None
         if color is not None:
             self.set_fill_color(color)
+
+    def set_painted_width(self, width: int) -> None:
+        """Painted width via sizeHint (layout grants it, minimum stays floor)."""
+        try:
+            self._painted_w = max(0, int(width))
+        except Exception:
+            return
+        try:
+            self.updateGeometry()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        try:
+            if self._painted_w is not None:
+                return QSize(int(self._painted_w), super().sizeHint().height())
+        except Exception:
+            pass
+        return super().sizeHint()
 
     def set_fill_color(self, color: QColor | str) -> None:
         try:
