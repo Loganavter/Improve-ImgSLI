@@ -1658,7 +1658,7 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-        # Hub names + collapsed for grid_view (A1 parity: SERIES i · hub · n VARIANTS ▾)
+        # Hub names + collapsed for grid_view (A1 parity: SERIES i · hub · n VARIANTS ▼)
         hub_names: list[str | None] = []
         try:
             for cl in [c for c in norm_series if len(c) >= 2]:
