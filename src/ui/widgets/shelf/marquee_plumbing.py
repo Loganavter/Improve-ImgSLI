@@ -342,6 +342,16 @@ def host_mouse_press(view: Any, event: QMouseEvent, wiring: MarqueeWiring) -> bo
         view._marquee_last_update_sig = None  # type: ignore[attr-defined]
     except Exception:
         pass
+    # Scroll basis for mid-drag compensation — stashed BEFORE start:
+    # start() emits the first on_update synchronously, and band_rects
+    # reads this basis. Stashing after start (as before) mixed the new
+    # origin with the previous drag's basis, flashing a stale-based band
+    # for a couple of frames on every press (bare clicks included).
+    try:
+        view._marquee_press_pos = event.position().toPoint()  # type: ignore[attr-defined]
+        view._marquee_press_scroll = scroll_offset(view)  # type: ignore[attr-defined]
+    except Exception:
+        pass
     gesture = ensure_gesture(view, wiring)
     try:
         if not gesture.start(event.position().toPoint()):
@@ -359,12 +369,7 @@ def host_mouse_press(view: Any, event: QMouseEvent, wiring: MarqueeWiring) -> bo
         except Exception:
             pass
         return False
-    # Scroll basis for mid-drag compensation + band on.
-    try:
-        view._marquee_press_pos = event.position().toPoint()  # type: ignore[attr-defined]
-        view._marquee_press_scroll = scroll_offset(view)  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    # Band on.
     try:
         band = band_widget(view)
         if band is not None:

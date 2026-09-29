@@ -362,3 +362,56 @@ def test_update_positions_viewport_band(qtbot) -> None:
         assert abs(a - b) <= 2
     _marquee.on_rect_finish(view, QRect(moved_at, origin).normalized())
     assert not band.isVisible()
+
+
+def test_second_press_uses_fresh_press_basis(qtbot) -> None:
+    """Regression: the first update of a new drag ran on the previous
+    drag's press basis (stash happened after gesture.start, whose update
+    is synchronous) — a bare click after a selection flashed a huge
+    stale-based band for a couple of frames.
+    """
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    view = GalleryGridView()
+    qtbot.addWidget(view)
+    view.resize(800, 600)
+    view.show()
+    qtbot.wait(50)
+    host = view.items_host
+    first = QPoint(host.width() - 30, host.height() - 30)
+    assert host.childAt(first) is None
+    assert _marquee.host_mouse_press(
+        view,
+        _mouse_event(
+            QEvent.Type.MouseButtonPress, first, host.mapToGlobal(first),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        ),
+    ) is True
+    gesture = view._marquee_gesture
+    second_origin = QPoint(first.x() - 200, first.y() - 100)
+    move = _mouse_event(
+        QEvent.Type.MouseMove, second_origin, host.mapToGlobal(second_origin),
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+    )
+    assert gesture.eventFilter(host, move) is True
+    release = _mouse_event(
+        QEvent.Type.MouseButtonRelease, second_origin, host.mapToGlobal(second_origin),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+    )
+    assert gesture.eventFilter(host, release) is False
+    # Second press elsewhere: the synchronous start-update must already use
+    # the new press basis — a 1x1 band at the press point, not a rect mixed
+    # with the previous drag's origin.
+    elsewhere = QPoint(120, 400)
+    assert host.childAt(elsewhere) is None
+    assert _marquee.host_mouse_press(
+        view,
+        _mouse_event(
+            QEvent.Type.MouseButtonPress, elsewhere, host.mapToGlobal(elsewhere),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        ),
+    ) is True
+    band = view._marquee_band
+    got = band.geometry()
+    assert got.width() <= 3 and got.height() <= 3
+    assert abs(got.x() - elsewhere.x()) <= 2 and abs(got.y() - elsewhere.y()) <= 2
