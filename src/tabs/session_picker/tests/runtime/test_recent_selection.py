@@ -194,6 +194,12 @@ def test_marquee_commit_replaces_and_additive(qapp, tmp_path, monkeypatch):
 
 
 def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
+    """In-paint band: press starts the tracker, release finishes + passes through.
+
+    Retires the overlay-era premise (release consumed + overlay hidden):
+    the band now paints in the host's own pass, so the release must reach
+    widgets (hover-loss contract) while still finishing the drag.
+    """
     records = _records(tmp_path, 2)
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: list(records))
     monkeypatch.setattr(
@@ -223,11 +229,7 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
     assert gesture is not None
     assert gesture.active is True
     assert gesture.app_filter_installed is True
-    assert gesture.overlay is not None
-    assert gesture.overlay.isVisible()
-    assert gesture.overlay.testAttribute(
-        Qt.WidgetAttribute.WA_TransparentForMouseEvents
-    )
+    assert host.band_rect is not None and not host.band_rect.isEmpty()
 
     release = QMouseEvent(
         QMouseEvent.Type.MouseButtonRelease,
@@ -237,8 +239,8 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    # Drag tracking uses the toolkit gesture app filter (no grabMouse on Wayland).
-    assert gesture.eventFilter(panel, release) is True
-    assert not gesture.overlay.isVisible()
+    # Drag tracking uses the toolkit state app filter (no grabMouse on Wayland).
+    assert gesture.eventFilter(panel, release) is False
+    assert host.band_rect is None or host.band_rect.isEmpty()
     assert gesture.app_filter_installed is False
     panel.deleteLater()

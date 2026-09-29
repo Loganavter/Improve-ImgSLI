@@ -183,17 +183,13 @@ def ensure_marquee_gesture(view) -> MarqueeState:  # type: ignore[no-untyped-def
         except Exception:
             pass
     if accent is not None:
-        try:
-            gesture.set_accent(accent)
-        except Exception:
-            pass
-        # The toolkit holder keeps the accent for traces only; the host
-        # paints the band, so it needs the accent too.
-        try:
-            if host is not None and hasattr(host, "set_accent"):
-                host.set_accent(accent)
-        except Exception:
-            pass
+        # The holder keeps it for traces; the host paints the band.
+        for target in (gesture, host):
+            try:
+                if target is not None and hasattr(target, "set_accent"):
+                    target.set_accent(accent)
+            except Exception:
+                pass
     return gesture
 
 
@@ -472,16 +468,13 @@ def host_mouse_press(view, event: QMouseEvent) -> bool:  # type: ignore[no-untyp
     except Exception as exc:
         _mdbg("marquee press FAILED err=%r", exc)
         return False
-    try:
-        _mdbg(
-            "marquee press START pos=%s additive=%s base_n=%s gesture_active=%s",
-            event.position().toPoint(),
-            bool(getattr(view, "_marquee_additive", False)),
-            len(getattr(view, "_marquee_base", set()) or set()),
-            bool(getattr(gesture, "active", False)),
-        )
-    except Exception:
-        pass
+    _mdbg(  # fail-open: never raises, no wrapper needed
+        "marquee press START pos=%s additive=%s base_n=%s gesture_active=%s",
+        event.position().toPoint(),
+        bool(getattr(view, "_marquee_additive", False)),
+        len(getattr(view, "_marquee_base", set()) or set()),
+        bool(getattr(gesture, "active", False)),
+    )
     # Live preview clear for non-additive.
     cb = getattr(view, "_on_marquee_preview", None)
     if callable(cb):

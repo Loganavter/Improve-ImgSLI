@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QRect, Qt
 from PySide6.QtGui import QMouseEvent
-from sli_ui_toolkit.widgets import MarqueeBandGesture
+from sli_ui_toolkit.widgets import MarqueeState
 
 from ui.widgets.shelf.selection import (
     ctrl_held,
@@ -28,19 +28,40 @@ def event_filter(view, watched: QObject, event: QEvent) -> bool:
     return False
 
 
-def ensure_marquee_gesture(view) -> MarqueeBandGesture:
-    if view._marquee_gesture is None:
-        view._marquee_gesture = MarqueeBandGesture(
-            view.items_host,
+def ensure_marquee_gesture(view) -> MarqueeState:
+    """Lazily create the toolkit ``MarqueeState`` holder for *view*."""
+    gesture = getattr(view, "_marquee_gesture", None)
+    host = getattr(view, "items_host", None)
+    if gesture is not None and not isinstance(gesture, MarqueeState):
+        # Pre-unify holder: drop it so the shelf never mixes visuals.
+        try:
+            gesture.cancel()
+        except Exception:
+            pass
+        gesture = None
+    if gesture is None:
+        gesture = MarqueeState(
+            host,
             parent=view,
-            clip_widget=view.scroll_area.viewport(),
             on_update=lambda rect: on_marquee_rect_update(view, rect),
             on_finish=lambda rect: on_marquee_rect_finish(view, rect),
         )
-    else:
-        view._marquee_gesture.set_clip_widget(view.scroll_area.viewport())
-    view._marquee_gesture.set_accent(view._selection_accent)
-    return view._marquee_gesture
+        try:
+            view._marquee_gesture = gesture  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    accent = getattr(view, "_selection_accent", None)
+    if accent is not None:
+        try:
+            gesture.set_accent(accent)
+        except Exception:
+            pass
+        try:
+            if host is not None and hasattr(host, "set_accent"):
+                host.set_accent(accent)
+        except Exception:
+            pass
+    return gesture
 
 
 def paths_for_marquee_rect(view, rect: QRect) -> set[str]:
@@ -57,6 +78,12 @@ def paths_for_marquee_rect(view, rect: QRect) -> set[str]:
 
 
 def on_marquee_rect_update(view, rect: QRect) -> None:
+    try:
+        host = getattr(view, "items_host", None)
+        if host is not None and hasattr(host, "set_band_rect"):
+            host.set_band_rect(rect)
+    except Exception:
+        pass
     paths = paths_for_marquee_rect(view, rect)
     if view._on_marquee_preview is not None:
         view._on_marquee_preview(paths, view._marquee_additive)
@@ -68,6 +95,12 @@ def on_marquee_rect_update(view, rect: QRect) -> None:
 
 
 def on_marquee_rect_finish(view, rect: QRect) -> None:
+    try:
+        host = getattr(view, "items_host", None)
+        if host is not None and hasattr(host, "set_band_rect"):
+            host.set_band_rect(None)
+    except Exception:
+        pass
     if rect.isEmpty():
         if view._on_marquee_commit is not None and not view._marquee_additive:
             view._on_marquee_commit(set(), False)

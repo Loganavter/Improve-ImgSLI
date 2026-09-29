@@ -9,6 +9,9 @@ re-sweep constantly during load).
 Pinned here:
 - a grouped rebuild performs exactly ONE selection sweep;
 - a repeat sweep with unchanged selection paints zero cards;
+- a cold sweep (no stamps yet) paints zero cards when nothing is selected
+  (unstamped cards are already visually unselected — stamping without
+  painting kills the ~26ms drag-start stall);
 - pool-recycled cards still get fresh tooltips (the refresh loop that used
   to do this is gone — tooltips moved to the batch path).
 """
@@ -69,7 +72,7 @@ def test_repeat_sweep_paints_nothing(qtbot, monkeypatch) -> None:
                 pass
         w._grid_view.apply_selection(set())
         first = len(paints)
-        assert first == len(items)
+        assert first == 0  # cold sweep: nothing selected, nothing painted
         w._grid_view.apply_selection(set())
         assert len(paints) == first
         # Changed selection repaints only the toggled card.
