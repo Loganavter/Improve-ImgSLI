@@ -179,7 +179,7 @@ def _detached_state(origin=None):
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QWidget
 
-    from tabs.image_gallery.ui.marquee_band import MarqueeState
+    from sli_ui_toolkit.widgets import MarqueeState
 
     updated: list[QRect] = []
     finished: list[QRect] = []
@@ -205,17 +205,28 @@ def test_state_band_is_content_space_identity() -> None:
     assert state.active is True
     assert state.update_at(QPoint(120, 10)) == QRect(origin, QPoint(120, 10)).normalized()
     assert state.update_at(QPoint(150, 90)) == QRect(30, 40, 121, 51)
-    assert updated == [QRect(30, 40, 1, 1)]  # start() emits the degenerate band
+    # Toolkit semantics: update_at emits too (eventFilter path relies on it).
+    assert updated == [
+        QRect(30, 40, 1, 1),  # start() emits the degenerate band
+        QRect(origin, QPoint(120, 10)).normalized(),
+        QRect(30, 40, 121, 51),
+    ]
 
 
 def test_state_tiny_finish_is_empty_rect() -> None:
-    """Degenerate drags finish as QRect() (same min_drag_px=3 rule)."""
+    """Degenerate drags finish as QRect() (same min_drag_px=3 rule).
+
+    Toolkit semantics: finish is single-shot (clears the origin, like the
+    eventFilter path) — every finish below starts a fresh drag first.
+    """
     from PySide6.QtCore import QPoint
 
     state, _, finished = _detached_state()
     assert state.start(QPoint(10, 10)) is True
     assert state.finish_at(QPoint(10, 10)) == QRect()  # 1x1 degenerate
+    assert state.start(QPoint(10, 10)) is True
     assert state.finish_at(QPoint(11, 11)) == QRect()  # 2x2 still tiny
+    assert state.start(QPoint(10, 10)) is True
     band = state.finish_at(QPoint(10, 30))  # 1px wide but 21 tall: not tiny
     assert not band.isEmpty() and (band.width(), band.height()) == (1, 21)
 

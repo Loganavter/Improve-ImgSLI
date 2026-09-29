@@ -6,7 +6,7 @@ gallery grid. Functions take the grid view as first arg and read/write its
 the session picker pattern.
 
 Public API:
-  ensure_marquee_gesture(view) -> MarqueeState
+  ensure_marquee_gesture(view) -> MarqueeState (toolkit tracker)
   paths_for_rect(view, rect) -> set[Path]
   on_rect_update(view, rect)
   on_rect_finish(view, rect)
@@ -26,7 +26,7 @@ from PySide6.QtCore import QEvent, QObject, QRect, Qt
 from PySide6.QtGui import QMouseEvent
 
 from sli_ui_toolkit.managers import scaled_px
-from tabs.image_gallery.ui.marquee_band import MarqueeState
+from sli_ui_toolkit.widgets import MarqueeState
 
 try:
     from tabs.image_gallery.ui.grid_view import GRID_COLUMNS, GRID_MARGIN, GRID_SPACING, GALLERY_CARD_W, GALLERY_CARD_H
@@ -149,12 +149,12 @@ def paths_for_marquee_rect(view, rect: QRect) -> set[Path]:  # type: ignore[no-u
 
 
 def ensure_marquee_gesture(view) -> MarqueeState:  # type: ignore[no-untyped-def]
-    """Lazily create the in-paint ``MarqueeState`` holder for *view*."""
+    """Lazily create the toolkit ``MarqueeState`` holder for *view*."""
     gesture = getattr(view, "_marquee_gesture", None)
     host = getattr(view, "items_host", None)
     if gesture is not None and not isinstance(gesture, MarqueeState):
-        # Pre-refactor holder (toolkit overlay gesture): drop it so the
-        # gallery path never mixes overlay and in-paint visuals.
+        # Pre-unify holder (toolkit overlay gesture or gallery-local state):
+        # drop it so the gallery path never mixes visuals.
         try:
             gesture.cancel()
         except Exception:
@@ -167,6 +167,7 @@ def ensure_marquee_gesture(view) -> MarqueeState:  # type: ignore[no-untyped-def
             parent=view,
             on_update=lambda r: on_rect_update(view, r),
             on_finish=lambda r: on_rect_finish(view, r),
+            on_trace=lambda line: _mdbg(line),
         )
         try:
             view._marquee_gesture = gesture  # type: ignore[attr-defined]
@@ -184,6 +185,13 @@ def ensure_marquee_gesture(view) -> MarqueeState:  # type: ignore[no-untyped-def
     if accent is not None:
         try:
             gesture.set_accent(accent)
+        except Exception:
+            pass
+        # The toolkit holder keeps the accent for traces only; the host
+        # paints the band, so it needs the accent too.
+        try:
+            if host is not None and hasattr(host, "set_accent"):
+                host.set_accent(accent)
         except Exception:
             pass
     return gesture

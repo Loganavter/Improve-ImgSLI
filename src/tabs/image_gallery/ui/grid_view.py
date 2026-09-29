@@ -1332,6 +1332,12 @@ class GalleryGridView(QWidget):
                 self._marquee_gesture.set_accent(self._selection_accent)
             except Exception:
                 pass
+        try:
+            host = getattr(self, "items_host", None)
+            if host is not None and hasattr(host, "set_accent"):
+                host.set_accent(self._selection_accent)
+        except Exception:
+            pass
         self.apply_selection(self._selection)
 
     # -- pool helpers ------------------------------------------------------
