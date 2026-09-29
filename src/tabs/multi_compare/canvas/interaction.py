@@ -68,11 +68,27 @@ def fit_scale_for(slot: CompareSlot, rect: QRect, source=None) -> tuple[float, f
 
 
 def _source_for(widget, slot):
-    """Cached tier for hit-test math (canvas owns the ``pixel_cache`` ref)."""
+    """Cached tier for hit-test math (canvas owns the ``pixel_cache`` ref).
+
+    Parametric-crop clip (lane mc-crop-render): passes the slot through
+    ``residency.cropped_source_for_slot`` (same resolve as the canvas's
+    own ``_slot_sources``, sharing its view cache), so zoom/pan fit math
+    below measures the cropped size on cropped slots. ``None`` on empty
+    crop intersection (gap) or imageless slots.
+    """
     try:
         from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.scene.passes import residency as _residency
 
-        return resolve_slot_source(getattr(widget, "pixel_cache", None), slot)
+        real = resolve_slot_source(getattr(widget, "pixel_cache", None), slot)
+        if real is None:
+            return None
+        return _residency.cropped_source_for_slot(
+            real,
+            _residency.controller_for_canvas(widget),
+            slot,
+            cache=getattr(widget, "_crop_clip_views", None),
+        )
     except Exception:
         return None
 
@@ -111,6 +127,15 @@ def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, flo
     """
     store = None
     key = None
+    box = None
+    try:
+        from tabs.multi_compare.scene.passes import residency as _residency
+
+        box = _residency.crop_box_for_slot(
+            _residency.controller_for_canvas(widget), slot
+        )
+    except Exception:
+        box = None
     try:
         store = getattr(widget, "_zoom_fit_cache", None)
         if store is None:
@@ -122,6 +147,10 @@ def fit_scale_cached(widget, slot: CompareSlot, rect: QRect) -> tuple[float, flo
             _cache_generation(getattr(widget, "pixel_cache", None)),
             rect.width(),
             rect.height(),
+            # Crop toggle flips no revision/generation, so the effective
+            # box itself keys the memo -- otherwise a toggled slot keeps
+            # fit for the wrong size.
+            box,
         )
         hit = store.get(key)
         # Tick-marker atom: remember whether this lookup hit, so the wheel
