@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from sli_ui_toolkit.managers import UiScale, scaled_px
-from sli_ui_toolkit.widgets import Button, MarqueeBandGesture, OverlayScrollArea
+from sli_ui_toolkit.widgets import Button, MarqueeState, OverlayScrollArea
 
 from services.io.recent_projects import (
     VIEW_GRID,
@@ -95,7 +95,7 @@ class RecentItemsView(QWidget):
         self._selection_paths: Callable[[], set[str]] = lambda: set()
         self._on_marquee_commit: Callable[[set[str], bool], None] | None = None
         self._on_marquee_preview: Callable[[set[str], bool], None] | None = None
-        self._marquee_gesture: MarqueeBandGesture | None = None
+        self._marquee_gesture: MarqueeState | None = None
         self._marquee_additive = False
         self._marquee_base: set[str] = set()
         self._selection_accent = selection_accent_color()
@@ -263,11 +263,12 @@ class RecentItemsView(QWidget):
             apply_card_selected(card, path in paths, accent=accent)
 
     def refresh_selection_accent(self) -> None:
-        self._selection_accent = selection_accent_color(
-            getattr(self, "_theme_manager", None)
+        from ui.widgets.shelf.marquee_plumbing import refresh_accent
+
+        refresh_accent(
+            self,
+            selection_accent_color(getattr(self, "_theme_manager", None)),
         )
-        if self._marquee_gesture is not None:
-            self._marquee_gesture.set_accent(self._selection_accent)
         self.apply_selection()
 
     def apply_surface_colors(self, *, content_bg: QColor, shelf_bg: QColor) -> None:

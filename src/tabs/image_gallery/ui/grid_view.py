@@ -35,8 +35,7 @@ from tabs.image_gallery.ui.list.card import (
     build_gallery_list_card,
     update_gallery_list_card,
 )
-from tabs.image_gallery.ui.marquee_band import MarqueeHost
-from ui.widgets.shelf import apply_opaque_widget_fill
+from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
 
 # View modes (recent items_view parity): one view, builders + columns swap.
 VIEW_GRID = "grid"
@@ -199,7 +198,7 @@ class GalleryGridView(QWidget):
         root.addWidget(scroll, 1)
         self.scroll_area = scroll
 
-        host = MarqueeHost()
+        host = OpaqueFillHost()
         host.setAcceptDrops(True)
         host.setMouseTracking(True)
         host.installEventFilter(self)
@@ -1306,6 +1305,16 @@ class GalleryGridView(QWidget):
                 stamp = None
             if stamp == (want, accent_key):
                 continue
+            if stamp is None and not want:
+                # Cold card is already visually unselected (no override ever
+                # applied): stamp without painting. Otherwise the first
+                # preview sweep repaints EVERY card (~26ms stall measured on
+                # drag start) just to confirm the status quo.
+                try:
+                    card._gallery_sel_applied = (want, accent_key)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                continue
             try:
                 apply_gallery_selection(card, want, accent=accent)  # type: ignore[arg-type]
             except Exception:
@@ -1316,12 +1325,9 @@ class GalleryGridView(QWidget):
                 pass
 
     def refresh_selection_accent(self) -> None:
-        self._selection_accent = gallery_selection_accent()
-        if self._marquee_gesture is not None:
-            try:
-                self._marquee_gesture.set_accent(self._selection_accent)
-            except Exception:
-                pass
+        from ui.widgets.shelf.marquee_plumbing import refresh_accent
+
+        refresh_accent(self, gallery_selection_accent())
         self.apply_selection(self._selection)
 
     # -- pool helpers ------------------------------------------------------

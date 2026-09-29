@@ -179,7 +179,7 @@ def _detached_state(origin=None):
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QWidget
 
-    from tabs.image_gallery.ui.marquee_band import MarqueeState
+    from sli_ui_toolkit.widgets import MarqueeState
 
     updated: list[QRect] = []
     finished: list[QRect] = []
@@ -205,17 +205,28 @@ def test_state_band_is_content_space_identity() -> None:
     assert state.active is True
     assert state.update_at(QPoint(120, 10)) == QRect(origin, QPoint(120, 10)).normalized()
     assert state.update_at(QPoint(150, 90)) == QRect(30, 40, 121, 51)
-    assert updated == [QRect(30, 40, 1, 1)]  # start() emits the degenerate band
+    # Toolkit semantics: update_at emits too (eventFilter path relies on it).
+    assert updated == [
+        QRect(30, 40, 1, 1),  # start() emits the degenerate band
+        QRect(origin, QPoint(120, 10)).normalized(),
+        QRect(30, 40, 121, 51),
+    ]
 
 
 def test_state_tiny_finish_is_empty_rect() -> None:
-    """Degenerate drags finish as QRect() (same min_drag_px=3 rule)."""
+    """Degenerate drags finish as QRect() (same min_drag_px=3 rule).
+
+    Toolkit semantics: finish is single-shot (clears the origin, like the
+    eventFilter path) — every finish below starts a fresh drag first.
+    """
     from PySide6.QtCore import QPoint
 
     state, _, finished = _detached_state()
     assert state.start(QPoint(10, 10)) is True
     assert state.finish_at(QPoint(10, 10)) == QRect()  # 1x1 degenerate
+    assert state.start(QPoint(10, 10)) is True
     assert state.finish_at(QPoint(11, 11)) == QRect()  # 2x2 still tiny
+    assert state.start(QPoint(10, 10)) is True
     band = state.finish_at(QPoint(10, 30))  # 1px wide but 21 tall: not tiny
     assert not band.isEmpty() and (band.width(), band.height()) == (1, 21)
 
@@ -230,27 +241,89 @@ def test_state_cancel_clears_without_finish() -> None:
     assert finished == []
 
 
-def test_host_band_pixel_at_cursor(qtbot) -> None:
-    """Offscreen: band paints accent-blended pixels inside the set rect."""
-    from tabs.image_gallery.ui.grid_view import GalleryGridView
+def _band_viewport(qtbot):
+    """Viewport + opaque card + toolkit band widget (over-cards parity)."""
+    from PySide6.QtWidgets import QWidget
 
-    view = GalleryGridView()
-    qtbot.addWidget(view)
-    view.resize(800, 600)
-    view.show()
-    qtbot.wait(50)
-    host = view.items_host
-    band = QRect(100, 100, 200, 120)
-    host.set_band_rect(QRect(band))
-    assert host.band_rect == band
-    img = host.grab().toImage()
-    inside = img.pixelColor(band.center()).getRgb()
-    outside = img.pixelColor(5, 5).getRgb()
-    assert inside != outside
+    from sli_ui_toolkit.widgets import MarqueeBandWidget
+
+    viewport = QWidget()
+    qtbot.addWidget(viewport)
+    viewport.resize(800, 600)
+    viewport.show()
+    card = QWidget(viewport)
+    card.setGeometry(100, 100, 250, 170)
+    card.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+    card.show()
+    band = MarqueeBandWidget(viewport)
+    return viewport, card, band
+
+
+def test_host_band_pixel_at_cursor(qtbot) -> None:
+    """Offscreen: band paints accent-blended pixels over an opaque card."""
+    viewport, _, band = _band_viewport(qtbot)
+    clean = viewport.grab().toImage().pixelColor(200, 180).getRgb()
+    band.set_active(True)
+    band.set_band(QRect(150, 150, 200, 120))
+    img = viewport.grab().toImage()
+    assert img.pixelColor(200, 180).getRgb() != clean
 
 
 def test_host_shrink_clears_exposed_region(qtbot) -> None:
-    """Big→small: the exposed region returns to substrate (no stale band)."""
+    """Big→small: the exposed region returns to the card (no stale band)."""
+    viewport, _, band = _band_viewport(qtbot)
+    clean_bg = viewport.grab().toImage().pixelColor(500, 400).getRgb()
+    clean_card = viewport.grab().toImage().pixelColor(120, 120).getRgb()
+    band.set_active(True)
+    band.set_band(QRect(100, 100, 500, 400))
+    qtbot.wait(20)
+    band.set_band(QRect(100, 100, 60, 50))
+    img = viewport.grab().toImage()
+    assert img.pixelColor(500, 400).getRgb() == clean_bg
+    assert img.pixelColor(120, 120).getRgb() != clean_card
+    band.set_active(False)
+    assert viewport.grab().toImage().pixelColor(120, 120).getRgb() == clean_card
+
+
+def test_apply_selection_cold_sweep_paints_nothing_unselected(qtbot) -> None:
+    """First preview sweep must not repaint every card (~26ms drag-start stall).
+
+    Cards without a stamp are already visually unselected: stamping them
+    without painting keeps the cold sweep free. Only genuinely selected
+    cards may be touched.
+    """
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    view = GalleryGridView()
+    qtbot.addWidget(view)
+
+    calls: list = []
+
+    class _StubCard:
+        def set_override_bg_color(self, color) -> None:
+            calls.append(("bg", color))
+
+        def set_bg_locked(self, locked: bool) -> None:
+            calls.append(("lock", locked))
+
+    stubs = {"a.png": _StubCard(), "b.png": _StubCard()}
+    view._cards_by_path = stubs
+    view.apply_selection(set())
+    assert calls == []
+    assert all(
+        getattr(c, "_gallery_sel_applied", None) is not None for c in stubs.values()
+    )
+    view.apply_selection({Path("a.png")})
+    painted = [c for op, c in calls if op == "bg" and c is not None]
+    assert len(painted) == 1
+
+
+def test_update_positions_viewport_band(qtbot) -> None:
+    """Regression: the gesture-vs-selection split dropped the
+    ``band_widget``/``band_rects`` import in ``marquee_select`` — the
+    NameError was swallowed by fail-open guards, so selection kept
+    working while the band stayed at its invisible default geometry.
+    """
     from tabs.image_gallery.ui.grid_view import GalleryGridView
 
     view = GalleryGridView()
@@ -258,14 +331,34 @@ def test_host_shrink_clears_exposed_region(qtbot) -> None:
     view.resize(800, 600)
     view.show()
     qtbot.wait(50)
+    assert getattr(view, "_marquee_band", None) is None
+    # Direct update positions the band even before any press activates it.
+    _marquee.on_rect_update(view, QRect(100, 80, 200, 150))
+    band = getattr(view, "_marquee_band", None)
+    assert band is not None
+    assert band.geometry() == QRect(100, 80, 200, 150)
+    # Full press path: band activates on press, follows the drag, hides on finish.
     host = view.items_host
-    host.set_band_rect(QRect(100, 100, 300, 200))
-    qtbot.wait(20)
-    small = QRect(100, 100, 60, 50)
-    host.set_band_rect(QRect(small))
-    assert host.band_rect == small
-    img = host.grab().toImage()
-    exposed = img.pixelColor(350, 250).getRgb()  # inside big, outside small
-    substrate = img.pixelColor(5, 5).getRgb()
-    assert exposed == substrate
-    assert img.pixelColor(small.center()).getRgb() != substrate
+    origin = QPoint(host.width() - 30, host.height() - 30)
+    assert host.childAt(origin) is None
+    press = _mouse_event(
+        QEvent.Type.MouseButtonPress, origin, host.mapToGlobal(origin),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    )
+    assert _marquee.host_mouse_press(view, press) is True
+    assert band.isVisible()
+    moved_at = QPoint(origin.x() - 200, origin.y() - 100)
+    move = _mouse_event(
+        QEvent.Type.MouseMove, moved_at, host.mapToGlobal(moved_at),
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+    )
+    assert view._marquee_gesture.eventFilter(host, move) is True
+    # Offscreen global-pos round-trip may shift 1px; the point is the band
+    # follows the drag instead of staying at its default geometry.
+    want = QRect(moved_at, origin).normalized()
+    got = band.geometry()
+    assert got.isValid() and not got.isEmpty()
+    for a, b in zip((got.x(), got.y(), got.width(), got.height()), (want.x(), want.y(), want.width(), want.height())):
+        assert abs(a - b) <= 2
+    _marquee.on_rect_finish(view, QRect(moved_at, origin).normalized())
+    assert not band.isVisible()
