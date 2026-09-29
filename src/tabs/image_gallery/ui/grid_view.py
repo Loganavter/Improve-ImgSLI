@@ -35,8 +35,7 @@ from tabs.image_gallery.ui.list.card import (
     build_gallery_list_card,
     update_gallery_list_card,
 )
-from tabs.image_gallery.ui.marquee_band import MarqueeHost
-from ui.widgets.shelf import apply_opaque_widget_fill
+from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
 
 # View modes (recent items_view parity): one view, builders + columns swap.
 VIEW_GRID = "grid"
@@ -199,7 +198,7 @@ class GalleryGridView(QWidget):
         root.addWidget(scroll, 1)
         self.scroll_area = scroll
 
-        host = MarqueeHost()
+        host = OpaqueFillHost()
         host.setAcceptDrops(True)
         host.setMouseTracking(True)
         host.installEventFilter(self)

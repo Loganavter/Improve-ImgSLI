@@ -241,45 +241,47 @@ def test_state_cancel_clears_without_finish() -> None:
     assert finished == []
 
 
-def test_host_band_pixel_at_cursor(qtbot) -> None:
-    """Offscreen: band paints accent-blended pixels inside the set rect."""
-    from tabs.image_gallery.ui.grid_view import GalleryGridView
+def _band_viewport(qtbot):
+    """Viewport + opaque card + toolkit band widget (over-cards parity)."""
+    from PySide6.QtWidgets import QWidget
 
-    view = GalleryGridView()
-    qtbot.addWidget(view)
-    view.resize(800, 600)
-    view.show()
-    qtbot.wait(50)
-    host = view.items_host
-    band = QRect(100, 100, 200, 120)
-    host.set_band_rect(QRect(band))
-    assert host.band_rect == band
-    img = host.grab().toImage()
-    inside = img.pixelColor(band.center()).getRgb()
-    outside = img.pixelColor(5, 5).getRgb()
-    assert inside != outside
+    from sli_ui_toolkit.widgets import MarqueeBandWidget
+
+    viewport = QWidget()
+    qtbot.addWidget(viewport)
+    viewport.resize(800, 600)
+    viewport.show()
+    card = QWidget(viewport)
+    card.setGeometry(100, 100, 250, 170)
+    card.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+    card.show()
+    band = MarqueeBandWidget(viewport)
+    return viewport, card, band
+
+
+def test_host_band_pixel_at_cursor(qtbot) -> None:
+    """Offscreen: band paints accent-blended pixels over an opaque card."""
+    viewport, _, band = _band_viewport(qtbot)
+    clean = viewport.grab().toImage().pixelColor(200, 180).getRgb()
+    band.set_active(True)
+    band.set_band(QRect(150, 150, 200, 120))
+    img = viewport.grab().toImage()
+    assert img.pixelColor(200, 180).getRgb() != clean
 
 
 def test_host_shrink_clears_exposed_region(qtbot) -> None:
-    """Big→small: the exposed region returns to substrate (no stale band)."""
-    from tabs.image_gallery.ui.grid_view import GalleryGridView
-
-    view = GalleryGridView()
-    qtbot.addWidget(view)
-    view.resize(800, 600)
-    view.show()
-    qtbot.wait(50)
-    host = view.items_host
-    host.set_band_rect(QRect(100, 100, 300, 200))
+    """Big→small: the exposed region returns to the card (no stale band)."""
+    viewport, _, band = _band_viewport(qtbot)
+    card_px = viewport.grab().toImage().pixelColor(500, 400).getRgb()
+    band.set_active(True)
+    band.set_band(QRect(100, 100, 500, 400))
     qtbot.wait(20)
-    small = QRect(100, 100, 60, 50)
-    host.set_band_rect(QRect(small))
-    assert host.band_rect == small
-    img = host.grab().toImage()
-    exposed = img.pixelColor(350, 250).getRgb()  # inside big, outside small
-    substrate = img.pixelColor(5, 5).getRgb()
-    assert exposed == substrate
-    assert img.pixelColor(small.center()).getRgb() != substrate
+    band.set_band(QRect(100, 100, 60, 50))
+    img = viewport.grab().toImage()
+    assert img.pixelColor(500, 400).getRgb() == card_px
+    assert img.pixelColor(120, 120).getRgb() != card_px
+    band.set_active(False)
+    assert viewport.grab().toImage().pixelColor(120, 120).getRgb() == card_px
 
 
 def test_apply_selection_cold_sweep_paints_nothing_unselected(qtbot) -> None:
