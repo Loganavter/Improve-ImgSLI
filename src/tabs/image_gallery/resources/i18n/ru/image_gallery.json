@@ -38,6 +38,13 @@
       "make_best": "★ Сделать лучшим",
       "reject": "✕ Отклонить",
       "compare": "⇄ Сравнить"
-    }
+    },
+    "sort_by": "Сортировка",
+    "view": "Вид",
+    "sort_rank": "Ранг",
+    "sort_name": "Имя",
+    "sort_date": "Дата",
+    "view_grid": "Сетка",
+    "view_list": "Список"
   }
 }

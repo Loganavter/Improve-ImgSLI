@@ -88,6 +88,7 @@ class RecentItemsView(QWidget):
         self._context = None
         self._on_activate: Callable[..., None] | None = None
         self._on_context_menu: Callable[[RecentProjectRecord], None] | None = None
+        self._on_empty_context_menu: Callable[[object], None] | None = None
         self._content_width_provider: Callable[[], int] = lambda: 0
         self._max_viewport_height_provider: Callable[[], int] = lambda: 0
         self._on_viewport_height_changed: Callable[[], None] | None = None
@@ -156,11 +157,13 @@ class RecentItemsView(QWidget):
         selection_paths: Callable[[], set[str]] | None = None,
         on_marquee_commit: Callable[[set[str], bool], None] | None = None,
         on_marquee_preview: Callable[[set[str], bool], None] | None = None,
+        on_empty_context_menu: Callable[[object], None] | None = None,
     ) -> None:
         self._tr = translate
         self._context = context
         self._on_activate = on_activate
         self._on_context_menu = on_context_menu
+        self._on_empty_context_menu = on_empty_context_menu
         self._content_width_provider = content_width_provider
         if max_viewport_height_provider is not None:
             self._max_viewport_height_provider = max_viewport_height_provider
@@ -312,6 +315,35 @@ class RecentItemsView(QWidget):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if marquee.event_filter(self, watched, event):
             return True
+        # FM background menu: right-click on empty host opens Sort by / View.
+        try:
+            from PySide6.QtGui import QMouseEvent as _QMouseEvent
+
+            host = getattr(self, "items_host", None)
+            if (
+                host is not None
+                and watched is host
+                and event.type() == QEvent.Type.MouseButtonPress
+                and isinstance(event, _QMouseEvent)
+                and event.button() == Qt.MouseButton.RightButton
+            ):
+                try:
+                    pos = event.position().toPoint()
+                except Exception:
+                    pos = None
+                try:
+                    child = host.childAt(pos) if pos is not None else None
+                except Exception:
+                    child = None
+                if child is None and callable(getattr(self, "_on_empty_context_menu", None)):
+                    try:
+                        global_pos = host.mapToGlobal(pos) if pos is not None else None
+                    except Exception:
+                        global_pos = None
+                    self._on_empty_context_menu(global_pos)
+                    return True
+        except Exception:
+            pass
         # The cards live inside a QAbstractScrollArea; without this filter
         # the scroll area swallows arrow keys before the panel sees them.
         if event.type() == QEvent.Type.KeyPress and self._handle_key_press(event):

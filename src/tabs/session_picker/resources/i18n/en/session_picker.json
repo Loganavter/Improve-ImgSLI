@@ -42,6 +42,8 @@
       "minutes": "{n}m ago",
       "hours": "{n}h ago",
       "days": "{n}d ago"
-    }
+    },
+    "sort_by": "Sort by",
+    "view": "View"
   }
 }

@@ -200,6 +200,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Image Gallery — Design Parity Audit](../../src/tabs/image_gallery/docs/design_parity_audit.md)** — `src/tabs/image_gallery/docs/design_parity_audit.md`
   Referenced by: [src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)
 - **[Plan: gallery marquee in-paint band (Dolphin-style)](../../src/tabs/image_gallery/docs/plan-gallery-marquee-inpaint-2026-09-29.md)** — `src/tabs/image_gallery/docs/plan-gallery-marquee-inpaint-2026-09-29.md`
+- **[Plan: marquee toolkit-unify — one in-paint mechanism everywhere, no legacy](../../src/tabs/image_gallery/docs/plan-gallery-marquee-toolkit-unify-2026-09-29.md)** — `src/tabs/image_gallery/docs/plan-gallery-marquee-toolkit-unify-2026-09-29.md`
 - **[Plan: gallery light-theme contrast revision](../../src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md)** — `src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md`
 - **[Plan: Image Gallery — parity close-out (S2/S3/S4)](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)** — `src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md`
   Referenced by: [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)

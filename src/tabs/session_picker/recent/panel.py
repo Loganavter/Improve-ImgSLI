@@ -325,6 +325,7 @@ class RecentProjectsPanel(ShelfWidget):
             selection_paths=lambda: set(self._selected_paths),
             on_marquee_commit=self._on_marquee_commit,
             on_marquee_preview=self._on_marquee_preview,
+            on_empty_context_menu=self._show_empty_context_menu,
         )
         self.add_content_widget(self._items)
 
@@ -559,6 +560,16 @@ class RecentProjectsPanel(ShelfWidget):
 
     def _show_context_menu(self, record: RecentProjectRecord) -> None:
         selection_ops.show_context_menu(self, record)
+
+    def _show_empty_context_menu(self, global_pos=None) -> None:
+        from tabs.session_picker.recent.context_menu import open_recent_empty_menu
+
+        open_recent_empty_menu(
+            source_widget=self.window() or self,
+            global_pos=global_pos,
+            translate=self._tr,
+            on_prefs_changed=self._header.prefs_changed.emit,
+        )
 
     def _remove_record(self, record: RecentProjectRecord) -> None:
         selection_ops.remove_record(self, record)

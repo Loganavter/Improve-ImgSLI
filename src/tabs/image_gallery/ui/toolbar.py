@@ -452,6 +452,13 @@ class GalleryToolbar(QWidget):
         except Exception:
             return "Sort: Rank"
 
+    def set_view_list(self, is_list: bool) -> None:
+        """Select grid/list view programmatically (emits viewToggled)."""
+        try:
+            self._apply_view(bool(is_list))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
     def set_sort_index(self, index: int) -> None:
         """Select a sort option by index (emits sortChanged on change)."""
         try:
