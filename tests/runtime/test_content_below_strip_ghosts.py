@@ -99,7 +99,7 @@ def test_row_drag_ghost_parents_to_content_host(qapp):
         start_global = tab_page.mapToGlobal(QPoint(50, 50))
         service.start_drag(row, _fake_event(QPointF(start_global)))
         assert service.is_dragging()
-        ghost = service._ghost_widget
+        ghost = service._ghost._widget
         assert ghost is not None
         assert ghost.parentWidget() is content
     finally:
@@ -117,7 +117,7 @@ def test_row_drag_ghost_stays_inside_content_across_strip(qapp):
     try:
         start_global = tab_page.mapToGlobal(QPoint(50, 50))
         service.start_drag(row, _fake_event(QPointF(start_global)))
-        ghost = service._ghost_widget
+        ghost = service._ghost._widget
         assert ghost.parentWidget() is content
         # Drag across the strip band (window-local y well above content).
         strip_global = window.mapToGlobal(QPoint(WINDOW_W // 2, STRIP_H // 2))
@@ -147,12 +147,12 @@ def test_carry_ghost_parents_to_content_host_and_clamps(qapp, tmp_path):
     pix.save(str(img), "PNG")
     try:
         assert service.begin([Path(img)]) is True
-        ghost = service._ghost_widget
+        ghost = service._ghost._widget
         assert ghost is not None
         assert ghost.parentWidget() is content
         # Push the ghost into the strip band; it must clamp back to content.
         strip_global = window.mapToGlobal(QPoint(WINDOW_W // 2, STRIP_H // 2))
-        service._move_ghost(strip_global)
+        service._ghost.move(strip_global)
         assert content.rect().contains(ghost.geometry())
     finally:
         service.cancel()
@@ -182,7 +182,7 @@ def test_ghost_falls_back_to_window_layer_when_content_host_absent(
     try:
         with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
             assert service.begin([Path(img)]) is True
-        assert service._ghost_widget.parentWidget() is window
+        assert service._ghost._widget.parentWidget() is window
         assert any(
             "workspace_content_widget" in rec.getMessage()
             for rec in caplog.records

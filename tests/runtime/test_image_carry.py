@@ -46,8 +46,9 @@ def test_begin_hotspot_is_top_right_of_ghost(carry_service):
     service, img, _window = carry_service
     assert service.begin([img]) is True
     # Ghost hangs bottom-left of the cursor (hotspot near top-right of pixmap).
-    assert service._hotspot.x() > service._hotspot.y()
-    assert service._hotspot.y() == 12
+    hotspot = service._ghost._hotspot
+    assert hotspot.x() > hotspot.y()
+    assert hotspot.y() == 12
     service.cancel()
 
 

@@ -87,6 +87,6 @@ def test_start_drag_cancels_ripple_before_grab(qapp):
 
     assert not row._ripple.is_active()
     assert service.is_dragging()
-    assert service._ghost_widget is not None
+    assert service._ghost.is_showing
     service._cleanup()
     row.deleteLater()
