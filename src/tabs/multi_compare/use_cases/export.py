@@ -118,6 +118,72 @@ def live_view_size(controller) -> tuple[int, int]:
     return width, height
 
 
+def _cropped_export_source(source: object, box: tuple[int, int, int, int]) -> object | None:
+    """Crop-then-compose helper: ``source`` clipped to ``box`` (full-frame px).
+
+    Returns the cropped in-memory source, the original ``source`` when the
+    box covers the full frame (fail-open to pre-change behavior), and
+    ``None`` when the intersection is empty (fail-closed gap — caller skips
+    the slot, same documented skip as an imageless leaf). Never raises;
+    never decodes (``TiledPixelStore.crop`` / ``QImage.copy`` / ``PIL.crop``
+    / numpy slice level only).
+    """
+    try:
+        from engine.store.crop_window import intersect_box
+        from engine.store.tiled_pixel_store import TiledPixelStore, pixel_source_size
+        try:
+            full_w, full_h = pixel_source_size(source)
+        except Exception:
+            return source
+        if full_w <= 0 or full_h <= 0:
+            return source
+        full = (0, 0, int(full_w), int(full_h))
+        try:
+            clipped = intersect_box(full, box)
+        except Exception:
+            return source
+        if clipped is None:
+            return None
+        if tuple(clipped) == tuple(full):
+            return source
+        left, top, right, bottom = (int(v) for v in clipped)
+        if isinstance(source, TiledPixelStore):
+            try:
+                return TiledPixelStore.from_pil(source.crop(clipped))
+            except Exception:
+                return source
+        try:
+            from PySide6.QtGui import QImage
+            if isinstance(source, QImage):
+                try:
+                    return source.copy(left, top, right - left, bottom - top)
+                except Exception:
+                    return source
+        except Exception:
+            pass
+        try:
+            from PIL import Image as _PILImage
+            if isinstance(source, _PILImage.Image):
+                try:
+                    return source.crop((left, top, right, bottom))
+                except Exception:
+                    return source
+        except Exception:
+            pass
+        try:
+            import numpy as np
+            if isinstance(source, np.ndarray):
+                try:
+                    return np.ascontiguousarray(source[top:bottom, left:right].copy())
+                except Exception:
+                    return source
+        except Exception:
+            pass
+        return source
+    except Exception:
+        return source
+
+
 def _export_sources(controller) -> dict[int, object]:
     """Resolved pixel sources for export composition (B1).
 
@@ -125,6 +191,13 @@ def _export_sources(controller) -> dict[int, object]:
     synchronously, so an evicted-but-present file must not silently drop
     out of the saved image the way an imageless leaf would). Unreadable
     files stay imageless (documented skip, same as before B1).
+
+    Parametric crop (plan §3 export contract): each slot's cached FULL
+    store is clipped in-memory to its ``effective_crop_box`` before
+    composition (crop-then-compose, never a second decode). A slot whose
+    intersection is empty is skipped (documented gap, same as imageless).
+    Uncropped slots keep the cached object itself (byte-identical to
+    pre-change behavior).
     """
     sources: dict[int, object] = {}
     cache = getattr(controller, "pixel_cache", None)
@@ -143,8 +216,23 @@ def _export_sources(controller) -> dict[int, object]:
             source = cache.resolve(slot.path)
             if source is None and slot.path is not None:
                 source = cache.get_or_load_pixel(slot.path, crop_service=crop_service)
-            if source is not None:
-                sources[int(slot.id)] = source
+            if source is None:
+                continue
+            try:
+                from tabs.multi_compare.use_cases.crop import effective_crop_box
+
+                box = effective_crop_box(controller, slot)
+            except Exception:
+                box = None
+            if box is not None:
+                try:
+                    cropped = _cropped_export_source(source, box)
+                except Exception:
+                    cropped = source
+                if cropped is None:
+                    continue
+                source = cropped
+            sources[int(slot.id)] = source
         except Exception:
             continue
     return sources
