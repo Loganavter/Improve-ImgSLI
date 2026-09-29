@@ -183,9 +183,29 @@ def ensure_marquee_gesture(view) -> MarqueeBandGesture:  # type: ignore[no-untyp
 
 
 def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
-    """Preview selection while the band is dragging."""
+    """Preview selection while the band is dragging.
+
+    Coalescing: the gesture emits per mousemove (100+/s unthrottled) but
+    most moves do not change membership. Recomputing paths is O(items)
+    and re-applying repaints changed cards — so when the normalized hit
+    set + additive flag match the last dispatched update, only the band
+    visual (already set by the gesture) moves and this returns early.
+    The signature resets on every new press (see ``host_mouse_press``),
+    and ``on_rect_finish`` always recomputes, so a mid-drag layout shift
+    can delay one preview frame at most, never a commit.
+    """
     paths = paths_for_rect(view, rect)
     additive = bool(getattr(view, "_marquee_additive", False))
+    try:
+        sig = (frozenset(str(p) for p in paths), additive)
+    except Exception:
+        sig = None
+    if sig is not None and getattr(view, "_marquee_last_update_sig", None) == sig:
+        return
+    try:
+        view._marquee_last_update_sig = sig  # type: ignore[attr-defined]
+    except Exception:
+        pass
     # Prefer owner's preview helper if view delegates to an owner.
     owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
     if owner is not None:
@@ -365,6 +385,12 @@ def host_mouse_press(view, event: QMouseEvent) -> bool:  # type: ignore[no-untyp
         view._marquee_base = set(sel) if sel is not None else set()  # type: ignore[attr-defined]
     except Exception:
         view._marquee_base = set()  # type: ignore[attr-defined]
+    # New gesture: drop the coalescing signature so the first update of
+    # this drag always dispatches (its base may differ from the last drag).
+    try:
+        view._marquee_last_update_sig = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
     gesture = ensure_marquee_gesture(view)
     try:
         if not gesture.start(event.position().toPoint()):
