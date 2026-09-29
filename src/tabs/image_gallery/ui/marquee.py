@@ -6,15 +6,16 @@ gallery grid. Functions take the grid view as first arg and read/write its
 the session picker pattern.
 
 Public API:
-  ensure_marquee_gesture(view) -> MarqueeBandGesture
+  ensure_marquee_gesture(view) -> MarqueeState
   paths_for_rect(view, rect) -> set[Path]
   on_rect_update(view, rect)
   on_rect_finish(view, rect)
   event_filter(view, watched, event) -> bool  (host mouse press → start band)
   host_mouse_press(view, event) -> bool
 
-The gesture uses ``MarqueeBandGesture`` + ``MarqueeBandOverlay`` (Wayland-safe
-app event filter, no grabMouse) and clips against the scroll viewport.
+The state holder paints the band in the content host's own paint pass
+(``MarqueeHost``, Dolphin-style in-paint band) — no overlay widget, no
+restack, no window round-trip on the gallery path.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from PySide6.QtCore import QEvent, QObject, QRect, Qt
 from PySide6.QtGui import QMouseEvent
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import MarqueeBandGesture
+from tabs.image_gallery.ui.marquee_band import MarqueeState
 
 try:
     from tabs.image_gallery.ui.grid_view import GRID_COLUMNS, GRID_MARGIN, GRID_SPACING, GALLERY_CARD_W, GALLERY_CARD_H
@@ -117,8 +118,8 @@ def paths_for_rect(view, rect: QRect) -> set[Path]:  # type: ignore[no-untyped-d
 
     Uses live ``card.geometry()`` per card (header-aware via host layout) with
     fixed-grid fallback for offscreen/pooled cards (``_card_geometry_rect``).
-    ``rect`` is host-local from ``MarqueeBandGesture``; overlay itself is
-    ``MarqueeBandOverlay`` (Wayland-safe, no grabMouse).
+    ``rect`` is host-local from ``MarqueeState``; the band paints in the
+    host's own paint pass (``MarqueeHost``).
     """
     if rect.isEmpty():
         return set()
@@ -147,21 +148,23 @@ def paths_for_marquee_rect(view, rect: QRect) -> set[Path]:  # type: ignore[no-u
     return paths_for_rect(view, rect)
 
 
-def ensure_marquee_gesture(view) -> MarqueeBandGesture:  # type: ignore[no-untyped-def]
-    """Lazily create (or re-clip) the MarqueeBandGesture for *view*."""
+def ensure_marquee_gesture(view) -> MarqueeState:  # type: ignore[no-untyped-def]
+    """Lazily create the in-paint ``MarqueeState`` holder for *view*."""
     gesture = getattr(view, "_marquee_gesture", None)
     host = getattr(view, "items_host", None)
-    viewport = None
-    try:
-        viewport = view.scroll_area.viewport()
-    except Exception:
-        viewport = None
+    if gesture is not None and not isinstance(gesture, MarqueeState):
+        # Pre-refactor holder (toolkit overlay gesture): drop it so the
+        # gallery path never mixes overlay and in-paint visuals.
+        try:
+            gesture.cancel()
+        except Exception:
+            pass
+        gesture = None
     accent = getattr(view, "_selection_accent", None)
     if gesture is None:
-        gesture = MarqueeBandGesture(
+        gesture = MarqueeState(
             host,
             parent=view,
-            clip_widget=viewport,
             on_update=lambda r: on_rect_update(view, r),
             on_finish=lambda r: on_rect_finish(view, r),
         )
@@ -170,6 +173,10 @@ def ensure_marquee_gesture(view) -> MarqueeBandGesture:  # type: ignore[no-untyp
         except Exception:
             pass
     else:
+        try:
+            viewport = view.scroll_area.viewport()
+        except Exception:
+            viewport = None
         try:
             gesture.set_clip_widget(viewport)
         except Exception:
@@ -194,16 +201,40 @@ def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
     and ``on_rect_finish`` always recomputes, so a mid-drag layout shift
     can delay one preview frame at most, never a commit.
     """
+    try:
+        import time as _time
+
+        _t_hit_start = _time.perf_counter()
+    except Exception:
+        _t_hit_start = None  # type: ignore[assignment]
     paths = paths_for_rect(view, rect)
+    try:
+        _t_hit_ms = (_time.perf_counter() - _t_hit_start) * 1000.0  # type: ignore[operator]
+        _t_apply_start = _time.perf_counter()
+    except Exception:
+        _t_hit_ms = -1.0
+        _t_apply_start = None  # type: ignore[assignment]
     additive = bool(getattr(view, "_marquee_additive", False))
     try:
         sig = (frozenset(str(p) for p in paths), additive)
     except Exception:
         sig = None
     if sig is not None and getattr(view, "_marquee_last_update_sig", None) == sig:
+        try:
+            _mdbg("marquee UPDATE-skip identical membership")
+        except Exception:
+            pass
         return
     try:
         view._marquee_last_update_sig = sig  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        _mdbg(
+            "marquee UPDATE rect=(%d,%d %dx%d) paths=%d additive=%s hit=%.1fms",
+            rect.x(), rect.y(), rect.width(), rect.height(),
+            len(paths), additive, _t_hit_ms,
+        )
     except Exception:
         pass
     # Prefer owner's preview helper if view delegates to an owner.
@@ -217,6 +248,15 @@ def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
                 mod = importlib.import_module(mod_name)
                 if hasattr(mod, "commit_preview"):
                     mod.commit_preview(owner, paths, additive=additive)
+                    try:
+                        import time as _time3
+
+                        _mdbg(
+                            "marquee UPDATE-COST apply(owner)=%.1fms",
+                            (_time3.perf_counter() - _t_apply_start) * 1000.0,  # type: ignore[operator]
+                        )
+                    except Exception:
+                        pass
                     return
             except Exception:
                 pass
@@ -244,6 +284,15 @@ def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
             cb(paths, additive)
         except Exception:
             pass
+    try:
+        import time as _time2
+
+        _mdbg(
+            "marquee UPDATE-COST apply=%.1fms",
+            (_time2.perf_counter() - _t_apply_start) * 1000.0,  # type: ignore[operator]
+        )
+    except Exception:
+        pass
 
 
 def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
@@ -272,20 +321,27 @@ def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
         additive = bool(getattr(view, "_marquee_additive", False))
         if not additive:
             # Empty band with no additive → clear preview? Commit empty only if not additive.
+            # Tiny-drag (< min_drag_px on both axes, see toolkit gesture) lands
+            # here too — this line distinguishes "shrink to click clears"
+            # from "shrink kept (additive)".
             owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
             if owner is not None:
                 try:
                     import tabs.image_gallery.use_cases.selection as sel
 
                     sel.commit(owner, set(), additive=False)
+                    _mdbg("marquee finish COMMIT-EMPTY via owner (cleared, non-additive)")
                     return
                 except Exception:
                     pass
             try:
                 base = getattr(view, "_marquee_base", set()) or set()
                 view.apply_selection(set(base))
+                _mdbg("marquee finish RESTORE-BASE n=%d (no owner)", len(set(base)))
             except Exception:
                 pass
+        else:
+            _mdbg("marquee finish EMPTY-KEPT (additive, no clear)")
         return
     paths = paths_for_rect(view, rect)
     additive = bool(getattr(view, "_marquee_additive", False))
@@ -296,6 +352,7 @@ def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
             import tabs.image_gallery.use_cases.selection as sel
 
             sel.commit(owner, paths, additive=additive)
+            _mdbg("marquee finish COMMIT via owner paths=%d additive=%s", len(paths), additive)
             return
         except Exception:
             pass
@@ -303,6 +360,7 @@ def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
     if callable(cb):
         try:
             cb(paths, additive)
+            _mdbg("marquee finish COMMIT via hook paths=%d additive=%s", len(paths), additive)
             return
         except Exception:
             pass
@@ -357,15 +415,22 @@ def host_mouse_press(view, event: QMouseEvent) -> bool:  # type: ignore[no-untyp
         _mdbg("marquee press SKIP (elimination gate IMGSLI_GALLERY_NO_MARQUEE=1)")
         return False
     if event.button() != Qt.MouseButton.LeftButton:
+        _mdbg("marquee press REFUSE button=%s (not Left)", event.button())
         return False
     host = getattr(view, "items_host", None)
     if host is None:
+        _mdbg("marquee press REFUSE reason=no-host")
         return False
     try:
-        child = host.childAt(event.position().toPoint())
+        press_pos = event.position().toPoint()
+    except Exception:
+        press_pos = None
+    try:
+        child = host.childAt(press_pos) if press_pos is not None else None
     except Exception:
         child = None
     if child is not None:
+        _mdbg("marquee press REFUSE pos=%s child=%s (not empty host)", press_pos, type(child).__name__)
         return False
     try:
         view._marquee_additive = bool(_ctrl_held(event.modifiers()))  # type: ignore[attr-defined]
@@ -401,9 +466,11 @@ def host_mouse_press(view, event: QMouseEvent) -> bool:  # type: ignore[no-untyp
         return False
     try:
         _mdbg(
-            "marquee press START pos=%s additive=%s",
+            "marquee press START pos=%s additive=%s base_n=%s gesture_active=%s",
             event.position().toPoint(),
             bool(getattr(view, "_marquee_additive", False)),
+            len(getattr(view, "_marquee_base", set()) or set()),
+            bool(getattr(gesture, "active", False)),
         )
     except Exception:
         pass

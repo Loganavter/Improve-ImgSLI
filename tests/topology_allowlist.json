@@ -117,6 +117,9 @@
     },
     "src/tabs/image_gallery/ui/events_firehose.py": {
       "justification": "Dev-only raw input firehose (env-gated IMGSLI_EVENTS_FIREHOSE, single install, session-only trace aid)."
+    },
+    "src/tabs/image_gallery/ui/marquee_band.py": {
+      "justification": "Gallery marquee drag tracker: short-lived app filter installed on band start, removed on finish/cancel (balanced release pass-through preserves the hover-loss fix; same contract as the toolkit MarqueeBandGesture it replaces on the gallery path)."
     }
   },
   "focus_reasons": {

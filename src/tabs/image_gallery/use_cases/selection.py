@@ -10,8 +10,11 @@ delegates here; widget/controller integration does the coordinator.
 Owner shape (duck-typed):
   owner.state.selected_paths: set[Path]
   owner.state.selected_order: list[Path]  (optional, for stable order)
-  owner.widget or owner.grid_view: has apply_selection(set[Path]) / rebuild etc.
-  owner._selection_hud: legacy attr (always None; kept for back-compat)
+  visual targets (any with apply_selection(set[Path])): owner.grid_view,
+  owner.widget, owner._widget, owner._grid_view, owner.widget._grid_view
+  (the production controller nests the grid at widget._grid_view — a
+  targets search that stops at the top level silently drops live
+  previews, see commit_preview).
 
 No implied lookups — owner and paths are passed explicitly.
 """
@@ -19,6 +22,38 @@ No implied lookups — owner and paths are passed explicitly.
 from __future__ import annotations
 
 from pathlib import Path
+
+
+def _selection_visual_targets(owner) -> list:
+    """Objects whose apply_selection paints this owner's selection.
+
+    Covers the flat shapes (owner.grid_view/widget/_widget) and the real
+    production nesting (controller.widget._grid_view). Deduped, never
+    raises — an empty list means preview is impossible (fail-soft).
+    """
+    found: list = []
+
+    def _take(target) -> None:
+        try:
+            if (
+                target is not None
+                and hasattr(target, "apply_selection")
+                and all(target is not other for other in found)
+            ):
+                found.append(target)
+        except Exception:
+            pass
+
+    for attr in ("grid_view", "widget", "_widget", "_grid_view"):
+        try:
+            _take(getattr(owner, attr, None))
+        except Exception:
+            continue
+    try:
+        _take(getattr(getattr(owner, "widget", None), "_grid_view", None))
+    except Exception:
+        pass
+    return found
 
 
 def _selected_set(owner) -> set[Path]:
@@ -90,14 +125,12 @@ def _set_selected(owner, paths: set[Path]) -> None:
 
 
 def _notify_selection_changed(owner, selected: set[Path]) -> None:
-    # Grid view / widget.
-    for attr in ("grid_view", "widget", "_widget"):
-        target = getattr(owner, attr, None)
-        if target is not None and hasattr(target, "apply_selection"):
-            try:
-                target.apply_selection(selected)
-            except Exception:
-                pass
+    # Grid view / widget (controller nesting included — see module docstring).
+    for target in _selection_visual_targets(owner):
+        try:
+            target.apply_selection(selected)
+        except Exception:
+            pass
     # Also try owner.apply_selection directly.
     if hasattr(owner, "apply_selection"):
         try:
@@ -133,13 +166,11 @@ def commit_preview(owner, paths, additive: bool = False) -> None:  # type: ignor
     else:
         preview = incoming
     # Only notify visuals, do not mutate state.
-    for attr in ("grid_view", "widget", "_widget"):
-        target = getattr(owner, attr, None)
-        if target is not None and hasattr(target, "apply_selection"):
-            try:
-                target.apply_selection(preview)
-            except Exception:
-                pass
+    for target in _selection_visual_targets(owner):
+        try:
+            target.apply_selection(preview)
+        except Exception:
+            pass
     if hasattr(owner, "apply_selection"):
         try:
             owner.apply_selection(preview)  # type: ignore[attr-defined]
