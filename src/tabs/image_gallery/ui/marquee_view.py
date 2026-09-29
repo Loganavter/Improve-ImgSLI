@@ -1,14 +1,9 @@
 """Band visual layer for the gallery marquee (viewport-space, over cards).
 
-Split out of ``ui/marquee.py`` per CODE_PATTERNS (thin owner + split
-module): the tracker state lives in ``MarqueeState`` (toolkit), hit-testing
-in ``marquee.paths_for_rect``, and everything that maps drag rects to
-something paintable lives here.
-
-Coordinate contract: the tracker stores the press origin in content coords;
-a mid-drag scroll would mix bases (origin old, current live). Each end is
-translated by the scroll of ITS moment — the same trick Dolphin bakes into
-its rubber-band positions. With no mid-drag scroll both reduce to identity.
+Thin consumer shell per CODE_PATTERNS: the mechanism (tracker, paint,
+scroll compensation) is canonical in ``sli_ui_toolkit``; this module only
+owns the gallery-specific wiring — band widget parent (the scroll
+viewport), accent source, and press-time scroll/pos bookkeeping fields.
 """
 
 from __future__ import annotations
@@ -59,23 +54,15 @@ def band_widget(view):  # type: ignore[no-untyped-def]
 
 
 def band_rects(view, rect: QRect) -> tuple[QRect, QRect]:  # type: ignore[no-untyped-def]
-    """Scroll-compensated (viewport_rect, content_rect) for a drag rect."""
+    """Scroll-compensated (viewport_rect, content_rect); toolkit math."""
     try:
-        p0 = getattr(view, "_marquee_press_pos", None)
-        s0 = getattr(view, "_marquee_press_scroll", None)
-        s1 = scroll_offset(view)
-        if p0 is None or s0 is None:
-            return QRect(rect.translated(-s1.x(), -s1.y())), QRect(rect)
-        # Opposite corner of the press origin inside the normalized rect.
-        cx = rect.left() + rect.right() - p0.x()
-        cy = rect.top() + rect.bottom() - p0.y()
-        vp0 = QPoint(p0.x() - s0.x(), p0.y() - s0.y())
-        vpc = QPoint(cx - s1.x(), cy - s1.y())
-        viewport_rect = QRect(vp0, vpc).normalized()
-        cc = QPoint(cx, cy)
-        content_rect = QRect(
-            QPoint(p0.x() + s1.x() - s0.x(), p0.y() + s1.y() - s0.y()), cc
-        ).normalized()
-        return viewport_rect, content_rect
+        from sli_ui_toolkit.widgets import resolve_band_rects
+
+        return resolve_band_rects(
+            getattr(view, "_marquee_press_pos", None),
+            getattr(view, "_marquee_press_scroll", None),
+            rect,
+            scroll_offset(view),
+        )
     except Exception:
         return QRect(rect), QRect(rect)

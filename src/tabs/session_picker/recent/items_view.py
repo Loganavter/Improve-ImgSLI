@@ -52,12 +52,11 @@ from ui.widgets.shelf.layout import (
     visible_row_window,
 )
 from tabs.session_picker.recent import marquee
-from tabs.session_picker.recent.marquee_host import MarqueeHost
 from ui.widgets.shelf.selection import (
     apply_card_selected,
     selection_accent_color,
 )
-from ui.widgets.shelf import apply_opaque_widget_fill
+from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
 
 
 def _restore_updates(owner: QWidget, was_updating: bool) -> None:
@@ -119,7 +118,7 @@ class RecentItemsView(QWidget):
         root.addWidget(scroll)
         self.scroll_area = scroll
 
-        self.items_host = MarqueeHost()
+        self.items_host = OpaqueFillHost()
         self.items_host.setObjectName("recent-items-host")
         self.items_host.setAcceptDrops(True)
         self.items_host.setMouseTracking(True)
@@ -270,9 +269,9 @@ class RecentItemsView(QWidget):
         if self._marquee_gesture is not None:
             self._marquee_gesture.set_accent(self._selection_accent)
         try:
-            host = getattr(self, "items_host", None)
-            if host is not None and hasattr(host, "set_accent"):
-                host.set_accent(self._selection_accent)
+            band = getattr(self, "_marquee_band", None)
+            if band is not None and hasattr(band, "set_accent"):
+                band.set_accent(self._selection_accent)
         except Exception:
             pass
         self.apply_selection()

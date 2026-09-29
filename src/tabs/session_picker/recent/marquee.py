@@ -57,8 +57,9 @@ def ensure_marquee_gesture(view) -> MarqueeState:
         except Exception:
             pass
         try:
-            if host is not None and hasattr(host, "set_accent"):
-                host.set_accent(accent)
+            band = _band_widget(view)
+            if band is not None:
+                band.set_accent(accent)
         except Exception:
             pass
     return gesture
@@ -77,11 +78,76 @@ def paths_for_marquee_rect(view, rect: QRect) -> set[str]:
     )
 
 
+def _scroll_offset(view):  # type: ignore[no-untyped-def]
+    from PySide6.QtCore import QPoint as _QP
+
+    try:
+        area = getattr(view, "scroll_area", None)
+        h = v = 0
+        if area is not None:
+            try:
+                bar_h = area.horizontalScrollBar()
+                h = int(bar_h.value()) if bar_h is not None else 0
+            except Exception:
+                pass
+            try:
+                bar_v = area.verticalScrollBar()
+                v = int(bar_v.value()) if bar_v is not None else 0
+            except Exception:
+                pass
+        return _QP(h, v)
+    except Exception:
+        from PySide6.QtCore import QPoint as _QP2
+
+        return _QP2(0, 0)
+
+
+def _band_widget(view):  # type: ignore[no-untyped-def]
+    """Lazy viewport band widget (floats above host + cards)."""
+    band = getattr(view, "_marquee_band", None)
+    if band is None:
+        try:
+            from sli_ui_toolkit.widgets import MarqueeBandWidget
+
+            viewport = view.scroll_area.viewport()
+            band = MarqueeBandWidget(viewport)
+            try:
+                accent = getattr(view, "_selection_accent", None)
+                if accent is not None:
+                    band.set_accent(accent)
+            except Exception:
+                pass
+            view._marquee_band = band  # type: ignore[attr-defined]
+        except Exception:
+            return None
+    return band
+
+
+def _band_rects(view, rect):  # type: ignore[no-untyped-def]
+    from sli_ui_toolkit.widgets import resolve_band_rects
+
+    try:
+        return resolve_band_rects(
+            getattr(view, "_marquee_press_pos", None),
+            getattr(view, "_marquee_press_scroll", None),
+            rect,
+            _scroll_offset(view),
+        )
+    except Exception:
+        from PySide6.QtCore import QRect as _QR
+
+        return _QR(rect), _QR(rect)
+
+
 def on_marquee_rect_update(view, rect: QRect) -> None:
     try:
-        host = getattr(view, "items_host", None)
-        if host is not None and hasattr(host, "set_band_rect"):
-            host.set_band_rect(rect)
+        viewport_rect, rect = _band_rects(view, rect)
+    except Exception:
+        viewport_rect = rect
+    try:
+        band = _band_widget(view)
+        if band is not None:
+            band.set_band(viewport_rect)
     except Exception:
         pass
     paths = paths_for_marquee_rect(view, rect)
@@ -96,11 +162,16 @@ def on_marquee_rect_update(view, rect: QRect) -> None:
 
 def on_marquee_rect_finish(view, rect: QRect) -> None:
     try:
-        host = getattr(view, "items_host", None)
-        if host is not None and hasattr(host, "set_band_rect"):
-            host.set_band_rect(None)
+        band = _band_widget(view)
+        if band is not None:
+            band.set_active(False)
     except Exception:
         pass
+    if not rect.isEmpty():
+        try:
+            _, rect = _band_rects(view, rect)
+        except Exception:
+            pass
     if rect.isEmpty():
         if view._on_marquee_commit is not None and not view._marquee_additive:
             view._on_marquee_commit(set(), False)
@@ -121,6 +192,17 @@ def host_mouse_press(view, event: QMouseEvent) -> bool:
     gesture = ensure_marquee_gesture(view)
     if not gesture.start(event.position().toPoint()):
         return False
+    try:
+        view._marquee_press_pos = event.position().toPoint()  # type: ignore[attr-defined]
+        view._marquee_press_scroll = _scroll_offset(view)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        band = _band_widget(view)
+        if band is not None:
+            band.set_active(True)
+    except Exception:
+        pass
     # Live clear (non-additive) so the band starts empty immediately.
     if view._on_marquee_preview is not None:
         view._on_marquee_preview(set(), view._marquee_additive)

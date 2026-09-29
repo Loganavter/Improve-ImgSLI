@@ -229,7 +229,8 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
     assert gesture is not None
     assert gesture.active is True
     assert gesture.app_filter_installed is True
-    assert host.band_rect is not None and not host.band_rect.isEmpty()
+    band = panel._items._marquee_band
+    assert band is not None and band.isVisible() and not band.band_rect().isEmpty()
 
     release = QMouseEvent(
         QMouseEvent.Type.MouseButtonRelease,
@@ -241,6 +242,6 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
     )
     # Drag tracking uses the toolkit state app filter (no grabMouse on Wayland).
     assert gesture.eventFilter(panel, release) is False
-    assert host.band_rect is None or host.band_rect.isEmpty()
+    assert not panel._items._marquee_band.isVisible()
     assert gesture.app_filter_installed is False
     panel.deleteLater()
