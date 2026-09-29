@@ -1306,6 +1306,16 @@ class GalleryGridView(QWidget):
                 stamp = None
             if stamp == (want, accent_key):
                 continue
+            if stamp is None and not want:
+                # Cold card is already visually unselected (no override ever
+                # applied): stamp without painting. Otherwise the first
+                # preview sweep repaints EVERY card (~26ms stall measured on
+                # drag start) just to confirm the status quo.
+                try:
+                    card._gallery_sel_applied = (want, accent_key)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                continue
             try:
                 apply_gallery_selection(card, want, accent=accent)  # type: ignore[arg-type]
             except Exception:

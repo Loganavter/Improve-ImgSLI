@@ -269,3 +269,36 @@ def test_host_shrink_clears_exposed_region(qtbot) -> None:
     substrate = img.pixelColor(5, 5).getRgb()
     assert exposed == substrate
     assert img.pixelColor(small.center()).getRgb() != substrate
+
+
+def test_apply_selection_cold_sweep_paints_nothing_unselected(qtbot) -> None:
+    """First preview sweep must not repaint every card (~26ms drag-start stall).
+
+    Cards without a stamp are already visually unselected: stamping them
+    without painting keeps the cold sweep free. Only genuinely selected
+    cards may be touched.
+    """
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    view = GalleryGridView()
+    qtbot.addWidget(view)
+
+    calls: list = []
+
+    class _StubCard:
+        def set_override_bg_color(self, color) -> None:
+            calls.append(("bg", color))
+
+        def set_bg_locked(self, locked: bool) -> None:
+            calls.append(("lock", locked))
+
+    stubs = {"a.png": _StubCard(), "b.png": _StubCard()}
+    view._cards_by_path = stubs
+    view.apply_selection(set())
+    assert calls == []
+    assert all(
+        getattr(c, "_gallery_sel_applied", None) is not None for c in stubs.values()
+    )
+    view.apply_selection({Path("a.png")})
+    painted = [c for op, c in calls if op == "bg" and c is not None]
+    assert len(painted) == 1

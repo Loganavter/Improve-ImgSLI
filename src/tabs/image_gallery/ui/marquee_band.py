@@ -69,11 +69,13 @@ class MarqueeHost(OpaqueFillHost):
             pass
 
     def set_band_rect(self, rect: QRect | None) -> None:
-        """Assign the band (host-local) and repaint; skip when unchanged.
+        """Assign the band (host-local) and repaint the changed region only.
 
         ``None`` (or an invalid/empty rect) clears the band. No restack, no
-        show/hide, no stacking calls — Qt compresses ``update()`` to frame
-        rate, so per-mousemove calls are free.
+        show/hide, no stacking calls — and no full-host repaint: only the
+        union of the old and new band rects (±1px for the border) is marked
+        dirty, so per-mousemove updates stay cheap on tall hosts. Qt still
+        compresses these to frame rate.
         """
         try:
             norm = QRect(rect) if rect is not None and rect.isValid() and not rect.isEmpty() else None
@@ -84,11 +86,22 @@ class MarqueeHost(OpaqueFillHost):
                 return
         except Exception:
             pass
+        old = self.band_rect
         self.band_rect = norm
         try:
-            self.update()
+            if old is None and norm is None:
+                self.update()
+            elif old is None:
+                self.update(norm.adjusted(-1, -1, 1, 1))
+            elif norm is None:
+                self.update(old.adjusted(-1, -1, 1, 1))
+            else:
+                self.update(old.united(norm).adjusted(-1, -1, 1, 1))
         except Exception:
-            pass
+            try:
+                self.update()
+            except Exception:
+                pass
 
     def paintEvent(self, event) -> None:  # noqa: N802
         super().paintEvent(event)
