@@ -55,11 +55,17 @@ def test_show_move_hide_lifecycle(qapp):
     assert svc.show(_pixmap(), QPoint(400, 300), anchor=host, hotspot=hotspot) is True
     assert svc.is_showing is True
     widget = svc._widget
-    assert widget.pos() == QPoint(400 - 108, 300 - 12)  # global minus hotspot
+
+    def _expect(global_pt):
+        # Offscreen QPA may offset top-level windows; derive the expectation
+        # through the same global->parent mapping production uses.
+        return host.mapFromGlobal(global_pt) - hotspot.toPoint()
+
+    assert widget.pos() == _expect(QPoint(400, 300))  # global minus hotspot
     svc.move(QPoint(500, 400))
-    assert widget.pos() == QPoint(500 - 108, 400 - 12)
-    svc.move(QPointF(520.9, 430.9))  # QPointF accepted too
-    assert widget.pos() == QPoint(520 - 108, 430 - 12)
+    assert widget.pos() == _expect(QPoint(500, 400))
+    svc.move(QPointF(520.9, 430.9))  # QPointF accepted too (Qt rounds)
+    assert widget.pos() == _expect(QPoint(521, 431))
     svc.hide()
     assert svc.is_showing is False
     svc.hide()  # idempotent
@@ -71,6 +77,6 @@ def test_default_hotspot_is_carry_top_right(qapp):
     window, host = _child_host()
     svc = GhostService()
     assert svc.show(_pixmap(120, 80), QPoint(400, 300), anchor=host) is True
-    assert svc._widget.pos() == QPoint(400 - 108, 300 - 12)
+    assert svc._widget.pos() == host.mapFromGlobal(QPoint(400, 300)) - QPoint(108, 12)
     svc.hide()
     window.deleteLater()
