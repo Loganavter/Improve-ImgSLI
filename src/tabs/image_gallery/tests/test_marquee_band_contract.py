@@ -316,3 +316,49 @@ def test_apply_selection_cold_sweep_paints_nothing_unselected(qtbot) -> None:
     view.apply_selection({Path("a.png")})
     painted = [c for op, c in calls if op == "bg" and c is not None]
     assert len(painted) == 1
+
+
+def test_update_positions_viewport_band(qtbot) -> None:
+    """Regression: the gesture-vs-selection split dropped the
+    ``band_widget``/``band_rects`` import in ``marquee_select`` — the
+    NameError was swallowed by fail-open guards, so selection kept
+    working while the band stayed at its invisible default geometry.
+    """
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    view = GalleryGridView()
+    qtbot.addWidget(view)
+    view.resize(800, 600)
+    view.show()
+    qtbot.wait(50)
+    assert getattr(view, "_marquee_band", None) is None
+    # Direct update positions the band even before any press activates it.
+    _marquee.on_rect_update(view, QRect(100, 80, 200, 150))
+    band = getattr(view, "_marquee_band", None)
+    assert band is not None
+    assert band.geometry() == QRect(100, 80, 200, 150)
+    # Full press path: band activates on press, follows the drag, hides on finish.
+    host = view.items_host
+    origin = QPoint(host.width() - 30, host.height() - 30)
+    assert host.childAt(origin) is None
+    press = _mouse_event(
+        QEvent.Type.MouseButtonPress, origin, host.mapToGlobal(origin),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    )
+    assert _marquee.host_mouse_press(view, press) is True
+    assert band.isVisible()
+    moved_at = QPoint(origin.x() - 200, origin.y() - 100)
+    move = _mouse_event(
+        QEvent.Type.MouseMove, moved_at, host.mapToGlobal(moved_at),
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+    )
+    assert view._marquee_gesture.eventFilter(host, move) is True
+    # Offscreen global-pos round-trip may shift 1px; the point is the band
+    # follows the drag instead of staying at its default geometry.
+    want = QRect(moved_at, origin).normalized()
+    got = band.geometry()
+    assert got.isValid() and not got.isEmpty()
+    for a, b in zip((got.x(), got.y(), got.width(), got.height()), (want.x(), want.y(), want.width(), want.height())):
+        assert abs(a - b) <= 2
+    _marquee.on_rect_finish(view, QRect(moved_at, origin).normalized())
+    assert not band.isVisible()

@@ -1325,18 +1325,9 @@ class GalleryGridView(QWidget):
                 pass
 
     def refresh_selection_accent(self) -> None:
-        self._selection_accent = gallery_selection_accent()
-        if self._marquee_gesture is not None:
-            try:
-                self._marquee_gesture.set_accent(self._selection_accent)
-            except Exception:
-                pass
-        try:
-            host = getattr(self, "items_host", None)
-            if host is not None and hasattr(host, "set_accent"):
-                host.set_accent(self._selection_accent)
-        except Exception:
-            pass
+        from ui.widgets.shelf.marquee_plumbing import refresh_accent
+
+        refresh_accent(self, gallery_selection_accent())
         self.apply_selection(self._selection)
 
     # -- pool helpers ------------------------------------------------------

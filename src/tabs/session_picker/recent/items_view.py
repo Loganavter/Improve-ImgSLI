@@ -263,17 +263,12 @@ class RecentItemsView(QWidget):
             apply_card_selected(card, path in paths, accent=accent)
 
     def refresh_selection_accent(self) -> None:
-        self._selection_accent = selection_accent_color(
-            getattr(self, "_theme_manager", None)
+        from ui.widgets.shelf.marquee_plumbing import refresh_accent
+
+        refresh_accent(
+            self,
+            selection_accent_color(getattr(self, "_theme_manager", None)),
         )
-        if self._marquee_gesture is not None:
-            self._marquee_gesture.set_accent(self._selection_accent)
-        try:
-            band = getattr(self, "_marquee_band", None)
-            if band is not None and hasattr(band, "set_accent"):
-                band.set_accent(self._selection_accent)
-        except Exception:
-            pass
         self.apply_selection()
 
     def apply_surface_colors(self, *, content_bg: QColor, shelf_bg: QColor) -> None:

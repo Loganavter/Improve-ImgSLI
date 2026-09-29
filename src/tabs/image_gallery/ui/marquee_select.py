@@ -1,9 +1,10 @@
 """Selection application for the gallery marquee (preview + commit).
 
-Split out of ``ui/marquee.py`` per CODE_PATTERNS (gesture vs selection
-seam): the gesture (press/ensure/filter) lives in ``marquee``, everything
-that turns a band rect into selection state lives here. ``marquee``
-re-exports both names, so existing import sites keep working.
+Tab-specific end of the shared drag plumbing
+(``ui.widgets.shelf.marquee_plumbing``): the geometry that turns a band
+rect into gallery paths lives here, together with the gallery preview /
+commit / snapshot callbacks bound into :data:`GALLERY_WIRING`. ``marquee``
+re-exports the wrapper names, so existing import sites keep working.
 """
 
 from __future__ import annotations
@@ -13,6 +14,9 @@ from pathlib import Path
 from PySide6.QtCore import QRect
 
 from sli_ui_toolkit.managers import scaled_px
+from ui.widgets.shelf.marquee_plumbing import MarqueeWiring, on_rect_finish as _finish
+from ui.widgets.shelf.marquee_plumbing import on_rect_update as _update
+
 
 def _mdbg(msg: str, *args) -> None:
     """Marquee trace via gallery_debug (env-gated, fail-open)."""
@@ -24,66 +28,57 @@ def _mdbg(msg: str, *args) -> None:
         pass
 
 
-def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
-    """Preview selection while the band is dragging.
+def _commit_allowed() -> bool:
+    """Elimination gate (bisect, not a feature).
 
-    Coalescing: the gesture emits per mousemove (100+/s unthrottled) but
-    most moves do not change membership. Recomputing paths is O(items)
-    and re-applying repaints changed cards — so when the normalized hit
-    set + additive flag match the last dispatched update, only the band
-    visual (already set by the gesture) moves and this returns early.
-    The signature resets on every new press (see ``host_mouse_press``),
-    and ``on_rect_finish`` always recomputes, so a mid-drag layout shift
-    can delay one preview frame at most, never a commit.
+    ``IMGSLI_GALLERY_NO_MARQUEE_COMMIT=1`` keeps gesture + preview alive
+    while skipping the commit, to decide whether a selection artifact
+    lives in the finish path.
     """
+    try:
+        from shared.debug_flags import env_flag
+
+        return not bool(env_flag("IMGSLI_GALLERY_NO_MARQUEE_COMMIT"))
+    except Exception:
+        return True
+
+
+def _base_snapshot(view) -> set:  # type: ignore[no-untyped-def]
+    """Press-time selection: owner state wins, else the view's own."""
+    owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
+    sel = None
+    if owner is not None and hasattr(getattr(owner, "state", None), "selected_paths"):
+        sel = getattr(owner.state, "selected_paths", None)
+    if sel is None:
+        sel = getattr(view, "_selection", None) or getattr(view, "_selection_paths", lambda: set())()
+        if callable(sel):
+            sel = sel()
+    return set(sel) if sel is not None else set()
+
+
+def _press_preview(view, additive: bool) -> None:  # type: ignore[no-untyped-def]
+    """Live preview clear right after band start (non-additive drags)."""
+    cb = getattr(view, "_on_marquee_preview", None)
+    if callable(cb):
+        try:
+            cb(set(), bool(additive))
+        except Exception:
+            pass
+    elif not bool(additive):
+        try:
+            view.apply_selection(set())
+        except Exception:
+            pass
+
+
+def _preview(view, paths: set, additive: bool) -> None:  # type: ignore[no-untyped-def]
+    """Preview selection while the band is dragging (owner-first)."""
     try:
         import time as _time
 
-        _t_hit_start = _time.perf_counter()
-    except Exception:
-        _t_hit_start = None  # type: ignore[assignment]
-    # Band visual (viewport space, over cards) + scroll-corrected content
-    # rect for hit-testing — the two never diverge by construction.
-    try:
-        viewport_rect, rect = band_rects(view, rect)
-    except Exception:
-        viewport_rect = rect
-    try:
-        band = band_widget(view)
-        if band is not None:
-            band.set_band(viewport_rect)
-    except Exception:
-        pass
-    paths = paths_for_rect(view, rect)
-    try:
-        _t_hit_ms = (_time.perf_counter() - _t_hit_start) * 1000.0  # type: ignore[operator]
         _t_apply_start = _time.perf_counter()
     except Exception:
-        _t_hit_ms = -1.0
         _t_apply_start = None  # type: ignore[assignment]
-    additive = bool(getattr(view, "_marquee_additive", False))
-    try:
-        sig = (frozenset(str(p) for p in paths), additive)
-    except Exception:
-        sig = None
-    if sig is not None and getattr(view, "_marquee_last_update_sig", None) == sig:
-        try:
-            _mdbg("marquee UPDATE-skip identical membership")
-        except Exception:
-            pass
-        return
-    try:
-        view._marquee_last_update_sig = sig  # type: ignore[attr-defined]
-    except Exception:
-        pass
-    try:
-        _mdbg(
-            "marquee UPDATE rect=(%d,%d %dx%d) paths=%d additive=%s hit=%.1fms",
-            rect.x(), rect.y(), rect.width(), rect.height(),
-            len(paths), additive, _t_hit_ms,
-        )
-    except Exception:
-        pass
     # Prefer owner's preview helper if view delegates to an owner.
     owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
     if owner is not None:
@@ -142,43 +137,12 @@ def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
         pass
 
 
-def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
-    """Commit selection when the band finishes."""
-    try:
-        band = band_widget(view)
-        if band is not None:
-            band.set_active(False)
-    except Exception:
-        pass
-    # Compensate only real bands: empty (tiny-finish) rects must stay empty
-    # so the clear path below still triggers.
-    if not rect.isEmpty():
-        try:
-            _, rect = band_rects(view, rect)
-        except Exception:
-            pass
-    try:
-        _mdbg(
-            "marquee FINISH rect=(%d,%d %dx%d) empty=%s additive=%s",
-            rect.x(),
-            rect.y(),
-            rect.width(),
-            rect.height(),
-            rect.isEmpty(),
-            bool(getattr(view, "_marquee_additive", False)),
-        )
-    except Exception:
-        pass
-    try:
-        from shared.debug_flags import env_flag
-
-        if bool(env_flag("IMGSLI_GALLERY_NO_MARQUEE_COMMIT")):
-            _mdbg("marquee finish SKIP commit (elimination gate IMGSLI_GALLERY_NO_MARQUEE_COMMIT=1)")
-            return
-    except Exception:
-        pass
-    if rect.isEmpty():
-        additive = bool(getattr(view, "_marquee_additive", False))
+def _commit(view, paths: set, additive: bool) -> None:  # type: ignore[no-untyped-def]
+    """Commit selection when the band finishes (empty set clears or keeps)."""
+    if not _commit_allowed():
+        _mdbg("marquee finish SKIP commit (elimination gate IMGSLI_GALLERY_NO_MARQUEE_COMMIT=1)")
+        return
+    if not paths:
         if not additive:
             # Empty band with no additive → clear preview? Commit empty only if not additive.
             # Tiny-drag (< min_drag_px on both axes, see toolkit gesture) lands
@@ -203,8 +167,6 @@ def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
         else:
             _mdbg("marquee finish EMPTY-KEPT (additive, no clear)")
         return
-    paths = paths_for_rect(view, rect)
-    additive = bool(getattr(view, "_marquee_additive", False))
     # Commit via owner if available.
     owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
     if owner is not None:
@@ -242,6 +204,27 @@ def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
                 pass
     except Exception:
         pass
+
+
+GALLERY_WIRING = MarqueeWiring(
+    hit_test=lambda view, rect: paths_for_rect(view, rect),
+    preview=_preview,
+    commit=_commit,
+    base_snapshot=_base_snapshot,
+    press_preview=_press_preview,
+    trace=_mdbg,
+    state_trace=lambda line: _mdbg(line),
+)
+
+
+def on_rect_update(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
+    """Preview selection while the band is dragging (shared plumbing)."""
+    _update(view, rect, GALLERY_WIRING)
+
+
+def on_rect_finish(view, rect: QRect) -> None:  # type: ignore[no-untyped-def]
+    """Commit selection when the band finishes (shared plumbing)."""
+    _finish(view, rect, GALLERY_WIRING)
 
 
 try:
@@ -329,7 +312,7 @@ def paths_for_rect(view, rect: QRect) -> set[Path]:  # type: ignore[no-untyped-d
     Uses live ``card.geometry()`` per card (header-aware via host layout) with
     fixed-grid fallback for offscreen/pooled cards (``_card_geometry_rect``).
     ``rect`` is host-local from ``MarqueeState``; the band paints in the
-    host's own paint pass (``MarqueeHost``).
+    viewport band widget (see ``ui.widgets.shelf.marquee_plumbing``).
     """
     if rect.isEmpty():
         return set()
