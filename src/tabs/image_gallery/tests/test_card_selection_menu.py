@@ -219,7 +219,7 @@ def test_leave_hides_after_menu_closed_and_cleans_ref() -> None:
 
 def test_track_open_menu_restores_hover_on_hide(monkeypatch) -> None:
     """aboutToHide clears the ref and repaints the highlight."""
-    from tabs.image_gallery.ui.card.context_menu import _track_open_menu
+    from tabs.image_gallery.ui.card.menu_track import track_open_menu as _track_open_menu
 
     card = _hover_card()
     slots: list = []
@@ -237,3 +237,81 @@ def test_track_open_menu_restores_hover_on_hide(monkeypatch) -> None:
     slots[0]()
     assert getattr(card, "_gallery_open_menu", None) is None
     assert card._hover_blue_bar is True
+
+
+def test_card_menu_has_no_sort_view_sections(monkeypatch) -> None:
+    """Sort by / View live in the empty-canvas menu (FM background menu),
+    never in the per-card menu."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner(set())
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    ids = _action_ids(captured["entries"])
+    assert "gallery.sort_by" not in ids
+    assert "gallery.view" not in ids
+
+
+def _submenu(entry_id: str, entries):
+    from sli_ui_toolkit.widgets import ContextMenuAction
+
+    for e in entries:
+        if isinstance(e, ContextMenuAction) and e.action_id == entry_id:
+            return e
+    raise AssertionError(f"submenu {entry_id} not found")
+
+
+def test_empty_menu_sort_view_present_and_checked(monkeypatch) -> None:
+    import ui.context_menu.manager as _mgr
+    from tabs.image_gallery.ui.card.sort_view_menu import popup_empty_context_menu
+
+    captured: dict = {}
+
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+        captured["entries"] = tuple(entries)
+        captured["on_triggered"] = on_triggered
+        return SimpleNamespace()
+
+    monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
+    fired: list = []
+    popup_empty_context_menu(
+        SimpleNamespace(), None, None, 1, lambda i: fired.append(("sort", i)),
+        True, lambda b: fired.append(("view", b)),
+    )
+    sort_menu = _submenu("gallery.sort_by", captured["entries"])
+    assert [a.action_id for a in sort_menu.children] == [
+        "gallery.sort.rank", "gallery.sort.name", "gallery.sort.date",
+    ]
+    assert [a.checked for a in sort_menu.children] == [False, True, False]
+    view_menu = _submenu("gallery.view", captured["entries"])
+    assert [(a.action_id, a.checked) for a in view_menu.children] == [
+        ("gallery.view.grid", False), ("gallery.view.list", True),
+    ]
+    captured["on_triggered"]("gallery.sort.date", 2)
+    captured["on_triggered"]("gallery.view.list", True)
+    assert fired == [("sort", 2), ("view", True)]
+
+
+def test_empty_host_right_press_opens_background_menu(qtbot) -> None:
+    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    view = GalleryGridView()
+    qtbot.addWidget(view)
+    view.resize(800, 600)
+    view.show()
+    qtbot.wait(50)
+    fired: list = []
+    view.configure(on_empty_context_menu=lambda gp: fired.append(gp))
+    host = view.items_host
+    empty = QPoint(host.width() - 30, host.height() - 30)
+    assert host.childAt(empty) is None
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress, QPointF(empty), QPointF(host.mapToGlobal(empty)),
+        Qt.MouseButton.RightButton, Qt.MouseButton.RightButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert view.eventFilter(host, press) is True
+    assert len(fired) == 1

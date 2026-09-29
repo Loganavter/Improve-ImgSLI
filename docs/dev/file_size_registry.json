@@ -733,7 +733,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 1506,
+      "lines": 1538,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -816,7 +816,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
-      "lines": 611,
+      "lines": 618,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
@@ -840,7 +840,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1710,
+      "lines": 1752,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -987,7 +987,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/items_view.py",
-      "lines": 741,
+      "lines": 773,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single virtualized grid view — grid_columns/visible_window/acquire/place pipeline\"",
@@ -998,7 +998,7 @@
     },
     {
       "path": "src/tabs/session_picker/recent/panel.py",
-      "lines": 567,
+      "lines": 578,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",

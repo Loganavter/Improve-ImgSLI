@@ -185,6 +185,7 @@ class GalleryGridView(QWidget):
         self._selection_accent = gallery_selection_accent()
         self._on_toggle = None
         self._on_context_menu = None
+        self._on_empty_context_menu = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -276,9 +277,10 @@ class GalleryGridView(QWidget):
 
     # -- configuration -----------------------------------------------------
 
-    def configure(self, *, on_toggle=None, on_context_menu=None) -> None:
+    def configure(self, *, on_toggle=None, on_context_menu=None, on_empty_context_menu=None) -> None:
         self._on_toggle = on_toggle
         self._on_context_menu = on_context_menu
+        self._on_empty_context_menu = on_empty_context_menu
 
     # -- view mode (recent items_view parity) --------------------------------
 
@@ -1501,6 +1503,36 @@ class GalleryGridView(QWidget):
 
             if _marquee.event_filter(self, watched, event):
                 return True
+        except Exception:
+            pass
+        # FM background menu: right-click on empty host opens Sort by / View.
+        try:
+            from PySide6.QtCore import QEvent as _QEvent
+            from PySide6.QtGui import QMouseEvent as _QMouseEvent
+
+            host = getattr(self, "items_host", None)
+            if (
+                host is not None
+                and watched is host
+                and event.type() == _QEvent.Type.MouseButtonPress
+                and isinstance(event, _QMouseEvent)
+                and event.button() == Qt.MouseButton.RightButton
+            ):
+                try:
+                    pos = event.position().toPoint()
+                except Exception:
+                    pos = None
+                try:
+                    child = host.childAt(pos) if pos is not None else None
+                except Exception:
+                    child = None
+                if child is None and callable(getattr(self, "_on_empty_context_menu", None)):
+                    try:
+                        global_pos = host.mapToGlobal(pos) if pos is not None else None
+                    except Exception:
+                        global_pos = None
+                    self._on_empty_context_menu(global_pos)
+                    return True
         except Exception:
             pass
         return super().eventFilter(watched, event)

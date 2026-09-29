@@ -12,10 +12,124 @@ from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
 from plugins.image_properties.plugin import open_image_properties_dialog
 from sli_ui_toolkit.i18n import get_current_language
 from sli_ui_toolkit.i18n import tr as app_tr
-from services.io.recent_projects import RecentProjectRecord, _snapshot_file_times
+from services.io.recent_projects import (
+    SORT_ASC,
+    SORT_CREATED,
+    SORT_DESC,
+    SORT_MODIFIED,
+    SORT_NAME,
+    VIEW_GRID,
+    VIEW_LIST,
+    RecentProjectRecord,
+    _snapshot_file_times,
+    get_recent_sort_mode,
+    get_recent_sort_order,
+    get_recent_view_mode,
+    normalize_recent_sort_mode,
+    set_recent_sort_mode,
+    set_recent_sort_order,
+    set_recent_view_mode,
+)
 from tabs.session_picker.recent.cards import format_session_types
 from ui.widgets.shelf.relative_time import format_absolute_timestamp
 from ui.context_menu.manager import open_context_menu_entries
+
+
+def sort_view_menu_entries(
+    translate: Callable[..., str],
+    on_prefs_changed: Callable[[], None] | None = None,
+) -> list:
+    """FM-style "Sort by" + "View" submenu entries for the recent shelf.
+
+    Checkmarks mirror the live persisted prefs (same source the header
+    chips read); handlers persist + notify via *on_prefs_changed* so the
+    panel refreshes exactly like a header-chip click.
+    """
+    sort_mode = get_recent_sort_mode()
+    sort_order = get_recent_sort_order()
+    view_mode = get_recent_view_mode()
+
+    sort_children = tuple(
+        ContextMenuAction(
+            action_id,
+            translate(key, default),
+            data=mode,
+            checkable=True,
+            checked=sort_mode == mode,
+        )
+        for action_id, key, default, mode in (
+            ("recent.sort.modified", "recent.sort_modified", "Date modified", SORT_MODIFIED),
+            ("recent.sort.created", "recent.sort_created", "Date created", SORT_CREATED),
+            ("recent.sort.name", "recent.sort_name", "Name", SORT_NAME),
+        )
+    ) + (
+        ContextMenuSeparator(),
+        ContextMenuAction(
+            "recent.sort.asc",
+            translate("recent.sort_asc", "Ascending"),
+            data=SORT_ASC,
+            checkable=True,
+            checked=sort_order == SORT_ASC,
+        ),
+        ContextMenuAction(
+            "recent.sort.desc",
+            translate("recent.sort_desc", "Descending"),
+            data=SORT_DESC,
+            checkable=True,
+            checked=sort_order == SORT_DESC,
+        ),
+    )
+    view_children = (
+        ContextMenuAction(
+            "recent.view.grid",
+            translate("recent.view_grid", "Grid"),
+            data=VIEW_GRID,
+            checkable=True,
+            checked=view_mode == VIEW_GRID,
+        ),
+        ContextMenuAction(
+            "recent.view.list",
+            translate("recent.view_list", "List"),
+            data=VIEW_LIST,
+            checkable=True,
+            checked=view_mode == VIEW_LIST,
+        ),
+    )
+
+    return [
+        ContextMenuAction(
+            "recent.sort_by",
+            translate("recent.sort_by", "Sort by"),
+            children=sort_children,
+        ),
+        ContextMenuAction(
+            "recent.view",
+            translate("recent.view", "View"),
+            children=view_children,
+        ),
+    ]
+
+
+def handle_sort_view_action(
+    action_id: str,
+    data: object,
+    on_prefs_changed: Callable[[], None] | None = None,
+) -> bool:
+    """Dispatch a Sort by / View submenu action; True when handled."""
+    if action_id in ("recent.sort.modified", "recent.sort.created", "recent.sort.name"):
+        set_recent_sort_mode(normalize_recent_sort_mode(str(data)))
+    elif action_id in ("recent.sort.asc", "recent.sort.desc"):
+        set_recent_sort_order(str(data))
+    elif action_id in ("recent.view.grid", "recent.view.list"):
+        set_recent_view_mode(str(data))
+    else:
+        return False
+    try:
+        if on_prefs_changed is not None:
+            on_prefs_changed()
+    except Exception:
+        pass
+    return True
 
 
 def open_recent_project_menu(
@@ -88,6 +202,47 @@ def open_recent_project_menu(
         global_pos=QCursor.pos(),
         entries=tuple(entries),
         key=("recent-project", record.path),
+        on_triggered=on_triggered,
+    )
+
+
+def open_recent_empty_menu(
+    *,
+    source_widget,
+    global_pos=None,
+    translate: Callable[..., str],
+    on_prefs_changed: Callable[[], None] | None = None,
+) -> None:
+    """FM background menu for the empty shelf: Sort by / View submenus."""
+    from PySide6.QtGui import QCursor as _QCursor
+
+    entries = sort_view_menu_entries(translate, on_prefs_changed)
+    if not entries:
+        return
+
+    def on_triggered(action_id: str, data: object) -> None:
+        try:
+            import logging as _logging
+
+            _logging.getLogger("ImproveImgSLI").debug(
+                "[recent-menu] empty menu triggered action=%s data=%r", action_id, data
+            )
+        except Exception:
+            pass
+        try:
+            handle_sort_view_action(action_id, data, on_prefs_changed)
+        except Exception:
+            pass
+
+    try:
+        pos = global_pos if global_pos is not None else _QCursor.pos()
+    except Exception:
+        pos = global_pos
+    open_context_menu_entries(
+        source_widget=source_widget,
+        global_pos=pos,
+        entries=tuple(entries),
+        key=("recent-empty",),
         on_triggered=on_triggered,
     )
 

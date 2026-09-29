@@ -193,7 +193,11 @@ class ImageGalleryWidget(QWidget):
         self._grid_host.setObjectName("image_gallery_grid_host")
         self._grid = self._grid_view.items_layout
         # Wire grid toggle -> analyze_requested (card click) and context menu
-        self._grid_view.configure(on_toggle=self._on_card_toggle, on_context_menu=self._on_card_context)
+        self._grid_view.configure(
+            on_toggle=self._on_card_toggle,
+            on_context_menu=self._on_card_context,
+            on_empty_context_menu=self._on_empty_host_context,
+        )
         # Content stack — avoids QVBoxLayout stretch bug where hidden 1054h EmptyState pushes toolbar
         from PySide6.QtWidgets import QStackedWidget
 
@@ -618,6 +622,44 @@ class ImageGalleryWidget(QWidget):
                 self.analyze_requested.emit(path)
             except Exception:
                 pass
+
+    def _on_empty_host_context(self, global_pos) -> None:
+        # FM background menu on empty canvas: Sort by / View (toolbar state).
+        try:
+            from PySide6.QtGui import QCursor
+
+            gp = global_pos if global_pos is not None else QCursor.pos()
+        except Exception:
+            gp = global_pos
+        try:
+            sort_index = int(self.toolbar.sort_index)
+        except Exception:
+            sort_index = None
+        try:
+            view_is_list: bool | None = bool(self.toolbar._is_list)
+        except Exception:
+            view_is_list = None
+        try:
+            _ctx = getattr(self, "_gallery_context", None)
+            tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
+        except Exception:
+            tr = None
+        try:
+            from tabs.image_gallery.ui.card.sort_view_menu import (
+                popup_empty_context_menu,
+            )
+
+            popup_empty_context_menu(
+                self._grid_view,
+                gp,
+                tr,
+                sort_index,
+                self.toolbar.set_sort_index,
+                view_is_list,
+                self.toolbar.set_view_list,
+            )
+        except Exception:
+            pass
 
     def _on_card_context(self, path: Path) -> None:
         # ContextMenu under cursor: selection section (ex-HUD) + per-card actions.

@@ -38,6 +38,13 @@
       "make_best": "★ Make best",
       "reject": "✕ Reject",
       "compare": "⇄ Compare"
-    }
+    },
+    "sort_by": "Sort by",
+    "view": "View",
+    "sort_rank": "Rank",
+    "sort_name": "Name",
+    "sort_date": "Date",
+    "view_grid": "Grid",
+    "view_list": "List"
   }
 }
