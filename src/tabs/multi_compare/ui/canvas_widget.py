@@ -132,6 +132,13 @@ class MultiCompareCanvasWidget(QRhiWidget):
         # until the controller wires it (headless canvases read imageless).
         self.pixel_cache = None
 
+        # Parametric-crop clip views (lane mc-crop-render): sid ->
+        # (real_source, box, view), owned here and shared with
+        # canvas/interaction.py's fit path. Lets the pass resolve each
+        # slot's effective box (``scene.passes.residency`` helpers) while
+        # keeping swap duplicate-detection (``is``) stable across frames.
+        self._crop_clip_views: dict[int, tuple[object, tuple[int, int, int, int], object]] = {}
+
         self._dispatch: Callable | None = None
 
         self._active_composition = None
@@ -564,14 +571,41 @@ class MultiCompareCanvasWidget(QRhiWidget):
         One ``cache.resolve`` per slot with a path — pixel tier first, then
         preview, imageless slots omitted. Closed/evicted stores never
         surface here (the cache validates before returning).
+
+        Parametric-crop clip (lane mc-crop-render): each slot is passed
+        through ``residency.cropped_source_for_slot`` with this canvas's
+        controller, so cropped slots resolve to a translating crop view
+        (cropped size into grid/LOD/fit, clipped reads) while uncropped
+        slots keep their real source byte-identical. An empty crop
+        intersection resolves to ``None`` and is omitted — the slot
+        renders gap (fail-closed, never neighbor bytes).
         """
         from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.scene.passes import residency as _residency
 
+        controller = _residency.controller_for_canvas(self)
         sources: dict[int, object] = {}
         for slot in self.state.slots:
+            sid = int(slot.id)
             source = resolve_slot_source(self.pixel_cache, slot)
-            if source is not None:
-                sources[int(slot.id)] = source
+            if source is None:
+                self._crop_clip_views.pop(sid, None)
+                continue
+            clipped = _residency.cropped_source_for_slot(
+                source, controller, slot, cache=self._crop_clip_views
+            )
+            if clipped is None or clipped is source:
+                # Gap (empty intersection, omitted) or no crop: no live
+                # view for this sid -- drop any stale cached view so a
+                # later toggle re-resolves instead of reusing it.
+                self._crop_clip_views.pop(sid, None)
+                if clipped is None:
+                    continue
+            sources[sid] = clipped
+        if self._crop_clip_views:
+            live = set(sources)
+            for dead in [sid for sid in self._crop_clip_views if sid not in live]:
+                self._crop_clip_views.pop(dead, None)
         return sources
 
     def _rebuild_composition(self) -> None:

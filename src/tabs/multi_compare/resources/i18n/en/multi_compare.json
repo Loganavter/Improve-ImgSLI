@@ -24,6 +24,7 @@
     "duplicate": "Duplicate",
     "properties": "Properties",
     "carry_image": "Move",
+    "crop": "Crop",
     "remove": "Remove",
     "path": "Path",
     "size": "Size"

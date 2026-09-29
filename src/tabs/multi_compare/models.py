@@ -13,17 +13,24 @@ class CompareSlot:
 
     Path-only ``SlotSource`` (B1, IC ``ImageItem`` parity): pixels live in
     the session-owned :class:`pipeline.cache.MultiComparePixelCache`
-    (keyed ``(normpath, mtime, size)``), never here — so Redux snapshots
-    (incl. undo) stay small, serializable, and free of closable stores.
+    (keyed ``(normpath, mtime, size)`` + crop flag), never here — so Redux
+    snapshots (incl. undo) stay small, serializable, and free of closable
+    stores.
     ``revision`` bumps once per decoded-tier arrival (``NoteSlotPixels``)
     so tier fills still produce a new state object for subscribers without
     carrying any pixels through the reducer.
+    ``crop_override`` mirrors IC ``ImageItem.crop_override``: ``True``/``False``
+    force crop on/off for this slot, ``None`` (Auto) follows the global
+    ``auto_crop_black_borders`` setting. MC bakes crop at decode (unlike IC
+    render-time clip), so a toggle evicts the slot's cache tiers and
+    re-decodes (see ``use_cases/crop.py``).
     """
 
     id: int
     path: Path | None = None
     label: str = ""
     revision: int = 0
+    crop_override: bool | None = None
 
 
 @dataclass

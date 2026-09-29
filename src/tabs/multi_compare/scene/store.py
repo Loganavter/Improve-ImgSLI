@@ -86,6 +86,20 @@ class RenameSlot(MultiCompareAction):
 
 
 @dataclass(frozen=True)
+class SetCropOverride(MultiCompareAction):
+    """Per-slot crop override (IC ``SetCropOverrideAction`` parity).
+
+    ``override``: ``True``/``False`` forces crop on/off for the slot,
+    ``None`` returns it to Auto (follow the global setting). Pure state —
+    the reload (evict + re-decode, MC bakes crop) is orchestrated by
+    ``use_cases/crop.py``, never by the reducer.
+    """
+
+    slot_id: int
+    override: bool | None
+
+
+@dataclass(frozen=True)
 class SwapSlots(MultiCompareAction):
     slot_id_a: int
     slot_id_b: int
@@ -204,6 +218,14 @@ class actions:
             type="multi_compare/rename_slot",
             slot_id=slot_id,
             label=label,
+        )
+
+    @staticmethod
+    def set_crop_override(slot_id: int, override: bool | None) -> SetCropOverride:
+        return SetCropOverride(
+            type="multi_compare/set_crop_override",
+            slot_id=slot_id,
+            override=override,
         )
 
     @staticmethod
@@ -378,6 +400,19 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         new_slots = [
             (
                 dataclasses.replace(slot, label=action.label)
+                if slot.id == action.slot_id
+                else slot
+            )
+            for slot in state.slots
+        ]
+        if new_slots == state.slots:
+            return state
+        return _replace(state, slots=new_slots)
+
+    if isinstance(action, SetCropOverride):
+        new_slots = [
+            (
+                dataclasses.replace(slot, crop_override=action.override)
                 if slot.id == action.slot_id
                 else slot
             )

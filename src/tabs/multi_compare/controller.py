@@ -385,6 +385,35 @@ class MultiCompareController:
         """
         preview_decode_use_cases.remove_slot_with_cancel(self, slot_id)
 
+    def set_slot_crop_override(self, slot_id: int, value: bool | None) -> None:
+        """Flip a slot's parametric crop override (IC context-crop parity).
+
+        Pure param write: look the slot up in widget state, dispatch
+        ``SetCropOverride`` via the widget store, request a canvas view
+        update — no evict, no reload, no decode. Fail-soft, never raises.
+        """
+        try:
+            slots = list(getattr(getattr(self.widget, "state", None), "slots", None) or [])
+        except Exception:
+            return
+        slot = next((s for s in slots if getattr(s, "id", None) == slot_id), None)
+        if slot is None:
+            return
+        try:
+            self.widget.store.dispatch(mc_actions.set_crop_override(slot_id, value))
+        except Exception:
+            return
+        try:
+            canvas = getattr(self.widget, "canvas", None)
+            if canvas is not None:
+                update = getattr(canvas, "request_view_update", None)
+                if callable(update):
+                    update()
+                else:
+                    canvas.update()
+        except Exception:
+            pass
+
     def cancel_slot_loads(self, slot_id: int) -> None:
         """Abort inflight decodes for ``slot_id`` without removing the slot."""
         preview_decode_use_cases.cancel_slot_loads(self, slot_id)

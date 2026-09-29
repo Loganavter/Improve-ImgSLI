@@ -25,7 +25,12 @@ def _parse(path: Path) -> ast.AST:
 
 
 def test_compare_slot_has_no_pixel_field():
-    """``CompareSlot`` carries id/path/label/revision only."""
+    """``CompareSlot`` carries id/path/label/revision plus scalar params only.
+
+    ``crop_override`` (bool|None, parametric-crop toggle) is allowed: a
+    tiny serializable param, not pixels — the B1 invariant (no closable
+    stores, no image payloads in state/undo snapshots) holds unchanged.
+    """
     tree = _parse(_TAB_ROOT / "models.py")
     fields: set[str] = set()
     for node in ast.walk(tree):
@@ -33,7 +38,7 @@ def test_compare_slot_has_no_pixel_field():
             for stmt in node.body:
                 if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
                     fields.add(stmt.target.id)
-    assert fields == {"id", "path", "label", "revision"}, fields
+    assert fields == {"id", "path", "label", "revision", "crop_override"}, fields
 
 
 def test_no_in_place_slot_image_writes():

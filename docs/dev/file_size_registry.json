@@ -852,7 +852,7 @@
     },
     {
       "path": "src/tabs/multi_compare/canvas/interaction.py",
-      "lines": 633,
+      "lines": 662,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features\"",
@@ -863,7 +863,7 @@
     },
     {
       "path": "src/tabs/multi_compare/controller.py",
-      "lines": 518,
+      "lines": 547,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"B1 owns the session pixel cache + lazy-restore demand fill here; loading/pyramid/toast stay in use_cases (further split tracked post-B1, not across B2)\"",
@@ -885,7 +885,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/residency.py",
-      "lines": 725,
+      "lines": 1033,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven spec-build + engine-fed residency (MC) — single _SlotUploadRealizer, see docs/dev/rendering/tile-rendering-system.md\"",
@@ -908,7 +908,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 801,
+      "lines": 836,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
@@ -919,7 +919,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/canvas_widget.py",
-      "lines": 767,
+      "lines": 801,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
