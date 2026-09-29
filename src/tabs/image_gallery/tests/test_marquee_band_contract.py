@@ -272,16 +272,17 @@ def test_host_band_pixel_at_cursor(qtbot) -> None:
 def test_host_shrink_clears_exposed_region(qtbot) -> None:
     """Big→small: the exposed region returns to the card (no stale band)."""
     viewport, _, band = _band_viewport(qtbot)
-    card_px = viewport.grab().toImage().pixelColor(500, 400).getRgb()
+    clean_bg = viewport.grab().toImage().pixelColor(500, 400).getRgb()
+    clean_card = viewport.grab().toImage().pixelColor(120, 120).getRgb()
     band.set_active(True)
     band.set_band(QRect(100, 100, 500, 400))
     qtbot.wait(20)
     band.set_band(QRect(100, 100, 60, 50))
     img = viewport.grab().toImage()
-    assert img.pixelColor(500, 400).getRgb() == card_px
-    assert img.pixelColor(120, 120).getRgb() != card_px
+    assert img.pixelColor(500, 400).getRgb() == clean_bg
+    assert img.pixelColor(120, 120).getRgb() != clean_card
     band.set_active(False)
-    assert viewport.grab().toImage().pixelColor(120, 120).getRgb() == card_px
+    assert viewport.grab().toImage().pixelColor(120, 120).getRgb() == clean_card
 
 
 def test_apply_selection_cold_sweep_paints_nothing_unselected(qtbot) -> None:

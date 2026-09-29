@@ -13,9 +13,10 @@ Public API:
   event_filter(view, watched, event) -> bool  (host mouse press → start band)
   host_mouse_press(view, event) -> bool
 
-The state holder paints the band in the content host's own paint pass
-(``MarqueeHost``, Dolphin-style in-paint band) — no overlay widget, no
-restack, no window round-trip on the gallery path.
+The band is a toolkit ``MarqueeBandWidget`` child of the scroll viewport
+(Dolphin foreground parity) — no overlay widget, no restack, no window
+round-trip, and the visual never diverges from the hit-tested rect
+(see ``marquee_view``).
 """
 
 from __future__ import annotations

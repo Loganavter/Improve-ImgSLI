@@ -1,14 +1,14 @@
 """Marquee gesture snapshot for the gallery context-menu trace.
 
 Single fail-open helper shared by the card context-menu open/hide log lines:
-reports ``gesture active/filter/idle/none`` + overlay visibility/geometry so
+reports ``gesture active/filter/idle/none`` + band visibility/geometry so
 the ``IMGSLI_GALLERY_DEBUG`` stream shows whether a marquee band survived the
 popup. Never raises, never imports gallery modules (leaf module, no cycles).
 """
 
 
 def marquee_snapshot(owner, card) -> str:  # type: ignore[no-untyped-def]
-    """Fail-open one-liner: gesture state + overlay visibility/geometry."""
+    """Fail-open one-liner: gesture state + band visibility/geometry."""
     try:
         candidates = []
         for cand in (owner, getattr(card, "_gallery_owner", None)):
@@ -42,17 +42,17 @@ def marquee_snapshot(owner, card) -> str:  # type: ignore[no-untyped-def]
                 try:
                     filt = bool(getattr(gesture, "app_filter_installed", False))
                 except Exception:
-                    pass
+                    filt = "?"
                 state = "active" if active is True else ("filter" if filt else "idle")
-                ov_vis: object = False
-                ov_geom: object = "-"
+                band_vis: object = False
+                band_geom: object = "-"
                 try:
-                    ov = getattr(gesture, "overlay", None)
-                    ov_vis = bool(ov.isVisible()) if ov is not None else False
-                    ov_geom = repr(ov.geometry()) if (ov is not None and ov_vis) else "-"
+                    band = getattr(gv, "_marquee_band", None)
+                    band_vis = bool(band.isVisible()) if band is not None else False
+                    band_geom = repr(band.geometry()) if (band is not None and band_vis) else "-"
                 except Exception:
-                    ov_vis, ov_geom = "?", "?"
-                return f"{state} overlay_vis={ov_vis} geom={ov_geom}"
+                    band_vis, band_geom = "?", "?"
+                return f"{state} band_vis={band_vis} geom={band_geom}"
             except Exception:
                 continue
     except Exception:
