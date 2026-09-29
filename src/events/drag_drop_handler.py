@@ -3,8 +3,7 @@ import logging
 import shiboken6 as sip
 from PySide6.QtCore import QObject, QPointF, QTimer
 from PySide6.QtWidgets import QApplication
-from ui.widgets.drag_ghost_widget import DragGhostWidget, make_count_slot_pixmap
-from shared_toolkit.ui.overlay_layer import get_content_overlay_layer
+from ui.widgets.drag_ghost_widget import make_count_slot_pixmap
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -53,10 +52,10 @@ class DragAndDropService(QObject):
 
         self._is_dragging = False
         self._source_data = None
-        self._ghost_widget = None
-        self._ghost_layer = None
+        from ui.widgets.drag_ghost_service import GhostService
+
+        self._ghost = GhostService()  # default opacity (widget's own 1.0)
         self._drag_start_pos_global = QPointF()
-        self._hotspot = QPointF()
         self._current_target = None
         self._source_widget = None
         self._drop_targets = []
@@ -144,46 +143,24 @@ class DragAndDropService(QObject):
         }
 
         self._drag_start_pos_global = event.globalPosition()
-        self._hotspot = event.position()
+        hotspot = event.position()
 
         if len(indices) > 1:
             pixmap = make_count_slot_pixmap(source_widget, len(indices))
             # Center hotspot on the badge slot.
-            self._hotspot = QPointF(pixmap.width() / 2.0, pixmap.height() / 2.0)
+            hotspot = QPointF(pixmap.width() / 2.0, pixmap.height() / 2.0)
         else:
             # The press that initiated the drag left the row's ripple wave
             # mid-animation; cancel it so the snapshot is clean.
             _cancel_ripple(source_widget)
             pixmap = source_widget.grab()
 
-        # Wave B (content-below-strip): ghosts parent to the content overlay
-        # host below AdaptiveTabStrip, never the window overlay host, so a
-        # ghost dragged across the strip band cannot paint over it. Resolve
-        # from the drag source (deepest content context); when no layer
-        # exists at all (bare test/startup widgets) keep the legacy window
-        # fallback instead of crashing.
         anchor = source_widget if source_widget is not None else self.main_window
-        overlay = get_content_overlay_layer(anchor)
-        if overlay is not None:
-            ghost_parent = overlay.host
-        else:
-            ghost_parent = anchor.window() if anchor is not None else None
-            if ghost_parent is None:
-                ghost_parent = self.main_window
-        self._ghost_layer = overlay
-
-        self._ghost_widget = DragGhostWidget(ghost_parent)
-        self._ghost_widget.set_pixmap(pixmap)
-
-        desired_top_left_global = (
-            event.globalPosition().toPoint() - self._hotspot.toPoint()
-        )
-
-        self._ghost_widget.move(desired_top_left_global)
-        if overlay is not None:
-            overlay.ensure_visible(self._ghost_widget)
-        self._ghost_widget.show()
-        self._ghost_widget.raise_()
+        if not self._ghost.show(pixmap, event.globalPosition(), anchor=anchor, hotspot=hotspot):
+            self._is_dragging = False
+            self._source_data = None
+            self._source_widget = None
+            return
 
         if hasattr(self._source_widget, "set_batch_dragging_state"):
             try:
@@ -195,23 +172,14 @@ class DragAndDropService(QObject):
             self._source_widget.set_dragging_state(True)
 
     def update_drag_position(self, event):
-        if not self._is_dragging or not self._ghost_widget:
+        if not self._is_dragging:
             return
 
         current_pos_global = event.globalPosition()
 
-        if self._ghost_widget and sip.isValid(self._ghost_widget):
-            desired_top_left_global = (
-                current_pos_global.toPoint() - self._hotspot.toPoint()
-            )
-            self._ghost_widget.move(desired_top_left_global)
-            self._ghost_widget.raise_()
-            layer = getattr(self, "_ghost_layer", None)
-            if layer is not None:
-                try:
-                    layer.ensure_visible(self._ghost_widget)
-                except RuntimeError:
-                    pass
+        # No-op when the ghost never materialized (headless fakes drive
+        # target resolution without a widget); target logic below still runs.
+        self._ghost.move(current_pos_global)
 
         try:
             ui_manager = None
@@ -343,10 +311,7 @@ class DragAndDropService(QObject):
 
     def _cleanup(self):
 
-        if self._ghost_widget:
-            self._ghost_widget.deleteLater()
-            self._ghost_widget = None
-        self._ghost_layer = None
+        self._ghost.hide()
 
         if self._source_widget and sip.isValid(self._source_widget):
             try:
