@@ -3,10 +3,22 @@
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
 cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
 
-1. Selection section (ex-HUD flyout: Clear / Analyze / Find similar /
-   Compare →) — shown only when a non-empty selection exists.
+1. Selection section (ex-HUD flyout: Analyze / Find similar /
+   Compare →) — shown only when a non-empty selection exists. It owns
+   Compare while visible, so the per-card Compare is hidden to avoid
+   two same-named entries (selection Compare already carries the set;
+   Ctrl+click + Compare → covers card+selection). No "clear selection"
+   entry by design — deselect is Esc, menus offer actions ON the set.
 2. Per-card actions mirroring the hover capsule: Make best / Reject /
-   Compare (+ Set as source in fidelity mode).
+   Compare (+ Set as source in fidelity mode). Compare appears here
+   only with no selection (single-card flow). Make best / Reject /
+   Remove from view apply to the whole selection when the clicked card
+   is selected (file-manager rule), else to the clicked card alone.
+   The Reject entry tracks state: all targets rejected → "↩ Unreject",
+   otherwise "✕ Reject".
+   "Remove from view" drops the card from the grid (file on disk
+   stays); selection actions never touch the grid — hence the
+   separator between the sections.
 """
 
 from __future__ import annotations
@@ -14,6 +26,14 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from tabs.image_gallery.ui.card.context_actions import (
+    _action_targets,
+    _ctx_compare,
+    _ctx_make_best,
+    _ctx_remove,
+    _ctx_set_source,
+    _ctx_toggle_reject,
+)
 from tabs.image_gallery.ui.card.menu_track import track_open_menu
 
 
@@ -39,6 +59,30 @@ def _selection_count(owner) -> int:
         return 0
 
 
+def _targets_all_rejected(owner, targets) -> bool:
+    """True when every target card is currently rejected (fail-open False).
+
+    Drives the Reject/Unreject label; mirrors the uniform direction in
+    ``_ctx_toggle_reject`` (all rejected → unreject, else reject).
+    """
+    try:
+        if not targets:
+            return False
+        from tabs.image_gallery.use_cases import triage as _triage
+
+        flags: dict[str, bool] = {}
+        for it in _triage._items_of(owner):
+            try:
+                flags[str(Path(it.path))] = bool(
+                    getattr(it, "rejected", getattr(it, "triage_rejected", False))
+                )
+            except Exception:
+                continue
+        return bool(targets) and all(flags.get(str(t), False) for t in targets)
+    except Exception:
+        return False
+
+
 def _selection_label(translate, n: int) -> str:
     if n <= 0:
         return _t(translate, "image_gallery.selection.none", "No selection")
@@ -61,7 +105,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     mode=None,
     *,
     selection_count: int | None = None,
-    on_clear=None,
     on_carry=None,
     on_analyze=None,
     on_find_similar=None,
@@ -116,17 +159,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         has_selection = n > 0
         has_analyze = on_analyze is not None or owner is not None
 
-        def _do_clear() -> None:
-            try:
-                if callable(on_clear):
-                    on_clear()
-                    return
-                from tabs.image_gallery.use_cases import selection as _sel
-
-                _sel.clear_selection(owner)
-            except Exception:
-                pass
-
         def _do_carry() -> None:
             try:
                 if callable(on_carry):
@@ -165,10 +197,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         if has_selection:
             sel_actions = [
                 ContextMenuAction(
-                    "gallery.selection.clear",
-                    _t(translate, "image_gallery.selection.clear", "Clear"),
-                ),
-                ContextMenuAction(
                     "gallery.selection.analyze",
                     _t(translate, "image_gallery.selection.analyze", "Analyze"),
                     enabled=has_analyze,
@@ -185,28 +213,42 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
             entries.append(ContextMenuSeparator())
 
-        entries.extend(
-            [
-                ContextMenuAction(
-                    "gallery.make_best",
-                    "★ Make best",
-                ),
-                ContextMenuAction(
-                    "gallery.reject",
-                    "✕ Reject",
-                ),
+        # Reject label follows state: all targets rejected → Unreject
+        # (mixed → Reject, matching the uniform apply direction).
+        _menu_targets = _action_targets(owner, path)
+        _reject_label = (
+            "↩ Unreject"
+            if _targets_all_rejected(owner, _menu_targets)
+            else "✕ Reject"
+        )
+        per_card = [
+            ContextMenuAction(
+                "gallery.make_best",
+                "★ Make best",
+            ),
+            ContextMenuAction(
+                "gallery.reject",
+                _reject_label,
+            ),
+        ]
+        if not has_selection:
+            # Single-card flow only: with a selection the section's
+            # "Compare →" owns compare (no same-named duplicate).
+            per_card.append(
                 ContextMenuAction(
                     "gallery.compare",
                     "⇄ Compare",
-                ),
-                ContextMenuAction(
-                    "gallery.remove",
-                    "Delete",
-                    icon="delete",
-                    danger=True,
-                ),
-            ]
+                )
+            )
+        per_card.append(
+            ContextMenuAction(
+                "gallery.remove",
+                "Remove from view",
+                icon="delete",
+                danger=True,
+            )
         )
+        entries.extend(per_card)
         if include_source:
             entries.append(
                 ContextMenuAction(
@@ -216,9 +258,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             )
         def _on_triggered(action_id: str, _data: object) -> None:
             try:
-                if action_id == "gallery.selection.clear":
-                    _do_clear()
-                elif action_id == "gallery.selection.analyze":
+                if action_id == "gallery.selection.analyze":
                     _do_analyze()
                 elif action_id == "gallery.selection.find_similar":
                     _do_find_similar()
@@ -320,113 +360,4 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         pass
 
 
-def _ctx_make_best(owner, path: Path) -> None:
-    try:
-        from tabs.image_gallery.use_cases import triage as _triage
 
-        _triage.make_best(owner, path)
-    except Exception:
-        pass
-
-
-def _ctx_toggle_reject(owner, path: Path) -> None:
-    try:
-        from tabs.image_gallery.debug import gallery_debug as _dbg
-        from tabs.image_gallery.use_cases import triage as _triage
-
-        _dbg("reject clicked path=%s owner=%s", path, type(owner).__name__)
-        try:
-            result = _triage.toggle_reject(owner, path)
-        except Exception:
-            _dbg("reject toggle_reject raised path=%s", path, exc_info=True)
-            return
-        _dbg("reject toggle_reject returned %r path=%s", result, path)
-    except Exception:
-        pass
-
-
-def _ctx_compare(owner, path: Path) -> None:
-    try:
-        from tabs.image_gallery.use_cases import carry as _carry
-
-        # Select path then carry.
-        try:
-            if hasattr(owner, "state") and hasattr(owner.state, "selected_paths"):
-                owner.state.selected_paths.add(Path(path))
-        except Exception:
-            pass
-        _carry.carry_selected(owner)
-    except Exception:
-        pass
-
-
-def _ctx_remove(owner, path: Path) -> None:
-    """Delete card from the grid (file on disk stays; list-mode parity)."""
-    try:
-        from tabs.image_gallery.use_cases import triage as _triage
-
-        _triage.remove_from_grid(owner, path)
-    except Exception:
-        pass
-
-
-def _ctx_set_source(owner, path: Path) -> None:
-    """Fidelity only: set selected image as source hub (used by IconActionFlyout & ContextMenu)."""
-    try:
-        from pathlib import Path as _P
-
-        p = _P(path)
-        # Controller / widget state
-        st = getattr(owner, "state", None)
-        if st is not None:
-            try:
-                st.source_path = p
-            except Exception:
-                pass
-        # Widget mirrors _source_path and stats strip chip
-        w = getattr(owner, "widget", None)
-        candidates = [w, owner]
-        # Also try window's gallery widget
-        try:
-            win = None
-            for cand in candidates:
-                if cand is not None and hasattr(cand, "window"):
-                    try:
-                        win = cand.window()
-                        if win is not None:
-                            candidates.append(win)
-                        break
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        for cand in candidates:
-            if cand is None:
-                continue
-            try:
-                if hasattr(cand, "_source_path"):
-                    cand._source_path = p  # type: ignore
-            except Exception:
-                pass
-            try:
-                if hasattr(cand, "stats_strip") and hasattr(cand.stats_strip, "set_mode"):
-                    # Reuse mode from state
-                    mode_val = getattr(st, "mode", None) if st is not None else getattr(cand, "_mode", None)
-                    cand.stats_strip.set_mode(str(mode_val or "fidelity"), p)  # type: ignore
-            except Exception:
-                pass
-            try:
-                if hasattr(cand, "_grid_view") and hasattr(cand._grid_view, "_mode"):
-                    # Grid stores mode; no direct update needed
-                    pass
-            except Exception:
-                pass
-        # Try generic helper (quick_look_hooks) as fallback
-        try:
-            from tabs.image_gallery.ui import quick_look_hooks as _qlh
-
-            _qlh.on_quick_set_source(owner, p)
-        except Exception:
-            pass
-    except Exception:
-        pass

@@ -52,6 +52,19 @@ def is_acceptable_drop(owner, event) -> bool:
         return False
 
 
+def _set_highlight(owner, active: bool) -> None:
+    """Toggle the empty-state zone chrome; safe for fakes without the API."""
+    try:
+        empty = getattr(owner, "_empty_state", None)
+        if empty is None:
+            return
+        meth = getattr(empty, "set_drag_highlight", None)
+        if callable(meth):
+            meth(bool(active))
+    except Exception:
+        pass
+
+
 def drag_enter_event(owner, event) -> None:
     _dnd_log("dragEnterEvent: mime_hasUrls=%s", event.mimeData().hasUrls() if event.mimeData() else False)
     ok = is_acceptable_drop(owner, event)
@@ -63,7 +76,9 @@ def drag_enter_event(owner, event) -> None:
             owner._empty_state.show()
         except Exception:
             pass
+        _set_highlight(owner, True)
     else:
+        _set_highlight(owner, False)
         event.ignore()
 
 
@@ -85,6 +100,7 @@ def drag_move_event(owner, event) -> None:
 
 def drag_leave_event(owner, event) -> None:
     _dnd_log("dragLeaveEvent")
+    _set_highlight(owner, False)
     try:
         super(type(owner), owner).dragLeaveEvent(event)
     except Exception:
@@ -382,6 +398,7 @@ def drop_event(owner, event) -> None:
     _dnd_log("dropEvent: enter")
     if not is_acceptable_drop(owner, event):
         _dnd_log("dropEvent: rejected by is_acceptable_drop -> ignore")
+        _set_highlight(owner, False)
         event.ignore()
         return
     _dnd_log("dropEvent: accepted -> acceptProposedAction")
@@ -400,6 +417,10 @@ def drop_event(owner, event) -> None:
                 pass
     except Exception:
         pass
+    finally:
+        # Drop consumed — chrome goes away; next state (scanning/ready)
+        # owns the visuals from here.
+        _set_highlight(owner, False)
 
 
 class _ZoneDropFilter(QObject):

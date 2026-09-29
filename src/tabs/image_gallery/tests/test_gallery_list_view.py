@@ -99,6 +99,61 @@ def test_series_survive_mode_switch(qtbot) -> None:
     assert gv.card_for(items[2].path) is not None
 
 
+def test_series_header_full_width_after_mode_switch(qtbot) -> None:
+    """Series header + list rows span the viewport after grid↔list.
+
+    Regression: the shared ``QGridLayout`` is not recreated across a mode
+    switch and kept the grid columns' min-widths; the single list column
+    collapsed to its sizeHint, so the header Button elided down to
+    ``SERIES 1 ·`` and looked like it had vanished.
+    """
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1200, 700)
+    w.show()
+    qtbot.waitExposed(w)
+    items = _items("a.png", "b.png", "c.png", "d.png")
+    w.rebuild_grid(items)
+    gv = w._grid_view
+    gv.set_series([items[:2], items[2:]], hub_names=["hub1", "hub2"], collapsed={})
+    qtbot.wait(30)
+    w._on_view_toggled(True)
+    qtbot.wait(30)
+    assert gv._view_mode == VIEW_LIST
+    host_w = gv.items_host.width()
+    assert host_w > 0
+    headers = list(gv._series_headers)
+    assert headers
+    for h in headers:
+        assert h.width() >= host_w * 0.9, h.objectName()
+    card = gv.card_for(items[0].path)
+    assert card is not None and card.width() >= host_w * 0.9
+    # Back to grid: cards keep their fixed size, headers their pinned span.
+    w._on_view_toggled(False)
+    qtbot.wait(30)
+    assert gv._view_mode == VIEW_GRID
+    grid_card = gv.card_for(items[0].path)
+    assert grid_card is not None and grid_card.width() < host_w * 0.9
+
+
+def test_list_rows_fill_viewport(qtbot) -> None:
+    """Flat list rows span the host width (single stretched column)."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1200, 700)
+    w.show()
+    qtbot.waitExposed(w)
+    items = _items("a.png", "b.png")
+    w.rebuild_grid(items)
+    w._on_view_toggled(True)
+    qtbot.wait(30)
+    gv = w._grid_view
+    host_w = gv.items_host.width()
+    assert host_w > 0
+    card = gv.card_for(items[0].path)
+    assert card is not None and card.width() >= host_w * 0.9
+
+
 def test_selection_and_click_parity_in_list_mode(qtbot) -> None:
     w = ImageGalleryWidget()
     qtbot.addWidget(w)
@@ -218,65 +273,29 @@ def test_list_meta_single_row() -> None:
     assert len(rows) == 1 and rows[0].text == "Artifacts tie…"
 
 
-def _capsule_owner(item: GalleryItem) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(items=[item], selected_paths=set()))
-
-
-def test_chrome_regions_present_and_routed(qtbot) -> None:
+def test_no_chrome_regions_present(qtbot) -> None:
+    """List rows carry no right-side action chrome — actions live in the menu."""
     it = _items("a.png")[0]
     card = build_gallery_list_card(it)
     qtbot.addWidget(card)
-    card.show()
-    owner = _capsule_owner(it)
-    card._gallery_owner = owner  # type: ignore[attr-defined]
-    _bind_list_row(card, on_activate=lambda *_a: None, on_context_menu=lambda *_a: None)
+    assert _grid_ids(card) == {"thumb", "text", "meta"}
     for rid in ("act_best", "act_reject", "act_compare", "act_delete"):
-        assert card.region(rid) is not None
-    # Chrome regions are always visible (no hover-only children anymore).
-    assert card.findChild(object, "gallery_row_act_best") is None
-    card.regionClicked.emit("act_best")
-    assert it.is_best is True
-    update_gallery_list_card(card, it)
-    assert "#1" in card.region("text").rows[0].text and "★" in card.region("text").rows[0].text
-    card.regionClicked.emit("act_reject")
-    assert it.rejected is True
-    card.regionClicked.emit("act_compare")
-    assert it.path in owner.state.selected_paths
+        assert rid not in _grid_ids(card)
 
 
-def test_chrome_resolves_live_item_per_click(qtbot) -> None:
-    # Pool-safety: swapping _gallery_item retargets the same regions.
-    first, second = _items("a.png", "b.png")
-    card = build_gallery_list_card(first)
-    qtbot.addWidget(card)
-    owner = SimpleNamespace(state=SimpleNamespace(items=[first, second], selected_paths=set()))
-    card._gallery_owner = owner  # type: ignore[attr-defined]
-    _bind_list_row(card, on_activate=lambda *_a: None, on_context_menu=lambda *_a: None)
-    update_gallery_list_card(card, second)
-    card.regionClicked.emit("act_best")
-    assert second.is_best is True and first.is_best is False
-
-
-def test_plate_click_activates_and_delete_removes(qtbot, monkeypatch) -> None:
-    from tabs.image_gallery.use_cases import triage as _triage
-
+def test_plate_click_activates(qtbot) -> None:
     it = _items("a.png")[0]
     card = build_gallery_list_card(it)
     qtbot.addWidget(card)
-    owner = _capsule_owner(it)
-    card._gallery_owner = owner  # type: ignore[attr-defined]
     got: list = []
     _bind_list_row(
         card,
         on_activate=lambda p, additive=False: got.append((str(p), additive)),
         on_context_menu=lambda *_a: None,
     )
-    card.regionClicked.emit("text")
-    assert got == [(str(it.path), False)]
-    removed: list = []
-    monkeypatch.setattr(_triage, "remove_from_grid", lambda _o, p: removed.append(str(p)) or True)
-    card.regionClicked.emit("act_delete")
-    assert removed == [str(it.path)]
+    for rid in ("text", "meta", "thumb"):
+        card.regionClicked.emit(rid)
+    assert got == [(str(it.path), False)] * 3
 
 
 def test_overlay_no_hover_wash_rejected_dim_only() -> None:
@@ -304,8 +323,9 @@ def test_overlay_no_hover_wash_rejected_dim_only() -> None:
     assert "drawRect" in dimmed.ops
 
 
-def test_view_list_rebind_routes_chrome(qtbot) -> None:
-    """VIEW_LIST rebind path: recycled rows stay list-routed (no grid activate)."""
+def test_view_list_rebind_routes_plate(qtbot) -> None:
+    """VIEW_LIST rebind path: recycled rows activate on the plate; a stale
+    chrome id cannot fire an action (the chrome is gone)."""
     w = ImageGalleryWidget()
     qtbot.addWidget(w)
     items = _items("a.png", "b.png")
@@ -314,18 +334,17 @@ def test_view_list_rebind_routes_chrome(qtbot) -> None:
     gv = w._grid_view
     card = gv.card_for(items[0].path)
     assert card is not None
-    owner = SimpleNamespace(state=SimpleNamespace(items=list(items), selected_paths=set()))
-    card._gallery_owner = owner  # type: ignore[attr-defined]
     gv._rebind_card(card)
     activated: list = []
     orig = w.show_quick_look
     try:
         w.show_quick_look = lambda p: activated.append(str(p))  # type: ignore[method-assign]
         card.regionClicked.emit("act_best")
+        assert items[0].is_best is False  # no chrome action fired
+        card.regionClicked.emit("text")
     finally:
         w.show_quick_look = orig  # type: ignore[method-assign]
-    assert items[0].is_best is True
-    assert activated == []
+    assert activated == [str(items[0].path)]
 
 
 def test_refresh_in_list_mode(qtbot) -> None:

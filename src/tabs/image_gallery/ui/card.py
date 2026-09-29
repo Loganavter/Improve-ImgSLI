@@ -341,7 +341,25 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None) ->
     from tabs.image_gallery.ui.card.regions import _item_unreadable, _text_rows
     from tabs.image_gallery.ui.card.visuals import _apply_rejected_visuals
 
+    # Pooled cards are rebound to other items; hover/menu state is per-widget
+    # and must not survive the rebind (see reset_card_hover_state). Same-path
+    # in-place updates (thumbnail arrival) keep the live hover.
+    try:
+        _old_path = getattr(getattr(card, "_gallery_item", None), "path", None)
+    except Exception:
+        _old_path = None
     _attach_item(card, item)
+    try:
+        _new_path = getattr(item, "path", None)
+    except Exception:
+        _new_path = None
+    if _old_path is not None and _new_path is not None and _old_path != _new_path:
+        try:
+            from tabs.image_gallery.ui.card.hover import reset_card_hover_state
+
+            reset_card_hover_state(card)
+        except Exception:
+            pass
     _mode = mode
     if _mode is None:
         try:

@@ -1,8 +1,9 @@
 """Gallery card context menu: selection section (ex-HUD) + per-card actions.
 
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
-cursor. Selection actions (Clear / Analyze / Find similar / Compare →)
+cursor. Selection actions (Analyze / Find similar / Compare →)
 appear as a titled section only when a non-empty selection exists.
+Deselect is Esc, never a menu entry.
 """
 
 from __future__ import annotations
@@ -90,14 +91,16 @@ def test_menu_with_selection_has_selection_section(monkeypatch) -> None:
         card, owner, Path("/a.png"), global_pos=None, selection_count=2,
     )
     ids = _action_ids(captured["entries"])
-    assert "gallery.selection.clear" in ids
     assert "gallery.selection.analyze" in ids
     assert "gallery.selection.find_similar" in ids
     assert "gallery.selection.compare" in ids
-    # Per-card actions still present.
+    # No deselect entry — Esc owns that; menus act ON the set.
+    assert "gallery.selection.clear" not in ids
+    # Per-card actions still present — except Compare, owned by the
+    # selection section while it is visible (no same-named duplicate).
     assert "gallery.make_best" in ids
     assert "gallery.reject" in ids
-    assert "gallery.compare" in ids
+    assert "gallery.compare" not in ids
 
 
 def test_menu_without_selection_has_no_selection_section(monkeypatch) -> None:
@@ -110,6 +113,7 @@ def test_menu_without_selection_has_no_selection_section(monkeypatch) -> None:
     ids = _action_ids(captured["entries"])
     assert not [i for i in ids if i.startswith("gallery.selection.")]
     assert "gallery.make_best" in ids
+    assert "gallery.compare" in ids
 
 
 def test_selection_callbacks_fire(monkeypatch) -> None:
@@ -123,17 +127,163 @@ def test_selection_callbacks_fire(monkeypatch) -> None:
         Path("/a.png"),
         global_pos=None,
         selection_count=1,
-        on_clear=lambda: fired.append("clear"),
         on_carry=lambda: fired.append("carry"),
         on_analyze=lambda: fired.append("analyze"),
         on_find_similar=lambda: fired.append("find"),
     )
     trig = captured["on_triggered"]
-    trig("gallery.selection.clear", None)
     trig("gallery.selection.compare", None)
     trig("gallery.selection.analyze", None)
     trig("gallery.selection.find_similar", None)
-    assert fired == ["clear", "carry", "analyze", "find"]
+    assert fired == ["carry", "analyze", "find"]
+def _owner_with_items(selected, items, order=None):
+    st = SimpleNamespace(selected_paths=set(selected), items=list(items))
+    if order is not None:
+        st.selected_order = list(order)
+    return SimpleNamespace(state=st)
+
+
+def _triage_item(p, rejected=False):
+    return SimpleNamespace(path=Path(p), rejected=rejected, triage_rejected=rejected)
+
+
+def test_group_reject_sets_all_selected(monkeypatch) -> None:
+    """Clicked-inside-selection Reject hits every selected card, uniformly."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner_with_items(
+        {Path("/a.png"), Path("/b.png")},
+        [_triage_item("/a.png"), _triage_item("/b.png")],
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    captured["on_triggered"]("gallery.reject", None)
+    flags = {str(it.path): it.rejected for it in owner.state.items}
+    assert flags == {"/a.png": True, "/b.png": True}
+
+
+def test_group_reject_unrejects_when_all_rejected(monkeypatch) -> None:
+    """All-rejected + Reject → all unrejected (uniform, not per-item flip)."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner_with_items(
+        {Path("/a.png"), Path("/b.png")},
+        [_triage_item("/a.png", True), _triage_item("/b.png", True)],
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    captured["on_triggered"]("gallery.reject", None)
+    flags = {str(it.path): it.rejected for it in owner.state.items}
+    assert flags == {"/a.png": False, "/b.png": False}
+
+
+def test_click_outside_selection_acts_single(monkeypatch) -> None:
+    """Right-click outside the set touches only the clicked card."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner_with_items(
+        {Path("/a.png"), Path("/b.png")},
+        [_triage_item("/a.png"), _triage_item("/b.png"), _triage_item("/c.png")],
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/c.png"), global_pos=None, selection_count=2,
+    )
+    captured["on_triggered"]("gallery.reject", None)
+    flags = {str(it.path): it.rejected for it in owner.state.items}
+    assert flags == {"/a.png": False, "/b.png": False, "/c.png": True}
+
+
+def test_group_remove_uses_batch(monkeypatch) -> None:
+    """Remove with selection → remove_paths_from_grid; single → remove_from_grid."""
+    from tabs.image_gallery.use_cases import triage as _triage
+
+    captured = _capture_menu(monkeypatch)
+    calls: list = []
+    monkeypatch.setattr(
+        _triage, "remove_paths_from_grid",
+        lambda o, ps: calls.append(("batch", sorted(str(p) for p in ps))) or 2,
+    )
+    monkeypatch.setattr(
+        _triage, "remove_from_grid",
+        lambda o, p: calls.append(("single", str(p))) or True,
+    )
+    owner = _owner({Path("/a.png"), Path("/b.png")})
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    captured["on_triggered"]("gallery.remove", None)
+    assert calls == [("batch", ["/a.png", "/b.png"])]
+
+    calls.clear()
+    owner = _owner(set())
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    captured["on_triggered"]("gallery.remove", None)
+    assert calls == [("single", "/a.png")]
+
+
+def test_group_make_best_loops_selection(monkeypatch) -> None:
+    """Make best with selection → per-target call each (own-series best)."""
+    from tabs.image_gallery.use_cases import triage as _triage
+
+    captured = _capture_menu(monkeypatch)
+    calls: list = []
+    monkeypatch.setattr(
+        _triage, "make_best", lambda o, p: calls.append(str(p)) or True
+    )
+    owner = _owner({Path("/a.png"), Path("/b.png")})
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    captured["on_triggered"]("gallery.make_best", None)
+    assert sorted(calls) == ["/a.png", "/b.png"]
+
+
+def _action_text(entries, action_id: str) -> str:
+    from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
+
+    for e in entries:
+        items = e.entries if isinstance(e, ContextMenuSection) else (e,)
+        for a in items:
+            if isinstance(a, ContextMenuAction) and a.action_id == action_id:
+                return a.text
+    raise AssertionError(f"{action_id} entry missing")
+
+
+def test_reject_label_tracks_state(monkeypatch) -> None:
+    """All targets rejected → Unreject; else (incl. mixed) → Reject."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner_with_items(
+        {Path("/a.png"), Path("/b.png")},
+        [_triage_item("/a.png", True), _triage_item("/b.png", True)],
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    assert _action_text(captured["entries"], "gallery.reject") == "↩ Unreject"
+
+    owner = _owner_with_items(
+        {Path("/a.png"), Path("/b.png")},
+        [_triage_item("/a.png", True), _triage_item("/b.png")],
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
+    )
+    assert _action_text(captured["entries"], "gallery.reject") == "✕ Reject"
+
+    owner = _owner_with_items(set(), [_triage_item("/a.png", True)])
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    assert _action_text(captured["entries"], "gallery.reject") == "↩ Unreject"
+
+    owner = _owner_with_items(set(), [_triage_item("/a.png")])
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    assert _action_text(captured["entries"], "gallery.reject") == "✕ Reject"
+
+
 def test_remove_action_calls_remove_from_grid(monkeypatch) -> None:
     """Ex-delete-badge: 'Remove from view' removes the card, file stays."""
     from tabs.image_gallery.use_cases import triage as _triage
@@ -152,7 +302,7 @@ def test_remove_action_calls_remove_from_grid(monkeypatch) -> None:
     trig("gallery.remove", None)
     assert removed == ["/a.png"]
 def test_remove_action_has_icon(monkeypatch) -> None:
-    """Delete must render the list-mode trash icon with danger styling."""
+    """Remove-from-view must render the list-mode trash icon with danger styling."""
     from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
 
     captured = _capture_menu(monkeypatch)
@@ -165,7 +315,7 @@ def test_remove_action_has_icon(monkeypatch) -> None:
         items = e.entries if isinstance(e, ContextMenuSection) else (e,)
         for a in items:
             if isinstance(a, ContextMenuAction) and a.action_id == "gallery.remove":
-                assert a.text == "Delete"
+                assert a.text == "Remove from view"
                 assert a.icon == "delete", "list-mode trash parity"
                 assert a.danger is True
                 return
@@ -217,8 +367,14 @@ def test_leave_hides_after_menu_closed_and_cleans_ref() -> None:
     assert getattr(card, "_gallery_open_menu", None) is None
 
 
-def test_track_open_menu_restores_hover_on_hide(monkeypatch) -> None:
-    """aboutToHide clears the ref and repaints the highlight."""
+def test_track_open_menu_hide_clears_bar() -> None:
+    """aboutToHide clears the ref and always drops the bar (no cursor poll).
+
+    Regression: the old hide path re-derived hover from ``QCursor.pos()``,
+    which lies on Wayland at ``aboutToHide`` — the bar came back on after
+    *any* menu close (stuck-ON). Real hover is re-established by Qt's own
+    Enter/Leave once the popup is gone.
+    """
     from tabs.image_gallery.ui.card.menu_track import track_open_menu as _track_open_menu
 
     card = _hover_card()
@@ -233,10 +389,11 @@ def test_track_open_menu_restores_hover_on_hide(monkeypatch) -> None:
     assert getattr(card, "_gallery_open_menu", None) is menu
     assert card._hover_blue_bar is True  # forced on while menu open
     assert len(slots) == 1
-    card._hover_blue_bar = False
+
+    card._hover_blue_bar = True
     slots[0]()
     assert getattr(card, "_gallery_open_menu", None) is None
-    assert card._hover_blue_bar is True
+    assert card._hover_blue_bar is False
 
 
 def test_card_menu_has_no_sort_view_sections(monkeypatch) -> None:

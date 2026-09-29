@@ -171,6 +171,34 @@ def _hdbg(msg: str, *args) -> None:
         pass
 
 
+def _bar_trace(action: str, card) -> None:  # type: ignore[no-untyped-def]
+    """TEMPORARY diagnostic: who flips the hover bar ON/OFF/PAINT.
+
+    ``logger.debug`` + unique ``[gallery-hover-bar]`` prefix per
+    ``docs/dev/LOGGING.md`` temporary-diagnostics recipe: visible with
+    ``--debug`` / ``debug_mode_enabled``, silent in a normal run. Remove
+    once the mechanism is pinned. The caller chain names it — hover-filter
+    Enter, ``track_open_menu``, ``_on_menu_hidden``, or the paint pass —
+    even though several share the flag. Grep tag: ``[gallery-hover-bar]``.
+    """
+    try:
+        import logging as _logging
+        import traceback as _tb
+
+        path = getattr(getattr(card, "_gallery_item", None), "path", "?")
+        stack = _tb.extract_stack()[:-1]
+        chain = " <- ".join(
+            "%s:%d" % (f.filename.rsplit("/", 1)[-1], f.lineno)
+            for f in stack[-7:]
+        )
+        _logging.getLogger("ImproveImgSLI").debug(
+            "[gallery-hover-bar] %s path=%s stack=%s",
+            action, path, chain,
+        )
+    except Exception:
+        pass
+
+
 class _CardHoverFilter(QObject):
     """Hover highlight for gallery cards: accent underline on Enter/Leave.
 
@@ -227,6 +255,7 @@ class _CardHoverFilter(QObject):
 
 def _show_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
     """S2-2: hovered card — 3px accent bar 234×3 r1.5 at 8,159 inside card per svg x874 y359."""
+    _bar_trace("ON", card)
     try:
         # Use overlay flag instead of whole-button underline (which is full width at edge)
         card._hover_blue_bar = True  # type: ignore[attr-defined]
@@ -247,6 +276,7 @@ def _show_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
 
 
 def _hide_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
+    _bar_trace("OFF", card)
     try:
         card._hover_blue_bar = False  # type: ignore[attr-defined]
         card.update()
@@ -254,5 +284,28 @@ def _hide_card_hover_underline(card) -> None:  # type: ignore[no-untyped-def]
         pass
     try:
         card.setShowUnderline(False)
+    except Exception:
+        pass
+
+
+def reset_card_hover_state(card) -> None:  # type: ignore[no-untyped-def]
+    """Drop all card-bound hover/menu state when the card is reused.
+
+    Grid cards are pooled and rebound to a different item
+    (``_recycle_card`` → ``_acquire_card`` → ``update_gallery_card``), and a
+    context menu can stay open across that rebind. ``_hover_blue_bar`` /
+    ``_gallery_open_menu`` are per-WIDGET, not per-item: without a reset the
+    flag rides the recycled widget onto whatever card it becomes (the bar
+    surfaces on an unrelated card after any action that rebuilds the grid),
+    and the menu's ``aboutToHide`` closure then clears the moved widget
+    instead of the item the user right-clicked. Called on path change and on
+    recycle.
+    """
+    try:
+        card._gallery_open_menu = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        _hide_card_hover_underline(card)
     except Exception:
         pass

@@ -65,6 +65,30 @@ def sync_shelf_panel_height(panel) -> None:
     panel.setFixedHeight(new_h)
 
 
+def settle_shelf_layout_now(panel) -> None:
+    """Re-run the panel's own layout synchronously after a rebuild.
+
+    ``setFixedHeight`` only posts the panel's Resize event, so the frame
+    painted before the next event-loop turn keeps the OLD child geometry while
+    the panel is already tall: the root QVBoxLayout split the growth evenly
+    because ``content_host``'s cached sizeHint was stale, so the header host
+    absorbed ~half of it — the user-visible "controls jump down, a new gap
+    above and below the header, then snap back" artifact when switching
+    list -> cards (shrinking hides the stale header, growing exposes it).
+    Refreshing the children's hints and re-running the layout makes the panel
+    and its contents agree in the same frame."""
+    for child in (
+        getattr(panel, "_header_host", None),
+        getattr(panel, "_content_host", None),
+    ):
+        if child is not None:
+            child.updateGeometry()
+    root = panel.layout()
+    if root is not None:
+        root.invalidate()
+        root.activate()
+
+
 def schedule_deferred_relayout(panel) -> None:
     if not panel._painted_once:
         if panel._sync_settle_in_progress:

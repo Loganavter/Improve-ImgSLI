@@ -224,6 +224,31 @@ def test_hover_underline_toggle(qapp):
     card.deleteLater()
 
 
+def test_rebind_clears_hover_and_menu_state(qapp):
+    """Pooled-card rebind must not carry hover/menu state to another item.
+
+    Regression: ``_hover_blue_bar`` / ``_gallery_open_menu`` survived
+    ``update_gallery_card`` rebinding, so a context menu left open across a
+    grid rebuild cleared the moved widget and the underline surfaced on an
+    unrelated card. Same-path in-place updates (thumbnail arrival) keep the
+    live hover.
+    """
+    card = build_gallery_card(_item(path=Path("/gallery/a.png")), parent=None)
+    qapp.processEvents()
+    _show_card_hover_underline(card)
+    card._gallery_open_menu = object()
+    assert card._hover_blue_bar is True
+
+    update_gallery_card(card, _item(path=Path("/gallery/a.png"), mtime_ns=2))
+    assert card._hover_blue_bar is True
+    assert getattr(card, "_gallery_open_menu", None) is not None
+
+    update_gallery_card(card, _item(path=Path("/gallery/b.png"), mtime_ns=3))
+    assert getattr(card, "_hover_blue_bar", False) is False
+    assert getattr(card, "_gallery_open_menu", None) is None
+    card.deleteLater()
+
+
 def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes):
     # Design verdict: the tie-break pill is removed. Tie-pending items fall
     # through to the rank path — #N if ranked, else no badge (never a

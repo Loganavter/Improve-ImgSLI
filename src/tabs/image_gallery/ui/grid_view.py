@@ -346,17 +346,38 @@ class GalleryGridView(QWidget):
         Pinning each column to the card width in series mode keeps the
         header at the full grid width; flat mode resets to 0 so a
         partially-filled last row does not force extra width.
+
+        The layout is NOT recreated across a grid↔list switch, so every
+        column a previous mode may have pinned has to be reset — leftover
+        min-widths on the now-empty grid columns (1..3 in list mode) squeeze
+        column 0 to its sizeHint and the series header elides/disappears.
         """
         try:
             cols = int(self.grid_columns)
         except Exception:
             return
-        if not series_mode or cols <= 1 or self._view_mode == VIEW_LIST:
-            for c in range(max(int(cols or 1), 1)):
-                try:
-                    self.items_layout.setColumnMinimumWidth(c, 0)
-                except Exception:
-                    continue
+        max_cols = max(int(GRID_COLUMNS), int(cols or 1))
+        is_list = self._view_mode == VIEW_LIST
+        try:
+            # List: fill horizontally (one stretched column). Grid: natural
+            # left-aligned card layout.
+            self.items_layout.setAlignment(
+                Qt.AlignmentFlag.AlignTop
+                if is_list
+                else (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            )
+        except Exception:
+            pass
+        for c in range(max_cols):
+            try:
+                self.items_layout.setColumnStretch(c, 1 if (is_list and c == 0) else 0)
+            except Exception:
+                continue
+            try:
+                self.items_layout.setColumnMinimumWidth(c, 0)
+            except Exception:
+                continue
+        if is_list or not series_mode or cols <= 1:
             return
         try:
             card_w = int(scaled_px(GALLERY_CARD_W))
@@ -1396,6 +1417,14 @@ class GalleryGridView(QWidget):
             pass
         try:
             apply_gallery_selection(card, False)  # type: ignore[arg-type]
+        except Exception:
+            pass
+        try:
+            # Hover/menu state is per-widget; drop it before the pooled card
+            # is rebound to another item (or the bar rides it to a new card).
+            from tabs.image_gallery.ui.card.hover import reset_card_hover_state
+
+            reset_card_hover_state(card)
         except Exception:
             pass
         try:

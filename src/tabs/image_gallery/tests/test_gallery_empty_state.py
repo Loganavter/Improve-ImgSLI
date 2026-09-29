@@ -85,10 +85,12 @@ def test_emptied_by_removals_shows_empty_view_text(qtbot) -> None:
     assert w._empty_label.get_original_text() == "No images in view."
     # Compat shim is never shown: it has no layout slot and would pin at (0,0).
     assert not w._empty_label.isVisible()
+    # S0 repose is blank — the message lives on the zone, shown only on drag.
+    assert not w._empty_state._drop_label.isVisible()
 
 
-def test_pristine_empty_shows_pick_folder_text(qtbot) -> None:
-    """Never-opened grid keeps the default pick-a-folder message."""
+def test_pristine_empty_is_blank_canvas(qtbot) -> None:
+    """Never-opened grid shows nothing — zone (+ message) only on drag."""
     from tabs.image_gallery.widget import ImageGalleryWidget
 
     w = ImageGalleryWidget()
@@ -96,6 +98,7 @@ def test_pristine_empty_shows_pick_folder_text(qtbot) -> None:
     w.rebuild_grid([])
     # Drop zone keeps its construction default (no translate in this context).
     assert w._empty_state._drop_label.get_original_text() == "Drop folder or images here"
+    assert not w._empty_state._drop_label.isVisible()
     assert w._empty_label.get_original_text() == "Pick a folder to see images here."
     assert not w._empty_label.isVisible()
 
@@ -130,10 +133,15 @@ def test_scanning_hides_drop_zone(qtbot) -> None:
     assert state._spinner.isVisible()
     assert state._scanning_label.isVisible()
     assert "2/4" in state._scanning_label.text()
-    # Back to empty restores the zone.
+    # Back to empty is a blank canvas, zone stays hidden until drag.
     state.set_state("empty")
-    assert state._drop_label.isVisible()
+    assert not state._drop_label.isVisible()
     assert not state._spinner.isVisible()
+    # Drag reveals the zone (+ message), leave hides it again.
+    state.set_drag_highlight(True)
+    assert state._drop_label.isVisible()
+    state.set_drag_highlight(False)
+    assert not state._drop_label.isVisible()
 def test_drop_zone_takes_majority_of_height(qtbot) -> None:
     """Zone dominates free space: spacers must not eat it down to a strip.
 
@@ -152,5 +160,9 @@ def test_drop_zone_takes_majority_of_height(qtbot) -> None:
     parent.show()
     qtbot.waitExposed(parent)
     QApplication.processEvents()
+    QApplication.processEvents()
+    # Repose is blank; the zone takes the slot only on drag.
+    assert not state._drop_label.isVisible()
+    state.set_drag_highlight(True)
     QApplication.processEvents()
     assert state._drop_label.height() > 300

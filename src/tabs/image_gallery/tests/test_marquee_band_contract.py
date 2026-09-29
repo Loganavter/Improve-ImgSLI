@@ -16,9 +16,21 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPainter
+from PySide6.QtWidgets import QWidget
 
 from tabs.image_gallery.ui import marquee as _marquee
+
+# Deterministic card fill: a paintEvent-less opaque QWidget keeps whatever the
+# backing store held (black pre-paint) and later repaints in the ambient
+# palette, so a pixel baseline captured against it flips with test order.
+_CARD_FILL = QColor(20, 40, 60)
+
+
+class _OpaqueCard(QWidget):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), _CARD_FILL)
 
 
 def _card(geom: QRect):
@@ -243,15 +255,13 @@ def test_state_cancel_clears_without_finish() -> None:
 
 def _band_viewport(qtbot):
     """Viewport + opaque card + toolkit band widget (over-cards parity)."""
-    from PySide6.QtWidgets import QWidget
-
     from sli_ui_toolkit.widgets import MarqueeBandWidget
 
     viewport = QWidget()
     qtbot.addWidget(viewport)
     viewport.resize(800, 600)
     viewport.show()
-    card = QWidget(viewport)
+    card = _OpaqueCard(viewport)
     card.setGeometry(100, 100, 250, 170)
     card.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
     card.show()
@@ -272,6 +282,8 @@ def test_host_band_pixel_at_cursor(qtbot) -> None:
 def test_host_shrink_clears_exposed_region(qtbot) -> None:
     """Big→small: the exposed region returns to the card (no stale band)."""
     viewport, _, band = _band_viewport(qtbot)
+    # Let the deterministic card paint settle before sampling the baseline.
+    qtbot.wait(20)
     clean_bg = viewport.grab().toImage().pixelColor(500, 400).getRgb()
     clean_card = viewport.grab().toImage().pixelColor(120, 120).getRgb()
     band.set_active(True)

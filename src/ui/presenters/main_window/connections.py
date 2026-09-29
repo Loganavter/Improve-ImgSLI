@@ -177,6 +177,13 @@ def _press_is_on_title_bar_menu(global_pos) -> bool:
 def handle_global_mouse_press(presenter, event):
     if event.button() == Qt.MouseButton.RightButton:
         return
+    import logging
+
+    logging.getLogger("ImproveImgSLI").debug(
+        "[ctx-menu] global press button=%s pos=%s",
+        event.button(),
+        event.globalPosition(),
+    )
     global_pos = event.globalPosition()
     if _press_is_on_title_bar_menu(global_pos):
         return

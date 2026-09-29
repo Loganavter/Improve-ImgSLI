@@ -511,6 +511,148 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     window.deleteLater()
 
 
+def test_recent_panel_view_mode_switch_relayouts_once(qapp, tmp_path, monkeypatch):
+    """Switching list <-> cards must not schedule a second, redundant relayout.
+
+    ``_rebuild_items`` already syncs the height synchronously; the panel resize
+    it raises used to schedule the deferred relayout + settle for the next turn,
+    so one switch ran the whole relayout/force-refresh/freeze-repaint twice —
+    the user-visible wobble and flashing ("UI jitters") on a view toggle.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from services.io.recent_projects import RecentProjectRecord
+    from tabs.session_picker.recent.use_cases import layout as layout_mod
+
+    def _record(i: int) -> RecentProjectRecord:
+        path = tmp_path / f"view{i}.imgsli"
+        path.write_text("{}")
+        return RecentProjectRecord(
+            path=str(path),
+            display_name=f"view{i}",
+            opened_at="2026-01-01T00:00:00+00:00",
+            session_types=("image_compare",),
+        )
+
+    records = [_record(i) for i in range(8)]
+    monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: list(records))
+    monkeypatch.setattr(
+        f"{_PANEL}.sort_recent_projects",
+        lambda recs, **kwargs: list(recs),
+    )
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
+
+    window = QWidget()
+    lay = QVBoxLayout(window)
+    lay.addStretch(1)
+    panel = RecentProjectsPanel(window, translate=_tr)
+    lay.addWidget(panel)
+    window.resize(1000, 900)
+    window.show()
+    panel.refresh()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.scroll_area.height(), panel.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
+    # Emulate a live window: after the first paint the deferred path is active.
+    panel._painted_once = True
+
+    calls = {"n": 0}
+    real_relayout = layout_mod.deferred_relayout
+
+    def _counting(panel_arg):
+        calls["n"] += 1
+        return real_relayout(panel_arg)
+
+    monkeypatch.setattr(layout_mod, "deferred_relayout", _counting)
+
+    grid_scroll = panel._items.scroll_area.height()
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
+    panel.refresh()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.scroll_area.height(), panel.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
+
+    assert panel._items.grid_columns == 1
+    # Premise: the switch actually changes the shelf height (otherwise no
+    # resize — and no redundant relayout — would be raised in the first place).
+    assert panel._items.scroll_area.height() != grid_scroll
+    assert calls["n"] == 0  # no redundant deferred relayout
+    assert panel._items.scroll_area.height() <= panel.height()
+    assert panel.updatesEnabled() is True
+
+    panel.deleteLater()
+    window.deleteLater()
+
+
+def test_recent_panel_view_switch_grows_without_header_gap(qapp, tmp_path, monkeypatch):
+    """list -> cards grows the shelf; the header host must not absorb the
+    growth for one frame (the "controls jump down, new gap above and below the
+    header, then snap back" artifact).
+
+    ``setFixedHeight`` posts the panel's Resize event, so its root layout would
+    only re-run on the next event-loop turn; the QVBoxLayout split the delta
+    evenly while content_host's cached sizeHint was stale, giving the header
+    host ~half the growth until the following frame.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from services.io.recent_projects import RecentProjectRecord
+
+    def _record(i: int) -> RecentProjectRecord:
+        path = tmp_path / f"grow{i}.imgsli"
+        path.write_text("{}")
+        return RecentProjectRecord(
+            path=str(path),
+            display_name=f"grow{i}",
+            opened_at="2026-01-01T00:00:00+00:00",
+            session_types=("image_compare",),
+        )
+
+    records = [_record(0)]
+    monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: list(records))
+    monkeypatch.setattr(
+        f"{_PANEL}.sort_recent_projects",
+        lambda recs, **kwargs: list(recs),
+    )
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
+
+    window = QWidget()
+    lay = QVBoxLayout(window)
+    lay.addStretch(1)
+    panel = RecentProjectsPanel(window, translate=_tr)
+    lay.addWidget(panel)
+    window.resize(1000, 900)
+    window.show()
+    panel.refresh()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.scroll_area.height(), panel.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
+    list_scroll = panel._items.scroll_area.height()
+
+    # Switch to cards synchronously. Do NOT drain: the assertion is about the
+    # state the very first frame paints.
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
+    panel.refresh()
+
+    header = panel._header_host
+    assert panel._items.scroll_area.height() > list_scroll  # premise: grew
+    assert header.height() == header.sizeHint().height(), (
+        "header host must not be stretched by the shelf growth"
+    )
+    assert panel._items.scroll_area.height() <= panel.height()
+    panel.deleteLater()
+    window.deleteLater()
+
+
 def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch):
     """Column-count changes must re-slot cards, not recreate them."""
     from services.io.recent_projects import RecentProjectRecord

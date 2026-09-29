@@ -106,9 +106,15 @@ class ContextMenuManager:
         active = self._active_menu
         if active is not None and active.isVisible():
             if self._active_key == key:
+                logger.debug("[ctx-menu] reopen same key=%r -> toggle hide", key)
                 active.hide()
                 self._clear_active_menu()
                 return None
+            logger.debug(
+                "[ctx-menu] reopen other key=%r (was %r) -> replace",
+                key,
+                self._active_key,
+            )
             active.hide()
             self._clear_active_menu()
         self._active_request = request
@@ -136,11 +142,27 @@ class ContextMenuManager:
             park_keyboard_focus_off_qrhi()
         except Exception:
             pass
+        try:
+            action_ids = [
+                getattr(e, "action_id", "?")
+                for e in entries
+                if hasattr(e, "action_id")
+            ]
+        except Exception:
+            action_ids = ["<unreadable>"]
+        logger.debug(
+            "[ctx-menu] open key=%r surface=%s pos=%s actions=%s",
+            key[1],
+            surface,
+            global_pos,
+            action_ids,
+        )
         menu.popup_at(global_pos)
         self.raise_active_menus()
         return menu
 
     def _on_menu_hidden(self, menu: ContextMenu) -> None:
+        logger.debug("[ctx-menu] hidden key=%r", self._active_key)
         if self._active_menu is menu:
             self._clear_active_menu()
 
@@ -151,6 +173,11 @@ class ContextMenuManager:
 
     def hide_active_menu(self) -> None:
         active = self._active_menu
+        logger.debug(
+            "[ctx-menu] hide_active key=%r visible=%s",
+            self._active_key,
+            bool(active is not None and active.isVisible()),
+        )
         if active is not None and active.isVisible():
             active.hide()
         self._clear_active_menu()
@@ -176,9 +203,23 @@ class ContextMenuManager:
 
     def hide_active_menu_if_outside(self, global_pos) -> None:
         if self._ignore_outside_close:
+            logger.debug(
+                "[ctx-menu] outside-close skipped pos=%s (open-click grace)",
+                global_pos,
+            )
             self._ignore_outside_close = False
             return
-        if not self.active_menu_contains_global(global_pos):
+        inside = self.active_menu_contains_global(global_pos)
+        submenu_open = bool(
+            getattr(self._active_menu, "_open_submenu", None) is not None
+        )
+        logger.debug(
+            "[ctx-menu] outside-close check pos=%s inside=%s submenu_open=%s",
+            global_pos,
+            inside,
+            submenu_open,
+        )
+        if not inside:
             self.hide_active_menu()
 
     def active_menu_contains_global(self, global_pos) -> bool:

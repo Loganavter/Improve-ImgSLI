@@ -122,6 +122,11 @@ class RecentProjectsPanel(ShelfWidget):
         self._painted_once = False
         # Guards re-entrancy of the synchronous first settle.
         self._sync_settle_in_progress = False
+        # True for the duration of ``_rebuild_items``: that path already does a
+        # full synchronous rebuild + height sync, so the panel resize it causes
+        # (``setFixedHeight``) must not schedule a second, redundant deferred
+        # relayout/settle/repaint ("the shelf jitters" on a view switch).
+        self._explicit_rebuild = False
         self.setObjectName("RecentProjectsPanel")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setAcceptDrops(True)
@@ -164,7 +169,14 @@ class RecentProjectsPanel(ShelfWidget):
         # re-activate the layout synchronously. Crucially we must NOT hold
         # updates disabled here — under the translucent CSD window that punches
         # see-through holes in the freshly exposed panel area during the drag.
-        self._schedule_deferred_relayout()
+        #
+        # Skip it during an explicit rebuild: ``_rebuild_items`` already synced
+        # the height from the same inputs, so the resize it caused is not a
+        # window/width change that needs re-deriving — scheduling here would
+        # run the whole relayout + force-refresh + freeze/repaint a second time
+        # in the same switch (the view-toggle "UI twitches" artifact).
+        if not self._explicit_rebuild:
+            self._schedule_deferred_relayout()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
         # The panel's own resizeEvent does not fire when the window grows but
@@ -437,7 +449,20 @@ class RecentProjectsPanel(ShelfWidget):
         return sizing.grid_content_width(self)
 
     def _rebuild_items(self) -> None:
-        refresh_use_cases.rebuild_items(self)
+        # The rebuild is fully synchronous and already re-syncs the panel
+        # height, so suppress the panel's own resize-driven deferred relayout
+        # for its duration and drop the pending settle the height sync raised —
+        # otherwise a single view-mode switch runs two relayout + repaint
+        # passes (visible as a one-frame geometry wobble and needless flashing).
+        self._explicit_rebuild = True
+        try:
+            refresh_use_cases.rebuild_items(self)
+        finally:
+            self._explicit_rebuild = False
+            self._shelf_height_settle_pending = False
+            from tabs.session_picker.recent.use_cases import layout
+
+            layout.settle_shelf_layout_now(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()

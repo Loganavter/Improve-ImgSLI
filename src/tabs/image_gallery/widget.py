@@ -714,14 +714,6 @@ class ImageGalleryWidget(QWidget):
                 except Exception:
                     return owner
 
-            def _ctx_clear():
-                try:
-                    from tabs.image_gallery.use_cases import selection as _sel
-
-                    _sel.clear_selection(_ctx_owner())
-                except Exception:
-                    pass
-
             def _ctx_carry():
                 try:
                     from tabs.image_gallery.use_cases import carry as _carry
@@ -763,7 +755,6 @@ class ImageGalleryWidget(QWidget):
                 Path(path),
                 global_pos=gp,
                 selection_count=sel_n,
-                on_clear=_ctx_clear,
                 on_carry=_ctx_carry,
                 on_analyze=_ctx_analyze,
                 on_find_similar=_ctx_find,

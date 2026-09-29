@@ -2,7 +2,7 @@
 
 Split out of ``ui/card/context_menu.py`` per CODE_PATTERNS (file-size
 policy): keeping the card hover highlight while its popup menu is open
-(and restoring it on hide) is hover lifecycle, not menu building.
+(and clearing it on hide) is hover lifecycle, not menu building.
 """
 
 from __future__ import annotations
@@ -13,8 +13,17 @@ def track_open_menu(card, menu, owner=None) -> None:  # type: ignore[no-untyped-
 
     The popup takes the mouse, so the card gets a Leave that would clear
     the underline. The hover filter skips the hide while the tracked menu
-    is visible (see ``_CardHoverFilter``); on hide we restore the highlight
-    and drop the (possibly stale) reference.
+    is visible (see ``_CardHoverFilter``); on hide the bar is cleared
+    deterministically — no cursor polling.
+
+    Do NOT re-derive hover at hide time from ``QCursor.pos()`` /
+    ``mapFromGlobal``. That polled geometry lies on Wayland (stale
+    global-vs-moment position), checks "cursor over card" true while the
+    cursor actually sits on the popup, and pins the underline on with no
+    way to clear it (stuck-ON; a stuck-OFF merely waits for the next
+    Enter). Recorded lesson, REMOVED once already:
+    ``gallery-hover-loss-2026-09-26.md`` § Timeline item 3. Real hover is
+    re-established by Qt's own Enter/Leave after the popup is gone.
 
     ``owner`` is passed through (grid cards carry no ``_gallery_owner`` —
     the pool builds them without one) so hide-time traces can resolve the
@@ -56,10 +65,10 @@ def track_open_menu(card, menu, owner=None) -> None:  # type: ignore[no-untyped-
                         pass
                     try:
                         from tabs.image_gallery.ui.card.hover import (
-                            _show_card_hover_underline as _show,
+                            _hide_card_hover_underline as _hide,
                         )
 
-                        _show(c)
+                        _hide(c)
                     except Exception:
                         pass
 

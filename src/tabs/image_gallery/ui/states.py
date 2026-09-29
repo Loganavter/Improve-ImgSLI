@@ -68,7 +68,10 @@ class GalleryEmptyState(QWidget):
 
         empty_text = _tr("image_gallery.empty_state", "Drop folder or images here")
         self._default_empty_text = empty_text
-        # DropZoneLabel is the S0 drop surface — make it prominent, like session_picker empty.
+        # S0 repose is blank: no text, no dashed chrome. The drop zone
+        # (with its message) appears only while a drag hovers
+        # (dragEnter -> set_drag_highlight(True)).
+        # DropZoneLabel is the S0 drop surface — visible ONLY during drag.
         # W12 W-C: expanding zone that fills available space — no fixed
         # minimum height (toolkit default 80px floor applies); the layout
         # stretch below gives it the free vertical space.
@@ -85,6 +88,8 @@ class GalleryEmptyState(QWidget):
             self._drop_label.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Expanding)
         except Exception:
             pass
+        # Hidden until drag: S0 repose is a blank canvas.
+        self._drop_label.hide()
 
         # No hint label, no Open Folder button — drop-only zone.
         # Zone click does NOT open the folder dialog.
@@ -98,8 +103,9 @@ class GalleryEmptyState(QWidget):
         self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._scanning_label.hide()
 
-        # The zone dominates the free space (4/6); the 1-stretch spacers
-        # keep it visually centered and center the spinner row in scanning.
+        # The drop zone takes the free space (4/6) only while a drag is
+        # active; in repose the stretches leave a blank canvas. Spacers
+        # keep the zone (and the spinner row in scanning) centered.
         layout.addStretch(1)
         layout.addWidget(self._drop_label, 4)
         layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -165,20 +171,59 @@ class GalleryEmptyState(QWidget):
                 self._overlay.hide()
             except Exception:
                 pass
-        # DropZoneLabel already updates its own _drag_active via dragEnter/Leave
-        # and repaints with accent fill; no extra overlay needed.
+        # Mirror label-level drag into the zone swap so direct
+        # zone hovers also reveal the chrome.
+        self.set_drag_highlight(bool(active))
+
+    def set_drag_highlight(self, active: bool) -> None:
+        """Show the dashed DnD zone (with its message) only while a drag hovers.
+
+        In repose S0 is a blank canvas — no text, no chrome.
+        No-op outside ``empty`` state (scanning/ready own their visuals).
+        Widget-level dragEnter/Leave/Drop drive this; the zone label's own
+        ``drop_zone_drag_active`` forwards here too.
+        """
+        try:
+            if self._state != "empty":
+                if active:
+                    # Late drag during scanning/ready: ignore, don't resurrect zone.
+                    return
+                # Leaving: make sure zone chrome is off even if state moved on.
+                try:
+                    self._drop_label.hide()
+                    self._drop_label._drag_active = False
+                    self._drop_label.update()
+                except Exception:
+                    pass
+                return
+            if active:
+                self._drop_label.show()
+                try:
+                    self._drop_label._drag_active = True
+                    self._drop_label.update()
+                except Exception:
+                    pass
+            else:
+                try:
+                    self._drop_label._drag_active = False
+                    self._drop_label.update()
+                except Exception:
+                    pass
+                self._drop_label.hide()
+        except Exception:
+            pass
 
     # -- empty message ------------------------------------------------------
 
     def set_empty_message(self, text: str) -> None:
-        """Swap the drop-zone message (e.g. view emptied by removals — files stay on disk)."""
+        """Swap the drop-zone message (shown on next drag; repose stays blank)."""
         try:
             self._drop_label.setText(text)
         except Exception:
             pass
 
     def restore_empty_message(self) -> None:
-        """Restore the default pick-a-folder message (pristine empty, nothing ever opened)."""
+        """Restore the default drop message (pristine empty, nothing ever opened)."""
         try:
             self._drop_label.setText(self._default_empty_text)
         except Exception:
@@ -189,16 +234,22 @@ class GalleryEmptyState(QWidget):
     def set_state(self, state: str, n: int = 0, total: int | None = None) -> None:
         """Switch between ``empty`` / ``scanning`` / ``ready``.
 
-        * ``empty``  — S0: drop zone visible, spinner hidden.
-        * ``scanning`` — S1: spinner + ``Scanning n/N`` only, drop zone hidden
-          (drops still land via the whole-widget drop handling).
+        * ``empty``  — S0: blank canvas, dashed zone (+ message) only on drag.
+        * ``scanning`` — S1: spinner + ``Scanning n/N`` only, drop zone
+          hidden (drops still land via whole-widget handling).
         * ``ready``  — S2: hide the whole widget (grid owns content).
         """
         state = str(state).lower()
         self._state = state
         if state == "empty":
             self.show()
-            self._drop_label.show()
+            # Blank canvas in repose; zone (+ message) appears only on drag.
+            self._drop_label.hide()
+            try:
+                self._drop_label._drag_active = False
+                self._drop_label.update()
+            except Exception:
+                pass
             self._spinner.hide()
             try:
                 self._spinner.stop()
@@ -262,9 +313,9 @@ class GalleryEmptyState(QWidget):
                 pass
             self.hide()
         else:
-            # Unknown state — treat as empty.
+            # Unknown state — treat as empty (blank canvas).
             self.show()
-            self._drop_label.show()
+            self._drop_label.hide()
 
     @property
     def current_state(self) -> str:

@@ -436,6 +436,44 @@ def toggle_reject(owner, path: Path) -> bool:
     return False
 
 
+def set_rejected_paths(owner, paths, rejected: bool) -> int:
+    """Set the rejected flag on every path in *paths* (group Reject).
+
+    Uniform direction (unlike per-item toggle): all targets end with
+    ``rejected``. File on disk is untouched — only item flags. Single
+    grid refresh. Returns the number of items updated.
+    """
+    try:
+        targets = set()
+        for p in list(paths or []):
+            try:
+                targets.add(Path(p) if not isinstance(p, Path) else p)
+            except Exception:
+                continue
+    except Exception:
+        return 0
+    if not targets:
+        return 0
+    count = 0
+    for it in _items_of(owner):
+        try:
+            if Path(it.path) in targets:
+                try:
+                    it.rejected = bool(rejected)
+                except Exception:
+                    pass
+                try:
+                    it.triage_rejected = bool(rejected)
+                except Exception:
+                    pass
+                count += 1
+        except Exception:
+            continue
+    if count:
+        _refresh_owner_grid(owner)
+    return count
+
+
 def remove_from_grid(owner, path: Path) -> bool:
     """Remove *path* from the gallery grid (Reject-button behavior).
 
