@@ -11,28 +11,15 @@ Audit-Meta: pattern=thin-owner reason="Controller delegate fan-out: toast/pyrami
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from core.events import CoreErrorOccurredEvent
+from tabs._shared.loading_pipeline import (
+    _same_fs_path,
+    start_pyramid_build as _seam_start_pyramid_build,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
-
-
-def _same_fs_path(a: Path | str, b: Path | str) -> bool:
-    """Normalized path equality for slot-ownership guards.
-
-    ``slot.path`` strict ``==`` false-positives on textual variants of the
-    same file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``,
-    trailing separators): the guard then dismisses a good preview and the
-    slot stays imageless forever with no error surfaced. ``normpath``
-    over ``os.fspath`` keeps identical paths equal and heals those
-    variants; it never equates distinct files.
-    """
-    try:
-        return os.path.normpath(os.fspath(a)) == os.path.normpath(os.fspath(b))
-    except Exception:
-        return a == b
 
 
 def _format_worker_error(err) -> str:
@@ -258,20 +245,35 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
     actual build (nothing to build, no thread pool, already in flight
     with no new work) also finishes that slot's toast instead of leaving
     it stuck at "pyramid started" forever.
+
+    W2 adapter: the build trigger goes through the shared seam
+    ``tabs._shared.loading_pipeline.start_pyramid_build`` with a tab-local
+    hook closure carrying the coordinator + the MC abort predicate
+    (``pyramid.valid``) — toast wiring stays in the adapter, the seam owns
+    the trigger shape.
     """
     coord = getattr(controller, "_pyramid_coordinator", None)
-    if coord is not None:
-        # Use coordinator's worker lifecycle + toast routing (B3).
-        # MC abort predicate: pyramid.valid
-        from engine.store.pyramid_registry import ensure_pyramid as _ensure
+    if coord is None:
+        return
+    # MC abort predicate: pyramid.valid
+    from engine.store.pyramid_registry import ensure_pyramid as _ensure
 
-        _pyr = _ensure(store)
+    _pyr = _ensure(store)
 
-        def _should_abort(_p=_pyr):
-            return not getattr(_p, "valid", True) if _p is not None else False
+    def _should_abort(_p=_pyr):
+        return not getattr(_p, "valid", True) if _p is not None else False
 
+    if store is None:
+        # No pyramid possible: the coordinator finishes the toast itself
+        # (legacy path — the seam is a fail-open no-op for None stores and
+        # would never reach the hook, leaving the toast stuck).
         coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
         return
+
+    def _hook(s, sid):
+        coord.start_build(s, slot_id=sid, should_abort=_should_abort)
+
+    _seam_start_pyramid_build(store, slot_id, _hook)
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
