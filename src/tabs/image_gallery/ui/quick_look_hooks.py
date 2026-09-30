@@ -17,7 +17,25 @@ from PySide6.QtWidgets import QWidget
 
 
 def owner_for_triage(owner):
-    """Local resolve — mirrors use_cases.triage_ui.owner_for_triage explicitly."""
+    """Local resolve — protocol-first, mirrors use_cases.triage_ui.owner_for_triage.
+
+    The attached controller via the widget protocol wins; legacy binds
+    below are last-resort. The window-attribute walk is gone (no writer
+    ever set it since G1/G2 deleted the pokes).
+    """
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        if callable(resolve):
+            try:
+                cand = resolve()
+            except Exception:
+                cand = None
+            if cand is not None:
+                return cand
+    except Exception:
+        pass
+    if callable(getattr(owner, "set_selection", None)):
+        return owner
     try:
         ctrl = owner._controller  # type: ignore[attr-defined]
         if ctrl is not None:
@@ -29,17 +47,6 @@ def owner_for_triage(owner):
         if ctrl is not None:
             return ctrl
     except AttributeError:
-        pass
-    try:
-        win = owner.window()
-        if win is not None:
-            try:
-                ctrl = win._gallery_controller  # type: ignore[attr-defined]
-                if ctrl is not None:
-                    return ctrl
-            except AttributeError:
-                pass
-    except Exception:
         pass
     return owner
 

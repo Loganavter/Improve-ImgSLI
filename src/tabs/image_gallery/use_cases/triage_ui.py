@@ -21,7 +21,27 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 
 def owner_for_triage(owner):
-    """Resolve the triage state owner for *owner* (widget → controller if bound)."""
+    """Resolve the triage state owner for *owner* (widget → controller if bound).
+
+    Protocol-first (G5): an attached controller via the widget protocol
+    wins; a controller passed directly passes through. The legacy binds
+    below are last-resort for storeless doubles — the window walk is gone
+    (no writer ever set it since G1/G2 deleted the pokes).
+    """
+    # Prefer the attached controller via the widget protocol (G2).
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        if callable(resolve):
+            try:
+                cand = resolve()
+            except Exception:
+                cand = None
+            if cand is not None:
+                return cand
+    except Exception:
+        pass
+    if callable(getattr(owner, "set_selection", None)):
+        return owner
     # Prefer widget._controller, then widget._owner
     try:
         ctrl = owner._controller  # type: ignore[attr-defined]
@@ -34,17 +54,6 @@ def owner_for_triage(owner):
         if ctrl is not None:
             return ctrl
     except AttributeError:
-        pass
-    try:
-        win = owner.window()
-        if win is not None:
-            try:
-                ctrl = win._gallery_controller  # type: ignore[attr-defined]
-                if ctrl is not None:
-                    return ctrl
-            except AttributeError:
-                pass
-    except Exception:
         pass
     return owner
 

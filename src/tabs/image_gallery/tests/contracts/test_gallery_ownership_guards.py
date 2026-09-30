@@ -94,48 +94,26 @@ READ_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 # (relpath, lineno) -> reason. Line numbers are 1-based (rg --line-number).
 ALLOWLIST: dict[tuple[str, int], str] = {
-    # --- _gallery_controller refs (W3) ---
-    ("src/tabs/image_gallery/ui/gallery_store.py", 50): (
-        "G5 purges post-pokes resolvers: dead attr scan (G1/G2 deleted the pokes); do not touch"
-    ),
-    ("src/tabs/image_gallery/ui/gallery_store.py", 63): (
-        "G5 purges post-pokes resolvers: dead attr scan (G1/G2 deleted the pokes); do not touch"
-    ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 37): (
-        "owner_for_triage window fallback read (bridge until universal _owner_for_triage)"
-    ),
-    ("src/tabs/image_gallery/use_cases/triage_ui.py", 42): (
-        "G5 purges post-pokes resolvers: dead win._gallery_controller branch (G1/G2 deleted the pokes); do not touch"
-    ),
     # --- controller/owner attr probe loops (W4) ---
-    ("src/tabs/image_gallery/use_cases/carry.py", 30): (
-        "G5 purges post-pokes resolvers: dead _controller/_owner attr scan (G1/G2 deleted the pokes); do not touch"
-    ),
     ("src/tabs/image_gallery/use_cases/selection.py", 85): (
         "_resolve_selection_controller _controller/_owner READ probe (bridge until universal _owner_for_triage)"
     ),
-    ("src/tabs/image_gallery/use_cases/triage.py", 51): (
-        "G5 purges post-pokes resolvers: dead _controller/_owner attr scan (G1/G2 deleted the pokes); do not touch"
-    ),
-    ("src/tabs/image_gallery/use_cases/triage.py", 90): (
-        "G5 purges post-pokes resolvers: dead _controller/_owner attr scan (G1/G2 deleted the pokes); do not touch"
-    ),
-    # --- owner._controller legacy reads (R1: last-resort bind, G2) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 22): (
-        "owner_for_triage legacy owner._controller READ (last-resort bind, G2)"
+    # --- owner._controller legacy reads (R1: last-resort bind, G2; protocol-first since G5) ---
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 40): (
+        "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
     ("src/tabs/image_gallery/ui/drag_drop.py", 149): (
         "_explicit_controller legacy owner._controller READ (last-resort bind, G2)"
     ),
-    ("src/tabs/image_gallery/use_cases/triage_ui.py", 27): (
-        "G5 purges post-pokes resolvers: dead owner._controller branch (G1/G2 deleted the pokes); do not touch"
+    ("src/tabs/image_gallery/use_cases/triage_ui.py", 47): (
+        "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
     # --- owner._owner legacy reads (R2) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 28): (
-        "owner_for_triage legacy owner._owner READ (last-resort bind, G2)"
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 46): (
+        "owner_for_triage legacy owner._owner READ (last-resort bind, protocol-first since G5)"
     ),
-    ("src/tabs/image_gallery/use_cases/triage_ui.py", 33): (
-        "G5 purges post-pokes resolvers: dead owner._owner branch (G1/G2 deleted the pokes); do not touch"
+    ("src/tabs/image_gallery/use_cases/triage_ui.py", 53): (
+        "owner_for_triage legacy owner._owner READ (last-resort bind, protocol-first since G5)"
     ),
     # --- overlay._owner fallback reads (R3: test-required SimpleNamespace doubles pass owner=None) ---
     ("src/tabs/image_gallery/ui/quick_look/meta.py", 112): (
@@ -148,25 +126,25 @@ ALLOWLIST: dict[tuple[str, int], str] = {
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
     # --- storeless setattr fallback (R4) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 85): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 92): (
         "_merge_selection_setattr def: storeless fallback (setattr, never bare writes)"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 95): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 102): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 100): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 107): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 106): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 113): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 260): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 267): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 262): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 269): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 306): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 313): (
         "set_source storeless setattr fallback (never a bare state write)"
     ),
 }

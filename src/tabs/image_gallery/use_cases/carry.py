@@ -27,7 +27,17 @@ def _slot_selection(owner) -> list[str] | None:
     except Exception:
         return None
     candidates = [owner]
-    for attr in ("_controller", "_owner", "widget", "_widget"):
+    # Protocol-first (G5): attached controller owns the slot read. Legacy
+    # ``_controller``/``_owner`` scans are gone (no writers since G1/G2);
+    # ``widget``/``_widget`` child links stay as last resort.
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        proto = resolve() if callable(resolve) else None
+        if proto is not None:
+            candidates.append(proto)
+    except Exception:
+        pass
+    for attr in ("widget", "_widget"):
         try:
             candidates.append(getattr(owner, attr, None))
         except Exception:

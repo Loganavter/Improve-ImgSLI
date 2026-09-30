@@ -28,10 +28,20 @@ def resolve_store(owner: Any) -> Any | None:
     """Find the Redux store reachable from *owner* (widget/controller/tab).
 
     Walks explicit owner links only (``_context.store``, ``widget``,
-    ``_controller``/``_owner``) — no implied global lookups.
+    the ``_owner_for_triage`` protocol) — no implied global lookups, no
+    window-attribute scans (no writers since G1/G2 deleted the pokes).
     """
     seen: set[int] = set()
     stack: list[Any] = [owner]
+    # Protocol-first (G5): seed the attached controller when the owner is
+    # a widget, so controller-side store/dispatcher resolve directly.
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        proto = resolve() if callable(resolve) else None
+        if proto is not None and proto is not owner:
+            stack.append(proto)
+    except Exception:
+        pass
     while stack:
         obj = stack.pop()
         if obj is None or id(obj) in seen:
@@ -47,7 +57,7 @@ def resolve_store(owner: Any) -> Any | None:
                 return store
         except Exception:
             pass
-        for attr in ("widget", "_widget", "_controller", "_owner", "_gallery_controller"):
+        for attr in ("widget", "_widget"):
             try:
                 nxt = getattr(obj, attr, None)
             except Exception:
@@ -60,13 +70,6 @@ def resolve_store(owner: Any) -> Any | None:
             win = None
         if win is not None and id(win) not in seen:
             stack.append(win)
-            for attr in ("_gallery_controller", "_controller"):
-                try:
-                    nxt = getattr(win, attr, None)
-                except Exception:
-                    continue
-                if nxt is not None and id(nxt) not in seen:
-                    stack.append(nxt)
     return None
 
 

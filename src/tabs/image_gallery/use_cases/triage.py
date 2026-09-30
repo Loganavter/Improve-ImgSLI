@@ -48,7 +48,18 @@ def _emit_gallery(owner, action) -> bool:
     """
     seen: set[int] = set()
     candidates = [owner]
-    for attr in ("_controller", "_owner", "widget", "_widget"):
+    # Protocol-first (G5): the widget's attached controller carries the
+    # session-aware write path (own-dispatch accounting). Legacy
+    # ``_controller``/``_owner`` scans are gone (no writers since G1/G2);
+    # ``widget``/``_widget`` child links stay as last resort.
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        proto = resolve() if callable(resolve) else None
+        if proto is not None:
+            candidates.append(proto)
+    except Exception:
+        pass
+    for attr in ("widget", "_widget"):
         try:
             candidates.append(getattr(owner, attr, None))
         except Exception:
@@ -87,7 +98,15 @@ def _transact_gallery(owner, actions) -> bool:
         return False
     seen: set[int] = set()
     candidates = [owner]
-    for attr in ("_controller", "_owner", "widget", "_widget"):
+    # Protocol-first (G5): see _emit_gallery above — same candidate order.
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        proto = resolve() if callable(resolve) else None
+        if proto is not None:
+            candidates.append(proto)
+    except Exception:
+        pass
+    for attr in ("widget", "_widget"):
         try:
             candidates.append(getattr(owner, attr, None))
         except Exception:
