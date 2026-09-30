@@ -61,8 +61,8 @@ def _resolve_selection_controller(owner):
 
     Dispatch-only contract (G3): wholesale selection writes go through
     ``GalleryController.set_selection`` (dispatch + mirror + grid apply).
-    Resolution order: the passed owner itself, its ``_owner_for_triage``
-    (widget → controller, G2), then ``_controller``/``_owner`` attrs.
+    Resolution order: the passed owner itself, its ``_owner_for_triage``,
+    ``_gallery_widget._owner_for_triage`` (widget → controller), then legacy attrs.
     None means a storeless unit context — callers keep the local mirror
     via ``setattr`` (no bare ``owner.state.* =`` writes anywhere here).
     """
@@ -72,14 +72,14 @@ def _resolve_selection_controller(owner):
     except Exception:
         pass
     try:
+        cand = None
         resolver = getattr(owner, "_owner_for_triage", None)
-        if callable(resolver):
-            try:
-                cand = resolver()
-            except Exception:
-                cand = None
-            if cand is not None and callable(getattr(cand, "set_selection", None)):
-                return cand
+        if not callable(resolver):
+            widget = getattr(owner, "_gallery_widget", None)
+            resolver = getattr(widget, "_owner_for_triage", None)
+        cand = resolver() if callable(resolver) else None
+        if cand is not None and callable(getattr(cand, "set_selection", None)):
+            return cand
     except Exception:
         pass
     for attr in ("_controller", "_owner"):
