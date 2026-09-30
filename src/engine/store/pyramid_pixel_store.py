@@ -383,3 +383,87 @@ class PyramidPixelStore:
         for level in self._levels[1:]:
             level.close()
         del self._levels[1:]
+
+
+def ensure_level(pyramid, k, should_abort=None) -> bool:
+    """Build demand levels until level ``k`` lands (GIMP-style pull).
+
+    Loops ``build_next_level`` until ``is_level_built(k)`` holds or the
+    build stops (complete / abort / invalid base). Never builds past
+    ``k`` — the loop exits the moment ``k`` is readable.
+
+    Fail-open: invalid ``k`` (bool, non-int, negative), a missing/dead
+    pyramid, an abort, or any build error all yield False — never raises.
+    """
+    try:
+        if pyramid is None or not hasattr(pyramid, "is_level_built"):
+            return False
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            return False
+        if k == 0:
+            return bool(pyramid.is_level_built(0))
+        try:
+            if bool(pyramid.is_level_built(k)):
+                return True
+        except Exception:
+            return False
+        try:
+            build_next = pyramid.build_next_level
+        except Exception:
+            return False
+        while True:
+            try:
+                if bool(pyramid.is_level_built(k)):
+                    return True
+            except Exception:
+                return False
+            try:
+                progressed = build_next(should_abort=should_abort)
+            except Exception:
+                return False
+            if not progressed:
+                try:
+                    return bool(pyramid.is_level_built(k))
+                except Exception:
+                    return False
+    except Exception:
+        return False
+
+
+def invalidate_levels(pyramid, from_k=None) -> int:
+    """Drop superseded derived levels ``k >= from_k``; never raises.
+
+    ``from_k=None`` drops every derived level (all but the level-0
+    base). ``from_k<=1`` likewise drops all derived levels; level 0 is
+    never dropped. Returns the count dropped. Generations are untouched
+    — ``valid``/``generation`` guards keep working, and dropped levels
+    read as unbuilt via the existing ``is_level_built`` (out-of-range).
+    Invalid input (no pyramid, bool/non-int ``from_k``) is a fail-open
+    no-op returning 0.
+    """
+    try:
+        if pyramid is None or not hasattr(pyramid, "is_level_built"):
+            return 0
+        levels = getattr(pyramid, "_levels", None)
+        if not isinstance(levels, list) or len(levels) <= 1:
+            return 0
+        if from_k is None:
+            start = 1
+        elif isinstance(from_k, bool) or not isinstance(from_k, int):
+            return 0
+        else:
+            start = max(1, from_k)
+        if start >= len(levels):
+            return 0
+        dropped = levels[start:]
+        del levels[start:]
+        count = 0
+        for level in dropped:
+            try:
+                level.close()
+            except Exception:
+                pass
+            count += 1
+        return count
+    except Exception:
+        return 0
