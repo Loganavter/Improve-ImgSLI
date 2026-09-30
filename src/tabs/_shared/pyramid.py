@@ -23,6 +23,8 @@ Usage::
     pyramid.start_build(store, slot_id=slot, should_abort=lambda: task_id != ctrl._unification_task_id)
     # signal from worker:
     pyramid.on_level_ready(payload)
+    # lazy demand (QL-style zoom/dwell): build only until level k lands:
+    pyramid.demand_level(store, k, should_abort=walk_abort_fn, on_ready=refresh_view)
 
 Both tabs keep thin delegators so controller API is unchanged.
 """
@@ -45,19 +47,38 @@ def _pyramid_build_loop(
     uid: int,
     total_levels: int,
     progress_callback=None,
+    target_level: int | None = None,
 ):
-    """Worker body: build levels until complete or aborted, emitting progress.
+    """Worker body: build levels until complete, aborted, or the demand target lands.
 
-    Phase 5: await idle between levels (let event loop breathe) — the worker
-    thread yields briefly so the UI thread can paint/use LOD 0 while higher
-    levels build. Previously a tight loop starved the thread_pool.
+    Phase 5 idle between levels (let event loop breathe) is preserved.
+    ``target_level=None`` is the eager path (unchanged). A demand
+    ``target_level=k`` bounds the same loop: it never starts when
+    ``is_level_built(k)`` holds and stops after the landing level, which
+    is emitted with ``complete=True`` (shared toast routing finishes)
+    even though the pyramid is incomplete. Never ``build_all`` past k.
     """
     import time
 
-    while pyramid.build_next_level(should_abort=should_abort):
-        complete = pyramid.is_complete()
+    def _target_ready() -> bool:
+        if target_level is None:
+            return False
+        try:
+            return bool(pyramid.is_level_built(int(target_level)))
+        except Exception:
+            return False
+
+    while not _target_ready() and pyramid.build_next_level(should_abort=should_abort):
+        try:
+            complete = bool(pyramid.is_complete())
+        except Exception:
+            complete = False
+        if _target_ready():
+            complete = True
         if progress_callback is not None:
             progress_callback((uid, pyramid.level_count, total_levels, complete))
+        if _target_ready():
+            break
         # idle between levels: yield to UI / other workers
         if not complete:
             try:
@@ -258,6 +279,125 @@ class PyramidBuildCoordinator:
         worker.signals.partial_result.connect(target)
         worker.signals.finished.connect(lambda uid=uid: self._on_build_finished(uid))
         thread_pool.start(worker)
+        return True
+
+    def demand_level(
+        self,
+        store,
+        k: int,
+        *,
+        slot_id: int | None = None,
+        toast_hook: Callable[[str], None] | None = None,
+        should_abort: Callable[[], bool] | None = None,
+        on_ready: Callable[[Any], None] | None = None,
+    ) -> bool:
+        """Demand-build pyramid level *k* (lazy LOD entry, QL-trigger shape).
+
+        Bounded sibling of :meth:`start_build`: the worker runs the shared
+        loop with ``target_level=k`` — builds only until ``is_level_built(k)``
+        (never ``build_all``); the landing payload carries ``complete=True``
+        so the shared toast routing finishes. Engine primitives verbatim;
+        walk staleness honored per level via *should_abort*. True iff kicked
+        or already built (no worker then); False on bad k, pre-abort, no
+        pyramid, in-flight, no pool, or start failure. Same coordinator toast
+        routing (bump/progress/finish/dismiss); *toast_hook* is an additive
+        ``"started"|"progress"|"ready"|"aborted"`` observer. Fan-out runs
+        :meth:`on_level_ready` first, then *on_ready*.
+        """
+        from engine.cache.image_identity import image_uid
+
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            return False
+        if should_abort is not None:
+            try:
+                if bool(should_abort()):
+                    return False
+            except Exception:
+                return False
+
+        def _notify(event: str) -> None:
+            if toast_hook is not None:
+                try:
+                    toast_hook(event)
+                except Exception:
+                    pass
+
+        get_pyramid = self._resolve_get_pyramid()
+        pyramid = get_pyramid(store)
+        if pyramid is None:
+            return False
+        try:
+            already = bool(pyramid.is_level_built(k))
+        except Exception:
+            return False
+        if already:
+            if slot_id is not None and self._toast is not None:
+                try:
+                    self._toast.finish(slot_id)
+                except Exception:
+                    pass
+            _notify("ready")
+            return True
+
+        uid = image_uid(store)
+        if uid in self._pyramid_builds:
+            return False
+
+        thread_pool = self._get_thread_pool()
+        if thread_pool is None:
+            return False
+
+        estimate = self._resolve_estimate()
+        try:
+            total_levels = estimate(store.width, store.height)
+        except Exception:
+            total_levels = 1
+
+        self._pyramid_builds.add(uid)
+        if slot_id is not None:
+            self._pyramid_toast_slot.setdefault(uid, slot_id)
+            self._pyramid_toast_live.setdefault(uid, True)
+            if self._toast is not None:
+                try:
+                    self._toast.bump_pyramid_started(slot_id)
+                except Exception:
+                    pass
+        _notify("started")
+
+        # capture should_abort; default is never abort
+        abort = should_abort if should_abort is not None else lambda: False
+
+        worker = GenericWorker(_pyramid_build_loop, pyramid, abort, uid, total_levels)
+        worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
+        worker.kwargs["target_level"] = int(k)
+
+        def _fanout(payload) -> None:
+            try:
+                self.on_level_ready(payload)
+            except Exception:
+                pass
+            done = isinstance(payload, tuple) and len(payload) == 4 and bool(payload[3])
+            _notify("ready" if done else "progress")
+            if on_ready is not None:
+                try:
+                    on_ready(payload)
+                except Exception:
+                    pass
+
+        worker.signals.partial_result.connect(_fanout)
+
+        def _demand_finished(finished_uid: int = uid) -> None:
+            stuck = self._pyramid_toast_slot.get(finished_uid)
+            self._on_build_finished(finished_uid)
+            if stuck is not None:
+                _notify("aborted")
+
+        worker.signals.finished.connect(_demand_finished)
+        try:
+            thread_pool.start(worker)
+        except Exception:
+            self._on_build_finished(uid)
+            return False
         return True
 
     def _on_build_finished(self, uid: int) -> None:
