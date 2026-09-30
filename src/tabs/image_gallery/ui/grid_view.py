@@ -958,11 +958,26 @@ class GalleryGridView(QWidget):
                     self._refresh_ungrouped_header_count(len(list(getattr(self, "_ungrouped", []) or [])) + len(fresh))
                 base = int(self.items_layout.rowCount())
                 pos0 = len(list(getattr(self, "_ungrouped", []) or []))
+                # Anchor new cards to the live ungrouped block, not to
+                # rowCount: rowCount counts header rows too, so continuing
+                # from it overshoots one row per header above (live: the
+                # 2nd card lands a row low on its own — reads as a nameless
+                # group until triage rebuilds). The tail block is last and
+                # compact, so its start row = rowCount - its row span.
+                try:
+                    _cols = max(1, int(self.grid_columns))
+                except Exception:
+                    _cols = 1
+                try:
+                    _span = -(-int(pos0) // _cols) if pos0 else 0
+                    _start = int(base) - int(_span) if _span else int(base)
+                except Exception:
+                    _start = int(base)
                 for pos, item in enumerate(fresh):
                     card = self._acquire_card(item)
                     self._cards_by_path[str(item.path)] = card
-                    r, c = divmod(pos0 + pos, self.grid_columns)
-                    self.items_layout.addWidget(card, base + r, c)
+                    r, c = divmod(pos0 + pos, _cols)
+                    self.items_layout.addWidget(card, _start + r, c)
                     card.show()
                 try:
                     self._ungrouped = list(getattr(self, "_ungrouped", []) or []) + list(fresh)
