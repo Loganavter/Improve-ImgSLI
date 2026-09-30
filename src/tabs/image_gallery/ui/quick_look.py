@@ -457,13 +457,23 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         super().leaveEvent(event)
 
-    def _release_preview_resources(self) -> None:
+    def _release_preview_resources(self, *, for_walk: bool = False) -> None:
         """Canvas lifecycle: clear_source() + close store + drop the cover.
 
-        Idempotent; no-op when the canvas path was never taken.
+        Walk steps (``_populate``) keep both memo dicts so revisits reuse
+        the memoized store; hide/close drop everything. Idempotent; no-op
+        when the canvas path was never taken.
         """
         try:
+            if for_walk:
+                from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
+                    release_preview_canvas_for_walk,
+                )
+
+                release_preview_canvas_for_walk(self)
+                return
             from tabs.image_gallery.ui.quick_look.preview_canvas_host import release_preview_canvas
+
             release_preview_canvas(self)
         except Exception:
             pass
@@ -755,10 +765,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
-        # Populate-next lifecycle: drop the previous GPU source + store before
-        # re-acquiring (no fd/memmap leaks across walks); no-op label-only.
+        # Populate-next lifecycle: walk-step release (memos survive the walk;
+        # hide/close take the full release). No fd/memmap leaks across walks;
+        # no-op label-only.
         try:
-            self._release_preview_resources()
+            self._release_preview_resources(for_walk=True)
         except Exception:
             pass
         mode_str = ""

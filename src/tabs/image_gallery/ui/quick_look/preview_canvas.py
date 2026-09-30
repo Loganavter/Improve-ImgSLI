@@ -118,7 +118,15 @@ class QuickLookCanvasWidget(QRhiWidget):
     # -- source lifetime --------------------------------------------------------
 
     def set_source(self, store) -> None:
-        """Adopt ``store`` (closes the previous one). Never raises."""
+        """Adopt ``store`` (closes the previous one it owns). Never raises.
+
+        Ownership: a held store that is a live memo entry belongs to the
+        host overlay's cache, not to this canvas — replacing/clearing it
+        drops the ref WITHOUT closing (the cache closes it on
+        evict/replace/overlay-release). Only privately-built (uncached)
+        held stores are closed here. Fail-open: without a probe every held
+        store closes as before.
+        """
         try:
             if store is self._store:
                 self._refresh_plan()
@@ -174,7 +182,12 @@ class QuickLookCanvasWidget(QRhiWidget):
             pass
 
     def clear_source(self) -> None:
-        """Release the held store + composition. Never raises."""
+        """Release the held store + composition. Never raises.
+
+        Ownership (see ``set_source``): a memoized held store is dropped,
+        never closed; a privately-built one is closed. Already-closed held
+        stores are never closed twice.
+        """
         try:
             from tabs.image_gallery.ui.quick_look.preview_watchdog import invalidate
             # Renews canvas._present_debt (retires the pending timer) + disarms.
@@ -195,10 +208,29 @@ class QuickLookCanvasWidget(QRhiWidget):
             pass
 
     def _close_held_store(self) -> None:
+        """Close the held store this canvas owns — never a memo, never twice.
+
+        The host installs ``_ql_is_memo`` (see ``preview_canvas_host``): a
+        held store that is a live cache entry is owned by the memo cache and
+        is dropped WITHOUT closing. An already-closed held store is dropped
+        without a second ``close()`` (``is_open`` guard). Only an open,
+        privately-built held store is closed here. Never raises.
+        """
         held = self._store
         self._store = None
         if held is None:
             return
+        try:
+            probe = getattr(self, "_ql_is_memo", None)
+            if callable(probe) and bool(probe(held)):
+                return  # memoized — the cache owns it, keep open.
+        except Exception:
+            pass
+        try:
+            if not bool(getattr(held, "is_open", True)):
+                return  # already closed — never double-close.
+        except Exception:
+            pass
         try:
             held.close()
         except Exception:
