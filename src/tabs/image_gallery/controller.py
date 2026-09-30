@@ -110,26 +110,9 @@ class GalleryController:
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
         widget.filter_text_changed.connect(self.set_filter_text)
-        # Back-link for widget keyPressEvent / card flyout to resolve owner.
-        try:
-            widget._controller = self  # type: ignore[attr-defined]
-            widget._owner = self  # type: ignore[attr-defined]
-
-            # Marquee owner for grid_view hit-test commit
-            try:
-                if hasattr(widget, "_grid_view") and widget._grid_view is not None:
-                    widget._grid_view._owner = self  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            # Also expose on window when widget reparented.
-            try:
-                win = widget.window()
-                if win is not None:
-                    win._gallery_controller = self  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        except Exception:
-            pass
+        # Explicit owner: the widget attaches this controller via
+        # ImageGalleryWidget.attach_controller (G2); the controller keeps
+        # self.widget from its constructor only — no back-pokes here.
 
     def _next_folder_gen(self) -> int:
         """Bump the folder generation: all in-flight workers go stale."""
@@ -438,6 +421,41 @@ class GalleryController:
         except Exception:
             pass
 
+    def set_source(self, path: Path) -> None:
+        """Set the triage source image: mirror locally + dispatch.
+
+        Fail-open no-op when ``path`` is None or not in the pool. Carries
+        the CURRENT triage_state/mode/ranks via GalleryTriageFinished with
+        the new source_path — the single source-action shape, no second
+        action kind.
+        """
+        if path is None:
+            return
+        try:
+            want = str(path)
+        except Exception:
+            return
+        try:
+            pool = {str(it.path) for it in self.state.items}
+        except Exception:
+            return
+        if want not in pool:
+            return
+        try:
+            current = getattr(self.state, "triage_state", "idle")
+            triage_s = getattr(current, "value", current)
+            triage_s = str(triage_s or "idle")
+        except Exception:
+            triage_s = "idle"
+        try:
+            self.state.source_path = Path(want)
+        except Exception:
+            return
+        try:
+            self._emit_triage_finished(triage_s, source_path=Path(want))
+        except Exception:
+            logger.debug("set_source dispatch failed", exc_info=True)
+
     # -- coalesced thumbnail completions (ONE action per event-loop turn) -----
 
     def _queue_thumb_ready(self, path: Path, status: str) -> None:
@@ -529,8 +547,12 @@ class GalleryController:
             except Exception:
                 pass
 
-    def _emit_triage_finished(self, triage_state: str) -> bool:
-        """Dispatch GalleryTriageFinished from the local summary + ranks."""
+    def _emit_triage_finished(self, triage_state: str, source_path=None) -> bool:
+        """Dispatch GalleryTriageFinished from the local summary + ranks.
+
+        ``source_path`` overrides the mirrored state value when given
+        (set_source path); otherwise the current state mirror is carried.
+        """
         try:
             ranks: dict[str, int] = {}
             for it in self.state.items:
@@ -541,7 +563,9 @@ class GalleryController:
                     continue
             mode = getattr(self.state, "mode", None)
             mode_s = getattr(mode, "value", mode)
-            source = getattr(self.state, "source_path", None)
+            source = source_path if source_path is not None else getattr(self.state, "source_path", None)
+            if source is not None and not isinstance(source, (str, Path)):
+                source = None
             return self._emit_gallery(
                 GalleryTriageFinished(
                     triage_state=triage_state,
@@ -1636,13 +1660,15 @@ class GalleryController:
 
         self._filter_gen = max(self._filter_gen, filter_gen)
         gen = self._filter_gen
-        self.state.filter_text = text
+        # Dispatch-only source (set_selection pattern): skip dispatch when
+        # the slot already equals, else emit, then mirror locally.
         try:
             slot = self._gallery_slot()
             if slot is None or _gallery_selectors.get_filter_text(slot) != text:
                 self._emit_gallery(GalleryFilterSet(filter_text=text))
         except Exception:
             self._emit_gallery(GalleryFilterSet(filter_text=text))
+        self.state.filter_text = text
         self._apply_filter_fast(text)
         if not (text or "").strip():
             return
