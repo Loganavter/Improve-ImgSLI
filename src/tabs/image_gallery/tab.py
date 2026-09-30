@@ -123,9 +123,12 @@ class ImageGalleryTab(TabContract):
             context=context,
         )
         _dnd_log("create_page: EXIT widget=%s controller=%s", self._widget, self._controller)
-        # Allow widget DnD to open folder directly without extra signal round-trip
+        # Explicit owner: the tab wires controller -> widget once via the
+        # attach protocol. Implemented by G2 on the widget side —
+        # ``attach_controller(controller: GalleryController) -> None``,
+        # stored once as the attached ref; no other writes to that ref.
         try:
-            self._widget._controller = self._controller  # type: ignore[attr-defined]
+            self._widget.attach_controller(self._controller)
         except Exception:
             pass
 
@@ -350,6 +353,8 @@ class ImageGalleryTab(TabContract):
                 ],
             }
         # Foreign/legacy slot value — persist whatever folder we can find.
+        # Slot-only: when slot/legacy carry no folder, fail open with
+        # folder None — never reach into controller-local truth.
         folder = slot.get("folder") if isinstance(slot, dict) else None
         if folder is None:
             try:
@@ -358,9 +363,6 @@ class ImageGalleryTab(TabContract):
                 legacy = None
             if isinstance(legacy, dict):
                 folder = legacy.get("folder")
-        if folder is None and self._controller is not None:
-            ctrl_folder = getattr(getattr(self._controller, "state", None), "folder", None)
-            folder = str(ctrl_folder) if ctrl_folder else None
         return {"version": 1, "folder": folder}
 
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
@@ -633,9 +635,10 @@ class ImageGalleryTab(TabContract):
                             owner = wid if wid is not None else ctrl
                             _ql_set_source(owner, sel)
                         except Exception:
-                            # Fallback: preserve the legacy direct write.
+                            # Fallback: route through the controller entry
+                            # point (dispatch + mirror), never a bare write.
                             try:
-                                ctrl.state.source_path = sel  # type: ignore[attr-defined]
+                                ctrl.set_source(sel)
                             except Exception:
                                 pass
                     except Exception:
