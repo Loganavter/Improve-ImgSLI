@@ -956,6 +956,16 @@ class GalleryGridView(QWidget):
         self._sync_series_column_widths(series_mode=True)
         self.apply_selection(self._selection)
         self._update_host_height_for_series(current_row)
+        if not _layout_matches:
+            # Commit the new geometry synchronously before the next paint.
+            # Without this the re-added cards lay out only on the following
+            # event-loop turn, so an already-visible neighbour (e.g. the
+            # UNGROUPED tail sliding up/down) keeps its stale rect for one
+            # frame and paints over the freshly revealed series cards.
+            try:
+                self.items_layout.activate()
+            except Exception:
+                logger.debug("_rebuild_series: layout activate failed", exc_info=True)
         try:
             if _bar is not None:
                 _bar.setValue(min(int(_saved_scroll), int(_bar.maximum())))
