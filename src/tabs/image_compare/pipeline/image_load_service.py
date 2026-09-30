@@ -9,10 +9,13 @@ full-frame, сервис только детекция). Заменяет:
 * ``unify (p1,p2)`` (unify.py:214)
 * ``pyramid single-flight`` (session.py / pyramid.py)
 
-Key ``(normpath, mtime_ns, size, False)``. CropService прогревается lazy
-внутри GenericWorker (side-effect кэша сервиса — только детекция, в декод
-и ключи не попадает), GUI не блокируется на sync ``crop_service.get(path)``
-до ``pool.start``.
+Key ``(normpath, mtime_ns, size, False)`` (file-identity prefix owned by
+``tabs._shared.loading_pipeline.cache_key_for_path``). Preview-first async
+staging is delegated to the shared seam (``ensure_async``); this service
+keeps the tab-local surface (``key_for``/``try_acquire``/``release``/
+``is_loading``/``ensure_async``) and all dispatch (transacts in hooks).
+GUI не блокируется: декод идёт в воркерах сима, detection-прогрев
+CropService покрывает schedule_crop_warmup в slot.load_images_from_paths.
 """
 
 from __future__ import annotations
@@ -21,10 +24,13 @@ import os
 import logging
 from typing import Any, Callable
 
-from sli_ui_toolkit.workers import GenericWorker
-
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.debug import ic_preview_debug
+# W1 adapter: single-flight key + preview-first async staging owned by the
+# shared seam; dispatch (transacts) stays tab-local in the hooks below.
+# NOTE: seam imports are function-level — the seam imports
+# tabs.image_compare.pipeline.abort, which runs this package's __init__
+# first, so a top-level seam import here would be circular.
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -36,15 +42,15 @@ def _key_for_path(path: str, crop_service=None, **_kw) -> tuple:
     (``ensure_async`` кладёт с None, ``bg_dirty.is_loading`` спрашивает с
     живым сервисом) — поэтому has_crop всегда False, как раньше при
     выключенном кропе. Старые True-ключи миссуют и не коллизируют.
+
+    W1 adapter: file-identity prefix delegated to the shared seam
+    (``tabs._shared.loading_pipeline.cache_key_for_path``); the boxless
+    suffix stays tab-local so stored shapes never change.
     """
-    try:
-        st = os.stat(path)
-        mtime = int(getattr(st, "st_mtime_ns", 0) or 0)
-        size = int(getattr(st, "st_size", 0) or 0)
-    except OSError:
-        mtime = 0
-        size = 0
-    return (os.path.normpath(str(path)), int(mtime), int(size), False)
+    from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
+
+    norm, mtime, size = _seam_key_for_path(path)
+    return (norm, int(mtime), int(size), False)
 
 
 def _unify_key(path1: str, path2: str, method: str) -> tuple:
@@ -132,18 +138,17 @@ class ImageLoadService:
         index_in_list: int,
         controller: Any,
     ) -> AbortSignal | None:
+        # W1 adapter: preview-first single-flight staging delegated to the
+        # shared seam (tabs._shared.loading_pipeline.ensure_async). Dispatch
+        # stays tab-local: the seam only invokes _on_ready/_on_error below,
+        # which transact/forward exactly like the previous worker body did
+        # (same toasts, same ordering, same abort semantics). The sync
+        # cache-hit fast path stays here so a hit still transacts inline and
+        # returns None (nothing in flight), as before.
         # W1+W2: декод и ключи — всегда boxless (crop_service=None, no-bake).
-        # Сессионный сервис остаётся только для детекции: воркер прогревает
-        # им box-кэш (svc.get вне GUI), в load/put он не попадает.
-        detect_service = None
-        try:
-            if self._get_crop_service is not None:
-                detect_service = self._get_crop_service()
-            else:
-                detect_service = getattr(controller, "_get_crop_service", lambda: None)()
-        except Exception:
-            detect_service = None
-        crop_service = None
+        # Сессионный сервис — только детекция; его прогрев в фоне покрывает
+        # schedule_crop_warmup в slot.load_images_from_paths, дубль прогрева
+        # внутри воркера упразднён вместе с собственным GenericWorker.
         cache = self._cache
         try:
             sess = None
@@ -158,7 +163,7 @@ class ImageLoadService:
                 cache = getattr(getattr(controller, "pipeline", None), "cache", None)
         except Exception:
             pass
-        key = self.key_for(path, crop_service)
+        key = self.key_for(path, None)
         existing = self._inflight.get(key)
         if existing is not None:
             try:
@@ -172,12 +177,12 @@ class ImageLoadService:
             hit = None
             if cache is not None:
                 try:
-                    hit = cache.get_pixel(path, crop_service)
+                    hit = cache.get_pixel(path, None)
                 except Exception:
                     hit = None
                 if hit is None:
                     try:
-                        hit = cache.get_preview(path, crop_service)  # type: ignore
+                        hit = cache.get_preview(path, None)  # type: ignore
                     except Exception:
                         hit = None
             if hit is not None:
@@ -200,75 +205,12 @@ class ImageLoadService:
                 return None
         except Exception:
             pass
-        sig = AbortSignal()
-        self._inflight[key] = sig
-        ic_preview_debug("ImageLoadService start slot=%s path=%s key=%s sig=%s", slot, path, key, sig)
+        ic_preview_debug("ImageLoadService start slot=%s path=%s key=%s", slot, path, key)
 
-        def _worker_body(p: str, svc, sl, idx, sig_ref):
-            # Прогрев detection-кэша CropService вне GUI-потока: svc.get
-            # кэширует box внутри сервиса (для crop_box.py). Декод и put —
-            # всегда boxless (no-bake, ключи без has_crop).
-            try:
-                if sig_ref.is_aborted():
-                    return None, p, sl, idx, False
-                if svc is not None and not isinstance(svc, bool):
-                    try:
-                        svc.get(p)  # type: ignore[union-attr]
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                from shared.image_processing.progressive_loader import should_use_progressive_load
-                use_prog = should_use_progressive_load(p)
-            except Exception:
-                use_prog = False
-            if use_prog:
-                try:
-                    from shared.image_processing.progressive_loader import load_preview_image
-                    if sig_ref.is_aborted():
-                        return None, p, sl, idx, False
-                    preview = load_preview_image(p, crop_service=None)
-                    if preview is not None and not getattr(preview, "isNull", lambda: True)():
-                        try:
-                            if cache is not None:
-                                cache.put_preview(p, None, preview)
-                        except Exception:
-                            pass
-                        return preview, p, sl, idx, True
-                except Exception as e:
-                    logger.debug("preview load failed %s: %s", p, e)
-                try:
-                    if sig_ref.is_aborted():
-                        return None, p, sl, idx, False
-                except Exception:
-                    pass
-            try:
-                from shared.image_processing.pixel_cache_loader import load_pixel_store
-                if sig_ref.is_aborted():
-                    return None, p, sl, idx, False
-                _emb_svc = None
-                try:
-                    _emb_svc = getattr(getattr(controller, "pipeline", None), "cache", None)
-                except Exception:
-                    _emb_svc = None
-                store_obj = load_pixel_store(p, crop_service=None, embedded_cache=_emb_svc)
-                try:
-                    if sig_ref.is_aborted():
-                        return None, p, sl, idx, False
-                except Exception:
-                    pass
-                # put boxless (ключ без has_crop — см. cache._pixel_key)
-                try:
-                    if cache is not None and store_obj is not None:
-                        cache.put_pixel(p, None, store_obj)
-                except Exception:
-                    pass
-                return store_obj, p, sl, idx, False
-            except Exception as e:
-                logger.debug("pixel load failed %s: %s", p, e)
-                return None, p, sl, idx, False
-
+        # Tab-local pool wiring decides sync-vs-async (legacy parity): a
+        # controller without a thread pool (fakes, pool-less contexts) takes
+        # the inline path — fresh signal, nothing stored, no delivery. The
+        # seam would otherwise use the global pool and start a real worker.
         pool = None
         try:
             if self._get_thread_pool is not None:
@@ -276,14 +218,21 @@ class ImageLoadService:
             if pool is None:
                 pool = getattr(controller, "thread_pool", None)
         except Exception:
-            pool = getattr(controller, "thread_pool", None)
+            try:
+                pool = getattr(controller, "thread_pool", None)
+            except Exception:
+                pool = None
+        if pool is None:
+            ic_preview_debug("ImageLoadService no thread_pool, inline")
+            self._inflight.pop(key, None)
+            return AbortSignal()
 
-        def _pop_alias():
+        cell: dict[str, Any] = {}
+        delivered: list[str] = []
+
+        def _pop_alias() -> None:
             # Pipeline alias (slot, path) set by the slot.py service path in
-            # the shared _inflight dict. The service never knew this key shape,
-            # so it leaked with a live signal forever: every later pyramid
-            # start saw "decode in flight" and skipped the uid->slot toast
-            # mapping, hanging the toast. Pop only if the entry is still ours
+            # the shared _inflight dict. Pop only if the entry is still ours
             # (a newer load may have reused the key).
             try:
                 alias = (int(slot), str(path))
@@ -295,52 +244,106 @@ class ImageLoadService:
                 dicts.append(pl_d)
             for d in dicts:
                 try:
-                    if d.get(alias) is sig:
+                    if d.get(alias) is cell.get("sig"):
                         d.pop(alias, None)
                 except Exception:
                     pass
 
-        def _on_result(result):
+        def _pop_service_key() -> None:
             try:
                 cur = self._inflight.get(key)
-                if cur is sig:
+                if cur is None or cur is cell.get("sig"):
                     self._inflight.pop(key, None)
             except Exception:
                 pass
+
+        def _on_ready(slot_id: Any, ready_path: Any, result: Any) -> None:
+            delivered.append("ready")
+            _pop_service_key()
             _pop_alias()
             try:
-                controller._on_image_loaded(result)
+                from PySide6.QtGui import QImage as _QImage
+            except Exception:
+                _QImage = ()  # type: ignore[assignment]
+            try:
+                is_preview = isinstance(result, _QImage)
+            except Exception:
+                is_preview = False
+            try:
+                from tabs.image_compare.use_cases import image_decode as _decode
+            except Exception:
+                _decode = None  # type: ignore[assignment]
+            try:
+                if is_preview:
+                    if result is not None and _decode is not None:
+                        # Seam owns the full-res second stage — suppress the
+                        # legacy explicit full kick (chain_full=False).
+                        _decode.on_image_loaded(
+                            controller,
+                            (result, ready_path, int(slot_id), int(index_in_list), True),
+                            chain_full=False,
+                        )
+                    elif _decode is not None:
+                        _decode.on_image_loaded(
+                            controller,
+                            (None, ready_path, int(slot_id), int(index_in_list), False),
+                        )
+                elif result is not None:
+                    try:
+                        if cache is not None:
+                            cache.put_pixel(ready_path, None, result)
+                    except Exception:
+                        pass
+                    controller._on_full_image_loaded(
+                        result, ready_path, int(slot_id), int(index_in_list)
+                    )
+                elif _decode is not None:
+                    _decode.on_image_loaded(
+                        controller,
+                        (None, ready_path, int(slot_id), int(index_in_list), False),
+                    )
             except Exception as e:
-                ic_preview_debug("ImageLoadService _on_result handler failed %s", e)
+                ic_preview_debug("ImageLoadService _on_ready handler failed %s", e)
                 logger.exception("ImageLoadService result handler failed")
 
-        def _on_finished():
-            try:
-                cur = self._inflight.get(key)
-                if cur is sig:
-                    self._inflight.pop(key, None)
-            except Exception:
-                pass
+        def _on_error(slot_id: Any, err_path: Any, err: Any) -> None:
+            delivered.append("error")
+            _pop_service_key()
             _pop_alias()
-
-        # svc несёт detection-сервис для прогрева box-кэша в воркере;
-        # декод/put внутри _worker_body — всегда boxless (None).
-        worker = GenericWorker(_worker_body, path, detect_service, int(slot), int(index_in_list), sig)
-        worker.signals.result.connect(_on_result)
-        try:
-            worker.signals.finished.connect(_on_finished)
-        except Exception:
-            pass
-        if pool is not None:
+            # Fail-open like the legacy (None, ...) decode-miss tuple: the
+            # pop/resync path in on_image_loaded owns user-visible handling.
             try:
-                pool.start(worker)
+                from tabs.image_compare.use_cases import image_decode as _decode
+            except Exception:
+                _decode = None  # type: ignore[assignment]
+            try:
+                if _decode is not None:
+                    _decode.on_image_loaded(
+                        controller,
+                        (None, err_path, int(slot_id), int(index_in_list), False),
+                    )
             except Exception as e:
-                ic_preview_debug("ImageLoadService pool start failed %s", e)
-                self._inflight.pop(key, None)
-                return None
-        else:
-            ic_preview_debug("ImageLoadService no thread_pool, inline")
+                ic_preview_debug("ImageLoadService _on_error handler failed %s", e)
+
+        from tabs._shared.loading_pipeline import ensure_async as _seam_ensure_async
+
+        try:
+            sig = _seam_ensure_async(cache, path, int(slot), _on_ready, _on_error)
+        except Exception as e:
+            ic_preview_debug("ImageLoadService seam ensure_async failed %s", e)
+            return None
+        if sig is None:
+            # Sync cache-hit delivery inside the seam (pre-check race): hooks
+            # already ran; nothing in flight.
+            return None
+        cell["sig"] = sig
+        if delivered:
+            # Headless/tests inline shape: the seam delivered synchronously
+            # but still returned a signal. Mirror the legacy no-pool path:
+            # no service-key alias, caller still gets the signal.
             self._inflight.pop(key, None)
+            return sig
+        self._inflight[key] = sig
         return sig
 
     @property

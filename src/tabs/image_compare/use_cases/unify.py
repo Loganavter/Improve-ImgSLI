@@ -8,6 +8,9 @@ import logging
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
+# W1 adapter: path-equality guard owned by the shared seam; unify_pair flow
+# and all dispatch stay tab-local.
+from tabs._shared.loading_pipeline import _same_fs_path as _seam_same_fs_path
 
 from core.state_management.actions import (
     SetCachedDiffImageAction,
@@ -208,7 +211,12 @@ def ensure_unification(controller, delay_ms: int = 0) -> None:
     rc = _session_render_cache(controller)
     if rc is not None and getattr(rc, "unification_in_progress", False):
         pending = getattr(rc, "pending_unification_paths", None)
-        if pending == (document.image1_path, document.image2_path):
+        if (
+            isinstance(pending, (tuple, list))
+            and len(pending) == 2
+            and _seam_same_fs_path(pending[0] or "", document.image1_path or "")
+            and _seam_same_fs_path(pending[1] or "", document.image2_path or "")
+        ):
             return
     if not document.image1_path or not document.image2_path:
         return
@@ -463,7 +471,10 @@ def on_unified_images_ready(controller, result):
         if document is None or rc is None or im is None:
             _clear_unification_flags(controller)
             return
-        if (path1, path2) != (document.image1_path, document.image2_path):
+        if not (
+            _seam_same_fs_path(path1 or "", document.image1_path or "")
+            and _seam_same_fs_path(path2 or "", document.image2_path or "")
+        ):
             _clear_unification_flags(controller)
             controller.store.invalidate_geometry_cache()
             controller.store.emit_state_change("viewport")

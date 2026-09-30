@@ -20,6 +20,13 @@ from core.state_management.actions import (
     SetUnificationInProgressAction,
 )
 from tabs.image_compare.debug import ic_preview_debug
+# W1 adapter: sync demand fills + path-equality guards owned by the shared
+# seam; unify_pair flow, dispatch (transacts) and toast wiring stay tab-local.
+from tabs._shared.loading_pipeline import (
+    _same_fs_path as _seam_same_fs_path,
+)
+from tabs._shared.loading_pipeline import get_or_load_pixel as _seam_get_or_load_pixel
+from tabs._shared.loading_pipeline import get_or_load_preview as _seam_get_or_load_preview
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -52,7 +59,7 @@ def _remove_failed_item_via_dispatch(
 
             document = controller.store.get_session_state_slot("document")
             lst = document.image_list1 if image_number == 1 else document.image_list2
-            if 0 <= index_in_list < len(lst) and lst[index_in_list].path == path:
+            if 0 <= index_in_list < len(lst) and _seam_same_fs_path(lst[index_in_list].path, path):
                 remaining = [it for i, it in enumerate(lst) if i != index_in_list]
                 controller.store.transact(
                     [SetImageListAction(slot=image_number, items=remaining)],
@@ -120,9 +127,9 @@ def _resolve_ic_slot_for_path(controller, path: str) -> int | None:
     except Exception:
         return None
     try:
-        if getattr(document, "image1_path", None) == path:
+        if _seam_same_fs_path(getattr(document, "image1_path", None) or "", path):
             return 1
-        if getattr(document, "image2_path", None) == path:
+        if _seam_same_fs_path(getattr(document, "image2_path", None) or "", path):
             return 2
     except Exception:
         pass
@@ -131,13 +138,16 @@ def _resolve_ic_slot_for_path(controller, path: str) -> int | None:
 
 def load_image_async(controller, path, image_number, index_in_list, target_size=None):
     from shared.image_processing.progressive_loader import (
-        load_preview_image,
         should_use_progressive_load,
     )
 
     # W1+W2 non-destructive crop: декод всегда full-frame (no-bake).
     # Сессионный CropService — только детекция (см. pipeline/crop_box.py),
     # в load_preview_image / load_pixel_store не попадает.
+    # W1 adapter: sync demand fills delegated to the shared seam
+    # (get_or_load_preview / get_or_load_pixel); embedded project-cache
+    # resolution survives via the host-owned fallback inside
+    # load_pixel_store, error/toast handling below is unchanged.
     crop_service = None
     ic_preview_debug("load_image_async slot=%s path=%s idx=%s crop=%s", image_number, path, index_in_list, bool(crop_service))
     try:
@@ -155,17 +165,7 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
             use_progressive,
         )
         ic_preview_debug("load_image_async slot=%s use_progressive=%s", image_number, use_progressive)
-        if use_progressive:
-            ic_preview_debug("load_image_async slot=%s -> try preview", image_number)
-            preview = load_preview_image(path, crop_service=None)
-            ic_preview_debug("load_image_async slot=%s preview=%s", image_number, preview)
-            if preview:
-                ic_preview_debug("load_image_async slot=%s -> preview hit", image_number)
-                return preview, path, image_number, index_in_list, True
-        from shared.image_processing.pixel_cache_loader import load_pixel_store
-
-        ic_preview_debug("load_image_async slot=%s -> load_pixel_store", image_number)
-        # DI: pass PipelineCache embedded tier from tab context
+        # DI: tab PipelineCache as the seam's cache tier (preview+pixel).
         _emb = None
         try:
             _emb = getattr(getattr(controller, "pipeline", None), "cache", None)
@@ -174,8 +174,20 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
                 _emb = getattr(_sess, "cache", None) if _sess is not None else None
         except Exception:
             _emb = None
-        store = load_pixel_store(path, crop_service=None, embedded_cache=_emb)
+        if use_progressive:
+            ic_preview_debug("load_image_async slot=%s -> try preview", image_number)
+            preview = _seam_get_or_load_preview(_emb, path, crop_service=None)
+            ic_preview_debug("load_image_async slot=%s preview=%s", image_number, preview)
+            if preview:
+                ic_preview_debug("load_image_async slot=%s -> preview hit", image_number)
+                return preview, path, image_number, index_in_list, True
+        ic_preview_debug("load_image_async slot=%s -> load_pixel_store", image_number)
+        store = _seam_get_or_load_pixel(_emb, path, crop_service=None)
         ic_preview_debug("load_image_async slot=%s store=%s uid=%s", image_number, store, getattr(store, "uid", None) if store else None)
+        if store is None:
+            # Fail-open seam returns None where the legacy backend raised:
+            # re-raise so the error/toast path below stays identical.
+            raise RuntimeError(f"decode returned no store for {path}")
         return store, path, image_number, index_in_list, False
     except Exception as e:
         ic_preview_debug("load_image_async slot=%s failed %s", image_number, e)
@@ -218,7 +230,14 @@ def cancel_pending_unification(controller, new_path1: str = "", new_path2: str =
             pass
         return True
     pending = getattr(cache, "pending_unification_paths", None)
-    if pending and (pending[0] != new_path1 or pending[1] != new_path2):
+    if (
+        pending
+        and len(pending) == 2
+        and (
+            not _seam_same_fs_path(pending[0] or "", new_path1 or "")
+            or not _seam_same_fs_path(pending[1] or "", new_path2 or "")
+        )
+    ):
         try:
             dispatcher = controller.store.get_dispatcher()
             if dispatcher is not None:
@@ -235,7 +254,16 @@ def cancel_pending_unification(controller, new_path1: str = "", new_path2: str =
     return False
 
 
-def on_image_loaded(controller, result):
+def on_image_loaded(controller, result, *, chain_full: bool = True):
+    """Preview/full result fan-in (dispatch stays tab-local).
+
+    ``chain_full``: legacy callers (slot fallback worker, service inline)
+    keep ``True`` — a preview delivery kicks the explicit full-res worker.
+    The seam-driven adapter (``ImageLoadService.ensure_async``) passes
+    ``False``: the seam owns the bounded full-res second stage and will
+    deliver it via ``_on_full_image_loaded`` — kicking a second full decode
+    here would duplicate it.
+    """
     ic_preview_debug("on_image_loaded result=%s", result)
     if result is None:
         ic_preview_debug("on_image_loaded -> None")
@@ -249,10 +277,10 @@ def on_image_loaded(controller, result):
     # single-flight cleanup via pipeline inflight + AbortSignal — handled by slot.py _clear
     document = controller.store.get_session_state_slot("document")
     target_list = document.image_list1 if image_number == 1 else document.image_list2
-    ic_preview_debug("on_image_loaded slot=%s target_len=%s idx_valid=%s path_match=%s", image_number, len(target_list), 0 <= index_in_list < len(target_list), target_list[index_in_list].path == path if 0 <= index_in_list < len(target_list) else False)
+    ic_preview_debug("on_image_loaded slot=%s target_len=%s idx_valid=%s path_match=%s", image_number, len(target_list), 0 <= index_in_list < len(target_list), _seam_same_fs_path(target_list[index_in_list].path, path) if 0 <= index_in_list < len(target_list) else False)
     if not pil_img:
         ic_preview_debug("on_image_loaded slot=%s -> pil_img None, pop if needed", image_number)
-        if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
+        if 0 <= index_in_list < len(target_list) and _seam_same_fs_path(target_list[index_in_list].path, path):
             current_app_index = document.current_index1 if image_number == 1 else document.current_index2
             removed_via_dispatch = _remove_failed_item_via_dispatch(
                 controller, image_number, index_in_list, path
@@ -265,7 +293,7 @@ def on_image_loaded(controller, result):
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
         return
-    if 0 <= index_in_list < len(target_list) and target_list[index_in_list].path == path:
+    if 0 <= index_in_list < len(target_list) and _seam_same_fs_path(target_list[index_in_list].path, path):
         # PipelineCache is single source — Bucket C via transact (pipeline slot)
         try:
             if pil_img is not None:
@@ -348,7 +376,13 @@ def on_image_loaded(controller, result):
                 except Exception as e:
                     ic_preview_debug("on_image_loaded slot=%s preview transact failed %s", image_number, e)
                     pass
-            load_full_resolution_async(controller, path, image_number, index_in_list)
+            if chain_full:
+                load_full_resolution_async(controller, path, image_number, index_in_list)
+            else:
+                ic_preview_debug(
+                    "on_image_loaded slot=%s seam owns full stage, skip explicit kick",
+                    image_number,
+                )
         else:
             from engine.store.tiled_pixel_store import (
                 TiledPixelStore,
@@ -389,15 +423,15 @@ def load_full_resolution_async(controller, path, image_number, index_in_list):
     )
 
     def load_full_task(path_str, svc, slot_number, item_index):
-        from shared.image_processing.pixel_cache_loader import load_pixel_store
-
-        # DI: try controller cache (closure capture)
+        # W1 adapter: sync full-res demand fill delegated to the shared
+        # seam (same backend, same fail-open shape); the tab PipelineCache
+        # stays the cache tier.
         _emb2 = None
         try:
             _emb2 = getattr(getattr(controller, "pipeline", None), "cache", None)
         except Exception:
             _emb2 = None
-        store = load_pixel_store(path_str, crop_service=None, embedded_cache=_emb2)
+        store = _seam_get_or_load_pixel(_emb2, path_str, crop_service=None)
         return (
             store,
             path_str,

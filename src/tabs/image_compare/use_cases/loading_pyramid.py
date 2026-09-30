@@ -14,6 +14,12 @@ from __future__ import annotations
 import logging
 
 from tabs.image_compare.debug import ic_preview_debug as _preview_log
+# W1 adapter: pyramid kicks go ONLY through the shared seam
+# (tabs._shared.loading_pipeline.start_pyramid_build); the tab coordinator
+# stays the hook (ownership unchanged), tab-local toast-liveness + abort
+# decisions ride along in a closure so no direct tabs._shared.pyramid call
+# exists on this path.
+from tabs._shared.loading_pipeline import start_pyramid_build as _seam_start_pyramid_build
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -85,12 +91,28 @@ def start_pyramid_builds(controller, *stores) -> None:
             # even if the decode lands after the pyramid; toast_live gates
             # only progress bumps and skip-path finishes (preview-tier race
             # must not close a toast whose real decode is still pending).
-            coord.start_build(
-                store,
-                slot_id=image_number,
-                toast_live=slot_toast_live,
-                should_abort=should_abort,
-            )
+            # W1: the kick routes through the shared seam; the coordinator
+            # stays the hook (closure preserves toast_live/should_abort —
+            # the seam's plain-callable shape — instead of a second direct
+            # coordinator call).
+            def _hook(
+                store_arg,
+                slot_arg,
+                _coord=coord,
+                _live=slot_toast_live,
+                _abort=should_abort,
+            ):
+                try:
+                    _coord.start_build(
+                        store_arg,
+                        slot_id=slot_arg,
+                        toast_live=_live,
+                        should_abort=_abort,
+                    )
+                except TypeError:
+                    _coord.start_build(store_arg, slot_id=slot_arg)
+
+            _seam_start_pyramid_build(store, image_number, toast_hook=_hook)
         return
 
 

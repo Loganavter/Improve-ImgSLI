@@ -57,6 +57,13 @@ if TYPE_CHECKING:
 # storage without a host→tabs import.
 from shared.image_processing.embedded_pixel_cache import _cache as _embedded_cache
 
+# W1 adapter: single-flight/file-identity key owned by the shared seam
+# (tabs._shared.loading_pipeline.cache_key_for_path). Tier suffixes stay
+# tab-local (boxless False / preview size) — shapes unchanged.
+# NOTE: the seam import is function-level (see _pixel_key/_preview_key):
+# the seam imports tabs.image_compare.pipeline.abort, which runs this
+# package's __init__ first — a top-level import here would be circular.
+
 
 def register_embedded_cache(media_path: str, cache_path: str, width: int, height: int) -> None:
     """Register an extracted project cache buffer (B10). Writes to shared host dict."""
@@ -169,14 +176,12 @@ def _pixel_key(path: str, crop_service=None, auto_crop: bool | None = None, **_k
     # сигнатур и игнорируются: сервис — только детекция (см. crop_box.py),
     # декод — всегда full-frame. Старые записи с True в 4-м слоте миссуют
     # и никогда не коллизируют с boxless-записями.
-    try:
-        st = os.stat(path)
-        mtime = st.st_mtime_ns
-        size = st.st_size
-    except OSError:
-        mtime = 0
-        size = 0
-    return (os.path.normpath(path), mtime, size, False)
+    # W1 adapter: file-identity prefix delegated to the shared seam; the
+    # boxless suffix stays tab-local so stored shapes never change.
+    from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
+
+    norm, mtime, size = _seam_key_for_path(path)
+    return (norm, mtime, size, False)
 
 
 def _unify_key(uid1: int | None, uid2: int | None, method: str, w: int, h: int) -> tuple:
@@ -191,15 +196,12 @@ def _preview_key(path: str, crop_service=None, auto_crop: bool | None = None, **
     """Preview tier key: (path, mtime_ns, size, False, 1024) — всегда boxless.
 
     См. _pixel_key: декод full-frame, сервис — только детекция.
+    W1 adapter: file-identity prefix delegated to the shared seam.
     """
-    try:
-        st = os.stat(path)
-        mtime = st.st_mtime_ns
-        size = st.st_size
-    except OSError:
-        mtime = 0
-        size = 0
-    return (os.path.normpath(path), mtime, size, False, _PREVIEW_SIZE)
+    from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
+
+    norm, mtime, size = _seam_key_for_path(path)
+    return (norm, mtime, size, False, _PREVIEW_SIZE)
 
 
 class PipelineCache:
