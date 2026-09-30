@@ -791,19 +791,19 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 604,
+      "lines": 1412,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry"
+        "reason": "one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation"
       }
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 995,
+      "lines": 1015,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
