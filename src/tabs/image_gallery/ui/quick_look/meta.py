@@ -12,7 +12,10 @@ from pathlib import Path
 from tabs.image_gallery.ui.quick_look.preview import _fast_image_size, _source_dimensions
 
 
-def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
+def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None:
+    """Filename + dims/format/size meta line. *owner* is the explicit triage
+    owner (threaded from the overlay's ``show_for``); None keeps the overlay
+    fallback inside ``_item_smaller_than_source`` for direct unit calls."""
     try:
         overlay._filename_label.setText(str(getattr(item, "name", Path(getattr(item, "path", "")).name)))
     except Exception:
@@ -73,7 +76,7 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
                 # item is not genuinely smaller; else say so honestly.
                 # Falls back to the old text whenever either side's dims
                 # are unknown (never a fabricated comparison).
-                if _item_smaller_than_source(overlay, dims_txt):
+                if _item_smaller_than_source(overlay, dims_txt, owner):
                     meta_parts.append("smaller than source")
                 else:
                     meta_parts.append("same size as source")
@@ -86,12 +89,16 @@ def populate_filename_meta(overlay, item, is_fidelity: bool) -> None:
         pass
 
 
-def _item_smaller_than_source(overlay, dims_txt: str | None) -> bool:
+def _item_smaller_than_source(overlay, dims_txt: str | None, owner=None) -> bool:
     """True only when the item's long side is known-smaller than the source's.
 
     Compares the already-formatted item dims (``"W × H"``) against
     ``_source_dimensions`` (metrics first, QPixmap fallback). False on any
     unknown side — callers keep the neutral text instead of guessing.
+
+    *owner* is the explicit triage owner (threaded from the overlay's
+    ``show_for``); when None, falls back to the overlay's stored owner for
+    direct unit calls (back-compat — production always passes it).
     """
     try:
         if not dims_txt or "×" not in dims_txt:
@@ -100,7 +107,11 @@ def _item_smaller_than_source(overlay, dims_txt: str | None) -> bool:
         src = getattr(overlay, "_source_path", None)
         src_item = None
         try:
-            owner = getattr(overlay, "_owner", None)
+            if owner is None:
+                try:
+                    owner = overlay._owner
+                except Exception:
+                    owner = None
             items = list(getattr(getattr(owner, "state", None), "items", []) or [])
             if src is not None:
                 for it2 in items:
