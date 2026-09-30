@@ -30,8 +30,202 @@ def _qlc_log(msg: str, *args) -> None:
         pass
 
 
+def _preview_store_cache_max() -> int:
+    """Bound for the memoized store cache — mirrors the pixmap memo."""
+    try:
+        from tabs.image_gallery.ui.quick_look.preview import _STASH_CACHE_MAX
+
+        return max(1, int(_STASH_CACHE_MAX))
+    except Exception:
+        return 4
+
+
+def _close_store_quiet(store) -> None:
+    """Close one store, fail-open (shared evict/replace path)."""
+    try:
+        if store is not None:
+            store.close()
+    except Exception:
+        pass
+
+
+def _preview_store_cache_lookup(overlay, key):
+    """Memoized bounded store for *key*, or None on miss/closed/error.
+
+    Validates ``is_open`` before reuse (never hands a closed store to the
+    canvas); a closed entry is popped so the caller rebuilds once and
+    re-memoizes. LRU-touches on hit so eviction drops the stalest entry —
+    same key shape and bound as the pixmap memo. Never raises.
+    """
+    try:
+        if key is None:
+            return None
+        try:
+            cache = getattr(overlay, "_preview_store_cache", None)
+        except Exception:
+            return None
+        if not isinstance(cache, dict):
+            return None
+        hit = cache.get(key)
+        if hit is None:
+            return None
+        try:
+            if not bool(hit.is_open):
+                try:
+                    cache.pop(key, None)
+                except Exception:
+                    pass
+                return None
+        except Exception:
+            try:
+                cache.pop(key, None)
+            except Exception:
+                pass
+            return None
+        try:  # LRU touch so eviction drops the stalest entry.
+            cache.pop(key, None)
+            cache[key] = hit
+        except Exception:
+            pass
+        return hit
+    except Exception:
+        return None
+
+
+def _preview_store_cache_store(overlay, key, store) -> None:
+    """Memoize *store* under *key* (bounded, fail-open).
+
+    Evicted/replaced entries are closed via the quiet close path (fd/memmap
+    hygiene) unless the evicted entry is the live ``_preview_store`` (the
+    canvas still reads it — the live close owns it). Never raises.
+    """
+    try:
+        if key is None or store is None:
+            return
+        try:
+            if not bool(store.is_open):
+                return
+        except Exception:
+            return
+        try:
+            cache = getattr(overlay, "_preview_store_cache", None)
+        except Exception:
+            return
+        if not isinstance(cache, dict):
+            cache = {}
+            try:
+                overlay._preview_store_cache = cache
+            except Exception:
+                return
+        try:
+            live = getattr(overlay, "_preview_store", None)
+        except Exception:
+            live = None
+        try:
+            if key in cache:
+                old = cache.get(key)
+                if old is not None and old is not store:
+                    cache.pop(key, None)
+                    if old is not live:
+                        _close_store_quiet(old)
+                    elif old is live:
+                        # Same-key rebuild while live points at the stale
+                        # entry: the live ref is being replaced, so close it.
+                        _close_store_quiet(old)
+            elif len(cache) >= _preview_store_cache_max():
+                try:
+                    oldest = next(iter(cache))
+                except StopIteration:
+                    oldest = None
+                if oldest is not None:
+                    evicted = cache.pop(oldest, None)
+                    if evicted is not None and evicted is not store and evicted is not live:
+                        _close_store_quiet(evicted)
+                    elif evicted is not None and evicted is live:
+                        # Live oldest (should not happen — live is MRU) is
+                        # still read by the canvas; re-insert so the live
+                        # close owns it instead of leaking the new entry.
+                        try:
+                            cache[oldest] = evicted
+                        except Exception:
+                            pass
+                        try:
+                            oldest2 = next(iter(cache))
+                        except StopIteration:
+                            oldest2 = None
+                        if oldest2 is not None and oldest2 is not oldest:
+                            ev2 = cache.pop(oldest2, None)
+                            if ev2 is not None and ev2 is not store and ev2 is not live:
+                                _close_store_quiet(ev2)
+            cache[key] = store
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _preview_store_cache_discard(overlay, store) -> None:
+    """Drop cache entries pointing at *store* (identity); caller closes it."""
+    try:
+        if store is None:
+            return
+        try:
+            cache = getattr(overlay, "_preview_store_cache", None)
+        except Exception:
+            return
+        if not isinstance(cache, dict):
+            return
+        try:
+            for k, v in list(cache.items()):
+                if v is store:
+                    try:
+                        cache.pop(k, None)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _drop_preview_store_cache(overlay) -> None:
+    """Close + clear every memoized store (overlay release path)."""
+    try:
+        cache = getattr(overlay, "_preview_store_cache", None)
+    except Exception:
+        return
+    if not isinstance(cache, dict):
+        return
+    try:
+        live = getattr(overlay, "_preview_store", None)
+    except Exception:
+        live = None
+    try:
+        items = list(cache.items())
+    except Exception:
+        items = []
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    for _k, st in items:
+        try:
+            if st is not None and st is not live:
+                _close_store_quiet(st)
+        except Exception:
+            pass
+
+
 def _close_preview_store(overlay) -> None:
-    """Close + drop the stashed TiledPixelStore (fd/memmap hygiene)."""
+    """Close + drop the stashed TiledPixelStore (fd/memmap hygiene).
+
+    Cache-aware: when the live store is also the memoized entry (the
+    revisit fast path hands the canvas the memoized object directly), the
+    live ref is dropped WITHOUT closing so the memo stays open for the
+    next revisit. Uncached lives close as before; memoized entries are
+    closed on evict/replace (``_preview_store_cache_store``) and on overlay
+    release (``_drop_preview_store_cache``).
+    """
     try:
         store = getattr(overlay, "_preview_store", None)
     except Exception:
@@ -40,11 +234,17 @@ def _close_preview_store(overlay) -> None:
         overlay._preview_store = None
     except Exception:
         pass
-    if store is not None:
-        try:
-            store.close()
-        except Exception:
-            pass
+    if store is None:
+        return
+    try:
+        cache = getattr(overlay, "_preview_store_cache", None)
+        if isinstance(cache, dict):
+            for v in cache.values():
+                if v is store:
+                    return  # memoized — cache owns it, keep open.
+    except Exception:
+        pass
+    _close_store_quiet(store)
 
 
 def release_preview_canvas(overlay) -> None:
@@ -68,6 +268,7 @@ def release_preview_canvas(overlay) -> None:
     except Exception:
         pass
     _close_preview_store(overlay)
+    _drop_preview_store_cache(overlay)
     # Keep the slot children exactly on the frame (canvas is hidden now).
     _fit_preview_slot(overlay)
 
@@ -209,9 +410,11 @@ def _populate_preview_canvas(overlay, item) -> bool:
     """GPU branch: bounded coarse store (frozen seam) into the canvas slot.
 
     The canvas is the only live surface; the raster cover plate holds the
-    pane until its first GPU frame. Memo hit: the stashed pixmap rebuilds
-    the canvas store with zero source decodes. Miss: a single coarse build
-    is shared by the canvas store and the stash pixmap (no double decode).
+    pane until its first GPU frame. Memo hit: the memoized bounded store is
+    handed to the canvas directly with zero source decodes and zero PNG
+    round-trip. Miss: a single coarse build is shared by the canvas store
+    and the stash pixmap (no double decode) and the store is memoized
+    beside the pixmap under the same key.
     Inner gallery-debug timings (``preview-coarse`` / ``preview-stash`` /
     ``preview-set-source``) split the outer ``preview=`` total. Miss
     (empty path, unreadable source, unbuilt coarse) fails closed to False
@@ -236,18 +439,35 @@ def _populate_preview_canvas(overlay, item) -> bool:
         if not raw:
             return False
         # FAST PATH: memoized stash — a walk back to a seen item skips
-        # every source decode (the store is materialized from the pixmap).
+        # every source decode AND the PNG encode+decode round-trip: the
+        # materialized bounded store is memoized beside the pixmap under the
+        # same key and handed to the canvas directly.
         try:
             from tabs.image_gallery.ui.quick_look.preview import _stash_cache_key, _stash_cache_lookup
 
-            _memo = _stash_cache_lookup(overlay, _stash_cache_key(raw))
+            _key = _stash_cache_key(raw)
+            _memo = _stash_cache_lookup(overlay, _key)
         except Exception:
+            _key = None
             _memo = None
         if _memo is not None:
             _t = _time.perf_counter() if _dbg_on else 0.0
-            _memo_store = _store_from_pixmap(_memo)
+            try:
+                _memo_store = _preview_store_cache_lookup(overlay, _key)
+            except Exception:
+                _memo_store = None
+            if _memo_store is None:
+                try:
+                    _memo_store = _store_from_pixmap(_memo)
+                except Exception:
+                    _memo_store = None
+                if _memo_store is not None:
+                    try:
+                        _preview_store_cache_store(overlay, _key, _memo_store)
+                    except Exception:
+                        pass
             if _memo_store is not None:
-                _close_preview_store(overlay)  # never stack stores (fd/memmap leak)
+                _close_preview_store(overlay)  # cache-aware: keeps memos open
                 try:
                     overlay._preview_store = _memo_store
                 except Exception:
@@ -259,7 +479,15 @@ def _populate_preview_canvas(overlay, item) -> bool:
                 try:
                     canvas.set_source(_memo_store)
                 except Exception:
+                    try:
+                        _preview_store_cache_discard(overlay, _memo_store)
+                    except Exception:
+                        pass
                     _close_preview_store(overlay)
+                    try:
+                        _close_store_quiet(_memo_store)
+                    except Exception:
+                        pass
                     return False
                 try:
                     reveal_preview_canvas(overlay, canvas)
@@ -300,6 +528,12 @@ def _populate_preview_canvas(overlay, item) -> bool:
             _stash_preview_source(overlay, item, _coarse=store)
         except Exception:
             pass
+        # Memoize the materialized bounded store beside the pixmap memo so
+        # the next revisit skips the PNG round-trip entirely (same key).
+        try:
+            _preview_store_cache_store(overlay, _key, store)
+        except Exception:
+            pass
         if _dbg_on:
             _dbg(
                 "quick look populate preview-stash=%.1fms path=%s",
@@ -310,7 +544,15 @@ def _populate_preview_canvas(overlay, item) -> bool:
         try:
             canvas.set_source(store)
         except Exception:
+            try:
+                _preview_store_cache_discard(overlay, store)
+            except Exception:
+                pass
             _close_preview_store(overlay)
+            try:
+                _close_store_quiet(store)
+            except Exception:
+                pass
             return False
         try:
             reveal_preview_canvas(overlay, canvas)
