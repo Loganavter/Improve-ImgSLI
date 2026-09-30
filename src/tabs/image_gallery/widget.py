@@ -1023,7 +1023,11 @@ class ImageGalleryWidget(QWidget):
         # (reorders still take the full path).
         try:
             gv_fast = getattr(self, "_grid_view", None)
-            if saved_series is not None and pre_paths and (items or []):
+            # Also allow the flat (pre-triage) case: a pure pool growth with
+            # no live series view yet must still group the fresh card(s)
+            # immediately (append_new_cards promotes the flat pool to one
+            # UNGROUPED section) — bug 2, first-drop grouping delay.
+            if pre_paths and (items or []):
                 try:
                     new_paths = [str(getattr(it, "path", None)) for it in list(items)]
                     old_paths = [str(getattr(it, "path", None)) for it in list(self._items or [])]
