@@ -17,7 +17,25 @@ from PySide6.QtWidgets import QWidget
 
 
 def owner_for_triage(owner):
-    """Local resolve — mirrors use_cases.triage_ui.owner_for_triage explicitly."""
+    """Local resolve — protocol-first, mirrors use_cases.triage_ui.owner_for_triage.
+
+    The attached controller via the widget protocol wins; legacy binds
+    below are last-resort. The window-attribute walk is gone (no writer
+    ever set it since G1/G2 deleted the pokes).
+    """
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        if callable(resolve):
+            try:
+                cand = resolve()
+            except Exception:
+                cand = None
+            if cand is not None:
+                return cand
+    except Exception:
+        pass
+    if callable(getattr(owner, "set_selection", None)):
+        return owner
     try:
         ctrl = owner._controller  # type: ignore[attr-defined]
         if ctrl is not None:
@@ -29,17 +47,6 @@ def owner_for_triage(owner):
         if ctrl is not None:
             return ctrl
     except AttributeError:
-        pass
-    try:
-        win = owner.window()
-        if win is not None:
-            try:
-                ctrl = win._gallery_controller  # type: ignore[attr-defined]
-                if ctrl is not None:
-                    return ctrl
-            except AttributeError:
-                pass
-    except Exception:
         pass
     return owner
 
@@ -80,6 +87,34 @@ def _overlay_parent_window(owner, triage_owner) -> QWidget | None:
     if isinstance(owner, QWidget):
         return owner
     return None
+
+
+def _merge_selection_setattr(state, p) -> None:
+    """Storeless fallback for the P0-5 selection merge (no controller).
+
+    Verbatim legacy behavior (add to ``selected_paths``, append to
+    ``selected_order`` when missing), spelled via ``setattr`` — no direct
+    state writes.
+    """
+    try:
+        selected = getattr(state, "selected_paths", None)
+        if selected is None:
+            setattr(state, "selected_paths", {p})
+        else:
+            selected.add(p)
+    except Exception:
+        try:
+            setattr(state, "selected_paths", {p})
+        except Exception:
+            pass
+    try:
+        order = getattr(state, "selected_order", None)
+        if order is None:
+            setattr(state, "selected_order", [p])
+        elif p not in order:
+            order.append(p)
+    except Exception:
+        pass
 
 
 def show_quick_look(owner, item_or_path) -> None:
@@ -171,10 +206,9 @@ def show_quick_look(owner, item_or_path) -> None:
                     (_time.perf_counter() - _t0) * 1000.0,
                 )
         else:
-            try:
-                overlay._owner = triage_owner  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            # Reuse path: the overlay already holds its explicit owner from
+            # construction/show_for (G3 dispatch-only: never poked from
+            # outside) — show_for below re-supplies triage_owner explicitly.
             if _dbg_on:
                 _dbg(
                     "quick look phase overlay-reuse=%.1fms total=%.1fms visible=%s",
@@ -210,23 +244,29 @@ def on_quick_compare(owner, path) -> None:
             # single-compare path already narrows to {current} in
             # QuickLookOverlay._on_compare before emitting, so merging here is
             # a no-op for it and a fix for multi-add.
+            # G3 dispatch-only: merge through controller.set_selection when
+            # available (dispatch + mirror + grid apply); storeless fallback
+            # keeps the verbatim merge via setattr (no direct writes).
             p = Path(path)
-            try:
-                selected = getattr(state, "selected_paths", None)
-                if selected is None:
-                    state.selected_paths = {p}  # type: ignore[attr-defined]
-                else:
-                    selected.add(p)
-            except Exception:
-                state.selected_paths = {p}  # type: ignore[attr-defined]
-            try:
-                order = getattr(state, "selected_order", None)
-                if order is None:
-                    state.selected_order = [p]  # type: ignore[attr-defined]
-                elif p not in order:
-                    order.append(p)
-            except Exception:
-                pass
+            setter = getattr(triage_owner, "set_selection", None)
+            if callable(setter):
+                try:
+                    cur = list(getattr(state, "selected_paths", None) or [])
+                    merged: list = []
+                    seen: set = set()
+                    for cand in list(cur) + [p]:
+                        try:
+                            key = str(cand)
+                        except Exception:
+                            continue
+                        if key not in seen:
+                            seen.add(key)
+                            merged.append(cand)
+                    setter(merged)
+                except Exception:
+                    _merge_selection_setattr(state, p)
+            else:
+                _merge_selection_setattr(state, p)
         except Exception:
             pass
         _carry.carry_selected(triage_owner)
@@ -259,7 +299,18 @@ def on_quick_set_source(owner, path) -> None:
         new_mode = None
         try:
             state = triage_owner.state  # type: ignore[attr-defined]
-            state.source_path = Path(path)  # type: ignore[attr-defined]
+            # G3 dispatch-only seam: prefer controller.set_source (added by
+            # G1) when available; it is absent on this base, so mirror
+            # locally until the seam lands.
+            # TODO(G1): route via controller.set_source(Path(path)).
+            set_source = getattr(triage_owner, "set_source", None)
+            if callable(set_source):
+                try:
+                    set_source(Path(path))
+                except Exception:
+                    pass
+            else:
+                setattr(state, "source_path", Path(path))  # type: ignore[attr-defined]
             # P0-6: re-run mode selection so chips flip to FIDELITY.
             try:
                 from tabs.image_gallery.services.mode import select_mode

@@ -71,6 +71,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         # dismiss is explicit (ring presses return earlier, children eat
         # their own presses); Esc flows through the base keyPressEvent.
         super().__init__(parent, close_on_background=False, close_on_escape=True, close_on_deactivate=False)
+        # G3 dispatch-only: the triage owner (controller) arrives explicitly
+        # via __init__/show_for and is stored here. Assigned ONLY from those
+        # explicit arguments — never poked from outside, never re-scanned.
         self._owner = owner
         self._current_item = None
         self._series_items: list = []
@@ -506,6 +509,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             except Exception:
                 pass
         if owner is not None:
+            # Explicit owner from the caller (see __init__ note): the only
+            # re-assignment point besides construction.
             self._owner = owner
         try:
             self._ql_chrome_painted = False
@@ -669,7 +674,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 )
 
                 populate_crop(self, item, is_fidelity)
-                populate_filename_meta(self, item, is_fidelity)
+                populate_filename_meta(self, item, is_fidelity, getattr(self, "_owner", None))
             except Exception:
                 pass
             self._rebuild_metrics(item, is_fidelity, mode_str)
@@ -765,6 +770,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
+        # Explicit triage owner for the populate helpers (G3: helpers take
+        # owner instead of reading the private attr).
+        try:
+            _populate_owner = self._owner
+        except Exception:
+            _populate_owner = None
         # Populate-next lifecycle: walk-step release (memos survive the walk;
         # hide/close take the full release). No fd/memmap leaks across walks;
         # no-op label-only.
@@ -803,7 +814,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             if _dbg_on:
                 _dbg("quick look populate preview=%.1fms path=%s", (_time.perf_counter() - _t) * 1000.0, getattr(item, "path", item))
                 _t = _time.perf_counter()
-            populate_source_inset(self, item, is_fidelity)
+            populate_source_inset(self, item, is_fidelity, _populate_owner)
             if _dbg_on:
                 _dbg("quick look populate source-inset=%.1fms", (_time.perf_counter() - _t) * 1000.0)
                 _t = _time.perf_counter()
@@ -811,7 +822,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             if _dbg_on:
                 _dbg("quick look populate crop=%.1fms", (_time.perf_counter() - _t) * 1000.0)
                 _t = _time.perf_counter()
-            populate_filename_meta(self, item, is_fidelity)
+            populate_filename_meta(self, item, is_fidelity, _populate_owner)
             if _dbg_on:
                 _dbg("quick look populate filename-meta=%.1fms", (_time.perf_counter() - _t) * 1000.0)
                 _t = _time.perf_counter()
@@ -832,7 +843,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             _t = _time.perf_counter()
         try:
             from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh, populate_brief as _pb
-            _psh(self)
+            _psh(self, _populate_owner)
             _pb(self, item)
         except Exception:
             pass
@@ -935,11 +946,18 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             owner = self._owner
             if owner is not None and hasattr(owner, "state"):
                 try:
-                    st = owner.state
-                    if hasattr(st, "selected_paths"):
-                        st.selected_paths = {Path(getattr(self._current_item, "path", ""))}
-                        if hasattr(st, "selected_order"):
-                            st.selected_order = [Path(getattr(self._current_item, "path", ""))]
+                    # G3 dispatch-only: narrow to {p} via controller dispatch
+                    # when available; storeless fallback mirrors via setattr.
+                    p = Path(getattr(self._current_item, "path", ""))
+                    setter = getattr(owner, "set_selection", None)
+                    if callable(setter):
+                        setter([p])
+                    else:
+                        st = owner.state
+                        if hasattr(st, "selected_paths"):
+                            setattr(st, "selected_paths", {p})
+                            if hasattr(st, "selected_order"):
+                                setattr(st, "selected_order", [p])
                 except Exception:
                     pass
                 from tabs.image_gallery.use_cases import carry as _carry
@@ -960,15 +978,44 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             owner = self._owner
             p = Path(getattr(self._current_item, "path", ""))
             if owner is not None and hasattr(owner, "state"):
-                st = owner.state
-                if hasattr(st, "selected_paths"):
-                    st.selected_paths.add(p)
-                    if hasattr(st, "selected_order") and p not in st.selected_order:
-                        st.selected_order.append(p)
+                # G3 dispatch-only: merge-add via controller dispatch when
+                # available; storeless fallback keeps the verbatim merge.
+                setter = getattr(owner, "set_selection", None)
+                if callable(setter):
+                    try:
+                        cur = list(getattr(owner.state, "selected_paths", None) or [])
+                        merged: list = []
+                        seen: set = set()
+                        for cand in list(cur) + [p]:
+                            try:
+                                key = str(cand)
+                            except Exception:
+                                continue
+                            if key not in seen:
+                                seen.add(key)
+                                merged.append(cand)
+                        setter(merged)
+                    except Exception:
+                        pass
+                else:
+                    st = owner.state
+                    if hasattr(st, "selected_paths"):
+                        try:
+                            st.selected_paths.add(p)
+                        except Exception:
+                            try:
+                                setattr(st, "selected_paths", {p})
+                            except Exception:
+                                pass
+                        try:
+                            if hasattr(st, "selected_order") and p not in st.selected_order:
+                                st.selected_order.append(p)
+                        except Exception:
+                            pass
                 try:
                     w = getattr(owner, "widget", None) or owner
                     if hasattr(w, "_grid_view"):
-                        w._grid_view.apply_selection(st.selected_paths)
+                        w._grid_view.apply_selection(getattr(owner.state, "selected_paths", {p}))
                 except Exception:
                     pass
             self.compareRequested.emit(p)
@@ -1034,7 +1081,18 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 try:
                     st = getattr(owner, "state", None)
                     if st is not None:
-                        st.source_path = p
+                        # G3 dispatch-only seam: prefer controller.set_source
+                        # (added by G1) when available; absent on this base,
+                        # so mirror locally until the seam lands.
+                        # TODO(G1): route via controller.set_source(p).
+                        set_source = getattr(owner, "set_source", None)
+                        if callable(set_source):
+                            try:
+                                set_source(p)
+                            except Exception:
+                                pass
+                        else:
+                            setattr(st, "source_path", p)
                         # P0-6: re-run mode selection so the chip flips to
                         # FIDELITY (a source hub implies fidelity mode).
                         try:

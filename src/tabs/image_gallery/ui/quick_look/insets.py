@@ -149,7 +149,12 @@ def reposition_preview_insets(overlay) -> None:
         pass
 
 
-def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
+def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
+    """Source inset block (fidelity mode). *owner* is the explicit triage
+    owner (threaded from the overlay's ``show_for``); when None, falls back
+    to the overlay's stored owner for direct unit calls (back-compat —
+    production always passes it).
+    """
     try:
         # Self-source (hub_detection returns the item itself when the folder
         # has nothing smaller/similar): the inset would duplicate the main
@@ -174,7 +179,13 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
         from PySide6.QtCore import Qt
         src = overlay._source_path
         src_item = None
-        owner = overlay._owner
+        # Explicit triage owner (threaded from show_for); overlay fallback
+        # for direct unit calls (back-compat).
+        if owner is None:
+            try:
+                owner = overlay._owner
+            except Exception:
+                owner = None
         try:
             items = list(getattr(getattr(owner, "state", None), "items", []) or []) if owner is not None else []
             if src is not None:

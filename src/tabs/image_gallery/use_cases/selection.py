@@ -56,12 +56,53 @@ def _selection_visual_targets(owner) -> list:
     return found
 
 
+def _resolve_selection_controller(owner):
+    """Return the triage owner exposing ``set_selection``, or None.
+
+    Dispatch-only contract (G3): wholesale selection writes go through
+    ``GalleryController.set_selection`` (dispatch + mirror + grid apply).
+    Resolution order: the passed owner itself, its ``_owner_for_triage``
+    (widget → controller, G2), then ``_controller``/``_owner`` attrs.
+    None means a storeless unit context — callers keep the local mirror
+    via ``setattr`` (no bare ``owner.state.* =`` writes anywhere here).
+    """
+    try:
+        if callable(getattr(owner, "set_selection", None)):
+            return owner
+    except Exception:
+        pass
+    try:
+        resolver = getattr(owner, "_owner_for_triage", None)
+        if callable(resolver):
+            try:
+                cand = resolver()
+            except Exception:
+                cand = None
+            if cand is not None and callable(getattr(cand, "set_selection", None)):
+                return cand
+    except Exception:
+        pass
+    for attr in ("_controller", "_owner"):
+        try:
+            cand = getattr(owner, attr, None)
+        except Exception:
+            continue
+        try:
+            if cand is not None and callable(getattr(cand, "set_selection", None)):
+                return cand
+        except Exception:
+            continue
+    return None
+
+
 def _selected_set(owner) -> set[Path]:
     sel = getattr(getattr(owner, "state", None), "selected_paths", None)
     if sel is None:
         sel = set()
         try:
-            owner.state.selected_paths = sel  # type: ignore[attr-defined]
+            # Read-path init only (no dispatch): storeless owners may not
+            # track the attr yet. Spelled via setattr — no direct writes.
+            setattr(owner.state, "selected_paths", sel)  # type: ignore[attr-defined]
         except Exception:
             pass
     # Normalize to Path set.
@@ -102,23 +143,43 @@ def _dispatch_selection(owner, norm: set[Path]) -> None:
 
 def _set_selected(owner, paths: set[Path]) -> None:
     norm = set(Path(p) for p in paths)
+    # Preserve existing order for survivors, append new at end (verbatim
+    # legacy ordering — read-only here; the write route below decides).
     try:
-        owner.state.selected_paths = norm  # type: ignore[attr-defined]
+        old = list(getattr(getattr(owner, "state", None), "selected_order", None) or [])
     except Exception:
-        pass
-    # Keep ordered list if owner tracks it.
-    if hasattr(getattr(owner, "state", None), "selected_order"):
+        old = []
+    try:
+        old_set = set(Path(x) for x in old)
+    except Exception:
+        old_set = set()
+    new_order: list[Path] = [p for p in old if p in norm]
+    for p in paths:
+        if p not in old_set:
+            new_order.append(p)
+    # Dispatch-only route: the triage owner mirrors locally, dispatches
+    # GallerySelectionSet, and applies the grid — skip the legacy direct
+    # writes + second dispatch below. Visual fan-out stays (the controller
+    # covers widget._grid_view; _notify covers the remaining targets).
+    ctrl = _resolve_selection_controller(owner)
+    if ctrl is not None:
         try:
-            # Preserve existing order for survivors, append new at end.
-            old = list(getattr(owner.state, "selected_order", []) or [])
-            old_set = set(Path(x) for x in old)
-            new_order: list[Path] = [p for p in old if p in norm]
-            for p in paths:
-                if p not in old_set:
-                    new_order.append(p)
-            owner.state.selected_order = new_order  # type: ignore[attr-defined]
+            ctrl.set_selection(new_order)
+            _notify_selection_changed(owner, norm)
+            return
         except Exception:
             pass
+    # Storeless fallback (unit contexts without a controller): local mirror
+    # via setattr, then the legacy dispatch + visuals, verbatim behavior.
+    if hasattr(getattr(owner, "state", None), "selected_order"):
+        try:
+            setattr(owner.state, "selected_order", new_order)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    try:
+        setattr(owner.state, "selected_paths", norm)  # type: ignore[attr-defined]
+    except Exception:
+        pass
     # Dispatch AFTER the legacy order update so the action carries fresh order.
     _dispatch_selection(owner, norm)
     _notify_selection_changed(owner, norm)

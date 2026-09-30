@@ -335,8 +335,14 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     return card
 
 
-def update_gallery_card(card: Button, item: GalleryItem, mode: object = None) -> None:
-    """In-place update of a live gallery card for ``item``."""
+def update_gallery_card(card: Button, item: GalleryItem, mode: object = None, owner: object = None) -> None:
+    """In-place update of a live gallery card for ``item``.
+
+    *owner* is the explicit triage owner for the mode fallback (threaded
+    by callers); the pooled ``_gallery_owner`` attribute is no longer
+    consulted (G2 gallery contract). All live callers pass ``mode``
+    explicitly, so ``owner=None`` simply skips the fallback (fail-open).
+    """
     from tabs.image_gallery.ui.card.dots import _dots_for_item
     from tabs.image_gallery.ui.card.regions import _item_unreadable, _text_rows
     from tabs.image_gallery.ui.card.visuals import _apply_rejected_visuals
@@ -371,12 +377,10 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None) ->
             _mode = getattr(item, "mode", None)
         except Exception:
             _mode = None
-    if _mode is None:
+    if _mode is None and owner is not None:
         try:
-            owner = getattr(card, "_gallery_owner", None)
-            if owner is not None:
-                st = getattr(owner, "state", None)
-                _mode = getattr(st, "mode", None) if st is not None else getattr(owner, "_mode", None)
+            st = getattr(owner, "state", None)
+            _mode = getattr(st, "mode", None) if st is not None else getattr(owner, "_mode", None)
         except Exception:
             pass
     try:

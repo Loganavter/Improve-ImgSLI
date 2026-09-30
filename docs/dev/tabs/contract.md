@@ -51,8 +51,12 @@ class MyTab(TabContract):
     def accepts_drop(self, paths: list[Path]) -> bool:
         """Returns True if the tab accepts the dropped files."""
 
-    def handle_drop(self, paths: list[Path]) -> None:
-        """Processes the drop. Called only if accepts_drop returned True."""
+    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
+        """Processes the drop. Called only if accepts_drop returned True.
+
+        ``hint`` carries host-side context (e.g. ``{"is_left_area": bool}``
+        from mouse position, or ``{"slot": 1 | 2}``) so the tab can route
+        the drop without the host embedding tab-specific concepts."""
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         """Notification that a session of this type was created."""
@@ -121,7 +125,7 @@ class TabContext:
     services      # dict — see capability-mechanisms.md §TabContext.services
 
     def get_active_session(self) -> Any
-    def tr(self, key: str, default: str | None = None) -> str
+    def _tr(self, key: str, default: str | None = None) -> str
     def call_service(self, service_id: str, *args, **kwargs) -> Any
 ```
 
