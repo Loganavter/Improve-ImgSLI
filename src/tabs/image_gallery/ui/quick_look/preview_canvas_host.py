@@ -469,6 +469,10 @@ def _populate_preview_canvas(overlay, item) -> bool:
     (empty path, unreadable source, unbuilt coarse) fails closed to False
     and the cover persists — never a neighbor's content, never a
     full-frame decode.
+    After the canvas takes the coarse store, the source path is handed to
+    ``canvas.note_ql_source`` so wheel-zoom past 1.0x (or dwell) can
+    demand-build background lazy pyramid levels for sharp zoom; walks
+    retire it through the canvas generation (never built on plain walks).
     """
     import time as _time
 
@@ -538,6 +542,15 @@ def _populate_preview_canvas(overlay, item) -> bool:
                     except Exception:
                         pass
                     return False
+                # Demand-pyramid source: the canvas builds full-res levels
+                # ONLY on zoom>1.0 or dwell (never on plain walks); the walk
+                # release retires it via clear_source's generation bump.
+                try:
+                    note = getattr(canvas, "note_ql_source", None)
+                    if callable(note):
+                        note(str(raw))
+                except Exception:
+                    pass
                 try:
                     reveal_preview_canvas(overlay, canvas)
                     _wire_canvas_fallback(overlay, canvas, item)
@@ -603,6 +616,13 @@ def _populate_preview_canvas(overlay, item) -> bool:
             except Exception:
                 pass
             return False
+        # Demand-pyramid source (see the memo-hit path above).
+        try:
+            note = getattr(canvas, "note_ql_source", None)
+            if callable(note):
+                note(str(raw))
+        except Exception:
+            pass
         try:
             reveal_preview_canvas(overlay, canvas)
             _wire_canvas_fallback(overlay, canvas, item)
