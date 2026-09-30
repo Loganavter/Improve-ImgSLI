@@ -472,24 +472,42 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._prev_btn.clicked.connect(lambda: overlay._walk(-1))
     preview_host = QWidget(left)
-    preview_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    # Expanding on both axes: the host is the sole laid-out slot child, so
+    # it must claim the preview area's stretch itself (previously the
+    # in-layout label's Expanding policy did this indirectly). Preferred
+    # left it at its 456 floor when the card grew.
+    preview_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     preview_host.setObjectName("QuickLookPreviewHost")
+    # Slot frame (IC parity, see StartupPlaceholder/HUD in image_compare):
+    # the host is the SINGLE laid-out geometry authority (added to
+    # preview_row with stretch 1). The QLabel, the GPU canvas and the
+    # first-frame cover are all layout-external children that mirror
+    # ``preview_host.rect()`` via ``_fit_preview_slot`` — one geometry
+    # source, so a GPU<->label swap is seamless by construction (no two
+    # stretched layout peers to desync, no hand-copied sibling geometry).
+    # Mockup preview floor is 640x456 (svg): host min holds the min-card
+    # proportions (640 preview + 296 column) so grow->shrink settles back
+    # instead of splitting the leftover 1:1 (which stranded ~496px on the
+    # scroll and clipped the preview). Pixmaps stay aspect-kept (W-B).
+    preview_host.setMinimumSize(scaled_px(640), scaled_px(456))
     overlay._preview_host = preview_host
     preview_host_lay = QVBoxLayout(preview_host)
     preview_host_lay.setContentsMargins(0, 0, 0, 0)
     preview_host_lay.setSpacing(scaled_px(6))
+    # Host Resize → refit every slot child (quick_look.eventFilter).
+    try:
+        preview_host.installEventFilter(overlay)
+    except Exception:
+        pass
     overlay._preview_label = QLabel(preview_host)
     overlay._preview_label.setObjectName("quicklook_preview")
     overlay._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    overlay._preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    # Mockup preview is 640x456 (svg): the label floor holds the min-card
-    # proportions (640 preview + 296 column) so grow->shrink settles back
-    # instead of splitting the leftover 1:1 (which stranded ~496px on the
-    # scroll and clipped the preview). The pixmap itself stays aspect-kept
-    # (W-B reflow); this floor is layout geometry only.
-    overlay._preview_label.setMinimumSize(scaled_px(640), scaled_px(456))
     try:
         overlay._preview_label.setScaledContents(False)
+    except Exception:
+        pass
+    try:
+        overlay._preview_label.setGeometry(preview_host.rect())
     except Exception:
         pass
     # Label Resize → preview refit (quick_look.eventFilter): layout passes
@@ -498,7 +516,6 @@ def build_overlay_ui(overlay) -> None:
         overlay._preview_label.installEventFilter(overlay)
     except Exception:
         pass
-    preview_host_lay.addWidget(overlay._preview_label, 1)
     # Canvas preview slot: overlay._preview_canvas lives here when the GPU
     # path is available (preview.populate_preview creates it lazily; QLabel
     # fallback otherwise). Placeholders keep the slot shape explicit; the

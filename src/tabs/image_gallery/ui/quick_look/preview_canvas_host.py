@@ -73,6 +73,8 @@ def release_preview_canvas(overlay) -> None:
             label.show()
     except Exception:
         pass
+    # Label returns as the visible surface — keep it exactly on the slot.
+    _fit_preview_slot(overlay)
 
 
 def _ensure_preview_canvas(overlay):
@@ -111,23 +113,16 @@ def _ensure_preview_canvas(overlay):
         try:
             from PySide6.QtWidgets import QSizePolicy as _SP
 
-            from sli_ui_toolkit.managers import scaled_px as _spx
-
             canvas.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
-            canvas.setMinimumSize(_spx(640), _spx(456))
-            lay = host.layout()
-            if lay is not None:
-                lay.addWidget(canvas, 1)
         except Exception:
             pass
         try:
-            # Canvas moves/resizes (layout settle, card drags) re-fit the
-            # first-frame cover while it is up — see _fit_cover.
-            canvas.installEventFilter(overlay)
-        except Exception:
-            pass
-        try:
+            # Canvas is a layout-external child of the slot frame: it
+            # mirrors ``preview_host.rect()`` (see _fit_preview_slot) and
+            # never joins the layout, so the label<->canvas swap can never
+            # split the slot between two stretched peers.
             overlay._preview_canvas = canvas
+            _fit_preview_slot(overlay)
         except Exception:
             pass
         return canvas
@@ -310,23 +305,55 @@ def reveal_pending_preview_canvas(overlay) -> None:
         ensure_repump(canvas)
     except Exception:
         pass
-    _fit_cover(overlay)
+    _fit_preview_slot(overlay)
+
+
+def _fit_preview_slot(overlay) -> None:
+    """Mirror the slot frame's rect onto every layout-external child.
+
+    ``_preview_host`` is the single laid-out geometry authority (IC-parity
+    slot frame, see ``StartupPlaceholder`` in image_compare); the QLabel,
+    the GPU canvas and the first-frame cover live outside any layout and
+    copy ``host.rect()`` here. Called on the host's Resize and whenever a
+    slot child is (re)created — so whichever surface is visible always
+    occupies the exact same rect (seamless swap).
+    """
+    try:
+        host = getattr(overlay, "_preview_host", None)
+        if host is None:
+            return
+        try:
+            rect = host.rect()
+            assert rect.width() > 0 and rect.height() > 0
+        except Exception:
+            return
+        for attr in ("_preview_label", "_preview_canvas", "_preview_cover"):
+            try:
+                child = getattr(overlay, attr, None)
+                if child is not None:
+                    child.setGeometry(rect)
+            except Exception:
+                pass
+        _fit_cover(overlay)
+    except Exception:
+        pass
 
 
 def _fit_cover(overlay) -> None:
-    """Cover == live canvas geometry + aspect-fit pixmap (fail-open)."""
+    """Cover == slot frame geometry + aspect-fit pixmap (fail-open)."""
     try:
         cover = getattr(overlay, "_preview_cover", None)
-        canvas = getattr(overlay, "_preview_canvas", None)
-        if cover is None or canvas is None:
+        host = getattr(overlay, "_preview_host", None)
+        if cover is None or host is None:
             return
         try:
-            w, h = int(canvas.width()), int(canvas.height())
+            rect = host.rect()
+            w, h = int(rect.width()), int(rect.height())
             assert w > 0 and h > 0
         except Exception:
             return
         try:
-            cover.setGeometry(canvas.geometry())
+            cover.setGeometry(rect)
         except Exception:
             pass
         try:
@@ -429,7 +456,7 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
         except Exception:
             pass
         try:
-            cover.setGeometry(canvas.geometry())
+            cover.setGeometry(host.rect())
         except Exception:
             pass
         try:
@@ -441,8 +468,9 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
             overlay._preview_cover = cover
         except Exception:
             pass
-        # Fit the stashed full pixmap to the live slot (label pixmap predates layout).
-        _fit_cover(overlay)
+        # Fit cover geometry + the stashed full pixmap to the live slot
+        # (the label pixmap predates layout).
+        _fit_preview_slot(overlay)
     except Exception:
         pass
 

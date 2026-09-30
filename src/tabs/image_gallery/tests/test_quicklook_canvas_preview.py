@@ -452,17 +452,19 @@ def test_cover_is_opaque_host_sibling_not_canvas_child(qtbot):
     from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
 
     ov = _make_overlay(qtbot)
-    canvas = _W(ov._preview_host)
-    canvas.setGeometry(10, 10, 320, 240)
+    host = ov._preview_host
+    host.setGeometry(0, 0, 320, 240)
+    canvas = _W(host)
     pm = QPixmap(64, 48)
     pm.fill(QColor("#3a6ea5"))
 
     _host._cover_until_first_frame(ov, canvas, pm)
     cover = ov._preview_cover
     assert cover is not None
-    assert cover.parent() is ov._preview_host
+    assert cover.parent() is host
     assert cover.parent() is not canvas
-    assert cover.geometry() == canvas.geometry()
+    # Slot-frame parity: the cover mirrors the host rect, not the canvas.
+    assert cover.geometry() == host.rect()
     assert not cover.isHidden(), "cover must be up while no GPU frame presented"
     assert cover.pixmap() is not None and not cover.pixmap().isNull()
     ov.hide()
@@ -486,24 +488,53 @@ def test_cover_opaque_without_pixmap(qtbot):
     ov.hide()
 
 
-def test_sync_re_pins_cover_on_canvas_move(qtbot):
-    """Layout settle / card drags move the canvas under the cover — re-fit."""
+def test_sync_re_pins_cover_on_slot_resize(qtbot):
+    """Slot resize (layout settle, card drags) re-fits the cover."""
     from PySide6.QtWidgets import QWidget as _W
 
     from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
 
     ov = _make_overlay(qtbot)
-    canvas = _W(ov._preview_host)
-    canvas.setGeometry(0, 0, 320, 240)
+    host = ov._preview_host
+    host.setGeometry(0, 0, 320, 240)
+    canvas = _W(host)
     pm = QPixmap(64, 48)
     pm.fill(QColor("#3a6ea5"))
     _host._cover_until_first_frame(ov, canvas, pm)
 
-    canvas.setGeometry(5, 5, 400, 300)
-    ov._preview_canvas = canvas
-    _host._fit_cover(ov)
-    assert ov._preview_cover.geometry() == canvas.geometry()
+    host.setGeometry(5, 5, 400, 300)
+    _host._fit_preview_slot(ov)
+    assert ov._preview_cover.geometry() == host.rect()
     assert not ov._preview_cover.isHidden()
+    ov.hide()
+
+
+def test_slot_children_all_mirror_host_rect(qtbot):
+    """IC-parity slot frame: label + canvas + cover all share host.rect().
+
+    Regression: the label used to be a second stretched layout peer while
+    the cover hand-copied the canvas geometry — two geometry authorities
+    that could desync (the SESSION_2026-09-28 "cover stuck at 640" bug).
+    Now the host is the single authority; every layout-external child
+    copies its rect, so the GPU<->label swap is seamless by construction.
+    """
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    host = ov._preview_host
+    host.setGeometry(0, 0, 500, 360)
+    canvas = _W(host)
+    cover = _W(host)
+    ov._preview_canvas = canvas
+    ov._preview_cover = cover
+
+    _host._fit_preview_slot(ov)
+
+    assert ov._preview_label.geometry() == host.rect()
+    assert canvas.geometry() == host.rect()
+    assert cover.geometry() == host.rect()
     ov.hide()
 
 
@@ -522,9 +553,9 @@ def test_cover_pixmap_fits_live_slot(qtbot):
     full = QPixmap(800, 600)
     full.fill(QColor("#3a6ea5"))
     ov._preview_full = full
-    canvas = _W(ov._preview_host)
-    canvas.setGeometry(0, 0, 663, 566)
-    ov._preview_canvas = canvas
+    host = ov._preview_host
+    host.setGeometry(0, 0, 663, 566)
+    canvas = _W(host)
     pm = QPixmap(64, 48)
     pm.fill(QColor("#3a6ea5"))
     _host._cover_until_first_frame(ov, canvas, pm)

@@ -406,16 +406,16 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                             label_release(self)
                         except Exception:
                             pass
-                # While the first-frame cover is up it is a layout-external
-                # sibling — canvas moves/resizes (layout settle, card drags)
-                # slide the canvas under it, so re-fit the cover geometry
-                # and pixmap here.
-                if watched is getattr(self, "_preview_canvas", None) and event.type() in (_QE.Type.Resize, _QE.Type.Move):
+                # Slot frame (IC parity): the preview host is the single
+                # laid-out geometry authority; on its Resize mirror the rect
+                # onto every layout-external child (label, GPU canvas,
+                # first-frame cover) so the active surface never desyncs.
+                if watched is getattr(self, "_preview_host", None) and event.type() == _QE.Type.Resize:
                     try:
                         from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
-                            _fit_cover,
+                            _fit_preview_slot,
                         )
-                        _fit_cover(self)
+                        _fit_preview_slot(self)
                     except Exception:
                         pass
             except Exception:

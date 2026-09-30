@@ -756,7 +756,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 875,
+      "lines": 892,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -780,7 +780,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 552,
+      "lines": 580,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: cover/fallback/label-repopulate share one GPU-path attribution\"",

@@ -411,6 +411,15 @@ def _populate_preview_label(overlay, item) -> None:
         overlay._preview_label.show()
     except Exception:
         pass
+    # Slot frame parity: put the label exactly on ``_preview_host.rect()``
+    # before scaling (the label is layout-external now — its size is not
+    # driven by a layout, only by _fit_preview_slot).
+    try:
+        from tabs.image_gallery.ui.quick_look.preview_canvas_host import _fit_preview_slot
+
+        _fit_preview_slot(overlay)
+    except Exception:
+        pass
     # W-B: stash the unscaled source in ``overlay._preview_full`` so
     # ``_rescale_preview_to_host`` can re-derive the shown pixmap at the
     # live label size on every card resize (preview stretches with aspect,

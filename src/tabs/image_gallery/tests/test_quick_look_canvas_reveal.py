@@ -72,24 +72,31 @@ def test_hidden_overlay_restages_instead_of_showing() -> None:
 
 
 def test_first_paint_syncs_cover_over_canvas() -> None:
-    """Pending reveal re-pins the first-frame cover over live canvas geometry."""
+    """Pending reveal re-pins the first-frame cover onto the slot frame."""
+
+    class _Rect:
+        def width(self):
+            return 64
+
+        def height(self):
+            return 48
+
     calls: list = []
     canvas, shown, _hidden = _canvas()
-    canvas.geometry = lambda: "geom"  # type: ignore[attr-defined]
-    canvas.width = lambda: 64  # type: ignore[attr-defined]
-    canvas.height = lambda: 48  # type: ignore[attr-defined]
+    host = SimpleNamespace(rect=lambda: _Rect())
     cover = SimpleNamespace(
         setGeometry=lambda g: calls.append(("geom", g)),
         show=lambda: calls.append(("show",)),
         raise_=lambda: calls.append(("raise",)),
     )
     ov = _overlay(visible=True)
+    ov._preview_host = host
     ov._preview_canvas = canvas
     ov._preview_cover = cover
     ov._preview_canvas_pending = canvas
     reveal_pending_preview_canvas(ov)
     assert shown == [True]
-    assert ("geom", "geom") in calls
+    assert any(c[0] == "geom" for c in calls), "cover must be re-pinned to the slot"
     assert ("show",) in calls
     assert ("raise",) in calls
 
