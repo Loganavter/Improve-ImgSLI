@@ -181,6 +181,17 @@
       }
     },
     {
+      "path": "src/tabs/_shared/loading_pipeline.py",
+      "lines": 572,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"W0 shared loading seam: key + sync fills + preview-first single-flight + bounded full FIFO + pyramid hook\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "W0 shared loading seam: key + sync fills + preview-first single-flight + bounded full FIFO + pyramid hook"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/_session_controller.py",
       "lines": 275,
       "limit": 500,
@@ -447,7 +458,7 @@
     },
     {
       "path": "src/tabs/image_compare/pipeline/cache.py",
-      "lines": 750,
+      "lines": 752,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single memoised pixel+preview+unify LRU cache — three tiers sharing one lifecycle, stale QImage guard and unify memo by image_uid\"",
@@ -628,7 +639,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 717,
+      "lines": 751,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
@@ -639,7 +650,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/slot.py",
-      "lines": 916,
+      "lines": 920,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"SlotSource pipeline debug — load_images/set_current/handle_full with ic-preview tracing, stays thin wrapper\"",
@@ -650,7 +661,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/unify.py",
-      "lines": 568,
+      "lines": 579,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"unify flow — wh=max + worker lifecycle for BICUBIC pixels, single file\"",
@@ -942,7 +953,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 613,
+      "lines": 615,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -964,7 +975,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/preview_decode.py",
-      "lines": 866,
+      "lines": 853,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)\"",

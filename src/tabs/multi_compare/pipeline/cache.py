@@ -16,20 +16,25 @@ touches entries the cache itself holds. Render paths re-resolve through
 :func:`resolve_slot_source` every frame, so an evicted-then-redrawn slot
 demand-fills again instead of touching a closed store.
 
-Single-flight keys (``use_cases/preview_decode._fs_key``) delegate to
-:func:`cache_key_for_path` — one construction site for both.
+Single-flight keys (``use_cases/preview_decode._fs_key``) resolve through
+:func:`cache_key_for_path` — whose single implementation lives in the
+shared seam ``tabs._shared.loading_pipeline`` (W2 adapter), so inflight
+waiters and cached tiers can never disagree about file identity.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from engine.store.tiled_pixel_store import TiledPixelStore
+
+from tabs._shared.loading_pipeline import (
+    cache_key_for_path as _seam_cache_key_for_path,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -40,23 +45,13 @@ _PREVIEW_CACHE_MAX = 16
 def cache_key_for_path(path: Path | str) -> tuple[str, int, int]:
     """Content key ``(normpath, mtime_ns, size)`` (IC ``key_for`` parity).
 
-    ``mtime+size`` keeps an overwritten-in-place file from colliding with
-    its own stale decode; ``normpath`` heals textual variants of the same
-    file (``/x/./f.png`` vs ``/x/f.png``, ``str`` vs ``Path``).
+    Thin adapter over the shared seam — the single implementation lives
+    in ``tabs._shared.loading_pipeline`` (W2); this name stays so
+    tab-local callers keep their import path. ``mtime+size`` keeps an
+    overwritten-in-place file from colliding with its own stale decode;
+    ``normpath`` heals textual variants of the same file.
     """
-    try:
-        norm = os.path.normpath(os.fspath(path))
-    except Exception:
-        return (str(path), 0, 0)
-    try:
-        st = os.stat(norm)
-        return (
-            norm,
-            int(getattr(st, "st_mtime_ns", 0) or 0),
-            int(getattr(st, "st_size", 0) or 0),
-        )
-    except OSError:
-        return (norm, 0, 0)
+    return _seam_cache_key_for_path(path)
 
 
 def _is_usable_pixel(store: Any) -> bool:
@@ -150,6 +145,11 @@ class MultiComparePixelCache:
         Render paths must use :func:`resolve_slot_source` (never block the
         GUI); this is for export composition, which already runs
         synchronously and must not silently drop an evicted slot.
+
+        Tab-local (not the seam's ``get_or_load_pixel``): the export path
+        needs the ``embedded_cache`` DI tier, whose explicit-injection
+        lookup differs from the seam's default validated lookup — decode
+        still delegates to the shared ``load_pixel_store`` backend.
         """
         hit = self.get_pixel(path)
         if hit is not None:

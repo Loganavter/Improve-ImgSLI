@@ -11,15 +11,22 @@ stage. Every function here takes the controller as its first argument,
 same calling convention as ``loading.py``.
 
 A2 (decode single-flight + never-silent): preview-stage inflight map
-keyed ``(normpath, mtime_ns, size)`` (IC ``ImageLoadService.key_for``
-parity, minus crop/box — MC slots own their stores, no shared pixel
-cache), ``AbortSignal``-style cancel on ``remove_slot``, forced
-progressive preview (preview-miss kicks the bounded full stage instead
-of stalling the preview worker), bounded full-res second stage
-(``_FULL_MAX_CONCURRENT`` FIFO). Stale guards use the central
-``_same_fs_path`` helper (delegates to ``loading._same_fs_path`` — one
-impl): a missing slot dismisses silently, a recycled id (newer slot
-reused the ``max+1`` id with a different path) is left untouched.
+keyed by the shared seam's ``cache_key_for_path`` (IC
+``ImageLoadService.key_for`` parity, minus crop/box — MC slots own their
+stores, no shared pixel cache), seam-``AbortSignal`` cancel on
+``remove_slot``, forced progressive preview (preview-miss kicks the
+bounded full stage instead of stalling the preview worker), bounded
+full-res second stage (seam ``_FULL_MAX_CONCURRENT`` FIFO, seam
+``_FULL_QUEUE_MAX`` cap). Stale guards use the seam's ``_same_fs_path``
+(single impl): a missing slot dismisses silently, a recycled id (newer
+slot reused the ``max+1`` id with a different path) is left untouched.
+
+W2 adapter: keys, path guards, abort signals, and stage bounds delegate
+to ``tabs._shared.loading_pipeline``; the per-controller staging itself
+(injected ``context.thread_pool``, ``keep_slot_on_error``, slot-liveness
+guards, crop/embedded decode DI, coordinator toast hooks,
+``note_slot_pixels`` dispatch) stays tab-local — dispatch lives in the
+adapters, as with the seam's ``on_ready``/``on_error`` contract.
 """
 
 from __future__ import annotations
@@ -28,63 +35,33 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from tabs._shared.loading_pipeline import (
+    AbortSignal as _AbortSignal,
+    _FULL_MAX_CONCURRENT,
+    _FULL_QUEUE_MAX,
+    _same_fs_path,
+    cache_key_for_path as _seam_cache_key_for_path,
+)
+
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Bound for the full-res second stage (A2): at most this many full
-#: decodes in flight; the rest wait in a FIFO queue. Preview workers stay
-#: unbounded (fast, ~1024px) — only the heavy full decode is throttled so
-#: one multi-add cannot storm the pool while previews still land fast.
-_FULL_MAX_CONCURRENT = 2
-
-#: Cap on the full-stage FIFO backlog (P2 hygiene). Entries past this are
-#: dropped with one summary (never silent): a slot whose full-res entry
-#: was shed keeps its fast preview tier and still converges via demand
-#: fill — the cap only sheds backlog, never pixels.
-_FULL_QUEUE_MAX = 64
-
-
-class _AbortSignal:
-    """Cancellation token, ``AbortSignal``-style (IC ``pipeline/abort`` parity).
-
-    Local to multi_compare (no cross-tab import — tab isolation): one
-    signal per single-flight key; every async stage checks
-    ``is_aborted()`` before/after decode, ``cancel_slot_loads`` aborts
-    entries with no live waiters left.
-    """
-
-    def __init__(self) -> None:
-        self._aborted = False
-
-    def abort(self) -> None:
-        self._aborted = True
-
-    def is_aborted(self) -> bool:
-        return self._aborted
-
-    def __call__(self) -> bool:
-        return self._aborted
-
-    def __bool__(self) -> bool:
-        return not self._aborted
-
-
-def _same_fs_path(a: Path | str, b: Path | str) -> bool:
-    """Central normalized path-equality guard (single impl lives in ``loading``)."""
-    from tabs.multi_compare.use_cases import loading as _loading
-
-    return _loading._same_fs_path(a, b)
+# W2 adapter: the full-stage bound + backlog cap are consumed from the
+# shared seam (``tabs._shared.loading_pipeline``), not forked — the names
+# stay so tab-local callers and tests keep their import path.
+# Likewise ``_AbortSignal`` is the seam's ``AbortSignal`` (cancellation
+# ONLY via the seam path — no second signal class) and ``_same_fs_path``
+# is the seam's single path-equality guard.
 
 
 def _fs_key(path: Path | str) -> tuple:
     """Single-flight key ``(normpath, mtime_ns, size)`` (IC ``key_for`` parity).
 
-    Single construction site: :func:`pipeline.cache.cache_key_for_path`
-    (the session cache keys its tiers identically, so inflight waiters and
+    Thin adapter: the single construction site is the shared seam
+    (``tabs._shared.loading_pipeline.cache_key_for_path`` — the session
+    cache keys its tiers through the same impl, so inflight waiters and
     cached tiers can never disagree about file identity).
     """
-    from tabs.multi_compare.pipeline.cache import cache_key_for_path
-
-    return cache_key_for_path(path)
+    return _seam_cache_key_for_path(path)
 
 
 def _preview_inflight(controller) -> dict:
@@ -250,6 +227,11 @@ def load_preview_async(
     imageless slot (error toast only) instead of the fresh-add behavior of
     dropping the pre-created slot — a reopened project must keep its
     layout even when a file went corrupt.
+
+    W2: staging stays per-controller (injected ``context.thread_pool``,
+    ``keep_slot_on_error``, slot-liveness guards, crop-service decode) —
+    the seam's ``ensure_async`` owns the same shape over global state;
+    keys, guards, and signals here are the seam's.
     """
     from tabs.multi_compare.use_cases import loading as _loading
 
@@ -488,6 +470,11 @@ def queue_full_resolution(
     workers finish. The backlog itself is capped at ``_FULL_QUEUE_MAX`` —
     entries past the cap are shed oldest-first with one summary (the slot
     keeps its preview tier; demand fill still converges it later).
+
+    W2: per-controller FIFO over the seam's bounds (same shape as the
+    seam's ``queue_full_resolution`` over global state);
+    ``keep_slot_on_error``, slot-liveness guards, crop/embedded decode
+    DI, and the overflow summary stay tab-local.
     """
     try:
         queue = _full_queue(controller)
