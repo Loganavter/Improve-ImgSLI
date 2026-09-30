@@ -17,6 +17,9 @@ from core.state_management.actions import SetCurrentIndexAction
 from tabs.image_compare.state.document import ImageItem
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.debug import ic_preview_debug
+# W1 adapter: path-equality guards owned by the shared seam (single impl).
+from tabs._shared.loading_pipeline import _same_fs_path as _seam_same_fs_path
+from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -50,7 +53,7 @@ def ensure_current_slot(controller, image_number: int, force_refresh: bool = Fal
     pl = getattr(controller, "pipeline", None)
     cached = pl.peek(path) if pl is not None and path else None
     is_open = bool(getattr(cached, "is_open", True)) if cached is not None else False
-    stale = path != item.path or (cached is not None and not is_open)
+    stale = (not _seam_same_fs_path(path or "", item.path or "")) or (cached is not None and not is_open)
     if path and cached is None:
         stale = True
     if _ens_should:
@@ -73,7 +76,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         return
     document = controller.store.get_session_state_slot("document")
     lst = document.image_list1 if image_number == 1 else document.image_list2
-    if not (0 <= index_in_list < len(lst)) or lst[index_in_list].path != path:
+    if not (0 <= index_in_list < len(lst)) or not _seam_same_fs_path(lst[index_in_list].path, path):
         ic_preview_debug("handle_full_image_loaded slot=%s -> lst mismatch len=%s path_mismatch=%s", image_number, len(lst), lst[index_in_list].path if 0 <= index_in_list < len(lst) else "oob")
         return
     from engine.store.tiled_pixel_store import TiledPixelStore, maybe_wrap_pixel_store
@@ -253,7 +256,8 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     ic_preview_debug("load_images_from_paths slot=%s after is_new re-fetch len=%s id(lst)=%s", image_number, len(lst), id(lst))
 
     errors: list[str] = []
-    seen = {e.path for e in lst if e.path}
+    # W1 adapter: identity via the shared seam (heals textual variants).
+    seen = {_seam_key_for_path(e.path)[0] for e in lst if e.path}
     # Phase 3 lightweight: collect without mutating detached list, no os.stat/mtime/box
     to_add: list[ImageItem] = []
     seen_batch: set[str] = set()
@@ -270,11 +274,11 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             ic_preview_debug("load_images_from_paths slot=%s norm failed %s %s", image_number, fp, e)
             errors.append(f"{fp}: {tr('msg.error_normalizing_path', controller.store.settings.current_language)}")
             continue
-        if norm in seen:
+        if _seam_key_for_path(fp)[0] in seen:
             ic_preview_debug("load_images_from_paths slot=%s reload existing %s", image_number, norm)
             _reload_existing_path(controller, image_number, norm, lst)
             continue
-        if norm in seen_batch:
+        if _seam_key_for_path(fp)[0] in seen_batch:
             ic_preview_debug("load_images_from_paths slot=%s dedup batch %s", image_number, norm)
             continue
         try:
@@ -282,7 +286,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             # lightweight: only ImageItem creation (no stat/mtime/box), heavy in ImageLoadService.ensure_async lazy
             item = ImageItem(path=norm, display_name=os.path.splitext(disp)[0], rating=0)
             to_add.append(item)
-            seen_batch.add(norm)
+            seen_batch.add(_seam_key_for_path(fp)[0])
         except Exception as e:
             ic_preview_debug("load_images_from_paths slot=%s append failed %s %s", image_number, disp, e)
             errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
@@ -445,7 +449,7 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
         return
     t_lst = document.image_list1 if target_slot == 1 else document.image_list2
     for idx, ex in enumerate(t_lst):
-        if ex.path == path:
+        if _seam_same_fs_path(ex.path, path):
             _dispatch_target_index(controller, target_slot, idx)
             if controller.presenter:
                 controller.presenter.ui_batcher.schedule_update("combobox")
@@ -546,7 +550,7 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
 
 def _reload_existing_path(controller, image_number: int, normalized_path: str, target_list_ref):
     try:
-        idx = next(i for i, it in enumerate(target_list_ref) if it.path == normalized_path)
+        idx = next(i for i, it in enumerate(target_list_ref) if _seam_same_fs_path(it.path, normalized_path))
         pl = getattr(controller, "pipeline", None)
         cached = pl.peek(normalized_path) if pl else None
         # no list item pixel write — cache already holds it
