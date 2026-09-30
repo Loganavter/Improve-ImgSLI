@@ -20,6 +20,7 @@ from tabs.image_compare.debug import ic_preview_debug
 # W1 adapter: path-equality guards owned by the shared seam (single impl).
 from tabs._shared.loading_pipeline import _same_fs_path as _seam_same_fs_path
 from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
+from tabs._shared.loading_pipeline import get_or_load_preview
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -83,6 +84,28 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
     if not isinstance(full_img, TiledPixelStore):
         full_img = maybe_wrap_pixel_store(full_img)
+    # Preview-first invariant (Lightroom Standard model): the preview tier
+    # must exist in the PipelineCache before the full-res transact below
+    # publishes. Peek first so a cached preview is a no-op (never
+    # double-decode); on miss the seam does one bounded (<=1024) scaled
+    # read. Best-effort and fail-open: a None fill keeps today's behavior
+    # exactly — the store is still published, never gated on the preview.
+    try:
+        _fill_pipeline = getattr(controller, "pipeline", None)
+        _fill_cache = getattr(_fill_pipeline, "cache", None) if _fill_pipeline is not None else None
+        if _fill_cache is not None:
+            _preview_hit = None
+            try:
+                _preview_hit = _fill_cache.get_preview(path)
+            except Exception:
+                _preview_hit = None
+            if _preview_hit is None:
+                try:
+                    get_or_load_preview(_fill_cache, path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     # PipelineCache single source — Bucket C transact, W1+W2 boxless put (no-bake).
     # Сессионный сервис — только детекция (см. pipeline/crop_box.py).
     try:
