@@ -77,9 +77,12 @@ def _grow(qtbot, ov, dw: int = 160, dh: int = 80):
 
 
 def test_preview_stretches_with_aspect_on_resize(qtbot, tmp_path):
-    """W-B: the preview pixmap itself grows with the card, keeping aspect."""
-    from sli_ui_toolkit.managers import scaled_px
+    """W-B: the preview canvas fills the grown slot; source keeps aspect.
 
+    The GPU canvas is the only live surface — the card resize mirrors the
+    host rect onto it (single geometry authority) while the stashed full
+    source keeps its aspect inside the frame.
+    """
     src_p = _real_png(tmp_path, "src.png")
     v_p = _real_png(tmp_path, "v.png")
     src = GalleryItem(path=src_p, mtime_ns=1, metrics={"width": 800, "height": 600})
@@ -87,22 +90,21 @@ def test_preview_stretches_with_aspect_on_resize(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, item, [src, item], source=src.path)
 
-    before = ov._preview_label.pixmap()
-    assert before is not None and not before.isNull()
-    bw, bh = before.width(), before.height()
+    host = ov._preview_host
+    before = host.rect()
+    assert getattr(ov, "_preview_full", None) is not None
+    assert ov._preview_full.width() == 800
+    assert ov._preview_canvas is not None
 
     _grow(qtbot, ov)
-    after = ov._preview_label.pixmap()
-    assert after is not None and not after.isNull()
-    # Grows with the card...
-    assert after.width() * after.height() > bw * bh
-    # ...fits the (grown) label, keeps the 4:3 source aspect (letterbox).
-    label = ov._preview_label.size()
-    assert after.width() <= label.width() + 2
-    assert after.height() <= label.height() + 2
-    assert abs(after.width() / after.height() - 800 / 600) < 0.05
+    after = host.rect()
+    # Slot grows with the card; the canvas/cover mirror it exactly.
+    assert after.width() > before.width()
+    assert ov._preview_canvas.geometry() == after
+    if ov._preview_cover is not None:
+        assert ov._preview_cover.geometry() == after
     # The full source is stashed for re-derivation, not re-decoded per step.
-    assert getattr(ov, "_preview_full", None) is not None
+    assert ov._preview_full is not None
     assert ov._preview_full.width() == 800
     ov.hide()
 
@@ -595,8 +597,8 @@ def test_fast_jump_to_child_clears_plate_cursor(qtbot):
     qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
     QApplication.processEvents()
     assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
-    lbl = ov._preview_label
-    qtbot.mouseMove(lbl, lbl.rect().center())
+    host = ov._preview_host
+    qtbot.mouseMove(host, host.rect().center())
     QApplication.processEvents()
     QApplication.processEvents()
     assert content.cursor().shape() == Qt.CursorShape.ArrowCursor

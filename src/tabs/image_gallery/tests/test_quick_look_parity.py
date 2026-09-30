@@ -1236,16 +1236,16 @@ def test_insets_overlay_bottom_left_over_preview(qtbot):
         try:
             host = getattr(ov, host_attr)
             pix = getattr(ov, pix_attr)
-            label = ov._preview_label
-            assert host.parentWidget() is label
+            preview_host = ov._preview_host
+            assert host.parentWidget() is preview_host
             # Not in the preview-host flow layout.
-            assert ov._preview_host.layout().indexOf(host) == -1
+            assert preview_host.layout().indexOf(host) == -1
             # Bottom-left with the 12px margin.
             from sli_ui_toolkit.managers import scaled_px as _spx
 
             m = _spx(12)
             assert host.x() == m
-            assert host.y() + host.height() == label.height() - m
+            assert host.y() + host.height() == preview_host.height() - m
             assert isinstance(pix, _QW2)
         finally:
             ov.hide()

@@ -32,7 +32,6 @@ try:
                 "_BandingCombHistogram",
                 "_GenericHistogram",
                 "_HistogramStub",
-                "_load_preview_pixmap",
                 "_thumb_pixmap",
                 "_theme_color",
                 "_token_color",

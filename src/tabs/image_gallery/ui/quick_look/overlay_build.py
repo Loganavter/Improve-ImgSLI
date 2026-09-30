@@ -359,7 +359,7 @@ def build_overlay_ui(overlay) -> None:
     No QSS, painter pipeline only, lazy imports for theming.
     """
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QHBoxLayout, QLabel, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QHBoxLayout, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
     from sli_ui_toolkit.managers import scaled_px
     from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, CustomSplit
@@ -480,11 +480,10 @@ def build_overlay_ui(overlay) -> None:
     preview_host.setObjectName("QuickLookPreviewHost")
     # Slot frame (IC parity, see StartupPlaceholder/HUD in image_compare):
     # the host is the SINGLE laid-out geometry authority (added to
-    # preview_row with stretch 1). The QLabel, the GPU canvas and the
-    # first-frame cover are all layout-external children that mirror
-    # ``preview_host.rect()`` via ``_fit_preview_slot`` — one geometry
-    # source, so a GPU<->label swap is seamless by construction (no two
-    # stretched layout peers to desync, no hand-copied sibling geometry).
+    # preview_row with stretch 1). The GPU canvas and the first-frame cover
+    # are layout-external children that mirror ``preview_host.rect()`` via
+    # ``_fit_preview_slot`` — one geometry source, so the cover<->canvas
+    # swap is seamless by construction (no hand-copied sibling geometry).
     # Mockup preview floor is 640x456 (svg): host min holds the min-card
     # proportions (640 preview + 296 column) so grow->shrink settles back
     # instead of splitting the leftover 1:1 (which stranded ~496px on the
@@ -499,39 +498,16 @@ def build_overlay_ui(overlay) -> None:
         preview_host.installEventFilter(overlay)
     except Exception:
         pass
-    overlay._preview_label = QLabel(preview_host)
-    overlay._preview_label.setObjectName("quicklook_preview")
-    overlay._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    try:
-        overlay._preview_label.setScaledContents(False)
-    except Exception:
-        pass
-    try:
-        overlay._preview_label.setGeometry(preview_host.rect())
-    except Exception:
-        pass
-    # Label Resize → preview refit (quick_look.eventFilter): layout passes
-    # settle the label without a card resize; the size cache keeps it cheap.
-    try:
-        overlay._preview_label.installEventFilter(overlay)
-    except Exception:
-        pass
-    # Canvas preview slot: overlay._preview_canvas lives here when the GPU
-    # path is available (preview.populate_preview creates it lazily; QLabel
-    # fallback otherwise). Placeholders keep the slot shape explicit; the
-    # label stays the default visible child.
+    # Canvas preview slot: overlay._preview_canvas is the only live image
+    # surface (preview.populate_preview creates it lazily); the first-frame
+    # cover plate and the source/crop insets are layout-external siblings in
+    # the same slot frame.
     overlay._preview_canvas = None
     overlay._preview_store = None
-    # QLabel fallback view (preview_label_zoom): whole-frame until the user
-    # wheel-zooms; reset per populate like the canvas zoom in set_source.
-    overlay._label_zoom = 1.0
-    overlay._label_pan_x = 0.0
-    overlay._label_pan_y = 0.0
-    overlay._label_drag = None
     # Source inset, SHARPNESS-CROP parity: an absolute block bottom-left
     # OVER the preview image (not in the flow) — title pill above the
     # pixmap, like the crop block.
-    overlay._source_inset_host = QWidget(overlay._preview_label)
+    overlay._source_inset_host = QWidget(preview_host)
     overlay._source_inset_host.setObjectName("quicklook_source_inset_host")
     src_lay = QVBoxLayout(overlay._source_inset_host)
     src_lay.setContentsMargins(0, 0, 0, 0)
@@ -621,7 +597,7 @@ def build_overlay_ui(overlay) -> None:
     overlay._source_inset_host.hide()
     # Crop block: absolute bottom-left over the preview, like the source
     # inset (not in the flow).
-    overlay._crop_host = QWidget(overlay._preview_label)
+    overlay._crop_host = QWidget(preview_host)
     overlay._crop_host.setObjectName("quicklook_crop_host")
     crop_lay = QVBoxLayout(overlay._crop_host)
     crop_lay.setContentsMargins(0, 0, 0, 0)

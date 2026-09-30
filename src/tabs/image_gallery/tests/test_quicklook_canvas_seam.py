@@ -174,7 +174,6 @@ def test_canvas_path_miss_degrades_to_placeholder(qtbot, tmp_path, monkeypatch):
 
     ql_helpers.populate_preview(ov, _item(missing))  # must not raise
     QApplication.processEvents()
-    assert not ov._preview_label.isHidden()
-    pm = ov._preview_label.pixmap()
-    assert ov._preview_label.text() == "No preview" or pm is None or pm.isNull()
+    assert ov._preview_store is None, "no neighbor content may linger"
+    assert getattr(ov, "_preview_full", None) is None, "nothing stashed on a miss"
     ov.hide()

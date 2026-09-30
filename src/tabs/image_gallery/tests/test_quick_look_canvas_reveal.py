@@ -107,6 +107,5 @@ def test_release_drops_staged_canvas() -> None:
     ov._preview_canvas_pending = canvas
     ov._preview_canvas = None
     ov._preview_store = None
-    ov._preview_label = None
     release_preview_canvas(ov)
     assert getattr(ov, "_preview_canvas_pending", None) is None

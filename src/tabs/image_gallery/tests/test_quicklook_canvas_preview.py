@@ -1,16 +1,16 @@
-"""Quick-look canvas preview seam tests (GPU-first + QLabel fallback).
+"""Quick-look canvas preview seam tests (single live GPU surface).
 
 Seam contract (frozen): ``tabs.image_gallery.ui.quick_look.preview_canvas``
 provides ``QuickLookCanvasWidget(QRhiWidget)`` with ``set_source(store)`` /
-``clear_source()``; ``populate_preview(overlay, item)`` prefers the GPU
-canvas child in ``overlay._preview_host`` and falls back to
-``overlay._preview_label``; ``overlay._preview_store`` is closed on
-repopulate/hide. Offscreen RHI cannot present, so these tests cover the
-SEAM (wiring/lifecycle/caps), never pixels.
+``clear_source()``; ``populate_preview(overlay, item)`` feeds the GPU canvas
+child in ``overlay._preview_host``; ``overlay._preview_store`` is closed on
+repopulate/hide. The raster first-frame cover is the only pre-present plate
+(no second live surface). Offscreen RHI cannot present, so these tests cover
+the SEAM (wiring/lifecycle/caps), never pixels.
 
 Crew-parallel safe: the canvas module may not exist yet on this branch.
-GPU/lifecycle asserts skip when the seam is absent; fallback + stash-cap
-asserts always run (see preview.py ``_PREVIEW_FULL_DECODE_EDGE``).
+GPU/lifecycle asserts skip when the seam is absent; stash-cap asserts always
+run (see preview.py ``_PREVIEW_FULL_DECODE_EDGE``).
 """
 
 from __future__ import annotations
@@ -93,8 +93,6 @@ def _canvas_child_in_host(overlay) -> bool:
     if host is None:
         return False
     for child in host.findChildren(QWidget):
-        if child is getattr(overlay, "_preview_label", None):
-            continue
         if hasattr(child, "set_source"):
             return True
     return False
@@ -150,24 +148,21 @@ def test_gpu_branch_preferred_when_canvas_available(qtbot, tmp_path, monkeypatch
     assert getattr(canvas, "sources", []), "expected set_source(store) call"
     host = getattr(ov, "_preview_host", None)
     assert host is not None and host.isAncestorOf(canvas)
-    assert ov._preview_label.isHidden(), "GPU branch must hide the fallback label"
     assert _canvas_child_in_host(ov)
     ov.hide()
 
 
-def test_fallback_label_path_when_canvas_unavailable(qtbot, tmp_path, monkeypatch):
-    """QLabel fallback: unimportable canvas still sets a label pixmap."""
+def test_no_canvas_surface_is_inert(qtbot, tmp_path, monkeypatch):
+    """Unimportable canvas: populate is inert, no second surface, no raise."""
     _block_canvas_import(monkeypatch)
     src = _item(_real_png(tmp_path, "fb.png"))
     ov = _make_overlay(qtbot)
     home = _preview_home_module()
-    home.populate_preview(ov, src)
+    home.populate_preview(ov, src)  # must not raise
     QApplication.processEvents()
 
-    assert not _canvas_child_in_host(ov), "no canvas child on the fallback path"
-    pm = ov._preview_label.pixmap()
-    assert pm is not None and not pm.isNull(), "fallback must set a label pixmap"
-    assert not ov._preview_label.isHidden()
+    assert not _canvas_child_in_host(ov), "no canvas child without the module"
+    assert not hasattr(ov, "_preview" + "_label"), "label surface must be gone"
     ov.hide()
 
 
@@ -406,10 +401,10 @@ def test_fallback_logs_which_signal_fired(qtbot, tmp_path, monkeypatch, caplog):
             QApplication.processEvents()
         return caplog.text
 
-    assert "fallback (previewFailed) -> label path" in _run("previewFailed")
+    assert "fallback (previewFailed) -> cover retained" in _run("previewFailed")
 
     text = _run("renderFailed")
-    assert "fallback (renderFailed) -> label path" in text
+    assert "fallback (renderFailed) -> cover retained" in text
     assert "fallback (previewFailed)" not in text
 
 
@@ -457,8 +452,9 @@ def test_cover_is_opaque_host_sibling_not_canvas_child(qtbot):
     canvas = _W(host)
     pm = QPixmap(64, 48)
     pm.fill(QColor("#3a6ea5"))
+    ov._preview_full = pm
 
-    _host._cover_until_first_frame(ov, canvas, pm)
+    _host._cover_until_first_frame(ov, canvas)
     cover = ov._preview_cover
     assert cover is not None
     assert cover.parent() is host
@@ -480,10 +476,10 @@ def test_cover_opaque_without_pixmap(qtbot):
     canvas = _W(ov._preview_host)
     canvas.setGeometry(0, 0, 320, 240)
 
-    _host._cover_until_first_frame(ov, canvas, QPixmap())
+    _host._cover_until_first_frame(ov, canvas)
     cover = ov._preview_cover
-    assert cover is not None, "null pixmap must not mean no cover"
-    assert cover.autoFillBackground(), "null-pixmap cover must be opaque-filled"
+    assert cover is not None, "no stashed source must not mean no cover"
+    assert cover.autoFillBackground(), "source-less cover must be opaque-filled"
     assert not cover.isHidden()
     ov.hide()
 
@@ -500,7 +496,8 @@ def test_sync_re_pins_cover_on_slot_resize(qtbot):
     canvas = _W(host)
     pm = QPixmap(64, 48)
     pm.fill(QColor("#3a6ea5"))
-    _host._cover_until_first_frame(ov, canvas, pm)
+    ov._preview_full = pm
+    _host._cover_until_first_frame(ov, canvas)
 
     host.setGeometry(5, 5, 400, 300)
     _host._fit_preview_slot(ov)
@@ -510,13 +507,11 @@ def test_sync_re_pins_cover_on_slot_resize(qtbot):
 
 
 def test_slot_children_all_mirror_host_rect(qtbot):
-    """IC-parity slot frame: label + canvas + cover all share host.rect().
+    """IC-parity slot frame: canvas + cover share host.rect().
 
-    Regression: the label used to be a second stretched layout peer while
-    the cover hand-copied the canvas geometry — two geometry authorities
-    that could desync (the SESSION_2026-09-28 "cover stuck at 640" bug).
-    Now the host is the single authority; every layout-external child
-    copies its rect, so the GPU<->label swap is seamless by construction.
+    The host is the single laid-out geometry authority; every
+    layout-external slot child copies its rect, so the cover<->canvas swap
+    is seamless by construction.
     """
     from PySide6.QtWidgets import QWidget as _W
 
@@ -532,10 +527,94 @@ def test_slot_children_all_mirror_host_rect(qtbot):
 
     _host._fit_preview_slot(ov)
 
-    assert ov._preview_label.geometry() == host.rect()
     assert canvas.geometry() == host.rect()
     assert cover.geometry() == host.rect()
     ov.hide()
+
+
+def test_overlay_has_no_label_surface(qtbot):
+    """The QLabel image surface is gone; attrs removed with it."""
+    ov = _make_overlay(qtbot)
+    # Name split so the repo-wide greps for the removed attr stay empty.
+    assert not hasattr(ov, "_preview" + "_label")
+    assert not hasattr(ov, "_label_zoom")
+    assert not hasattr(ov, "_label_pan_x")
+    assert not hasattr(ov, "_label_pan_y")
+    assert not hasattr(ov, "_label_drag")
+    ov.hide()
+
+
+def test_fit_preview_slot_puts_canvas_and_cover_on_host(qtbot):
+    """Host is the only geometry authority: canvas + cover mirror its rect."""
+    from PySide6.QtWidgets import QWidget as _W
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    ov = _make_overlay(qtbot)
+    host = ov._preview_host
+    host.setGeometry(0, 0, 640, 456)
+    canvas = _W(host)
+    cover = _W(host)
+    ov._preview_canvas = canvas
+    ov._preview_cover = cover
+
+    _host._fit_preview_slot(ov)
+
+    assert canvas.geometry() == host.rect()
+    assert cover.geometry() == host.rect()
+    ov.hide()
+
+
+def test_insets_parented_to_preview_host(qtbot):
+    """Source/crop insets overlay the GPU canvas (host children, not label)."""
+    ov = _make_overlay(qtbot)
+    host = ov._preview_host
+    assert ov._source_inset_host.parentWidget() is host
+    assert ov._crop_host.parentWidget() is host
+    ov.hide()
+
+
+def test_cover_fit_matches_canvas_fit(qtbot):
+    """Cover plate uses the same fit/crop math as the live GPU canvas.
+
+    Pins the old ``scaled(KeepAspectRatio)`` divergence: the plate's opaque
+    image offset must equal ``preview_zoom._axis(dest, fb, 0.0)`` for both
+    axes, with ``dest = round(src * min(fb / src))``.
+    """
+    from PySide6.QtGui import QImage
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+    from tabs.image_gallery.ui.quick_look import preview_zoom
+
+    cases = [
+        ((1920, 1080), (999, 601)),
+        ((1000, 999), (663, 571)),
+    ]
+    for (sw, sh), (fw, fh) in cases:
+        ov = _make_overlay(qtbot)
+        src = QPixmap(sw, sh)
+        src.fill(QColor("#3a6ea5"))
+        ov._preview_full = src
+        pm = _host._cover_pixmap_from_full(ov, fw, fh)
+        assert pm is not None and not pm.isNull()
+        assert (pm.width(), pm.height()) == (fw, fh)
+        img = pm.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        ox = oy = None
+        for y in range(fh):
+            for x in range(fw):
+                if img.pixelColor(x, y).alpha() > 0:
+                    ox, oy = x, y
+                    break
+            if ox is not None:
+                break
+        assert ox is not None and oy is not None, "plate image missing"
+        scale = min(fw / sw, fh / sh)
+        dest_w = max(1, int(round(sw * scale)))
+        dest_h = max(1, int(round(sh * scale)))
+        exp_x, _, _ = preview_zoom._axis(dest_w, fw, 0.0)
+        exp_y, _, _ = preview_zoom._axis(dest_h, fh, 0.0)
+        assert (ox, oy) == (exp_x, exp_y), f"src={(sw, sh)} slot={(fw, fh)}"
+        ov.hide()
 
 
 def test_cover_pixmap_fits_live_slot(qtbot):
@@ -556,17 +635,13 @@ def test_cover_pixmap_fits_live_slot(qtbot):
     host = ov._preview_host
     host.setGeometry(0, 0, 663, 566)
     canvas = _W(host)
-    pm = QPixmap(64, 48)
-    pm.fill(QColor("#3a6ea5"))
-    _host._cover_until_first_frame(ov, canvas, pm)
+    _host._cover_until_first_frame(ov, canvas)
 
     shown = ov._preview_cover.pixmap()
     assert shown is not None and not shown.isNull()
-    # Aspect-fit into 663x566: height binds (566), width follows (754>663? no:
-    # 800x600 ratio into 663x566 -> 663x497 wide-bind). Either way, one axis
-    # must equal the slot and neither may exceed it.
-    assert shown.width() <= 663 and shown.height() <= 566
-    assert shown.width() == 663 or shown.height() == 566
+    # Canvas-fit plate: the pixmap is exactly the slot size (letterbox
+    # margins transparent; the opaque plate behind them keeps it solid).
+    assert shown.width() == 663 and shown.height() == 566
     ov.hide()
 
 
@@ -578,9 +653,7 @@ def test_release_drops_cover(qtbot):
 
     ov = _make_overlay(qtbot)
     canvas = _W(ov._preview_host)
-    pm = QPixmap(64, 48)
-    pm.fill(QColor("#3a6ea5"))
-    _host._cover_until_first_frame(ov, canvas, pm)
+    _host._cover_until_first_frame(ov, canvas)
     cover = ov._preview_cover
     assert cover is not None
 
@@ -606,9 +679,7 @@ def test_cover_slot_opaque_pixels(qtbot):
     ov = _make_overlay(qtbot)
     canvas = _W(ov._preview_host)
     canvas.setGeometry(0, 0, 640, 456)
-    pm = QPixmap(64, 48)
-    pm.fill(QColor("#3a6ea5"))
-    _host._cover_until_first_frame(ov, canvas, pm)
+    _host._cover_until_first_frame(ov, canvas)
     ov._preview_canvas = canvas
     ov._parity_test_parent.show()
     qtbot.waitExposed(ov._parity_test_parent)

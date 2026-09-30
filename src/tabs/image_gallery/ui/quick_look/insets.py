@@ -21,16 +21,16 @@ from tabs.image_gallery.ui.quick_look.preview import (
 def reposition_preview_insets(overlay) -> None:
     """Pin the source/crop inset blocks bottom-left inside the preview.
 
-    Both blocks are absolute children of the preview label (overlaying the
-    image); at most one is visible per mode (fidelity ↔ crop). Bottom-left
-    with 12px margins; fixed size from sizeHint with constant floors —
-    never from the live size (that ratchets upward on every grow).
+    Both blocks are absolute children of the preview host (overlaying the
+    GPU canvas); at most one is visible per mode (fidelity ↔ crop).
+    Bottom-left with 12px margins; fixed size from sizeHint with constant
+    floors — never from the live size (that ratchets upward on every grow).
     """
     try:
         from sli_ui_toolkit.managers import scaled_px
 
-        host_label = getattr(overlay, "_preview_label", None)
-        if host_label is None:
+        preview_host = getattr(overlay, "_preview_host", None)
+        if preview_host is None:
             return
         margin = scaled_px(12)
         for attr in ("_source_inset_host", "_crop_host"):
@@ -46,14 +46,14 @@ def reposition_preview_insets(overlay) -> None:
                     h = scaled_px(124)
                 w = max(w, scaled_px(158))
                 h = max(h, scaled_px(124))
-                max_w = max(0, host_label.width() - margin * 2)
-                max_h = max(0, host_label.height() - margin * 2)
+                max_w = max(0, preview_host.width() - margin * 2)
+                max_h = max(0, preview_host.height() - margin * 2)
                 if max_w > 0 and w > max_w:
                     w = max_w
                 if max_h > 0 and h > max_h:
                     h = max_h
                 inset.setFixedSize(w, h)
-                inset.move(margin, max(margin, host_label.height() - h - margin))
+                inset.move(margin, max(margin, preview_host.height() - h - margin))
                 try:
                     inset.raise_()
                 except Exception:

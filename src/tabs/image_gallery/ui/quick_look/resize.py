@@ -11,7 +11,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QWidget
 
 from tabs.image_gallery.ui.quick_look.nav import _walk_for_nav_button, nav_button_at
-from tabs.image_gallery.ui.quick_look.preview import _rescale_preview_to_host
+from tabs.image_gallery.ui.quick_look.preview_canvas_host import _fit_preview_slot
 
 
 def reposition_grip(overlay) -> None:
@@ -301,7 +301,7 @@ def _relayout_on_card_resize(overlay) -> None:
     min-only stays: minimum 1040×680, no maximum).
     """
     _distribute_column_floors(overlay)
-    _rescale_preview_to_host(overlay)
+    _fit_preview_slot(overlay)
     _reflow_footer(overlay)
 
 

@@ -40,7 +40,6 @@ DIM_VEIL_ALPHA = round(0.45 * 255)  # 115
 # Re-export for tests
 try:
     from tabs.image_gallery.ui.quick_look.helpers import (
-        _load_preview_pixmap,
         _set_colored_text,
         _source_dimensions,
         _theme_color,
@@ -48,7 +47,7 @@ try:
         _token_color,
     )
 except Exception:
-    _load_preview_pixmap = _thumb_pixmap = _theme_color = _token_color = _set_colored_text = _source_dimensions = None  # type: ignore
+    _thumb_pixmap = _theme_color = _token_color = _set_colored_text = _source_dimensions = None  # type: ignore
 try:
     from tabs.image_gallery.ui.quick_look.bars import _BarWidget, _DualRestoredInventedBar
     from tabs.image_gallery.ui.quick_look.histograms import _BandingCombHistogram, _GenericHistogram, _HistogramStub
@@ -314,108 +313,25 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                         pass
             except Exception:
                 pass
-            # Self-healing preview fit: layout passes (post-show settle,
-            # floor yields, wraps) resize the label without a card resize —
-            # re-derive the pixmap. The size cache inside
-            # _rescale_preview_to_host skips no-op steps; setting a pixmap
-            # changes no geometry, so this cannot loop.
+            # Slot frame (IC parity): the preview host is the single
+            # laid-out geometry authority; on its Resize mirror the rect
+            # onto every layout-external child (GPU canvas, first-frame
+            # cover) so the active surface never desyncs. Layout passes
+            # that settle the host without a card resize also re-pin the
+            # insets anchored to it.
             try:
                 from PySide6.QtCore import QEvent as _QE
 
-                if watched is getattr(self, "_preview_label", None) and event.type() == _QE.Type.Resize:
-                    from tabs.image_gallery.ui.quick_look.helpers import _rescale_preview_to_host
-                    _rescale_preview_to_host(self)
-                    # Same passes settle the label size the inset anchor
-                    # reads — re-pin so a pre-layout measurement (top-left
-                    # fallback) heals once the live height lands.
-                    try:
-                        self._reposition_source_inset()
-                    except Exception:
-                        pass
-                # Label fallback zoom (no GPU path): wheel = cursor-anchored
-                # zoom via preview_label_zoom (canvas parity); LMB/Middle
-                # drag pans while zoomed. At 1.0x every helper no-ops so
-                # label clicks keep the old veil-swallow behavior.
-                _label = getattr(self, "_preview_label", None)
-                if watched is _label and _label is not None:
-                    _et = event.type()
-                    if _et == _QE.Type.Wheel:
-                        try:
-                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
-                                label_wheel,
-                            )
-
-                            _pos = event.position()
-                            _lw = max(1, int(_label.width()))
-                            _lh = max(1, int(_label.height()))
-                            if label_wheel(
-                                self,
-                                event.angleDelta().y(),
-                                float(_pos.x()) / _lw,
-                                float(_pos.y()) / _lh,
-                            ):
-                                try:
-                                    event.accept()
-                                except Exception:
-                                    pass
-                                return True
-                        except Exception:
-                            pass
-                    elif _et == _QE.Type.MouseButtonPress:
-                        try:
-                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
-                                label_press,
-                            )
-
-                            _pos = event.position()
-                            if label_press(self, float(_pos.x()), float(_pos.y()), event.button()):
-                                try:
-                                    event.accept()
-                                except Exception:
-                                    pass
-                                return True
-                        except Exception:
-                            pass
-                    elif _et == _QE.Type.MouseMove:
-                        try:
-                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
-                                label_move,
-                            )
-
-                            _pos = event.position()
-                            if label_move(
-                                self,
-                                float(_pos.x()),
-                                float(_pos.y()),
-                                max(1, int(_label.width())),
-                                max(1, int(_label.height())),
-                            ):
-                                try:
-                                    event.accept()
-                                except Exception:
-                                    pass
-                                return True
-                        except Exception:
-                            pass
-                    elif _et == _QE.Type.MouseButtonRelease:
-                        try:
-                            from tabs.image_gallery.ui.quick_look.preview_label_zoom import (
-                                label_release,
-                            )
-
-                            label_release(self)
-                        except Exception:
-                            pass
-                # Slot frame (IC parity): the preview host is the single
-                # laid-out geometry authority; on its Resize mirror the rect
-                # onto every layout-external child (label, GPU canvas,
-                # first-frame cover) so the active surface never desyncs.
                 if watched is getattr(self, "_preview_host", None) and event.type() == _QE.Type.Resize:
                     try:
                         from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
                             _fit_preview_slot,
                         )
                         _fit_preview_slot(self)
+                    except Exception:
+                        pass
+                    try:
+                        self._reposition_source_inset()
                     except Exception:
                         pass
             except Exception:
@@ -542,9 +458,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().leaveEvent(event)
 
     def _release_preview_resources(self) -> None:
-        """Canvas lifecycle: clear_source() + close store, restore the label.
+        """Canvas lifecycle: clear_source() + close store + drop the cover.
 
-        Idempotent; no-op when the canvas path was never taken (label-only).
+        Idempotent; no-op when the canvas path was never taken.
         """
         try:
             from tabs.image_gallery.ui.quick_look.preview_canvas_host import release_preview_canvas

@@ -14,7 +14,6 @@ from types import SimpleNamespace
 from PIL import Image
 from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QLabel
 
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import ThumbnailStatus
@@ -72,35 +71,40 @@ def test_pyramid_pixmap_missing_source_fails_closed(qtbot, tmp_path):
     assert _pyramid_pixmap_for(tmp_path / "missing.png", center_third=True) is None
 
 
+class _FakeCanvas:
+    """Minimal canvas double: records set_source, tolerates reveal/fallback."""
+
+    def __init__(self) -> None:
+        self.store = None
+        self.hidden = 0
+
+    def set_source(self, store) -> None:
+        self.store = store
+
+    def clear_source(self) -> None:
+        self.store = None
+
+    def hide(self) -> None:
+        self.hidden += 1
+
+
 def test_populate_preview_missing_source_shows_placeholder(qtbot, tmp_path):
     """Quicklook gap path: no preview, never stale/wrong pixels."""
-    label = QLabel()
-    qtbot.addWidget(label)
     overlay = SimpleNamespace(
         _preview_full=None,
-        _preview_scaled_for=None,
-        _preview_scaled_smooth=False,
-        _preview_label=label,
     )
     item = SimpleNamespace(path=str(tmp_path / "missing.png"), thumbnail=None)
-    populate_preview(overlay, item)
-    # Qt clears label text when a (null) pixmap is set, so the gap contract
-    # is: no pixmap content and nothing stashed — never stale/wrong pixels.
-    shown = label.pixmap()
-    assert shown is None or shown.isNull()
+    populate_preview(overlay, item)  # must not raise
+    # Gap contract: nothing stashed — never stale/wrong pixels.
     assert overlay._preview_full is None
 
 
 def test_populate_preview_binds_own_pixels(qtbot, tmp_path):
     """End-to-end golden path: stashed preview holds this item's bytes."""
     red = _solid(tmp_path / "red.png", (255, 0, 0))
-    label = QLabel()
-    qtbot.addWidget(label)
     overlay = SimpleNamespace(
         _preview_full=None,
-        _preview_scaled_for=None,
-        _preview_scaled_smooth=False,
-        _preview_label=label,
+        _preview_canvas=_FakeCanvas(),
     )
     populate_preview(overlay, SimpleNamespace(path=str(red), thumbnail=None))
     assert overlay._preview_full is not None

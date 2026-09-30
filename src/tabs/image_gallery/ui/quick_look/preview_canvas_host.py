@@ -1,10 +1,11 @@
 """Quick-look GPU preview hosting — canvas slot lifecycle (no owner state).
-Audit-Meta: pattern=thin-owner-target size=exempt reason="one canvas-slot lifecycle: cover/fallback/label-repopulate share one GPU-path attribution"
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one canvas-slot lifecycle: canvas/cover share one GPU-path attribution"
 
-Split from ``preview.py`` (500-line contract gate): the QLabel preview
-stays there, everything canvas-shaped lives here. All functions fail
-open to the QLabel path — import this module lazily and treat ``None``
-/ ``False`` as "no GPU today".
+Split from ``preview.py`` (500-line contract gate): the canvas slot
+lifecycle lives here, preview pixmaps stay there. The QRhiWidget canvas is
+the only live image surface; the cover plate is a static pre-first-frame
+fallback (kept when no frame ever presents). All functions fail open —
+import this module lazily and treat ``None`` / ``False`` as "no GPU today".
 """
 
 from __future__ import annotations
@@ -67,13 +68,7 @@ def release_preview_canvas(overlay) -> None:
     except Exception:
         pass
     _close_preview_store(overlay)
-    try:
-        label = getattr(overlay, "_preview_label", None)
-        if label is not None:
-            label.show()
-    except Exception:
-        pass
-    # Label returns as the visible surface — keep it exactly on the slot.
+    # Keep the slot children exactly on the frame (canvas is hidden now).
     _fit_preview_slot(overlay)
 
 
@@ -84,7 +79,7 @@ def _ensure_preview_canvas(overlay):
 
         if _env_flag("IMGSLI_QL_NO_GPU"):
             if _qlc_enabled():
-                _qlc_log("NO_GPU kill-switch -> label fallback")
+                _qlc_log("NO_GPU kill-switch -> no canvas")
             return None
     except Exception:
         pass
@@ -96,16 +91,9 @@ def _ensure_preview_canvas(overlay):
             from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget as _Canvas
         except Exception:
             return None
-        try:
-            # Offscreen cannot present RHI — the QLabel fallback owns those
-            # runs (tests, headless dumps); real platforms are unaffected.
-            from PySide6.QtWidgets import QApplication as _QA
-
-            _app = _QA.instance()
-            if _app is not None and str(_app.platformName() or "").lower() == "offscreen":
-                return None
-        except Exception:
-            pass
+        # The canvas is created on every platform, offscreen included: it
+        # simply never presents without a live RHI (the cover plate stays up
+        # as the static preview, exactly like image_compare's canvas).
         host = getattr(overlay, "_preview_host", None)
         if host is None:
             return None
@@ -119,7 +107,7 @@ def _ensure_preview_canvas(overlay):
         try:
             # Canvas is a layout-external child of the slot frame: it
             # mirrors ``preview_host.rect()`` (see _fit_preview_slot) and
-            # never joins the layout, so the label<->canvas swap can never
+            # never joins the layout, so the cover<->canvas swap can never
             # split the slot between two stretched peers.
             overlay._preview_canvas = canvas
             _fit_preview_slot(overlay)
@@ -135,7 +123,8 @@ def _coarse_store_for(path, *, long_edge: int = 1024):
 
     ``PyramidPixelStore.coarse_from_source`` never materializes a full
     frame (shrink-on-load / bounded scaled read); None on any miss so
-    callers degrade to the QLabel ladder. No second LOD entry, no
+    callers keep the cover plate and never feed the canvas. No second LOD
+    entry, no
     ``TiledPixelStore.from_path`` full decode on this path.
     """
     try:
@@ -155,9 +144,10 @@ def _coarse_store_for(path, *, long_edge: int = 1024):
 def _populate_preview_canvas(overlay, item) -> bool:
     """GPU branch: bounded coarse store (frozen seam) into the canvas slot.
 
-    Miss (empty path, unreadable source, unbuilt coarse) fails closed to
-    False — the caller keeps its QLabel fallback; never a neighbor's
-    content, never a full-frame decode.
+    The canvas is the only live surface; the raster cover plate holds the
+    pane until its first GPU frame. Miss (empty path, unreadable source,
+    unbuilt coarse) fails closed to False and the cover persists — never a
+    neighbor's content, never a full-frame decode.
     """
     canvas = _ensure_preview_canvas(overlay)
     if canvas is None:
@@ -174,13 +164,12 @@ def _populate_preview_canvas(overlay, item) -> bool:
             overlay._preview_store = store
         except Exception:
             pass
+        # Stash the bounded source: the cover plate is derived from it at the
+        # live slot size (same fit as the canvas), no black flash.
         try:
-            # Fill the QLabel path first: its pixmap becomes the cover shown
-            # over the canvas until the first GPU frame (startup-placeholder
-            # pattern from the compare tabs) — no black flash.
-            from tabs.image_gallery.ui.quick_look.preview import _populate_preview_label
+            from tabs.image_gallery.ui.quick_look.preview import _stash_preview_source
 
-            _populate_preview_label(overlay, item)
+            _stash_preview_source(overlay, item)
         except Exception:
             pass
         try:
@@ -189,16 +178,9 @@ def _populate_preview_canvas(overlay, item) -> bool:
             _close_preview_store(overlay)
             return False
         try:
-            label = getattr(overlay, "_preview_label", None)
-            pm = label.pixmap() if label is not None else None
-            if label is not None:
-                # The label leaves the layout flow here: the sibling cover
-                # below owns the pane (same pixmap) until the first GPU
-                # frame, so the slot never splits between label + canvas.
-                label.hide()
             reveal_preview_canvas(overlay, canvas)
             _wire_canvas_fallback(overlay, canvas, item)
-            _cover_until_first_frame(overlay, canvas, pm)
+            _cover_until_first_frame(overlay, canvas)
         except Exception:
             pass
         return True
@@ -312,11 +294,11 @@ def _fit_preview_slot(overlay) -> None:
     """Mirror the slot frame's rect onto every layout-external child.
 
     ``_preview_host`` is the single laid-out geometry authority (IC-parity
-    slot frame, see ``StartupPlaceholder`` in image_compare); the QLabel,
-    the GPU canvas and the first-frame cover live outside any layout and
-    copy ``host.rect()`` here. Called on the host's Resize and whenever a
-    slot child is (re)created — so whichever surface is visible always
-    occupies the exact same rect (seamless swap).
+    slot frame, see ``StartupPlaceholder`` in image_compare); the GPU canvas
+    and the first-frame cover live outside any layout and copy
+    ``host.rect()`` here. Called on the host's Resize and whenever a slot
+    child is (re)created — so whichever surface is visible always occupies
+    the exact same rect (seamless swap).
     """
     try:
         host = getattr(overlay, "_preview_host", None)
@@ -327,7 +309,7 @@ def _fit_preview_slot(overlay) -> None:
             assert rect.width() > 0 and rect.height() > 0
         except Exception:
             return
-        for attr in ("_preview_label", "_preview_canvas", "_preview_cover"):
+        for attr in ("_preview_canvas", "_preview_cover"):
             try:
                 child = getattr(overlay, attr, None)
                 if child is not None:
@@ -339,8 +321,35 @@ def _fit_preview_slot(overlay) -> None:
         pass
 
 
+def _cover_pixmap_from_full(overlay, w: int, h: int):
+    """Canvas-fit plate pixmap from the stashed source (same fit as live).
+
+    Uses ``preview_zoom.zoomed_frame`` — the exact fit/crop the GPU canvas
+    uses — so the cover plate and the first GPU frame agree pixel-for-pixel
+    (the old ``scaled(KeepAspectRatio)`` arithmetic was up to 2px off).
+    Returns a ``QPixmap`` of exactly ``w`` x ``h`` (transparent letterbox
+    margins; the cover's opaque plate shows through) or None. Never raises.
+    """
+    try:
+        src = getattr(overlay, "_preview_full", None)
+        if src is None or src.isNull():
+            return None
+        from PySide6.QtGui import QImage, QPixmap
+        from tabs.image_gallery.ui.quick_look.preview_zoom import zoomed_frame
+
+        frame = zoomed_frame(src.toImage(), int(w), int(h), 1.0)
+        if frame is None:
+            return None
+        fw, fh, px = frame
+        img = QImage(px, int(fw), int(fh), QImage.Format.Format_RGBA8888_Premultiplied).copy()
+        pm = QPixmap.fromImage(img)
+        return pm if (pm is not None and not pm.isNull()) else None
+    except Exception:
+        return None
+
+
 def _fit_cover(overlay) -> None:
-    """Cover == slot frame geometry + aspect-fit pixmap (fail-open)."""
+    """Cover == slot frame geometry + canvas-fit plate pixmap (fail-open)."""
     try:
         cover = getattr(overlay, "_preview_cover", None)
         host = getattr(overlay, "_preview_host", None)
@@ -358,11 +367,9 @@ def _fit_cover(overlay) -> None:
             pass
         try:
             if getattr(cover, "_ql_fit_for", None) != (w, h):
-                src = getattr(overlay, "_preview_full", None)
-                if src is not None and not src.isNull():
-                    from PySide6.QtCore import Qt as _Qt
-
-                    cover.setPixmap(src.scaled(w, h, _Qt.AspectRatioMode.KeepAspectRatio, _Qt.TransformationMode.SmoothTransformation))
+                pm = _cover_pixmap_from_full(overlay, w, h)
+                if pm is not None:
+                    cover.setPixmap(pm)
                 cover._ql_fit_for = (w, h)
         except Exception:
             pass
@@ -398,7 +405,7 @@ def _drop_cover(overlay, reason: str = "") -> None:
         pass
 
 
-def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
+def _cover_until_first_frame(overlay, canvas) -> None:
     """Opaque sibling cover over the canvas slot until its first GPU frame.
 
     Startup-placeholder pattern (compare tabs): the cover is a raster
@@ -407,9 +414,10 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
     canvas inherits the canvas's own transparency window (no
     ``beginPass``/clear before the shell mounts, so the slot is a
     see-through hole until the first present); a sibling paints opaquely
-    from the overlay's first paint regardless of RHI state. Dropped on
-    ``firstFramePresented``, failure, and release; null pixmap still yields
-    an opaque plate cover — never a transparent hole.
+    from the overlay's first paint regardless of RHI state. The plate is
+    derived from ``overlay._preview_full`` through the same fit as the live
+    canvas (``_fit_cover``); a NULL source still yields an opaque plate
+    cover — never a transparent hole. Dropped on ``firstFramePresented``.
     """
     _drop_cover(overlay, "re-cover")
     try:
@@ -429,14 +437,9 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
         except Exception:
             pass
         try:
-            if pixmap is not None and not pixmap.isNull():
-                cover.setPixmap(pixmap)
-        except Exception:
-            pass
-        try:
             # Opaque plate fill under the pixmap: letterbox margins (and a
             # null pixmap) show card background, never the desktop through
-            # an unpresented canvas. Same tone as the QLabel-path margins.
+            # an unpresented canvas. Same tone as the card background.
             from tabs.image_gallery.ui.quick_look.labels_theme import _token_color
 
             bg = _token_color("gallery.card.background", "#ffffff")
@@ -468,8 +471,7 @@ def _cover_until_first_frame(overlay, canvas, pixmap) -> None:
             overlay._preview_cover = cover
         except Exception:
             pass
-        # Fit cover geometry + the stashed full pixmap to the live slot
-        # (the label pixmap predates layout).
+        # Fit cover geometry + the stashed source to the live slot.
         _fit_preview_slot(overlay)
     except Exception:
         pass
@@ -519,7 +521,7 @@ def settle_first_frame(canvas) -> None:
 
 
 def _wire_canvas_fallback(overlay, canvas, item) -> None:
-    """No-frame / render-failed → back to QLabel (connect once per canvas)."""
+    """No-frame / render-failed → keep the cover plate (connect once per canvas)."""
     try:
         if getattr(canvas, "_gallery_fail_wired", False):
             return
@@ -538,29 +540,10 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
         pass
 
     def _run_fall_back(reason: str) -> None:
+        # No label to hand off to: keep the cover up as the static preview
+        # (it persists until a first frame ever lands).
         if _qlc_enabled():
-            _qlc_log("fallback (%s) -> label path", reason)
-        for _sig, _slot in (
-            ("previewFailed", _on_preview_failed),
-            ("renderFailed", _on_render_failed),
-        ):
-            try:
-                getattr(canvas, _sig).disconnect(_slot)
-            except Exception:
-                pass
-        _drop_cover(overlay, "fallback")
-        try:
-            from tabs.image_gallery.ui.quick_look.preview import _populate_preview_label
-        except Exception:
-            return
-        try:
-            release_preview_canvas(overlay)
-        except Exception:
-            pass
-        try:
-            _populate_preview_label(overlay, item)
-        except Exception:
-            pass
+            _qlc_log("fallback (%s) -> cover retained", reason)
 
     def _on_preview_failed(*_args) -> None:
         """Watchdog no-frame path (1500ms without a presented frame)."""
