@@ -708,7 +708,7 @@
     },
     {
       "path": "src/tabs/image_gallery/tab.py",
-      "lines": 683,
+      "lines": 315,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
