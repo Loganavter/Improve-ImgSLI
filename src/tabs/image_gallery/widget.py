@@ -189,6 +189,12 @@ class ImageGalleryWidget(QWidget):
 
         # Grid view: OverlayScrollArea + OpaqueFillHost + Button pool (toolkit)
         self._grid_view = GalleryGridView(self)
+        # Explicit back-ref (owner hands its own child a ref to itself):
+        # marquee plumbing lives on the grid_view and resolves the triage
+        # controller via ``_gallery_widget._owner_for_triage()``. A parent
+        # walk is unreliable (the grid is reparented into the content
+        # stack), so the owner passes itself here at construction.
+        self._grid_view._gallery_widget = self  # type: ignore[attr-defined]
         self._grid_view.setObjectName("image_gallery_grid_view")
         # Legacy aliases for controller compatibility
         self._scroll = self._grid_view.scroll_area
