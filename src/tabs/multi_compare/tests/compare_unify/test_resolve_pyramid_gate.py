@@ -28,6 +28,25 @@ class _Pyramid:
         return self._complete
 
 
+class _SizedStore(TiledPixelStore):
+    """Store with a fixed frame size (preview is 64x48, so tier flips show)."""
+
+    width = 800
+    height = 600
+
+    def __init__(self) -> None:
+        pass
+
+
+class _ClosedStore(TiledPixelStore):
+    """Store the cache treats as closed (evicted out from under a frame)."""
+
+    is_open = False
+
+    def __init__(self) -> None:
+        pass
+
+
 def _preview():
     from PySide6.QtGui import QImage
 
@@ -77,3 +96,55 @@ def test_untracked_store_holds_preview(monkeypatch):
 def test_non_store_pixel_unchanged(monkeypatch):
     c, path = _cache_with(object(), _preview(), monkeypatch, pyramid=_Pyramid(False))
     assert c.resolve(path) is c.get_pixel(path)
+
+
+def test_flip_on_complete_same_cache_instance(monkeypatch):
+    """Incomplete→preview, then complete→store on the SAME cache, no re-put.
+
+    Proves the canvas flip needs no new publishes: ``_slot_sources`` /
+    ``_sync_textures`` re-resolve every frame, and the ``is not source``
+    identity check re-uploads once the gate opens.
+    """
+    pyramid = _Pyramid(False)
+    c, path = _cache_with(_Store(), _preview(), monkeypatch, pyramid=pyramid)
+    first = c.resolve(path)
+    assert first == c.get_preview(path)
+    pyramid._complete = True
+    second = c.resolve(path)
+    assert second is c.get_pixel(path)
+    assert second is not first
+
+
+def test_source_size_follows_gated_tier(monkeypatch):
+    """``source_size`` tracks the gated tier (preview 64x48, store 800x600)."""
+    pyramid = _Pyramid(False)
+    c, path = _cache_with(_SizedStore(), _preview(), monkeypatch, pyramid=pyramid)
+    assert c.source_size(path) == (64, 48)
+    pyramid._complete = True
+    assert c.source_size(path) == (800, 600)
+
+
+def test_evicted_store_reads_imageless(monkeypatch):
+    c, path = _cache_with(_SizedStore(), _preview(), monkeypatch, pyramid=_Pyramid(True))
+    assert c.resolve(path) is c.get_pixel(path)
+    c.evict(path)
+    assert c.resolve(path) is None
+    assert c.source_size(path) is None
+
+
+def test_closed_store_reads_imageless(monkeypatch):
+    c, path = _cache_with(_ClosedStore(), None, monkeypatch, pyramid=_Pyramid(True))
+    assert c.get_pixel(path) is None
+    assert c.resolve(path) is None
+    assert c.source_size(path) is None
+
+
+def test_closed_store_falls_back_to_preview(monkeypatch):
+    c, path = _cache_with(_ClosedStore(), _preview(), monkeypatch, pyramid=_Pyramid(True))
+    assert c.resolve(path) == c.get_preview(path)
+
+
+def test_tierless_path_resolves_imageless():
+    c = mc_cache.MultiComparePixelCache()
+    assert c.resolve(None) is None
+    assert c.source_size(None) is None
