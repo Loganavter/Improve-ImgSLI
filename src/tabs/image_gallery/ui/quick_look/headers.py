@@ -76,8 +76,13 @@ def _size_note(items) -> str:
     return " · mixed sizes"
 
 
-def populate_series_header(overlay) -> None:
-    """S4 mockup series context: ``Series 1 · <hub>`` + fidelity subline."""
+def populate_series_header(overlay, owner=None) -> None:
+    """S4 mockup series context: ``Series 1 · <hub>`` + fidelity subline.
+
+    *owner* is the explicit triage owner (threaded from the overlay's
+    ``show_for``); when None, falls back to the overlay's stored owner for
+    direct unit calls (back-compat — production always passes it).
+    """
     try:
         items = list(overlay._series_items or [])
         n = len(items)
@@ -86,7 +91,11 @@ def populate_series_header(overlay) -> None:
         # triage ownership stays in use_cases/wave A, never duplicated here).
         idx = 1
         try:
-            owner = getattr(overlay, "_owner", None)
+            if owner is None:
+                try:
+                    owner = overlay._owner
+                except Exception:
+                    owner = None
             series_raw = getattr(getattr(owner, "state", None), "series", None)
             if series_raw:
                 clusters: list[list] = []

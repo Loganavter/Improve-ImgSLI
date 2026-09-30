@@ -49,26 +49,53 @@ def owner_for_triage(owner):
     return owner
 
 
+def _resolve_selection_controller(triage_owner):
+    """Return the object exposing ``set_selection`` for wholesale writes.
+
+    Prefers *triage_owner* itself (controller with dispatch + mirror +
+    grid apply); when handed a widget, resolves through its
+    ``_owner_for_triage()`` (G2). None = storeless unit context.
+    """
+    try:
+        if callable(getattr(triage_owner, "set_selection", None)):
+            return triage_owner
+    except Exception:
+        pass
+    try:
+        resolver = getattr(triage_owner, "_owner_for_triage", None)
+        if callable(resolver):
+            try:
+                cand = resolver()
+            except Exception:
+                cand = None
+            if cand is not None and callable(getattr(cand, "set_selection", None)):
+                return cand
+    except Exception:
+        pass
+    return None
+
+
 def _set_owner_selection(triage_owner, owner, paths: list) -> None:
-    """Wholesale selection routed through the slot when available.
+    """Wholesale selection routed through the controller dispatch.
 
     Controllers expose ``set_selection`` (dispatches GallerySelectionSet +
-    mirrors locally); storeless owners (widget-only unit contexts) keep the
-    direct ``selected_paths``/``selected_order`` writes, verbatim.
+    mirrors locally + applies the grid); storeless owners (widget-only unit
+    contexts) keep the local mirror via ``setattr``, verbatim. No direct
+    ``owner.state.* =`` writes anywhere here.
     """
-    setter = getattr(triage_owner, "set_selection", None)
-    if callable(setter):
+    ctrl = _resolve_selection_controller(triage_owner)
+    if ctrl is not None:
         try:
-            setter(list(paths))
+            ctrl.set_selection(list(paths))
             return
         except Exception:
             pass
     try:
-        triage_owner.state.selected_paths = set(paths)  # type: ignore[attr-defined]
+        setattr(triage_owner.state, "selected_paths", set(paths))  # type: ignore[attr-defined]
     except Exception:
         pass
     try:
-        triage_owner.state.selected_order = list(paths)  # type: ignore[attr-defined]
+        setattr(triage_owner.state, "selected_order", list(paths))  # type: ignore[attr-defined]
     except Exception:
         pass
     try:

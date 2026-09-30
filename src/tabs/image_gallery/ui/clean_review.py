@@ -838,6 +838,9 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             close_on_escape=True,
             close_on_deactivate=False,
         )
+        # G3 dispatch-only: the triage owner (controller) arrives explicitly
+        # via __init__/show_for and is stored here. Assigned ONLY from those
+        # explicit arguments — never poked from outside, never re-scanned.
         self._owner = owner
         self._content = _ReviewPlate(self)
         self._content.setObjectName("CleanReviewContent")
@@ -1029,6 +1032,8 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         Suppresses HUD via FlyoutManager hide gallery_selection.
         """
         if owner is not None:
+            # Explicit owner from the caller (see __init__ note): the only
+            # re-assignment point besides construction.
             self._owner = owner
         owner = self._owner
         if owner is None:
