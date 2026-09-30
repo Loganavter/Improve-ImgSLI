@@ -181,6 +181,17 @@
       }
     },
     {
+      "path": "src/tabs/_shared/loading_pipeline.py",
+      "lines": 572,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"W0 shared loading seam: key + sync fills + preview-first single-flight + bounded full FIFO + pyramid hook\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "W0 shared loading seam: key + sync fills + preview-first single-flight + bounded full FIFO + pyramid hook"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/_session_controller.py",
       "lines": 275,
       "limit": 500,
