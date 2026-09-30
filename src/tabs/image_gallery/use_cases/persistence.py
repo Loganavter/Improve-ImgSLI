@@ -85,6 +85,13 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
         if isinstance(legacy, dict):
             folder_raw = legacy.get("folder")
     if not folder_raw:
+        # Slot-authoritative clear: the session carries no pool, so the
+        # controller-local mirror + grid must not keep the previous
+        # session's items (session-isolation contract).
+        try:
+            tab._controller.clear_to_empty()
+        except Exception:
+            logger.debug("ImageGalleryTab empty restore failed", exc_info=True)
         return
     folder = Path(folder_raw)
     if folder.is_dir():

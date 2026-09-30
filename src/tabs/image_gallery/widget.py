@@ -928,6 +928,58 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def reset_session_view(self) -> None:
+        """Reset the view for a session with no pool data (slot-authoritative clear).
+
+        Called by ``GalleryController.clear_to_empty`` when a restore finds
+        an empty/absent slot: drops the series view, hides the stats strip,
+        stops the spinner, clears the filter edit (signal-blocked, no loop)
+        and lands on the default empty state. No dispatch — the slot is
+        already empty, there is nothing to persist.
+        """
+        try:
+            self._series = []
+        except Exception:
+            pass
+        try:
+            self._mode = None
+        except Exception:
+            pass
+        try:
+            self._source_path = None
+        except Exception:
+            pass
+        try:
+            self._collapsed = {}
+        except Exception:
+            pass
+        try:
+            gv = getattr(self, "_grid_view", None)
+            if gv is not None and hasattr(gv, "set_series"):
+                gv.set_series([], hub_names=[], collapsed={})
+        except Exception:
+            pass
+        try:
+            self.stats_strip.hide()
+        except Exception:
+            pass
+        try:
+            self.set_triage_done()
+        except Exception:
+            pass
+        try:
+            self.rebuild_grid([])
+        except Exception:
+            pass
+        try:
+            self._empty_state.restore_empty_message()
+        except Exception:
+            pass
+        try:
+            self._render_gallery_filter("")
+        except Exception:
+            pass
+
     # -- API expected by GalleryController ---------------------------------
 
     def set_folder_label(self, folder: Path) -> None:
