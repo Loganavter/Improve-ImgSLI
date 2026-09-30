@@ -119,6 +119,22 @@ class GalleryController:
         self._folder_gen += 1
         return self._folder_gen
 
+    def clear_to_empty(self) -> None:
+        """Reset the local mirror + view for a session with no pool data.
+
+        Slot-authoritative clear (session-isolation contract): the slot is
+        already empty, so no dispatch — nothing to persist. Bumps the folder
+        generation so in-flight thumbnail/triage/artifact/VLM workers for
+        the previous pool go stale and are dropped instead of repopulating
+        the fresh session's view.
+        """
+        self._next_folder_gen()
+        self.state = GalleryState()
+        try:
+            self.widget.reset_session_view()
+        except Exception:
+            logger.debug("gallery clear_to_empty view reset failed", exc_info=True)
+
     def _is_current_folder_gen(self, gen: int) -> bool:
         return gen == self._folder_gen
 

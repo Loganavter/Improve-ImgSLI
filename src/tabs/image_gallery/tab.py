@@ -239,6 +239,21 @@ class ImageGalleryTab(TabContract):
         if self._active_session_id == session_id:
             self._active_session_id = None
         self._dismiss_tab_modals()
+        # Session-isolation contract: when no gallery session remains active
+        # (last one closed), drop the stale view instead of showing the
+        # closed session's pool with no session behind it. Guarded on the
+        # live active session (not the closed id) so a close→switch ordering
+        # never wipes the newly activated session — its own restore follows.
+        try:
+            store = getattr(context, "store", None)
+            active = (
+                store.get_active_workspace_session() if store is not None else None
+            )
+            if active is None or getattr(active, "session_type", None) != self.session_type:
+                if self._controller is not None:
+                    self._controller.clear_to_empty()
+        except Exception:
+            pass
 
     def _resolve_active_session_id(self, context: TabContext) -> str | None:
         store = getattr(context, "store", None)
