@@ -11,7 +11,7 @@ def marquee_snapshot(owner, card) -> str:  # type: ignore[no-untyped-def]
     """Fail-open one-liner: gesture state + band visibility/geometry."""
     try:
         candidates = []
-        for cand in (owner, getattr(card, "_gallery_owner", None)):
+        for cand in (owner,):
             try:
                 if cand is None:
                     continue

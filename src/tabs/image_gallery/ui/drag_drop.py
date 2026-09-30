@@ -1,4 +1,5 @@
 """Drag & drop orchestration for ``ImageGalleryWidget`` — thin-owner split.
+Audit-Meta: pattern=single-router size=exempt reason="one drop-routing rule for zone+widget surfaces incl. single-writer pool discipline; splitting would scatter the accept/route/dispatch branches pinned as one unit"
 
 Split out of ``widget.py`` per ``CODE_PATTERNS.md`` thin owner + ``ui/`` use_cases:
 ``ImageGalleryWidget`` keeps Qt-required method names (``dragEnterEvent`` etc.)
@@ -7,8 +8,9 @@ the owning widget as first argument, reading/writing its instance state
 (``_empty_state``, ``_controller``, ``folder_pick_requested``) directly.
 
 Public imports only; no ``setStyleSheet`` — painter pipeline owns visuals.
-Controller dependency is explicit via ``owner._controller`` (no ``getattr``
-lookups / window fallback) so tests can inject a fake owner.
+Controller dependency is explicit via a ``controller`` parameter threaded
+from the widget call sites (fail-open legacy bind only for direct test
+calls — no scans, no window walk).
 
 Reference: ``tabs/multi_compare/ui/drag_drop.py``.
 """
@@ -123,14 +125,31 @@ def _note(owner, text: str) -> None:
         pass
 
 
-def _controller_of(owner):
-    """Explicit controller lookup — no ``getattr`` fallbacks (see module docstring)."""
-    try:
-        return owner._controller
-    except AttributeError:
-        return None
-    except Exception:
-        return None
+def _explicit_controller(owner, controller=None):
+    """Explicit controller first; fail-open legacy reads (no scan, no window walk).
+
+    The widget threads ``self._owner_for_triage()`` from every call site.
+    A bare widget threaded pre-attach unwraps to its attachment; direct
+    calls without a controller resolve via the owner's triage protocol,
+    then a single direct legacy bind (pre-G1 tab wiring, test doubles).
+    """
+    if controller is not None and hasattr(controller, "_owner_for_triage"):
+        try:
+            controller = controller._attached_controller
+        except Exception:
+            controller = None
+    if controller is None:
+        try:
+            resolve = getattr(owner, "_owner_for_triage", None)
+            controller = resolve() if callable(resolve) else None
+        except Exception:
+            controller = None
+        if controller is None or controller is owner:
+            try:
+                controller = owner._controller
+            except Exception:
+                controller = None
+    return controller
 
 
 def _fallback_folder(paths: list[Path]) -> Path:
@@ -199,7 +218,7 @@ def _dispatch_drop_pool(owner, *, all_files: bool, has_dir: bool, paths: list[Pa
         pass
 
 
-def _route_paths(owner, paths: list[Path]) -> bool:
+def _route_paths(owner, paths: list[Path], controller=None) -> bool:
     """Shared routing for widget + zone drops — one rule everywhere.
 
     *paths* are pre-filtered (existing image files / directories via the
@@ -237,7 +256,7 @@ def _route_paths(owner, paths: list[Path]) -> bool:
         all_files = False
         has_dir = False
     _dnd_log("dropEvent decision: all_files=%s has_dir=%s", all_files, has_dir)
-    ctrl = _controller_of(owner)
+    ctrl = _explicit_controller(owner, controller)
     # Single-writer rule: when the controller synchronously consumes the drop
     # in the branches below, IT dispatches the pool action after mirroring
     # (open_paths / open_folder both emit). The eager _dispatch_drop_pool then
@@ -260,7 +279,7 @@ def _route_paths(owner, paths: list[Path]) -> bool:
         try:
             from PySide6.QtCore import QTimer
 
-            QTimer.singleShot(0, lambda ps=list(paths): try_open_folder(owner, ps[0]) if len(ps) == 1 else None)
+            QTimer.singleShot(0, lambda ps=list(paths), c=ctrl: try_open_folder(owner, ps[0], c) if len(ps) == 1 else None)
         except Exception:
             pass
         return False
@@ -302,13 +321,13 @@ def _route_paths(owner, paths: list[Path]) -> bool:
         try:
             from PySide6.QtCore import QTimer
 
-            QTimer.singleShot(0, lambda f=folder: try_open_folder(owner, f))
+            QTimer.singleShot(0, lambda f=folder, c=ctrl: try_open_folder(owner, f, c))
         except Exception:
             pass
     return False
 
 
-def on_empty_file_dropped(owner, path_str: str) -> None:
+def on_empty_file_dropped(owner, path_str: str, controller=None) -> None:
     """Empty-state ``fileDropped`` handler — single-path entry to shared routing.
 
     The zone signal carries one path string; live multi-path zone drops are
@@ -336,14 +355,14 @@ def on_empty_file_dropped(owner, path_str: str) -> None:
                 return
         # Directory → open folder (triage 1037)
         if p.is_dir():
-            try_open_folder(owner, p)
+            try_open_folder(owner, p, controller)
             return
         # Single image file → shared core (open_paths, 1 image — not parent
         # folder — same branch widget drop_event takes for one file).
         # Use shared accept check so behavior matches widget dropEvent
         if p.is_file() and p.suffix.lower() in _ACCEPTED_EXTS:
             _dnd_log("on_empty_file_dropped: single image -> open_paths %s", p)
-            _route_paths(owner, [p])
+            _route_paths(owner, [p], controller)
             return
         if p.is_file():
             # Non-image file: ignore with a note. The widget path rejects
@@ -353,16 +372,17 @@ def on_empty_file_dropped(owner, path_str: str) -> None:
             return
         # Non-file, non-dir strays (fifo/socket/…) → same parent fallback
         # the widget path uses, never the path itself.
-        try_open_folder(owner, _fallback_folder([p]))
+        try_open_folder(owner, _fallback_folder([p]), controller)
     except Exception as e:
         _dnd_log("on_empty_file_dropped failed: %r", e, exc_info=True)
         pass
 
 
-def try_open_folder(owner, folder: Path) -> None:
-    """Open *folder* via the widget's controller, else emit pick request."""
+def try_open_folder(owner, folder: Path, controller=None) -> None:
+    """Open *folder* via the explicit controller, else emit pick request."""
     folder = Path(folder)
-    _dnd_log("try_open_folder: %s ctrl=%s", folder, getattr(owner, "_controller", None))
+    ctrl = _explicit_controller(owner, controller)
+    _dnd_log("try_open_folder: %s ctrl=%s", folder, ctrl)
     try:
         from core.state_management.gallery_actions import GalleryPoolOpened
         from tabs.image_gallery.ui.gallery_store import dispatch_gallery, entries_for_folder
@@ -378,12 +398,9 @@ def try_open_folder(owner, folder: Path) -> None:
     except Exception:
         pass
     try:
-        ctrl = owner._controller
         if ctrl is not None and hasattr(ctrl, "open_folder"):
             ctrl.open_folder(folder)
             return
-    except AttributeError:
-        pass
     except Exception as e:
         _dnd_log("try_open_folder open_folder failed: %r", e, exc_info=True)
         pass
@@ -393,7 +410,7 @@ def try_open_folder(owner, folder: Path) -> None:
         pass
 
 
-def drop_event(owner, event) -> None:
+def drop_event(owner, event, controller=None) -> None:
     """Widget-level drop — shared accept check, then shared routing."""
     _dnd_log("dropEvent: enter")
     if not is_acceptable_drop(owner, event):
@@ -410,7 +427,7 @@ def drop_event(owner, event) -> None:
             _note(owner, "Nothing to show — the dropped items held no images or folders.")
             return
         _dnd_log("dropEvent: %d paths %r", len(paths), paths[:5])
-        if _route_paths(owner, list(paths)):
+        if _route_paths(owner, list(paths), controller):
             try:
                 event.accept()
             except Exception:
@@ -435,9 +452,10 @@ class _ZoneDropFilter(QObject):
     (no truncated re-emit); other event types pass through untouched.
     """
 
-    def __init__(self, owner):
+    def __init__(self, owner, controller=None):
         super().__init__()
         self._owner = owner
+        self._controller = controller
 
     def eventFilter(self, watched, event):  # noqa: N802
         try:
@@ -452,7 +470,7 @@ class _ZoneDropFilter(QObject):
                 drag_move_event(self._owner, event)
                 return True
             if t == QEvent.Type.Drop:
-                drop_event(self._owner, event)
+                drop_event(self._owner, event, _explicit_controller(self._owner, self._controller))
                 return True
         except Exception as e:
             _dnd_log("zone drop filter failed: %r", e, exc_info=True)
@@ -460,16 +478,25 @@ class _ZoneDropFilter(QObject):
         return False
 
 
-def install_zone_drop_forwarding(owner) -> bool:
+def install_zone_drop_forwarding(owner, controller=None) -> bool:
     """Route drops landing on the empty-state zone through ``drop_event``.
 
-    Called once from ``ImageGalleryWidget.__init__`` (thin owner). Finds the
+    Called once from ``ImageGalleryWidget.__init__`` (thin owner) and again
+    from ``attach_controller`` once the controller is known. Finds the
     zone label by objectName (``gallery_empty_drop_zone``) so this module
     never reaches into ``GalleryEmptyState`` privates. Idempotent; returns
-    True when the filter is installed.
+    True when the filter is installed. An explicit *controller* refreshes
+    the installed filter's binding (None never clobbers); otherwise the
+    filter resolves the triage owner lazily at event time.
     """
     try:
-        if getattr(owner, "_zone_drop_filter", None) is not None:
+        existing = getattr(owner, "_zone_drop_filter", None)
+        if existing is not None:
+            if controller is not None:
+                try:
+                    existing._controller = controller
+                except Exception:
+                    pass
             return True
         empty = getattr(owner, "_empty_state", None)
         if empty is None:
@@ -485,7 +512,7 @@ def install_zone_drop_forwarding(owner) -> bool:
             zone = getattr(empty, "_drop_label", None)
         if zone is None:
             return False
-        filt = _ZoneDropFilter(owner)
+        filt = _ZoneDropFilter(owner, controller)
         try:
             zone.installEventFilter(filt)
         except Exception:
