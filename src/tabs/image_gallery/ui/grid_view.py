@@ -12,6 +12,7 @@ painter pipeline owns visuals.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -36,6 +37,8 @@ from tabs.image_gallery.ui.list.card import (
     update_gallery_list_card,
 )
 from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
+
+logger = logging.getLogger("ImproveImgSLI")
 
 # View modes (recent items_view parity): one view, builders + columns swap.
 VIEW_GRID = "grid"
@@ -854,27 +857,24 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
         self._series_headers = _new_headers
-        # 5. relayout: drop layout items only (widgets stay alive/parented),
-        # re-add per plan with the same row math as before.
-        while self.items_layout.count():
-            try:
-                self.items_layout.takeAt(0)
-            except Exception:
-                break
-        current_row = 0
-        _hdr_pos = 0
+        # 5. plan target rows, then relayout ONLY when the live grid already
+        # diverges. Append already places the fresh card at the tail; the
+        # set_triage that follows describes the SAME plan. Re-adding every
+        # widget identically there is a second visible reposition (bug 3:
+        # "jumps twice"). Compute the target and skip the takeAt/addWidget
+        # storm when the layout already matches — set_series then converges
+        # to a no-op instead of jumping.
+        _plan: list[tuple] = []
+        _plan_row = 0
+        _plan_hdr = 0
         for sec in _sections:
             try:
-                header = _new_headers[_hdr_pos]
-                _hdr_pos += 1
+                _plan_header = _new_headers[_plan_hdr]
+                _plan_hdr += 1
             except Exception:
                 continue
-            try:
-                self.items_layout.addWidget(header, current_row, 0, 1, self.grid_columns)
-                header.show()
-            except Exception:
-                pass
-            current_row += 1
+            _plan.append((_plan_header, _plan_row, 0, 1, self.grid_columns))
+            _plan_row += 1
             if sec["kind"] == "series" and sec["collapsed"]:
                 continue
             for pos, item in enumerate(sec["items"]):
@@ -886,12 +886,72 @@ class GalleryGridView(QWidget):
                     continue
                 try:
                     r, c = divmod(pos, self.grid_columns)
-                    self.items_layout.addWidget(card, current_row + r, c)
-                    card.show()
                 except Exception:
-                    pass
+                    r, c = pos, 0
+                _plan.append((card, _plan_row + r, c, 1, 1))
             rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
-            current_row += rows_needed
+            _plan_row += rows_needed
+        _layout_matches = False
+        try:
+            _layout_matches = self.items_layout.count() == len(_plan)
+            if _layout_matches:
+                for _w, _r, _c, _rs, _cs in _plan:
+                    _idx = self.items_layout.indexOf(_w)
+                    if _idx < 0:
+                        _layout_matches = False
+                        break
+                    _gr, _gc, _grs, _gcs = self.items_layout.getItemPosition(_idx)
+                    if (int(_gr), int(_gc), int(_grs), int(_gcs)) != (_r, _c, _rs, _cs):
+                        _layout_matches = False
+                        break
+        except Exception:
+            _layout_matches = False
+        if _layout_matches:
+            current_row = _plan_row
+            for _w, _r, _c, _rs, _cs in _plan:
+                try:
+                    _w.show()
+                except Exception:
+                    logger.debug("_rebuild_series: reveal matched widget failed", exc_info=True)
+        else:
+            # Drop layout items only (widgets stay alive/parented), re-add per
+            # plan with the same row math as before.
+            while self.items_layout.count():
+                try:
+                    self.items_layout.takeAt(0)
+                except Exception:
+                    break
+            current_row = 0
+            _hdr_pos = 0
+            for sec in _sections:
+                try:
+                    header = _new_headers[_hdr_pos]
+                    _hdr_pos += 1
+                except Exception:
+                    continue
+                try:
+                    self.items_layout.addWidget(header, current_row, 0, 1, self.grid_columns)
+                    header.show()
+                except Exception:
+                    logger.debug("_rebuild_series: header placement failed", exc_info=True)
+                current_row += 1
+                if sec["kind"] == "series" and sec["collapsed"]:
+                    continue
+                for pos, item in enumerate(sec["items"]):
+                    try:
+                        card = self._cards_by_path.get(str(item.path))
+                    except Exception:
+                        card = None
+                    if card is None:
+                        continue
+                    try:
+                        r, c = divmod(pos, self.grid_columns)
+                        self.items_layout.addWidget(card, current_row + r, c)
+                        card.show()
+                    except Exception:
+                        logger.debug("_rebuild_series: card placement failed", exc_info=True)
+                rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
+                current_row += rows_needed
 
         self._sync_series_column_widths(series_mode=True)
         self.apply_selection(self._selection)
@@ -914,9 +974,13 @@ class GalleryGridView(QWidget):
 
         Keeps every painted card/header in place — no flat teardown, no
         restore pass. New cards land in the UNGROUPED tail when a series
-        view is live (creating the tail header on first use), else at the
-        flat grid end. Falls back to a full ``rebuild_grid`` when there is
-        no safe incremental plan (e.g. a chunked rebuild still in flight).
+        view is live (creating the tail header on first use). A flat
+        pre-triage pool (no headers yet) is promoted to a single UNGROUPED
+        section in the SAME pass, so the freshly appended card(s) are
+        grouped immediately instead of waiting for the triage worker
+        (bug 2: first-drop grouping delay). Falls back to a full
+        ``rebuild_grid`` when there is no safe incremental plan (e.g. a
+        chunked rebuild still in flight).
         """
         fresh = [it for it in (items or [])]
         if not fresh:
@@ -927,57 +991,84 @@ class GalleryGridView(QWidget):
         try:
             self._items = list(getattr(self, "_items", []) or []) + list(fresh)
         except Exception:
-            pass
+            logger.debug("append_new_cards: item-list update failed", exc_info=True)
         if getattr(self, "_series", None) is None:
+            # Flat, pre-triage pool (no headers yet): promote the whole pool
+            # to one UNGROUPED section now. `_rebuild_series` reuses the
+            # already-parented cards and lays them under the new tail header
+            # in one pass — the appended card is grouped the moment it
+            # arrives, with no reliance on a later triage delivery.
             try:
-                start = max(0, len(list(getattr(self, "_items", []) or [])) - len(fresh))
-                for pos, item in enumerate(fresh):
-                    card = self._acquire_card(item)
-                    self._cards_by_path[str(item.path)] = card
-                    r, c = divmod(start + pos, self.grid_columns)
-                    self.items_layout.addWidget(card, r, c)
-                    card.show()
+                self._series = []
+                self._ungrouped = list(getattr(self, "_items", []) or [])
+                self._hub_names = []
+                # _rebuild_series sweeps selection itself — no second sweep.
+                self._rebuild_series()
             except Exception:
-                pass
+                logger.debug(
+                    "append_new_cards: flat→UNGROUPED promotion failed", exc_info=True
+                )
+            return
+        try:
+            ungrouped = list(getattr(self, "_ungrouped", []) or [])
+            # Ensure exactly one UNGROUPED tail header widget exists. State
+            # (_ungrouped) and the actual header widget can disagree after a
+            # fail-open earlier pass; anchoring cards to a header that isn't
+            # there is what threw the appended card to a default position.
+            headers = list(getattr(self, "_series_headers", []) or [])
+            has_tail = any(
+                getattr(h, "objectName", lambda: "")() == "GallerySeriesHeader_ungrouped"
+                for h in headers
+            )
+            total = len(ungrouped) + len(fresh)
+            if has_tail:
+                self._refresh_ungrouped_header_count(total)
+            else:
+                row = int(self.items_layout.rowCount())
+                header = self._make_series_header(
+                    f"UNGROUPED · {total}", total,
+                    hub_name=None, collapsed=False, index=None,
+                )
+                self._series_headers.append(header)
+                self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
+                header.show()
+            base = int(self.items_layout.rowCount())
+            pos0 = len(ungrouped)
+            # Anchor new cards to the live ungrouped block, not to
+            # rowCount: rowCount counts header rows too, so continuing
+            # from it overshoots one row per header above (live: the
+            # 2nd card lands a row low on its own — reads as a nameless
+            # group until triage rebuilds). The tail block is last and
+            # compact, so its start row = rowCount - its row span.
             try:
-                self._update_host_height(len(list(getattr(self, "_items", []) or [])))
+                _cols = max(1, int(self.grid_columns))
             except Exception:
-                pass
-        else:
+                _cols = 1
             try:
-                if not list(getattr(self, "_ungrouped", []) or []):
-                    row = int(self.items_layout.rowCount())
-                    header = self._make_series_header(
-                        f"UNGROUPED · {len(fresh)}", len(fresh),
-                        hub_name=None, collapsed=False, index=None,
-                    )
-                    self._series_headers.append(header)
-                    self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
-                    header.show()
-                else:
-                    self._refresh_ungrouped_header_count(len(list(getattr(self, "_ungrouped", []) or [])) + len(fresh))
-                base = int(self.items_layout.rowCount())
-                pos0 = len(list(getattr(self, "_ungrouped", []) or []))
-                for pos, item in enumerate(fresh):
-                    card = self._acquire_card(item)
-                    self._cards_by_path[str(item.path)] = card
-                    r, c = divmod(pos0 + pos, self.grid_columns)
-                    self.items_layout.addWidget(card, base + r, c)
-                    card.show()
-                try:
-                    self._ungrouped = list(getattr(self, "_ungrouped", []) or []) + list(fresh)
-                except Exception:
-                    pass
+                _span = -(-int(pos0) // _cols) if pos0 else 0
+                _start = int(base) - int(_span) if _span else int(base)
             except Exception:
-                pass
+                _start = int(base)
+            for pos, item in enumerate(fresh):
+                card = self._acquire_card(item)
+                self._cards_by_path[str(item.path)] = card
+                r, c = divmod(pos0 + pos, _cols)
+                self.items_layout.addWidget(card, _start + r, c)
+                card.show()
             try:
-                self._update_host_height_for_series(int(self.items_layout.rowCount()))
+                self._ungrouped = ungrouped + list(fresh)
             except Exception:
-                pass
+                logger.debug("append_new_cards: ungrouped sync failed", exc_info=True)
+        except Exception:
+            logger.debug("append_new_cards: grouped tail append failed", exc_info=True)
+        try:
+            self._update_host_height_for_series(int(self.items_layout.rowCount()))
+        except Exception:
+            logger.debug("append_new_cards: host height sync failed", exc_info=True)
         try:
             self.apply_selection(self._selection)
         except Exception:
-            pass
+            logger.debug("append_new_cards: selection sweep failed", exc_info=True)
 
     def _refresh_ungrouped_header_count(self, total: int) -> None:
         """Recreate only the UNGROUPED tail header with a fresh count.
