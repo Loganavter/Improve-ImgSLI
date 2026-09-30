@@ -953,7 +953,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 613,
+      "lines": 615,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -975,7 +975,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/preview_decode.py",
-      "lines": 866,
+      "lines": 853,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"A2 preview single-flight + bounded full-res stage fan-out via note_slot_pixels (B1: pixels land in the session cache, the dispatch only bumps revision)\"",
