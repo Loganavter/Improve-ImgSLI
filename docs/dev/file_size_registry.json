@@ -756,7 +756,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1075,
+      "lines": 1086,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -779,7 +779,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 572,
+      "lines": 604,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan share one frame entry\"",
@@ -791,7 +791,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 946,
+      "lines": 995,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",

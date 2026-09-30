@@ -188,6 +188,33 @@ def _preview_store_cache_discard(overlay, store) -> None:
         pass
 
 
+def _is_preview_store_memo(overlay, store) -> bool:
+    """Identity check: is *store* a live memoized entry (never raises).
+
+    Shared by the host live-close (``_close_preview_store``) and the canvas
+    ownership guard (``preview_canvas._close_held_store`` via the probe
+    installed in ``_ensure_preview_canvas``): memoized stores are owned by
+    the cache (evict/replace/overlay-release close them), never by whoever
+    happens to hold them live. Closed entries still report True — closing
+    stays a no-op for them via the ``is_open`` guard, never a double-close.
+    """
+    try:
+        if store is None:
+            return False
+        try:
+            cache = getattr(overlay, "_preview_store_cache", None)
+        except Exception:
+            return False
+        if not isinstance(cache, dict):
+            return False
+        for v in cache.values():
+            if v is store:
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def _drop_preview_store_cache(overlay) -> None:
     """Close + clear every memoized store (overlay release path)."""
     try:
@@ -236,20 +263,23 @@ def _close_preview_store(overlay) -> None:
         pass
     if store is None:
         return
-    try:
-        cache = getattr(overlay, "_preview_store_cache", None)
-        if isinstance(cache, dict):
-            for v in cache.values():
-                if v is store:
-                    return  # memoized — cache owns it, keep open.
-    except Exception:
-        pass
+    if _is_preview_store_memo(overlay, store):
+        return  # memoized — cache owns it, keep open.
     _close_store_quiet(store)
 
 
-def release_preview_canvas(overlay) -> None:
-    """Lifecycle release (hide/close/populate-next); no-op off the GPU path."""
-    _drop_cover(overlay, "release")
+def release_preview_canvas_for_walk(overlay) -> None:
+    """Walk-step release (populate-next): hide the canvas, close only the
+    non-memoized live store, keep both memo dicts.
+
+    Ownership rule: the walk keeps memos (the ``_preview_store_cache`` bound
+    caps open fds/memmaps — that is what the bound is for; the pixmap stash
+    ``_stash_cache`` is never dropped here either), so a walk back to a seen
+    item reuses the memoized store with zero source decodes and zero
+    ``_store_from_pixmap`` materializations. Overlay hide/close take the
+    full ``release_preview_canvas`` instead (drops everything). Never raises.
+    """
+    _drop_cover(overlay, "release-walk")
     try:
         overlay._preview_canvas_pending = None
     except Exception:
@@ -268,9 +298,26 @@ def release_preview_canvas(overlay) -> None:
     except Exception:
         pass
     _close_preview_store(overlay)
-    _drop_preview_store_cache(overlay)
     # Keep the slot children exactly on the frame (canvas is hidden now).
     _fit_preview_slot(overlay)
+
+
+def release_preview_canvas(overlay) -> None:
+    """Overlay release (hide/close): walk step + drop every memoized store."""
+    release_preview_canvas_for_walk(overlay)
+    _drop_preview_store_cache(overlay)
+
+
+def _install_memo_probe(overlay, canvas) -> None:
+    """Install the canvas ownership probe (idempotent, fail-open).
+
+    The probe closes over *overlay* and reads its CURRENT store cache, so
+    evict/replace/drop are always reflected without re-installing.
+    """
+    try:
+        canvas._ql_is_memo = lambda s, _ov=overlay: _is_preview_store_memo(_ov, s)
+    except Exception:
+        pass
 
 
 def _ensure_preview_canvas(overlay):
@@ -287,6 +334,7 @@ def _ensure_preview_canvas(overlay):
     try:
         canvas = getattr(overlay, "_preview_canvas", None)
         if canvas is not None:
+            _install_memo_probe(overlay, canvas)
             return canvas
         try:
             from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget as _Canvas
@@ -299,6 +347,7 @@ def _ensure_preview_canvas(overlay):
         if host is None:
             return None
         canvas = _Canvas(host)
+        _install_memo_probe(overlay, canvas)
         try:
             from PySide6.QtWidgets import QSizePolicy as _SP
 
