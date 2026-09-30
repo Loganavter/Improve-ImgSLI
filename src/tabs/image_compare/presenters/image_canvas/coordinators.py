@@ -132,6 +132,28 @@ class CanvasLifecycleCoordinator:
         toolbar = self._resolve_toolbar_presenter(self.presenter)
         if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
             toolbar.update_toolbar_states()
+        # Demand pyramid hook (GIMP-style): a zoom that needs an unbuilt
+        # level demands it through the shared coordinator; built levels are
+        # a no-op. Fail-open — zoom UX never depends on pyramid state.
+        try:
+            from tabs.image_compare.use_cases.loading_pyramid import demand_for_zoom
+
+            demand_for_zoom(self._resolve_session_controller(self.presenter), _zoom)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _resolve_session_controller(presenter):
+        """Session controller behind the canvas presenter (fail-open None)."""
+        try:
+            main_controller = getattr(presenter, "main_controller", None)
+            sessions = getattr(main_controller, "sessions", None)
+            ctrl = getattr(sessions, "_session_controller", None)
+            if ctrl is not None:
+                return ctrl
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def _resolve_toolbar_presenter(presenter):
