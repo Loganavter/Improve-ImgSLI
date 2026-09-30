@@ -43,9 +43,30 @@ def _commit_allowed() -> bool:
         return True
 
 
+def _gallery_owner(view):  # type: ignore[no-untyped-def]
+    """Resolve the selection owner for *view* (grid_view or host).
+
+    G2: the grid_view carries ``_gallery_widget`` (set by the widget at
+    construction); the widget's ``_owner_for_triage()`` returns the attached
+    ``GalleryController`` (or the widget itself when storeless). The legacy
+    ``view._owner``/``view.owner`` back-refs are only a storeless fallback.
+    """
+    widget = getattr(view, "_gallery_widget", None)
+    if widget is not None:
+        resolver = getattr(widget, "_owner_for_triage", None)
+        if callable(resolver):
+            try:
+                cand = resolver()
+            except Exception:
+                cand = None
+            if cand is not None:
+                return cand
+    return getattr(view, "_owner", None) or getattr(view, "owner", None)
+
+
 def _base_snapshot(view) -> set:  # type: ignore[no-untyped-def]
     """Press-time selection: owner state wins, else the view's own."""
-    owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
+    owner = _gallery_owner(view)
     sel = None
     if owner is not None and hasattr(getattr(owner, "state", None), "selected_paths"):
         sel = getattr(owner.state, "selected_paths", None)
@@ -80,28 +101,24 @@ def _preview(view, paths: set, additive: bool) -> None:  # type: ignore[no-untyp
     except Exception:
         _t_apply_start = None  # type: ignore[assignment]
     # Prefer owner's preview helper if view delegates to an owner.
-    owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
+    owner = _gallery_owner(view)
     if owner is not None:
-        # Try commit_preview on owner.
-        for mod_name in ("tabs.image_gallery.use_cases.selection",):
+        try:
+            import tabs.image_gallery.use_cases.selection as sel
+
+            sel.commit_preview(owner, paths, additive=additive)
             try:
-                import importlib
+                import time as _time3
 
-                mod = importlib.import_module(mod_name)
-                if hasattr(mod, "commit_preview"):
-                    mod.commit_preview(owner, paths, additive=additive)
-                    try:
-                        import time as _time3
-
-                        _mdbg(
-                            "marquee UPDATE-COST apply(owner)=%.1fms",
-                            (_time3.perf_counter() - _t_apply_start) * 1000.0,  # type: ignore[operator]
-                        )
-                    except Exception:
-                        pass
-                    return
+                _mdbg(
+                    "marquee UPDATE-COST apply(owner)=%.1fms",
+                    (_time3.perf_counter() - _t_apply_start) * 1000.0,  # type: ignore[operator]
+                )
             except Exception:
                 pass
+            return
+        except Exception:
+            pass
     # Fallback: drive view's own selection preview without mutating state.
     base = getattr(view, "_marquee_base", set()) or set()
     try:
@@ -142,22 +159,24 @@ def _commit(view, paths: set, additive: bool) -> None:  # type: ignore[no-untype
     if not _commit_allowed():
         _mdbg("marquee finish SKIP commit (elimination gate IMGSLI_GALLERY_NO_MARQUEE_COMMIT=1)")
         return
+    # Owner-first: every commit (including the empty/non-additive clear) goes
+    # through ``sel.commit`` so the ``gallery`` slot is dispatched. The empty
+    # set is only a no-op for additive bands (union with base).
+    owner = _gallery_owner(view)
+    if owner is not None:
+        try:
+            import tabs.image_gallery.use_cases.selection as sel
+
+            sel.commit(owner, set(paths or set()), additive=additive)
+            _mdbg(
+                "marquee finish COMMIT via owner paths=%d additive=%s", len(paths), additive
+            )
+            return
+        except Exception:
+            pass
     if not paths:
         if not additive:
-            # Empty band with no additive → clear preview? Commit empty only if not additive.
-            # Tiny-drag (< min_drag_px on both axes, see toolkit gesture) lands
-            # here too — this line distinguishes "shrink to click clears"
-            # from "shrink kept (additive)".
-            owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
-            if owner is not None:
-                try:
-                    import tabs.image_gallery.use_cases.selection as sel
-
-                    sel.commit(owner, set(), additive=False)
-                    _mdbg("marquee finish COMMIT-EMPTY via owner (cleared, non-additive)")
-                    return
-                except Exception:
-                    pass
+            # Storeless view-only fallback: no owner/controller resolvable.
             try:
                 base = getattr(view, "_marquee_base", set()) or set()
                 view.apply_selection(set(base))
@@ -167,17 +186,6 @@ def _commit(view, paths: set, additive: bool) -> None:  # type: ignore[no-untype
         else:
             _mdbg("marquee finish EMPTY-KEPT (additive, no clear)")
         return
-    # Commit via owner if available.
-    owner = getattr(view, "_owner", None) or getattr(view, "owner", None)
-    if owner is not None:
-        try:
-            import tabs.image_gallery.use_cases.selection as sel
-
-            sel.commit(owner, paths, additive=additive)
-            _mdbg("marquee finish COMMIT via owner paths=%d additive=%s", len(paths), additive)
-            return
-        except Exception:
-            pass
     cb = getattr(view, "_on_marquee_commit", None)
     if callable(cb):
         try:
@@ -186,32 +194,15 @@ def _commit(view, paths: set, additive: bool) -> None:  # type: ignore[no-untype
             return
         except Exception:
             pass
-    # Fallback: commit directly on view's selection state if it owns one.
+    # Pure view-only fallback (storeless): local mirror + apply, no dispatch.
     try:
         current = set(getattr(view, "_selection", set()) or set())
         if additive:
             current = current | set(str(p) for p in paths)
         else:
             current = set(str(p) for p in paths)
-        # Normalize to Path if view expects Path.
         norm = set(Path(p) for p in current)
         view.apply_selection(norm)
-        # Persist via the controller dispatch — never write owner.state
-        # directly. A widget threaded as owner resolves to its attached
-        # controller first (fail-open: owners without set_selection skip).
-        try:
-            triage = owner
-            resolve = getattr(owner, "_owner_for_triage", None)
-            if callable(resolve):
-                try:
-                    triage = resolve()
-                except Exception:
-                    triage = owner
-            commit_sel = getattr(triage, "set_selection", None)
-            if callable(commit_sel):
-                commit_sel(norm)
-        except Exception:
-            pass
     except Exception:
         pass
 
