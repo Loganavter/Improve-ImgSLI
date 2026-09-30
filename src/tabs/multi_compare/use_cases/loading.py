@@ -218,7 +218,9 @@ def read_image(controller, path: Path, *, slot_id: int | None = None, start_pyra
             _emb_mc = None
         store = load_pixel_store(path, crop_service=crop_service, embedded_cache=_emb_mc)
         if start_pyramid:
-            start_pyramid_build(controller, store, slot_id=slot_id)
+            # Demand kick (GIMP-style): only k_fit for the fit view, with
+            # eager fallback when no view geometry is reachable.
+            demand_pyramid_for_slot(controller, store, slot_id=slot_id)
         return store
     except Exception as e:
         logger.error("Failed to load %s: %s", path, e, exc_info=True)
@@ -275,6 +277,311 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
         coord.start_build(s, slot_id=sid, should_abort=_should_abort)
 
     _seam_start_pyramid_build(store, slot_id, _hook)
+
+
+def _demand_abort_for_slot(controller, slot_id, path, pyramid=None):
+    """Abort predicate for demand builds (E2 ``should_abort`` shape).
+
+    Aborts when the pyramid went stale (base closed / re-unified) or the
+    slot vanished / was recycled mid-build (``max+1`` id reuse with a
+    different path). A missing slot list reads as not-aborted (headless
+    fakes) — never raises.
+    """
+
+    def _should_abort(_p=pyramid, _sid=slot_id, _path=path):
+        if _p is not None and not getattr(_p, "valid", True):
+            return True
+        if _sid is None:
+            return False
+        try:
+            slots = list(controller.widget.state.slots)
+        except Exception:
+            return False
+        slot = next((s for s in slots if getattr(s, "id", None) == _sid), None)
+        if slot is None:
+            return True  # slot removed mid-build → abort, never rebuild
+        try:
+            return not _same_fs_path(getattr(slot, "path", None), _path)
+        except Exception:
+            return False
+
+    return _should_abort
+
+
+def _rect_size(rect):
+    """``(w, h)`` from a QRect-like (``width()`` methods) or a ``(w, h)`` tuple."""
+    try:
+        w, h = rect[0], rect[1]
+        return float(w), float(h)
+    except Exception:
+        pass
+    try:
+        width = getattr(rect, "width", None)
+        height = getattr(rect, "height", None)
+        w = width() if callable(width) else width
+        h = height() if callable(height) else height
+        return float(w), float(h)
+    except Exception:
+        return None
+
+
+def _fit_dest_scale(controller, store, slot_id, *, zoom=None, rect=None, fit=None):
+    """Fit-view dest scale (display-px per level-0 px) or ``None``.
+
+    Mirrors ``scene.passes.residency.lod_key_and_source`` (``disp = rect *
+    fit * zoom``, ``scale = max(disp_w/src_w, disp_h/src_h)``) so the demand
+    target and the sampler can never disagree. ``rect``/``fit`` come from
+    the zoom caller when it already has them (wheel tick); otherwise the
+    canvas leaf is looked up (arrival path, keyboard zoom). ``None`` when
+    no view geometry is reachable — callers fall back, never raise.
+    """
+    try:
+        size = getattr(store, "size", None)
+        size = size() if callable(size) else size
+        src_w, src_h = float(size[0]), float(size[1])
+    except Exception:
+        return None
+    if not src_w > 0 or not src_h > 0:
+        return None
+    if zoom is None:
+        try:
+            zoom = float(getattr(controller.widget.state, "zoom", 1.0))
+        except Exception:
+            zoom = 1.0
+    try:
+        zoom = float(zoom)
+    except Exception:
+        return None
+    if not zoom > 0:
+        return None
+    rect_w = rect_h = None
+    if rect is not None:
+        try:
+            rect_w, rect_h = _rect_size(rect)
+        except Exception:
+            rect_w = rect_h = None
+    if not rect_w or not rect_h or rect_w <= 0 or rect_h <= 0:
+        rect_w = rect_h = None
+        try:
+            canvas = getattr(getattr(controller, "widget", None), "canvas", None)
+            leaf_rects = canvas._leaf_rects() if canvas is not None else None
+        except Exception:
+            leaf_rects = None
+        try:
+            for leaf, rect in leaf_rects or ():
+                if getattr(leaf, "slot_id", None) == slot_id:
+                    sized = _rect_size(rect)
+                    if sized is not None and sized[0] > 0 and sized[1] > 0:
+                        rect_w, rect_h = sized
+                    break
+        except Exception:
+            rect_w = rect_h = None
+    if rect_w is None or rect_h is None:
+        return None
+    fit_x = fit_y = None
+    if fit is not None:
+        try:
+            fit_x, fit_y = float(fit[0]), float(fit[1])
+        except Exception:
+            fit_x = fit_y = None
+    if not fit_x or not fit_y or fit_x <= 0 or fit_y <= 0:
+        # Aspect-fit inline (same math as canvas.interaction.fit_scale_for —
+        # kept local so use_cases never imports canvas).
+        try:
+            img_ar = src_w / src_h
+            cell_ar = rect_w / rect_h
+            if img_ar > cell_ar:
+                fit_x, fit_y = 1.0, cell_ar / img_ar
+            else:
+                fit_x, fit_y = img_ar / cell_ar, 1.0
+        except Exception:
+            return None
+    try:
+        return max(
+            rect_w * fit_x * zoom / src_w,
+            rect_h * fit_y * zoom / src_h,
+        )
+    except Exception:
+        return None
+
+
+def demand_target_for_slot(controller, store, slot_id, *, zoom=None, rect=None, fit=None):
+    """Ideal pyramid level for the slot's current view (E1 ``select_level``).
+
+    Shared LOD all the way down: ``select_level`` over the full
+    ``estimate_total_levels`` count with the fit-view dest scale — the same
+    inputs the residency sampler uses, so the demand target and the sampler
+    agree about which level is which. ``None`` when the target is
+    uncomputable (no geometry / bad store) — callers fall back, never raise.
+    """
+    try:
+        from engine.cache.lod import select_level
+        from engine.store.pyramid_pixel_store import estimate_total_levels
+    except Exception:
+        return None
+    try:
+        size = getattr(store, "size", None)
+        size = size() if callable(size) else size
+        w, h = int(size[0]), int(size[1])
+    except Exception:
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    try:
+        scale = _fit_dest_scale(
+            controller, store, slot_id, zoom=zoom, rect=rect, fit=fit
+        )
+    except Exception:
+        return None
+    if scale is None:
+        return None
+    try:
+        return int(select_level(float(scale), estimate_total_levels(w, h)))
+    except Exception:
+        return None
+
+
+def demand_pyramid_for_slot(controller, store, *, slot_id=None) -> bool:
+    """GIMP-style demand kick for a full-res arrival (replaces the eager kick).
+
+    Demands only ``k_fit`` (``demand_target_for_slot``) through the shared
+    E2 coordinator — bounded worker, same toast/abort routing as the eager
+    path, built levels never rebuild. Falls back to the legacy eager
+    ``start_pyramid_build`` when no view geometry is reachable (headless /
+    pre-layout slot) so no arrival ever loses its pyramid. Never raises.
+
+    Returns True iff a demand was kicked or already satisfied; False when
+    the eager fallback ran or nothing could start.
+    """
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is None or store is None:
+        return False
+    try:
+        k = demand_target_for_slot(controller, store, slot_id)
+    except Exception:
+        k = None
+    if k is None:
+        try:
+            start_pyramid_build(controller, store, slot_id=slot_id)
+        except Exception:
+            pass
+        return False
+    path = None
+    if slot_id is not None:
+        try:
+            slot = next(
+                (s for s in controller.widget.state.slots if s.id == slot_id),
+                None,
+            )
+            path = getattr(slot, "path", None) if slot is not None else None
+        except Exception:
+            path = None
+    try:
+        from engine.store.pyramid_registry import ensure_pyramid as _ensure
+
+        pyr = _ensure(store)
+    except Exception:
+        pyr = None
+    try:
+        return bool(
+            coord.demand_level(
+                store,
+                int(k),
+                slot_id=slot_id,
+                should_abort=_demand_abort_for_slot(
+                    controller, slot_id, path, pyr
+                ),
+            )
+        )
+    except Exception:
+        return False
+
+
+def demand_for_zoom(controller, slot_id, zoom, *, rect=None, fit=None) -> bool:
+    """Zoom demand entry (thin, canvas calls via ``demand_for_zoom_widget``).
+
+    Demands the newly needed level for ``slot_id`` at ``zoom`` through the
+    E2 coordinator — same toast/abort routing as arrivals; built levels
+    never rebuild (the coordinator short-circuits them with no worker).
+    ``slot_id=None`` fans out over every slot holding a pixel store
+    (keyboard zoom has no picked slot). Preview-only slots (no pixel tier)
+    are skipped. Never raises; True if any demand kicked or was satisfied.
+    """
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is None:
+        return False
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        return False
+    if slot_id is not None:
+        slots = [s for s in slots if getattr(s, "id", None) == slot_id]
+        if not slots:
+            return False
+    cache = getattr(controller, "pixel_cache", None)
+    if cache is None:
+        return False
+    kicked = False
+    for slot in slots:
+        try:
+            path = getattr(slot, "path", None)
+            store = cache.get_pixel(path)
+        except Exception:
+            continue
+        if store is None:
+            continue  # preview-only slot: nothing to demand
+        try:
+            k = demand_target_for_slot(
+                controller, store, getattr(slot, "id", None),
+                zoom=zoom, rect=rect, fit=fit,
+            )
+        except Exception:
+            continue
+        if k is None:
+            continue  # zoom path never kicks eager builds — fail-open skip
+        try:
+            from engine.store.pyramid_registry import ensure_pyramid as _ensure
+
+            pyr = _ensure(store)
+        except Exception:
+            pyr = None
+        try:
+            if coord.demand_level(
+                store,
+                int(k),
+                slot_id=getattr(slot, "id", None),
+                should_abort=_demand_abort_for_slot(
+                    controller, getattr(slot, "id", None), path, pyr
+                ),
+            ):
+                kicked = True
+        except Exception:
+            continue
+    return kicked
+
+
+def demand_for_zoom_widget(widget, slot_id, zoom, *, rect=None, fit=None) -> bool:
+    """Canvas-hook entry: resolves the controller, then :func:`demand_for_zoom`.
+
+    The zoom handlers call this single function (no canvas restructuring —
+    plain data in, bool out). The controller is resolved through the
+    canvas-parent backref (same chain as
+    ``scene.passes.residency.controller_for_canvas``). Never raises.
+    """
+    try:
+        from tabs.multi_compare.scene.passes import residency as _residency
+
+        controller = _residency.controller_for_canvas(widget)
+    except Exception:
+        return False
+    if controller is None:
+        return False
+    try:
+        return bool(
+            demand_for_zoom(controller, slot_id, zoom, rect=rect, fit=fit)
+        )
+    except Exception:
+        return False
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
@@ -481,7 +788,10 @@ def apply_full_resolution(
     from tabs.multi_compare.scene import actions as mc_actions
 
     controller.widget.store.dispatch(mc_actions.note_slot_pixels(slot_id, "full"))
-    start_pyramid_build(controller, store, slot_id=slot_id)
+    # Demand kick (GIMP-style): only k_fit for the current view — the
+    # resolve pyramid gate keeps holding the preview until the needed tier
+    # is ready, so this never flips the display early.
+    demand_pyramid_for_slot(controller, store, slot_id=slot_id)
 
 
 def load_external_paths(controller, paths) -> int:
