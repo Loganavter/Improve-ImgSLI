@@ -351,6 +351,22 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
             else nullcontext()
         ):
             widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+        # MC demand pyramid (GIMP-style): a zoom past built levels kicks
+        # only the newly needed level via use_cases (E2 coordinator, same
+        # toast/abort routing; built levels no-op). One fail-open call —
+        # no canvas restructuring, never raises.
+        try:
+            from tabs.multi_compare.use_cases import loading as _mc_loading
+
+            _mc_loading.demand_for_zoom_widget(
+                widget,
+                slot.id,
+                z2,
+                rect=(rect.width(), rect.height()),
+                fit=(fit_x, fit_y),
+            )
+        except Exception:
+            pass
         if debug_ticks:
             mc_dnd_debug(
                 "[mc-zoom] tick delta=%d zoom=%.6f->%.6f pan=(%.4f,%.4f) "
@@ -617,6 +633,14 @@ def _apply_keyboard_zoom(widget, key) -> None:
         # zoom over the middle of the cell.
         new_pan_x, new_pan_y = widget.state.pan_x, widget.state.pan_y
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+    # MC demand pyramid (keyboard zoom has no picked slot → fan out over
+    # every slot holding a pixel store; same fail-open single call as wheel).
+    try:
+        from tabs.multi_compare.use_cases import loading as _mc_loading
+
+        _mc_loading.demand_for_zoom_widget(widget, None, z2)
+    except Exception:
+        pass
 
 
 def handle_key_press_event(widget, event) -> None:
