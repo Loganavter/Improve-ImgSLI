@@ -16,6 +16,7 @@ from pathlib import Path
 from core.events import CoreErrorOccurredEvent
 from tabs._shared.loading_pipeline import (
     _same_fs_path,
+    get_or_load_preview,
     start_pyramid_build as _seam_start_pyramid_build,
 )
 
@@ -379,6 +380,12 @@ def apply_full_resolution(
     shared object, no duplicate decode); the displaced worker-fresh store
     is closed. Ownerless stores (orphan/recycled slot) are closed unless
     they are the cache's live entry (shared with a live slot).
+
+    Preview-first invariant: before the full tier lands, the preview tier
+    for ``path`` is demand-filled via the shared seam
+    ``get_or_load_preview`` (bounded ~1024px, fail-open) — peek first so a
+    same-path sibling's cached preview is never re-decoded; a fill miss
+    (``None``) preserves today's behavior exactly.
     """
     _ = keep_slot_on_error  # full tier never drops the slot (preview stage owns that call)
     if store is None:
@@ -426,6 +433,29 @@ def apply_full_resolution(
 
         _close_shared(controller, path, store)
         return
+    # Preview-first: ensure the preview tier exists before the full note.
+    # Peek first (same-path sibling may already hold it — never
+    # double-decode); seam fill is bounded + fail-open, so a miss keeps
+    # today's behavior exactly.
+    try:
+        _preview_cache = getattr(controller, "pixel_cache", None)
+        _preview_hit = None
+        if _preview_cache is not None:
+            try:
+                _preview_hit = _preview_cache.get_preview(path)
+            except Exception:
+                _preview_hit = None
+        try:
+            _preview_usable = _preview_hit is not None and not _preview_hit.isNull()
+        except Exception:
+            _preview_usable = _preview_hit is not None
+        if not _preview_usable:
+            try:
+                get_or_load_preview(_preview_cache, path)
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         cache = getattr(controller, "pixel_cache", None)
         if cache is not None:

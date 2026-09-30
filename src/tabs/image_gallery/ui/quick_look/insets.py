@@ -87,7 +87,6 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
     try:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QPixmap
         src = overlay._source_path
         src_item = None
         owner = overlay._owner
@@ -149,10 +148,12 @@ def populate_source_inset(overlay, item, is_fidelity: bool) -> None:
             except Exception:
                 pix = None
             if pix is None:
+                # Bounded last resort: coarse pyramid sample (no full
+                # decode). A miss fails open (inset shows "—" below).
                 try:
-                    pm2 = QPixmap(str(src))
-                    if not pm2.isNull():
-                        pix = pm2.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    _pyr2 = _pyramid_pixmap_for(src, long_edge=512)
+                    if _pyr2 is not None and not _pyr2.isNull():
+                        pix = _pyr2.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.FastTransformation)
                 except Exception:
                     pass
         if pix is not None and not pix.isNull():
@@ -191,9 +192,8 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
     try:
         from sli_ui_toolkit.managers import scaled_px
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QPixmap
-        # Reuse the already-decoded preview when possible — avoids a
-        # second full QPixmap load for the non-fidelity crop inset.
+        # Reuse the already-stashed bounded preview when possible — avoids
+        # a second decode for the non-fidelity crop inset.
         pm_full = getattr(overlay, "_preview_full", None)
         try:
             if pm_full is None or pm_full.isNull():
@@ -203,7 +203,7 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
         if pm_full is None:
             # Coarse-direct center crop (bounded — no full decode). Success
             # populates straight from the level's own bytes and returns; any
-            # miss falls through to the QPixmap/thumb ladder below.
+            # miss falls through to the thumbnail/reader ladder below.
             try:
                 _direct = _pyramid_pixmap_for(getattr(item, "path", ""), center_third=True, long_edge=512)
             except Exception:
@@ -220,7 +220,26 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
                     pass
                 return
             try:
-                pm_full = QPixmap(str(getattr(item, "path", "")))
+                # Bounded ladder only: item thumbnail, then an
+                # aspect-correct scaled-reader read (long edge 1024) —
+                # never a full QPixmap decode (~6 GB for a 40k source).
+                # A miss fails open (inset skipped below).
+                try:
+                    _th = getattr(item, "thumbnail", None)
+                    pm_full = _th if (_th is not None and not _th.isNull()) else None
+                except Exception:
+                    pm_full = None
+                if pm_full is None:
+                    try:
+                        _ip = getattr(item, "path", "")
+                        _idims = _source_dimensions(item, _ip)
+                        if _idims is not None and _idims[0] > 0 and _idims[1] > 0:
+                            _isc = min(1024.0 / _idims[0], 1024.0 / _idims[1], 1.0)
+                            _itw = max(1, int(round(_idims[0] * _isc)))
+                            _ith = max(1, int(round(_idims[1] * _isc)))
+                            pm_full = _load_scaled_pixmap(_ip, _itw, _ith)
+                    except Exception:
+                        pm_full = None
                 if pm_full is not None and pm_full.isNull():
                     pm_full = None
             except Exception:
