@@ -196,12 +196,22 @@ def _commit(view, paths: set, additive: bool) -> None:  # type: ignore[no-untype
         # Normalize to Path if view expects Path.
         norm = set(Path(p) for p in current)
         view.apply_selection(norm)
-        # Also persist to owner's state if view has owner attr.
-        if owner is not None and hasattr(getattr(owner, "state", None), "selected_paths"):
-            try:
-                owner.state.selected_paths = norm  # type: ignore[attr-defined]
-            except Exception:
-                pass
+        # Persist via the controller dispatch — never write owner.state
+        # directly. A widget threaded as owner resolves to its attached
+        # controller first (fail-open: owners without set_selection skip).
+        try:
+            triage = owner
+            resolve = getattr(owner, "_owner_for_triage", None)
+            if callable(resolve):
+                try:
+                    triage = resolve()
+                except Exception:
+                    triage = owner
+            commit_sel = getattr(triage, "set_selection", None)
+            if callable(commit_sel):
+                commit_sel(norm)
+        except Exception:
+            pass
     except Exception:
         pass
 

@@ -76,6 +76,10 @@ class ImageGalleryWidget(QWidget):
 
         super().__init__(parent)
         self._context = context
+        # G2 gallery contract: controller attached once via attach_controller
+        # (called by ImageGalleryTab.create_page). Until attached, the widget
+        # acts as its own triage owner (storeless unit tests, fail-open).
+        self._attached_controller = None
         self._items: list[GalleryItem] = []
         # View switch state: False grid, True list. Mirrors the toolbar
         # segmented switch; grid_view owns the per-card builders
@@ -673,20 +677,9 @@ class ImageGalleryWidget(QWidget):
         if _dbg_on:
             _dbg("ctx menu entry path=%s", path)
         try:
-            # Resolve owner: try controller via parent tab, else self.
-            owner = None
-            for attr in ("_controller", "_owner", "_gallery_controller"):
-                owner = getattr(self, attr, None)
-                if owner is not None:
-                    break
-            if owner is None:
-                # Widget itself can act as owner for triage (has state).
-                # If hosted by GalleryController, find via window.
-                try:
-                    win = self.window()
-                    owner = getattr(win, "_gallery_controller", None) or self
-                except Exception:
-                    owner = self
+            # Owner is the attached controller (self when unattached) —
+            # no attribute scan, no window walk (G2 gallery contract).
+            owner = self._owner_for_triage()
             if _dbg_on:
                 _t_owner = _time.perf_counter()
             card = self._grid_view.card_for(path) if hasattr(self, "_grid_view") else None
@@ -770,7 +763,7 @@ class ImageGalleryWidget(QWidget):
     def _on_empty_file_dropped(self, path_str: str) -> None:
         from tabs.image_gallery.ui import drag_drop as _drag_drop
 
-        _drag_drop.on_empty_file_dropped(self, path_str)
+        _drag_drop.on_empty_file_dropped(self, path_str, self._owner_for_triage())
 
     # -- S4 quick look ----------------------------------------------------------
 
@@ -805,10 +798,45 @@ class ImageGalleryWidget(QWidget):
     # -- keyboard: Space/Delete remove card, B make best, Enter compare, Esc close/back, arrows navigate
     # widget keyPressEvent -> triage functions (design.md:129) ----------------
 
-    def _owner_for_triage(self):
-        from tabs.image_gallery.use_cases import triage_ui
+    def attach_controller(self, controller) -> None:
+        """Attach the owning ``GalleryController`` (first wins, fail-open).
 
-        return triage_ui.owner_for_triage(self)
+        Called once by ``ImageGalleryTab.create_page`` (G1 side of the
+        gallery-contracts seam). A second call is a protocol violation:
+        logged at debug and ignored — last wins is forbidden.
+        """
+        try:
+            if self._attached_controller is not None:
+                logger.debug(
+                    "ImageGalleryWidget.attach_controller: already attached, ignoring double-attach"
+                )
+                return
+        except AttributeError:
+            pass
+        self._attached_controller = controller
+        # Refresh the zone-drop binding with the now-known controller.
+        try:
+            from tabs.image_gallery.ui import drag_drop as _drag_drop
+
+            _drag_drop.install_zone_drop_forwarding(self, controller)
+        except Exception:
+            pass
+
+    def _owner_for_triage(self):
+        """Return the attached controller, or self when unattached (fail-open).
+
+        Storeless unit tests construct the widget bare (no tab wiring), so
+        ``None`` attachment falls back to the widget itself, which carries
+        ``state``-compatible reads. No other fallback chain — no attribute
+        scan, no window walk (G2 gallery contract).
+        """
+        try:
+            ctrl = self._attached_controller
+        except AttributeError:
+            ctrl = None
+        if ctrl is not None:
+            return ctrl
+        return self
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         from tabs.image_gallery.use_cases import triage_ui
@@ -823,17 +851,13 @@ class ImageGalleryWidget(QWidget):
             from tabs.image_gallery.ui.clean_review import CleanReviewOverlay
 
             actual_owner = owner if owner is not None else self._owner_for_triage()
-            # Ensure overlay exists.
+            # Ensure overlay exists. Owner travels via constructor / show_for
+            # (both take owner) — never re-poked afterwards (G2 contract).
             overlay = getattr(self, "_clean_overlay", None)
             if overlay is None:
                 parent = self.window() or self
                 overlay = CleanReviewOverlay(parent, actual_owner)
                 self._clean_overlay = overlay
-            else:
-                try:
-                    overlay._owner = actual_owner  # type: ignore[attr-defined]
-                except Exception:
-                    pass
             overlay.show_for(actual_owner)
         except Exception:
             pass
@@ -1367,7 +1391,7 @@ class ImageGalleryWidget(QWidget):
     def dropEvent(self, event) -> None:  # type: ignore[override]
         from tabs.image_gallery.ui import drag_drop as _drag_drop
 
-        _drag_drop.drop_event(self, event)
+        _drag_drop.drop_event(self, event, self._owner_for_triage())
 
     def pick_folder_dialog(self, start_dir: str = "") -> str | None:
         from tabs.image_gallery.use_cases import dialog as _dialog

@@ -97,7 +97,7 @@ def log_card_gates(card, owner, trigger: str) -> None:  # type: ignore[no-untype
             bg_locked = False
         try:
             gesture, filt = None, None
-            for cand in (owner, getattr(card, "_gallery_owner", None)):
+            for cand in (owner,):
                 try:
                     gv = getattr(cand, "grid_view", None) or getattr(cand, "widget", None)
                     gv = getattr(gv, "_grid_view", gv)

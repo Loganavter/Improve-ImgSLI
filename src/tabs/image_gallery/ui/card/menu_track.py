@@ -46,7 +46,10 @@ def track_open_menu(card, menu, owner=None) -> None:  # type: ignore[no-untyped-
             about = getattr(menu, "aboutToHide", None)
             if about is not None and hasattr(about, "connect"):
                 try:
-                    _menu_owner = owner if owner is not None else getattr(card, "_gallery_owner", None)
+                    # Explicit owner threaded from _on_card_context (fail-open
+                    # None: hide-time traces degrade to "none", see
+                    # marquee_snapshot — shared-with-tests signature).
+                    _menu_owner = owner
                 except Exception:
                     _menu_owner = None
 
