@@ -141,14 +141,93 @@ def _coarse_store_for(path, *, long_edge: int = 1024):
         return None
 
 
+def _store_from_pixmap(pm):
+    """Canvas store from a memoized stash pixmap — no source decode.
+
+    Lossless in-memory PNG round-trip (the stash holds opaque coarse
+    pixmaps, so no alpha-premultiply rounding): a memo-hit revisit feeds
+    the canvas without rebuilding the coarse store from source. Bounded to
+    ``_PREVIEW_FULL_DECODE_EDGE``; fail-open None (the caller falls back
+    to the bounded coarse build). Never raises.
+    """
+    try:
+        try:
+            w, h = int(pm.width()), int(pm.height())
+        except Exception:
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        try:
+            from tabs.image_gallery.ui.quick_look.preview import _PREVIEW_FULL_DECODE_EDGE
+
+            if max(w, h) > int(_PREVIEW_FULL_DECODE_EDGE):
+                return None
+        except Exception:
+            pass
+        try:
+            from PySide6.QtCore import QBuffer, QIODevice
+
+            img = pm.toImage()
+            buf = QBuffer()
+            try:
+                buf.open(QIODevice.WriteOnly)
+                if not bool(img.save(buf, "PNG")):
+                    return None
+                data = bytes(buf.data())
+            finally:
+                try:
+                    buf.close()
+                except Exception:
+                    pass
+        except Exception:
+            return None
+        if not data:
+            return None
+        try:
+            from io import BytesIO
+
+            from PIL import Image as _PILImage
+
+            from engine.store.tiled_pixel_store import TiledPixelStore
+
+            with _PILImage.open(BytesIO(data)) as _im:
+                pil = _im.convert("RGBA")
+            store = TiledPixelStore.from_pil(pil)
+        except Exception:
+            return None
+        try:
+            if not bool(store.is_open):
+                return None
+        except Exception:
+            return None
+        return store
+    except Exception:
+        return None
+
+
 def _populate_preview_canvas(overlay, item) -> bool:
     """GPU branch: bounded coarse store (frozen seam) into the canvas slot.
 
     The canvas is the only live surface; the raster cover plate holds the
-    pane until its first GPU frame. Miss (empty path, unreadable source,
-    unbuilt coarse) fails closed to False and the cover persists — never a
-    neighbor's content, never a full-frame decode.
+    pane until its first GPU frame. Memo hit: the stashed pixmap rebuilds
+    the canvas store with zero source decodes. Miss: a single coarse build
+    is shared by the canvas store and the stash pixmap (no double decode).
+    Inner gallery-debug timings (``preview-coarse`` / ``preview-stash`` /
+    ``preview-set-source``) split the outer ``preview=`` total. Miss
+    (empty path, unreadable source, unbuilt coarse) fails closed to False
+    and the cover persists — never a neighbor's content, never a
+    full-frame decode.
     """
+    import time as _time
+
+    try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+
+        _dbg_on = bool(_dbg_enabled())
+    except Exception:
+        _dbg_on = False
+        _dbg = None
     canvas = _ensure_preview_canvas(overlay)
     if canvas is None:
         return False
@@ -156,8 +235,56 @@ def _populate_preview_canvas(overlay, item) -> bool:
         raw = getattr(item, "path", "")
         if not raw:
             return False
+        # FAST PATH: memoized stash — a walk back to a seen item skips
+        # every source decode (the store is materialized from the pixmap).
+        try:
+            from tabs.image_gallery.ui.quick_look.preview import _stash_cache_key, _stash_cache_lookup
+
+            _memo = _stash_cache_lookup(overlay, _stash_cache_key(raw))
+        except Exception:
+            _memo = None
+        if _memo is not None:
+            _t = _time.perf_counter() if _dbg_on else 0.0
+            _memo_store = _store_from_pixmap(_memo)
+            if _memo_store is not None:
+                _close_preview_store(overlay)  # never stack stores (fd/memmap leak)
+                try:
+                    overlay._preview_store = _memo_store
+                except Exception:
+                    pass
+                try:
+                    overlay._preview_full = _memo
+                except Exception:
+                    pass
+                try:
+                    canvas.set_source(_memo_store)
+                except Exception:
+                    _close_preview_store(overlay)
+                    return False
+                try:
+                    reveal_preview_canvas(overlay, canvas)
+                    _wire_canvas_fallback(overlay, canvas, item)
+                    _cover_until_first_frame(overlay, canvas)
+                except Exception:
+                    pass
+                if _dbg_on:
+                    _dbg(
+                        "quick look populate preview-stash-hit=%.1fms path=%s",
+                        (_time.perf_counter() - _t) * 1000.0,
+                        raw,
+                    )
+                return True
+            # Materialize miss fails open to the bounded build below.
         _close_preview_store(overlay)  # never stack stores (fd/memmap leak)
+        _t = _time.perf_counter() if _dbg_on else 0.0
         store = _coarse_store_for(raw)
+        if _dbg_on:
+            _dbg(
+                "quick look populate preview-coarse=%.1fms path=%s",
+                (_time.perf_counter() - _t) * 1000.0,
+                raw,
+            )
+            _t = _time.perf_counter()
         if store is None:
             return False
         try:
@@ -165,13 +292,21 @@ def _populate_preview_canvas(overlay, item) -> bool:
         except Exception:
             pass
         # Stash the bounded source: the cover plate is derived from it at the
-        # live slot size (same fit as the canvas), no black flash.
+        # live slot size (same fit as the canvas), no black flash. The stash
+        # samples this same open store — no second bounded decode.
         try:
             from tabs.image_gallery.ui.quick_look.preview import _stash_preview_source
 
-            _stash_preview_source(overlay, item)
+            _stash_preview_source(overlay, item, _coarse=store)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg(
+                "quick look populate preview-stash=%.1fms path=%s",
+                (_time.perf_counter() - _t) * 1000.0,
+                raw,
+            )
+            _t = _time.perf_counter()
         try:
             canvas.set_source(store)
         except Exception:
@@ -183,6 +318,12 @@ def _populate_preview_canvas(overlay, item) -> bool:
             _cover_until_first_frame(overlay, canvas)
         except Exception:
             pass
+        if _dbg_on:
+            _dbg(
+                "quick look populate preview-set-source=%.1fms path=%s",
+                (_time.perf_counter() - _t) * 1000.0,
+                raw,
+            )
         return True
     except Exception:
         try:

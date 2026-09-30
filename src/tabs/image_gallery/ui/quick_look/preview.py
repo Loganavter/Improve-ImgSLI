@@ -7,11 +7,16 @@ anything over ``_PREVIEW_FULL_DECODE_EDGE`` goes through the scaled
 ``QImageReader`` read (``_load_scaled_pixmap``) — a 40k source would
 otherwise cost ~6 GB for one ``QPixmap``. ``_stash_preview_source``
 stashes ``_preview_full`` (pyramid-coarse first, bounded); the first-frame
-cover re-derives its plate pixmap from it on every slot resize.
+cover re-derives its plate pixmap from it on every slot resize. The stash
+is memoized per overlay (``_stash_cache_key`` — the crop memo's
+normpath/mtime/size shape from ``insets.py``) so a walk back to a seen
+item skips every decode; the host may pass its already-open coarse store
+(``_coarse``) so the stash samples it instead of building a second one.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -19,6 +24,83 @@ from PySide6.QtGui import QPixmap
 
 # Full QPixmap decode above this edge is banned (RAM: edge^2 × 4B).
 _PREVIEW_FULL_DECODE_EDGE = 2048
+
+# Stash memo: per-overlay cache of the stashed bounded source, keyed
+# (normpath, mtime_ns, size) like the crop memo (bounded, fail-open).
+_STASH_CACHE_MAX = 4
+
+
+def _stash_cache_key(item_path):
+    """(normpath, mtime_ns, size) or None — fail-open, never raises."""
+    try:
+        norm = os.path.normpath(str(item_path))
+        if not norm:
+            return None
+        st = os.stat(norm)
+        return (norm, int(st.st_mtime_ns), int(st.st_size))
+    except Exception:
+        return None
+
+
+def _stash_cache_lookup(overlay, key):
+    """Cached stash pixmap for *key*, or None on miss/any error."""
+    try:
+        if key is None:
+            return None
+        cache = getattr(overlay, "_stash_cache", None)
+        if not isinstance(cache, dict):
+            return None
+        hit = cache.get(key)
+        if hit is None:
+            return None
+        try:
+            if hit.isNull():
+                return None
+        except Exception:
+            return None
+        try:  # LRU touch so eviction drops the stalest entry.
+            cache.pop(key, None)
+            cache[key] = hit
+        except Exception:
+            pass
+        return hit
+    except Exception:
+        return None
+
+
+def _stash_cache_store(overlay, key, pixmap) -> None:
+    """Store the stash pixmap under *key* (bounded, fail-open)."""
+    try:
+        if key is None or pixmap is None:
+            return
+        try:
+            if pixmap.isNull():
+                return
+        except Exception:
+            return
+        try:
+            cache = getattr(overlay, "_stash_cache", None)
+        except Exception:
+            return
+        if not isinstance(cache, dict):
+            cache = {}
+            try:
+                overlay._stash_cache = cache
+            except Exception:
+                return
+        try:
+            if key not in cache and len(cache) >= _STASH_CACHE_MAX:
+                try:
+                    oldest = next(iter(cache))
+                except StopIteration:
+                    oldest = None
+                if oldest is not None:
+                    cache.pop(oldest, None)
+            cache[key] = pixmap
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _thumb_pixmap(item, w: int = 66, h: int = 44) -> QPixmap | None:
@@ -179,6 +261,63 @@ def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixm
     return None
 
 
+def _sample_coarse_pixmap(coarse, *, center_third: bool = False) -> QPixmap | None:
+    """QPixmap from an OPEN coarse base — no build, no close of it.
+
+    The ``best_pixels`` half of ``_pyramid_pixmap_for``: the host derives
+    the stash from the coarse store it just built for the canvas (one
+    bounded decode per walk, not two). The wrapper owns derived levels
+    only — closing it never touches the caller's base. Never raises.
+    """
+    try:
+        from engine.store.pyramid_pixel_store import PyramidPixelStore
+    except Exception:
+        return None
+    try:
+        try:
+            base_w, base_h = coarse.size
+        except Exception:
+            return None
+        if base_w <= 0 or base_h <= 0:
+            return None
+        if center_third:
+            cw, ch = max(1, base_w // 3), max(1, base_h // 3)
+            x = max(0, (base_w - cw) // 2)
+            y = max(0, (base_h - ch) // 2)
+            box = (x, y, x + cw, y + ch)
+        else:
+            box = (0, 0, base_w, base_h)
+        try:
+            pyramid = PyramidPixelStore(coarse)
+        except Exception:
+            return None
+        try:
+            # Single-level pyramid: L0 is already complete, the scale only
+            # satisfies the seam signature.
+            img = pyramid.best_pixels(box, 1.0)
+        except Exception:
+            img = None
+        finally:
+            try:
+                pyramid.close()
+            except Exception:
+                pass
+        try:
+            _bad = img is None or img.isNull()
+        except Exception:
+            _bad = True
+        if _bad:
+            return None
+        try:
+            pm = QPixmap.fromImage(img)
+            _bad = pm is None or pm.isNull()
+        except Exception:
+            _bad = True
+        return None if _bad else pm
+    except Exception:
+        return None
+
+
 def _pyramid_pixmap_for(path, *, center_third: bool = False, long_edge: int = 1024) -> QPixmap | None:
     """Coarse-direct pixmap via the frozen wave-A1 pyramid seam.
 
@@ -206,51 +345,7 @@ def _pyramid_pixmap_for(path, *, center_third: bool = False, long_edge: int = 10
             return None
         if coarse is None:
             return None
-        try:
-            base_w, base_h = coarse.size
-        except Exception:
-            return None
-        if base_w <= 0 or base_h <= 0:
-            return None
-        if center_third:
-            cw, ch = max(1, base_w // 3), max(1, base_h // 3)
-            x = max(0, (base_w - cw) // 2)
-            y = max(0, (base_h - ch) // 2)
-            box = (x, y, x + cw, y + ch)
-        else:
-            box = (0, 0, base_w, base_h)
-        try:
-            pyramid = PyramidPixelStore(coarse)
-        except Exception:
-            return None
-        try:
-            # Single-level pyramid (coarse base is already complete), so the
-            # scale only satisfies the seam signature — L0 is always served.
-            img = pyramid.best_pixels(box, 1.0)
-        except Exception:
-            img = None
-        finally:
-            try:
-                pyramid.close()
-            except Exception:
-                pass
-        if img is None:
-            return None
-        try:
-            if img.isNull():
-                return None
-        except Exception:
-            return None
-        try:
-            pm = QPixmap.fromImage(img)
-        except Exception:
-            return None
-        try:
-            if pm is None or pm.isNull():
-                return None
-        except Exception:
-            return None
-        return pm
+        return _sample_coarse_pixmap(coarse, center_third=bool(center_third))
     except Exception:
         return None
     finally:
@@ -305,15 +400,15 @@ def populate_preview(overlay, item) -> None:
         pass
 
 
-def _stash_preview_source(overlay, item) -> None:
+def _stash_preview_source(overlay, item, _coarse=None) -> None:
     """Stash the bounded source pixmap in ``overlay._preview_full``.
 
-    The first-frame cover re-derives its plate from it at the live slot
-    size. Coarse-direct first (bounded pyramid sample — no full-frame
-    decode), then the item thumbnail, then an aspect-correct scaled-reader
-    read fit inside ``_PREVIEW_FULL_DECODE_EDGE``. Never a full-res QPixmap
-    decode (a 40k source would cost ~6 GB); a miss leaves None so the cover
-    persists. NEVER raises.
+    Memo hit returns the cached pixmap with zero decode work. Otherwise
+    coarse-direct first — sampled from the host's already-open ``_coarse``
+    store when provided (no second build), else ``_pyramid_pixmap_for`` —
+    then the item thumbnail, then a scaled-reader read inside
+    ``_PREVIEW_FULL_DECODE_EDGE``. Never a full-res decode; a miss leaves
+    None so the cover persists. NEVER raises.
     """
     try:
         try:
@@ -321,8 +416,29 @@ def _stash_preview_source(overlay, item) -> None:
         except Exception:
             pass
         try:
+            _key = _stash_cache_key(getattr(item, "path", ""))
+        except Exception:
+            _key = None
+        try:
+            _hit = _stash_cache_lookup(overlay, _key)
+        except Exception:
+            _hit = None
+        if _hit is not None:
+            try:
+                overlay._preview_full = _hit
+            except Exception:
+                pass
+            return
+        try:
             _path = getattr(item, "path", "")
-            full = _pyramid_pixmap_for(_path, long_edge=1024)
+            if _coarse is not None:
+                try:
+                    _open = bool(_coarse.is_open)
+                except Exception:
+                    _open = False
+                full = _sample_coarse_pixmap(_coarse) if _open else None
+            else:
+                full = _pyramid_pixmap_for(_path, long_edge=1024)
             try:
                 _full_ok = full is not None and not full.isNull()
             except Exception:
@@ -357,6 +473,7 @@ def _stash_preview_source(overlay, item) -> None:
                     overlay._preview_full = full
                 except Exception:
                     pass
+                _stash_cache_store(overlay, _key, full)
         except Exception:
             pass
         if getattr(overlay, "_preview_full", None) is None:
@@ -364,6 +481,7 @@ def _stash_preview_source(overlay, item) -> None:
                 thumb = getattr(item, "thumbnail", None)
                 if thumb is not None and not thumb.isNull():
                     overlay._preview_full = thumb
+                    _stash_cache_store(overlay, _key, thumb)
             except Exception:
                 pass
     except Exception:
