@@ -207,7 +207,14 @@ class MultiComparePixelCache:
     # -- combined resolve (render paths: never decodes) --
 
     def resolve(self, path: Path | str | None) -> Any | None:
-        """Pixel tier first, then preview, else ``None`` (imageless)."""
+        """Preview until the pixel tier's pyramid is complete, else ``None``.
+
+        IC parity (``pick_display_image``): a full-res store whose pyramid is
+        still building must not replace the preview on screen — its tiles
+        would pop in progressively instead of the atomic preview→store flip.
+        Pixel tier wins only when pyramid-gated ready; otherwise the preview
+        tier holds; a tier-less slot reads as imageless.
+        """
         if path is None:
             return None
         try:
@@ -216,9 +223,12 @@ class MultiComparePixelCache:
         except Exception:
             return None
         hit = self.get_pixel(path)
-        if hit is not None:
+        if hit is not None and _pyramid_ready(hit):
             return hit
-        return self.get_preview(path)
+        preview = self.get_preview(path)
+        if preview is not None:
+            return preview
+        return hit
 
     def source_size(self, path: Path | str | None) -> tuple[int, int] | None:
         """``(w, h)`` for the resolved tier, ``None`` when imageless."""
@@ -273,6 +283,34 @@ class MultiComparePixelCache:
     @property
     def preview_size(self) -> int:
         return len(self._preview)
+
+
+def _pyramid_ready(store: Any) -> bool:
+    """True when a pixel-tier store may go on screen (IC pick parity).
+
+    Non-store entries keep today's behavior (returned as-is); an untracked
+    store (no pyramid yet — build not kicked) or an incomplete pyramid holds
+    the preview. Fail-open True on any introspection error so a broken
+    registry can never blank a slot.
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+    except Exception:
+        return True
+    if not isinstance(store, TiledPixelStore):
+        return True
+    try:
+        from engine.store.pyramid_registry import pyramid_for
+
+        pyramid = pyramid_for(store)
+    except Exception:
+        return True
+    if pyramid is None:
+        return False
+    try:
+        return bool(pyramid.is_complete())
+    except Exception:
+        return True
 
 
 def resolve_slot_source(cache: MultiComparePixelCache | None, slot: Any) -> Any | None:
