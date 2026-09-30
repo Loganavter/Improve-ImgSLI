@@ -58,7 +58,21 @@ def _thumb_pixmap(item, w: int = 66, h: int = 44) -> QPixmap | None:
             out = _cover_crop(thumb)
             if out is not None:
                 return out
-        pm = QPixmap(str(getattr(item, "path", "")))
+        # Bounded fallback only: aspect-correct QImageReader scaled read
+        # (long edge 512) then the same cover-crop — never a full-res
+        # QPixmap decode (a 40k source would cost ~6 GB here).
+        try:
+            _p = str(getattr(item, "path", ""))
+            _dims = _fast_image_size(_p)
+            if _dims is not None and _dims[0] > 0 and _dims[1] > 0:
+                _s = min(512.0 / _dims[0], 512.0 / _dims[1], 1.0)
+                _rw = max(1, int(round(_dims[0] * _s)))
+                _rh = max(1, int(round(_dims[1] * _s)))
+            else:
+                _rw, _rh = 512, 512
+            pm = _load_scaled_pixmap(_p, _rw, _rh)
+        except Exception:
+            pm = None
         if pm is not None and not pm.isNull():
             out = _cover_crop(pm)
             if out is not None:
@@ -71,8 +85,8 @@ def _thumb_pixmap(item, w: int = 66, h: int = 44) -> QPixmap | None:
 def _fast_image_size(path: Path | str) -> tuple[int, int] | None:
     """Image dimensions without a full decode (QImageReader.size fast path).
 
-    Falls back to QPixmap dims only when the reader cannot determine size.
-    Never raises — returns None on any failure.
+    No QPixmap fallback: returns None when the reader cannot determine
+    size. Never raises — returns None on any failure.
     """
     try:
         from PySide6.QtGui import QImageReader
@@ -87,19 +101,18 @@ def _fast_image_size(path: Path | str) -> tuple[int, int] | None:
             return int(size.width()), int(size.height())
     except Exception:
         pass
-    try:
-        pm = QPixmap(str(path))
-        if pm is not None and not pm.isNull():
-            return int(pm.width()), int(pm.height())
-    except Exception:
-        pass
+    # No QPixmap dims fallback: probing dims must never pay a full-frame
+    # decode (a 40k source would cost ~6 GB just to learn its size).
+    # Callers treat None as fail-open (caption omits dims, cover persists).
     return None
 
 
 def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixmap | None:
     """Small pixmap via QImageReader scaled read — avoids a full-res QPixmap decode.
 
-    Falls back to QPixmap + scaled() when the reader path fails.
+    Falls back to a dims-gated full reader read (only when the source fits
+    in ``_PREVIEW_FULL_DECODE_EDGE``); huge or unmeasurable sources fail
+    open to None.
     """
     try:
         from PySide6.QtCore import QSize
@@ -132,8 +145,28 @@ def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixm
                 return pm
     except Exception:
         pass
+    # Bounded fallback only: a full read is allowed solely when the cheap
+    # reader-size probe proves the source fits in _PREVIEW_FULL_DECODE_EDGE
+    # (≤16 MB) — same pixels out as the old QPixmap decode for normal-size
+    # sources. Huge or unmeasurable sources fail open to None (cover
+    # persists / inset skipped) instead of a ~6 GB full-frame decode.
     try:
-        pm = QPixmap(str(path))
+        dims = _fast_image_size(path)
+        if dims is None or dims[0] <= 0 or dims[1] <= 0:
+            return None
+        if max(dims[0], dims[1]) > _PREVIEW_FULL_DECODE_EDGE:
+            return None
+        from PySide6.QtGui import QImageReader, QPixmap as _PM2
+
+        _reader = QImageReader(str(path))
+        try:
+            _reader.setAutoTransform(True)
+        except Exception:
+            pass
+        _img = _reader.read()
+        if _img is None or _img.isNull():
+            return None
+        pm = _PM2.fromImage(_img)
         if pm is not None and not pm.isNull():
             return pm.scaled(
                 int(target_w),
@@ -277,19 +310,48 @@ def _stash_preview_source(overlay, item) -> None:
 
     The first-frame cover re-derives its plate from it at the live slot
     size. Coarse-direct first (bounded pyramid sample — no full-frame
-    decode), then a ``QPixmap`` read, then the item thumbnail. NEVER raises.
+    decode), then the item thumbnail, then an aspect-correct scaled-reader
+    read fit inside ``_PREVIEW_FULL_DECODE_EDGE``. Never a full-res QPixmap
+    decode (a 40k source would cost ~6 GB); a miss leaves None so the cover
+    persists. NEVER raises.
     """
     try:
-        from PySide6.QtGui import QPixmap
-
         try:
             overlay._preview_full = None
         except Exception:
             pass
         try:
-            full = _pyramid_pixmap_for(getattr(item, "path", ""), long_edge=1024)
-            if full is None or full.isNull():
-                full = QPixmap(str(getattr(item, "path", "")))
+            _path = getattr(item, "path", "")
+            full = _pyramid_pixmap_for(_path, long_edge=1024)
+            try:
+                _full_ok = full is not None and not full.isNull()
+            except Exception:
+                _full_ok = False
+            if not _full_ok:
+                full = None
+                try:
+                    _thumb = getattr(item, "thumbnail", None)
+                    if _thumb is not None and not _thumb.isNull():
+                        full = _thumb
+                except Exception:
+                    full = None
+            if full is None:
+                # Aspect-correct target from the no-decode size probe, so
+                # the reader read below cannot distort (exact dims when the
+                # source already fits the edge: same pixels as a full read).
+                try:
+                    _dims = _source_dimensions(item, _path)
+                    if _dims is not None and _dims[0] > 0 and _dims[1] > 0:
+                        _sc = min(
+                            float(_PREVIEW_FULL_DECODE_EDGE) / _dims[0],
+                            float(_PREVIEW_FULL_DECODE_EDGE) / _dims[1],
+                            1.0,
+                        )
+                        _tw = max(1, int(round(_dims[0] * _sc)))
+                        _th = max(1, int(round(_dims[1] * _sc)))
+                        full = _load_scaled_pixmap(_path, _tw, _th)
+                except Exception:
+                    full = None
             if full is not None and not full.isNull():
                 try:
                     overlay._preview_full = full
