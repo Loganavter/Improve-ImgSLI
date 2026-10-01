@@ -69,7 +69,7 @@ def test_ensure_sweeps_stale_entries_of_other_stores():
 
 
 def test_reunification_task_id_aborts_build():
-    from tabs._shared.pyramid import _pyramid_build_loop
+    from engine.pyramid.coordinator import _pyramid_build_loop
     from tabs.image_compare.pipeline.abort import AbortSignal
 
     store = _store(4096, 4096)
@@ -88,7 +88,7 @@ def test_reunification_task_id_aborts_build():
 
 
 def test_build_task_reports_each_level():
-    from tabs._shared.pyramid import _pyramid_build_loop
+    from engine.pyramid.coordinator import _pyramid_build_loop
     from tabs.image_compare.pipeline.abort import AbortSignal
 
     store = _store(4096, 4096)

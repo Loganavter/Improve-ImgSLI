@@ -285,7 +285,7 @@ def test_supersede_drops_pending_without_retry():
 
 
 def test_coordinator_short_circuits_built_level_without_worker():
-    from tabs._shared.pyramid import PyramidBuildCoordinator
+    from engine.pyramid.coordinator import PyramidBuildCoordinator
 
     started: list = []
 
@@ -304,7 +304,7 @@ def test_coordinator_short_circuits_built_level_without_worker():
 
 
 def test_coordinator_pre_abort_starts_nothing():
-    from tabs._shared.pyramid import PyramidBuildCoordinator
+    from engine.pyramid.coordinator import PyramidBuildCoordinator
 
     coord = PyramidBuildCoordinator(
         get_thread_pool=lambda: SimpleNamespace(start=lambda w: None),

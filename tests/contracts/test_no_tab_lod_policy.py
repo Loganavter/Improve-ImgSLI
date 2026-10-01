@@ -81,6 +81,25 @@ def test_tabs_do_not_import_raw_select_level() -> None:
     )
 
 
+def test_shared_pyramid_shim_is_gone() -> None:
+    """The D2 ``tabs/_shared/pyramid.py`` re-export shim is deleted; every
+    former caller imports ``engine.pyramid.coordinator`` directly."""
+    assert not (SRC / "tabs" / "_shared" / "pyramid.py").exists(), (
+        "src/tabs/_shared/pyramid.py still exists — the D2 shim was supposed "
+        "to be deleted after every caller moved to engine.pyramid.coordinator"
+    )
+    offenders: list[str] = []
+    for root in (SRC,):
+        for path in iter_py(root):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "tabs._shared.pyramid" in text or "tabs/_shared/pyramid.py" in text:
+                offenders.append(rel(path))
+    assert not offenders, (
+        "references to the deleted tabs._shared.pyramid module remain: "
+        f"{offenders}"
+    )
+
+
 def test_tab_layer_actually_consumes_the_shared_demand_level() -> None:
     """Non-blind sanity: the seam is wired, not just forbidden.
 
