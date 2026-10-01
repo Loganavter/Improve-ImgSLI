@@ -27,6 +27,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer, UiScale, scaled_px
+from sli_ui_toolkit.ui.layout_settle import settle_layout
 from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
 from sli_ui_toolkit.widgets import BaseFlyout, Slider
 
@@ -581,6 +582,10 @@ class ValueSliderRow(QWidget):
         except Exception:
             return
         self._right_pad.setFixedWidth(self._pad_width())
+        # The pad width derives from the label's font metrics while the
+        # row hosts a layout: re-run it now so the slider/pad split agrees
+        # in the same call instead of lagging one turn.
+        settle_layout(self, self._slider, self._right_pad)
 
     def _pad_width(self) -> int:
         try:

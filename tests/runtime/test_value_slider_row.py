@@ -174,6 +174,43 @@ def test_pad_width_follows_live_scale(qtbot):
     assert row._right_pad.minimumWidth() == base
 
 
+def test_pad_width_change_settles_layout_synchronously(qtbot):
+    """refresh() after a range change settles the row layout in one call.
+
+    The pad's fixed width derives from the label's font metrics while the
+    row hosts a QHBoxLayout; without a synchronous settle the slider/pad
+    distribution lags one turn. Shrink (100 -> 7) and grow directions,
+    no processEvents between refresh and assertion. Uses an absolute
+    formatter: the default percent formatter always renders ``100,0%``
+    at max, so its pad width is range-invariant by design.
+    """
+    from PySide6.QtWidgets import QDialog, QHBoxLayout
+
+    slider = ValueSlider()
+    slider.setRange(1, 100)
+    slider.setValue(50)
+    dialog = QDialog()
+    dialog.resize(500, 120)
+    layout = QHBoxLayout(dialog)
+    row = ValueSliderRow(slider, hint_formatter=lambda s: f"v{s.value()}")
+    layout.addWidget(row, 1)
+    dialog.show()
+    qtbot.addWidget(dialog)
+    row = _settle_row(dialog)
+
+    wide = row._right_pad.minimumWidth()
+    slider.setRange(1, 7)
+    row.refresh()
+    narrow = row._right_pad.minimumWidth()
+    assert narrow < wide
+    assert row.layout().activate() is False
+
+    slider.setRange(1, 100)
+    row.refresh()
+    assert row._right_pad.minimumWidth() == wide
+    assert row.layout().activate() is False
+
+
 def test_plain_slider_row_keeps_label_visible(qtbot):
     """A row over a bare toolkit Slider (no hint controller) must still show
     the value readout."""
