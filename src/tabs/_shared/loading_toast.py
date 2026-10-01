@@ -36,7 +36,8 @@ logger = logging.getLogger("ImproveImgSLI")
 # 0 at quick preview, DECODE_DONE_PROGRESS once full-res decode lands,
 # PYRAMID_START_PROGRESS..100 tracking pyramid level build-out.
 DECODE_DONE_PROGRESS = 20
-PYRAMID_START_PROGRESS = 40
+# PYRAMID_START_PROGRESS rides with the engine build coordinator.
+from engine.pyramid.coordinator import PYRAMID_START_PROGRESS  # noqa: E402
 
 
 class LoadingToastCoordinator:
