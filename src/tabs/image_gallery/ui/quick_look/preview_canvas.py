@@ -1390,7 +1390,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                 ),
             )
             covered = bool(getattr(result, "covered", False))
-            if covered:
+            if covered and self._tiled_level_ready():
                 try:
                     from tabs.image_gallery.debug import ql_cover
 
@@ -1416,8 +1416,10 @@ class QuickLookCanvasWidget(QRhiWidget):
                 from tabs.image_gallery.debug import ql_cover
 
                 ql_cover(
-                    "tiled partial: covered=False drawn=%s instances=%s "
-                    "resident=%s -> raster/cover stays",
+                    "tiled holding: covered=%s level_ready=%s drawn=%s "
+                    "instances=%s resident=%s -> raster/cover stays",
+                    covered,
+                    self._tiled_level_ready(),
                     getattr(result, "drawn", None),
                     getattr(result, "instances", None),
                     getattr(result, "resident", None),
@@ -1440,6 +1442,19 @@ class QuickLookCanvasWidget(QRhiWidget):
             return False
         except Exception:
             logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
+            return False
+
+    def _tiled_level_ready(self) -> bool:
+        """True once the tiled view is bound to a zoom-matched pyramid level.
+
+        Until then it is bound to the full-res store shown downscaled, whose
+        per-tile mip edges seam; hold the raster (coarse but seam-free) until
+        the matched level lands, so takeover never flashes the seam grid.
+        """
+        try:
+            bound = getattr(self, "_tile_bound_source", None)
+            return bool(bound is not None and int(bound[2]) >= 0)
+        except Exception:
             return False
 
     def resizeEvent(self, event) -> None:  # noqa: N802

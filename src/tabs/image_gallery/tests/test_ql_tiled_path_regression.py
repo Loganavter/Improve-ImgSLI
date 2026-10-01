@@ -209,6 +209,7 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
         fake = _FakeView()
         canvas._tile_renderer = fake
         canvas._tiled_source = ("item", object())
+        canvas._tile_bound_source = ("item", 0, 0)  # level-matched -> ready
         canvas._ensure_tile_renderer = lambda: fake
         settled: list = []
         canvas._settle_present = lambda: settled.append(1)
@@ -220,6 +221,45 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
         assert canvas._render_tiled(object(), object(), None, None, 100, 100) is True
         assert fake.calls == 2
         assert settled == [1], "covered handover settles exactly once"
+    finally:
+        canvas.setParent(None)
+        parent.deleteLater()
+        app.processEvents()
+
+
+def test_covered_but_level_not_ready_holds_raster():
+    """Takeover is held until the view is bound to a zoom-matched level.
+
+    A covered frame bound to the full-res store (level -1) would flash the
+    mip-edge seam grid; the raster (coarse, seam-free) must stay until the
+    matched pyramid level lands.
+    """
+    from engine.gpu.tiled_image_view import TiledViewResult
+
+    from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget
+
+    app = QApplication.instance() or QApplication([])
+    canvas = QuickLookCanvasWidget()
+    parent = QWidget()
+    canvas.setParent(parent)
+    try:
+        covered = TiledViewResult(drawn=True, covered=True, instances=4, resident=4)
+
+        class _FakeView:
+            def has_source(self):
+                return True
+
+            def render(self, *_a, **_k):
+                return covered
+
+        canvas._tile_renderer = _FakeView()
+        canvas._tiled_source = ("item", object())
+        canvas._tile_bound_source = ("item", 0, -1)  # full store, not matched
+        canvas._ensure_tile_renderer = lambda: canvas._tile_renderer
+        canvas._settle_present = lambda: (_ for _ in ()).throw(
+            AssertionError("must not settle while the level is not matched")
+        )
+        assert canvas._render_tiled(object(), object(), None, None, 100, 100) is False
     finally:
         canvas.setParent(None)
         parent.deleteLater()
