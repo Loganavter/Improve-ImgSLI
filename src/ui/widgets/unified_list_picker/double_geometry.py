@@ -16,6 +16,8 @@ import os
 
 from PySide6.QtCore import QRect
 
+from sli_ui_toolkit.ui.layout_settle import settle_layout
+
 from ui.widgets.unified_list_picker.debug import double_geom_debug
 from ui.widgets.unified_list_picker.common import (
     _UnifiedFlyoutBase,
@@ -267,3 +269,7 @@ def relax_panel_limits_for_double(panel, height: int) -> None:
         panel._container_height = height
     except AttributeError:
         pass
+    # The limit change derives from the shared panel geometry while the
+    # panel hosts a layout: re-run it now so the scroll viewport agrees
+    # in the same call instead of lagging one turn mid-drag.
+    settle_layout(panel, getattr(panel, "scroll_area", None))

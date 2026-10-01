@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, CustomLineEdit, Label
 from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.ui.layout_settle import settle_layout
 
 
 class DialogActionBar(QWidget):
@@ -86,6 +87,10 @@ class DialogActionBar(QWidget):
         if hint_h > 0:
             self.setMinimumHeight(max(self.minimumHeight(), hint_h))
             self.setMaximumHeight(max(self.minimumHeight(), hint_h))
+        # The pin derives the bar height from the buttons' sizeHint while
+        # the bar hosts a layout: re-run it now so the buttons agree in
+        # the same frame.
+        settle_layout(self, self.secondary_button, self.primary_button)
 
 class OutputPathSection(QWidget):
     def __init__(

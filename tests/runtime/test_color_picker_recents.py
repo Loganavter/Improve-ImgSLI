@@ -174,6 +174,38 @@ def test_row_wraps_chips_onto_rows_when_narrow(qapp):
         host.deleteLater()
 
 
+def test_row_settles_layout_synchronously_on_rebuild(qapp):
+    """set_colors() leaves the shelf layout settled in the same call.
+
+    The chip wrap derives the content host's fixed height from the chip
+    count, so the shelf root layout is stale right after the rebuild;
+    without a synchronous settle the header/content distribution lags one
+    turn (overflow while growing). No processEvents between rebuild and
+    assertion — both grow and shrink directions.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    host = QWidget()
+    host.setFixedSize(500, 700)
+    lay = QVBoxLayout(host)
+    row = RecentColorsRow(caption="Recent")
+    lay.addWidget(row)
+    lay.addStretch(1)
+    host.show()
+    try:
+        row.set_colors(["#FF0000"])
+        qapp.processEvents()
+        # Grow: 1 chip -> 12 chips (one row -> several rows).
+        row.set_colors([f"#{i:02X}0000" for i in range(12)])
+        assert row.layout().activate() is False
+        qapp.processEvents()
+        # Shrink: back to a single chip.
+        row.set_colors(["#FF0000"])
+        assert row.layout().activate() is False
+    finally:
+        host.deleteLater()
+
+
 def test_row_positions_stable_across_resizes(qapp):
     row = RecentColorsRow()
     try:
