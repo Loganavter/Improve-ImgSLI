@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Callable, Sequence
 
 from PySide6.QtGui import (
     QRhiDepthStencilClearValue,
     QRhiVertexInputAttribute,
     QRhiViewport,
+    QShader,
 )
 
 from engine.cache.uniform_layout import assert_uniform_size
@@ -122,6 +124,94 @@ def unpack_instance_layer2(instance_bytes: bytes, index: int) -> int:
     return int(layer2)
 
 
+# ---------------------------------------------------------------------------
+# Slot instance layout (single-source / multi-slot array pass)
+# ---------------------------------------------------------------------------
+#
+# The slot pass (``slot_array.vert``/``.frag``, formerly Multi Compare's
+# ``multi_compare_array.*``) carries its whole transform PER INSTANCE --
+# ``iPanFit``/``iZoom``/``iTileRect``/``iSlotRect`` -- so one instanced draw
+# covers N independent slots (Multi Compare) or one full-canvas slot
+# (Quick Look). This is the proven single/multi-slot array layout; the pair
+# layout above (``ARRAY_INSTANCE_*``) stays for Image Compare's diff pass.
+#
+# iPanFit(vec4,16) + iZoom(float,4) + iTileRect(vec4,16) + iSlotRect(vec4,16)
+# + iContentScale(vec2,8) + iLayer(int,4) + iBBox(vec4,16) = 80 bytes.
+SLOT_INSTANCE_STRIDE: int = 80
+SLOT_INSTANCE_FMT: str = "<4f f 4f 4f 2f i 4f"
+assert_uniform_size(
+    SLOT_INSTANCE_FMT, SLOT_INSTANCE_STRIDE, label="pack_slot_instance"
+)
+
+SLOT_INSTANCE_ATTRIBUTES: tuple[QRhiVertexInputAttribute, ...] = (
+    QRhiVertexInputAttribute(1, 2, QRhiVertexInputAttribute.Format.Float4, 0),
+    QRhiVertexInputAttribute(1, 3, QRhiVertexInputAttribute.Format.Float, 16),
+    QRhiVertexInputAttribute(1, 4, QRhiVertexInputAttribute.Format.Float4, 20),
+    QRhiVertexInputAttribute(1, 5, QRhiVertexInputAttribute.Format.Float4, 36),
+    QRhiVertexInputAttribute(1, 6, QRhiVertexInputAttribute.Format.Float2, 52),
+    QRhiVertexInputAttribute(1, 7, QRhiVertexInputAttribute.Format.SInt, 60),
+    QRhiVertexInputAttribute(1, 8, QRhiVertexInputAttribute.Format.Float4, 64),
+)
+
+# std140 UBuf (slot_array.vert/frag): mat4 mvp(64) + vec4 letterbox(16) = 80.
+SLOT_UNIFORM_FMT: str = "<16f4f"
+SLOT_UNIFORM_BLOCK_SIZE: int = 80
+assert_uniform_size(
+    SLOT_UNIFORM_FMT, SLOT_UNIFORM_BLOCK_SIZE, label="pack_slot_array_uniforms"
+)
+
+_SLOT_SHADER_DIR = Path(__file__).resolve().parent / "shaders"
+
+
+@dataclass
+class SlotInstance:
+    """One instance of the slot array draw (see ``SLOT_INSTANCE_*``)."""
+
+    pan_fit: tuple[float, float, float, float]
+    zoom: float
+    tile_rect: Rect
+    slot_rect: Rect
+    content_scale: tuple[float, float]
+    layer: int
+    bbox: Rect
+
+
+def pack_slot_instance(inst: SlotInstance) -> bytes:
+    """One slot instance's per-instance vertex bytes (``SLOT_INSTANCE_FMT``)."""
+    return struct.pack(
+        SLOT_INSTANCE_FMT,
+        *inst.pan_fit,
+        inst.zoom,
+        *inst.tile_rect,
+        *inst.slot_rect,
+        *inst.content_scale,
+        inst.layer,
+        *inst.bbox,
+    )
+
+
+def pack_slot_array_uniforms(
+    clip_matrix: Sequence[float],
+    letterbox: Rect,
+) -> bytes:
+    """Bytes for the slot pass's ``UBuf`` (std140: ``mat4 + vec4``)."""
+    matrix = tuple(float(v) for v in clip_matrix)
+    if len(matrix) != 16:
+        raise ValueError(f"clip_matrix must have 16 floats, got {len(matrix)}")
+    lb = tuple(float(v) for v in letterbox)
+    if len(lb) != 4:
+        raise ValueError(f"letterbox must have 4 floats, got {len(lb)}")
+    return struct.pack(SLOT_UNIFORM_FMT, *matrix, *lb)
+
+
+def load_slot_array_shader(name: str) -> QShader:
+    """Load one of the engine's baked ``slot_array.*.qsb`` shaders."""
+    shader = QShader.fromSerialized((_SLOT_SHADER_DIR / name).read_bytes())
+    if not shader.isValid():
+        raise RuntimeError(f"Invalid compiled shader: {name}")
+    return shader
+
+
 def _apply_bbox(
     index: int,
     inst: ArrayInstance,
@@ -182,6 +272,7 @@ def record_array_draw(
     bbox_resolver: Callable[[int, ArrayInstance], Rect] | None = None,
     pre_begin: Callable[[], None] | None = None,
     in_pass: Callable[[], None] | None = None,
+    pack_instance: Callable[[object], bytes] = pack_array_instance,
 ) -> None:
     """Records one array-pass frame: optional pre-pass work, resource
     ensure/upload, one ``beginPass``/instanced draw/``endPass`` with optional
@@ -206,7 +297,7 @@ def record_array_draw(
                 resources.array_uniform_buffer, 0, uniform_bytes
             )
         instance_bytes = b"".join(
-            pack_array_instance(_apply_bbox(index, inst, bbox_resolver))
+            pack_instance(_apply_bbox(index, inst, bbox_resolver))
             for index, inst in enumerate(instances)
         )
         if updates is not None:
@@ -216,7 +307,9 @@ def record_array_draw(
         # Ensure the instance's sampler SRB before the pass opens (resource
         # creation is illegal inside an open pass). ``draw_array_instances``
         # re-ensures the same name inside the pass, which is a cache hit.
-        resources.ensure_array_srb(instances[0].sampler_name)
+        # Pair instances carry ``sampler_name``; slot instances use the
+        # resources' own default sampler (``None`` -> default).
+        resources.ensure_array_srb(getattr(instances[0], "sampler_name", None))
 
     command_buffer.beginPass(
         target,
@@ -231,7 +324,7 @@ def record_array_draw(
             resources=resources,
             vertex_buffer=vertex_buffer,
             instance_count=len(instances),
-            sampler_name=instances[0].sampler_name,
+            sampler_name=getattr(instances[0], "sampler_name", None),
             viewport_size=(size.width(), size.height()),
         )
     if in_pass is not None:

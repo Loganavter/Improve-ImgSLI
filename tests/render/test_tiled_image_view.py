@@ -25,7 +25,6 @@ from engine.cache.draw_plans import build_slot_plan_tiles
 from engine.cache.residency import TileResidencyRealizerBase
 from engine.gpu.tiled_image_view import (
     _UNIFORM_BLOCK_SIZE,
-    _UNIFORM_EXTRA_CAPACITY,
     LodPolicy,
     SingleImageTiledView,
     TiledImageSource,
@@ -166,13 +165,13 @@ def test_multi_level_immediate_picks_level_for_zoom(monkeypatch):
     service = view.tile_service
     assert service.resident_tiles(_LEVEL1_KEY) == set()
     assert near.covered is True
-    assert {inst.layer1 for inst in draw_calls[-1]["instances"]} == _layers_for(
+    assert {inst.layer for inst in draw_calls[-1]["instances"]} == _layers_for(
         view, "src0"
     )
 
     far = _render_at(view, 0.25, LodPolicy("immediate"))
     assert len(service.resident_tiles(_LEVEL1_KEY)) == 4
-    assert {inst.layer1 for inst in draw_calls[-1]["instances"]} == _layers_for(
+    assert {inst.layer for inst in draw_calls[-1]["instances"]} == _layers_for(
         view, _LEVEL1_KEY
     )
     assert far.covered is True
@@ -191,7 +190,7 @@ def test_multi_level_settle_holds_until_target_resident(monkeypatch):
 
     service = view.tile_service
     assert service.resident_tiles(_LEVEL1_KEY) == set()
-    assert {inst.layer1 for inst in draw_calls[-1]["instances"]} <= _layers_for(
+    assert {inst.layer for inst in draw_calls[-1]["instances"]} <= _layers_for(
         view, "src0"
     )
     assert held.covered is False  # target (level 1) not resident -> held level
@@ -199,7 +198,7 @@ def test_multi_level_settle_holds_until_target_resident(monkeypatch):
     allowed.add(_LEVEL1_KEY)
     settled = _render_at(view, 0.25, policy)
     assert len(service.resident_tiles(_LEVEL1_KEY)) == 4
-    assert {inst.layer1 for inst in draw_calls[-1]["instances"]} == _layers_for(
+    assert {inst.layer for inst in draw_calls[-1]["instances"]} == _layers_for(
         view, _LEVEL1_KEY
     )
     assert settled.covered is True
@@ -220,7 +219,7 @@ def test_multi_level_fallback_under_incomplete_target(monkeypatch):
 
     service = view.tile_service
     assert len(service.resident_tiles(_LEVEL1_KEY)) == 3
-    drawn_layers = {inst.layer1 for inst in draw_calls[-1]["instances"]}
+    drawn_layers = {inst.layer for inst in draw_calls[-1]["instances"]}
     assert drawn_layers & _layers_for(view, _LEVEL1_KEY)  # partial target
     assert drawn_layers & _layers_for(view, "src0")  # fallback underneath
     assert partial.drawn is True
@@ -387,9 +386,9 @@ def test_instance_for_index_uses_its_own_layer_never_a_neighbour(monkeypatch):
     assert len(instances) == len(plan)
     seen_layers: set[int] = set()
     for instance in instances:
-        index = index_by_rect[tuple(round(v, 9) for v in instance.rect1)]
-        assert instance.layer1 == layer_by_index[index]
-        seen_layers.add(instance.layer1)
+        index = index_by_rect[tuple(round(v, 9) for v in instance.tile_rect)]
+        assert instance.layer == layer_by_index[index]
+        seen_layers.add(instance.layer)
     # Bijection: every instance carries a distinct own-tile layer.
     assert seen_layers == set(layer_by_index.values())
 
@@ -425,24 +424,21 @@ def test_covered_false_when_any_visible_tile_missing(monkeypatch):
     assert complete.covered is True
 
 
-def test_pack_uniforms_layout_and_extra_capacity():
+def test_pack_uniforms_layout():
     view = TiledImageView(zoom=2.0, pan=(0.25, -0.5), fb_size=(100, 50), fit=(0.5, 1.0))
     blob = pack_tiled_image_view_uniforms(view, letterbox=(0.1, 0.2, 0.8, 0.6))
 
-    assert len(blob) == _UNIFORM_BLOCK_SIZE == 176
+    # Slot-pass UBuf is mat4 mvp + vec4 letterbox (80 bytes); the per-tile
+    # pan/fit/zoom live in the instance layout, not the uniform.
+    assert len(blob) == _UNIFORM_BLOCK_SIZE == 80
     assert struct.unpack_from("<16f", blob, 0) == tiv._IDENTITY_MATRIX16
     assert struct.unpack_from("<4f", blob, 64) == pytest.approx((0.1, 0.2, 0.8, 0.6))
-    assert struct.unpack_from("<2f", blob, 80) == pytest.approx((0.25, -0.5))
-    assert struct.unpack_from("<2f", blob, 88) == pytest.approx((2.0, 2.0))
-    assert struct.unpack_from("<2f", blob, 96) == pytest.approx((0.5, 1.0))
 
     patched = pack_tiled_image_view_uniforms(view, clip_matrix=[2.0] + [0.0] * 15)
     assert struct.unpack_from("<f", patched, 0)[0] == 2.0
 
     with pytest.raises(ValueError):
-        pack_tiled_image_view_uniforms(
-            view, extra=b"x" * (_UNIFORM_EXTRA_CAPACITY + 1)
-        )
+        pack_tiled_image_view_uniforms(view, clip_matrix=[1.0] * 15)
 
 
 def test_contain_fit_scale_matches_reference():

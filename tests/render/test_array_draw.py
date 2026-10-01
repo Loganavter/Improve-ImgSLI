@@ -341,3 +341,39 @@ def test_record_array_draw_routes_draw_through_draw_array_instances(monkeypatch)
         ("draw", 4, 3),
         "endPass",
     ]
+
+
+def test_record_array_draw_accepts_slot_instance_without_sampler_name():
+    """Slot instances (the engine slot pass) carry no ``sampler_name``; the
+    draw must fall back to the resources' default sampler, not raise.
+
+    Regression for the QL white-canvas crash: ``SlotInstance`` replaced
+    ``ArrayInstance`` in the engine view but ``record_array_draw`` still read
+    ``instances[0].sampler_name`` unconditionally.
+    """
+    from engine.gpu.array_draw import SlotInstance, pack_slot_instance
+
+    inst = SlotInstance(
+        pan_fit=(0.0, 0.0, 1.0, 1.0),
+        zoom=1.0,
+        tile_rect=(0.0, 0.0, 0.5, 1.0),
+        slot_rect=(0.0, 0.0, 1.0, 1.0),
+        content_scale=(1.0, 1.0),
+        layer=3,
+        bbox=(0.0, 0.0, 1.0, 1.0),
+    )
+    resources = _FakeResources()
+    cmd = _FakeCommandBuffer()
+    record_array_draw(
+        cmd,
+        resources=resources,
+        vertex_buffer="vbo",
+        instances=[inst],
+        uniform_bytes=b"\x00" * 80,
+        target=_target(),
+        clear_color=None,
+        updates=_FakeUpdates(),
+        pack_instance=pack_slot_instance,
+    )
+    assert ("draw", 4, 1) in cmd.calls
+    assert ("ensure_srb", None) in resources.calls

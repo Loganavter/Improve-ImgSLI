@@ -83,7 +83,7 @@
     },
     {
       "path": "src/engine/gpu/tiled_image_view.py",
-      "lines": 1159,
+      "lines": 1166,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one tile-array render lifecycle: residency/instance/uniform/draw share one source; splitting threads the source/grid/dirty state through every helper\"",
@@ -803,7 +803,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 1664,
+      "lines": 1714,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
@@ -909,7 +909,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
-      "lines": 1151,
+      "lines": 1155,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",

@@ -251,17 +251,17 @@ def test_render_binds_layer_from_own_index(monkeypatch):
     instances = captured["instances"]
     assert len(instances) == 4
     # Every visible tile got its own instance, bound to its own index's layer.
-    by_rect = {(round(i.rect1[0], 4), round(i.rect1[1], 4)): i for i in instances}
+    by_rect = {(round(i.tile_rect[0], 4), round(i.tile_rect[1], 4)): i for i in instances}
     assert len(by_rect) == 4
     for tile in build_slot_plan_tiles(
         view.tile_service, _KEY, (0.0, 0.0),
         contain_fit_scale((1024, 1024), 512, 512), 1.0,
     ):
-        inst = next(i for i in instances if i.rect1 == tile.rect)
+        inst = next(i for i in instances if i.tile_rect == tile.rect)
         expected_layer = view.tile_service.slot_for(_KEY, tile.index)[1]
-        assert inst.layer1 == expected_layer
+        assert inst.layer == expected_layer
     # A swapped/neighbor binding would collapse layers; require all distinct.
-    assert len({i.layer1 for i in instances}) == 4
+    assert len({i.layer for i in instances}) == 4
     view.clear_source()
 
 
@@ -304,14 +304,14 @@ def test_missing_slot_fails_closed_never_neighbor(monkeypatch):
     instances = captured["instances"]
     assert len(instances) == 1
     expected_layer = view.tile_service.slot_for(_KEY, only)[1]
-    assert instances[0].layer1 == expected_layer
+    assert instances[0].layer == expected_layer
     # The single instance's rect is the resident tile's own, not a neighbor's.
     plan = build_slot_plan_tiles(
         view.tile_service, _KEY, (0.0, 0.0),
         contain_fit_scale((1024, 1024), 512, 512), 1.0,
     )
     own = next(t for t in plan if t.index == only)
-    assert instances[0].rect1 == own.rect
+    assert instances[0].tile_rect == own.rect
     view.clear_source()
 
 
@@ -325,7 +325,7 @@ def test_geometry_from_store_size_not_arrival_order(monkeypatch):
     view_a.set_source(TiledImageSource(key=_KEY, store=store_a))
     _render(view_a)
     set_a = {
-        (round(i.rect1[0], 5), round(i.rect1[1], 5), round(i.bbox[0], 5),
+        (round(i.tile_rect[0], 5), round(i.tile_rect[1], 5), round(i.bbox[0], 5),
          round(i.bbox[1], 5), round(i.bbox[2], 5), round(i.bbox[3], 5))
         for i in captured_a["instances"]
     }
@@ -345,7 +345,7 @@ def test_geometry_from_store_size_not_arrival_order(monkeypatch):
         )
     _render(view_b)
     set_b = {
-        (round(i.rect1[0], 5), round(i.rect1[1], 5), round(i.bbox[0], 5),
+        (round(i.tile_rect[0], 5), round(i.tile_rect[1], 5), round(i.bbox[0], 5),
          round(i.bbox[1], 5), round(i.bbox[2], 5), round(i.bbox[3], 5))
         for i in captured_b["instances"]
     }

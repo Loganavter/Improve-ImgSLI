@@ -134,6 +134,44 @@ def test_tiled_path_is_additive_single_surface_and_retires_on_item_change():
         app.processEvents()
 
 
+def test_raster_frame_reuses_last_good_frame_on_miss():
+    """Zoom/decode miss must reuse the last frame, never present nothing.
+
+    After the first frame the cover is gone; if a zoom makes both the tiled
+    plan (not ``covered``) and the raster (unbuilt LOD level -> ``None``) miss,
+    the QRhiWidget would present no pass at all -- a see-through hole. The
+    wrapper returns the cached frame instead.
+    """
+    from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget
+
+    app = QApplication.instance() or QApplication([])
+    canvas = QuickLookCanvasWidget()
+    parent = QWidget()
+    canvas.setParent(parent)
+    try:
+        good = (2, 2, b"\x10" * 16)
+        calls = {"n": 0}
+
+        def fake_compute(_target):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                canvas._frame_bytes = good  # real compute caches on success
+                return good
+            return None  # unbuilt level / empty composition
+
+        canvas._compute_raster_frame = fake_compute
+        assert canvas._raster_frame(None) == good
+        assert canvas._raster_frame(None) == good, "miss must reuse the last frame"
+        assert calls["n"] == 2
+        # Before any good frame the cover still owns the pane -> None is fine.
+        canvas._frame_bytes = None
+        assert canvas._raster_frame(None) is None
+    finally:
+        canvas.setParent(None)
+        parent.deleteLater()
+        app.processEvents()
+
+
 def test_partial_coverage_keeps_raster_takeover_only_when_covered():
     """Handover fix: takeover keys off ``TiledViewResult.covered``.
 

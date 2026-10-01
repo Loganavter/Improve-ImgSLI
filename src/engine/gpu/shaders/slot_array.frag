@@ -1,14 +1,10 @@
 #version 440
 
-// Multi-tile/multi-slot counterpart to multi_compare.frag (docs/dev/
-// rendering/tile-array-atlas-plan.md Phase 4). Per-pixel projection math
-// (letterbox -> slotRect -> fit/zoom/pan -> tileRect) is identical to
-// multi_compare.frag; the only difference is that the source image is one
-// layer of a shared texture array (sampler2DArray) instead of its own whole
-// sampler2D, addressed by this instance's iLayer. Tile content is uploaded
-// 1:1 (no resampling) into the top-left corner of a fixed-size array layer
-// (see base_images.py's _ARRAY_LAYER_PX) -- contentScale only rescales the
-// UV used to *address* that corner, it never resamples the content itself.
+// Engine slot-array fragment shader (engine.gpu.array_draw SLOT_INSTANCE_*).
+//
+// Per-pixel chain: letterbox -> slotRect -> fit/zoom/pan -> tileRect.
+// Tile content is uploaded 1:1 into the top-left corner of a fixed-size
+// array layer, so contentScale only rescales the UV used to address it.
 
 layout(std140, binding = 0) uniform UBuf
 {

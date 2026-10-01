@@ -275,16 +275,16 @@ def _assert_content_identity(
     res = view.resources
     seen: set = set()
     for inst in captured["instances"]:
-        assert inst.rect1 in rect_to_index, (
-            f"instance rect {inst.rect1!r} is not a visible plan tile"
+        assert inst.tile_rect in rect_to_index, (
+            f"instance rect {inst.tile_rect!r} is not a visible plan tile"
         )
-        index = rect_to_index[inst.rect1]
+        index = rect_to_index[inst.tile_rect]
         assert index not in seen, f"duplicate instance for tile {index}"
         seen.add(index)
         expected = _tile_fingerprint(store, grid, index)
-        actual = res.layer_payload.get((0, inst.layer1))
+        actual = res.layer_payload.get((0, inst.layer))
         assert actual == expected, (
-            f"tile {index} bound layer {inst.layer1} holding {actual!r}, "
+            f"tile {index} bound layer {inst.layer} holding {actual!r}, "
             f"expected its own content {expected!r} (neighbour/stale binding)"
         )
     return seen, rect_to_index
@@ -315,7 +315,7 @@ def test_distinct_content_payload_matches_own_index(monkeypatch):
             view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert seen == {(0, 0), (0, 1), (1, 0), (1, 1)}
-        assert len({i.layer1 for i in instances}) == 4
+        assert len({i.layer for i in instances}) == 4
     finally:
         view.clear_source()
         store.close()
@@ -385,7 +385,7 @@ def test_hole_in_middle_skips_without_neighbor_substitution(monkeypatch):
         assert len(seen) == 8
         # The unresident hole's own content appears nowhere.
         hole_fp = _tile_fingerprint(store, grid, hole)
-        bound = {view.resources.layer_payload[(0, i.layer1)] for i in captured["instances"]}
+        bound = {view.resources.layer_payload[(0, i.layer)] for i in captured["instances"]}
         assert hole_fp not in bound, "unresident tile's content leaked onto a layer"
     finally:
         view.clear_source()
@@ -427,7 +427,7 @@ def test_evicted_neighbor_is_skipped_not_substituted(monkeypatch):
         )
         assert evicted not in seen
         evicted_fp = _tile_fingerprint(store, grid, evicted)
-        bound = {view.resources.layer_payload[(0, i.layer1)] for i in instances}
+        bound = {view.resources.layer_payload[(0, i.layer)] for i in instances}
         assert evicted_fp not in bound, "evicted tile's content resurfaced"
     finally:
         view.clear_source()
@@ -479,7 +479,7 @@ def test_stale_generation_after_fresh_is_not_sampled(monkeypatch):
         b_fp = _tile_fingerprint(store_b, grid_b, only)
         # The layer holds B's content, and B(1,1) differs from A(1,1) — prove
         # the fixture actually discriminates stale A bytes from fresh B bytes.
-        assert view.resources.layer_payload[(0, inst.layer1)] == b_fp
+        assert view.resources.layer_payload[(0, inst.layer)] == b_fp
         from engine.store.regions import build_uniform_tile_grid
 
         grid_a = build_uniform_tile_grid(1024, 1024, max_tile_width=512)
@@ -604,7 +604,7 @@ def test_plan_geometry_from_store_not_residency(monkeypatch):
         assert _render(view).drawn is True
         assert len(captured["instances"]) == 1
         own = next(t for t in plan if t.index == only)
-        assert captured["instances"][0].rect1 == own.rect
+        assert captured["instances"][0].tile_rect == own.rect
         _assert_content_identity(
             view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
@@ -652,8 +652,8 @@ def test_geometry_and_content_independent_of_arrival_order(monkeypatch):
         )
 
         shape = lambda insts: {  # noqa: E731
-            (round(i.rect1[0], 6), round(i.rect1[1], 6), round(i.rect1[2], 6),
-             round(i.rect1[3], 6), round(i.bbox[0], 6), round(i.bbox[1], 6),
+            (round(i.tile_rect[0], 6), round(i.tile_rect[1], 6), round(i.tile_rect[2], 6),
+             round(i.tile_rect[3], 6), round(i.bbox[0], 6), round(i.bbox[1], 6),
              round(i.bbox[2], 6), round(i.bbox[3], 6))
             for i in insts
         }

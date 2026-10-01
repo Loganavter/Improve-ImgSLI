@@ -33,6 +33,7 @@ they land (``best_pixels`` fails closed to None).
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -44,6 +45,7 @@ from engine.gpu.tiled_image_view import (
     SingleImageTiledView,
     TiledImageSource,
     TiledImageView,
+    contain_fit_scale,
     load_tiled_image_shader,
 )
 from engine.overlay import TexturedOverlayBinding, TexturedOverlayShell
@@ -414,10 +416,15 @@ class QuickLookCanvasWidget(QRhiWidget):
                 return None
             from PySide6.QtGui import QRhiSampler
 
+            _mip = (
+                QRhiSampler.Filter.None_
+                if os.environ.get("IMGSLI_QL_NO_MIPS")
+                else QRhiSampler.Filter.Linear
+            )
             sampler = rhi.newSampler(
                 QRhiSampler.Filter.Linear,
                 QRhiSampler.Filter.Linear,
-                QRhiSampler.Filter.Linear,
+                _mip,
                 QRhiSampler.AddressMode.ClampToEdge,
                 QRhiSampler.AddressMode.ClampToEdge,
             )
@@ -1339,10 +1346,19 @@ class QuickLookCanvasWidget(QRhiWidget):
                 try:
                     from tabs.image_gallery.debug import ql_cover
 
+                    _sw, _sh = renderer.store_size()
+                    _fit = contain_fit_scale((_sw, _sh), int(fb_w), int(fb_h))
+                    _z = float(getattr(self, "_zoom", 1.0) or 1.0)
+                    _px = float(getattr(self, "_pan_x", 0.0) or 0.0)
+                    _py = float(getattr(self, "_pan_y", 0.0) or 0.0)
                     ql_cover(
-                        "tiled handover: covered=True instances=%s resident=%s",
+                        "tiled handover: covered=True instances=%s resident=%s "
+                        "store=%sx%s fb=%sx%s fit=(%.4f,%.4f) zoom=%.4f "
+                        "pan=(%.4f,%.4f)",
                         getattr(result, "instances", None),
                         getattr(result, "resident", None),
+                        _sw, _sh, int(fb_w), int(fb_h),
+                        _fit[0], _fit[1], _z, _px, _py,
                     )
                 except Exception:
                     pass
@@ -1358,6 +1374,19 @@ class QuickLookCanvasWidget(QRhiWidget):
                     getattr(result, "instances", None),
                     getattr(result, "resident", None),
                 )
+            except Exception:
+                pass
+            # Keep the residency stream moving: the tiled plan is not yet
+            # ``covered``, so it will only complete if frames keep coming.
+            # Without this, uploads stall until an unrelated repaint (mouse
+            # move) and the coarse raster lingers — or, if the raster also
+            # misses, the canvas stays a hole. Only pump when this frame made
+            # progress (a resident/drawn tile), so a dead store cannot spin.
+            try:
+                if getattr(result, "drawn", False) or int(
+                    getattr(result, "resident", 0) or 0
+                ) > 0:
+                    self._pump_next_frame()
             except Exception:
                 pass
             return False
@@ -1378,7 +1407,28 @@ class QuickLookCanvasWidget(QRhiWidget):
     # -- frame raster -----------------------------------------------------------
 
     def _raster_frame(self, target) -> tuple[int, int, bytes] | None:
-        """Frame raster: single ResolvedLayer → cache → zoom/pan crop."""
+        """Frame raster, never presenting nothing.
+
+        Wraps ``_compute_raster_frame``: any miss (unbuilt LOD level, empty
+        composition, decode failure) reuses the last good frame instead of
+        returning ``None``. A partial tiled frame is not ``covered`` while it
+        streams, so a ``None`` here would leave the QRhiWidget presenting no
+        pass at all — a see-through hole (``qrhiwidget-cant-alpha-blend`` /
+        "no pinned coarse level → holes by construction"). Stale beats a hole;
+        the frame cache is invalidated on source change, so the reused frame
+        is always the same image. Never raises.
+        """
+        try:
+            frame = self._compute_raster_frame(target)
+        except Exception:
+            logger.debug("QuickLook preview: raster failed open", exc_info=True)
+            frame = None
+        if frame is not None:
+            return frame
+        return self._frame_bytes
+
+    def _compute_raster_frame(self, target) -> tuple[int, int, bytes] | None:
+        """Compute the frame raster: single ResolvedLayer → cache → crop."""
         try:
             composition = self._active_composition
             layers = getattr(composition, "layers", ()) or ()

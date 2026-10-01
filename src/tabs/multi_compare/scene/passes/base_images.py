@@ -10,7 +10,12 @@ from PySide6.QtGui import QImage, QRhiViewport
 
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.fallback_lod import resolve_fallback_lod
-from engine.gpu.array_draw import draw_array_instances
+from engine.gpu.array_draw import (
+    SLOT_INSTANCE_FMT,
+    draw_array_instances,
+    load_slot_array_shader,
+    pack_slot_array_uniforms,
+)
 from engine.gpu.host_texture_cache import cache_for_host
 from engine.cache.lod import LevelKey
 from engine.gpu.base_images_pass import (
@@ -35,7 +40,6 @@ from tabs.multi_compare.scene.resources import (
     SLOT_LIVE_TILE_EXTENT,
     SLOT_TILE_CACHE_BUDGET_BYTES,
     SLOT_UNIFORM_SIZE,
-    load_shader,
 )
 from tabs.multi_compare.scene.tile_geometry import (
     SlotArrayTile,
@@ -104,7 +108,7 @@ def _frame_context_from_widget(widget):
 def _pack_array_uniforms(
     clip_matrix: tuple[float, ...], letterbox: tuple[float, float, float, float]
 ) -> bytes:
-    return struct.pack("<16f 4f", *clip_matrix, *letterbox)
+    return pack_slot_array_uniforms(clip_matrix, letterbox)
 
 
 def _pack_array_instance(
@@ -118,7 +122,7 @@ def _pack_array_instance(
     bbox: tuple[float, float, float, float],
 ) -> bytes:
     return struct.pack(
-        "<4f f 4f 4f 2f i 4f",
+        SLOT_INSTANCE_FMT,
         *pan_fit,
         zoom,
         *tile_rect,
@@ -401,7 +405,7 @@ class BaseImagesPass(CanvasRenderPass):
             sampler_getter=lambda name: (
                 self._renderer.sampler if self._renderer else None
             ),
-            load_shader=load_shader,
+            load_shader=load_slot_array_shader,
             layer_px=_ARRAY_LAYER_PX,
             array_capacity=_ARRAY_CAPACITY,
             name_prefix="multi-compare",
