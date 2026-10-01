@@ -19,14 +19,14 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 
-from PySide6.QtGui import QRhiDepthStencilClearValue, QRhiViewport
-
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
 
 from engine.frame.context import FrameContext, make_ids
-from ..resources import (
-    _ARRAY_INSTANCE_STRIDE,
+from engine.gpu.array_draw import (
+    ARRAY_INSTANCE_STRIDE as _ARRAY_INSTANCE_STRIDE,
+    ArrayInstance,
     pack_array_instance,
+    record_array_draw,
     unpack_instance_layer2,
 )
 from ..uniforms import pack_array_uniforms
@@ -181,36 +181,15 @@ def submit_array_draw(
         active_feature_passes = tuple(
             p for p in active_feature_passes if not getattr(p, "requires_content", True)
         )
-    for render_pass in active_feature_passes:
-        render_pass.prepare(widget, ctx, updates)
-    # Any pass's own extra beginPass/endPass pairs into textures of its
-    # own (e.g. filename_overlay's label-downsample GPU pass) must run
-    # here, before the main pass opens below -- QRhi passes can't nest,
-    # same reason generate_all_dirty_mips above also runs pre-beginPass.
-    for render_pass in active_feature_passes:
-        try:
-            # Some test fakes may not implement record_pre_pass
-            if hasattr(render_pass, "record_pre_pass"):
-                render_pass.record_pre_pass(command_buffer, widget, ctx)
-        except Exception:
-            # Keep parity with renderer: let it propagate? Original didn't catch.
-            raise
 
-    # One fixed-size uniform block (no per-item dynamic offsets --
-    # array-path uniforms carry no per-item data, see
-    # pack_array_uniforms) plus one per-instance vertex buffer, both
-    # written pre-pass so they land in the same frame-in-flight
-    # rotation slot a same-pass read would use (writing mid-pass is not
-    # guaranteed to, on Vulkan/D3D/Metal backends -- see the
-    # investigation this avoided in docs/dev/rendering/investigations/
-    # multitile-uniform-desync.md). ensure_array_pipeline/ensure_array_srb
-    # must also run before beginPass -- resource creation is illegal
-    # inside an open pass.
-    array_srb = None
+    # Build the logical per-instance draw data for the shared engine core.
+    # ``bbox`` is resolved here -- index 0 is forced fullscreen so the
+    # uniforms-only pillarbox fill still paints, except in SSIM clamp-
+    # sampling mode (diff_mode 4 + diff source ready) where the frag has no
+    # discard to clip a fullscreen instance back down; see
+    # resolve_instance_bbox. The engine's record core only packs and records.
+    _clamp_sampling = False
     if array_draw_plan:
-        # SSIM clamp-sampling mode (diff_mode 4 + diff source ready): the
-        # frag skips the inTile discard, so only discard-gated modes may
-        # widen instance 0 to fullscreen — see resolve_instance_bbox.
         _diff_mode_int = 0
         if _base_image is not None:
             try:
@@ -218,85 +197,93 @@ def submit_array_draw(
             except (TypeError, ValueError):
                 _diff_mode_int = 0
         _clamp_sampling = _diff_mode_int == _SSIM_CLAMP_SAMPLING_MODE and bool(_diff_ready)
-        # Use target for pipeline creation; original used widget.renderTarget()
-        # which is the same object as ``target`` captured at render start.
-        _target_for_pipeline = target if target is not None else widget.renderTarget()
-        renderer.resources.array_resources.ensure_array_pipeline(_target_for_pipeline)
-        renderer.resources.array_resources.ensure_array_instance_capacity(len(array_draw_plan))
-        if _base_image is not None and updates is not None:
-            updates.updateDynamicBuffer(
-                renderer.resources.array_resources.array_uniform_buffer,
-                0,
-                pack_array_uniforms(
-                    renderer.rhi, _base_image, diff_source_ready=bool(_diff_ready)
-                ),
-            )
-        instance_bytes = b"".join(
-            pack_array_instance(
-                rect1=item.rect1,
-                rect2=item.rect2,
-                content_scale=item.content_scale,
-                content_scale_diff=item.content_scale_diff,
-                layer1=item.layer1,
-                layer2=item.layer2,
-                layer_diff=item.layer_diff,
-                # docs/dev/rendering/tile-array-atlas-plan.md Phase 10:
-                # every other instance is clipped to its own tile's
-                # bbox, but canvasLetterbox/letterboxFill's pillarbox
-                # background-fill depends only on uniforms (not any
-                # instance's own tile rect), so it still needs at least
-                # one fullscreen instance to paint it -- index 0 is
-                # forced full regardless of its real footprint, except in
-                # SSIM clamp-sampling mode where the frag has no discard
-                # to clip a fullscreen instance back down (see
-                # resolve_instance_bbox).
-                bbox=resolve_instance_bbox(index, item.bbox, clamp_sampling=_clamp_sampling),
-                rect_diff=item.rect_diff,
-            )
-            for index, item in enumerate(array_draw_plan)
+
+    instances = [
+        ArrayInstance(
+            rect1=item.rect1,
+            rect2=item.rect2,
+            content_scale=item.content_scale,
+            content_scale_diff=item.content_scale_diff,
+            layer1=item.layer1,
+            layer2=item.layer2,
+            layer_diff=item.layer_diff,
+            bbox=resolve_instance_bbox(
+                index, item.bbox, clamp_sampling=_clamp_sampling
+            ),
+            rect_diff=item.rect_diff,
+            sampler_name=item.sampler_name,
         )
-        # Phantom-hunt (ic-right-image-vanish): submit-vs-plan discriminator.
-        # Compares the layer2 actually packed into instance_bytes against
-        # plan[i].layer2 over ALL entries (first-3 sampling can miss a dup
-        # in a 2x2x2 plan). match=True -> submit faithful, corruption (if
-        # any) is upstream in the plan; match=False -> pack-corruption.
-        # Change-gated via throttle stream: silent on steady frames.
-        # No behavior change: read-only inspection of already-packed bytes.
-        try:
-            if _draw_preview_enabled() and instance_bytes:
-                _n_inst = len(instance_bytes) // _ARRAY_INSTANCE_STRIDE
-                if _n_inst == len(array_draw_plan) and _n_inst > 0:
-                    _sub_l2 = tuple(
-                        unpack_instance_layer2(instance_bytes, i)
-                        for i in range(_n_inst)
-                    )
-                    _plan_l2 = tuple(item.layer2 for item in array_draw_plan)
-                    if _throttle_emit(
-                        "submit.instance_layer2.full", (_sub_l2, _plan_l2)
-                    ):
-                        _draw_preview_log(
-                            "submit l2 full submitted=%s plan=%s match=%s entries=%d",
-                            list(_sub_l2),
-                            list(_plan_l2),
-                            _sub_l2 == _plan_l2,
-                            _n_inst,
-                        )
-        except Exception:
-            pass
-        if updates is not None:
-            updates.updateDynamicBuffer(
-                renderer.resources.array_resources.array_instance_buffer, 0, instance_bytes
-            )
-        array_srb = renderer.resources.array_resources.ensure_array_srb(
-            array_draw_plan[0].sampler_name
+        for index, item in enumerate(array_draw_plan)
+    ]
+
+    # One fixed-size uniform block (no per-item dynamic offsets -- array-path
+    # uniforms carry no per-item data, see pack_array_uniforms). Written by
+    # the engine core pre-pass so it lands in the same frame-in-flight
+    # rotation slot a same-pass read would use (writing mid-pass is not
+    # guaranteed to, on Vulkan/D3D/Metal backends -- see
+    # docs/dev/rendering/investigations/multitile-uniform-desync.md).
+    uniform_bytes = None
+    if _base_image is not None:
+        uniform_bytes = pack_array_uniforms(
+            renderer.rhi, _base_image, diff_source_ready=bool(_diff_ready)
         )
 
-    # Main pass — exactly as before
-    # Phase-2 frame bus: begin/end fact flags (assignments only — control
-    # flow and exception behavior below are byte-identical to before).
-    # Perf spans (Wave C): the submit hop of the wheel-to-photon chain
-    # (span/record only — every QRhi call below is unchanged). None-safe:
-    # callers without a frame_context skip the span, not the draw.
+    # Phantom-hunt (ic-right-image-vanish): submit-vs-plan discriminator.
+    # Compares the layer2 actually packed into instance_bytes against
+    # plan[i].layer2 over ALL entries (first-3 sampling can miss a dup in a
+    # 2x2x2 plan). match=True -> submit faithful, corruption (if any) is
+    # upstream in the plan; match=False -> pack-corruption. Change-gated via
+    # throttle stream: silent on steady frames. No behavior change: packing
+    # here is debug-only (the engine core packs for the real upload) and the
+    # result is read-only inspection of those bytes.
+    try:
+        if _draw_preview_enabled() and instances:
+            instance_bytes = b"".join(
+                pack_array_instance(inst) for inst in instances
+            )
+            _n_inst = len(instance_bytes) // _ARRAY_INSTANCE_STRIDE
+            if _n_inst == len(instances) and _n_inst > 0:
+                _sub_l2 = tuple(
+                    unpack_instance_layer2(instance_bytes, i)
+                    for i in range(_n_inst)
+                )
+                _plan_l2 = tuple(item.layer2 for item in array_draw_plan)
+                if _throttle_emit(
+                    "submit.instance_layer2.full", (_sub_l2, _plan_l2)
+                ):
+                    _draw_preview_log(
+                        "submit l2 full submitted=%s plan=%s match=%s entries=%d",
+                        list(_sub_l2),
+                        list(_plan_l2),
+                        _sub_l2 == _plan_l2,
+                        _n_inst,
+                    )
+    except Exception:
+        pass
+
+    # Feature-pass work runs through the engine record core's callbacks:
+    # prepare/record_pre_pass before the pass opens (some passes run their
+    # own beginPass/endPass pairs into textures of their own here -- QRhi
+    # passes can't nest), feature record inside the open pass.
+    def _pre_begin() -> None:
+        for render_pass in active_feature_passes:
+            render_pass.prepare(widget, ctx, updates)
+        for render_pass in active_feature_passes:
+            # Some test fakes may not implement record_pre_pass
+            if hasattr(render_pass, "record_pre_pass"):
+                render_pass.record_pre_pass(command_buffer, widget, ctx)
+
+    def _in_pass() -> None:
+        for render_pass in active_feature_passes:
+            render_pass.record(command_buffer, widget, ctx)
+
+    # Use target for pipeline creation; original used widget.renderTarget()
+    # which is the same object as ``target`` captured at render start.
+    _target_for_pipeline = target if target is not None else widget.renderTarget()
+
+    # Main pass — exactly as before. Perf spans (Wave C): the submit hop of
+    # the wheel-to-photon chain (span/record only). None-safe: callers
+    # without a frame_context skip the span, not the draw.
     _submit_cm = (
         frame_context.span(
             "ic.submit",
@@ -305,71 +292,21 @@ def submit_array_draw(
         if frame_context is not None
         else nullcontext()
     )
-    _began = False
-    _ended = False
+    _began = True
+    _ended = True
     with _submit_cm:
-        if target is not None and clear_color is not None and updates is not None:
-            command_buffer.beginPass(
-                target,
-                clear_color,
-                QRhiDepthStencilClearValue(1.0, 0),
-                updates,
-            )
-            _began = True
-        else:
-            # Fallback: try to beginPass with whatever we have (tests may mock)
-            try:
-                command_buffer.beginPass(
-                    target,
-                    clear_color,
-                    QRhiDepthStencilClearValue(1.0, 0),
-                    updates,
-                )
-                _began = True
-            except Exception:
-                # If command_buffer is a mock, just proceed
-                pass
-
-        if array_draw_plan:
-            # docs/dev/rendering/tile-array-atlas-plan.md Phase 2: the whole
-            # multi-tile scene in one instanced draw call, instead of one
-            # draw call per (image1 tile, image2 tile) pair -- the
-            # draw-call-count fix this plan exists for.
-            try:
-                size = target.pixelSize() if target is not None else widget.renderTarget().pixelSize()
-            except Exception:
-                size = None
-            if size is not None:
-                command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
-                command_buffer.setViewport(
-                    QRhiViewport(0.0, 0.0, float(size.width()), float(size.height()))
-                )
-                command_buffer.setVertexInput(
-                    0,
-                    [
-                        (renderer.resources.vertex_buffer, 0),
-                        (renderer.resources.array_resources.array_instance_buffer, 0),
-                    ],
-                )
-                command_buffer.setShaderResources(array_srb)
-                command_buffer.draw(4, len(array_draw_plan))
-            else:
-                # No size — still attempt draw
-                try:
-                    command_buffer.setGraphicsPipeline(renderer.resources.array_resources.array_pipeline)
-                    command_buffer.setShaderResources(array_srb)
-                    command_buffer.draw(4, len(array_draw_plan))
-                except Exception:
-                    pass
-
-        for render_pass in active_feature_passes:
-            render_pass.record(command_buffer, widget, ctx)
-
-        try:
-            command_buffer.endPass()
-            _ended = True
-        except Exception:
-            pass
+        record_array_draw(
+            command_buffer,
+            resources=renderer.resources.array_resources,
+            vertex_buffer=renderer.resources.vertex_buffer,
+            instances=instances,
+            uniform_bytes=uniform_bytes,
+            target=_target_for_pipeline,
+            clear_color=clear_color,
+            updates=updates,
+            pre_begin=_pre_begin,
+            in_pass=_in_pass,
+        )
 
     # Phase-2 frame bus: submit gate + begin/end fact (record only).
     if frame_context is not None:

@@ -285,6 +285,11 @@ def release_preview_canvas_for_walk(overlay) -> None:
     except Exception:
         pass
     try:
+        # Retire any in-flight tiled full-store decode (its result closes).
+        overlay._ql_tiled_token = int(getattr(overlay, "_ql_tiled_token", 0) or 0) + 1
+    except Exception:
+        pass
+    try:
         canvas = getattr(overlay, "_preview_canvas", None)
         if canvas is not None:
             try:
@@ -306,6 +311,7 @@ def release_preview_canvas(overlay) -> None:
     """Overlay release (hide/close): walk step + drop every memoized store."""
     release_preview_canvas_for_walk(overlay)
     _drop_preview_store_cache(overlay)
+    _drop_tiled_store_cache(overlay)
 
 
 def _install_memo_probe(overlay, canvas) -> None:
@@ -389,6 +395,196 @@ def _coarse_store_for(path, *, long_edge: int = 1024):
         return PyramidPixelStore.coarse_from_source(str(path), long_edge=cap)
     except Exception:
         return None
+
+
+def _decode_full_store_uncapped(path, tmp_dir=None):
+    """Background full-resolution decode for the tiled live path (worker).
+
+    Unlike ``preview_canvas._ql_decode_full_store`` (bounded by
+    ``_QL_FULL_EDGE_CAP`` for the demand pyramid), this deliberately applies
+    NO source-size cap: the tiled single-source path exists precisely to show
+    the full store at any resolution. Pure Python + PIL/pyvips + memmap — no
+    Qt. Never raises (None on any failure).
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+
+        try:
+            store = TiledPixelStore.from_path(str(path), tmp_dir)
+        except Exception:
+            return None
+        try:
+            w, h = store.size
+            if int(w) <= 0 or int(h) <= 0:
+                raise ValueError("empty store")
+        except Exception:
+            try:
+                store.close()
+            except Exception:
+                pass
+            return None
+        return store
+    except Exception:
+        return None
+
+
+def _tiled_store_cache_lookup(overlay, key):
+    """Memoized full tiled store for *key*, or None (validates ``is_open``)."""
+    try:
+        if key is None:
+            return None
+        cache = getattr(overlay, "_ql_tiled_store_cache", None)
+        if not isinstance(cache, dict):
+            return None
+        hit = cache.get(key)
+        if hit is None:
+            return None
+        try:
+            if not bool(hit.is_open):
+                cache.pop(key, None)
+                return None
+        except Exception:
+            cache.pop(key, None)
+            return None
+        try:
+            cache.pop(key, None)
+            cache[key] = hit
+        except Exception:
+            pass
+        return hit
+    except Exception:
+        return None
+
+
+def _tiled_store_cache_store(overlay, key, store) -> None:
+    """Memoize a full tiled store (bounded, host-owned; never raises)."""
+    try:
+        if key is None or store is None:
+            return
+        try:
+            if not bool(store.is_open):
+                return
+        except Exception:
+            return
+        cache = getattr(overlay, "_ql_tiled_store_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            try:
+                overlay._ql_tiled_store_cache = cache
+            except Exception:
+                return
+        if key not in cache and len(cache) >= _preview_store_cache_max():
+            try:
+                oldest = next(iter(cache))
+            except StopIteration:
+                oldest = None
+            if oldest is not None:
+                evicted = cache.pop(oldest, None)
+                if evicted is not None:
+                    _close_store_quiet(evicted)
+        cache[key] = store
+    except Exception:
+        pass
+
+
+def _drop_tiled_store_cache(overlay) -> None:
+    """Close + clear every memoized full tiled store (overlay release)."""
+    try:
+        cache = getattr(overlay, "_ql_tiled_store_cache", None)
+    except Exception:
+        return
+    if not isinstance(cache, dict):
+        return
+    try:
+        items = list(cache.items())
+    except Exception:
+        items = []
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    for _k, store in items:
+        _close_store_quiet(store)
+
+
+def _populate_tiled_source(overlay, canvas, path, key) -> None:
+    """Register a full ``TiledPixelStore`` with the canvas for array-tile draw.
+
+    Memo hit: hand the memoized store straight to ``set_tiled_source`` (zero
+    decode). Miss: kick one background uncapped decode whose result installs
+    the store (memoized) and calls ``set_tiled_source`` only if the same item
+    is still displayed (token guard). Every failure fails open — the
+    raster/cover surface keeps serving. Never raises.
+    """
+    try:
+        path_s = str(path or "")
+        if not path_s:
+            return
+        if key is None:
+            key = path_s  # stat-failed memo key: still a stable identity.
+        setter = getattr(canvas, "set_tiled_source", None)
+        if not callable(setter):
+            return
+        memo = _tiled_store_cache_lookup(overlay, key)
+        if memo is not None:
+            try:
+                setter(key, memo)
+            except Exception:
+                pass
+            return
+        try:
+            overlay._ql_tiled_token = int(getattr(overlay, "_ql_tiled_token", 0) or 0) + 1
+            token = int(overlay._ql_tiled_token)
+        except Exception:
+            token = None
+        try:
+            from engine.store.tiled_pixel_store import resolve_pixel_spill_dir
+
+            tmp_dir = resolve_pixel_spill_dir()
+        except Exception:
+            tmp_dir = None
+        try:
+            from PySide6.QtCore import QThreadPool
+
+            from sli_ui_toolkit.workers import GenericWorker
+
+            pool = QThreadPool.globalInstance()
+        except Exception:
+            pool = None
+        if pool is None:
+            return
+
+        def _on_ready(store, _t=token, _k=key) -> None:
+            try:
+                live = token is None or int(getattr(overlay, "_ql_tiled_token", -1) or 0) == int(_t)
+            except Exception:
+                live = False
+            if not live:
+                # Walked away — close the private result, keep memos.
+                _close_store_quiet(store)
+                return
+            try:
+                ok = store is not None and bool(store.is_open)
+            except Exception:
+                ok = False
+            if not ok:
+                return
+            _tiled_store_cache_store(overlay, _k, store)
+            try:
+                # Same item still on the canvas? (update() the canvas after.)
+                canvas_now = getattr(overlay, "_preview_canvas", None)
+                if canvas_now is not None:
+                    setter_now = getattr(canvas_now, "set_tiled_source", None)
+                    if callable(setter_now):
+                        setter_now(_k, store)
+            except Exception:
+                pass
+
+        worker = GenericWorker(_decode_full_store_uncapped, path_s, tmp_dir)
+        worker.signals.result.connect(_on_ready)
+        pool.start(worker)
+    except Exception:
+        pass
 
 
 def _store_from_pixmap(pm):
@@ -551,6 +747,10 @@ def _populate_preview_canvas(overlay, item) -> bool:
                         note(str(raw))
                 except Exception:
                     pass
+                try:  # tiled single-source path (additive; async full store)
+                    _populate_tiled_source(overlay, canvas, raw, _key)
+                except Exception:
+                    pass
                 try:
                     reveal_preview_canvas(overlay, canvas)
                     _wire_canvas_fallback(overlay, canvas, item)
@@ -621,6 +821,10 @@ def _populate_preview_canvas(overlay, item) -> bool:
             note = getattr(canvas, "note_ql_source", None)
             if callable(note):
                 note(str(raw))
+        except Exception:
+            pass
+        try:  # tiled single-source path (additive; async full store)
+            _populate_tiled_source(overlay, canvas, raw, _key)
         except Exception:
             pass
         try:

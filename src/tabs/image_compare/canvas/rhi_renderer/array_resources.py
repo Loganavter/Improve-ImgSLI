@@ -17,31 +17,13 @@ only supplies image_compare's own instance layout/shaders/uniform size.
 
 from __future__ import annotations
 
-from PySide6.QtGui import QRhiVertexInputAttribute
-
+from engine.gpu.array_draw import (
+    ARRAY_INSTANCE_ATTRIBUTES as _ARRAY_INSTANCE_ATTRIBUTES,
+    ARRAY_INSTANCE_STRIDE as _ARRAY_INSTANCE_STRIDE,
+)
 from engine.gpu.array_resources import TileArrayResourcesBase
 
 from .uniforms import _ARRAY_UNIFORM_BLOCK_SIZE
-
-# Per-instance vertex layout for the array pipeline (base_array.vert):
-# iRect1(vec4,16) + iRect2(vec4,16) + iContentScale(vec4,16) +
-# iContentScaleDiff(vec2,8) + iLayers(ivec3,12) + iBBox(vec4,16) +
-# iRectDiff(vec4,16) = 100 bytes. Keep byte-for-byte in sync with
-# ``rhi_renderer/resources.py``'s own copy of this same layout
-# (``_ARRAY_INSTANCE_STRIDE``/``_ARRAY_INSTANCE_FMT``/``pack_array_instance``)
-# -- these two files duplicate the layout on either side of the
-# shared/image_compare split, nothing currently asserts they match.
-_ARRAY_INSTANCE_STRIDE = 100
-
-_ARRAY_INSTANCE_ATTRIBUTES = (
-    QRhiVertexInputAttribute(1, 2, QRhiVertexInputAttribute.Format.Float4, 0),
-    QRhiVertexInputAttribute(1, 3, QRhiVertexInputAttribute.Format.Float4, 16),
-    QRhiVertexInputAttribute(1, 4, QRhiVertexInputAttribute.Format.Float4, 32),
-    QRhiVertexInputAttribute(1, 5, QRhiVertexInputAttribute.Format.Float2, 48),
-    QRhiVertexInputAttribute(1, 6, QRhiVertexInputAttribute.Format.SInt3, 56),
-    QRhiVertexInputAttribute(1, 7, QRhiVertexInputAttribute.Format.Float4, 68),
-    QRhiVertexInputAttribute(1, 8, QRhiVertexInputAttribute.Format.Float4, 84),
-)
 
 
 class ArrayResources(TileArrayResourcesBase):

@@ -182,6 +182,12 @@ class QuickLookCanvasWidget(QRhiWidget):
         self._ql_probe_path = None
         self._ql_probe_dims = None
         self._last_fb = None
+        # Tiled single-source path (additive): a full TiledPixelStore drawn
+        # from texture-array tiles instead of the single-quad raster. The
+        # raster/shell path stays the pre-first-frame / fail-open surface.
+        self._tiled_source = None
+        self._tile_renderer = None
+        self._tile_sampler = None
         try:
             self._present_debt = begin_source(None)
         except Exception:
@@ -245,6 +251,14 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             pass
         try:
+            # A changed coarse item also invalidates any tiled full source
+            # (it belonged to the previous item); the host re-registers the
+            # new one via set_tiled_source right after.
+            if _ql_changed:
+                self.clear_tiled_source()
+        except Exception:
+            pass
+        try:
             self.update()
         except Exception:
             pass
@@ -291,6 +305,12 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             logger.debug("QuickLook preview: clear_source failed open", exc_info=True)
         try:
+            # Retire the tiled full store FIRST: it may point at the same
+            # canvas-private full store _drop_ql_demand is about to close.
+            self.clear_tiled_source()
+        except Exception:
+            pass
+        try:
             # Walk/item-change retires the demand build (generation bump
             # aborts decode + levels) and closes the canvas-private full
             # materials. Coarse memos stay open (host cache owns them).
@@ -328,6 +348,136 @@ class QuickLookCanvasWidget(QRhiWidget):
             pass
         try:
             held.close()
+        except Exception:
+            pass
+
+    # -- tiled single-source path (additive) --------------------------------------
+
+    def set_tiled_source(self, key, store) -> None:
+        """Register a full ``TiledPixelStore`` to draw from array tiles.
+
+        Additive: the raster/cover path keeps serving until this tiled
+        source has at least one resident tile; a missing slot fails closed
+        per tile, so a half-uploaded grid never substitutes a neighbor.
+        Never raises.
+        """
+        try:
+            self._tiled_source = (key, store)
+            self._tile_bound_source = None
+        except Exception:
+            self._tiled_source = None
+            return
+        try:
+            self._ensure_tile_renderer()
+        except Exception:
+            logger.debug("QuickLook preview: tile renderer setup failed open", exc_info=True)
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def clear_tiled_source(self) -> None:
+        """Drop the tiled source + its GPU tiles (walk/close). Never raises."""
+        try:
+            self._tiled_source = None
+            self._tile_bound_source = None
+        except Exception:
+            pass
+        try:
+            renderer = self._tile_renderer
+            if renderer is not None:
+                renderer.clear_source()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _sampler_for_tiles(self, name):
+        """Lazy ``linear`` sampler for the tile-array SRB (owned here)."""
+        try:
+            if name != "linear":
+                return None
+            existing = self._tile_sampler
+            if existing is not None:
+                return existing
+            rhi = self.rhi()
+            if rhi is None:
+                return None
+            from PySide6.QtGui import QRhiSampler
+
+            sampler = rhi.newSampler(
+                QRhiSampler.Filter.Linear,
+                QRhiSampler.Filter.Linear,
+                QRhiSampler.Filter.Linear,
+                QRhiSampler.AddressMode.ClampToEdge,
+                QRhiSampler.AddressMode.ClampToEdge,
+            )
+            sampler.setName(b"ql-linear-sampler")
+            if not sampler.create():
+                return None
+            self._tile_sampler = sampler
+            return sampler
+        except Exception:
+            return None
+
+    def _ensure_tile_renderer(self):
+        """Construct (once) + bind the QL tile renderer to the held source.
+
+        Binds ``set_source`` only when the (key, store) identity actually
+        changed since the last bind — rebinding every frame would drop and
+        re-register the whole tile grid (a permanent clear/re-upload loop).
+        """
+        try:
+            if self.rhi() is None:
+                return None
+            renderer = self._tile_renderer
+            if renderer is None:
+                from tabs.image_gallery.ui.quick_look.tile_renderer import (
+                    QuickLookTileRenderer,
+                    load_shader,
+                )
+
+                renderer = QuickLookTileRenderer(
+                    rhi_getter=lambda: self.rhi(),
+                    sampler_getter=self._sampler_for_tiles,
+                    load_shader=load_shader,
+                )
+                self._tile_renderer = renderer
+            source = self._tiled_source
+            if source is not None:
+                key, store = source
+                if store is not None:
+                    bound = getattr(self, "_tile_bound_source", None)
+                    is_bound = (
+                        bound is not None
+                        and bound[0] is key
+                        and bound[1] is store
+                    )
+                    if not is_bound:
+                        renderer.set_source(key, store)
+                        self._tile_bound_source = (key, store)
+            return renderer
+        except Exception:
+            logger.debug("QuickLook preview: tile renderer ensure failed open", exc_info=True)
+            return None
+
+    def _destroy_tile_renderer(self) -> None:
+        """Release the tile renderer + sampler (never raises)."""
+        try:
+            renderer = self._tile_renderer
+            self._tile_renderer = None
+            self._tile_bound_source = None
+            if renderer is not None:
+                renderer.release()
+        except Exception:
+            pass
+        try:
+            sampler = self._tile_sampler
+            self._tile_sampler = None
+            if sampler is not None:
+                sampler.destroy()
         except Exception:
             pass
 
@@ -970,8 +1120,16 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             logger.debug("QuickLook preview: shell mount failed open", exc_info=True)
             self._shell_ready = False
+        try:  # additive tiled path: bind a pending full store now the RHI is live
+            self._ensure_tile_renderer()
+        except Exception:
+            logger.debug("QuickLook preview: tile renderer init failed open", exc_info=True)
 
     def releaseResources(self) -> None:  # noqa: N802
+        try:
+            self._destroy_tile_renderer()
+        except Exception:
+            pass
         try:
             self._shell.teardown()
         except Exception:
@@ -1049,6 +1207,25 @@ class QuickLookCanvasWidget(QRhiWidget):
             except Exception:
                 return self._skip_frame("no-batch")
             try:
+                size = target.pixelSize()
+                fb_w = max(1, int(size.width()))
+                fb_h = max(1, int(size.height()))
+            except Exception:
+                fb_w, fb_h = 1, 1
+            # Additive tiled path: when a full TiledPixelStore is registered
+            # and the RHI is live, draw it from texture-array tiles. It gets
+            # its OWN update batch (it may submit uploads even when it draws
+            # nothing that frame), so the shell's batch below stays pristine.
+            # A frame with no resident tile yet fails open to the raster path.
+            try:
+                tiled_updates = rhi.nextResourceUpdateBatch()
+            except Exception:
+                tiled_updates = None
+            if tiled_updates is not None and self._render_tiled(
+                command_buffer, tiled_updates, target, clear, fb_w, fb_h
+            ):
+                return
+            try:
                 self._shell.stage_quad(updates)
                 self._shell.stage_clip(updates, _IDENTITY_CLIP)
             except Exception:
@@ -1071,40 +1248,9 @@ class QuickLookCanvasWidget(QRhiWidget):
                 return self._skip_frame("begin-failed")
             try:
                 if frame is not None:
-                    try:
-                        size = target.pixelSize()
-                        fb_w, fb_h = float(size.width()), float(size.height())
-                    except Exception:
-                        fb_w, fb_h = 1.0, 1.0
+                    fb_w, fb_h = float(fb_w), float(fb_h)
                     self._shell.draw(command_buffer, width=fb_w, height=fb_h)
-                    # Settle gate (MC parity): present #1 pumps one more frame
-                    # (the compositor may still show the untouched surface);
-                    # the cover drops only on the settled present #2. The
-                    # count truth lives in canvas._present_debt via the
-                    # frozen engine ledger; _frame_ok stays the cover-drop
-                    # truth until the deferred flush emits.
-                    if not self._frame_ok:
-                        try:
-                            debt = getattr(self, "_present_debt", None)
-                            if debt is None:
-                                debt = begin_source(None)
-                                try:
-                                    self._present_debt = debt
-                                except Exception:
-                                    pass
-                            from tabs.image_gallery.ui.quick_look.preview_watchdog import (
-                                QL_SETTLE_COUNT,
-                            )
-                            verdict = note_presented(debt, QL_SETTLE_COUNT)
-                        except Exception:
-                            verdict = "waiting"
-                        if verdict == "pumped":
-                            self._settle_pumped = True
-                            self._pump_next_frame()
-                        elif verdict == "settled":
-                            settle_first_frame(self)
-                        # "waiting" → nothing: the emit stays in the
-                        # deferred flush, never at this counting site.
+                    self._settle_present()
             finally:
                 try:
                     command_buffer.endPass()
@@ -1112,6 +1258,72 @@ class QuickLookCanvasWidget(QRhiWidget):
                     pass
         except Exception:
             logger.debug("QuickLook preview: frame failed open", exc_info=True)
+
+    def _settle_present(self) -> None:
+        """Settle gate (MC parity): present #1 pumps one more frame (the
+        compositor may still show the untouched surface); the cover drops
+        only on the settled present #2. The count truth lives in
+        canvas._present_debt via the frozen engine ledger; _frame_ok stays
+        the cover-drop truth until the deferred flush emits. Never raises."""
+        try:
+            if self._frame_ok:
+                return
+            try:
+                debt = getattr(self, "_present_debt", None)
+                if debt is None:
+                    debt = begin_source(None)
+                    try:
+                        self._present_debt = debt
+                    except Exception:
+                        pass
+                from tabs.image_gallery.ui.quick_look.preview_watchdog import (
+                    QL_SETTLE_COUNT,
+                )
+
+                verdict = note_presented(debt, QL_SETTLE_COUNT)
+            except Exception:
+                verdict = "waiting"
+            if verdict == "pumped":
+                self._settle_pumped = True
+                self._pump_next_frame()
+            elif verdict == "settled":
+                settle_first_frame(self)
+            # "waiting" → nothing: the emit stays in the deferred flush,
+            # never at this counting site.
+        except Exception:
+            pass
+
+    def _render_tiled(self, command_buffer, updates, target, clear, fb_w, fb_h) -> bool:
+        """Drive the tiled source's array draw for this frame.
+
+        Returns ``True`` when at least one tile was drawn (the caller then
+        skips the raster path). ``False`` on any miss so the raster/cover
+        surface still serves. Never raises.
+        """
+        try:
+            if self._tiled_source is None:
+                return False
+            renderer = self._ensure_tile_renderer()
+            if renderer is None or not renderer.has_source():
+                return False
+            drawn = renderer.render(
+                command_buffer,
+                updates=updates,
+                target=target,
+                clear_color=clear,
+                zoom=float(getattr(self, "_zoom", 1.0) or 1.0),
+                pan_x=float(getattr(self, "_pan_x", 0.0) or 0.0),
+                pan_y=float(getattr(self, "_pan_y", 0.0) or 0.0),
+                fb_w=fb_w,
+                fb_h=fb_h,
+            )
+            if drawn:
+                self._settle_present()
+                return True
+            return False
+        except Exception:
+            logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
+            return False
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         try:
