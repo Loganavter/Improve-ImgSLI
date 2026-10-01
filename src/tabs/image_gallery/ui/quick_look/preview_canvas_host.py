@@ -400,32 +400,14 @@ def _coarse_store_for(path, *, long_edge: int = 1024):
 def _decode_full_store_uncapped(path, tmp_dir=None):
     """Background full-resolution decode for the tiled live path (worker).
 
-    Unlike ``preview_canvas._ql_decode_full_store`` (bounded by
-    ``_QL_FULL_EDGE_CAP`` for the demand pyramid), this deliberately applies
-    NO source-size cap: the tiled single-source path exists precisely to show
-    the full store at any resolution. Pure Python + PIL/pyvips + memmap — no
-    Qt. Never raises (None on any failure).
+    Delegates to the single shared engine decode entry
+    (:func:`engine.cache.pyramid_demand.decode_full_store`) with **no** edge
+    cap: the tiled single-source path exists precisely to show the full store
+    at any resolution. Never raises (None on any failure).
     """
-    try:
-        from engine.store.tiled_pixel_store import TiledPixelStore
+    from engine.cache.pyramid_demand import decode_full_store
 
-        try:
-            store = TiledPixelStore.from_path(str(path), tmp_dir)
-        except Exception:
-            return None
-        try:
-            w, h = store.size
-            if int(w) <= 0 or int(h) <= 0:
-                raise ValueError("empty store")
-        except Exception:
-            try:
-                store.close()
-            except Exception:
-                pass
-            return None
-        return store
-    except Exception:
-        return None
+    return decode_full_store(path, cap_edge=None, tmp_dir=tmp_dir)
 
 
 def _tiled_store_cache_lookup(overlay, key):
