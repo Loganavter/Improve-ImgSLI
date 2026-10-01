@@ -15,9 +15,14 @@ from PySide6.QtGui import (
 )
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+from engine.gpu.array_draw import (
+    ARRAY_INSTANCE_FMT as _ARRAY_INSTANCE_FMT,
+    ARRAY_INSTANCE_STRIDE as _ARRAY_INSTANCE_STRIDE,
+    pack_array_instance,
+    unpack_instance_layer2,
+)
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
-from engine.cache.uniform_layout import assert_uniform_size
 
 from ..texture_parts.tile_geometry import _TILE_APRON_PX
 from ..texture_parts.upload_queue import (
@@ -80,27 +85,10 @@ _ARRAY_CAPACITY = min(
         _TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES,
     ),
 )
-# Per-instance vertex layout for the array pipeline (base_array.vert):
-# iRect1(vec4,16) + iRect2(vec4,16) + iContentScale(vec4,16) +
-# iContentScaleDiff(vec2,8) + iLayers(ivec3,12) + iBBox(vec4,16) +
-# iRectDiff(vec4,16) = 100 bytes. Plain vertex attribute packing -- no
-# std140 alignment rules apply here (that's a uniform-buffer-only
-# constraint), just consistency between this stride and
-# _pack_array_instance's struct.pack format below. iBBox is the
-# content-space rect (docs/dev/rendering/tile-array-atlas-plan.md Phase 10)
-# each instance's geometry is clipped to, instead of every instance emitting
-# a shared fullscreen quad and relying entirely on the fragment shader's
-# per-pixel tileUV1/tileUV2 discard to "clip" it down. iRectDiff is that
-# same idea for a multi-tile diff/SSIM source: the assigned diff tile's own
-# content-space rect, subtracted from sampleUV in the fragment shader before
-# addressing that tile's array layer (identity (0,0,1,1) when diff isn't
-# split -- see docs/dev/rendering/qrhi-gotchas.md
-# #ssim-diff-blocky-mosaic-at-coarse-lod).
-_ARRAY_INSTANCE_STRIDE = 100
-_ARRAY_INSTANCE_FMT = "<4f4f4f2f3i4f4f"
-assert_uniform_size(
-    _ARRAY_INSTANCE_FMT, _ARRAY_INSTANCE_STRIDE, label="_pack_array_instance"
-)
+# The per-instance vertex layout (stride/fmt/attributes) now lives in the
+# shared engine core ``engine.gpu.array_draw`` and is re-exported at the top
+# of this module so existing importers keep working; the shader directory,
+# quad ``_VERTICES`` and ``_load_shader`` stay here (image-path-owned).
 _VERTICES = struct.pack(
     "<16f",
     -1.0,
@@ -120,53 +108,6 @@ _VERTICES = struct.pack(
     1.0,
     1.0,
 )
-
-
-def pack_array_instance(
-    *,
-    rect1: tuple[float, float, float, float],
-    rect2: tuple[float, float, float, float],
-    content_scale: tuple[float, float, float, float],
-    content_scale_diff: tuple[float, float],
-    layer1: int,
-    layer2: int,
-    layer_diff: int,
-    bbox: tuple[float, float, float, float],
-    rect_diff: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0),
-) -> bytes:
-    """One instance's worth of ``base_array.vert``'s per-instance vertex
-    attributes -- byte-for-byte matching ``_ARRAY_INSTANCE_STRIDE``/the
-    pipeline's ``QRhiVertexInputAttribute`` offsets in ``ensure_array_pipeline``."""
-    return struct.pack(
-        _ARRAY_INSTANCE_FMT,
-        *rect1,
-        *rect2,
-        *content_scale,
-        *content_scale_diff,
-        layer1,
-        layer2,
-        layer_diff,
-        *bbox,
-        *rect_diff,
-    )
-
-
-# Byte offset of the layer2 int inside one packed instance: everything
-# before the 3i group (rects/scales), plus one int for layer1. Derived
-# from the fmt instead of a magic number (phantom-hunt ic-right-image-
-# vanish: the submit-vs-plan discriminator depends on this offset).
-_LAYER2_OFFSET = struct.calcsize("<4f4f4f2f") + 4
-
-
-def unpack_instance_layer2(instance_bytes: bytes, index: int) -> int:
-    """Read back the layer2 field of instance ``index`` from packed
-    ``instance_bytes`` — the submit-vs-plan discriminator: compare against
-    ``plan[index].layer2`` to tell pack-corruption apart from plan-
-    corruption. Read-only inspection, no behavior change."""
-    (layer2,) = struct.unpack_from(
-        "<i", instance_bytes, index * _ARRAY_INSTANCE_STRIDE + _LAYER2_OFFSET
-    )
-    return int(layer2)
 
 
 def _load_shader(name: str) -> QShader:
