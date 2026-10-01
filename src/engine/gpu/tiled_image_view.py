@@ -559,6 +559,8 @@ class SingleImageTiledView:
         self._dirty_layers = {}
         self._realizer.last_uploaded = set()
         self._dbg_logged = False
+        self._dbg_rb = None
+        self._dbg_rb_done = False
         self._render_level = None
         self._fallback_level = None
         self._settle_target_level = None
@@ -1053,6 +1055,7 @@ class SingleImageTiledView:
         letterbox,
     ) -> tuple[bool, int]:
         """One uniform pack + one ``record_array_draw`` for a frame."""
+        self._flush_debug_readback()
         uniform_bytes = pack_tiled_image_view_uniforms(
             effective_view,
             letterbox=letterbox,
@@ -1110,7 +1113,69 @@ class SingleImageTiledView:
             in_pass=hooks.feature_record,
             pack_instance=pack_slot_instance,
         )
+        self._issue_debug_readback(command_buffer, instances)
         return True, len(instances)
+
+    def _issue_debug_readback(self, command_buffer, instances) -> None:
+        """IMGSLI_TILED_VIEW_DEBUG: read back one array layer's level 0.
+
+        Ground truth for "is the array actually populated?" (DEBUGGING.md:
+        pixel readback, never JSONL bookkeeping). Fires once per source.
+        """
+        if not os.environ.get("IMGSLI_TILED_VIEW_DEBUG"):
+            return
+        if getattr(self, "_dbg_rb", None) is not None or getattr(
+            self, "_dbg_rb_done", False
+        ):
+            return
+        try:
+            from PySide6.QtGui import QRhiReadbackDescription, QRhiReadbackResult
+
+            self._dbg_rb_done = True
+            if not self.resources.tile_arrays or not instances:
+                return
+            layer = int(instances[0].layer)
+            desc = QRhiReadbackDescription(self.resources.tile_arrays[0])
+            desc.setLayer(layer)
+            desc.setLevel(0)
+            result = QRhiReadbackResult()
+            self._dbg_rb = result
+            self._dbg_rb_layer = layer
+            ru = self._rhi.nextResourceUpdateBatch()
+            ru.readBackTexture(desc, result)
+            command_buffer.resourceUpdate(ru)
+        except Exception:
+            logger.warning("tiled-view readback issue failed", exc_info=True)
+
+    def _flush_debug_readback(self) -> None:
+        """Log the pending readback once its data lands (a later frame)."""
+        result = getattr(self, "_dbg_rb", None)
+        if result is None:
+            return
+        try:
+            data = result.data
+        except Exception:
+            data = None
+        if not data:
+            return
+        try:
+            b = bytes(data)
+            n = min(len(b), 4096)
+            avg = sum(b[:n]) / max(1, n)
+            nonzero = sum(1 for v in b[:n] if v)
+            logger.warning(
+                "tiled-view readback layer=%s bytes=%d first16=%s avg=%.1f "
+                "nonzero=%d/%d",
+                getattr(self, "_dbg_rb_layer", None),
+                len(b),
+                list(b[:16]),
+                avg,
+                nonzero,
+                n,
+            )
+        except Exception:
+            logger.warning("tiled-view readback flush failed", exc_info=True)
+        self._dbg_rb = None
 
     def _build_instances(
         self,

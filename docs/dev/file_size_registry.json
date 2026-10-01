@@ -83,7 +83,7 @@
     },
     {
       "path": "src/engine/gpu/tiled_image_view.py",
-      "lines": 1166,
+      "lines": 1231,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one tile-array render lifecycle: residency/instance/uniform/draw share one source; splitting threads the source/grid/dirty state through every helper\"",
