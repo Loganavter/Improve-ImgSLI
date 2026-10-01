@@ -83,7 +83,7 @@ _DECODE_EDGE_CAP = 2048
 # and 4x linear headroom over the 1024 coarse so wheel zoom stays sharp
 # to ~4x. Huge/untracked sources fail open to coarse-only (no behavior
 # change for them) — same thinking as _PREVIEW_FULL_DECODE_EDGE.
-_QL_FULL_EDGE_CAP = 4096
+_QL_FULL_EDGE_CAP = 8192
 
 # Dwell pre-warm: an item continuously shown past this window builds the
 # needed levels even at zoom 1.0 (singleShot, generation-guarded — a walk

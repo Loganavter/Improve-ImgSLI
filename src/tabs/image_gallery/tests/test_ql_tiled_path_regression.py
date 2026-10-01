@@ -8,7 +8,7 @@ size bounds that distinguish the paths:
 
 - the full tiled live decode applies **no** source-edge cap;
 - the transient cover raster keeps its 2048 edge cap;
-- the canvas-private demand pyramid keeps its 4096 edge cap;
+- the canvas-private demand pyramid keeps its 8192 edge cap;
 - tiled + coarse sources coexist on one ``QuickLookCanvasWidget`` and the
   tiled source is dropped when the item changes.
 """
@@ -60,30 +60,32 @@ def _patch_from_path(monkeypatch, store):
     monkeypatch.setattr(tps.TiledPixelStore, "from_path", _fake_from_path)
 
 
-def test_caps_unchanged_tiled_uncapped_cover_2048_pyramid_4096():
+def test_caps_tiled_uncapped_cover_2048_pyramid_8192():
     # Cover / first-frame raster bounds stay where they were.
     assert _canvas_mod._DECODE_EDGE_CAP == 2048
     assert _preview._PREVIEW_FULL_DECODE_EDGE == 2048
-    # Canvas-private demand pyramid keeps its bound.
-    assert _canvas_mod._QL_FULL_EDGE_CAP == 4096
+    # Canvas-private demand pyramid bound (raised to 8192 so a large source
+    # still builds an LOD pyramid, which the tiled path binds to avoid
+    # mip-edge tile seams).
+    assert _canvas_mod._QL_FULL_EDGE_CAP == 8192
 
 
 def test_tiled_decode_is_uncapped_cover_decode_is_capped(monkeypatch):
     from engine.store import tiled_pixel_store as tps
 
-    # A 5000px source exceeds both the 2048 cover cap and the 4096 pyramid cap.
-    big = _BigStore(5000, 5000)
+    # A 9000px source exceeds both the 2048 cover cap and the 8192 pyramid cap.
+    big = _BigStore(9000, 9000)
     _patch_from_path(monkeypatch, big)
 
     # The tiled live path deliberately applies no source-edge cap.
     got = host._decode_full_store_uncapped("/tmp/does-not-matter.png", None)
     assert got is big, "tiled live decode must not cap the source edge"
 
-    # The demand-pyramid decode (same store) still caps at 4096 and closes it.
-    big2 = _BigStore(5000, 5000)
+    # The demand-pyramid decode still caps at 8192 and closes the store.
+    big2 = _BigStore(9000, 9000)
     _patch_from_path(monkeypatch, big2)
     capped = _canvas_mod._ql_decode_full_store("/tmp/does-not-matter.png", None)
-    assert capped is None, "cover/pyramid decode must keep its 4096 cap"
+    assert capped is None, "cover/pyramid decode must keep its 8192 cap"
     assert big2.closed is True, "capped store must be closed, not leaked"
 
     # Under the cap, the pyramid decode returns the store.
