@@ -727,7 +727,7 @@ class QuickLookCanvasWidget(QRhiWidget):
         and the sampler can never disagree about which level is which.
         """
         try:
-            from engine.cache.lod import select_level
+            from engine.cache.lod import demand_level, dest_scale_fit
             from engine.store.pyramid_pixel_store import estimate_total_levels
 
             fw, fh = int(full_w), int(full_h)
@@ -737,8 +737,8 @@ class QuickLookCanvasWidget(QRhiWidget):
                 z = float(zoom)
             except Exception:
                 return 0
-            dest_scale = min(float(fb_w) / float(fw), float(fb_h) / float(fh)) * z
-            return int(select_level(dest_scale, estimate_total_levels(fw, fh)))
+            dest_scale = dest_scale_fit((fb_w, fb_h), (fw, fh), z)
+            return int(demand_level(dest_scale, estimate_total_levels(fw, fh)))
         except Exception:
             return 0
 
