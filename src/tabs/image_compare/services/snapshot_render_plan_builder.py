@@ -22,7 +22,7 @@ from engine.cache import (
     NormalizedBounds,
     TargetSurfaceSpec,
 )
-from engine.cache.lod import LevelKey, select_level
+from engine.cache.lod import LevelKey, demand_level
 from engine.cache.draw_plans import plan_tiles_for_grid
 from engine.cache.tile_texture_service import TileTextureService
 from tabs.image_compare.canvas.presentation.plan_builder import (
@@ -581,7 +581,7 @@ def resolve_export_lod_level(dest_scale: float, shared_level_count: int) -> int:
     resolution (``dest_scale`` derivation, shared-level clamp) feeds the
     engine decision, exactly like the live ``resolve_lod_texture_keys`` path.
     """
-    return select_level(float(dest_scale), int(shared_level_count))
+    return demand_level(float(dest_scale), int(shared_level_count))
 
 
 def resolve_export_snapshot_lod_tiles(

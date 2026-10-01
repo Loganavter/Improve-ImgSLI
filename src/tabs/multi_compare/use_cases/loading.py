@@ -415,7 +415,7 @@ def demand_target_for_slot(controller, store, slot_id, *, zoom=None, rect=None, 
     uncomputable (no geometry / bad store) — callers fall back, never raise.
     """
     try:
-        from engine.cache.lod import select_level
+        from engine.cache.lod import demand_level
         from engine.store.pyramid_pixel_store import estimate_total_levels
     except Exception:
         return None
@@ -436,7 +436,7 @@ def demand_target_for_slot(controller, store, slot_id, *, zoom=None, rect=None, 
     if scale is None:
         return None
     try:
-        return int(select_level(float(scale), estimate_total_levels(w, h)))
+        return int(demand_level(float(scale), estimate_total_levels(w, h)))
     except Exception:
         return None
 

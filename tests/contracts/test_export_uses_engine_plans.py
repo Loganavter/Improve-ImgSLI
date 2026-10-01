@@ -7,8 +7,8 @@ parity by construction, harness as tripwire):
   (``engine.cache.draw_plans.plan_tiles_for_grid``) and enumerates export
   tiles through it -- never through a tab-local ``visible_tiles`` call.
 * LOD is picked through exactly one wrapper
-  (``resolve_export_lod_level``) over ``engine.cache.lod.select_level``;
-  the single ``select_level`` call site in the module is that wrapper.
+  (``resolve_export_lod_level``) over ``engine.cache.lod.demand_level``;
+  the single ``demand_level`` call site in the module is that wrapper.
 * ``snapshot_lod_tiles_for_sources`` is a thin harness-compat delegate over
   the same engine-backed core (``resolve_export_snapshot_lod_tiles``) --
   no second implementation (ruling 2).
@@ -151,7 +151,7 @@ _KNOWN_SUSPICIOUS_CALLS = frozenset(
         "resolve_export_lod_level",
         "resolve_export_snapshot_lod_tiles",
         "resolve_prescale_target",
-        "select_level",
+        "demand_level",
         "write_resampled_to_store",
     }
 )
@@ -286,7 +286,7 @@ def test_seam_signatures_are_pinned():
         )
 
 
-def test_select_level_called_only_through_wrapper():
+def test_demand_level_called_only_through_wrapper():
     tree = _parse(BUILDER)
     sites = []
     for node in ast.walk(tree):
@@ -298,14 +298,14 @@ def test_select_level_called_only_through_wrapper():
             if isinstance(func, ast.Name)
             else (func.attr if isinstance(func, ast.Attribute) else None)
         )
-        if name == "select_level":
+        if name == "demand_level":
             sites.append(_enclosing_function(tree, node))
     assert len(sites) == 1 and sites[0] == "resolve_export_lod_level", (
-        f"select_level must have exactly one call site (the wrapper), "
+        f"demand_level must have exactly one call site (the wrapper), "
         f"got {sites}"
     )
     seg = _function_segment(BUILDER, "resolve_export_lod_level")
-    assert "select_level(" in seg, "wrapper must call engine select_level"
+    assert "demand_level(" in seg, "wrapper must call engine demand_level"
 
 
 def test_tile_enumeration_goes_through_engine():
@@ -327,6 +327,7 @@ def test_helper_is_thin_delegate_no_second_implementation():
     )
     for smuggled in (
         "select_level(",
+        "demand_level(",
         "visible_tiles(",
         "plan_tiles_for_grid(",
         "register_source(",
