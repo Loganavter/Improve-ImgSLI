@@ -34,6 +34,7 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.layout_settle import settle_layout
 
 from tabs.image_gallery.debug import gallery_debug
 
@@ -1516,12 +1517,35 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # Add stretch to left align.
         film_layout.addStretch(1)
         strip_scroll.setWidget(filmstrip)
+        # Settle-then-read (quick_look/strip.py:378 documents the trap): a
+        # fresh layout can report a stale hint before its first pass, so
+        # activate the filmstrip layout before deriving the scroller's
+        # fixed height from it.
+        try:
+            film_layout.activate()
+        except Exception:
+            pass
         try:
             strip_scroll.setFixedHeight(filmstrip.sizeHint().height() + scaled_px(16))
         except Exception:
             pass
         self._list_layout.addWidget(strip_scroll)
         self._row_widgets.append(strip_scroll)
+        # Explicit show (quick_look/strip.py:367 documents the trap): a
+        # child added while the host is visible stays hidden until the next
+        # turn — excluded from layout hints, so the host collapses and the
+        # strip paints a frame late.
+        try:
+            strip_scroll.show()
+        except Exception:
+            pass
+        # Synchronous settle so the host and the strip agree in the same
+        # frame (qt-selfsizing A1): without this the strip keeps its old
+        # geometry until the next event-loop turn.
+        try:
+            settle_layout(self._list_host, filmstrip, strip_scroll)
+        except Exception:
+            gallery_debug("clean_review filmstrip settle failed")
 
     def _on_restore_all(self) -> None:
         owner = self._owner
