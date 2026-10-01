@@ -29,6 +29,7 @@ from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.layout_settle import settle_layout
 
 from ui.theming import resolve_theme_color
 from ui.widgets.shelf import ShelfWidget
@@ -301,6 +302,11 @@ class RecentColorsRow(ShelfWidget):
             self._chip_widgets.append(chip)
         self._relayout_chips()
         self.setVisible(bool(self._chip_widgets))
+        # The chip wrap derives the content host's fixed height from the
+        # chip count while the shelf hosts a QLayout: re-run it now so the
+        # header/content distribution agrees in the same frame instead of
+        # overflowing for one turn while growing.
+        settle_layout(self, self._header_host, self.content_host())
 
 
 RecentColorsRow.inspect_spec = InspectSpec(

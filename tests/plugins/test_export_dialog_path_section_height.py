@@ -7,7 +7,40 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication, QSizePolicy, QVBoxLayout, QWidget
 
-from ui.widgets.form_controls import OutputPathSection
+from ui.widgets.form_controls import DialogActionBar, OutputPathSection
+
+
+def test_dialog_action_bar_lock_settles_layout_synchronously(qapp):
+    """lock_content_minimum_height() settles the bar layout in the same call.
+
+    The pin derives the bar's fixed height from the buttons' sizeHint
+    while the bar hosts a QHBoxLayout; without a synchronous settle the
+    button distribution lags one turn. Grow (small -> large minimums)
+    and shrink directions, no processEvents between lock and assertion.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    bar = DialogActionBar("OK", "Cancel")
+    layout.addWidget(bar)
+    layout.addStretch(1)
+    host.resize(420, 200)
+    host.show()
+    try:
+        qapp.processEvents()
+        bar.primary_button.setMinimumSize(300, 80)
+        bar.secondary_button.setMinimumSize(300, 80)
+        bar.lock_content_minimum_height()
+        assert bar.minimumHeight() == bar.maximumHeight() == bar.sizeHint().height()
+        assert bar.layout().activate() is False
+        qapp.processEvents()
+        bar.primary_button.setMinimumSize(10, 10)
+        bar.secondary_button.setMinimumSize(10, 10)
+        bar.lock_content_minimum_height()
+        assert bar.layout().activate() is False
+    finally:
+        host.deleteLater()
 
 
 @pytest.fixture(scope="module")
