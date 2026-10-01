@@ -791,7 +791,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 1412,
+      "lines": 1624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
@@ -803,7 +803,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 1015,
+      "lines": 1219,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
@@ -823,6 +823,18 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "one card-resize concern: border/ring share one clamp + repin idiom"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/tile_renderer.py",
+      "lines": 503,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one tile-array renderer: service/residency/upload/mip/instance/draw share one source lifecycle\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one tile-array renderer: service/residency/upload/mip/instance/draw share one source lifecycle"
       }
     },
     {
