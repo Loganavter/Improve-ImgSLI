@@ -267,3 +267,88 @@ def test_covered_but_level_not_ready_holds_raster():
         canvas.setParent(None)
         parent.deleteLater()
         app.processEvents()
+
+
+class _FakePyramid:
+    """Minimal built-level source for the QL binder / levels_sequence probe."""
+
+    def __init__(self, built, *, size=(1024, 1024), level_count=4, generation=7):
+        self.size = size
+        self.level_count = level_count
+        self.generation = generation
+        self.valid = True
+        self._built = set(built)
+
+    def is_level_built(self, k):
+        return k in self._built
+
+    def level_if_built(self, k):
+        return f"store-L{k}" if k in self._built else None
+
+
+class _RecordingRenderer:
+    def __init__(self):
+        self.sources = []
+        self.released = False
+
+    def set_source(self, source):
+        self.sources.append(source)
+
+    def has_source(self):
+        return bool(self.sources)
+
+    def release(self):
+        self.released = True
+
+
+def test_binder_reads_levels_sequence_and_sets_level_ready():
+    """The REAL binder (not an injected flag) derives `_tile_level_ready` from
+    the built levels and hands the view the base store + `levels`.
+
+    The two takeover-gate tests above inject the flag because they stub
+    ``_ensure_tile_renderer``; this one exercises the binder so a regression
+    in the ``levels_sequence`` -> flag path (e.g. binding a single level and
+    wrongly declaring readiness, which would flash the mip-edge seam grid)
+    fails here.
+    """
+    from engine.cache.pyramid_demand import DemandPolicy, PyramidDemandService
+
+    from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget
+
+    app = QApplication.instance() or QApplication([])
+    canvas = QuickLookCanvasWidget()
+    parent = QWidget()
+    canvas.setParent(parent)
+    try:
+        store = _tiny_store()
+        canvas.rhi = lambda: object()
+        canvas._tiled_source = ("item", store)
+        canvas._ql_demand_svc = PyramidDemandService(
+            coordinator=None,
+            policy=DemandPolicy(cap_edge=_canvas_mod._QL_FULL_EDGE_CAP, settle=True),
+        )
+
+        # 3 built levels -> genuine multi-level binding, seam-safe.
+        canvas._ql_pyramid = _FakePyramid([0, 1, 2])
+        renderer = _RecordingRenderer()
+        canvas._tile_renderer = renderer
+        assert canvas._ensure_tile_renderer() is renderer
+        assert len(renderer.sources) == 1, "binder must set_source once"
+        source = renderer.sources[0]
+        assert source.store is store, "base store bound; the view owns the level pick"
+        assert source.levels is not None and len(source.levels) == 3
+        assert source.levels[-1][0] is None, "level 0 (finest) is last, key None"
+        assert source.levels[0][0] is not None, "coarsest key is a LevelKey"
+        assert canvas._tile_level_ready is True
+
+        # Only level 0 built -> single-level binding, holds the raster.
+        canvas._tile_bound_source = None
+        canvas._tile_level_ready = False
+        canvas._tile_renderer = _RecordingRenderer()
+        canvas._ql_pyramid = _FakePyramid([0])
+        canvas._ensure_tile_renderer()
+        assert canvas._tiled_level_ready() is False
+    finally:
+        canvas.setParent(None)
+        parent.deleteLater()
+        app.processEvents()
