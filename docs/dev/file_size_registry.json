@@ -803,7 +803,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 1714,
+      "lines": 1741,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",

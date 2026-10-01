@@ -462,19 +462,46 @@ class QuickLookCanvasWidget(QRhiWidget):
             if source is not None:
                 key, store = source
                 if store is not None:
+                    bind_store, bind_level = self._tiled_bind_store(store)
+                    ident = (key, id(bind_store), bind_level)
                     bound = getattr(self, "_tile_bound_source", None)
-                    is_bound = (
-                        bound is not None
-                        and bound[0] is key
-                        and bound[1] is store
-                    )
-                    if not is_bound:
-                        renderer.set_source(TiledImageSource(key=key, store=store))
-                        self._tile_bound_source = (key, store)
+                    if bound != ident:
+                        renderer.set_source(
+                            TiledImageSource(key=key, store=bind_store)
+                        )
+                        self._tile_bound_source = ident
             return renderer
         except Exception:
             logger.debug("QuickLook preview: tile renderer ensure failed open", exc_info=True)
             return None
+
+    def _tiled_bind_store(self, store):
+        """The pyramid level matching the current view scale, or ``store``.
+
+        Feeding the array pass the full-res store shows it ~8x downscaled, so
+        the sampler drops to a high mip and each tile's edge samples the
+        transparent layer padding -> a thin seam grid (see
+        ``inv-ic-first-zoom-seam`` / ``inv-ql-tiled-white-canvas``). Binding
+        the level whose resolution matches the display keeps tiles ~1:1 (mip 0)
+        so edges stay clean. ``(store, -1)`` when no matching built level.
+        """
+        try:
+            pyr = getattr(self, "_ql_pyramid", None)
+            if pyr is None or not bool(getattr(pyr, "valid", False)):
+                return store, -1
+            sw, sh = store.size
+            fb_w, fb_h = self._ql_fb_estimate()
+            z = float(getattr(self, "_zoom", 1.0) or 1.0)
+            dest_scale = min(
+                float(fb_w) / max(1, int(sw)), float(fb_h) / max(1, int(sh))
+            ) * z
+            level = int(pyr.best_level_for_scale(dest_scale))
+            level_store = pyr.level_if_built(level)
+            if level_store is None:
+                return store, -1
+            return level_store, level
+        except Exception:
+            return store, -1
 
     def _destroy_tile_renderer(self) -> None:
         """Release the tile renderer + sampler (never raises)."""
