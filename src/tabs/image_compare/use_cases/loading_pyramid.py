@@ -78,7 +78,7 @@ def needed_level_for_view(store, fb_w: int, fb_h: int, zoom) -> int:
     always resident) is the fail-open answer.
     """
     try:
-        from engine.cache.lod import select_level
+        from engine.cache.lod import demand_level, dest_scale_fit
         from engine.store.pyramid_pixel_store import estimate_total_levels
 
         w, h = _store_size(store)
@@ -88,8 +88,8 @@ def needed_level_for_view(store, fb_w: int, fb_h: int, zoom) -> int:
             z = float(zoom)
         except Exception:
             return 0
-        dest_scale = min(float(fb_w) / float(w), float(fb_h) / float(h)) * z
-        return int(select_level(dest_scale, estimate_total_levels(w, h)))
+        dest_scale = dest_scale_fit((fb_w, fb_h), (w, h), z)
+        return int(demand_level(dest_scale, estimate_total_levels(w, h)))
     except Exception:
         return 0
 

@@ -42,9 +42,11 @@ from PySide6.QtWidgets import QRhiWidget, QSizePolicy
 
 from engine.frame.present import begin_source, note_presented
 from engine.gpu.tiled_image_view import (
+    LodPolicy,
     SingleImageTiledView,
     TiledImageSource,
     TiledImageView,
+    TiledViewHooks,
     contain_fit_scale,
     load_tiled_image_shader,
 )
@@ -92,44 +94,16 @@ _QL_DWELL_MS = 1200
 
 
 def _ql_decode_full_store(path, tmp_dir=None):
-    """Background full-res decode for the demand pyramid (worker thread).
+    """Background demand decode (worker): shared entry, bounded by the cap.
 
-    Pure Python + PIL/pyvips + memmap — no Qt: the spill dir is resolved
-    on the GUI thread and passed in as ``tmp_dir``. Enforces
-    ``_QL_FULL_EDGE_CAP`` post-decode (dims probes can lie); huge sources
-    fail open to None (coarse-only, no behavior change). Never raises.
+    One-line delegator to the single shared implementation
+    (:func:`engine.cache.pyramid_demand.decode_full_store`); the demand
+    pyramid keeps its ``_QL_FULL_EDGE_CAP`` edge bound. Pure Python -- no Qt.
+    Never raises (None on failure or over-cap).
     """
-    try:
-        from engine.store.tiled_pixel_store import TiledPixelStore
+    from engine.cache.pyramid_demand import decode_full_store
 
-        try:
-            store = TiledPixelStore.from_path(str(path), tmp_dir)
-        except Exception:
-            return None
-        try:
-            w, h = store.size
-        except Exception:
-            try:
-                store.close()
-            except Exception:
-                pass
-            return None
-        try:
-            if max(int(w), int(h)) > int(_QL_FULL_EDGE_CAP):
-                try:
-                    store.close()
-                except Exception:
-                    pass
-                return None
-        except Exception:
-            try:
-                store.close()
-            except Exception:
-                pass
-            return None
-        return store
-    except Exception:
-        return None
+    return decode_full_store(path, cap_edge=_QL_FULL_EDGE_CAP, tmp_dir=tmp_dir)
 
 
 def _overlay_shader_dir() -> Path | None:
@@ -196,6 +170,9 @@ class QuickLookCanvasWidget(QRhiWidget):
         self._tiled_source = None
         self._tile_renderer = None
         self._tile_sampler = None
+        self._tile_bound_source = None
+        self._tile_level_ready = False
+        self._ql_demand_svc = None
         try:
             self._present_debt = begin_source(None)
         except Exception:
@@ -373,6 +350,7 @@ class QuickLookCanvasWidget(QRhiWidget):
         try:
             self._tiled_source = (key, store)
             self._tile_bound_source = None
+            self._tile_level_ready = False
         except Exception:
             self._tiled_source = None
             return
@@ -390,6 +368,7 @@ class QuickLookCanvasWidget(QRhiWidget):
         try:
             self._tiled_source = None
             self._tile_bound_source = None
+            self._tile_level_ready = False
         except Exception:
             pass
         try:
@@ -441,10 +420,20 @@ class QuickLookCanvasWidget(QRhiWidget):
 
         The renderer is ``engine.gpu.tiled_image_view.SingleImageTiledView``;
         QL supplies only its RHI/sampler callables, the engine shader loader
-        and the ``ql`` name prefix. Binds ``set_source`` only when the
-        (key, store) identity actually changed since the last bind —
-        rebinding every frame would drop and re-register the whole tile grid
-        (a permanent clear/re-upload loop).
+        and the ``ql`` name prefix. The source is a ``TiledImageSource`` with
+        the demand pyramid's built levels (coarsest-first, finest/level-0
+        last) so the VIEW owns LOD selection + the no-seam hold; QL does not
+        hand-bind a level. ``set_source`` is (re)bound only when the
+        ``(key, store, levels)`` identity changes -- rebinding every frame
+        would drop and re-register the whole tile grid (a permanent
+        clear/re-upload loop). ``_tile_level_ready`` marks a genuine
+        multi-level binding (>= 2 registered levels): only then is the view's
+        ``covered`` seam-safe (a single-level full-res draw shown downscaled
+        seams at mip edges).
+
+        The view's LOD selection uses the same ``select_level`` math the
+        demand build uses, so the drawn level and the requested level can
+        never disagree.
         """
         try:
             if self.rhi() is None:
@@ -462,23 +451,32 @@ class QuickLookCanvasWidget(QRhiWidget):
             if source is not None:
                 key, store = source
                 if store is not None:
-                    bind_store, bind_level = self._tiled_bind_store(store)
-                    ident = (key, id(bind_store), bind_level)
+                    levels = self._ql_bound_levels(key)
+                    ident = (
+                        key,
+                        id(store),
+                        tuple((level_key, id(level_store)) for level_key, level_store in levels),
+                    )
                     bound = getattr(self, "_tile_bound_source", None)
                     if bound != ident:
                         renderer.set_source(
-                            TiledImageSource(key=key, store=bind_store)
+                            TiledImageSource(
+                                key=key,
+                                store=store,
+                                levels=levels or None,
+                            )
                         )
                         self._tile_bound_source = ident
+                        self._tile_level_ready = len(levels) > 1
                         try:
                             from tabs.image_gallery.debug import ql_cover
 
                             _pyr = getattr(self, "_ql_pyramid", None)
                             ql_cover(
-                                "tiled bind: store=%s level=%s pyr=%s "
+                                "tiled bind: store=%s levels=%s pyr=%s "
                                 "pyr_levels=%s",
-                                getattr(bind_store, "size", None),
-                                bind_level,
+                                getattr(store, "size", None),
+                                len(levels),
                                 bool(_pyr is not None),
                                 int(getattr(_pyr, "level_count", 0) or 0)
                                 if _pyr is not None
@@ -491,33 +489,25 @@ class QuickLookCanvasWidget(QRhiWidget):
             logger.debug("QuickLook preview: tile renderer ensure failed open", exc_info=True)
             return None
 
-    def _tiled_bind_store(self, store):
-        """The pyramid level matching the current view scale, or ``store``.
+    def _ql_bound_levels(self, key) -> tuple:
+        """The built pyramid levels for ``key``, or ``()`` when none.
 
-        Feeding the array pass the full-res store shows it ~8x downscaled, so
-        the sampler drops to a high mip and each tile's edge samples the
-        transparent layer padding -> a thin seam grid (see
-        ``inv-ic-first-zoom-seam`` / ``inv-ql-tiled-white-canvas``). Binding
-        the level whose resolution matches the display keeps tiles ~1:1 (mip 0)
-        so edges stay clean. ``(store, -1)`` when no matching built level.
+        Thin read over the shared demand service's ``levels_sequence`` (built
+        levels coarsest-first, level 0 last) so QL never hand-picks a level.
+        Read-only: the service is created on the GUI thread (``_maybe_demand_build``);
+        this may run on the render thread, so it must NOT create a coordinator.
+        A missing service means no pyramid is bound -> ``()``. Never raises.
         """
         try:
+            svc = getattr(self, "_ql_demand_svc", None)
             pyr = getattr(self, "_ql_pyramid", None)
-            if pyr is None or not bool(getattr(pyr, "valid", False)):
-                return store, -1
-            sw, sh = store.size
-            fb_w, fb_h = self._ql_fb_estimate()
-            z = float(getattr(self, "_zoom", 1.0) or 1.0)
-            dest_scale = min(
-                float(fb_w) / max(1, int(sw)), float(fb_h) / max(1, int(sh))
-            ) * z
-            level = int(pyr.best_level_for_scale(dest_scale))
-            level_store = pyr.level_if_built(level)
-            if level_store is None:
-                return store, -1
-            return level_store, level
+            if svc is None or pyr is None:
+                return ()
+            if not bool(getattr(pyr, "valid", False)):
+                return ()
+            return tuple(svc.levels_sequence(pyr, key=key))
         except Exception:
-            return store, -1
+            return ()
 
     def _destroy_tile_renderer(self) -> None:
         """Release the tile renderer + sampler (never raises)."""
@@ -525,6 +515,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             renderer = self._tile_renderer
             self._tile_renderer = None
             self._tile_bound_source = None
+            self._tile_level_ready = False
             if renderer is not None:
                 renderer.release()
         except Exception:
@@ -669,6 +660,32 @@ class QuickLookCanvasWidget(QRhiWidget):
         except Exception:
             return None
 
+    def _ql_demand_service_lazy(self):
+        """Shared ``PyramidDemandService`` for this canvas (decode + levels).
+
+        Owns the QL demand policy (``cap_edge=_QL_FULL_EDGE_CAP``,
+        ``settle=True``) so the decode cap and the view's hold policy come
+        from ONE declaration. QL uses the service's decode + ``levels_sequence``
+        + policy (not ``ensure_level``), so it is constructed with no
+        coordinator: the build coordinator is still created lazily only when a
+        live decode actually starts a level build (``_on_ql_full_ready``), so a
+        superseded walk leaves ``_ql_coord`` unset. Never raises.
+        """
+        try:
+            svc = getattr(self, "_ql_demand_svc", None)
+            if svc is not None:
+                return svc
+            from engine.cache.pyramid_demand import DemandPolicy, PyramidDemandService
+
+            svc = PyramidDemandService(
+                coordinator=None,
+                policy=DemandPolicy(cap_edge=_QL_FULL_EDGE_CAP, settle=True),
+            )
+            self._ql_demand_svc = svc
+            return svc
+        except Exception:
+            return None
+
     def _ql_abort_fn(self, full, gen):
         """Abort predicate for decode + level workers (generation-wired, lazy).
 
@@ -727,7 +744,7 @@ class QuickLookCanvasWidget(QRhiWidget):
         and the sampler can never disagree about which level is which.
         """
         try:
-            from engine.cache.lod import select_level
+            from engine.cache.lod import demand_level, dest_scale_fit
             from engine.store.pyramid_pixel_store import estimate_total_levels
 
             fw, fh = int(full_w), int(full_h)
@@ -737,8 +754,8 @@ class QuickLookCanvasWidget(QRhiWidget):
                 z = float(zoom)
             except Exception:
                 return 0
-            dest_scale = min(float(fb_w) / float(fw), float(fb_h) / float(fh)) * z
-            return int(select_level(dest_scale, estimate_total_levels(fw, fh)))
+            dest_scale = dest_scale_fit((fb_w, fb_h), (fw, fh), z)
+            return int(demand_level(dest_scale, estimate_total_levels(fw, fh)))
         except Exception:
             return 0
 
@@ -931,7 +948,18 @@ class QuickLookCanvasWidget(QRhiWidget):
             except Exception:
                 pass
             try:
-                worker = GenericWorker(_ql_decode_full_store, path, tmp_dir)
+                svc = self._ql_demand_service_lazy()
+                if svc is not None:
+                    # Route the demand decode through the shared service
+                    # (explicit cap = _QL_FULL_EDGE_CAP).
+                    worker = GenericWorker(
+                        svc.decode_full,
+                        path,
+                        cap_edge=_QL_FULL_EDGE_CAP,
+                        tmp_dir=tmp_dir,
+                    )
+                else:
+                    worker = GenericWorker(_ql_decode_full_store, path, tmp_dir)
                 worker.signals.result.connect(
                     lambda store, _g=live_gen: self._on_ql_full_ready(store, _g)
                 )
@@ -1358,12 +1386,16 @@ class QuickLookCanvasWidget(QRhiWidget):
         """Drive the tiled source's array draw for this frame.
 
         Takeover is gated on ``TiledViewResult.covered`` (every visible tile
-        resident), never on "at least one tile drawn": while the tile set is
-        still streaming the caller keeps presenting the raster/cover plate,
-        so a partially-resident frame can never surface as a transparent
-        preview. The engine view submits this frame's uploads internally
-        (``resourceUpdate``) even when it draws nothing, so the next frame
-        makes progress while the raster stays up.
+        resident) AND a genuine multi-level binding (``_tiled_level_ready``):
+        while the tile set is still streaming the caller keeps presenting the
+        raster/cover plate, so a partially-resident frame can never surface as
+        a transparent preview. The engine view owns the LOD choice + the
+        no-seam hold (``LodPolicy(mode="settle")``): ``covered`` is false until
+        the zoom-matched target level is resident and its mip cascade drained,
+        so a single-level full-res draw shown downscaled never takes over. The
+        engine view submits this frame's uploads internally (``resourceUpdate``)
+        even when it draws nothing, so the next frame makes progress while the
+        raster stays up.
 
         Returns ``True`` only on the covered handover (the caller then skips
         the raster path and ``_settle_present`` fires at most once for the
@@ -1388,6 +1420,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                     ),
                     fb_size=(fb_w, fb_h),
                 ),
+                hooks=self._ql_view_hooks(),
             )
             covered = bool(getattr(result, "covered", False))
             if covered and self._tiled_level_ready():
@@ -1444,16 +1477,40 @@ class QuickLookCanvasWidget(QRhiWidget):
             logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
             return False
 
-    def _tiled_level_ready(self) -> bool:
-        """True once the tiled view is bound to a zoom-matched pyramid level.
+    def _ql_view_hooks(self) -> TiledViewHooks:
+        """Per-frame view hooks: the LOD policy for the bound source.
 
-        Until then it is bound to the full-res store shown downscaled, whose
-        per-tile mip edges seam; hold the raster (coarse but seam-free) until
-        the matched level lands, so takeover never flashes the seam grid.
+        QL's demand policy sets ``settle=True``, so the engine view holds the
+        prior level until the zoom-matched target is resident + cascade
+        drained (the seam-hold QL used to fake by re-binding a level store).
+        Read-only (may run on the render thread): uses the service created on
+        the GUI thread; no service -> immediate (single-level path ignores the
+        policy anyway). Never raises.
         """
         try:
-            bound = getattr(self, "_tile_bound_source", None)
-            return bool(bound is not None and int(bound[2]) >= 0)
+            svc = getattr(self, "_ql_demand_svc", None)
+            settle = bool(getattr(getattr(svc, "policy", None), "settle", False))
+        except Exception:
+            settle = False
+        try:
+            return TiledViewHooks(
+                lods=LodPolicy(mode="settle" if settle else "immediate")
+            )
+        except Exception:
+            return TiledViewHooks()
+
+    def _tiled_level_ready(self) -> bool:
+        """True only when the tiled view holds a genuine multi-level source.
+
+        A single-level binding (no pyramid, or only level 0 built) is drawn by
+        the view's E1 path whose ``covered`` can be true while the full-res
+        store is shown downscaled -- per-tile mip edges seam. With >= 2
+        registered levels the view's LOD picks a level whose texels are <= 1
+        screen px and its ``covered`` is seam-safe, so takeover is allowed.
+        Set on rebind (``_ensure_tile_renderer``); never raises.
+        """
+        try:
+            return bool(getattr(self, "_tile_level_ready", False))
         except Exception:
             return False
 

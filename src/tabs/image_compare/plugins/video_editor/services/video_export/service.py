@@ -161,7 +161,9 @@ def _pick_thumbnail_proxy_from_base(base, target_size=None):
         try:
             depth = int(pyramid.level_count)
             dest_scale = thumbnail_proxy_dest_scale(src_w, src_h, target_w, target_h)
-            picked = int(pyramid.best_level_for_scale(dest_scale))
+            from engine.cache.lod import demand_level
+
+            picked = int(demand_level(dest_scale, int(pyramid.level_count)))
         except Exception:
             depth, picked = 1, 0
         if depth > 1 and picked >= 1:

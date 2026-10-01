@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from engine.store.pyramid_registry import pyramid_for
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.image_identity import image_uid
-from engine.cache.lod import LevelKey, select_level
+from engine.cache.lod import LevelKey, demand_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
 from engine.cache.stash import ContentStash
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
@@ -253,7 +253,7 @@ def resolve_lod_texture_keys(
         dest_scale = max(
             disp_w / float(max(1, src_w)), disp_h / float(max(1, src_h))
         )
-        level = select_level(dest_scale, shared_level_count)
+        level = demand_level(dest_scale, shared_level_count)
         rhi_render_debug(
             "resolve_lod key=%s use_hires=%s zoom=%.3f src=%dx%d disp=%.1fx%.1f "
             "dest_scale=%.5f level=%d/%d",
