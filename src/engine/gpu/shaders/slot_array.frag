@@ -54,7 +54,11 @@ void main()
     }
 
     vec2 tileUV = (uv - vTileRect.xy) / vTileRect.zw;
-    if (tileUV.x < 0.0 || tileUV.x > 1.0 || tileUV.y < 0.0 || tileUV.y > 1.0) {
+    // Micro-seam tolerance: adjacent tile rects share an edge at 0/1 in
+    // tileUV; float rounding can make both sides compute a hair outside
+    // [0,1] and both discard (a transparent grid seam). Expand by 1e-3 so
+    // the apron overlap always covers the boundary (matches image_compare).
+    if (tileUV.x < -0.001 || tileUV.x > 1.001 || tileUV.y < -0.001 || tileUV.y > 1.001) {
         FragColor = vec4(0.0);
         return;
     }

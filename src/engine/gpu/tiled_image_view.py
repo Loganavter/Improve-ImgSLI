@@ -559,6 +559,8 @@ class SingleImageTiledView:
         self._dirty_layers = {}
         self._realizer.last_uploaded = set()
         self._dbg_logged = False
+        self._dbg_rb = None
+        self._dbg_rb_done = False
         self._render_level = None
         self._fallback_level = None
         self._settle_target_level = None
@@ -613,7 +615,7 @@ class SingleImageTiledView:
     def _now_ms(self) -> float:
         return float(time.perf_counter()) * 1000.0
 
-    def _ensure_vertex_buffer(self) -> None:
+    def _ensure_vertex_buffer(self, command_buffer) -> None:
         if self._vertex_buffer is not None:
             return
         buffer = self._rhi.newBuffer(
@@ -624,6 +626,13 @@ class SingleImageTiledView:
         buffer.setName(f"{self._name_prefix}-array-quad".encode())
         if not buffer.create():
             raise RuntimeError("Failed to create tiled image view vertex buffer")
+        # An Immutable vertex buffer carries no data until it is uploaded:
+        # without this the quad's aTexCoord is undefined, the instance
+        # geometry is degenerate and the whole tiled pass draws nothing (the
+        # clear colour only). Mirrors image_compare's ``uploadStaticBuffer``.
+        updates = self._rhi.nextResourceUpdateBatch()
+        updates.uploadStaticBuffer(buffer, _VERTICES)
+        command_buffer.resourceUpdate(updates)
         self._vertex_buffer = buffer
 
     # -- draw ----------------------------------------------------------------
@@ -724,7 +733,7 @@ class SingleImageTiledView:
         service = self.tile_service
         grid = service.grid_for(key)
         plan = build_slot_plan_tiles(service, key, pan, fit, zoom)
-        self._ensure_vertex_buffer()
+        self._ensure_vertex_buffer(command_buffer)
 
         if updates is not None and grid is not None:
             visible_rect = slot_visible_rect(pan, fit, zoom, grid)
@@ -760,8 +769,15 @@ class SingleImageTiledView:
                 self._dirty_layers = deferred
 
         instances = self._build_instances(plan, pan, fit, zoom, letterbox)
-        covered = bool(plan) and all(
-            service.is_resident(key, tile.index) for tile in plan
+        # Tier promotion (the caller's takeover) only on a *quiescent* cascade
+        # (docs: inv-ic-first-zoom-seam-2026-09-20): drawing fresh tiles before
+        # their coarse mips exist samples stale/coarse edge texels and leaves
+        # thin seams between tiles. ``covered`` therefore also requires no
+        # pending dirty layers after this frame's cascade pass.
+        covered = (
+            bool(plan)
+            and all(service.is_resident(key, tile.index) for tile in plan)
+            and not self._dirty_layers
         )
         resident = len(service.resident_tiles(key))
         if not instances:
@@ -805,7 +821,7 @@ class SingleImageTiledView:
         (or its held level) with the previous fully-drawable level underneath
         wherever the target does not already cover it."""
         service = self.tile_service
-        self._ensure_vertex_buffer()
+        self._ensure_vertex_buffer(command_buffer)
         store_w, store_h = self._store_size(self._level_store(0))
         fb_w = max(1, int(view.fb_size[0]))
         fb_h = max(1, int(view.fb_size[1]))
@@ -1053,6 +1069,7 @@ class SingleImageTiledView:
         letterbox,
     ) -> tuple[bool, int]:
         """One uniform pack + one ``record_array_draw`` for a frame."""
+        self._flush_debug_readback()
         uniform_bytes = pack_tiled_image_view_uniforms(
             effective_view,
             letterbox=letterbox,
@@ -1110,7 +1127,69 @@ class SingleImageTiledView:
             in_pass=hooks.feature_record,
             pack_instance=pack_slot_instance,
         )
+        self._issue_debug_readback(command_buffer, instances)
         return True, len(instances)
+
+    def _issue_debug_readback(self, command_buffer, instances) -> None:
+        """IMGSLI_TILED_VIEW_DEBUG: read back one array layer's level 0.
+
+        Ground truth for "is the array actually populated?" (DEBUGGING.md:
+        pixel readback, never JSONL bookkeeping). Fires once per source.
+        """
+        if not os.environ.get("IMGSLI_TILED_VIEW_DEBUG"):
+            return
+        if getattr(self, "_dbg_rb", None) is not None or getattr(
+            self, "_dbg_rb_done", False
+        ):
+            return
+        try:
+            from PySide6.QtGui import QRhiReadbackDescription, QRhiReadbackResult
+
+            self._dbg_rb_done = True
+            if not self.resources.tile_arrays or not instances:
+                return
+            layer = int(instances[0].layer)
+            desc = QRhiReadbackDescription(self.resources.tile_arrays[0])
+            desc.setLayer(layer)
+            desc.setLevel(0)
+            result = QRhiReadbackResult()
+            self._dbg_rb = result
+            self._dbg_rb_layer = layer
+            ru = self._rhi.nextResourceUpdateBatch()
+            ru.readBackTexture(desc, result)
+            command_buffer.resourceUpdate(ru)
+        except Exception:
+            logger.warning("tiled-view readback issue failed", exc_info=True)
+
+    def _flush_debug_readback(self) -> None:
+        """Log the pending readback once its data lands (a later frame)."""
+        result = getattr(self, "_dbg_rb", None)
+        if result is None:
+            return
+        try:
+            data = result.data
+        except Exception:
+            data = None
+        if not data:
+            return
+        try:
+            b = bytes(data)
+            n = min(len(b), 4096)
+            avg = sum(b[:n]) / max(1, n)
+            nonzero = sum(1 for v in b[:n] if v)
+            logger.warning(
+                "tiled-view readback layer=%s bytes=%d first16=%s avg=%.1f "
+                "nonzero=%d/%d",
+                getattr(self, "_dbg_rb_layer", None),
+                len(b),
+                list(b[:16]),
+                avg,
+                nonzero,
+                n,
+            )
+        except Exception:
+            logger.warning("tiled-view readback flush failed", exc_info=True)
+        self._dbg_rb = None
 
     def _build_instances(
         self,

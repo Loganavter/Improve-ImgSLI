@@ -8,7 +8,7 @@ size bounds that distinguish the paths:
 
 - the full tiled live decode applies **no** source-edge cap;
 - the transient cover raster keeps its 2048 edge cap;
-- the canvas-private demand pyramid keeps its 4096 edge cap;
+- the canvas-private demand pyramid keeps its 8192 edge cap;
 - tiled + coarse sources coexist on one ``QuickLookCanvasWidget`` and the
   tiled source is dropped when the item changes.
 """
@@ -60,30 +60,32 @@ def _patch_from_path(monkeypatch, store):
     monkeypatch.setattr(tps.TiledPixelStore, "from_path", _fake_from_path)
 
 
-def test_caps_unchanged_tiled_uncapped_cover_2048_pyramid_4096():
+def test_caps_tiled_uncapped_cover_2048_pyramid_8192():
     # Cover / first-frame raster bounds stay where they were.
     assert _canvas_mod._DECODE_EDGE_CAP == 2048
     assert _preview._PREVIEW_FULL_DECODE_EDGE == 2048
-    # Canvas-private demand pyramid keeps its bound.
-    assert _canvas_mod._QL_FULL_EDGE_CAP == 4096
+    # Canvas-private demand pyramid bound (raised to 8192 so a large source
+    # still builds an LOD pyramid, which the tiled path binds to avoid
+    # mip-edge tile seams).
+    assert _canvas_mod._QL_FULL_EDGE_CAP == 8192
 
 
 def test_tiled_decode_is_uncapped_cover_decode_is_capped(monkeypatch):
     from engine.store import tiled_pixel_store as tps
 
-    # A 5000px source exceeds both the 2048 cover cap and the 4096 pyramid cap.
-    big = _BigStore(5000, 5000)
+    # A 9000px source exceeds both the 2048 cover cap and the 8192 pyramid cap.
+    big = _BigStore(9000, 9000)
     _patch_from_path(monkeypatch, big)
 
     # The tiled live path deliberately applies no source-edge cap.
     got = host._decode_full_store_uncapped("/tmp/does-not-matter.png", None)
     assert got is big, "tiled live decode must not cap the source edge"
 
-    # The demand-pyramid decode (same store) still caps at 4096 and closes it.
-    big2 = _BigStore(5000, 5000)
+    # The demand-pyramid decode still caps at 8192 and closes the store.
+    big2 = _BigStore(9000, 9000)
     _patch_from_path(monkeypatch, big2)
     capped = _canvas_mod._ql_decode_full_store("/tmp/does-not-matter.png", None)
-    assert capped is None, "cover/pyramid decode must keep its 4096 cap"
+    assert capped is None, "cover/pyramid decode must keep its 8192 cap"
     assert big2.closed is True, "capped store must be closed, not leaked"
 
     # Under the cap, the pyramid decode returns the store.
@@ -207,6 +209,7 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
         fake = _FakeView()
         canvas._tile_renderer = fake
         canvas._tiled_source = ("item", object())
+        canvas._tile_bound_source = ("item", 0, 0)  # level-matched -> ready
         canvas._ensure_tile_renderer = lambda: fake
         settled: list = []
         canvas._settle_present = lambda: settled.append(1)
@@ -218,6 +221,45 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
         assert canvas._render_tiled(object(), object(), None, None, 100, 100) is True
         assert fake.calls == 2
         assert settled == [1], "covered handover settles exactly once"
+    finally:
+        canvas.setParent(None)
+        parent.deleteLater()
+        app.processEvents()
+
+
+def test_covered_but_level_not_ready_holds_raster():
+    """Takeover is held until the view is bound to a zoom-matched level.
+
+    A covered frame bound to the full-res store (level -1) would flash the
+    mip-edge seam grid; the raster (coarse, seam-free) must stay until the
+    matched pyramid level lands.
+    """
+    from engine.gpu.tiled_image_view import TiledViewResult
+
+    from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget
+
+    app = QApplication.instance() or QApplication([])
+    canvas = QuickLookCanvasWidget()
+    parent = QWidget()
+    canvas.setParent(parent)
+    try:
+        covered = TiledViewResult(drawn=True, covered=True, instances=4, resident=4)
+
+        class _FakeView:
+            def has_source(self):
+                return True
+
+            def render(self, *_a, **_k):
+                return covered
+
+        canvas._tile_renderer = _FakeView()
+        canvas._tiled_source = ("item", object())
+        canvas._tile_bound_source = ("item", 0, -1)  # full store, not matched
+        canvas._ensure_tile_renderer = lambda: canvas._tile_renderer
+        canvas._settle_present = lambda: (_ for _ in ()).throw(
+            AssertionError("must not settle while the level is not matched")
+        )
+        assert canvas._render_tiled(object(), object(), None, None, 100, 100) is False
     finally:
         canvas.setParent(None)
         parent.deleteLater()

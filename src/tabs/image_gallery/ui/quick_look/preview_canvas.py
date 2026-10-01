@@ -83,7 +83,7 @@ _DECODE_EDGE_CAP = 2048
 # and 4x linear headroom over the 1024 coarse so wheel zoom stays sharp
 # to ~4x. Huge/untracked sources fail open to coarse-only (no behavior
 # change for them) — same thinking as _PREVIEW_FULL_DECODE_EDGE.
-_QL_FULL_EDGE_CAP = 4096
+_QL_FULL_EDGE_CAP = 8192
 
 # Dwell pre-warm: an item continuously shown past this window builds the
 # needed levels even at zoom 1.0 (singleShot, generation-guarded — a walk
@@ -462,19 +462,62 @@ class QuickLookCanvasWidget(QRhiWidget):
             if source is not None:
                 key, store = source
                 if store is not None:
+                    bind_store, bind_level = self._tiled_bind_store(store)
+                    ident = (key, id(bind_store), bind_level)
                     bound = getattr(self, "_tile_bound_source", None)
-                    is_bound = (
-                        bound is not None
-                        and bound[0] is key
-                        and bound[1] is store
-                    )
-                    if not is_bound:
-                        renderer.set_source(TiledImageSource(key=key, store=store))
-                        self._tile_bound_source = (key, store)
+                    if bound != ident:
+                        renderer.set_source(
+                            TiledImageSource(key=key, store=bind_store)
+                        )
+                        self._tile_bound_source = ident
+                        try:
+                            from tabs.image_gallery.debug import ql_cover
+
+                            _pyr = getattr(self, "_ql_pyramid", None)
+                            ql_cover(
+                                "tiled bind: store=%s level=%s pyr=%s "
+                                "pyr_levels=%s",
+                                getattr(bind_store, "size", None),
+                                bind_level,
+                                bool(_pyr is not None),
+                                int(getattr(_pyr, "level_count", 0) or 0)
+                                if _pyr is not None
+                                else 0,
+                            )
+                        except Exception:
+                            pass
             return renderer
         except Exception:
             logger.debug("QuickLook preview: tile renderer ensure failed open", exc_info=True)
             return None
+
+    def _tiled_bind_store(self, store):
+        """The pyramid level matching the current view scale, or ``store``.
+
+        Feeding the array pass the full-res store shows it ~8x downscaled, so
+        the sampler drops to a high mip and each tile's edge samples the
+        transparent layer padding -> a thin seam grid (see
+        ``inv-ic-first-zoom-seam`` / ``inv-ql-tiled-white-canvas``). Binding
+        the level whose resolution matches the display keeps tiles ~1:1 (mip 0)
+        so edges stay clean. ``(store, -1)`` when no matching built level.
+        """
+        try:
+            pyr = getattr(self, "_ql_pyramid", None)
+            if pyr is None or not bool(getattr(pyr, "valid", False)):
+                return store, -1
+            sw, sh = store.size
+            fb_w, fb_h = self._ql_fb_estimate()
+            z = float(getattr(self, "_zoom", 1.0) or 1.0)
+            dest_scale = min(
+                float(fb_w) / max(1, int(sw)), float(fb_h) / max(1, int(sh))
+            ) * z
+            level = int(pyr.best_level_for_scale(dest_scale))
+            level_store = pyr.level_if_built(level)
+            if level_store is None:
+                return store, -1
+            return level_store, level
+        except Exception:
+            return store, -1
 
     def _destroy_tile_renderer(self) -> None:
         """Release the tile renderer + sampler (never raises)."""
@@ -1216,10 +1259,6 @@ class QuickLookCanvasWidget(QRhiWidget):
             if rhi is None or target is None:
                 return self._skip_frame("null-rhi-target")
             try:
-                updates = rhi.nextResourceUpdateBatch()
-            except Exception:
-                return self._skip_frame("no-batch")
-            try:
                 size = target.pixelSize()
                 fb_w = max(1, int(size.width()))
                 fb_h = max(1, int(size.height()))
@@ -1238,6 +1277,15 @@ class QuickLookCanvasWidget(QRhiWidget):
                 command_buffer, tiled_updates, target, clear, fb_w, fb_h
             ):
                 return
+            # Raster path only: create the shell's update batch here, never
+            # before the tiled check -- on a covered frame render() returns
+            # early and an early batch would leak every frame until QRhi's
+            # 64-batch pool is exhausted (which then silently drops tile
+            # uploads / mip generation).
+            try:
+                updates = rhi.nextResourceUpdateBatch()
+            except Exception:
+                return self._skip_frame("no-batch")
             try:
                 self._shell.stage_quad(updates)
                 self._shell.stage_clip(updates, _IDENTITY_CLIP)
@@ -1342,7 +1390,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                 ),
             )
             covered = bool(getattr(result, "covered", False))
-            if covered:
+            if covered and self._tiled_level_ready():
                 try:
                     from tabs.image_gallery.debug import ql_cover
 
@@ -1368,8 +1416,10 @@ class QuickLookCanvasWidget(QRhiWidget):
                 from tabs.image_gallery.debug import ql_cover
 
                 ql_cover(
-                    "tiled partial: covered=False drawn=%s instances=%s "
-                    "resident=%s -> raster/cover stays",
+                    "tiled holding: covered=%s level_ready=%s drawn=%s "
+                    "instances=%s resident=%s -> raster/cover stays",
+                    covered,
+                    self._tiled_level_ready(),
                     getattr(result, "drawn", None),
                     getattr(result, "instances", None),
                     getattr(result, "resident", None),
@@ -1392,6 +1442,19 @@ class QuickLookCanvasWidget(QRhiWidget):
             return False
         except Exception:
             logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
+            return False
+
+    def _tiled_level_ready(self) -> bool:
+        """True once the tiled view is bound to a zoom-matched pyramid level.
+
+        Until then it is bound to the full-res store shown downscaled, whose
+        per-tile mip edges seam; hold the raster (coarse but seam-free) until
+        the matched level lands, so takeover never flashes the seam grid.
+        """
+        try:
+            bound = getattr(self, "_tile_bound_source", None)
+            return bool(bound is not None and int(bound[2]) >= 0)
+        except Exception:
             return False
 
     def resizeEvent(self, event) -> None:  # noqa: N802
