@@ -16,6 +16,7 @@ from engine.gpu.array_draw import (
     ARRAY_INSTANCE_STRIDE,
     ArrayInstance,
     array_layer_px,
+    draw_array_instances,
     pack_array_instance,
     record_array_draw,
     unpack_instance_layer2,
@@ -86,6 +87,10 @@ class _FakeResources:
         self.array_uniform_buffer = "ubuf"
         self.array_instance_buffer = "ibuf"
         self.calls: list = []
+        # Mirrors TileArrayResourcesBase: the SRB cache is idempotent per
+        # sampler name, so the pre-pass ensure plus the draw-time re-ensure
+        # inside ``draw_array_instances`` only log once.
+        self._srb_cache: dict = {}
 
     def ensure_array_pipeline(self, target) -> None:
         self.calls.append(("ensure_pipeline", target))
@@ -94,8 +99,13 @@ class _FakeResources:
         self.calls.append(("ensure_capacity", count))
 
     def ensure_array_srb(self, sampler_name: str):
+        cached = self._srb_cache.get(sampler_name)
+        if cached is not None:
+            return cached
         self.calls.append(("ensure_srb", sampler_name))
-        return "srb"
+        srb = "srb"
+        self._srb_cache[sampler_name] = srb
+        return srb
 
 
 class _FakeUpdates:
@@ -109,6 +119,9 @@ class _FakeUpdates:
 class _FakeCommandBuffer:
     def __init__(self) -> None:
         self.calls: list = []
+        self.last_viewport = None
+        self.last_bindings = None
+        self.last_srb = None
 
     def beginPass(self, *args) -> None:
         self.calls.append("beginPass")
@@ -118,12 +131,15 @@ class _FakeCommandBuffer:
 
     def setViewport(self, viewport) -> None:
         self.calls.append("setViewport")
+        self.last_viewport = viewport
 
     def setVertexInput(self, start, bindings) -> None:
         self.calls.append("setVertexInput")
+        self.last_bindings = (start, bindings)
 
     def setShaderResources(self, srb) -> None:
         self.calls.append("setShaderResources")
+        self.last_srb = srb
 
     def draw(self, vertices, instance_count) -> None:
         self.calls.append(("draw", vertices, instance_count))
@@ -234,3 +250,94 @@ def test_record_array_draw_empty_instances_opens_closes_pass_without_draw():
     assert in_pass == ["in"]
     assert resources.calls == []
     assert updates.writes == []
+
+
+def test_draw_array_instances_records_documented_sequence():
+    resources = _FakeResources()
+    command_buffer = _FakeCommandBuffer()
+
+    draw_array_instances(
+        command_buffer,
+        resources=resources,
+        vertex_buffer="vbo",
+        instance_count=3,
+        sampler_name="nearest",
+        viewport_size=(640, 480),
+    )
+
+    assert command_buffer.calls == [
+        "setGraphicsPipeline",
+        "setViewport",
+        "setVertexInput",
+        "setShaderResources",
+        ("draw", 4, 3),
+    ]
+    assert command_buffer.last_viewport.viewport() == [0.0, 0.0, 640.0, 480.0]
+    start, bindings = command_buffer.last_bindings
+    assert start == 0
+    assert list(bindings) == [("vbo", 0), ("ibuf", 0)]
+    assert command_buffer.last_srb == "srb"
+    assert resources.calls == [("ensure_srb", "nearest")]
+
+
+def test_draw_array_instances_defaults_to_resources_sampler():
+    resources = _FakeResources()
+    command_buffer = _FakeCommandBuffer()
+
+    draw_array_instances(
+        command_buffer,
+        resources=resources,
+        vertex_buffer="vbo",
+        instance_count=1,
+        viewport_size=(8, 4),
+    )
+
+    assert command_buffer.calls[-1] == ("draw", 4, 1)
+    assert resources.calls == [("ensure_srb", None)]
+
+
+def test_record_array_draw_routes_draw_through_draw_array_instances(monkeypatch):
+    import engine.gpu.array_draw as array_draw
+
+    resources = _FakeResources()
+    updates = _FakeUpdates()
+    command_buffer = _FakeCommandBuffer()
+    captured: list = []
+    real = array_draw.draw_array_instances
+
+    def _spy(cmd, **kwargs):
+        captured.append((cmd, kwargs))
+        real(cmd, **kwargs)
+
+    monkeypatch.setattr(array_draw, "draw_array_instances", _spy)
+
+    record_array_draw(
+        command_buffer,
+        resources=resources,
+        vertex_buffer="vbo",
+        instances=[_inst(1, 2), _inst(3, 4), _inst(5, 6)],
+        uniform_bytes=None,
+        target=_target(),
+        clear_color="clear",
+        updates=updates,
+    )
+
+    assert len(captured) == 1
+    spy_cmd, spy_kwargs = captured[0]
+    assert spy_cmd is command_buffer
+    assert spy_kwargs == {
+        "resources": resources,
+        "vertex_buffer": "vbo",
+        "instance_count": 3,
+        "sampler_name": "linear",
+        "viewport_size": (10, 20),
+    }
+    assert command_buffer.calls == [
+        "beginPass",
+        "setGraphicsPipeline",
+        "setViewport",
+        "setVertexInput",
+        "setShaderResources",
+        ("draw", 4, 3),
+        "endPass",
+    ]

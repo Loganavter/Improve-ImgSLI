@@ -10,6 +10,7 @@ from PySide6.QtGui import QImage, QRhiViewport
 
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.gpu.array_draw import draw_array_instances
 from engine.gpu.host_texture_cache import cache_for_host
 from engine.cache.lod import LevelKey
 from engine.gpu.base_images_pass import (
@@ -848,17 +849,14 @@ class BaseImagesPass(CanvasRenderPass):
                         ids=make_ids(_frame_context.frame_id, 0, True),
                     )
                 return
-            command_buffer.setGraphicsPipeline(self.array_resources.array_pipeline)
-            command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
-            command_buffer.setVertexInput(
-                0,
-                [
-                    (self.slot_resources.slot_vertex_buffers[0], 0),
-                    (self.array_resources.array_instance_buffer, 0),
-                ],
+            draw_array_instances(
+                command_buffer,
+                resources=self.array_resources,
+                vertex_buffer=self.slot_resources.slot_vertex_buffers[0],
+                instance_count=self.array_draw_instance_count,
+                sampler_name="default",
+                viewport_size=(fb_w, fb_h),
             )
-            command_buffer.setShaderResources(self.array_resources.array_srb)
-            command_buffer.draw(4, self.array_draw_instance_count)
             if _frame_context is not None:
                 _frame_context.record(
                     "submit",

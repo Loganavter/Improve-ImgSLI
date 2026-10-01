@@ -132,6 +132,43 @@ def _apply_bbox(
     return replace(inst, bbox=bbox_resolver(index, inst))
 
 
+def draw_array_instances(
+    command_buffer,
+    *,
+    resources,
+    vertex_buffer,
+    instance_count: int,
+    sampler_name: str | None = None,
+    viewport_size: tuple[int, int],
+) -> None:
+    """Records the array instanced-draw command sequence into an already-open
+    pass: bind the array pipeline, set the viewport to ``viewport_size``
+    (``(width, height)`` in pixels), bind the slot vertex buffer plus the
+    shared per-instance buffer, bind the array SRB for ``sampler_name``, and
+    issue one ``draw(4, instance_count)``.
+
+    No pass begin/end and no buffer uploads -- the caller owns the pass and
+    has already ensured the pipeline, grown the instance buffer, and written
+    the uniform/instance bytes before opening it. ``sampler_name=None`` uses
+    the resources' own default sampler; ``ensure_array_srb`` is cached, so
+    once the pipeline has been ensured this frame the call is a look-up.
+    """
+    width, height = viewport_size
+    command_buffer.setGraphicsPipeline(resources.array_pipeline)
+    command_buffer.setViewport(
+        QRhiViewport(0.0, 0.0, float(width), float(height))
+    )
+    command_buffer.setVertexInput(
+        0,
+        [
+            (vertex_buffer, 0),
+            (resources.array_instance_buffer, 0),
+        ],
+    )
+    command_buffer.setShaderResources(resources.ensure_array_srb(sampler_name))
+    command_buffer.draw(4, instance_count)
+
+
 def record_array_draw(
     command_buffer,
     *,
@@ -176,9 +213,10 @@ def record_array_draw(
             updates.updateDynamicBuffer(
                 resources.array_instance_buffer, 0, instance_bytes
             )
-        array_srb = resources.ensure_array_srb(instances[0].sampler_name)
-    else:
-        array_srb = None
+        # Ensure the instance's sampler SRB before the pass opens (resource
+        # creation is illegal inside an open pass). ``draw_array_instances``
+        # re-ensures the same name inside the pass, which is a cache hit.
+        resources.ensure_array_srb(instances[0].sampler_name)
 
     command_buffer.beginPass(
         target,
@@ -188,19 +226,14 @@ def record_array_draw(
     )
     if instances:
         size = target.pixelSize()
-        command_buffer.setGraphicsPipeline(resources.array_pipeline)
-        command_buffer.setViewport(
-            QRhiViewport(0.0, 0.0, float(size.width()), float(size.height()))
+        draw_array_instances(
+            command_buffer,
+            resources=resources,
+            vertex_buffer=vertex_buffer,
+            instance_count=len(instances),
+            sampler_name=instances[0].sampler_name,
+            viewport_size=(size.width(), size.height()),
         )
-        command_buffer.setVertexInput(
-            0,
-            [
-                (vertex_buffer, 0),
-                (resources.array_instance_buffer, 0),
-            ],
-        )
-        command_buffer.setShaderResources(array_srb)
-        command_buffer.draw(4, len(instances))
     if in_pass is not None:
         in_pass()
     command_buffer.endPass()
