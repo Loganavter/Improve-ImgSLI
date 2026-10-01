@@ -769,8 +769,15 @@ class SingleImageTiledView:
                 self._dirty_layers = deferred
 
         instances = self._build_instances(plan, pan, fit, zoom, letterbox)
-        covered = bool(plan) and all(
-            service.is_resident(key, tile.index) for tile in plan
+        # Tier promotion (the caller's takeover) only on a *quiescent* cascade
+        # (docs: inv-ic-first-zoom-seam-2026-09-20): drawing fresh tiles before
+        # their coarse mips exist samples stale/coarse edge texels and leaves
+        # thin seams between tiles. ``covered`` therefore also requires no
+        # pending dirty layers after this frame's cascade pass.
+        covered = (
+            bool(plan)
+            and all(service.is_resident(key, tile.index) for tile in plan)
+            and not self._dirty_layers
         )
         resident = len(service.resident_tiles(key))
         if not instances:
