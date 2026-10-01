@@ -16,6 +16,7 @@ from typing import cast
 from PySide6.QtCore import QTimer
 
 from services.io.recent_projects import VIEW_LIST
+from sli_ui_toolkit.ui.layout_settle import settle_layout
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +77,13 @@ def settle_shelf_layout_now(panel) -> None:
     above and below the header, then snap back" artifact when switching
     list -> cards (shrinking hides the stale header, growing exposes it).
     Refreshing the children's hints and re-running the layout makes the panel
-    and its contents agree in the same frame."""
-    for child in (
+    and its contents agree in the same frame. Thin delegate of the shared
+    toolkit helper — do not re-implement the sequence here."""
+    settle_layout(
+        panel,
         getattr(panel, "_header_host", None),
         getattr(panel, "_content_host", None),
-    ):
-        if child is not None:
-            child.updateGeometry()
-    root = panel.layout()
-    if root is not None:
-        root.invalidate()
-        root.activate()
+    )
 
 
 def schedule_deferred_relayout(panel) -> None:
