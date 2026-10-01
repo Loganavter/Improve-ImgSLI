@@ -125,3 +125,70 @@ def test_view_mode_switch_has_no_stale_or_overlapping_card(qtbot) -> None:
     QApplication.processEvents()
     _assert_content_identity(gv, items)
     _assert_no_overlap_and_unique_positions(gv)
+
+
+def _geometry_snapshot(gv) -> dict:
+    return {path: card.geometry() for path, card in _visible_cards(gv)}
+
+
+def _assert_no_visible_stale_mode_widget(gv) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    for child in gv.items_host.findChildren(QWidget):
+        mode = getattr(child, "_gallery_view_mode", None)
+        if mode is None:
+            continue
+        assert not child.isVisible() or mode == gv._view_mode, (
+            f"stale-mode widget {type(child).__name__} (mode={mode}) still "
+            f"visible while the live mode is {gv._view_mode}"
+        )
+
+
+def test_flat_view_mode_switch_commits_geometry_before_paint(qtbot) -> None:
+    """Flat (no series yet / triage pending) switch must commit real geometry.
+
+    The series path above is already safe: ``_rebuild_series`` relayout calls
+    ``items_layout.activate()`` (#151). The FLAT ``rebuild_grid`` path — the
+    switch the user hits while the series view is not live yet — re-adds cards
+    with ``addWidget``/``show`` but never activates the layout. For one frame
+    the list rows keep uncommitted geometry (columns collapse to the thumbnail
+    width, so the title elides / the row paints stale), then snap correct on
+    the following event-loop turn.
+
+    Contract: geometry immediately after the switch must equal geometry after
+    the event loop settles, i.e. the next frame is already correct.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    items = [_item(f"n{i}.png", _COLORS[i]) for i in range(4)]
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1280, 800)
+    w.show()
+    w.rebuild_grid(items)
+    gv = w._grid_view
+    QApplication.processEvents()
+    assert gv._series is None
+
+    # Toolbar path, exactly as the user triggers it.
+    w._on_view_toggled(True)
+
+    immediate = _geometry_snapshot(gv)
+    _assert_content_identity(gv, items)
+    _assert_no_overlap_and_unique_positions(gv)
+    _assert_no_visible_stale_mode_widget(gv)
+
+    host_w = gv.items_host.width()
+    for path, card in _visible_cards(gv):
+        assert card.width() >= host_w - 8, (
+            f"list row {path} width {card.width()} not committed for host "
+            f"width {host_w} — flat rebuild did not lay the row out"
+        )
+
+    QApplication.processEvents()
+    settled = _geometry_snapshot(gv)
+    assert immediate == settled, (
+        "list rows changed geometry on the next event-loop turn — the flat "
+        f"rebuild did not commit layout before paint:\n now={immediate}\n "
+        f"settled={settled}"
+    )

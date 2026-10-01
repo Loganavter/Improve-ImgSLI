@@ -314,6 +314,9 @@ class GalleryGridView(QWidget):
         try:
             for card in list(self._pool):
                 try:
+                    # Hide before unparenting: a still-visible widget handed a
+                    # new top-level parent can flash for a frame.
+                    card.hide()
                     card.setParent(None)
                     card.deleteLater()
                 except Exception:
@@ -335,6 +338,13 @@ class GalleryGridView(QWidget):
                 self.set_series(series, hub_names=hubs, collapsed=collapsed)
             except Exception:
                 pass
+        # Belt-and-braces commit: the flat rebuild and the series relayout
+        # each activate their own branch, but the mode swap must never leave
+        # a stale frame even if one of those branches fail-opened above.
+        try:
+            self.items_layout.activate()
+        except Exception:
+            logger.debug("set_view_mode: layout activate failed", exc_info=True)
 
     def _card_height_px(self) -> int:
         return scaled_px(LIST_CARD_H) if self._view_mode == VIEW_LIST else scaled_px(GALLERY_CARD_H)
@@ -503,6 +513,15 @@ class GalleryGridView(QWidget):
             self.apply_selection(self._selection)
         self._sync_series_column_widths(series_mode=False)
         self._update_host_height(len(items))
+        # Commit the rows' geometry synchronously. Without this the added
+        # cards only lay out on the following event-loop turn, so a view
+        # switch on a flat (no live series yet) grid paints one frame of
+        # uncommitted rows — list columns collapse to the thumb width and
+        # the title elides/overlaps until the layout catches up.
+        try:
+            self.items_layout.activate()
+        except Exception:
+            logger.debug("rebuild_grid: layout activate failed", exc_info=True)
 
     def _rebuild_next_chunk(self) -> None:
         pending = getattr(self, "_rebuild_pending", None)
@@ -527,6 +546,12 @@ class GalleryGridView(QWidget):
             self._rebuild_pending = None
             self._rebuild_index = 0
             self.apply_selection(self._selection)
+            # Same synchronous commit as the non-chunked path: the last
+            # chunk must not leave the tail rows unlaid-out for a frame.
+            try:
+                self.items_layout.activate()
+            except Exception:
+                logger.debug("_rebuild_next_chunk: layout activate failed", exc_info=True)
 
     # -- Stage 2 series grouping ----------------------------------------
 
