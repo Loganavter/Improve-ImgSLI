@@ -45,6 +45,22 @@ class _FakeCommandBuffer:
         self.updates.append(batch)
 
 
+class _FakeBatch:
+    """Minimal QRhiResourceUpdateBatch stand-in (vertex upload etc.)."""
+
+    def uploadStaticBuffer(self, *args, **kwargs) -> None:
+        pass
+
+    def updateDynamicBuffer(self, *args, **kwargs) -> None:
+        pass
+
+    def uploadTexture(self, *args, **kwargs) -> None:
+        pass
+
+    def readBackTexture(self, *args, **kwargs) -> None:
+        pass
+
+
 class _NoPrefetch:
     def warm(self, *args, **kwargs) -> bool:
         return False
@@ -54,7 +70,7 @@ def _make_view(monkeypatch, extent: int = 4):
     monkeypatch.setattr(tiv, "_LIVE_TILE_EXTENT", extent)
     rhi = SimpleNamespace(
         clipSpaceCorrMatrix=lambda: SimpleNamespace(data=lambda: [1.0] * 16),
-        nextResourceUpdateBatch=lambda: object(),
+        nextResourceUpdateBatch=lambda: _FakeBatch(),
     )
     view = SingleImageTiledView(
         rhi_getter=lambda: rhi,
@@ -446,3 +462,42 @@ def test_contain_fit_scale_matches_reference():
     assert contain_fit_scale((500, 1000), 800, 800) == (0.5, 1.0)
     assert contain_fit_scale((0, 0), 800, 800) == (1.0, 1.0)
     assert contain_fit_scale((800, 800), 800, 800) == (1.0, 1.0)
+
+
+def test_ensure_vertex_buffer_uploads_quad_data():
+    """The Immutable quad buffer must actually receive ``_VERTICES``.
+
+    Regression for the QL white canvas: an Immutable vertex buffer with no
+    ``setInitialData``/``uploadStaticBuffer`` leaves the quad's aTexCoord
+    undefined, so every instance draws degenerate geometry (clear only).
+    """
+    uploaded: list = []
+
+    class _Buf:
+        def setName(self, *_a):
+            pass
+
+        def create(self):
+            return True
+
+    class _Batch:
+        def uploadStaticBuffer(self, _buf, data):
+            uploaded.append(bytes(data))
+
+    class _Rhi:
+        def newBuffer(self, *_a, **_k):
+            return _Buf()
+
+        def nextResourceUpdateBatch(self):
+            return _Batch()
+
+    view = SingleImageTiledView(
+        rhi_getter=lambda: _Rhi(),
+        sampler_getter=lambda _name: None,
+        load_shader=lambda _name: None,
+        name_prefix="t",
+    )
+    cmd = _FakeCommandBuffer()
+    view._ensure_vertex_buffer(cmd)
+    assert uploaded == [bytes(tiv._VERTICES)]
+    assert cmd.updates, "the quad upload batch must be submitted"

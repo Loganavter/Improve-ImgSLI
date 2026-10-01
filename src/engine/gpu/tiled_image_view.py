@@ -615,7 +615,7 @@ class SingleImageTiledView:
     def _now_ms(self) -> float:
         return float(time.perf_counter()) * 1000.0
 
-    def _ensure_vertex_buffer(self) -> None:
+    def _ensure_vertex_buffer(self, command_buffer) -> None:
         if self._vertex_buffer is not None:
             return
         buffer = self._rhi.newBuffer(
@@ -626,6 +626,13 @@ class SingleImageTiledView:
         buffer.setName(f"{self._name_prefix}-array-quad".encode())
         if not buffer.create():
             raise RuntimeError("Failed to create tiled image view vertex buffer")
+        # An Immutable vertex buffer carries no data until it is uploaded:
+        # without this the quad's aTexCoord is undefined, the instance
+        # geometry is degenerate and the whole tiled pass draws nothing (the
+        # clear colour only). Mirrors image_compare's ``uploadStaticBuffer``.
+        updates = self._rhi.nextResourceUpdateBatch()
+        updates.uploadStaticBuffer(buffer, _VERTICES)
+        command_buffer.resourceUpdate(updates)
         self._vertex_buffer = buffer
 
     # -- draw ----------------------------------------------------------------
@@ -726,7 +733,7 @@ class SingleImageTiledView:
         service = self.tile_service
         grid = service.grid_for(key)
         plan = build_slot_plan_tiles(service, key, pan, fit, zoom)
-        self._ensure_vertex_buffer()
+        self._ensure_vertex_buffer(command_buffer)
 
         if updates is not None and grid is not None:
             visible_rect = slot_visible_rect(pan, fit, zoom, grid)
@@ -807,7 +814,7 @@ class SingleImageTiledView:
         (or its held level) with the previous fully-drawable level underneath
         wherever the target does not already cover it."""
         service = self.tile_service
-        self._ensure_vertex_buffer()
+        self._ensure_vertex_buffer(command_buffer)
         store_w, store_h = self._store_size(self._level_store(0))
         fb_w = max(1, int(view.fb_size[0]))
         fb_h = max(1, int(view.fb_size[1]))
