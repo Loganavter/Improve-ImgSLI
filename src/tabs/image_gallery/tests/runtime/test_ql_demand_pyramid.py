@@ -295,7 +295,7 @@ def test_lazy_cap_builds_only_to_need(qtbot, tmp_path, _fake_async):
 
     from engine.store.pyramid_pixel_store import PyramidPixelStore
     from engine.store.tiled_pixel_store import TiledPixelStore
-    from tabs._shared.pyramid import _pyramid_build_loop
+    from engine.pyramid.coordinator import _pyramid_build_loop
 
     red = _png(tmp_path, "red.png", "#c0392b")
     coarse = host._coarse_store_for(str(red))

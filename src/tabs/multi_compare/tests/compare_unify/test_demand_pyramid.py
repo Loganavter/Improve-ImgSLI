@@ -200,7 +200,7 @@ def test_zoom_in_demands_newly_needed_level(monkeypatch, tmp_path):
 
 def test_built_levels_never_rebuild_real_coordinator():
     """E2 already-built short-circuit: True with no pool, no worker."""
-    from tabs._shared.pyramid import PyramidBuildCoordinator
+    from engine.pyramid.coordinator import PyramidBuildCoordinator
 
     coord = PyramidBuildCoordinator(
         get_thread_pool=lambda: None,  # would fail if a worker were attempted

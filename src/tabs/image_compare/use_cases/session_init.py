@@ -5,7 +5,7 @@ from __future__ import annotations
 
 def init_session_state(controller, store, thread_pool):
     from tabs._shared.loading_toast import LoadingToastCoordinator
-    from tabs._shared.pyramid import PyramidBuildCoordinator
+    from engine.pyramid.coordinator import PyramidBuildCoordinator
     from tabs.image_compare.pipeline.session import ImageSession
 
     def _ic_get_toast_manager():

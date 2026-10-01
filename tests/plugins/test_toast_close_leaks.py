@@ -50,7 +50,7 @@ class _FakeToastCoordinator:
 
 
 def _make_pyramid(toast=None):
-    from tabs._shared.pyramid import PyramidBuildCoordinator
+    from engine.pyramid.coordinator import PyramidBuildCoordinator
 
     return PyramidBuildCoordinator(
         get_thread_pool=lambda: SimpleNamespace(start=lambda w: None),

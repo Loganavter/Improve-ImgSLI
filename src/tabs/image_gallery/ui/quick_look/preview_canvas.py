@@ -22,7 +22,7 @@ drives the first frame exactly as before; on zoom>1.0 or dwell
 (``note_ql_source`` arms the dwell timer — never on plain walks) only
 the levels needed for the CURRENT zoom are built (``best_level_for_scale``
 target, ``build_next_level`` until it lands or the walk aborts it)
-through the shared ``tabs._shared.pyramid.PyramidBuildCoordinator`` (no
+through the shared ``engine.pyramid.coordinator.PyramidBuildCoordinator`` (no
 second builder, GIMP-style: built levels stay, deeper zooms add more).
 The zoomed frame then samples the best BUILT level through
 ``PyramidPixelStore.best_pixels`` (shared ``select_level`` LOD) instead
@@ -642,7 +642,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                 return coord
             from PySide6.QtCore import QThreadPool
 
-            from tabs._shared.pyramid import PyramidBuildCoordinator
+            from engine.pyramid.coordinator import PyramidBuildCoordinator
 
             coord = PyramidBuildCoordinator(
                 get_thread_pool=lambda: QThreadPool.globalInstance(),

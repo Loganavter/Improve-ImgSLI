@@ -89,7 +89,7 @@ class MultiCompareController:
         self._last_applied_ui_mode: str | None = None
         # B2/B3 shared coordinators (state-owning collaborators)
         from tabs._shared.loading_toast import LoadingToastCoordinator
-        from tabs._shared.pyramid import PyramidBuildCoordinator
+        from engine.pyramid.coordinator import PyramidBuildCoordinator
 
         def _mc_get_toast_manager():
             main_window = getattr(self.context, "main_window", None) if self.context else None

@@ -12,7 +12,7 @@ no Store/EventBus/dispatch — dispatch stays in callers via the
 * preview via ``shared.image_processing.progressive_loader.load_preview_image``
 * full-res via ``shared.image_processing.pixel_cache_loader.load_pixel_store``
 * cancellation via ``tabs.image_compare.pipeline.abort.AbortSignal``
-* pyramid via the ``tabs._shared.pyramid`` coordinator (hook-injected)
+* pyramid via the ``engine.pyramid.coordinator`` coordinator (hook-injected)
 * picking via ``engine.cache.display_image_picker.pick_display_image``
 
 All decode is fail-open (sync helpers return ``None``, async errors fan out
@@ -551,7 +551,7 @@ def start_pyramid_build(store: Any, slot_id: int, toast_hook: Any = None) -> Non
     """Kick a pyramid build for ``store`` via the shared coordinator hook.
 
     ``toast_hook`` is either a ``PyramidBuildCoordinator`` (its
-    ``start_build`` is used — the ``tabs._shared.pyramid`` delegate, never
+    ``start_build`` is used — the ``engine.pyramid.coordinator`` delegate, never
     re-implemented here) or a plain ``(store, slot_id)`` callable. ``None``
     is a fail-open no-op (callers without a coordinator keep today's
     behavior of no pyramid). Never raises.
