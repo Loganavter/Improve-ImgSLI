@@ -470,6 +470,22 @@ class QuickLookCanvasWidget(QRhiWidget):
                             TiledImageSource(key=key, store=bind_store)
                         )
                         self._tile_bound_source = ident
+                        try:
+                            from tabs.image_gallery.debug import ql_cover
+
+                            _pyr = getattr(self, "_ql_pyramid", None)
+                            ql_cover(
+                                "tiled bind: store=%s level=%s pyr=%s "
+                                "pyr_levels=%s",
+                                getattr(bind_store, "size", None),
+                                bind_level,
+                                bool(_pyr is not None),
+                                int(getattr(_pyr, "level_count", 0) or 0)
+                                if _pyr is not None
+                                else 0,
+                            )
+                        except Exception:
+                            pass
             return renderer
         except Exception:
             logger.debug("QuickLook preview: tile renderer ensure failed open", exc_info=True)
@@ -1243,10 +1259,6 @@ class QuickLookCanvasWidget(QRhiWidget):
             if rhi is None or target is None:
                 return self._skip_frame("null-rhi-target")
             try:
-                updates = rhi.nextResourceUpdateBatch()
-            except Exception:
-                return self._skip_frame("no-batch")
-            try:
                 size = target.pixelSize()
                 fb_w = max(1, int(size.width()))
                 fb_h = max(1, int(size.height()))
@@ -1265,6 +1277,15 @@ class QuickLookCanvasWidget(QRhiWidget):
                 command_buffer, tiled_updates, target, clear, fb_w, fb_h
             ):
                 return
+            # Raster path only: create the shell's update batch here, never
+            # before the tiled check -- on a covered frame render() returns
+            # early and an early batch would leak every frame until QRhi's
+            # 64-batch pool is exhausted (which then silently drops tile
+            # uploads / mip generation).
+            try:
+                updates = rhi.nextResourceUpdateBatch()
+            except Exception:
+                return self._skip_frame("no-batch")
             try:
                 self._shell.stage_quad(updates)
                 self._shell.stage_clip(updates, _IDENTITY_CLIP)
