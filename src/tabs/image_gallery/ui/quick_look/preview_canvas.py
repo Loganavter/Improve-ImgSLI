@@ -40,6 +40,12 @@ from PySide6.QtGui import QColor, QImage, QRhiDepthStencilClearValue
 from PySide6.QtWidgets import QRhiWidget, QSizePolicy
 
 from engine.frame.present import begin_source, note_presented
+from engine.gpu.tiled_image_view import (
+    SingleImageTiledView,
+    TiledImageSource,
+    TiledImageView,
+    load_tiled_image_shader,
+)
 from engine.overlay import TexturedOverlayBinding, TexturedOverlayShell
 from engine.store.tiled_pixel_store import pixel_source_size
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
@@ -357,8 +363,9 @@ class QuickLookCanvasWidget(QRhiWidget):
         """Register a full ``TiledPixelStore`` to draw from array tiles.
 
         Additive: the raster/cover path keeps serving until this tiled
-        source has at least one resident tile; a missing slot fails closed
-        per tile, so a half-uploaded grid never substitutes a neighbor.
+        source is *fully covered* (every visible tile resident); a missing
+        slot fails closed per tile, so a half-uploaded grid never
+        substitutes a neighbor and never surfaces as a transparent frame.
         Never raises.
         """
         try:
@@ -423,26 +430,25 @@ class QuickLookCanvasWidget(QRhiWidget):
             return None
 
     def _ensure_tile_renderer(self):
-        """Construct (once) + bind the QL tile renderer to the held source.
+        """Construct (once) + bind the engine tiled view to the held source.
 
-        Binds ``set_source`` only when the (key, store) identity actually
-        changed since the last bind — rebinding every frame would drop and
-        re-register the whole tile grid (a permanent clear/re-upload loop).
+        The renderer is ``engine.gpu.tiled_image_view.SingleImageTiledView``;
+        QL supplies only its RHI/sampler callables, the engine shader loader
+        and the ``ql`` name prefix. Binds ``set_source`` only when the
+        (key, store) identity actually changed since the last bind —
+        rebinding every frame would drop and re-register the whole tile grid
+        (a permanent clear/re-upload loop).
         """
         try:
             if self.rhi() is None:
                 return None
             renderer = self._tile_renderer
             if renderer is None:
-                from tabs.image_gallery.ui.quick_look.tile_renderer import (
-                    QuickLookTileRenderer,
-                    load_shader,
-                )
-
-                renderer = QuickLookTileRenderer(
+                renderer = SingleImageTiledView(
                     rhi_getter=lambda: self.rhi(),
                     sampler_getter=self._sampler_for_tiles,
-                    load_shader=load_shader,
+                    load_shader=load_tiled_image_shader,
+                    name_prefix="ql",
                 )
                 self._tile_renderer = renderer
             source = self._tiled_source
@@ -456,7 +462,7 @@ class QuickLookCanvasWidget(QRhiWidget):
                         and bound[1] is store
                     )
                     if not is_bound:
-                        renderer.set_source(key, store)
+                        renderer.set_source(TiledImageSource(key=key, store=store))
                         self._tile_bound_source = (key, store)
             return renderer
         except Exception:
@@ -1296,9 +1302,17 @@ class QuickLookCanvasWidget(QRhiWidget):
     def _render_tiled(self, command_buffer, updates, target, clear, fb_w, fb_h) -> bool:
         """Drive the tiled source's array draw for this frame.
 
-        Returns ``True`` when at least one tile was drawn (the caller then
-        skips the raster path). ``False`` on any miss so the raster/cover
-        surface still serves. Never raises.
+        Takeover is gated on ``TiledViewResult.covered`` (every visible tile
+        resident), never on "at least one tile drawn": while the tile set is
+        still streaming the caller keeps presenting the raster/cover plate,
+        so a partially-resident frame can never surface as a transparent
+        preview. The engine view submits this frame's uploads internally
+        (``resourceUpdate``) even when it draws nothing, so the next frame
+        makes progress while the raster stays up.
+
+        Returns ``True`` only on the covered handover (the caller then skips
+        the raster path and ``_settle_present`` fires at most once for the
+        transition). ``False`` on any partial miss or error. Never raises.
         """
         try:
             if self._tiled_source is None:
@@ -1306,20 +1320,46 @@ class QuickLookCanvasWidget(QRhiWidget):
             renderer = self._ensure_tile_renderer()
             if renderer is None or not renderer.has_source():
                 return False
-            drawn = renderer.render(
+            result = renderer.render(
                 command_buffer,
                 updates=updates,
                 target=target,
                 clear_color=clear,
-                zoom=float(getattr(self, "_zoom", 1.0) or 1.0),
-                pan_x=float(getattr(self, "_pan_x", 0.0) or 0.0),
-                pan_y=float(getattr(self, "_pan_y", 0.0) or 0.0),
-                fb_w=fb_w,
-                fb_h=fb_h,
+                view=TiledImageView(
+                    zoom=float(getattr(self, "_zoom", 1.0) or 1.0),
+                    pan=(
+                        float(getattr(self, "_pan_x", 0.0) or 0.0),
+                        float(getattr(self, "_pan_y", 0.0) or 0.0),
+                    ),
+                    fb_size=(fb_w, fb_h),
+                ),
             )
-            if drawn:
+            covered = bool(getattr(result, "covered", False))
+            if covered:
+                try:
+                    from tabs.image_gallery.debug import ql_cover
+
+                    ql_cover(
+                        "tiled handover: covered=True instances=%s resident=%s",
+                        getattr(result, "instances", None),
+                        getattr(result, "resident", None),
+                    )
+                except Exception:
+                    pass
                 self._settle_present()
                 return True
+            try:
+                from tabs.image_gallery.debug import ql_cover
+
+                ql_cover(
+                    "tiled partial: covered=False drawn=%s instances=%s "
+                    "resident=%s -> raster/cover stays",
+                    getattr(result, "drawn", None),
+                    getattr(result, "instances", None),
+                    getattr(result, "resident", None),
+                )
+            except Exception:
+                pass
             return False
         except Exception:
             logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)

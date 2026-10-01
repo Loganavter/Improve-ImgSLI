@@ -132,3 +132,55 @@ def test_tiled_path_is_additive_single_surface_and_retires_on_item_change():
         canvas.setParent(None)
         parent.deleteLater()
         app.processEvents()
+
+
+def test_partial_coverage_keeps_raster_takeover_only_when_covered():
+    """Handover fix: takeover keys off ``TiledViewResult.covered``.
+
+    A drawn-but-not-covered frame must NOT take over (the raster/cover plate
+    stays), and ``_settle_present`` must fire at most once, on the covered
+    frame. The engine view submits the partial frame's uploads internally, so
+    progress continues while the plate stays up.
+    """
+    from engine.gpu.tiled_image_view import TiledViewResult
+
+    from tabs.image_gallery.ui.quick_look.preview_canvas import QuickLookCanvasWidget
+
+    app = QApplication.instance() or QApplication([])
+    canvas = QuickLookCanvasWidget()
+    parent = QWidget()
+    canvas.setParent(parent)
+    try:
+        partial = TiledViewResult(drawn=True, covered=False, instances=1, resident=1)
+        covered = TiledViewResult(drawn=True, covered=True, instances=4, resident=4)
+
+        class _FakeView:
+            def __init__(self):
+                self.results = [partial, covered]
+                self.calls = 0
+
+            def has_source(self):
+                return True
+
+            def render(self, *_a, **_k):
+                self.calls += 1
+                return self.results.pop(0)
+
+        fake = _FakeView()
+        canvas._tile_renderer = fake
+        canvas._tiled_source = ("item", object())
+        canvas._ensure_tile_renderer = lambda: fake
+        settled: list = []
+        canvas._settle_present = lambda: settled.append(1)
+
+        assert canvas._render_tiled(object(), object(), None, None, 100, 100) is False
+        assert fake.calls == 1
+        assert settled == [], "partial coverage must not take over or settle"
+
+        assert canvas._render_tiled(object(), object(), None, None, 100, 100) is True
+        assert fake.calls == 2
+        assert settled == [1], "covered handover settles exactly once"
+    finally:
+        canvas.setParent(None)
+        parent.deleteLater()
+        app.processEvents()

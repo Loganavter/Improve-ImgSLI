@@ -1,4 +1,4 @@
-"""Quick Look tiled single-source renderer — CONTENT-IDENTITY contracts.
+"""Quick Look tiled single-source view — CONTENT-IDENTITY contracts.
 
 Counts, windows, emits, sizes and timing are *not* correctness. A plan that
 binds tile ``i``'s screen rect to tile ``j``'s array layer satisfies every one
@@ -12,14 +12,12 @@ fingerprint of the *image actually uploaded there*. A swapped / neighbor /
 stale binding fails because the bytes in the bound layer are the neighbor's,
 not the rect's own tile.
 
-The store is a synthetic multi-tile ``TiledPixelStore`` (a distinct solid
-colour per ``LIVE_TILE_EXTENT`` region), so each tile's content is
-distinguishable and the identity tests are provably not blind (a guard
-asserts the per-tile fingerprints are pairwise distinct). No real GPU:
-``record_array_draw`` is captured.
-
-This file is additive to W1's ``test_ql_tile_renderer.py`` (plan/instance
-shape); it re-asserts identity in terms of what lands in the array.
+Quick Look now draws through the engine's ``SingleImageTiledView``; the same
+invariants are asserted against that view. The store is a synthetic multi-tile
+``TiledPixelStore`` (a distinct solid colour per ``LIVE_TILE_EXTENT`` region),
+so each tile's content is distinguishable and the identity tests are provably
+not blind (a guard asserts the per-tile fingerprints are pairwise distinct).
+No real GPU: ``record_array_draw`` is captured.
 """
 
 from __future__ import annotations
@@ -28,7 +26,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tabs.image_gallery.ui.quick_look import tile_renderer as tr
+import engine.gpu.tiled_image_view as tiv
+from engine.cache.draw_plans import build_slot_plan_tiles
+from engine.gpu.tiled_image_view import (
+    SingleImageTiledView,
+    TiledImageSource,
+    TiledImageView,
+)
 
 
 pytest.importorskip("PIL")
@@ -103,6 +107,11 @@ class _FakeMipCascade:
         return {}
 
 
+class _NoPrefetch:
+    def warm(self, *_a, **_k) -> bool:
+        return False
+
+
 def _fingerprint(image) -> tuple[int, int] | None:
     """Distinct-content fingerprint of one uploaded tile image.
 
@@ -167,23 +176,31 @@ class _ContentResources:
         return tile_service.tile_key(source_key, *index)
 
 
-def _make_renderer(monkeypatch):
+def _make_view(monkeypatch):
     rhi = _FakeRhi()
-    renderer = tr.QuickLookTileRenderer(
+    view = SingleImageTiledView(
         rhi_getter=lambda: rhi,
         sampler_getter=lambda _n: "sampler",
-        load_shader=lambda _n: object(),
+        load_shader=lambda _name: object(),
+        name_prefix="ql",
     )
-    renderer.resources = _ContentResources()
-    renderer._mip_cascade = _FakeMipCascade()
-    renderer._vertex_buffer = _FakeBuffer()
+    resources = _ContentResources()
+    view.resources = resources
+    view._realizer._array_resources = resources
+    view._realizer._prefetcher = _NoPrefetch()
+    view._mip_cascade = _FakeMipCascade()
+    view._vertex_buffer = _FakeBuffer()
     captured: dict = {}
 
     def _capture(command_buffer, **kwargs):
         captured["instances"] = list(kwargs.get("instances") or [])
 
-    monkeypatch.setattr(tr, "record_array_draw", _capture)
-    return renderer, captured
+    monkeypatch.setattr(tiv, "record_array_draw", _capture)
+    return view, captured
+
+
+def _key(view):
+    return view._source.key
 
 
 def _distinct_store(width: int, height: int, tile_px: int = 512, offset: int = 0):
@@ -210,30 +227,26 @@ def _distinct_store(width: int, height: int, tile_px: int = 512, offset: int = 0
     return TiledPixelStore.from_pil(Image.fromarray(arr, "RGBA"))
 
 
-def _render(renderer, captured=None, *, fb_w=512, fb_h=512, zoom=1.0, pan=(0.0, 0.0)):
+def _render(view, captured=None, *, fb_w=512, fb_h=512, zoom=1.0, pan=(0.0, 0.0)):
     if captured is not None:
         captured["instances"] = []
     updates = _FakeUpdates()
     target = SimpleNamespace(
         pixelSize=lambda: SimpleNamespace(width=lambda: fb_w, height=lambda: fb_h)
     )
-    return renderer.render(
+    return view.render(
         _FakeCmdBuffer(),
         updates=updates,
         target=target,
         clear_color=SimpleNamespace(),
-        zoom=zoom,
-        pan_x=pan[0],
-        pan_y=pan[1],
-        fb_w=fb_w,
-        fb_h=fb_h,
+        view=TiledImageView(zoom=zoom, pan=pan, fb_size=(fb_w, fb_h)),
     )
 
 
-def _plan(renderer, *, fb_w, fb_h, pan, zoom):
-    fit = tr.contain_fit_scale(renderer.store_size(), fb_w, fb_h)
-    plan = tr.build_slot_plan_tiles(
-        renderer.tile_service, renderer._key, pan, fit, zoom
+def _plan(view, *, fb_w, fb_h, pan, zoom):
+    fit = tiv.contain_fit_scale(view.store_size(), fb_w, fb_h)
+    plan = build_slot_plan_tiles(
+        view.tile_service, _key(view), pan, fit, zoom
     )
     return plan
 
@@ -248,18 +261,18 @@ def _tile_fingerprint(store, grid, index):
 
 
 def _assert_content_identity(
-    renderer, captured, store, *, fb_w, fb_h, pan, zoom
+    view, captured, store, *, fb_w, fb_h, pan, zoom
 ):
     """Every emitted instance must sample the layer holding *its own* tile.
 
     The expected payload is recomputed from the store's region for the rect's
-    plan index — *not* from the service slot lookup the renderer itself used,
-    so a renderer that binds a neighbour's slot fails here.
+    plan index — *not* from the service slot lookup the view itself used, so a
+    view that binds a neighbour's slot fails here.
     """
-    grid = renderer.tile_service.grid_for(renderer._key)
-    plan = _plan(renderer, fb_w=fb_w, fb_h=fb_h, pan=pan, zoom=zoom)
+    grid = view.tile_service.grid_for(_key(view))
+    plan = _plan(view, fb_w=fb_w, fb_h=fb_h, pan=pan, zoom=zoom)
     rect_to_index = {tile.rect: tile.index for tile in plan}
-    res = renderer.resources
+    res = view.resources
     seen: set = set()
     for inst in captured["instances"]:
         assert inst.rect1 in rect_to_index, (
@@ -284,27 +297,27 @@ def _assert_content_identity(
 
 def test_distinct_content_payload_matches_own_index(monkeypatch):
     store = _distinct_store(1024, 1024)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
-        drawn = _render(renderer)
-        assert drawn is True
+        result = _render(view)
+        assert result.drawn is True
         instances = captured["instances"]
         assert len(instances) == 4
 
         # Not-blind guard: the four tiles really do carry distinct content.
-        grid = renderer.tile_service.grid_for("item.png")
+        grid = view.tile_service.grid_for("item.png")
         fps = [_tile_fingerprint(store, grid, idx) for idx in
                [(0, 0), (0, 1), (1, 0), (1, 1)]]
         assert len(set(fps)) == 4, f"fixture not distinct: {fps}"
 
         seen, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert seen == {(0, 0), (0, 1), (1, 0), (1, 1)}
         assert len({i.layer1 for i in instances}) == 4
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
@@ -316,34 +329,35 @@ def test_distinct_content_payload_matches_own_index(monkeypatch):
 def test_no_resident_tile_draws_nothing(monkeypatch):
     """Empty residency: render draws nothing and emits no instance."""
     store = _distinct_store(1024, 1024)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
         monkeypatch.setattr(
-            renderer.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
-        drawn = _render(renderer, captured)
-        assert drawn is False
+        result = _render(view, captured)
+        assert result.drawn is False
+        assert result.covered is False
         assert captured.get("instances", []) == []
 
         # No source at all is also empty, never a stale draw.
-        renderer.clear_source()
-        assert _render(renderer, captured) is False
+        view.clear_source()
+        assert _render(view, captured).drawn is False
         assert captured.get("instances", []) == []
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
 def test_hole_in_middle_skips_without_neighbor_substitution(monkeypatch):
     """3x3 grid with the centre tile unresident: 8 instances, centre gap."""
     store = _distinct_store(1536, 1536)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
         from engine.cache.tile_geometry import crop_apron_tile
 
-        grid = renderer.tile_service.grid_for("item.png")
+        grid = view.tile_service.grid_for("item.png")
         assert (grid.rows, grid.columns) == (3, 3)
         hole = (1, 1)
         for row in range(3):
@@ -351,69 +365,72 @@ def test_hole_in_middle_skips_without_neighbor_substitution(monkeypatch):
                 if (row, col) == hole:
                     continue
                 region = grid.region_for(row, col)
-                renderer.resources.upload_tile_to_array(
-                    renderer.tile_service, "item.png", (row, col),
+                view.resources.upload_tile_to_array(
+                    view.tile_service, "item.png", (row, col),
                     crop_apron_tile(
                         store, region.left, region.top, region.right, region.bottom
                     ),
                     _FakeUpdates(),
                 )
         monkeypatch.setattr(
-            renderer.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
-        assert _render(renderer) is True
+        result = _render(view)
+        assert result.drawn is True
+        assert result.covered is False
         seen, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert hole not in seen
         assert len(seen) == 8
         # The unresident hole's own content appears nowhere.
         hole_fp = _tile_fingerprint(store, grid, hole)
-        bound = {renderer.resources.layer_payload[(0, i.layer1)] for i in captured["instances"]}
+        bound = {view.resources.layer_payload[(0, i.layer1)] for i in captured["instances"]}
         assert hole_fp not in bound, "unresident tile's content leaked onto a layer"
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
 def test_evicted_neighbor_is_skipped_not_substituted(monkeypatch):
     """Evicting one resident tile removes its instance; no neighbour covers it."""
     store = _distinct_store(1024, 1024)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
         from engine.cache.tile_geometry import crop_apron_tile
 
-        grid = renderer.tile_service.grid_for("item.png")
+        grid = view.tile_service.grid_for("item.png")
         for index in [(1, 1), (0, 0), (1, 0), (0, 1)]:  # non row-major
             region = grid.region_for(*index)
-            renderer.resources.upload_tile_to_array(
-                renderer.tile_service, "item.png", index,
+            view.resources.upload_tile_to_array(
+                view.tile_service, "item.png", index,
                 crop_apron_tile(
                     store, region.left, region.top, region.right, region.bottom
                 ),
                 _FakeUpdates(),
             )
         evicted = (0, 1)
-        renderer.tile_service.invalidate_tiles("item.png", {evicted})
-        assert not renderer.tile_service.is_resident("item.png", evicted)
-        assert renderer.tile_service.slot_for("item.png", evicted) is None
+        view.tile_service.invalidate_tiles("item.png", {evicted})
+        assert not view.tile_service.is_resident("item.png", evicted)
+        assert view.tile_service.slot_for("item.png", evicted) is None
 
         monkeypatch.setattr(
-            renderer.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
-        assert _render(renderer) is True
+        result = _render(view)
+        assert result.drawn is True
         instances = captured["instances"]
         assert len(instances) == 3
         seen, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert evicted not in seen
         evicted_fp = _tile_fingerprint(store, grid, evicted)
-        bound = {renderer.resources.layer_payload[(0, i.layer1)] for i in instances}
+        bound = {view.resources.layer_payload[(0, i.layer1)] for i in instances}
         assert evicted_fp not in bound, "evicted tile's content resurfaced"
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
@@ -421,55 +438,55 @@ def test_stale_generation_after_fresh_is_not_sampled(monkeypatch):
     """A fresh source's un-uploaded tiles are gaps, never the old array content."""
     store_a = _distinct_store(1024, 1024, offset=0)
     store_b = _distinct_store(1024, 1024, offset=128)
-    renderer, captured = _make_renderer(monkeypatch)
+    view, captured = _make_view(monkeypatch)
     try:
         # Generation A: upload all four (array layers now hold A's content).
-        renderer.set_source("A", store_a)
-        assert _render(renderer) is True
+        view.set_source(TiledImageSource(key="A", store=store_a))
+        assert _render(view).drawn is True
         assert len(captured["instances"]) == 4
-        stale_a_layers = dict(renderer.resources.layer_payload)
+        stale_a_layers = dict(view.resources.layer_payload)
         assert len(stale_a_layers) == 4
 
         # Generation B: fresh service, but the fake array still holds A's bytes.
-        renderer.set_source("B", store_b)
+        view.set_source(TiledImageSource(key="B", store=store_b))
         monkeypatch.setattr(
-            renderer.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
         # Nothing resident for B -> fail closed, never samples A's stale layers.
-        assert _render(renderer, captured) is False
+        assert _render(view, captured).drawn is False
         assert captured.get("instances", []) == []
 
         # Upload exactly one B tile (lands in the fresh allocator's first slot).
         from engine.cache.tile_geometry import crop_apron_tile
 
-        grid_b = renderer.tile_service.grid_for("B")
+        grid_b = view.tile_service.grid_for("B")
         only = (1, 1)
         region = grid_b.region_for(*only)
-        renderer.resources.upload_tile_to_array(
-            renderer.tile_service, "B", only,
+        view.resources.upload_tile_to_array(
+            view.tile_service, "B", only,
             crop_apron_tile(
                 store_b, region.left, region.top, region.right, region.bottom
             ),
             _FakeUpdates(),
         )
-        assert _render(renderer) is True
+        assert _render(view).drawn is True
         assert len(captured["instances"]) == 1
         seen, _ = _assert_content_identity(
-            renderer, captured, store_b, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store_b, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert seen == {only}
         inst = captured["instances"][0]
         b_fp = _tile_fingerprint(store_b, grid_b, only)
         # The layer holds B's content, and B(1,1) differs from A(1,1) — prove
         # the fixture actually discriminates stale A bytes from fresh B bytes.
-        assert renderer.resources.layer_payload[(0, inst.layer1)] == b_fp
+        assert view.resources.layer_payload[(0, inst.layer1)] == b_fp
         from engine.store.regions import build_uniform_tile_grid
 
         grid_a = build_uniform_tile_grid(1024, 1024, max_tile_width=512)
         a_fp = _tile_fingerprint(store_a, grid_a, only)
         assert b_fp != a_fp, "fixture: A and B must differ for this test to bite"
     finally:
-        renderer.release()
+        view.clear_source()
         store_a.close()
         store_b.close()
 
@@ -481,44 +498,44 @@ def test_stale_generation_after_fresh_is_not_sampled(monkeypatch):
 
 def test_remap_zoom_resize_reopen_no_cross_binding(monkeypatch):
     store = _distinct_store(1024, 1024)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
-        assert _render(renderer) is True
+        assert _render(view).drawn is True
         seen, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
         assert seen == {(0, 0), (0, 1), (1, 0), (1, 1)}
 
         # Zoom into the bottom-right tile only.
-        assert _render(renderer, zoom=8.0, pan=(-0.375, -0.375)) is True
+        assert _render(view, zoom=8.0, pan=(-0.375, -0.375)).drawn is True
         seen, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512,
+            view, captured, store, fb_w=512, fb_h=512,
             pan=(-0.375, -0.375), zoom=8.0,
         )
         assert seen == {(1, 1)}, f"zoom remap must re-resolve to one tile, got {seen}"
 
         # Resize the framebuffer: geometry changes, identity still holds.
-        assert _render(renderer, fb_w=512, fb_h=1024) is True
+        assert _render(view, fb_w=512, fb_h=1024).drawn is True
         seen_resize, _ = _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=1024, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=1024, pan=(0.0, 0.0), zoom=1.0
         )
         assert seen_resize == {(0, 0), (0, 1), (1, 0), (1, 1)}
 
         # Reopen with a same-size store of different content (a new generation).
         store2 = _distinct_store(1024, 1024, offset=200)
         try:
-            renderer.set_source("reopened", store2)
-            assert _render(renderer) is True
+            view.set_source(TiledImageSource(key="reopened", store=store2))
+            assert _render(view).drawn is True
             seen_reopen, _ = _assert_content_identity(
-                renderer, captured, store2, fb_w=512, fb_h=512,
+                view, captured, store2, fb_w=512, fb_h=512,
                 pan=(0.0, 0.0), zoom=1.0,
             )
             assert seen_reopen == {(0, 0), (0, 1), (1, 0), (1, 1)}
         finally:
             store2.close()
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
@@ -529,27 +546,27 @@ def test_remap_zoom_resize_reopen_no_cross_binding(monkeypatch):
 
 def test_slot_and_tile_keys_include_index(monkeypatch):
     store = _distinct_store(1024, 1024)
-    renderer, _captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, _captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
         indices = [(0, 0), (0, 1), (1, 0), (1, 1)]
-        keys = {renderer.tile_service.tile_key("item.png", r, c) for r, c in indices}
+        keys = {view.tile_service.tile_key("item.png", r, c) for r, c in indices}
         assert keys == {("item.png", r, c) for r, c in indices}
         assert len(keys) == 4, "tile keys collapse across indices"
 
-        assert _render(renderer) is True
+        assert _render(view).drawn is True
         slots = {
-            renderer.tile_service.slot_for("item.png", index) for index in indices
+            view.tile_service.slot_for("item.png", index) for index in indices
         }
         assert None not in slots
         assert len(slots) == 4, f"two tiles share an array slot: {slots}"
 
-        alloc_keys = set(renderer.tile_service._slot_allocator._slot_for_key)
+        alloc_keys = set(view.tile_service._slot_allocator._slot_for_key)
         assert alloc_keys == {("item.png", index) for index in indices}, (
             "slot allocator keys must be (source_id, tile index)-shaped"
         )
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
@@ -561,38 +578,38 @@ def test_slot_and_tile_keys_include_index(monkeypatch):
 def test_plan_geometry_from_store_not_residency(monkeypatch):
     """Visibility/enumeration is full-grid even when only one tile is resident."""
     store = _distinct_store(1024, 1024)
-    renderer, captured = _make_renderer(monkeypatch)
-    renderer.set_source("item.png", store)
+    view, captured = _make_view(monkeypatch)
+    view.set_source(TiledImageSource(key="item.png", store=store))
     try:
         from engine.cache.tile_geometry import crop_apron_tile
 
-        grid = renderer.tile_service.grid_for("item.png")
+        grid = view.tile_service.grid_for("item.png")
         only = (1, 1)
         region = grid.region_for(*only)
-        renderer.resources.upload_tile_to_array(
-            renderer.tile_service, "item.png", only,
+        view.resources.upload_tile_to_array(
+            view.tile_service, "item.png", only,
             crop_apron_tile(
                 store, region.left, region.top, region.right, region.bottom
             ),
             _FakeUpdates(),
         )
         monkeypatch.setattr(
-            renderer.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
         # The plan enumerates all four tiles regardless of residency.
-        plan = _plan(renderer, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0)
+        plan = _plan(view, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0)
         assert {tile.index for tile in plan} == {(0, 0), (0, 1), (1, 0), (1, 1)}
         # Drawn set is the resident subset; the one instance's rect matches
         # the full-grid position of (1,1), not a first-arrived fit.
-        assert _render(renderer) is True
+        assert _render(view).drawn is True
         assert len(captured["instances"]) == 1
         own = next(t for t in plan if t.index == only)
         assert captured["instances"][0].rect1 == own.rect
         _assert_content_identity(
-            renderer, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
         )
     finally:
-        renderer.release()
+        view.clear_source()
         store.close()
 
 
@@ -601,36 +618,36 @@ def test_geometry_and_content_independent_of_arrival_order(monkeypatch):
     store_a = _distinct_store(1024, 1024, offset=0)
     store_b = _distinct_store(1024, 1024, offset=64)
 
-    renderer_a, captured_a = _make_renderer(monkeypatch)
-    renderer_a.set_source("item.png", store_a)
-    assert _render(renderer_a) is True
+    view_a, captured_a = _make_view(monkeypatch)
+    view_a.set_source(TiledImageSource(key="item.png", store=store_a))
+    assert _render(view_a).drawn is True
     inst_a = captured_a["instances"]
     _assert_content_identity(
-        renderer_a, captured_a, store_a, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+        view_a, captured_a, store_a, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
     )
 
-    renderer_b, captured_b = _make_renderer(monkeypatch)
-    renderer_b.set_source("item.png", store_b)
+    view_b, captured_b = _make_view(monkeypatch)
+    view_b.set_source(TiledImageSource(key="item.png", store=store_b))
     try:
         from engine.cache.tile_geometry import crop_apron_tile
 
-        grid_b = renderer_b.tile_service.grid_for("item.png")
+        grid_b = view_b.tile_service.grid_for("item.png")
         for index in reversed([(0, 0), (0, 1), (1, 0), (1, 1)]):
             region = grid_b.region_for(*index)
-            renderer_b.resources.upload_tile_to_array(
-                renderer_b.tile_service, "item.png", index,
+            view_b.resources.upload_tile_to_array(
+                view_b.tile_service, "item.png", index,
                 crop_apron_tile(
                     store_b, region.left, region.top, region.right, region.bottom
                 ),
                 _FakeUpdates(),
             )
         monkeypatch.setattr(
-            renderer_b.tile_service, "select_upload_batch", lambda *_a, **_k: []
+            view_b.tile_service, "select_upload_batch", lambda *_a, **_k: []
         )
-        assert _render(renderer_b) is True
+        assert _render(view_b).drawn is True
         inst_b = captured_b["instances"]
         _assert_content_identity(
-            renderer_b, captured_b, store_b, fb_w=512, fb_h=512,
+            view_b, captured_b, store_b, fb_w=512, fb_h=512,
             pan=(0.0, 0.0), zoom=1.0,
         )
 
@@ -642,7 +659,7 @@ def test_geometry_and_content_independent_of_arrival_order(monkeypatch):
         }
         assert shape(inst_a) == shape(inst_b), "geometry depends on arrival order"
     finally:
-        renderer_a.release()
-        renderer_b.release()
+        view_a.clear_source()
+        view_b.clear_source()
         store_a.close()
         store_b.close()
