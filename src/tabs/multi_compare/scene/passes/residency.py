@@ -37,7 +37,7 @@ from typing import Any
 
 from engine.store.pyramid_registry import pyramid_for
 from engine.store.tiled_pixel_store import TiledPixelStore, pixel_source_size
-from engine.cache.lod import LevelKey
+from engine.cache.lod import LevelKey, demand_level
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
 from engine.cache.tile_constants import (
@@ -137,7 +137,7 @@ def lod_key_and_source(
     disp_w = rect_w * max(layer.fit_x, 1e-6) * layer.zoom
     disp_h = rect_h * max(layer.fit_y, 1e-6) * layer.zoom
     dest_scale = max(disp_w / src_w, disp_h / src_h)
-    level = pyramid.best_level_for_scale(dest_scale)
+    level = demand_level(dest_scale, pyramid.level_count)
     if level <= 0:
         return sid, base_source
     level_store = pyramid.level_if_built(level)

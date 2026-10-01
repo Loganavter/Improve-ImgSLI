@@ -48,3 +48,31 @@ def select_level(dest_scale: float, level_count: int) -> int:
         return level_count - 1
     level = int(math.floor(math.log2(1.0 / dest_scale)))
     return max(0, min(level, level_count - 1))
+
+
+def demand_level(dest_scale: float, level_count: int) -> int:
+    """Shared level pick for a view scale. Thin, behaviour-identical wrapper
+    over :func:`select_level` (the single place tabs may name a demanded
+    level; no tab re-implements the log2 math)."""
+    return select_level(dest_scale, level_count)
+
+
+def dest_scale_fit(
+    fb_size: tuple[int, int], source_size: tuple[int, int], zoom: float
+) -> float:
+    """Display pixels per level-0 source pixel for a fit-to-box view.
+
+    ``min(fb_w / src_w, fb_h / src_h) * zoom`` (the limiting axis). Mirrors
+    the long-standing QL/Image-Compare fit formula exactly: non-positive
+    source sizes yield ``0.0``, and a non-finite ``zoom`` propagates as the
+    old inline ``min(...) * zoom`` did (``select_level`` handles inf/nan
+    itself — clamping here would change the picked level). Never raises."""
+    try:
+        fb_w, fb_h = int(fb_size[0]), int(fb_size[1])
+        src_w, src_h = int(source_size[0]), int(source_size[1])
+        z = float(zoom)
+    except Exception:
+        return 0.0
+    if src_w <= 0 or src_h <= 0:
+        return 0.0
+    return min(float(fb_w) / float(src_w), float(fb_h) / float(src_h)) * z
