@@ -10,7 +10,11 @@ wrong-axis fit all fail loudly. No Qt, no real store/coordinator.
 import pytest
 
 from engine.cache.lod import LevelKey, demand_level, dest_scale_fit
-from engine.cache.pyramid_demand import DemandPolicy, PyramidDemandService
+from engine.cache.pyramid_demand import (
+    DemandPolicy,
+    PyramidDemandService,
+    decode_full_store,
+)
 
 
 class _FakeStore:
@@ -260,3 +264,145 @@ def test_demand_policy_rejects_unknown_mode():
     # Both documented modes construct.
     assert DemandPolicy(mode="eager").mode == "eager"
     assert DemandPolicy(mode="demand").mode == "demand"
+
+
+# ---------------------------------------------------------------------------
+# decode_full / decode_full_store: effective cap + one decode implementation.
+# ---------------------------------------------------------------------------
+
+
+class _FakeDecodedStore:
+    """``TiledPixelStore``-shaped decode result: a size and a close flag."""
+
+    def __init__(self, w: int, h: int) -> None:
+        self.size = (w, h)
+        self.is_open = True
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+        self.is_open = False
+
+
+def _patch_decode_from_path(monkeypatch, store):
+    """Swap ``TiledPixelStore.from_path`` for a fake returning ``store``.
+
+    Mirrors the class-attribute patch used by the QL regression guard: the
+    plain function replaces the classmethod, so the call receives the path as
+    its first positional argument and ``tmp_dir`` as the second.
+    """
+    from engine.store import tiled_pixel_store as tps
+
+    def _fake_from_path(_cls, *_a, **_k):
+        return store
+
+    monkeypatch.setattr(tps.TiledPixelStore, "from_path", _fake_from_path)
+
+
+def test_decode_full_uses_policy_cap_when_explicit_none(monkeypatch):
+    # Policy cap 8192: a 9000px source is over-cap -> None + closed.
+    big = _FakeDecodedStore(9000, 9000)
+    _patch_decode_from_path(monkeypatch, big)
+    svc = PyramidDemandService(
+        coordinator=_FakeCoordinator(), policy=DemandPolicy(cap_edge=8192)
+    )
+    assert svc.decode_full("/does-not-matter.png") is None
+    assert big.closed is True, "over-cap store must be closed, not leaked"
+    assert big.is_open is False
+
+
+def test_decode_full_explicit_cap_overrides_policy(monkeypatch):
+    # Explicit cap LOOSER than the policy cap: explicit wins -> returned.
+    big = _FakeDecodedStore(9000, 9000)
+    _patch_decode_from_path(monkeypatch, big)
+    svc = PyramidDemandService(
+        coordinator=_FakeCoordinator(), policy=DemandPolicy(cap_edge=4096)
+    )
+    assert svc.decode_full("/x.png", cap_edge=16384) is big
+    assert big.closed is False
+
+    # Explicit cap STRICTER than the policy cap: explicit wins -> None.
+    big2 = _FakeDecodedStore(9000, 9000)
+    _patch_decode_from_path(monkeypatch, big2)
+    svc2 = PyramidDemandService(
+        coordinator=_FakeCoordinator(), policy=DemandPolicy(cap_edge=16384)
+    )
+    assert svc2.decode_full("/x.png", cap_edge=4096) is None
+    assert big2.closed is True
+
+
+def test_decode_full_under_cap_and_uncapped_return_store(monkeypatch):
+    small = _FakeDecodedStore(1024, 1024)
+    _patch_decode_from_path(monkeypatch, small)
+    svc = PyramidDemandService(
+        coordinator=_FakeCoordinator(), policy=DemandPolicy(cap_edge=8192)
+    )
+    assert svc.decode_full("/x.png") is small
+    assert small.closed is False
+
+    # Policy cap None -> uncapped: even a huge source is returned.
+    big = _FakeDecodedStore(90000, 90000)
+    _patch_decode_from_path(monkeypatch, big)
+    svc2 = PyramidDemandService(
+        coordinator=_FakeCoordinator(), policy=DemandPolicy(cap_edge=None)
+    )
+    assert svc2.decode_full("/x.png") is big
+
+
+def test_decode_full_module_entry_cap_and_failure(monkeypatch):
+    big = _FakeDecodedStore(9000, 9000)
+    _patch_decode_from_path(monkeypatch, big)
+    assert decode_full_store("/x.png", cap_edge=8192) is None
+    assert big.closed is True
+
+    small = _FakeDecodedStore(1024, 1024)
+    _patch_decode_from_path(monkeypatch, small)
+    assert decode_full_store("/x.png", cap_edge=None) is small
+    assert decode_full_store("/x.png", cap_edge=8192) is small
+
+    class _BadSize:
+        size = None
+        is_open = True
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    bad = _BadSize()
+    _patch_decode_from_path(monkeypatch, bad)
+    assert decode_full_store("/x.png") is None
+    assert bad.closed is True, "unreadable-size store must be closed"
+
+
+def test_decode_full_uses_injected_decoder_and_effective_cap():
+    calls = []
+
+    def fake_decode(path, *, cap_edge, tmp_dir):
+        calls.append((path, cap_edge, tmp_dir))
+        return (path, cap_edge, tmp_dir)
+
+    svc = PyramidDemandService(
+        coordinator=_FakeCoordinator(),
+        decode=fake_decode,
+        policy=DemandPolicy(cap_edge=8192),
+    )
+    assert svc.decode_full("/p", tmp_dir="/t") == ("/p", 8192, "/t")
+    assert svc.decode_full("/p", cap_edge=2048, tmp_dir=None) == ("/p", 2048, None)
+    # Explicit None means "policy" (no way to request "uncapped" when policy
+    # is capped; that is the documented contract).
+    assert svc.decode_full("/p", cap_edge=None, tmp_dir="/t") == ("/p", 8192, "/t")
+    assert calls == [
+        ("/p", 8192, "/t"),
+        ("/p", 2048, None),
+        ("/p", 8192, "/t"),
+    ]
+
+
+def test_decode_full_swallows_injected_decoder_exception():
+    def boom(*_a, **_k):
+        raise RuntimeError("boom")
+
+    svc = PyramidDemandService(coordinator=_FakeCoordinator(), decode=boom)
+    assert svc.decode_full("/p") is None

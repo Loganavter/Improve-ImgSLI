@@ -209,7 +209,7 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
         fake = _FakeView()
         canvas._tile_renderer = fake
         canvas._tiled_source = ("item", object())
-        canvas._tile_bound_source = ("item", 0, 0)  # level-matched -> ready
+        canvas._tile_level_ready = True  # multi-level binding -> covered is seam-safe
         canvas._ensure_tile_renderer = lambda: fake
         settled: list = []
         canvas._settle_present = lambda: settled.append(1)
@@ -228,11 +228,14 @@ def test_partial_coverage_keeps_raster_takeover_only_when_covered():
 
 
 def test_covered_but_level_not_ready_holds_raster():
-    """Takeover is held until the view is bound to a zoom-matched level.
+    """Takeover is held until a genuine multi-level (pyramid) binding exists.
 
-    A covered frame bound to the full-res store (level -1) would flash the
-    mip-edge seam grid; the raster (coarse, seam-free) must stay until the
-    matched pyramid level lands.
+    A covered frame from a single-level binding (no pyramid, or only level 0
+    built) would flash the mip-edge seam grid when the full-res store is shown
+    downscaled; the raster (coarse, seam-free) must stay until the view holds
+    >= 2 registered levels, at which point its own LOD/``covered`` is the
+    seam-safe handover gate. The old QL-side level rebind is gone; the flag
+    ``_tile_level_ready`` records that binding state.
     """
     from engine.gpu.tiled_image_view import TiledViewResult
 
@@ -254,7 +257,7 @@ def test_covered_but_level_not_ready_holds_raster():
 
         canvas._tile_renderer = _FakeView()
         canvas._tiled_source = ("item", object())
-        canvas._tile_bound_source = ("item", 0, -1)  # full store, not matched
+        canvas._tile_level_ready = False  # single-level / pre-level -> hold
         canvas._ensure_tile_renderer = lambda: canvas._tile_renderer
         canvas._settle_present = lambda: (_ for _ in ()).throw(
             AssertionError("must not settle while the level is not matched")

@@ -5,15 +5,19 @@ pyramid-build coordinator (the async build). Tabs declare a source plus a
 :class:`DemandPolicy` and consume a level; no tab re-implements the
 ``select_level``/``dest_scale_fit`` math or the coordinator call shape.
 
-The service is deliberately decode-free: the single-decode entry lands in a
-later wave where the quick-look decode path is known. Here the service only
-carries the :class:`DemandPolicy` and answers:
+The service carries the :class:`DemandPolicy`, the single shared full-res
+decode entry, and answers:
 
 * what level a view at a given zoom/framebuffer wants (:meth:`level_for_view`),
 * how to request that level (:meth:`ensure_level`),
 * the built level's store, if any (:meth:`level_store`),
 * the built levels in the order :class:`~engine.gpu.tiled_image_view.TiledImageSource`
-  expects -- coarsest first, finest (level 0) last (:meth:`levels_sequence`).
+  expects -- coarsest first, finest (level 0) last (:meth:`levels_sequence`),
+* the full-resolution decode with an effective edge cap (:meth:`decode_full`).
+
+The decode itself (:func:`decode_full_store`) is the single implementation
+tabs delegate to; it never raises and applies an optional post-decode edge
+cap (``None`` = uncapped).
 """
 
 from __future__ import annotations
@@ -23,14 +27,60 @@ from dataclasses import dataclass
 from engine.cache.lod import LevelKey, demand_level, dest_scale_fit
 
 
+def _close_quiet(store) -> None:
+    """Close ``store`` swallowing every failure (never raises)."""
+    try:
+        store.close()
+    except Exception:
+        pass
+
+
+def decode_full_store(path, *, cap_edge: int | None = None, tmp_dir=None):
+    """Single shared full-res decode: ``TiledPixelStore.from_path`` + optional
+    post-decode edge cap (``None`` = uncapped). Never raises; ``None`` on
+    failure or when ``max(w, h) > cap_edge``. Closes the store on cap/read
+    failure.
+
+    Pure Python + PIL/pyvips + memmap -- no Qt. The spill dir is resolved on
+    the GUI thread and passed in as ``tmp_dir``; a huge source fails open to
+    ``None`` so callers keep their bounded/coarse surface.
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+
+        try:
+            store = TiledPixelStore.from_path(str(path), tmp_dir)
+        except Exception:
+            return None
+        try:
+            w, h = store.size
+            w, h = int(w), int(h)
+        except Exception:
+            _close_quiet(store)
+            return None
+        if w <= 0 or h <= 0:
+            _close_quiet(store)
+            return None
+        if cap_edge is not None:
+            try:
+                cap = int(cap_edge)
+            except Exception:
+                cap = None
+            if cap is not None and max(w, h) > cap:
+                _close_quiet(store)
+                return None
+        return store
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class DemandPolicy:
     """How a tab wants pyramid levels demanded.
 
-    ``cap_edge`` is the decode cap (``None`` = uncapped) and ``settle`` gates
-    promotion on a quiescent cascade; both are consumed by the decode entry in
-    a later wave. ``mode`` selects demand (lazy, zoom-driven) vs eager
-    (prebuild).
+    ``cap_edge`` is the decode cap (``None`` = uncapped) consumed by
+    :meth:`PyramidDemandService.decode_full`, and ``settle`` gates promotion
+    on a quiescent cascade (surfaced to the view as its ``LodPolicy``).
     """
 
     cap_edge: int | None = None
@@ -48,13 +98,34 @@ class PyramidDemandService:
     """Shared pyramid demand policy: which level a view needs and how to
     request it. Engine-owned; no tab imports."""
 
-    def __init__(self, *, coordinator, policy: DemandPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        coordinator,
+        decode=None,
+        policy: DemandPolicy | None = None,
+    ) -> None:
         self._coordinator = coordinator
+        self._decode = decode if decode is not None else decode_full_store
         self._policy = policy if policy is not None else DemandPolicy()
 
     @property
     def policy(self) -> DemandPolicy:
         return self._policy
+
+    def decode_full(self, path, *, cap_edge: int | None = None, tmp_dir=None):
+        """Decode ``path`` at the effective edge cap; never raises (``None``).
+
+        Effective cap = explicit ``cap_edge`` when not ``None``, else
+        ``self.policy.cap_edge`` (which may itself be ``None`` = uncapped).
+        Delegates to the injected ``decode`` (module :func:`decode_full_store`
+        by default), called as ``decode(path, cap_edge=..., tmp_dir=...)``.
+        """
+        try:
+            effective = self._policy.cap_edge if cap_edge is None else cap_edge
+            return self._decode(path, cap_edge=effective, tmp_dir=tmp_dir)
+        except Exception:
+            return None
 
     def level_for_view(
         self,
