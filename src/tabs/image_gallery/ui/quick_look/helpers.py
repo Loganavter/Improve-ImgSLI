@@ -41,6 +41,7 @@ from tabs.image_gallery.ui.quick_look.preview import (
 from tabs.image_gallery.ui.quick_look.insets import (
     populate_source_inset,
     populate_crop,
+    refresh_crop_for,
 )
 from tabs.image_gallery.ui.quick_look.meta import (
     populate_filename_meta,
@@ -101,6 +102,7 @@ __all__ = [
     "populate_preview",
     "populate_source_inset",
     "populate_crop",
+    "refresh_crop_for",
     "populate_filename_meta",
     "_item_smaller_than_source",
     "local_brief_fallback",

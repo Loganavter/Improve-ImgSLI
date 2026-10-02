@@ -343,13 +343,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         return super().eventFilter(watched, event)
 
-    # W10: the 8px ring OUTSIDE the card (on the veil) is owned here at
-    # overlay level — the W9 plate filter only sees the inner edge. Ring
-    # drags share the _border_drag tuple + clamp/cursor helpers with the
-    # plate handlers. Plain veil clicks dismiss the overlay (reverses the
-    # W6/W11 background-click ban; Esc/deactivate stay pinned). W11: ring
-    # and plate presses inside either nav-arrow rect walk the series via
-    # the helpers (arrows never start a drag).
+    # W10: the 8px ring OUTSIDE the card (on the veil) is probed here at
+    # overlay level. Card resize drags are disabled (QL_RESIZABLE=False):
+    # W11 ring/plate presses inside either nav-arrow rect walk the series
+    # via the helpers (arrows never start a drag); other ring presses fall
+    # through to the veil dismiss below. Plain veil clicks dismiss the
+    # overlay (reverses the W6/W11 background-click ban; Esc/deactivate
+    # stay pinned).
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:
             from tabs.image_gallery.debug import gallery_debug as _dbg
@@ -414,6 +414,38 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         try:
             self.dismiss()
+        except Exception:
+            pass
+        # Modal: the dismissing press is handled here — never propagate to
+        # the gallery beneath (one veil click must not also toggle/select).
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        # Modal: swallow double-clicks landing while visible.
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        # Modal: veil wheel must not scroll the gallery behind the overlay
+        # (children viewports eat their own wheel first).
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802
+        # Modal: no card menu from under the overlay (Menu key or
+        # right-release menu gesture while the overlay owns the window).
+        try:
+            event.accept()
         except Exception:
             pass
         return
@@ -517,6 +549,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         self._current_item = item
+        # Modal input grab: never disabled, never mouse-transparent — while
+        # visible every press lands here (veil dismiss or card swallow),
+        # never in the gallery beneath.
+        try:
+            self.setEnabled(True)
+            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        except Exception:
+            pass
         owner = self._owner
         mode_val = source = series_raw = None
         try:
@@ -876,8 +916,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         try:
-            self._compare_btn.setEnabled(True)
-            self._multi_btn.setEnabled(True)
+            _cmp = getattr(self, "_compare_btn", None)
+            if _cmp is not None:
+                _cmp.setEnabled(True)
+            _mlt = getattr(self, "_multi_btn", None)
+            if _mlt is not None:
+                _mlt.setEnabled(True)
         except Exception:
             pass
         # W4 item 6: best-effort nav pin after populate (resizeEvent re-pins
@@ -892,6 +936,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
             reposition_grip(self)
+        except Exception:
+            pass
+        # Modal stacking: stay above window siblings (toasts/flyouts) while
+        # visible — a popup grab (card menu) still wins, by Qt design.
+        try:
+            if self.isVisible():
+                self.raise_()
         except Exception:
             pass
 
@@ -1066,7 +1117,80 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             # second full show_for (~300ms of redundant re-populate). External
             # reject triggers (card menu, hover capsule) still reach the open
             # overlay via on_quick_reject — that path is untouched.
-            self._populate()  # W12-A: Reject stays open — triage continues.
+            self._refresh_triage_state()  # W12-A: Reject stays open — triage continues.
+        except Exception:
+            pass
+
+    def _refresh_triage_state(self) -> None:
+        """Light refresh after a triage flag flip (reject/unreject).
+
+        A full ``_populate()`` rebuilds the preview pipeline (TileStore
+        stream + pyramid, ~1s per 5K file) — pure waste when only the
+        rejected flag changed. Refresh just the flag-dependent chrome:
+        reject label, series header (rejected count), brief and strip
+        badges. Preview, metrics, artifacts and report stay untouched.
+        """
+        item = self._current_item
+        if item is None:
+            return
+        try:
+            rejected = bool(getattr(item, "rejected", False))
+            if callable(_set_colored_text):
+                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", getattr(self, "_reject_text_color", None))
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
+            from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh
+
+            _psh(self, self._owner)
+            _pb(self, item)
+        except Exception:
+            pass
+        try:
+            self._rebuild_strip()
+        except Exception:
+            pass
+
+    def _on_delete(self) -> None:
+        """Remove the current item from the grid (file on disk stays).
+
+        Same semantics as the card menu "Remove from view"
+        (``triage.remove_from_grid``). After removal the overlay advances
+        to the next series item; the last item dismisses the overlay.
+        """
+        if self._current_item is None:
+            return
+        try:
+            p = Path(getattr(self._current_item, "path", ""))
+            owner = self._owner
+            if owner is not None:
+                try:
+                    from tabs.image_gallery.use_cases import triage as _triage
+
+                    _triage.remove_from_grid(owner, p)
+                except Exception:
+                    pass
+            try:
+                self._series_items = [
+                    m
+                    for m in (self._series_items or [])
+                    if Path(getattr(m, "path", "")) != p
+                ]
+            except Exception:
+                self._series_items = []
+            if not self._series_items:
+                try:
+                    self.hide()
+                except Exception:
+                    pass
+                return
+            try:
+                self._current_idx = min(self._current_idx, len(self._series_items) - 1)
+                self._current_item = self._series_items[self._current_idx]
+            except Exception:
+                return
+            self._populate()
         except Exception:
             pass
 

@@ -992,6 +992,41 @@ def test_drag_pan_follows_cursor():
     assert drag_pan(0.0, 0.0, 10, 10, 0, 500, 2.0) is None
 
 
+def test_clamp_pan_floor_forces_origin():
+    """At/below the zoom floor the fitted frame is fully in view: pan 0."""
+    from tabs.image_gallery.ui.quick_look.preview_zoom import clamp_pan
+
+    assert clamp_pan(0.4, -0.3, 800, 600, 1000, 500, 1.0) == (0.0, 0.0)
+    assert clamp_pan(10.0, 10.0, 800, 600, 1000, 500, 0.5) == (0.0, 0.0)
+
+
+def test_clamp_pan_cover_range_when_zoomed():
+    """Zoomed pan clamps to the exact covered range; short axes center."""
+    import pytest
+
+    from tabs.image_gallery.ui.quick_look.preview_zoom import clamp_pan
+
+    # src 800x600, fb 1000x500, zoom 2: scale=min(1.25,0.833)*2=1.667,
+    # dest 1333x1000 → x range ±0.125, y ±0.25.
+    assert clamp_pan(0.0, 0.0, 800, 600, 1000, 500, 2.0) == (0.0, 0.0)
+    assert clamp_pan(10.0, -10.0, 800, 600, 1000, 500, 2.0) == pytest.approx(
+        (0.125, -0.25)
+    )
+    # Wide image in a tall pane at 1.5x: vertical dest still fits → y is 0,
+    # horizontal clamps to (1200-800)/2400.
+    assert clamp_pan(0.2, 0.4, 1600, 400, 800, 600, 1.5) == pytest.approx(
+        (1.0 / 6.0, 0.0)
+    )
+
+
+def test_clamp_pan_fail_open():
+    """Garbage dims leave the pan untouched (old behavior preserved)."""
+    from tabs.image_gallery.ui.quick_look.preview_zoom import clamp_pan
+
+    assert clamp_pan(0.1, 0.2, 0, 600, 1000, 500, 2.0) == (0.1, 0.2)
+    assert clamp_pan(0.1, 0.2, None, None, 1000, 500, 2.0) == (0.1, 0.2)
+
+
 def test_zoomed_frame_pan_shifts_crop():
     from PySide6.QtGui import QColor, QImage, QPainter
 

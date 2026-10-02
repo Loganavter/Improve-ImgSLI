@@ -261,12 +261,17 @@ def test_footer_reflows_hint_right_on_resize(qtbot, tmp_path):
         # No hint anywhere on the bar.
         assert getattr(ov, "_hint_label", None) is None
         assert bar.findChild(QWidget, "quicklook_hint") is None
-        compare = ov._compare_btn
+        # Compare actions removed — only triage buttons remain.
+        assert getattr(ov, "_compare_btn", None) is None
+        assert getattr(ov, "_multi_btn", None) is None
+        assert bar.findChild(QWidget, "quicklook_compare") is None
+        assert bar.findChild(QWidget, "quicklook_multi") is None
+        first = ov._reject_btn
         # Actions stay ordered left-to-right with no overlaps.
-        cmp_left = compare.mapTo(ov._content, compare.rect().topLeft()).x()
+        cmp_left = first.mapTo(ov._content, first.rect().topLeft()).x()
         assert cmp_left >= 0
         prev_right = -1
-        for btn in (ov._compare_btn, ov._multi_btn, ov._reject_btn, ov._set_source_btn):
+        for btn in (ov._reject_btn, ov._delete_btn, ov._set_source_btn):
             left = btn.mapTo(ov._content, btn.rect().topLeft()).x()
             assert left >= prev_right
             prev_right = btn.mapTo(ov._content, btn.rect().bottomRight()).x()
@@ -562,15 +567,14 @@ def test_second_press_keeps_first_drag(qtbot):
 
 
 def test_fast_jump_to_child_clears_plate_cursor(qtbot):
-    """D5: a fast border→child jump must not strand a set plate cursor.
+    """D5: fixed card — border hovers show the arrow, stale cursors clear.
 
-    Live-proof (see gallery-hover-loss lineage): fast parent→child jumps
-    can skip content-Leave delivery, so the plate slot stays set over
-    inheriting children (labels, thumbs). Uses qtbot.mouseMove (real
-    crossing synthesis), not synthetic QMouseEvent. Verified failing
-    pre-fix (SizeHor stuck after both jumps), passing post-fix.
+    No resize affordance: hovering the edge strip keeps the plain arrow
+    (never SizeHor), and a stale plate cursor still clears on the next
+    landing move over content children.
     """
     from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QCursor
     from PySide6.QtWidgets import QApplication
 
     from sli_ui_toolkit.widgets import Button
@@ -579,26 +583,19 @@ def test_fast_jump_to_child_clears_plate_cursor(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, mates[0], mates)
     content = ov._content
-    # Right-edge strip, away from the nav circles (mid-height).
+    # Edge strip hover: plain arrow, no resize cursor.
     qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
     QApplication.processEvents()
-    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
-    # Jump straight onto a tracking strip thumb (accepts moves).
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    # Stale-cursor clearing still works: a stranded SizeHor drops back
+    # to the arrow on landing moves.
+    content.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
     thumbs = [
         b for b in ov._strip_host.findChildren(Button)
         if b.objectName().startswith("quicklook_strip_")
     ]
     assert thumbs
     qtbot.mouseMove(thumbs[0], thumbs[0].rect().center())
-    QApplication.processEvents()
-    QApplication.processEvents()
-    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
-    # Re-arm on the strip, jump onto the preview label (no tracking).
-    qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
-    QApplication.processEvents()
-    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
-    host = ov._preview_host
-    qtbot.mouseMove(host, host.rect().center())
     QApplication.processEvents()
     QApplication.processEvents()
     assert content.cursor().shape() == Qt.CursorShape.ArrowCursor

@@ -381,3 +381,61 @@ def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
                 overlay._crop_pix.update_region("thumb", pixmap=None, text="—")
     except Exception:
         pass
+
+
+def refresh_crop_for(owner, item_or_path) -> bool:
+    """Refresh ONLY the sharpness-crop inset for the open item.
+
+    The crop has no async loader of its own: on a cold open its inputs
+    (``_preview_full`` / thumbnail / pyramid sample) are not ready yet,
+    so the first ``_populate`` pass fails it open while the canvas streams
+    on its own pipeline — and the inset only fills in later as a side
+    effect of analysis delivery. Call this the moment image data lands
+    (first frame, tiled store, thumbnail): ``populate_crop`` reuses the
+    already-warm sources (memo-gated, zero new decodes on hit) instead
+    of waiting seconds for the analysis round-trip.
+
+    Guards (content-identity): overlay must exist and be visible, the
+    delivered path must equal the CURRENT item (never paint a neighbor
+    after a walk), and the crop host must be shown (non-fidelity mode).
+    Returns True when a refresh was attempted.
+    """
+    try:
+        overlay = getattr(owner, "_quick_look_overlay", None)
+        if overlay is None:
+            try:
+                w = getattr(owner, "widget", None)
+                overlay = getattr(w, "_quick_look_overlay", None)
+            except Exception:
+                overlay = None
+        if overlay is None:
+            return False
+        try:
+            if not overlay.isVisible():
+                return False
+        except Exception:
+            return False
+        try:
+            target = Path(getattr(item_or_path, "path", item_or_path))
+        except Exception:
+            return False
+        try:
+            cur = getattr(overlay, "_current_item", None)
+            if cur is None or Path(getattr(cur, "path", "")) != target:
+                return False
+            item = cur
+        except Exception:
+            return False
+        try:
+            host = getattr(overlay, "_crop_host", None)
+            if host is None or not host.isVisible():
+                return False
+        except Exception:
+            return False
+        try:
+            populate_crop(overlay, item, False)
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False

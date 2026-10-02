@@ -352,6 +352,48 @@ class _RuleWidget(QWidget):
 # -- UI construction helpers (thin owner delegation) -------------------------
 
 
+def _danger_trash_icon(danger) -> object:
+    """Red-tinted "delete" icon for the quick-look Delete button.
+
+    The toolkit painter draws icon pixmaps verbatim (no foreground tint),
+    so the monochrome source stays black unless recolored. Fill the
+    silhouette with *danger* via CompositionMode_SourceIn (same idiom as
+    toolkit ``sidebar_nav_list.icons.tinted_pixmap``). Falls back to the
+    plain "delete" key when resolution/tinting fails.
+    """
+    try:
+        if danger is None:
+            return "delete"
+        from PySide6.QtCore import QSize, Qt
+        from PySide6.QtGui import QIcon, QPainter, QPixmap
+        from sli_ui_toolkit.icons import resolve_icon
+
+        base = resolve_icon("delete")
+        if base is None or base.isNull():
+            return "delete"
+        pm = base.pixmap(QSize(64, 64))
+        if pm.isNull():
+            return "delete"
+        out = QPixmap(pm.size())
+        try:
+            out.setDevicePixelRatio(pm.devicePixelRatio())
+        except Exception:
+            pass
+        out.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(out)
+        try:
+            painter.drawPixmap(0, 0, pm)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(out.rect(), danger)
+        finally:
+            painter.end()
+        if out.isNull():
+            return "delete"
+        return QIcon(out)
+    except Exception:
+        return "delete"
+
+
 def build_overlay_ui(overlay) -> None:
     """Construct QuickLookOverlay layout (thin owner delegator).
 
@@ -798,31 +840,35 @@ def build_overlay_ui(overlay) -> None:
     # Heavy bar actions run after the press ripple finishes (defer_click):
     # _populate / carry flows block the GUI thread for hundreds of ms, and
     # a synchronous clicked would freeze mid-ripple with no press feedback.
-    overlay._compare_btn = Button(text="Compare →", variant="surface", parent=bar, defer_click="ripple")
-    overlay._compare_btn.setObjectName("quicklook_compare")
-    try:
-        if accent is not None:
-            overlay._compare_btn.set_background_color(accent)
-            _set_colored_text(overlay._compare_btn, "Compare →", accent)
-    except Exception:
-        pass
-    overlay._compare_btn.clicked.connect(overlay._on_compare)
-    bar_lay.addWidget(overlay._compare_btn)
-    overlay._multi_btn = Button(text="Add to Multi Compare", variant="surface", parent=bar, defer_click="ripple")
-    overlay._multi_btn.setObjectName("quicklook_multi")
-    overlay._multi_btn.clicked.connect(overlay._on_multi)
-    bar_lay.addWidget(overlay._multi_btn)
+    # Compare actions removed from quick look (no Compare → / Add to Multi
+    # Compare here) — triage only (Reject / Set as source).
+    overlay._compare_btn = None
+    overlay._multi_btn = None
     overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar, defer_click="ripple")
     overlay._reject_btn.setObjectName("quicklook_reject")
-    overlay._reject_text_color = danger
+    overlay._reject_text_color = QColor(Qt.GlobalColor.black)
     try:
-        if danger is not None:
-            overlay._reject_btn.set_border_color(danger)
-            _set_colored_text(overlay._reject_btn, "✕ Reject", danger)
+        # No fill override: surface default wash + black border/label.
+        overlay._reject_btn.set_border_color(QColor(Qt.GlobalColor.black))
+        _set_colored_text(overlay._reject_btn, "✕ Reject", QColor(Qt.GlobalColor.black))
     except Exception:
         pass
     overlay._reject_btn.clicked.connect(overlay._on_reject)
     bar_lay.addWidget(overlay._reject_btn)
+    overlay._delete_btn = Button(
+        text="Delete", icon=_danger_trash_icon(danger),
+        variant="surface", parent=bar, defer_click="ripple",
+    )
+    overlay._delete_btn.setObjectName("quicklook_delete")
+    overlay._delete_text_color = danger
+    try:
+        if danger is not None:
+            overlay._delete_btn.set_border_color(danger)
+            overlay._delete_btn.setForegroundColor(danger)
+    except Exception:
+        pass
+    overlay._delete_btn.clicked.connect(overlay._on_delete)
+    bar_lay.addWidget(overlay._delete_btn)
     overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
     overlay._set_source_btn.setObjectName("quicklook_set_source")
     try:
@@ -842,9 +888,8 @@ def build_overlay_ui(overlay) -> None:
         from PySide6.QtCore import Qt as _Qt
 
         for _btn_attr in (
-            "_compare_btn",
-            "_multi_btn",
             "_reject_btn",
+            "_delete_btn",
             "_set_source_btn",
             "_prev_btn",
             "_next_btn",
@@ -858,8 +903,9 @@ def build_overlay_ui(overlay) -> None:
                 pass
     except Exception:
         pass
-    # No corner grip: border (W9) + outer ring (W10) are the resize paths.
-    # The attribute stays None so grip-aware helpers no-op cleanly.
+    # No corner grip: the card is fixed-size (QL_RESIZABLE=False) — no
+    # resize handles at all. The attribute stays None so grip-aware helpers
+    # no-op cleanly.
     overlay._resize_grip = None
     reposition_grip(overlay)
     overlay._strip_buttons: list = []

@@ -53,7 +53,11 @@ def wheel_zoom_pan(zoom, pan_x, pan_y, delta_y, mx, my):  # type: ignore[no-unty
 
 
 def drag_pan(pan_x, pan_y, dx_px, dy_px, w, h, zoom):  # type: ignore[no-untyped-def]
-    """LMB drag: image follows the cursor (engine parity, pan unrestricted)."""
+    """LMB drag: image follows the cursor (engine parity, pan unrestricted).
+
+    The delta itself is unclamped — callers pass the result through
+    :func:`clamp_pan` so the viewport never shows void.
+    """
     try:
         z = max(float(zoom), 1e-6)
         w, h = float(w), float(h)
@@ -63,6 +67,38 @@ def drag_pan(pan_x, pan_y, dx_px, dy_px, w, h, zoom):  # type: ignore[no-untyped
                 float(pan_y) + float(dy_px) / (h * z))
     except Exception:
         return None
+
+
+def clamp_pan(pan_x, pan_y, src_w, src_h, fb_w, fb_h, zoom):  # type: ignore[no-untyped-def]
+    """Cover-range clamp: the viewport never shows void past the image.
+
+    At/below the zoom floor the fitted frame is fully in view, so pan is
+    forced to the origin (a leftover offset would fake a shift). Zoomed
+    in, each axis clamps to ``|pan| <= (dest-fb)/(2*dest)`` — the exact
+    range where the ``_axis`` crop stays fully covered; axes where the
+    fitted frame is smaller than the viewport center instead (pan 0).
+    Fail-open: bad inputs return the inputs unchanged.
+    """
+    try:
+        px, py = float(pan_x), float(pan_y)
+        sw, sh = float(src_w), float(src_h)
+        fw, fh = float(fb_w), float(fb_h)
+        if not (sw > 0 and sh > 0 and fw > 0 and fh > 0):
+            return (pan_x, pan_y)
+        z = max(ZOOM_MIN, min(ZOOM_MAX, float(zoom)))
+        scale = min(fw / sw, fh / sh) * z
+        if not scale > 0:
+            return (pan_x, pan_y)
+        out = []
+        for p, dest, fb in ((px, sw * scale, fw), (py, sh * scale, fh)):
+            if dest <= fb:
+                out.append(0.0)
+            else:
+                r = (dest - fb) / (2.0 * dest)
+                out.append(max(-r, min(r, p)))
+        return (out[0], out[1])
+    except Exception:
+        return (pan_x, pan_y)
 
 
 def _axis(dest: int, fb: int, pan: float) -> tuple[int, int, int]:

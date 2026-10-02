@@ -448,10 +448,19 @@ def test_bottom_bar_button_colors(qtbot):
     item = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, item, [item])
-    # Compare: accent tint via set_background_color (real Button API).
-    assert ov._compare_btn.getBackgroundColor() is not None
-    # Reject: red stroke via setBorderColor override.
+    # Compare actions removed from quick look — no Compare/Multi buttons.
+    assert getattr(ov, "_compare_btn", None) is None
+    assert getattr(ov, "_multi_btn", None) is None
+    # Reject: no fill override, black border, black label.
+    assert getattr(ov._reject_btn, "_override_bg_color", None) is None
     assert ov._reject_btn.borderColor() is not None
+    assert ov._reject_btn.borderColor().name() == "#000000"
+    # Delete: red-tinted trash icon (QIcon, silhouette filled with danger).
+    from PySide6.QtGui import QIcon
+
+    assert isinstance(ov._delete_btn._icon_unchecked, QIcon)
+    assert not ov._delete_btn._icon_unchecked.isNull()
+    assert ov._delete_btn.borderColor() is not None
     # Set as source: amber stroke.
     assert ov._set_source_btn.borderColor() is not None
     ov.hide()
@@ -750,20 +759,15 @@ def test_card_resize_smoke_preview_grows_column_stretches(qtbot, monkeypatch):
 
 
 def test_no_resize_grip_border_ring_remain(qtbot):
-    """No W8 corner grip: resize lives on the border strip + outer ring.
+    """Fixed card: no W8 corner grip, no border/ring resize drags.
 
     The card has no ``quicklook_resize_grip`` child (and ``_resize_grip``
-    is None), yet a border drag still clamps to the overlay minus margin
-    and floors at the 1040x680 minimum, session-only.
+    is None); a border-strip press is not consumed and never starts a
+    drag — the card keeps its laid-out size, session-only.
     """
-    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+    from PySide6.QtCore import QEvent, QPoint, Qt
 
-    from sli_ui_toolkit.managers import scaled_px
-    from tabs.image_gallery.ui.quick_look.resize import (
-        handle_border_move,
-        handle_border_press,
-        handle_border_release,
-    )
+    from tabs.image_gallery.ui.quick_look.resize import handle_border_press
 
     src = _item("src.png", metrics={"width": 960, "height": 540})
     item = _item("v.png", metrics={})
@@ -775,35 +779,17 @@ def test_no_resize_grip_border_ring_remain(qtbot):
     assert getattr(ov, "_resize_grip", None) is None
 
     content = ov._content
+    base_geom = content.geometry()
     _ly = content.mapFrom(ov, QPoint(0, _ring_y_clear_of_nav(ov, content.geometry()))).y()
 
-    def _drag(lx, ly, dx, dy):
-        start = content.mapToGlobal(QPoint(lx, ly))
-        end = start + QPoint(dx, dy)
-        press = _w9_mouse_event(
-            QEvent.Type.MouseButtonPress, (lx, ly), (start.x(), start.y()),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
-        )
-        assert handle_border_press(ov, press) is True
-        move = _w9_mouse_event(
-            QEvent.Type.MouseMove, (lx + dx, ly + dy), (end.x(), end.y()),
-            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
-        )
-        assert handle_border_move(ov, move) is True
-        release = _w9_mouse_event(
-            QEvent.Type.MouseButtonRelease, (lx + dx, ly + dy), (end.x(), end.y()),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
-        )
-        assert handle_border_release(ov, release) is True
-        QApplication.processEvents()
-
-    # Right edge far past the window: clamped to overlay minus margin.
-    _drag(content.width() - 4, _ly, 1000, 0)
-    margin = scaled_px(16)
-    assert content.width() == ov.width() - margin * 2
-    # Far the other way (left edge rightwards): floored at 1040x680.
-    _drag(4, _ly, 2000, 0)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
+    start = content.mapToGlobal(QPoint(content.width() - 4, _ly))
+    press = _w9_mouse_event(
+        QEvent.Type.MouseButtonPress, (content.width() - 4, _ly), (start.x(), start.y()),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    )
+    assert handle_border_press(ov, press) is False
+    assert getattr(ov, "_border_drag", None) is None
+    assert content.geometry() == base_geom
     ov.hide()
 
 
@@ -1733,8 +1719,11 @@ def _w9_mouse_event(kind, local, glob, button, buttons):
 
 
 def test_resize_border_hover_cursor_through_filter(qtbot):
-    """W9 item 1: plain moves over the strip set the hover cursor via the
-    overlay eventFilter; interior moves restore the arrow."""
+    """Fixed card: plain moves never show resize cursors (arrow everywhere).
+
+    The overlay eventFilter still routes plate moves, but with resize
+    disabled the strip, edges and interior all keep the arrow cursor.
+    """
     from PySide6.QtCore import QEvent, QPoint, Qt
 
     item = _item("v.png", metrics={})
@@ -1763,22 +1752,24 @@ def test_resize_border_hover_cursor_through_filter(qtbot):
         QApplication.processEvents()
 
     _move(4, _ly)
-    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(w // 2, 4)
-    assert content.cursor().shape() == Qt.CursorShape.SizeVerCursor
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(4, 4)
-    assert content.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
+    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(w // 2, h // 2)
     assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
     ov.hide()
 
 
 def test_resize_border_drag_clamps_and_repins(qtbot):
-    """W9 item 1: border drags clamp like the W8 grip (min 1040×680,
-    overlay minus 16px margin), re-pin grip + nav, stay session-only."""
-    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+    """Fixed card: border presses never start a drag (no clamps needed).
 
-    from sli_ui_toolkit.managers import scaled_px
+    Strip, edge and corner presses are unconsumed, ``_border_drag`` stays
+    None and the geometry never moves; nav circles stay pinned to the
+    laid-out card edges.
+    """
+    from PySide6.QtCore import QEvent, QPoint, Qt
 
     src = _item("src.png", metrics={"width": 960, "height": 540})
     item = _item("v.png", metrics={})
@@ -1819,22 +1810,20 @@ def test_resize_border_drag_clamps_and_repins(qtbot):
     assert _press_move_release(w // 2, h // 2, 100, 100) is False
     assert content.geometry() == base_geom
     assert getattr(ov, "_border_drag", None) is None
-    # Right edge far past the window: clamped to overlay minus margin.
-    # (W11: the strip point sits clear of the nav-circle band — presses
-    # inside either arrow rect walk the series instead of dragging.)
-    assert _press_move_release(w - 4, _ly, 1000, 0) is True
-    margin = scaled_px(16)
-    assert content.width() == ov.width() - margin * 2
+    # Former drag origins (right/left edge, corner): still unconsumed,
+    # geometry pinned. (W11: the strip point sits clear of the
+    # nav-circle band — presses inside either arrow rect walk the
+    # series instead.)
+    assert _press_move_release(w - 4, _ly, 1000, 0) is False
+    assert content.geometry() == base_geom
     assert getattr(ov, "_border_drag", None) is None
-    # Left edge drag rightwards shrinks with the opposite edge anchored.
     w2, right2 = content.width(), content.geometry().right()
-    assert _press_move_release(4, _ly, 200, 0) is True
-    assert content.width() < w2
+    assert _press_move_release(4, _ly, 200, 0) is False
+    assert content.width() == w2
     assert content.geometry().right() == right2
-    # Far corner drag floors at the 1040×680 minimum.
     _press_move_release(4, 4, 3000, 3000)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
-    # Absolute children re-pinned: nav on the edges
+    assert content.geometry() == base_geom
+    # Nav stays pinned to the laid-out card edges
     # (W10 overlay coords — centers on the card left/right edges).
     card = content.geometry()
     assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
@@ -1930,8 +1919,10 @@ def test_outer_ring_zones_and_cursors(qtbot):
 
 
 def test_outer_ring_hover_cursor_through_overlay(qtbot):
-    """W10 item 1: plain moves over the outer ring set the hover cursor via
-    the overlay mouseMove; open-veil moves restore the arrow."""
+    """Fixed card: plain moves over the outer ring keep the arrow cursor.
+
+    No resize affordance anywhere — ring band and open veil alike show
+    the arrow (nav-arrow rects still do, covered by W11 tests)."""
     from PySide6.QtCore import QEvent, Qt
 
     item = _item("v.png", metrics={})
@@ -1953,22 +1944,22 @@ def test_outer_ring_hover_cursor_through_overlay(qtbot):
     # circle (arrows show the plain cursor) — hover rides the same edge
     # above the arrow band.
     _move(card.x() - 4, _ring_y_clear_of_nav(ov, card))
-    assert ov.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(card.x() + card.width() // 2, card.y() - 4)
-    assert ov.cursor().shape() == Qt.CursorShape.SizeVerCursor
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(card.x() - 4, card.y() - 4)
-    assert ov.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
+    assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
     _move(5, 5)
     assert ov.cursor().shape() == Qt.CursorShape.ArrowCursor
     ov.hide()
 
 
 def test_boundary_row_press_starts_ring_drag(qtbot):
-    """Boundary frame press through the overlay handler starts a drag.
+    """Fixed card: boundary-row presses start no drag.
 
-    The edge row belongs to both sides: whichever widget receives the press
-    (plate filter or overlay ring path), exactly one drag starts. Top-edge
-    midpoint is nav/grip-clear.
+    The edge row belongs to the card: the press is swallowed as content
+    (accepted, overlay stays open), exactly like an interior press —
+    never a resize drag.
     """
     from PySide6.QtCore import QEvent, Qt
 
@@ -1978,25 +1969,25 @@ def test_boundary_row_press_starts_ring_drag(qtbot):
     QApplication.processEvents()
     card = ov._content.geometry()
     cx = card.x() + card.width() // 2
-    ov.mousePressEvent(
-        _w10_overlay_event(
-            ov, QEvent.Type.MouseButtonPress, (cx, card.y()),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
-        )
+    press = _w10_overlay_event(
+        ov, QEvent.Type.MouseButtonPress, (cx, card.y()),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
     )
-    drag = getattr(ov, "_border_drag", None)
-    assert drag is not None and drag[0] == "top"
-    ov._border_drag = None
+    ov.mousePressEvent(press)
+    assert press.isAccepted()
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is True
     ov.hide()
 
 
 def test_outer_ring_drag_clamps_and_repins(qtbot):
-    """W10 item 1: outer-ring drags clamp like the W9 plate drags (min
-    1040×680, overlay minus 16px margin), re-pin grip + nav, stay
-    session-only."""
-    from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+    """Fixed card: outer-ring presses start no drag — they dismiss.
 
-    from sli_ui_toolkit.managers import scaled_px
+    Ring-band presses fall through ``handle_ring_press`` (False, nav
+    handled separately) into the veil dismiss: no drag, geometry pinned,
+    overlay hidden. Nav stays pinned to the laid-out card edges.
+    """
+    from PySide6.QtCore import QEvent, QPoint, Qt
 
     src = _item("src.png", metrics={"width": 960, "height": 540})
     item = _item("v.png", metrics={})
@@ -2005,54 +1996,36 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
     QApplication.processEvents()
     QApplication.processEvents()
 
-    def _press_move_release(lx, ly, dx, dy):
-        from PySide6.QtCore import QPoint as _QPoint
-
-        card = ov._content.geometry()
-        base_right = card.right()
+    def _ring_press(lx, ly):
+        _show(ov, item, [src, item], source=src.path)
+        QApplication.processEvents()
+        geom_before = ov._content.geometry()
         press = _w10_overlay_event(
             ov, QEvent.Type.MouseButtonPress, (lx, ly),
             Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
         )
         ov.mousePressEvent(press)
-        started = getattr(ov, "_border_drag", None) is not None
-        move = _w10_overlay_event(
-            ov, QEvent.Type.MouseMove, (lx + dx, ly + dy),
-            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
-        )
-        ov.mouseMoveEvent(move)
-        release = _w10_overlay_event(
-            ov, QEvent.Type.MouseButtonRelease, (lx + dx, ly + dy),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
-        )
-        ov.mouseReleaseEvent(release)
         QApplication.processEvents()
-        return started, base_right
+        return geom_before
 
     content = ov._content
     card = content.geometry()
     # W11: the mid-edge ring points at card vertical center sit inside the
     # 36px nav circles — presses there walk the series (see W11 tests), so
-    # the drag points ride the same edges clear of the arrow band.
+    # the dismiss points ride the same edges clear of the arrow band.
     ring_y = _ring_y_clear_of_nav(ov, card)
-    # Right ring far past the window: clamped to overlay minus margin.
-    started, _ = _press_move_release(card.x() + card.width() + 4, ring_y, 1000, 0)
-    assert started is True
-    margin = scaled_px(16)
-    assert content.width() == ov.width() - margin * 2
+    # Right ring: dismissed, geometry pinned, no drag.
+    geom_before = _ring_press(card.x() + card.width() + 4, ring_y)
     assert getattr(ov, "_border_drag", None) is None
-    # Left ring drag rightwards shrinks with the opposite edge anchored.
-    card = content.geometry()
-    w2 = content.width()
-    started, right2 = _press_move_release(card.x() - 4, ring_y, 200, 0)
-    assert started is True
-    assert content.width() < w2
-    assert content.geometry().right() == right2
-    # Far corner drag floors at the 1040×680 minimum.
-    card = content.geometry()
-    _press_move_release(card.x() - 4, card.y() - 4, 3000, 3000)
-    assert content.size() == QSize(scaled_px(1040), scaled_px(680))
+    assert ov.isVisible() is False
+    # Left ring: same.
+    _ring_press(card.x() - 4, ring_y)
     assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is False
+    # Corner ring: same.
+    _ring_press(card.x() - 4, card.y() - 4)
+    assert getattr(ov, "_border_drag", None) is None
+    assert ov.isVisible() is False
     # Absolute children re-pinned: nav on the edges.
     card = content.geometry()
     assert abs(ov._prev_btn.geometry().center().x() - card.x()) <= 2
@@ -2063,7 +2036,8 @@ def test_outer_ring_drag_clamps_and_repins(qtbot):
 def test_veil_plain_click_dismisses(qtbot):
     """Veil click closes (reverses W10-item-1/W6 ban): a plain veil press
     (outside the ring) starts no drag, moves nothing, and dismisses
-    the overlay. Ring presses still start drags (covered elsewhere)."""
+    the overlay. Ring-band presses dismiss the same way now that the
+    card is fixed-size (covered above)."""
     from PySide6.QtCore import QEvent, Qt
 
     item = _item("v.png", metrics={})
@@ -2422,6 +2396,141 @@ def test_reject_button_toggles_once_with_production_wiring(qtbot):
     ov.hide()
 
 
+def test_reject_skips_preview_repopulate(qtbot, monkeypatch):
+    """Reject is flag-only: no _populate, no preview release/re-decode.
+
+    Regression: `_on_reject` ended with a full `_populate()`, which
+    releases the preview store and re-streams the file (TileStore +
+    pyramid, ~1s per 5K image) just to flip the rejected flag.
+    """
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    pop_calls: list = []
+    rel_calls: list = []
+    monkeypatch.setattr(ov, "_populate", lambda: pop_calls.append(1))
+    monkeypatch.setattr(ov, "_release_preview_resources", lambda **kw: rel_calls.append(kw))
+    ov._on_reject()
+    QApplication.processEvents()
+    assert pop_calls == []
+    assert rel_calls == []
+    assert a.rejected is True
+    assert ov.isVisible()
+    glyphs = [
+        row.text
+        for region in ov._reject_btn.regions()
+        for row in (getattr(region, "rows", None) or [])
+    ]
+    assert any("Restore" in g for g in glyphs)
+    assert "1 rejected" in ov._series_sub.text()
+    ov.hide()
+
+
+def test_quick_reject_hook_skips_show_for(qtbot, monkeypatch):
+    """External reject on the open item refreshes flags, not the preview."""
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    owner = ov._owner
+    owner._quick_look_overlay = ov
+    shown: list = []
+    monkeypatch.setattr(ov, "show_for", lambda *args, **kwargs: shown.append(args))
+    _qlh.on_quick_reject(owner, Path("/gallery/a.png"))
+    QApplication.processEvents()
+    assert shown == []
+    assert a.rejected is True
+    assert ov.isVisible()
+    assert "1 rejected" in ov._series_sub.text()
+    ov.hide()
+
+
+def test_refresh_crop_for_guards(qtbot):
+    """Crop wake-up: hidden overlay, neighbor path and fidelity stay out."""
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+    # Garbage owner never raises.
+    assert _qlh.refresh_crop_for(None, "/gallery/a.png") is False
+    assert _qlh.refresh_crop_for(SimpleNamespace(), "/gallery/a.png") is False
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b], mode=Mode.CAMERA)
+    assert ov.isVisible()
+    ov._owner._quick_look_overlay = ov
+    # Neighbor path: never paint another item's pixels into this inset.
+    assert _qlh.refresh_crop_for(ov._owner, b.path) is False
+    # Hidden overlay: no work.
+    ov.hide()
+    assert _qlh.refresh_crop_for(ov._owner, a.path) is False
+    ov.hide()
+
+
+def test_refresh_crop_for_fills_from_thumbnail(qtbot):
+    """Crop wake-up fills the inset the moment the thumbnail lands.
+
+    No full _populate: the thumbnail branch needs zero decodes (one
+    150px scale, memoized under the crop key).
+    """
+    from PySide6.QtGui import QColor, QPixmap
+
+    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b], mode=Mode.CAMERA)
+    assert ov.isVisible()
+    assert ov._crop_host.isVisible()
+    ov._owner._quick_look_overlay = ov
+    assert ov._crop_pix.region("thumb").pixmap is None
+    thumb = QPixmap(64, 64)
+    thumb.fill(QColor("#3a6ea5"))
+    a.thumbnail = thumb
+    assert _qlh.refresh_crop_for(ov._owner, a.path) is True
+    QApplication.processEvents()
+    assert ov._crop_pix.region("thumb").pixmap is not None
+    ov.hide()
+
+
+def test_walk_drops_stale_preview_full_no_neighbor_crop(qtbot):
+    """Walk boundary drops the live stash: a failed coarse build for the
+    next item must fail the crop closed ("—"), never paint the previous
+    item's center-third as the new crop (content-identity)."""
+    from PySide6.QtGui import QColor, QPixmap
+
+    from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
+        release_preview_canvas_for_walk,
+    )
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b], mode=Mode.CAMERA)
+    assert ov.isVisible()
+    stale = QPixmap(300, 300)
+    stale.fill(QColor("#ff0000"))
+    ov._preview_full = stale
+    release_preview_canvas_for_walk(ov)
+    assert getattr(ov, "_preview_full", None) is None
+    # Walk to the cold item (no thumbnail, unreadable path): crop fails
+    # closed, never shows A's pixels.
+    ov._current_item = b
+    ov._current_idx = 1
+    ov._populate()
+    QApplication.processEvents()
+    assert ov.isVisible()
+    assert ov._crop_host.isVisible()
+    pix = getattr(ov._crop_pix.region("thumb"), "pixmap", None)
+    assert pix is None or (hasattr(pix, "isNull") and pix.isNull())
+    ov.hide()
+
+
 def test_compare_button_carries_once_with_production_wiring(qtbot, monkeypatch):
     """Single-fire guard: one `_on_compare` runs `carry_selected` exactly
     once even with production `compareRequested -> on_quick_compare` connected.
@@ -2457,6 +2566,143 @@ def test_set_source_button_stays_open(qtbot):
     ov._on_set_source()
     QApplication.processEvents()
     assert ov.isVisible()
+    ov.hide()
+
+
+def test_delete_button_removes_current_and_advances(qtbot):
+    """Delete drops the current card from the grid, file stays on disk."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    assert ov._delete_btn is not None
+    assert ov._delete_btn.objectName() == "quicklook_delete"
+    ov._on_delete()
+    QApplication.processEvents()
+    assert ov.isVisible()
+    assert ov._current_item.path == b.path
+    assert [m.path for m in ov._series_items] == [b.path]
+    # File on disk untouched — only the grid mirror changed.
+    assert Path("/gallery/a.png") not in [Path(m.path) for m in ov._owner.state.items]
+    ov.hide()
+
+
+def test_delete_last_item_closes_overlay(qtbot):
+    """Deleting the final series item dismisses the overlay."""
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    ov._on_delete()
+    QApplication.processEvents()
+    assert ov.isHidden()
+
+
+def _veil_point_outside_card(ov):
+    from PySide6.QtCore import QPoint
+
+    geo = ov._content.geometry()
+    w, h = ov.width(), ov.height()
+    for pt in (QPoint(10, 10), QPoint(w - 10, 10), QPoint(10, h - 10), QPoint(w - 10, h - 10)):
+        if not geo.contains(pt):
+            return pt
+    raise AssertionError("no open-veil point found")
+
+
+def _press_event(ov, pt, button=None):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    button = button or Qt.MouseButton.LeftButton
+    return QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(pt),
+        QPointF(ov.mapToGlobal(pt)),
+        button,
+        button,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_veil_press_dismisses_and_is_accepted(qtbot):
+    """Modal veil: the dismissing press never reaches the gallery beneath."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    pt = _veil_point_outside_card(ov)
+    ev = _press_event(ov, pt)
+    ov.mousePressEvent(ev)
+    QApplication.processEvents()
+    assert ev.isAccepted()
+    assert ov.isHidden()
+
+
+def test_card_press_swallowed_stays_open(qtbot):
+    """Press inside the card is content, not veil: accepted, no dismiss."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov.isVisible()
+    pt = ov._content.geometry().center()
+    ev = _press_event(ov, pt)
+    ov.mousePressEvent(ev)
+    QApplication.processEvents()
+    assert ev.isAccepted()
+    assert ov.isVisible()
+    ov.hide()
+
+
+def test_wheel_dblclick_contextmenu_swallowed(qtbot):
+    """Wheel / double-click / Menu key never leak under a visible overlay."""
+    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QWheelEvent
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    pt = ov._content.geometry().center()
+    glo = ov.mapToGlobal(pt)
+    dbl = QMouseEvent(
+        QEvent.Type.MouseButtonDblClick,
+        QPointF(pt),
+        QPointF(glo),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    ov.mouseDoubleClickEvent(dbl)
+    assert dbl.isAccepted()
+    assert ov.isVisible()
+    wheel = QWheelEvent(
+        QPointF(pt), QPointF(glo), QPoint(0, 0), QPoint(0, 120),
+        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase, False,
+    )
+    ov.wheelEvent(wheel)
+    assert wheel.isAccepted()
+    assert ov.isVisible()
+    ctx = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, pt, glo)
+    ov.contextMenuEvent(ctx)
+    assert ctx.isAccepted()
+    assert ov.isVisible()
+    ov.hide()
+
+
+def test_overlay_modal_input_state(qtbot):
+    """While shown: enabled, mouse-opaque, above siblings."""
+    from PySide6.QtCore import Qt
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    assert ov.isVisible()
+    assert ov.isEnabled()
+    assert not ov.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     ov.hide()
 
 

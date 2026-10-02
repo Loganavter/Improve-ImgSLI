@@ -15,6 +15,9 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QWidget
 
+# Re-export: the crop wake-up seam lives in ui/quick_look/insets.py (crop
+# concern); kept here so existing _qlh.refresh_crop_for call sites stay put.
+from tabs.image_gallery.ui.quick_look.insets import refresh_crop_for  # noqa: F401
 
 def owner_for_triage(owner):
     """Local resolve — protocol-first, mirrors use_cases.triage_ui.owner_for_triage.
@@ -283,6 +286,15 @@ def on_quick_reject(owner, path) -> None:
         try:
             overlay = owner._quick_look_overlay  # type: ignore[attr-defined]
             if overlay is not None and overlay.isVisible():
+                try:
+                    cur = getattr(overlay, "_current_item", None)
+                    if cur is not None and Path(getattr(cur, "path", "")) == Path(path):
+                        # Same item still open: flag-only refresh (no
+                        # preview re-decode — see _refresh_triage_state).
+                        overlay._refresh_triage_state()
+                        return
+                except Exception:
+                    pass
                 for it in list(owner._items or []):  # type: ignore[attr-defined]
                     if Path(it.path) == Path(path):
                         overlay.show_for(it, triage_owner)
@@ -462,8 +474,8 @@ def event_filter(owner, watched, event) -> bool:
         return _QW.eventFilter(owner, watched, event)  # type: ignore[call-arg]
     except Exception:
         try:
-            from PySide6.QtWidgets import QWidget
+            from PySide6.QtWidgets import QWidget as _QW2
 
-            return QWidget.eventFilter(owner, watched, event)  # type: ignore[call-arg]
+            return _QW2.eventFilter(owner, watched, event)  # type: ignore[call-arg]
         except Exception:
             return False
