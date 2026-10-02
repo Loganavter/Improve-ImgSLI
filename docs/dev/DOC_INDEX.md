@@ -10,7 +10,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/
 
 - **[Development History](../DEVELOPMENT_HISTORY.md)** — `docs/DEVELOPMENT_HISTORY.md`
-  Referenced by: [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Install Improve-ImgSLI](../INSTALL.md)** — `docs/INSTALL.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Launcher Guide (`launcher.sh`)](../LAUNCHER.md)** — `docs/LAUNCHER.md`
@@ -21,17 +21,17 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Action catalog (Find Action)](ACTIONS.md)** — `docs/dev/ACTIONS.md`
   Referenced by: [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[ImgSLI Architecture](ARCHITECTURE.md)** — `docs/dev/ARCHITECTURE.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_comparison_letterbox.md](plan_comparison_letterbox.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/plan_image_compare_dnd_tiles.md](plan_image_compare_dnd_tiles.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_preview_unify_transition_fix.md](plan_preview_unify_transition_fix.md), [docs/dev/plan_rhi_renderer_decomposition.md](plan_rhi_renderer_decomposition.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
   Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [docs/dev/plan_comparison_letterbox.md](plan_comparison_letterbox.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/plan_image_compare_dnd_tiles.md](plan_image_compare_dnd_tiles.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_preview_unify_transition_fix.md](plan_preview_unify_transition_fix.md), [docs/dev/plan_rhi_renderer_decomposition.md](plan_rhi_renderer_decomposition.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
-  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/plan_image_compare_dnd_tiles.md](plan_image_compare_dnd_tiles.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_preview_unify_transition_fix.md](plan_preview_unify_transition_fix.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)
 - **[Doc Index](DOC_INDEX.md)** — `docs/dev/DOC_INDEX.md`
@@ -39,11 +39,11 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[EventBus](EVENT_BUS.md)** — `docs/dev/EVENT_BUS.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/plan_rhi_renderer_decomposition.md](plan_rhi_renderer_decomposition.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
@@ -55,7 +55,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[image_compare State Slot Manifest](STATE_SLOT_MANIFEST.md)** — `docs/dev/STATE_SLOT_MANIFEST.md`
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/plan_image_compare_dnd_tiles.md](plan_image_compare_dnd_tiles.md), [docs/dev/plan_image_pipeline.md](plan_image_pipeline.md), [docs/dev/plan_loading_simplification.md](plan_loading_simplification.md), [docs/dev/plan_preview_unify_transition_fix.md](plan_preview_unify_transition_fix.md), [docs/dev/plan_store_redux_repair.md](plan_store_redux_repair.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Testing](TESTING.md)** — `docs/dev/TESTING.md`
@@ -71,23 +71,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI layout dump](UI_LAYOUT_DUMP.md)** — `docs/dev/UI_LAYOUT_DUMP.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
-- **[Plan: Comparison letterbox eager max — no HOLD jump 1138→1041](plan_comparison_letterbox.md)** — `docs/dev/plan_comparison_letterbox.md`
-  Referenced by: [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md)
-- **[Plan: собственный движок поверх тайлов (дешевле производить, без полумер)](plan_engine_design.md)** — `docs/dev/plan_engine_design.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md)
-- **[Plan: Image Compare DnD Tiles — canvas-only + Store SSOT + async load](plan_image_compare_dnd_tiles.md)** — `docs/dev/plan_image_compare_dnd_tiles.md`
-- **[Plan: ImagePipeline — replace loading.py brute-force with demand-driven pipeline](plan_image_pipeline.md)** — `docs/dev/plan_image_pipeline.md`
-- **[Plan: Loading pipeline consolidation — 8 caches → 1, 8 cancels → 1](plan_loading_simplification.md)** — `docs/dev/plan_loading_simplification.md`
-- **[Plan: Preview QImage → Unify transition — missing put, tier mismatch, uid memo](plan_preview_unify_transition_fix.md)** — `docs/dev/plan_preview_unify_transition_fix.md`
-- **[Plan: RhiCanvasRenderer decomposition (1611 → <500)](plan_rhi_renderer_decomposition.md)** — `docs/dev/plan_rhi_renderer_decomposition.md`
-- **[Plan: Store/Redux direct mutation elimination and dogma hardening](plan_store_redux_repair.md)** — `docs/dev/plan_store_redux_repair.md`
-- **[Plan: toast lifecycle cleanup (close-leaks + legacy removal + toolkit fix)](plan_toast_cleanup.md)** — `docs/dev/plan_toast_cleanup.md`
-  Referenced by: [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
-- **[Plan: host-owned ToastManager + toast refactor for both canvas tabs](plan_toast_refactor.md)** — `docs/dev/plan_toast_refactor.md`
-  Referenced by: [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
 - **[Session report: stuck loading toast — from dead manager to leaked inflight alias](toast_stuck_session_report.md)** — `docs/dev/toast_stuck_session_report.md`
-  Referenced by: [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md)
 
 ## docs/dev/plugins/
 
@@ -100,7 +85,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[App-wide plugins (`src/plugins/`)](plugins/index.md)** — `docs/dev/plugins/index.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md)
 - **[Layout plugin](plugins/layout.md)** — `docs/dev/plugins/layout.md`
-  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Onboarding plugin](plugins/onboarding.md)** — `docs/dev/plugins/onboarding.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Settings plugin](plugins/settings.md)** — `docs/dev/plugins/settings.md`
@@ -125,20 +110,20 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
   Referenced by: [docs/dev/rendering/feature-decomposition-playbook.md](rendering/feature-decomposition-playbook.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md)
 - **[Render Pass Contract](rendering/render-pass-contract.md)** — `docs/dev/rendering/render-pass-contract.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Rendering Model](rendering/rendering-model.md)** — `docs/dev/rendering/rendering-model.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Tiled rendering system](rendering/tile-rendering-system.md)** — `docs/dev/rendering/tile-rendering-system.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/plan_engine_design.md](plan_engine_design.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Zoom, Pan & Interaction](rendering/zoom-pan.md)** — `docs/dev/rendering/zoom-pan.md`
   Referenced by: [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
 
 ## docs/dev/tabs/
 
 - **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plan_toast_cleanup.md](plan_toast_cleanup.md), [docs/dev/plan_toast_refactor.md](plan_toast_refactor.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
@@ -179,11 +164,6 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Image Compare Architecture](../../src/tabs/image_compare/docs/ARCHITECTURE.md)** — `src/tabs/image_compare/docs/ARCHITECTURE.md`
   Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md), [src/tabs/image_compare/docs/plugins/comparison.md](../../src/tabs/image_compare/docs/plugins/comparison.md), [src/tabs/image_compare/docs/plugins/video_editor.md](../../src/tabs/image_compare/docs/plugins/video_editor.md)
 - **[Image Compare](../../src/tabs/image_compare/docs/README.md)** — `src/tabs/image_compare/docs/README.md`
-- **[Compare-Unify Parity (Image Compare)](../../src/tabs/image_compare/docs/compare_unify_parity.md)** — `src/tabs/image_compare/docs/compare_unify_parity.md`
-
-## src/tabs/image_compare/docs/investigations/
-
-- **[Investigation: content replacement must be atomic, not tile-by-tile](../../src/tabs/image_compare/docs/investigations/content-swap-atomic-commit.md)** — `src/tabs/image_compare/docs/investigations/content-swap-atomic-commit.md`
 
 ## src/tabs/image_compare/docs/plugins/
 
@@ -195,20 +175,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_gallery/docs/
 
 - **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
-  Referenced by: [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
-- **[Image Gallery — product & interaction design](../../src/tabs/image_gallery/docs/design.md)** — `src/tabs/image_gallery/docs/design.md`
-  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md), [src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)
-- **[Image Gallery — Design Parity Audit](../../src/tabs/image_gallery/docs/design_parity_audit.md)** — `src/tabs/image_gallery/docs/design_parity_audit.md`
-  Referenced by: [src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)
-- **[Plan: gallery marquee in-paint band (Dolphin-style)](../../src/tabs/image_gallery/docs/plan-gallery-marquee-inpaint-2026-09-29.md)** — `src/tabs/image_gallery/docs/plan-gallery-marquee-inpaint-2026-09-29.md`
-- **[Plan: marquee toolkit-unify — one in-paint mechanism everywhere, no legacy](../../src/tabs/image_gallery/docs/plan-gallery-marquee-toolkit-unify-2026-09-29.md)** — `src/tabs/image_gallery/docs/plan-gallery-marquee-toolkit-unify-2026-09-29.md`
-- **[Plan: gallery light-theme contrast revision](../../src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md)** — `src/tabs/image_gallery/docs/plan_light_theme_contrast_2026-09-23.md`
-- **[Plan: Image Gallery — parity close-out (S2/S3/S4)](../../src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md)** — `src/tabs/image_gallery/docs/plan_mockup_parity_2026-09-22.md`
-  Referenced by: [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
-- **[Plan: Quick look S4 visual parity close-out (LIGHT)](../../src/tabs/image_gallery/docs/plan_quicklook_s4_parity_2026-09-23.md)** — `src/tabs/image_gallery/docs/plan_quicklook_s4_parity_2026-09-23.md`
-- **[Plan: S3 clean-review overlay — visual parity with mockup v3 (QuickLook idiom)](../../src/tabs/image_gallery/docs/plan_s3_parity_2026-09-26.md)** — `src/tabs/image_gallery/docs/plan_s3_parity_2026-09-26.md`
-- **[Quick Look tiled renderer (single-source, uncapped live path)](../../src/tabs/image_gallery/docs/quick_look_tiled_renderer.md)** — `src/tabs/image_gallery/docs/quick_look_tiled_renderer.md`
-  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md)
+  Referenced by: [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
 
 ## src/tabs/image_gallery/docs/plugins/
 
@@ -220,8 +187,6 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md), [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
 - **[Multi Compare](../../src/tabs/multi_compare/docs/README.md)** — `src/tabs/multi_compare/docs/README.md`
   Referenced by: [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
-- **[Compare-Unify Parity (Multi Compare)](../../src/tabs/multi_compare/docs/compare_unify_parity.md)** — `src/tabs/multi_compare/docs/compare_unify_parity.md`
-- **[Plan: MC parametric crop — context-menu crop like IC, no baked re-decode](../../src/tabs/multi_compare/docs/plan_parametric_crop.md)** — `src/tabs/multi_compare/docs/plan_parametric_crop.md`
 
 ## src/tabs/multi_compare/docs/plugins/
 

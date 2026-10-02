@@ -59,7 +59,7 @@ into `ResolvedComposition` so overlay passes read gaps/rects from the immutable 
 Comparison letterbox geometry is owned once by
 `src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
 (`update_common_letterbox_geometry` — eager `max(w1,w2), max(h1,h2)`), not by passes;
-see [rendering-model.md](rendering-model.md) and [plan_comparison_letterbox.md](../plan_comparison_letterbox.md).
+see [rendering-model.md](rendering-model.md) and `plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
 
 Rules:
 - mode filtering is handled centrally by the render executor

@@ -101,7 +101,7 @@ for the full geometric model). Shared types live in
 (`update_common_letterbox_geometry`) via
 `src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`
 (see [rendering-model.md](rendering-model.md) and
-[plan_comparison_letterbox.md](../plan_comparison_letterbox.md)); `VirtualCanvasLayout`
+`plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`)); `VirtualCanvasLayout`
 is for feature padding beyond that envelope (magnifier overflow, uncrop).
 
 Registration: features register via the `render.layout_requirement` command
