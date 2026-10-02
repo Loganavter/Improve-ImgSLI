@@ -155,6 +155,7 @@ class QuickLookCanvasWidget(QRhiWidget):
         self._watchdog_gen = 0
         self._ql_gen = 0
         self._ql_source_path = None
+        self._ql_tiled_pending = None
         self._ql_full_store = None
         self._ql_pyramid = None
         self._ql_decoding = False
@@ -572,6 +573,54 @@ class QuickLookCanvasWidget(QRhiWidget):
             self._maybe_demand_build("dwell")
         except Exception:
             pass
+        try:  # staged tiled kick shares the dwell gate (no second timer).
+            self._fire_ql_tiled_pending()
+        except Exception:
+            pass
+
+    def _fire_ql_tiled_pending(self) -> None:
+        """Fire the staged tiled full-store kick (dwell/zoom trigger).
+
+        The host stages exactly one pending kick per show
+        (``preview_canvas_host._arm_tiled_dwell``); dwell fires it here and
+        wheel-zoom past 1.0 fires it eagerly from ``wheelEvent``. Consumed
+        exactly once: walks retire it via ``_drop_ql_demand`` (called from
+        ``set_source``/``clear_source``), so a pending that exists is always
+        for the live item and needs no extra generation check. A tiled memo
+        hit never stages (installed synchronously at show). Never raises.
+        """
+        try:
+            try:
+                pending = getattr(self, "_ql_tiled_pending", None)
+                self._ql_tiled_pending = None
+            except Exception:
+                return
+            if not isinstance(pending, dict):
+                return
+            try:
+                ref = pending.get("overlay")
+                overlay = ref() if ref is not None else None
+            except Exception:
+                overlay = None
+            if overlay is None:
+                return
+            try:
+                path_s = str(pending.get("path") or "")
+                key = pending.get("key")
+            except Exception:
+                return
+            if not path_s:
+                return
+            try:
+                from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
+                    _populate_tiled_source,
+                )
+
+                _populate_tiled_source(overlay, self, path_s, key)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _drop_ql_demand(self) -> None:
         """Abort in-flight demand work + close canvas-private full materials.
@@ -600,6 +649,10 @@ class QuickLookCanvasWidget(QRhiWidget):
                     pass
             try:
                 self._ql_source_path = None
+            except Exception:
+                pass
+            try:  # a walk/item-change drops the staged tiled kick with it.
+                self._ql_tiled_pending = None
             except Exception:
                 pass
             try:
@@ -1800,6 +1853,10 @@ class QuickLookCanvasWidget(QRhiWidget):
         try:  # zoom past 1.0 demands the full pyramid (dwell covers 1.0).
             if float(getattr(self, "_zoom", 1.0)) > 1.0:
                 self._maybe_demand_build("zoom")
+                try:  # zoom bypasses dwell for the staged tiled kick too.
+                    self._fire_ql_tiled_pending()
+                except Exception:
+                    pass
         except Exception:
             pass
 
