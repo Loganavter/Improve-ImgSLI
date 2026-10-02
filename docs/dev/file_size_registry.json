@@ -790,6 +790,18 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
+      "lines": 889,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
       "lines": 914,
       "limit": 500,
@@ -815,7 +827,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 1464,
+      "lines": 1528,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",

@@ -330,6 +330,104 @@ def test_metrics_neighbor_rank_change_rebuilds(qtbot):
     ov.hide()
 
 
+def _row_texts(ov) -> list:
+    """All label texts across the live metric rows, in layout order.
+
+    Reads ``.text()`` off any descendant widget that has it (bars have no
+    text) — no toolkit-internals dependency.
+    """
+    from PySide6.QtWidgets import QWidget as _W
+
+    texts: list = []
+    for row in list(getattr(ov, "_metric_rows", None) or []):
+        try:
+            kids = row.findChildren(_W)
+        except Exception:
+            continue
+        for w in kids:
+            try:
+                t = w.text()
+            except Exception:
+                continue
+            if isinstance(t, str) and t:
+                texts.append(t)
+    return texts
+
+
+def test_metrics_walk_revisit_preserves_containers(qtbot):
+    """Walk A→B→A: the A revisit swaps cached containers (zero recreation)."""
+    a = _item("wmc0.png", rank=1, metrics={"ssim": 0.9})
+    b = _item("wmc1.png", rank=2, metrics={"ssim": 0.8})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    rows_a = list(ov._metric_rows)
+    assert rows_a
+    ov._walk(1)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov._current_idx == 1
+    rows_b = list(ov._metric_rows)
+    assert rows_b
+    assert not any(n is o for n in rows_b for o in rows_a)
+    ov._walk(-1)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov._current_idx == 0
+    rows_a2 = list(ov._metric_rows)
+    assert [id(w) for w in rows_a2] == [id(w) for w in rows_a]
+    assert all(w.isVisible() for w in rows_a2)
+    ov.hide()
+
+
+def test_metrics_row_cache_lru_bound(qtbot):
+    """Visit >8 distinct items → cached sets ≤ 8; evicted revisit rebuilds right."""
+    mates = [_item(f"lru{i}.png", rank=i + 1, metrics={"ssim": 0.50 + i * 0.01}) for i in range(10)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    first_rows = list(ov._metric_rows)
+    first_texts = _row_texts(ov)
+    assert first_rows and first_texts
+    assert any("0.50" in t for t in first_texts)
+    for _ in range(9):
+        ov._walk(1)
+        QApplication.processEvents()
+    assert ov._current_idx == 9
+    cache = getattr(ov, "_metrics_row_cache", None)
+    assert isinstance(cache, dict)
+    assert len(cache) <= 8
+    ov._walk(1)  # wraps 9 → 0: the evicted set rebuilds (miss path).
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov._current_idx == 0
+    assert _row_texts(ov) == first_texts  # right content, no neighbor rows.
+    assert [id(w) for w in ov._metric_rows] != [id(w) for w in first_rows]
+    assert len(getattr(ov, "_metrics_row_cache")) <= 8
+    ov.hide()
+
+
+def test_metrics_theme_flip_rebuilds(qtbot, monkeypatch):
+    """Theme flip changes the fingerprint → full metrics rebuild (cache miss)."""
+    import tabs.image_gallery.ui.quick_look.metrics as _metrics
+
+    a = _item("thm0.png", rank=1, metrics={"ssim": 0.9})
+    b = _item("thm1.png", rank=2, metrics={"ssim": 0.8})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    rows0 = list(ov._metric_rows)
+    assert rows0
+    was_dark = bool(_metrics._is_dark_theme())
+    monkeypatch.setattr(_metrics, "_is_dark_theme", lambda: (not was_dark))
+    ov._rebuild_metrics(ov._current_item, True, "FIDELITY MODE")
+    QApplication.processEvents()
+    rows1 = list(ov._metric_rows)
+    assert len(rows1) == len(rows0)
+    assert all(n is not o for n, o in zip(rows1, rows0))
+    ov.hide()
+
+
 def test_walk_keeps_strip_visible(qtbot):
     """Rebuilt strip children must be shown: the first build is revealed by
     a later ancestor show(), but on walk the host is already visible while

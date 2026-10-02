@@ -1,4 +1,6 @@
-"""Quick look metrics — plain functions taking overlay as first arg."""
+"""Quick look metrics — plain functions taking overlay as first arg.
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract"
+"""
 
 from __future__ import annotations
 
@@ -7,6 +9,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
+
+#: Bound for the metrics row-container cache (fingerprints → row widgets).
+_METRICS_ROW_CACHE_MAX = 8
 
 
 def _is_dark_theme() -> bool:
@@ -116,15 +121,390 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
         return ()
 
 
+def _metrics_cache_store(overlay, key, rows) -> None:
+    """Store row containers under *key* (bounded LRU-8, fail-open).
+
+    The currently shown set (``overlay._metrics_shown_key``) is pinned while
+    displayed — eviction drops hidden sets only, oldest first, via
+    ``removeWidget`` + ``deleteLater`` (mirrors the ``_drop_*_cache`` idiom).
+    Never raises.
+    """
+    try:
+        if not key or not rows:
+            return
+        try:
+            cache = getattr(overlay, "_metrics_row_cache", None)
+        except Exception:
+            return
+        if not isinstance(cache, dict):
+            cache = {}
+            try:
+                overlay._metrics_row_cache = cache
+            except Exception:
+                return
+        try:
+            cache.pop(key, None)
+            cache[key] = list(rows)
+        except Exception:
+            return
+        try:
+            shown = getattr(overlay, "_metrics_shown_key", None)
+        except Exception:
+            shown = None
+        try:
+            cur = list(getattr(overlay, "_metric_rows", None) or [])
+        except Exception:
+            cur = []
+        try:
+            lay = getattr(overlay, "_right_lay", None)
+        except Exception:
+            lay = None
+        while len(cache) > _METRICS_ROW_CACHE_MAX:
+            victim = None
+            try:
+                for k in list(cache.keys()):
+                    if k == shown:
+                        continue
+                    try:
+                        vrows = list(cache.get(k) or [])
+                    except Exception:
+                        vrows = []
+                    if cur and vrows and len(vrows) == len(cur) and all(v is c for v, c in zip(vrows, cur)):
+                        continue  # tracked live rows — never evict under them.
+                    victim = k
+                    break
+            except Exception:
+                break
+            if victim is None:
+                break
+            try:
+                victim_rows = cache.pop(victim, None)
+            except Exception:
+                break
+            for w in list(victim_rows or []):
+                try:
+                    if lay is not None:
+                        lay.removeWidget(w)
+                except Exception:
+                    pass
+                try:
+                    w.deleteLater()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _metrics_cache_hit(overlay, key, cache) -> bool:
+    """Swap in the cached row set for *key* (zero rebuild).
+
+    Hides the previously shown set (it stays cached, hidden), shows the
+    cached set, and re-seats rows via ``relayout_report_rows`` — all under
+    ``setUpdatesEnabled(False)`` on the report host with the relayout's own
+    single layout activation. True when the swap ran (caller returns);
+    False on any miss/staleness (caller falls through to the W2 memo, then
+    today's rebuild). Never raises.
+    """
+    try:
+        try:
+            rows = list(cache.get(key) or [])
+        except Exception:
+            return False
+        if not rows:
+            return False
+        try:  # every cached container must still be alive.
+            for w in rows:
+                w.parent()
+        except Exception:
+            try:
+                cache.pop(key, None)
+            except Exception:
+                pass
+            return False
+        try:
+            shown_key = getattr(overlay, "_metrics_shown_key", None)
+        except Exception:
+            shown_key = None
+        try:
+            cur = list(getattr(overlay, "_metric_rows", None) or [])
+        except Exception:
+            cur = []
+        if shown_key == key and cur and len(cur) == len(rows) and all(c is r for c, r in zip(cur, rows)):
+            try:  # already displayed — LRU-touch, restore fingerprint, done.
+                cache.pop(key, None)
+                cache[key] = rows
+            except Exception:
+                pass
+            try:
+                overlay._metrics_fingerprint = key
+            except Exception:
+                pass
+            return True
+        try:
+            host = getattr(overlay, "_report_host", None)
+        except Exception:
+            host = None
+        try:
+            lay = getattr(overlay, "_right_lay", None)
+        except Exception:
+            lay = None
+        try:
+            if host is not None:
+                host.setUpdatesEnabled(False)
+        except Exception:
+            pass
+        try:
+            for w in cur:  # hide exactly the outgoing set (cached, kept).
+                try:
+                    if all(w is not r for r in rows):
+                        if lay is not None:
+                            lay.removeWidget(w)
+                        w.hide()
+                except Exception:
+                    pass
+            overlay._metric_rows = list(rows)
+            for w in rows:
+                try:
+                    if host is not None and w.parent() is not host:
+                        w.setParent(host)
+                except Exception:
+                    pass
+                try:
+                    w.show()
+                except Exception:
+                    pass
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
+
+                relayout_report_rows(overlay)
+            except Exception:
+                pass
+        finally:
+            try:
+                if host is not None:
+                    host.setUpdatesEnabled(True)
+            except Exception:
+                pass
+        try:  # LRU touch so eviction drops the stalest hidden set.
+            cache.pop(key, None)
+            cache[key] = rows
+        except Exception:
+            pass
+        try:
+            overlay._metrics_fingerprint = key
+            overlay._metrics_shown_key = key
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _mode_str_for(overlay) -> tuple:
+    """Derive ``(is_fidelity, mode_str)`` from ``overlay._mode``.
+
+    Single derivation shared by ``warm_metrics_for`` and the host — byte
+    for byte the ``_populate`` derivation (quick_look.py), so warmed keys
+    match walk rebuilds exactly. Never raises.
+    """
+    mode_str = ""
+    try:
+        _mode = getattr(overlay, "_mode", None)
+        if _mode is not None:
+            mode_str = str(_mode.value) if hasattr(_mode, "value") else str(_mode)
+        else:
+            mode_str = "fidelity"
+        mode_str = mode_str.upper()
+        if not mode_str.endswith(" MODE"):
+            mode_str = f"{mode_str} MODE"
+    except Exception:
+        mode_str = "FIDELITY MODE"
+    try:
+        is_fidelity = "FIDELITY" in mode_str
+    except Exception:
+        is_fidelity = True
+    return (bool(is_fidelity), str(mode_str))
+
+
+def warm_metrics_for(overlay, item) -> None:
+    """Pre-build (hidden) the metric row set for *item* into the row cache.
+
+    Computes the fingerprint for the target's own series position (the walk
+    rebuild runs with ``_current_idx`` on the target, and the fingerprint
+    bakes the index in — resolved by identity so the warmed key matches the
+    walk's rebuild exactly), returns at once when already cached or live,
+    else builds the row set under a hidden staging parent (never inserted
+    visible: no paint, no visible relayout) and stores it with the same LRU
+    discipline. Never raises; any surprise is a no-op (fail-open: the walk
+    builds synchronously as today).
+    """
+    try:
+        is_fidelity, mode_str = _mode_str_for(overlay)
+        try:
+            series = list(getattr(overlay, "_series_items", None) or [])
+        except Exception:
+            series = []
+        target_idx = None
+        try:
+            for _i, _m in enumerate(series):
+                if _m is item:
+                    target_idx = int(_i)
+                    break
+        except Exception:
+            target_idx = None
+        try:
+            cur_idx = int(getattr(overlay, "_current_idx", 0) or 0)
+        except Exception:
+            cur_idx = 0
+        if target_idx is None:
+            target_idx = cur_idx
+        try:
+            overlay._current_idx = int(target_idx)
+        except Exception:
+            pass
+        try:
+            fp = _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+        finally:
+            try:
+                overlay._current_idx = int(cur_idx)
+            except Exception:
+                pass
+        if not fp:
+            return
+        try:
+            cache = getattr(overlay, "_metrics_row_cache", None)
+        except Exception:
+            cache = None
+        if isinstance(cache, dict) and fp in cache:
+            return  # already cached.
+        try:
+            if getattr(overlay, "_metrics_fingerprint", None) == fp and len(getattr(overlay, "_metric_rows", None) or []):
+                return  # a live build for it exists.
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWidgets import QWidget as _QWidget
+        except Exception:
+            return
+        try:
+            staging = getattr(overlay, "_metrics_warm_staging", None)
+            try:
+                if staging is None:
+                    raise ValueError("no staging")
+                staging.objectName()  # raises on C++-deleted stubs.
+            except Exception:
+                staging = None
+            if staging is None:
+                staging = _QWidget()
+                try:
+                    staging.hide()
+                except Exception:
+                    pass
+                try:
+                    overlay._metrics_warm_staging = staging
+                except Exception:
+                    pass
+            if staging is None:
+                return
+        except Exception:
+            return
+        saved_rows = getattr(overlay, "_metric_rows", None)
+        saved_fp = getattr(overlay, "_metrics_fingerprint", None)
+        saved_shown = getattr(overlay, "_metrics_shown_key", None)
+        saved_host = getattr(overlay, "_report_host", None)
+        saved_lay = getattr(overlay, "_right_lay", None)
+        try:
+            overlay._metric_rows = []
+        except Exception:
+            pass
+        try:
+            overlay._report_host = staging
+        except Exception:
+            pass
+        try:
+            overlay._right_lay = None  # relayout no-ops: never visible.
+        except Exception:
+            pass
+        try:
+            overlay._metrics_fingerprint = None
+        except Exception:
+            pass
+        try:
+            overlay._current_idx = int(target_idx)
+        except Exception:
+            pass
+        built: list = []
+        try:
+            rebuild_metrics(overlay, item, is_fidelity, mode_str)
+            built = list(getattr(overlay, "_metric_rows", None) or [])
+        except Exception:
+            built = []
+        finally:
+            try:
+                overlay._metric_rows = saved_rows if isinstance(saved_rows, list) else []
+            except Exception:
+                pass
+            try:
+                overlay._report_host = saved_host
+            except Exception:
+                pass
+            try:
+                overlay._right_lay = saved_lay
+            except Exception:
+                pass
+            try:
+                overlay._metrics_fingerprint = saved_fp
+            except Exception:
+                pass
+            try:
+                overlay._metrics_shown_key = saved_shown
+            except Exception:
+                pass
+            try:
+                overlay._current_idx = int(cur_idx)
+            except Exception:
+                pass
+        if not built:
+            return
+        try:  # keep hidden on the staging parent until a hit re-parents.
+            for w in built:
+                try:
+                    if w.parent() is not staging:
+                        w.setParent(staging)
+                except Exception:
+                    pass
+                try:
+                    w.hide()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        _metrics_cache_store(overlay, fp, built)
+    except Exception:
+        pass
+
+
 def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
-    # Memo skip: rows already show this exact item/series/theme/scale state
-    # (they are recreated deterministically from it), so rebuilding would
-    # produce identical widgets. Any input change falls through to today's
-    # rebuild bit-for-bit.
+    # Row-container cache: any cached fingerprint swaps in with zero
+    # rebuild. Checked FIRST (broader than the W2 memo below: any cached
+    # item, not just the exact last one); the W2 single-fingerprint
+    # early-return stays as the fast path for exact revisits.
     try:
         _mfp_now = _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
     except Exception:
         _mfp_now = ()
+    if _mfp_now:
+        try:
+            _cache_now = getattr(overlay, "_metrics_row_cache", None)
+            if isinstance(_cache_now, dict) and _mfp_now in _cache_now:
+                if _metrics_cache_hit(overlay, _mfp_now, _cache_now):
+                    return
+        except Exception:
+            pass
+    # Memo skip: rows already show this exact item/series/theme/scale state
+    # (they are recreated deterministically from it), so rebuilding would
+    # produce identical widgets. Any input change falls through to today's
+    # rebuild bit-for-bit.
     if _mfp_now:
         try:
             _mfp_stored = getattr(overlay, "_metrics_fingerprint", None)
@@ -150,14 +530,35 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     # Rows live flat in right_lay (see helpers.relayout_report_rows); the
     # report host is their visible ancestor (falls back to parentless for
     # bare stubs like the truth-test harness, which only reads _metric_rows).
+    # Miss: detach the currently shown set (it stays cached, hidden) instead
+    # of destroying it; uncached rows are destroyed as before. The builders
+    # below then run bit-for-bit as today into a fresh _metric_rows.
+    try:
+        _miss_shown = getattr(overlay, "_metrics_shown_key", None)
+    except Exception:
+        _miss_shown = None
+    try:
+        _miss_cache = getattr(overlay, "_metrics_row_cache", None)
+    except Exception:
+        _miss_cache = None
+    _miss_keep = False
+    try:
+        _miss_cur = list(getattr(overlay, "_metric_rows", None) or [])
+        _miss_cached = list((_miss_cache.get(_miss_shown) or []) if isinstance(_miss_cache, dict) and _miss_shown is not None else [])
+        _miss_keep = bool(_miss_cur) and len(_miss_cur) == len(_miss_cached) and all(c is k for c, k in zip(_miss_cur, _miss_cached))
+    except Exception:
+        _miss_keep = False
     host = getattr(overlay, "_report_host", None)
     lay = getattr(overlay, "_right_lay", None)
     for w in list(overlay._metric_rows):
         try:
             if lay is not None:
                 lay.removeWidget(w)
-            w.setParent(None)
-            w.deleteLater()
+            if _miss_keep:
+                w.hide()
+            else:
+                w.setParent(None)
+                w.deleteLater()
         except Exception:
             pass
     overlay._metric_rows.clear()
@@ -421,6 +822,22 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         pass
     try:
         overlay._metrics_fingerprint = _mfp_now or _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+    except Exception:
+        pass
+    # Miss store: a COPY of the container list under the fingerprint (the
+    # live list stays the caller's own), then record the shown key so the
+    # next hit hides exactly this set. Shown set pinned via the LRU guard.
+    try:
+        _stored_fp = getattr(overlay, "_metrics_fingerprint", None)
+    except Exception:
+        _stored_fp = None
+    try:
+        overlay._metrics_shown_key = _stored_fp
+    except Exception:
+        pass
+    try:
+        if _stored_fp and list(getattr(overlay, "_metric_rows", None) or []):
+            _metrics_cache_store(overlay, _stored_fp, list(overlay._metric_rows))
     except Exception:
         pass
 
