@@ -1040,3 +1040,269 @@ def test_zoomed_frame_pan_shifts_crop():
     _, _, a = zoomed_frame(full, 200, 100, 2.0, 0.0, 0.0)
     _, _, b = zoomed_frame(full, 200, 100, 2.0, 0.5, 0.0)
     assert a != b
+
+
+# -- QL walk prefetch (W1) + tiled dwell-gate (W2) -------------------------------
+#
+# W1: ``_prefetch_neighbors`` fills the coarse-store + stash-pixmap memos for
+# the prev/next walk neighbors (bounded builds only, token-guarded); a
+# revisit is a memo hit with zero source decodes.
+# W2: the uncapped tiled kick moved from on-show to on-dwell-fire (canvas
+# ``_ql_gen`` idiom, no second timer) or zoom>1.0. No pre-existing
+# show-kicks-decode assertions existed in this file (verified: no
+# ``_populate_tiled_source`` / ``_decode_full_store`` references before
+# these tests), so nothing below updates an old assertion — the dwell
+# contract is asserted fresh here.
+
+
+class _QLSig:
+    def __init__(self) -> None:
+        self._slots: list = []
+
+    def connect(self, slot) -> None:
+        self._slots.append(slot)
+
+    def emit(self, *args):
+        for slot in list(self._slots):
+            slot(*args)
+
+
+class _QLWorker:
+    """GenericWorker double: captures fn/args; pool decides when fn runs."""
+
+    instances: list = []
+
+    def __init__(self, fn, *args, **kwargs) -> None:
+        from types import SimpleNamespace
+
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = SimpleNamespace(
+            result=_QLSig(),
+            finished=_QLSig(),
+            partial_result=_QLSig(),
+            error=_QLSig(),
+        )
+        _QLWorker.instances.append(self)
+
+
+class _QLSyncPool:
+    """Fake pool: runs fn inline, emits result synchronously (GUI thread)."""
+
+    def __init__(self) -> None:
+        self.workers: list = []
+
+    def start(self, worker) -> None:
+        self.workers.append(worker)
+        try:
+            out = worker.fn(*worker.args, **worker.kwargs)
+        except Exception:
+            out = None
+        worker.signals.result.emit(out)
+
+
+class _QLHoldPool:
+    """Fake pool: captures workers, never runs fn (test fires manually)."""
+
+    def __init__(self) -> None:
+        self.workers: list = []
+
+    def start(self, worker) -> None:
+        self.workers.append(worker)
+
+
+def _patch_ql_async(monkeypatch, pool):
+    """Route host/canvas worker kicks to *pool*; returns the worker class."""
+    from PySide6.QtCore import QThreadPool
+
+    import sli_ui_toolkit.workers as _wmod
+
+    _QLWorker.instances.clear()
+    monkeypatch.setattr(_wmod, "GenericWorker", _QLWorker)
+    monkeypatch.setattr(QThreadPool, "globalInstance", classmethod(lambda cls: pool))
+    return _QLWorker
+
+
+def _tiled_kicks():
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    return [w for w in _QLWorker.instances if w.fn is _host._decode_full_store_uncapped]
+
+
+def test_prefetch_fills_neighbor_memos_revisit_decodes_nothing(qtbot, tmp_path, monkeypatch):
+    """W1: prefetch memos both neighbors (bounded only); revisit decodes nothing."""
+    from PySide6.QtWidgets import QApplication as _QA
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+    from tabs.image_gallery.ui.quick_look.preview import _stash_cache_key, _stash_cache_lookup
+
+    a = _item(_real_png(tmp_path, "pa.png"))
+    b = _item(_real_png(tmp_path, "pb.png"))
+    c = _item(_real_png(tmp_path, "pc.png"))
+    ov = _make_overlay(qtbot)
+    ov._series_items = [a, b, c]
+    ov._current_idx = 1
+    try:
+        _patch_ql_async(monkeypatch, _QLSyncPool())
+
+        uncapped_calls: list = []
+        _real_uncapped = _host._decode_full_store_uncapped
+
+        def _no_uncapped(path, tmp_dir=None):
+            uncapped_calls.append(str(path))
+            return _real_uncapped(path, tmp_dir)
+
+        monkeypatch.setattr(_host, "_decode_full_store_uncapped", _no_uncapped)
+
+        coarse_calls: list = []
+        _real_coarse = _host._coarse_store_for
+
+        def _counting_coarse(path, **kw):
+            coarse_calls.append(str(path))
+            return _real_coarse(path, **kw)
+
+        monkeypatch.setattr(_host, "_coarse_store_for", _counting_coarse)
+
+        _host._prefetch_neighbors(ov, b)
+        _QA.processEvents()
+
+        # Bounded builds only, one per neighbor — never the uncapped decode.
+        assert uncapped_calls == [], "prefetch must never use the uncapped full decode"
+        assert sorted(coarse_calls) == sorted([str(a.path), str(c.path)])
+        assert {w.fn for w in _QLWorker.instances} == {_counting_coarse}
+
+        # Both memos filled under the same keys the walk path reads ...
+        ka, kc = _stash_cache_key(a.path), _stash_cache_key(c.path)
+        assert _host._preview_store_cache_lookup(ov, ka) is not None
+        assert _host._preview_store_cache_lookup(ov, kc) is not None
+        assert _stash_cache_lookup(ov, ka) is not None
+        assert _stash_cache_lookup(ov, kc) is not None
+        # ... while the live slot is untouched (memos only).
+        assert getattr(ov, "_preview_store", None) is None
+        assert getattr(ov, "_preview_full", None) is None
+
+        # Revisit walk: memo hit, zero coarse rebuilds.
+        coarse_calls.clear()
+        ov._current_idx = 0
+        assert _host._populate_preview_canvas(ov, a) is True
+        assert coarse_calls == [], "prefetched revisit must not rebuild coarse"
+    finally:
+        ov.hide()
+
+
+def test_prefetch_stale_token_closes_without_install(qtbot, tmp_path, monkeypatch):
+    """W1: a token bump retires in-flight prefetch (store closed, no memo)."""
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+    from tabs.image_gallery.ui.quick_look.preview import _stash_cache_key
+
+    a = _item(_real_png(tmp_path, "sa.png"))
+    b = _item(_real_png(tmp_path, "sb.png"))
+    c = _item(_real_png(tmp_path, "sc.png"))
+    ov = _make_overlay(qtbot)
+    ov._series_items = [a, b, c]
+    ov._current_idx = 1
+    try:
+        _patch_ql_async(monkeypatch, _QLHoldPool())
+        _host._prefetch_neighbors(ov, b)
+        assert len(_QLWorker.instances) == 2, "prev+next neighbors only"
+
+        # Walk/hide bumps the token before the workers land.
+        ov._ql_prefetch_token = int(getattr(ov, "_ql_prefetch_token", 0) or 0) + 1
+
+        for worker in list(_QLWorker.instances):
+            store = _host._coarse_store_for(*worker.args, **worker.kwargs)
+            assert store is not None and bool(store.is_open)
+            worker.signals.result.emit(store)
+            assert not bool(store.is_open), "stale prefetch result must close"
+
+        for item in (a, c):
+            key = _stash_cache_key(item.path)
+            assert _host._preview_store_cache_lookup(ov, key) is None
+            assert getattr(ov, "_preview_store", None) is None
+    finally:
+        ov.hide()
+
+
+def _make_dwell_canvas(qtbot, ov, monkeypatch):
+    """Real canvas slotted into the overlay (mirrors _ensure_preview_canvas)."""
+    from tabs.image_gallery.ui.quick_look import preview_canvas as pc
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    card = pc.QuickLookCanvasWidget(None)
+    qtbot.addWidget(card)
+    ov._preview_canvas = card
+    _host._install_memo_probe(ov, card)
+    orig = _host._ensure_preview_canvas
+    monkeypatch.setattr(
+        _host, "_ensure_preview_canvas", lambda _ov: card, raising=False
+    )
+    return card, orig
+
+
+def test_show_kicks_no_tiled_decode_dwell_kicks_one(qtbot, tmp_path, monkeypatch):
+    """W2: plain show stages (no uncapped kick, memo empty); dwell fires one."""
+    from PySide6.QtWidgets import QApplication as _QA
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+    from tabs.image_gallery.ui.quick_look.preview import _stash_cache_key
+
+    src = _item(_real_png(tmp_path, "dw.png"))
+    ov = _make_overlay(qtbot)
+    card, _orig = _make_dwell_canvas(qtbot, ov, monkeypatch)
+    try:
+        _patch_ql_async(monkeypatch, _QLHoldPool())
+        assert _host._populate_preview_canvas(ov, src) is True
+        _QA.processEvents()
+
+        assert _tiled_kicks() == [], "plain show must not kick the uncapped tiled decode"
+        key = _stash_cache_key(src.path)
+        assert _host._tiled_store_cache_lookup(ov, key) is None
+        assert getattr(card, "_ql_tiled_pending", None) is not None
+
+        card._ql_on_dwell(int(card._ql_gen))
+        kicks = _tiled_kicks()
+        assert len(kicks) == 1, f"dwell must kick exactly one tiled decode, got {len(kicks)}"
+        assert getattr(card, "_ql_tiled_pending", None) is None, "kick consumed once"
+
+        # A stale dwell (walked away) kicks nothing more.
+        card._ql_on_dwell(int(card._ql_gen) + 99)
+        assert len(_tiled_kicks()) == 1
+    finally:
+        _host._ensure_preview_canvas = _orig
+        ov.hide()
+
+
+def test_zoom_past_one_starts_tiled_decode_immediately(qtbot, tmp_path, monkeypatch):
+    """W2: wheel-zoom past 1.0 bypasses dwell and kicks the staged decode."""
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtWidgets import QApplication as _QA
+
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    src = _item(_real_png(tmp_path, "zm.png"))
+    ov = _make_overlay(qtbot)
+    card, _orig = _make_dwell_canvas(qtbot, ov, monkeypatch)
+    try:
+        _patch_ql_async(monkeypatch, _QLHoldPool())
+        assert _host._populate_preview_canvas(ov, src) is True
+        _QA.processEvents()
+        assert _tiled_kicks() == []
+        assert getattr(card, "_ql_tiled_pending", None) is not None
+
+        card.setGeometry(0, 0, 400, 300)
+        ev = SimpleNamespace(
+            position=lambda: QPointF(200.0, 150.0),
+            angleDelta=lambda: QPoint(0, 240),
+            accept=lambda: None,
+        )
+        card.wheelEvent(ev)
+        assert float(getattr(card, "_zoom", 1.0)) > 1.0
+        kicks = _tiled_kicks()
+        assert len(kicks) == 1, f"zoom>1.0 must kick immediately, got {len(kicks)}"
+        assert getattr(card, "_ql_tiled_pending", None) is None
+    finally:
+        _host._ensure_preview_canvas = _orig
+        ov.hide()
