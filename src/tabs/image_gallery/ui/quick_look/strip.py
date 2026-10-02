@@ -7,11 +7,174 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, QEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, Label
+
+
+def _strip_thumb_pitch(overlay) -> int:
+    """One-thumb scroll pitch in px (live geometry, no size assumptions).
+
+    Container width + layout spacing; falls back to the W6 66+10 budget
+    when nothing is built yet. Never raises.
+    """
+    try:
+        buttons = list(getattr(overlay, "_strip_buttons", None) or [])
+        if buttons:
+            try:
+                w = int(buttons[0].width())
+            except Exception:
+                w = 0
+            try:
+                s = int(overlay._strip_layout.spacing())
+            except Exception:
+                s = 0
+            if w > 0:
+                return max(1, w + max(0, s))
+    except Exception:
+        pass
+    try:
+        return max(1, int(scaled_px(66)) + int(scaled_px(10)))
+    except Exception:
+        return 76
+
+
+def _strip_wheel_step(event, pitch: int = 76) -> int | None:
+    """Horizontal scroll px from a wheel event over the strip (pure).
+
+    Prefers angleDelta.x; falls back to angleDelta.y (a plain vertical
+    wheel over a horizontal filmstrip scrolls it — filmstrip convention);
+    high-resolution pixel deltas map 1:1. One 120-unit notch moves exactly
+    one thumb pitch (deliberately NOT lines*singleStep, which jumps three
+    thumbs per notch). Sign follows Qt convention (positive delta scrolls
+    toward the start). None when the event carries no scrollable delta.
+    Never raises.
+    """
+    try:
+        step = max(1, int(pitch))
+    except Exception:
+        step = 76
+    try:
+        try:
+            pd = event.pixelDelta()
+            if pd is not None and (int(pd.x()) or int(pd.y())):
+                dx = int(pd.x())
+                return -dx if dx else -int(pd.y())
+        except Exception:
+            pass
+        try:
+            ad = event.angleDelta()
+            if ad is None:
+                return None
+            raw = int(ad.x()) or int(ad.y())
+        except Exception:
+            return None
+        if not raw:
+            return None
+        return -int(round(raw / 120.0 * step))
+    except Exception:
+        return None
+
+
+class _StripWheelFilter(QObject):
+    """Viewport wheel filter: plain wheel over the strip scrolls it.
+
+    The toolkit OverlayScrollArea glides only the vertical bar, which the
+    strip never overflows — without this filter a wheel over the strip
+    does nothing (the native bars are AlwaysOff). Consumes the event only
+    when the strip actually moved (at an edge it returns False so the
+    wheel propagates to the outer vertical column scroll). Installed once
+    per overlay; parented to the viewport. Never raises.
+    """
+
+    def __init__(self, overlay, parent=None):
+        super().__init__(parent)
+        self._overlay = overlay
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            if event.type() == QEvent.Type.Wheel and _strip_scroll_wheel(
+                self._overlay, event
+            ):
+                return True
+        except Exception:
+            pass
+        return False
+
+
+def _strip_scroll_wheel(overlay, event) -> bool:
+    """Apply one wheel event to the strip horizontal bar. True if consumed."""
+    try:
+        scroll = getattr(overlay, "_strip_scroll", None)
+        if scroll is None:
+            return False
+        bar = scroll.horizontalScrollBar()
+        if bar.maximum() <= bar.minimum():
+            return False  # nothing to scroll — let it propagate.
+        try:
+            pitch = _strip_thumb_pitch(overlay)
+        except Exception:
+            pitch = 76
+        step = _strip_wheel_step(event, pitch)
+        if step is None or step == 0:
+            return False
+        new = max(bar.minimum(), min(bar.maximum(), bar.value() + step))
+        if new == bar.value():
+            return False  # at the edge — propagate outward.
+        bar.setValue(new)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_strip_visible(overlay) -> None:
+    """Scroll the strip so the current thumb is visible (walk follow).
+
+    Nothing in the app ever scrolled the strip — keyboard/button walks
+    left the current thumb out of view with no affordance to find it.
+    Called on every populate (both refresh and full-rebuild tails);
+    fail-open to no-scroll, never correctness. Never raises.
+    """
+    try:
+        scroll = getattr(overlay, "_strip_scroll", None)
+        items = list(getattr(overlay, "_series_items", None) or [])
+        buttons = list(getattr(overlay, "_strip_buttons", None) or [])
+        if scroll is None or not items or len(buttons) != len(items):
+            return
+        try:
+            idx = int(getattr(overlay, "_current_idx", 0) or 0)
+        except Exception:
+            return
+        if not 0 <= idx < len(buttons):
+            return
+        try:
+            pitch = _strip_thumb_pitch(overlay)
+        except Exception:
+            pitch = 76
+        scroll.ensureWidgetVisible(buttons[idx], max(1, pitch), 0)
+    except Exception:
+        pass
+
+
+def ensure_strip_scroll(overlay) -> None:
+    """Install the wheel filter once, then follow the current thumb."""
+    try:
+        if not bool(getattr(overlay, "_strip_wheel_installed", False)):
+            try:
+                scroll = getattr(overlay, "_strip_scroll", None)
+                viewport = scroll.viewport() if scroll is not None else None
+                if viewport is not None:
+                    filt = _StripWheelFilter(overlay, viewport)
+                    viewport.installEventFilter(filt)
+                    overlay._strip_wheel_filter = filt
+                    overlay._strip_wheel_installed = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    ensure_strip_visible(overlay)
 
 
 def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
@@ -297,6 +460,7 @@ def rebuild_strip(overlay) -> None:
             _n_items = len(getattr(overlay, "_series_items", None) or [])
             if _fp_stored == _fp_now and _n_items and len(_buttons) == _n_items:
                 _refresh_strip_selection(overlay)
+                ensure_strip_scroll(overlay)
                 return
         except Exception:
             pass
@@ -651,3 +815,4 @@ def rebuild_strip(overlay) -> None:
         overlay._strip_fingerprint = _fp_now or _strip_fingerprint(overlay)
     except Exception:
         pass
+    ensure_strip_scroll(overlay)
