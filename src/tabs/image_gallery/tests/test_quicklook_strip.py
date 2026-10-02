@@ -448,3 +448,75 @@ def test_walk_keeps_strip_visible(qtbot):
     for b in _strip_buttons(ov):
         assert b.isVisible()
     ov.hide()
+
+
+def test_walk_follows_current_thumb(qtbot):
+    """Walking to an out-of-view thumb scrolls the strip to it.
+
+    Nothing in the app ever scrolled the strip (OverlayScrollArea glides
+    only the vertical bar; the strip overflows horizontally), so walks
+    left the current thumb out of view. Verified failing pre-fix
+    (hbar stays 0 after walking to the last of 8).
+    """
+    mates = [_item(f"fl{i}.png", rank=i) for i in range(1, 9)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    bar = ov._strip_scroll.horizontalScrollBar()
+    assert bar.maximum() > bar.minimum(), "need overflow for a follow test"
+    assert bar.value() == bar.minimum()
+    for _ in range(7):
+        ov._walk(1)
+        QApplication.processEvents()
+    assert ov._current_idx == 7
+    assert bar.value() > bar.minimum(), "strip must follow to the last thumb"
+    for _ in range(7):
+        ov._walk(-1)
+        QApplication.processEvents()
+    assert ov._current_idx == 0
+    assert bar.value() == bar.minimum(), "strip must follow back to the first thumb"
+    ov.hide()
+
+
+def test_strip_wheel_step_mapping():
+    """Pure wheel→px mapping: x preferred, y fallback, pixel 1:1, empty None."""
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPoint
+
+    from tabs.image_gallery.ui.quick_look.strip import _strip_wheel_step
+
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(120, 0), pixelDelta=lambda: QPoint(0, 0)), 76) == -76
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(-120, 0), pixelDelta=lambda: QPoint(0, 0)), 76) == 76
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(0, 120), pixelDelta=lambda: QPoint(0, 0)), 76) == -76
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(0, -240), pixelDelta=lambda: QPoint(0, 0)), 76) == 152
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(0, 0), pixelDelta=lambda: QPoint(0, 0)), 76) is None
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(0, 0), pixelDelta=lambda: QPoint(0, -7)), 76) == 7
+    assert _strip_wheel_step(SimpleNamespace(angleDelta=lambda: QPoint(0, 0), pixelDelta=lambda: QPoint(5, 9)), 76) == -5
+
+
+def test_strip_wheel_consumes_only_when_moving(qtbot):
+    """Wheel over the strip moves the h-bar; at edges it propagates (False)."""
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPoint
+
+    from tabs.image_gallery.ui.quick_look.strip import _strip_scroll_wheel
+
+    mates = [_item(f"wh{i}.png", rank=i) for i in range(1, 9)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    bar = ov._strip_scroll.horizontalScrollBar()
+    assert bar.maximum() > bar.minimum()
+    assert bar.value() == bar.minimum()
+    down = SimpleNamespace(angleDelta=lambda: QPoint(0, -120), pixelDelta=lambda: QPoint(0, 0))
+    assert _strip_scroll_wheel(ov, down) is True
+    assert bar.value() > bar.minimum()
+    bar.setValue(bar.maximum())
+    assert _strip_scroll_wheel(ov, down) is False, "at the edge the wheel must propagate outward"
+    up = SimpleNamespace(angleDelta=lambda: QPoint(0, 120), pixelDelta=lambda: QPoint(0, 0))
+    assert _strip_scroll_wheel(ov, up) is True
+    ov.hide()
