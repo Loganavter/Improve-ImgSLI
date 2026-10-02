@@ -182,7 +182,7 @@ Feature checklist for new tile work (also in [CODE_PATTERNS.md](CODE_PATTERNS.md
 declare a `ResidencySpec` → draw-list via `slot_for` + `select_level` →
 read only `FrameContext` in `record()` → manifest + `RENDER_PASSES` ordered
 by stacking policy → budget test + live and snapshot runs. Full plan:
-[plan_engine_design.md](plan_engine_design.md).
+`plan-engine-design` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
 
 ## Plugins
 

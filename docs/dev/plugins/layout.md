@@ -31,6 +31,6 @@ interfaces — it only subscribes to `SettingsUIModeChangedEvent`.
   the plugin always builds `ToastManager(parent_window)` (anchor optional
   per toolkit `FEEDBACK_API.md`) and repoints it at the active tab's
   `toast_anchor_widget` when one answers. See
-  [plan_toast_refactor.md](../plan_toast_refactor.md).
+  `plan-toast-refactor` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
 - UI modes: `beginner`, `advanced`, `expert`, `minimal` (validation lives in
   the settings plugin controller).

@@ -2,7 +2,7 @@
 
 Date: 2026-09-05. Branch: `feat/toast-cleanup` (built on `feat/toast-host-owned`).
 Area: loading-toast lifecycle, both canvas tabs (`src/tabs/_shared/`, IC pyramid/decode pipeline).
-Related: [plan_toast_refactor.md](./plan_toast_refactor.md), [plan_toast_cleanup.md](./plan_toast_cleanup.md), [plugins/layout.md](./plugins/layout.md), [LOGGING.md](./LOGGING.md), [tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md), internal-docs `bug-a1-multi-compare-load-silently-skips`.
+Related: `plan-toast-refactor`, `plan-toast-cleanup` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`), [plugins/layout.md](./plugins/layout.md), [LOGGING.md](./LOGGING.md), [tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md), internal-docs `bug-a1-multi-compare-load-silently-skips`.
 
 ## Symptom
 
