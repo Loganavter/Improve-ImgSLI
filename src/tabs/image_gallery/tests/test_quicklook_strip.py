@@ -199,6 +199,137 @@ def test_click_viewing_thumb_skips_full_repopulate(qtbot, tmp_path):
     ov.hide()
 
 
+def test_walk_refresh_reuses_strip_widgets(qtbot):
+    """Walk with unchanged series/triage/theme/scale refreshes in place.
+
+    No widget is recreated (same container/button objects); the viewing
+    outline moves to the new thumb and the old one clears its border.
+    """
+    mates = [_item(f"w{i}.png", rank=i) for i in (1, 2, 3)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    assert getattr(ov, "_strip_fingerprint", None)
+    before_cont = {c.objectName(): c for c in ov._strip_buttons}
+    before_btns = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert len(before_btns) == 3
+    ov._walk(1)
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert ov._current_idx == 1
+    after_cont = {c.objectName(): c for c in ov._strip_buttons}
+    after_btns = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert set(after_cont) == set(before_cont)
+    assert set(after_btns) == set(before_btns)
+    assert all(after_cont[k] is before_cont[k] for k in before_cont)
+    assert all(after_btns[k] is before_btns[k] for k in before_btns)
+    new_view = after_btns[str(mates[1].path)]
+    old_view = after_btns[str(mates[0].path)]
+    assert int(new_view.property("borderWidth") or 0) >= 2
+    assert new_view.borderColor() is not None
+    assert old_view.borderColor() is None
+    assert old_view.property("borderWidth") is None
+    ov.hide()
+
+
+def test_rejected_flip_rebuilds_strip(qtbot):
+    """Flipping rejected on an item changes the fingerprint → full rebuild."""
+    mates = [_item(f"rj{i}.png", rank=i) for i in (1, 2)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    before = list(ov._strip_buttons)
+    ov._series_items[1].rejected = True
+    ov._rebuild_strip()
+    QApplication.processEvents()
+    after = list(ov._strip_buttons)
+    assert len(after) == len(before) == 2
+    assert all(a is not b for a, b in zip(after, before))
+    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    dimmed = by_path[str(ov._series_items[1].path)]
+    eff = dimmed.graphicsEffect()
+    from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+    assert isinstance(eff, QGraphicsOpacityEffect) and eff.opacity() == 0.4
+    ov.hide()
+
+
+def test_dark_flip_rebuilds_strip(qtbot, monkeypatch):
+    """Theme flip changes the fingerprint → full rebuild (never stale colors)."""
+    import tabs.image_gallery.ui.quick_look.bars as _bars
+
+    mates = [_item(f"dk{i}.png", rank=i) for i in (1, 2)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    before = list(ov._strip_buttons)
+    was_dark = bool(_bars._is_dark_theme())
+    monkeypatch.setattr(_bars, "_is_dark_theme", lambda: (not was_dark))
+    ov._rebuild_strip()
+    QApplication.processEvents()
+    after = list(ov._strip_buttons)
+    assert len(after) == len(before) == 2
+    assert all(a is not b for a, b in zip(after, before))
+    ov.hide()
+
+
+def test_metrics_revisit_same_item_preserves_rows(qtbot):
+    """Same item/metrics/series/theme/scale → rows untouched (memo skip)."""
+    a = _item("m0.png", rank=1, metrics={"ssim": 0.9})
+    b = _item("m1.png", rank=2, metrics={"ssim": 0.8})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    rows0 = list(ov._metric_rows)
+    assert rows0
+    assert getattr(ov, "_metrics_fingerprint", None)
+    cur = ov._current_item
+    ov._rebuild_metrics(cur, True, "FIDELITY MODE")
+    QApplication.processEvents()
+    rows1 = list(ov._metric_rows)
+    assert len(rows1) == len(rows0)
+    assert all(n is o for n, o in zip(rows1, rows0))
+    ov.hide()
+
+
+def test_metrics_changed_dict_rebuilds(qtbot):
+    """Changed metrics dict on the same item → full metrics rebuild."""
+    a = _item("mc0.png", rank=1, metrics={"ssim": 0.9})
+    b = _item("mc1.png", rank=2, metrics={"ssim": 0.8})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    rows0 = list(ov._metric_rows)
+    cur = ov._current_item
+    cur.metrics["ssim"] = 0.5
+    ov._rebuild_metrics(cur, True, "FIDELITY MODE")
+    QApplication.processEvents()
+    rows1 = list(ov._metric_rows)
+    assert len(rows1) == len(rows0)
+    assert all(n is not o for n, o in zip(rows1, rows0))
+    ov.hide()
+
+
+def test_metrics_neighbor_rank_change_rebuilds(qtbot):
+    """Triage rank change on a NEIGHBOR (ssim_subline input) → rebuild."""
+    a = _item("mn0.png", rank=1, metrics={"ssim": 0.9})
+    b = _item("mn1.png", rank=2, metrics={"ssim": 0.8})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    rows0 = list(ov._metric_rows)
+    cur = ov._current_item
+    ov._rebuild_metrics(cur, True, "FIDELITY MODE")
+    QApplication.processEvents()
+    assert all(n is o for n, o in zip(list(ov._metric_rows), rows0))
+    ov._series_items[1].rank = 7
+    ov._rebuild_metrics(cur, True, "FIDELITY MODE")
+    QApplication.processEvents()
+    rows1 = list(ov._metric_rows)
+    assert all(n is not o for n, o in zip(rows1, rows0))
+    ov.hide()
+
+
 def test_walk_keeps_strip_visible(qtbot):
     """Rebuilt strip children must be shown: the first build is revealed by
     a later ancestor show(), but on walk the host is already visible while
