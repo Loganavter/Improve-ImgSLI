@@ -35,7 +35,110 @@ def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None =
     return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
+def _metrics_series_snapshot(overlay) -> tuple:
+    """Series-wide inputs of ``ssim_subline`` (re-rank/reject neighbor flips)."""
+    try:
+        series = list(getattr(overlay, "_series_items", None) or [])
+    except Exception:
+        return ()
+    parts = []
+    for m in series:
+        try:
+            p = str(getattr(m, "path", "") or "")
+        except Exception:
+            p = ""
+        try:
+            r = getattr(m, "rank", None)
+            c = getattr(m, "crown_rank", None)
+            if c is not None:
+                rk = ("crown", str(c))
+            elif r is not None:
+                rk = ("rank", str(r))
+            else:
+                rk = ("best", bool(getattr(m, "is_best", False)))
+        except Exception:
+            rk = ("none", False)
+        try:
+            mt = getattr(m, "metrics", None) or {}
+            s = mt.get("ssim") if isinstance(mt, dict) else None
+            s = str(s) if s is not None else ""
+        except Exception:
+            s = ""
+        try:
+            rej = bool(getattr(m, "rejected", False))
+        except Exception:
+            rej = False
+        parts.append((p, rk, s, rej))
+    return tuple(parts)
+
+
+def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tuple:
+    """Identity of everything ``rebuild_metrics`` renders.
+
+    Rows are already seated for this exact item/series/theme/scale state on
+    a match, so the caller returns early (relayout skipped too). ``rank_txt``
+    falls back to ``current_idx+1`` for rankless items — that equals the
+    item's own stable position, covered by the item path + series snapshot
+    (a reorder changes the snapshot); the index is also stored outright.
+    """
+    try:
+        metrics = getattr(item, "metrics", None) or {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+        try:
+            metrics_part = tuple(sorted((str(k), str(v)) for k, v in metrics.items()))
+        except Exception:
+            metrics_part = ()
+        try:
+            item_path = str(getattr(item, "path", "") or "")
+        except Exception:
+            item_path = ""
+        try:
+            series = list(getattr(overlay, "_series_items", None) or [])
+            series_len = len(series)
+        except Exception:
+            series_len = 0
+        try:
+            current_idx = int(getattr(overlay, "_current_idx", 0) or 0)
+        except Exception:
+            current_idx = 0
+        series_part = _metrics_series_snapshot(overlay)
+        try:
+            dark = bool(_is_dark_theme())
+        except Exception:
+            dark = True
+        try:
+            sp = int(scaled_px(2))
+        except Exception:
+            sp = 2
+        return (item_path, metrics_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
+    except Exception:
+        return ()
+
+
 def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
+    # Memo skip: rows already show this exact item/series/theme/scale state
+    # (they are recreated deterministically from it), so rebuilding would
+    # produce identical widgets. Any input change falls through to today's
+    # rebuild bit-for-bit.
+    try:
+        _mfp_now = _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+    except Exception:
+        _mfp_now = ()
+    if _mfp_now:
+        try:
+            _mfp_stored = getattr(overlay, "_metrics_fingerprint", None)
+            _rows = getattr(overlay, "_metric_rows", None) or []
+            if _mfp_stored == _mfp_now and len(_rows):
+                return
+        except Exception:
+            pass
+    # Full rebuild: drop the stored fingerprint first so a mid-rebuild
+    # failure can never leave a stale match behind (fail-open).
+    try:
+        overlay._metrics_fingerprint = None
+    except Exception:
+        pass
     try:
         from tabs.image_gallery.ui.quick_look.helpers import _make_label
     except Exception:
@@ -314,6 +417,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
 
         relayout_report_rows(overlay)
+    except Exception:
+        pass
+    try:
+        overlay._metrics_fingerprint = _mfp_now or _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
     except Exception:
         pass
 

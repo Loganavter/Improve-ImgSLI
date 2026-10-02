@@ -1,4 +1,7 @@
-"""Quick look series strip — plain functions taking overlay."""
+"""Quick look series strip — plain functions taking overlay.
+
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)"
+"""
 
 from __future__ import annotations
 
@@ -40,11 +43,269 @@ def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped
         pass
 
 
+def _strip_rank_key(m) -> tuple:
+    """Rank identity for one series member (badge input).
+
+    Mirrors the badge priority in ``rebuild_strip``: crown_rank wins over
+    rank, which wins over the is_best fallback.
+    """
+    try:
+        c = getattr(m, "crown_rank", None)
+        if c is not None:
+            return ("crown", str(c))
+        r = getattr(m, "rank", None)
+        if r is not None:
+            return ("rank", str(r))
+    except Exception:
+        pass
+    try:
+        if bool(getattr(m, "is_best", False)):
+            return ("best", True)
+    except Exception:
+        pass
+    return ("none", False)
+
+
+def _strip_fingerprint(overlay) -> tuple:
+    """Structural identity of the strip (everything a FULL rebuild consumes).
+
+    Per-walk dynamic state (checked + border on old/new idx) is deliberately
+    EXCLUDED — a walk changes only that, which the in-place refresh covers.
+    Anything else (triage flags, ranks, theme, scale, series/source change)
+    mismatches and falls back to today's full rebuild.
+    """
+    try:
+        items = list(getattr(overlay, "_series_items", None) or [])
+    except Exception:
+        return ()
+    try:
+        paths = tuple(str(getattr(m, "path", "") or "") for m in items)
+        rejected = tuple(bool(getattr(m, "rejected", False)) for m in items)
+        pending = tuple(bool(getattr(m, "vlm_tie_pending", False)) for m in items)
+        ranks = tuple(_strip_rank_key(m) for m in items)
+        source = str(getattr(overlay, "_source_path", None) or "")
+        try:
+            from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _fp_is_dark
+
+            dark = bool(_fp_is_dark())
+        except Exception:
+            dark = True
+        try:
+            sp = int(scaled_px(66))
+        except Exception:
+            sp = 66
+        return (paths, rejected, pending, ranks, source, dark, sp)
+    except Exception:
+        return ()
+
+
+def _refresh_strip_selection(overlay) -> None:
+    """In-place selection refresh over the existing strip widgets.
+
+    Updates checked/border/badge/opacity from live item flags; creates no
+    widgets, touches no layout. Raises on any structural surprise so the
+    caller falls back to the full rebuild (fail-open: performance only,
+    never correctness). Captions are untouched: they only exist for
+    tie-break pending items, and pending flags are part of the fingerprint
+    (unchanged on this path by construction).
+    """
+    from sli_ui_toolkit.widgets import Button as _RefreshButton
+
+    items = list(overlay._series_items)
+    containers = list(overlay._strip_buttons)
+    if not containers or len(containers) != len(items):
+        raise RuntimeError("strip refresh: container/item count mismatch")
+    try:
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _rf_is_dark
+
+        dark = bool(_rf_is_dark())
+    except Exception:
+        dark = True
+    try:
+        source_path = overlay._source_path
+    except Exception:
+        source_path = None
+    try:
+        current_idx = int(getattr(overlay, "_current_idx", 0) or 0)
+    except Exception:
+        current_idx = 0
+    for idx, container in enumerate(containers):
+        m = items[idx]
+        btn = container.findChild(_RefreshButton)
+        if btn is None:
+            raise RuntimeError(f"strip refresh: no Button in container {idx}")
+        is_viewing = idx == current_idx
+        is_source = False
+        try:
+            if source_path is not None and Path(getattr(m, "path", "")) == Path(source_path):
+                is_source = True
+        except Exception:
+            pass
+        rejected = bool(getattr(m, "rejected", False))
+        pending = bool(getattr(m, "vlm_tie_pending", False))
+        was_blocked = btn.blockSignals(True)
+        try:
+            # Toolkit badge: pending … only (mirrors rebuild_strip).
+            try:
+                if pending:
+                    btn.setBadge("…")
+                    try:
+                        from tabs.image_gallery.ui.quick_look.helpers import _token_color, _token_rgba_qcolor
+
+                        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark
+
+                        dark = _ql_is_dark()
+                        bg = _token_color("surface.button", "#8a8a8a" if not dark else "#5a5a5a")
+                        from PySide6.QtGui import QColor as _QC
+
+                        try:
+                            from sli_ui_toolkit.managers import ThemeManager
+
+                            from ui.theming import try_resolve_theme_color
+
+                            _txt = try_resolve_theme_color(ThemeManager.get_instance(), "button.primary.text")
+                            txt_col = _txt if isinstance(_txt, _QC) else _QC(_txt) if isinstance(_txt, str) else None
+                            if _txt is None or txt_col is None:
+                                txt_col = _QC("#000000" if not dark else "#ffffff")
+                        except Exception:
+                            txt_col = _QC("#000000" if not dark else "#ffffff")
+                        if bg is None:
+                            bg = _QC(90, 90, 90)
+                        btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
+                    except Exception:
+                        pass
+                else:
+                    btn.setBadge(None)
+            except Exception:
+                pass
+            # Overlay pill badge (mirrors rebuild_strip priority).
+            try:
+                from PySide6.QtGui import QColor as _QC
+
+                from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
+                from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
+
+                _strip_is_dark = _strip_dark()
+                _badge_text = None
+                _badge_style = None
+                if pending:
+                    pass  # toolkit … badge above; no overlay pill
+                elif rejected:
+                    pass  # no badge — dim effect below carries the signal
+                elif is_source:
+                    _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
+                    _badge_text = "SOURCE"
+                    _badge_style = (True, _gold, _gold, _QC("#000000"))
+                else:
+                    _rank = getattr(m, "rank", None)
+                    _crown = getattr(m, "crown_rank", None)
+                    _rv = _crown if _crown is not None else _rank
+                    if _rv is None and bool(getattr(m, "is_best", False)):
+                        _rv = 1
+                    if _rv is not None:
+                        try:
+                            _badge_text = f"#{int(_rv)}"
+                        except Exception:
+                            _badge_text = str(_rv)
+                        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+                        _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
+                if _badge_text is not None:
+                    btn._gallery_badge = _badge_text
+                    btn._gallery_badge_style = _badge_style
+                else:
+                    try:
+                        btn._gallery_badge = None
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                btn.setChecked(bool(is_viewing))
+            except Exception:
+                pass
+            # Border: verified clear path is set_border_color(None) (sets the
+            # override to None) + borderWidth back to the fresh unset state.
+            try:
+                if is_source:
+                    from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark2
+                    from tabs.image_gallery.ui.quick_look.helpers import _token_color
+
+                    dark2 = _ql_is_dark2()
+                    gold = _token_color("gallery.status.warn", "#b77900" if not dark2 else "#d9a441")
+                    if gold is not None:
+                        btn.set_border_color(gold)
+                        try:
+                            btn.setProperty("borderWidth", 2)
+                        except Exception:
+                            pass
+                elif is_viewing:
+                    from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark3
+                    from tabs.image_gallery.ui.quick_look.helpers import _token_color
+
+                    dark3 = _ql_is_dark3()
+                    accent_c = _token_color("accent", "#0078D4" if not dark3 else "#0096FF")
+                    if accent_c is not None:
+                        btn.set_border_color(accent_c)
+                        try:
+                            btn.setProperty("borderWidth", 2)
+                        except Exception:
+                            pass
+                else:
+                    btn.set_border_color(None)
+                    try:
+                        btn.setProperty("borderWidth", None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                current_effect = btn.graphicsEffect()
+                if rejected:
+                    if not isinstance(current_effect, QGraphicsOpacityEffect):
+                        eff = QGraphicsOpacityEffect(btn)
+                        eff.setOpacity(0.4)
+                        btn.setGraphicsEffect(eff)
+                    else:
+                        current_effect.setOpacity(0.4)
+                elif isinstance(current_effect, QGraphicsOpacityEffect):
+                    btn.setGraphicsEffect(None)
+            except Exception:
+                pass
+        finally:
+            try:
+                btn.blockSignals(was_blocked)
+            except Exception:
+                pass
+
+
 def rebuild_strip(overlay) -> None:
     # W6: svg pitch is 76px (thumbs x=816/892/968/1044, 66 wide) — the
     # HBox spacing is pinned here so 4 thumbs span 4*66+3*10=294px and
     # fit the 296px right column with no h-scroll. (The layout itself is
     # built in helpers.py, out of W6 scope; its spacing is overridden.)
+    # Selection-only fast path: same series/triage/theme/scale as the last
+    # full rebuild → update checked/border/badge/opacity in place, no widget
+    # churn. Any mismatch (or first build) falls through to today's rebuild.
+    try:
+        _fp_now = _strip_fingerprint(overlay)
+    except Exception:
+        _fp_now = ()
+    if _fp_now:
+        try:
+            _fp_stored = getattr(overlay, "_strip_fingerprint", None)
+            _buttons = getattr(overlay, "_strip_buttons", None) or []
+            _n_items = len(getattr(overlay, "_series_items", None) or [])
+            if _fp_stored == _fp_now and _n_items and len(_buttons) == _n_items:
+                _refresh_strip_selection(overlay)
+                return
+        except Exception:
+            pass
+    # Full rebuild: drop the stored fingerprint first so a mid-rebuild
+    # failure can never leave a stale match behind (fail-open).
+    try:
+        overlay._strip_fingerprint = None
+    except Exception:
+        pass
     try:
         overlay._strip_layout.setSpacing(scaled_px(10))
     except Exception:
@@ -384,5 +645,9 @@ def rebuild_strip(overlay) -> None:
         pass
     try:
         overlay._strip_host.adjustSize()
+    except Exception:
+        pass
+    try:
+        overlay._strip_fingerprint = _fp_now or _strip_fingerprint(overlay)
     except Exception:
         pass
