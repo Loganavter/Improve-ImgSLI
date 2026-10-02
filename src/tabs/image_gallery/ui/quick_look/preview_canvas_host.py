@@ -672,7 +672,7 @@ def _schedule_prefetch(overlay, item) -> None:
 
 
 def _fire_scheduled_prefetch(overlay, item, token) -> None:
-    """Settle-time prefetch fire: token-gated ``_prefetch_neighbors``."""
+    """Settle-time prefetch fire: token-gated ``_prefetch_neighbors`` + metrics warm."""
     try:
         try:
             live = int(getattr(overlay, "_ql_prefetch_token", 0) or 0)
@@ -681,6 +681,70 @@ def _fire_scheduled_prefetch(overlay, item, token) -> None:
         if int(live) != int(token):
             return  # superseded by a newer show/walk — its schedule covers it.
         _prefetch_neighbors(overlay, item)
+        _warm_metrics_neighbors(overlay, token)
+    except Exception:
+        pass
+
+
+def _warm_metrics_neighbors(overlay, token) -> None:
+    """Settle-time metrics warm: pre-build prev/next row sets (fail-open).
+
+    Runs inside the existing settle singleShot (no new timers): prev/next of
+    ``overlay._series_items`` around ``overlay._current_idx``, NEXT-FIRST,
+    via ``metrics.warm_metrics_for`` (hidden-parent pre-build, cache store).
+    ``_ql_prefetch_token`` is re-checked between the two warms — any
+    walk/show/hide bump retires the pending warms. Total warm budget
+    ~40ms for both (``perf_counter``; stop when exceeded). Never raises,
+    never touches prefetch/dwell/tiled paths.
+    """
+    try:
+        try:
+            series = list(getattr(overlay, "_series_items", None) or [])
+        except Exception:
+            return
+        if len(series) < 2:
+            return
+        try:
+            idx = int(getattr(overlay, "_current_idx", 0) or 0)
+        except Exception:
+            return
+        targets = []
+        for cand in (idx + 1, idx - 1):  # NEXT-FIRST.
+            if 0 <= cand < len(series):
+                try:
+                    targets.append(series[cand])
+                except Exception:
+                    pass
+        if not targets:
+            return
+        try:
+            from tabs.image_gallery.ui.quick_look.metrics import warm_metrics_for as _warm
+        except Exception:
+            return
+        try:
+            import time as _time
+
+            _start = _time.perf_counter()
+        except Exception:
+            _start = None
+            _time = None
+        for target in targets:
+            try:
+                live = int(getattr(overlay, "_ql_prefetch_token", 0) or 0)
+            except Exception:
+                return
+            if int(live) != int(token):
+                return  # bumped mid-settle — pending warms retired.
+            if _start is not None:
+                try:
+                    if (_time.perf_counter() - _start) > 0.040:
+                        return
+                except Exception:
+                    pass
+            try:
+                _warm(overlay, target)
+            except Exception:
+                pass
     except Exception:
         pass
 

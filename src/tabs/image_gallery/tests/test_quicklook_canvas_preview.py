@@ -1306,3 +1306,126 @@ def test_zoom_past_one_starts_tiled_decode_immediately(qtbot, tmp_path, monkeypa
     finally:
         _host._ensure_preview_canvas = _orig
         ov.hide()
+
+
+def _show_series(overlay, item, series, mode):
+    """Full show_for for a gallery series (mirrors the strip-test harness)."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QApplication as _QA
+
+    owner = SimpleNamespace(
+        state=SimpleNamespace(
+            mode=mode,
+            source_path=None,
+            series=[list(series)],
+            items=list(series),
+        )
+    )
+    overlay.show_for(item, owner)
+    try:
+        parent = getattr(overlay, "_parity_test_parent", None) or overlay.parentWidget()
+        if parent is not None:
+            parent.resize(1280, 800)
+            parent.show()
+    except Exception:
+        pass
+    _QA.processEvents()
+
+
+def _item_dims(path) -> GalleryItem:
+    """Gallery item with grid-grade dims pre-seeded (800×600 test PNGs).
+
+    The gallery grid delivers dimensions before quick look opens, so
+    ``populate_preview``'s ``setdefault`` dims write is a no-op and the
+    metrics fingerprint is stable across warm → walk. Without this the
+    first real-file walk always misses (``{}`` → ``{width,height}`` is a
+    genuine input change under the W2 contract).
+    """
+    return GalleryItem(path=path, mtime_ns=1, metrics={"width": 800, "height": 600})
+
+
+def test_settle_fire_warms_neighbor_metrics_next_first(qtbot, tmp_path, monkeypatch):
+    """W3: settle fire pre-builds prev/next metric rows (next-first).
+
+    A fake settle fire warms both neighbors; the first walk visit to the
+    next neighbor is a row-container cache hit (zero recreation).
+    """
+    from PySide6.QtWidgets import QApplication as _QA
+
+    from tabs.image_gallery.models import Mode
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    paths = [_real_png(tmp_path, f"w{i}.png") for i in range(3)]
+    items = [_item_dims(p) for p in paths]
+    ov = _make_overlay(qtbot)
+    try:
+        _show_series(ov, items[1], items, mode=Mode.FIDELITY)
+        _QA.processEvents()
+        assert ov._current_idx == 1
+        assert list(ov._metric_rows)
+        # Image-prefetch workers are not the subject here — metrics warm is.
+        monkeypatch.setattr(_host, "_prefetch_neighbors", lambda *_a, **_k: None)
+        import tabs.image_gallery.ui.quick_look.metrics as _metrics
+
+        warm_calls: list = []
+        _real_warm = _metrics.warm_metrics_for
+
+        def _spy(overlay, item):
+            warm_calls.append(Path(getattr(item, "path", "")))
+            return _real_warm(overlay, item)
+
+        monkeypatch.setattr(_metrics, "warm_metrics_for", _spy)
+        token = int(getattr(ov, "_ql_prefetch_token", 0) or 0)
+        _host._fire_scheduled_prefetch(ov, ov._current_item, token)
+        _QA.processEvents()
+        assert warm_calls == [paths[2], paths[0]], "settle warm is next-first"
+        warmed = {k: [id(w) for w in v] for k, v in (getattr(ov, "_metrics_row_cache", None) or {}).items()}
+        assert len(warmed) >= 2
+        ov._walk(1)
+        _QA.processEvents()
+        _QA.processEvents()
+        assert ov._current_idx == 2
+        assert [id(w) for w in ov._metric_rows] in warmed.values()
+    finally:
+        ov.hide()
+
+
+def test_stale_settle_schedule_skips_metrics_warm(qtbot, tmp_path, monkeypatch):
+    """W3: a token bump between schedule and fire retires pending warms."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication as _QA
+
+    from tabs.image_gallery.models import Mode
+    from tabs.image_gallery.ui.quick_look import preview_canvas_host as _host
+
+    paths = [_real_png(tmp_path, f"t{i}.png") for i in range(3)]
+    items = [_item_dims(p) for p in paths]
+    ov = _make_overlay(qtbot)
+    try:
+        _show_series(ov, items[1], items, mode=Mode.FIDELITY)
+        _QA.processEvents()
+        monkeypatch.setattr(_host, "_prefetch_neighbors", lambda *_a, **_k: None)
+        import tabs.image_gallery.ui.quick_look.metrics as _metrics
+
+        calls: list = []
+        _real_warm = _metrics.warm_metrics_for
+
+        def _spy(overlay, item):
+            calls.append(Path(getattr(item, "path", "")))
+            return _real_warm(overlay, item)
+
+        monkeypatch.setattr(_metrics, "warm_metrics_for", _spy)
+        fired: list = []
+        monkeypatch.setattr(QTimer, "singleShot", lambda _ms, _cb: fired.append(_cb))
+        _host._schedule_prefetch(ov, ov._current_item)
+        assert len(fired) == 1
+        # Walk/show/hide bumps the token before the fire lands.
+        ov._ql_prefetch_token = int(getattr(ov, "_ql_prefetch_token", 0) or 0) + 1
+        cache_before = dict(getattr(ov, "_metrics_row_cache", None) or {})
+        fired[0]()
+        _QA.processEvents()
+        assert calls == [], "stale settle fire must build nothing"
+        assert dict(getattr(ov, "_metrics_row_cache", None) or {}) == cache_before
+    finally:
+        ov.hide()
