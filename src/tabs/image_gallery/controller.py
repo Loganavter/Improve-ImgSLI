@@ -856,6 +856,15 @@ class GalleryController:
             else:
                 item.thumbnail = pixmap
                 item.thumbnail_status = ThumbnailStatus.LOADED
+                # The sharpness-crop inset has no loader of its own: wake
+                # it the moment the thumbnail lands (zero-decode branch)
+                # instead of waiting for the analysis round-trip.
+                try:
+                    from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+                    _qlh.refresh_crop_for(self.widget, item)
+                except Exception:
+                    pass
         # Card repaint is coalesced per tick (see _queue_card_refresh) — a
         # per-item refresh_card here re-swept selection over the whole grid.
         self._queue_card_refresh(item)

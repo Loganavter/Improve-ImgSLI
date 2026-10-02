@@ -3,22 +3,22 @@
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
 cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
 
-1. Selection section (ex-HUD flyout: Analyze / Find similar /
-   Compare →) — shown only when a non-empty selection exists. It owns
-   Compare while visible, so the per-card Compare is hidden to avoid
-   two same-named entries (selection Compare already carries the set;
-   Ctrl+click + Compare → covers card+selection). No "clear selection"
-   entry by design — deselect is Esc, menus offer actions ON the set.
+1. Selection section (ex-HUD flyout: Analyze / Find similar) — shown only
+   when a non-empty selection exists. No "clear selection" entry by design
+   — deselect is Esc, menus offer actions ON the set.
 2. Per-card actions mirroring the hover capsule: Make best / Reject /
-   Compare (+ Set as source in fidelity mode). Compare appears here
-   only with no selection (single-card flow). Make best / Reject /
-   Remove from view apply to the whole selection when the clicked card
-   is selected (file-manager rule), else to the clicked card alone.
+   Remove from view (+ Set as source in fidelity mode).
+   Make best / Reject / Remove from view apply to the whole selection when
+   the clicked card is selected (file-manager rule), else to the clicked
+   card alone.
    The Reject entry tracks state: all targets rejected → "↩ Unreject",
    otherwise "✕ Reject".
    "Remove from view" drops the card from the grid (file on disk
    stays); selection actions never touch the grid — hence the
    separator between the sections.
+
+Compare actions were removed from this menu (no Compare → / ⇄ Compare):
+carry flows live in the stats strip / keyboard paths, not here.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from pathlib import Path
 
 from tabs.image_gallery.ui.card.context_actions import (
     _action_targets,
-    _ctx_compare,
     _ctx_make_best,
     _ctx_remove,
     _ctx_set_source,
@@ -205,10 +204,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     "gallery.selection.find_similar",
                     _t(translate, "image_gallery.selection.find_similar", "Find similar"),
                 ),
-                ContextMenuAction(
-                    "gallery.selection.compare",
-                    _t(translate, "image_gallery.selection.compare", "Compare →"),
-                ),
             ]
             entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
             entries.append(ContextMenuSeparator())
@@ -231,15 +226,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 _reject_label,
             ),
         ]
-        if not has_selection:
-            # Single-card flow only: with a selection the section's
-            # "Compare →" owns compare (no same-named duplicate).
-            per_card.append(
-                ContextMenuAction(
-                    "gallery.compare",
-                    "⇄ Compare",
-                )
-            )
         per_card.append(
             ContextMenuAction(
                 "gallery.remove",
@@ -262,14 +248,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     _do_analyze()
                 elif action_id == "gallery.selection.find_similar":
                     _do_find_similar()
-                elif action_id == "gallery.selection.compare":
-                    _do_carry()
                 elif action_id == "gallery.make_best":
                     _ctx_make_best(owner, path)
                 elif action_id == "gallery.reject":
                     _ctx_toggle_reject(owner, path)
-                elif action_id == "gallery.compare":
-                    _ctx_compare(owner, path)
                 elif action_id == "gallery.remove":
                     _ctx_remove(owner, path)
                 elif action_id == "gallery.set_as_source":

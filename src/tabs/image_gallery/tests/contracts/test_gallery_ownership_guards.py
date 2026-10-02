@@ -99,7 +99,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
         "_resolve_selection_controller _controller/_owner READ probe (bridge until universal _owner_for_triage)"
     ),
     # --- owner._controller legacy reads (R1: last-resort bind, G2; protocol-first since G5) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 40): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 43): (
         "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
     ("src/tabs/image_gallery/ui/drag_drop.py", 149): (
@@ -109,7 +109,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
         "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
     # --- owner._owner legacy reads (R2) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 46): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 49): (
         "owner_for_triage legacy owner._owner READ (last-resort bind, protocol-first since G5)"
     ),
     ("src/tabs/image_gallery/use_cases/triage_ui.py", 53): (
@@ -126,25 +126,25 @@ ALLOWLIST: dict[tuple[str, int], str] = {
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
     # --- storeless setattr fallback (R4) ---
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 92): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 95): (
         "_merge_selection_setattr def: storeless fallback (setattr, never bare writes)"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 102): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 105): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 107): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 110): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 113): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 116): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 267): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 270): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 269): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 272): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 313): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 325): (
         "set_source storeless setattr fallback (never a bare state write)"
     ),
 }

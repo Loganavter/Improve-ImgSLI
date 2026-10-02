@@ -1,9 +1,9 @@
 """Gallery card context menu: selection section (ex-HUD) + per-card actions.
 
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
-cursor. Selection actions (Analyze / Find similar / Compare →)
+cursor. Selection actions (Analyze / Find similar)
 appear as a titled section only when a non-empty selection exists.
-Deselect is Esc, never a menu entry.
+Deselect is Esc, never a menu entry. Compare actions were removed.
 """
 
 from __future__ import annotations
@@ -93,11 +93,10 @@ def test_menu_with_selection_has_selection_section(monkeypatch) -> None:
     ids = _action_ids(captured["entries"])
     assert "gallery.selection.analyze" in ids
     assert "gallery.selection.find_similar" in ids
-    assert "gallery.selection.compare" in ids
+    assert "gallery.selection.compare" not in ids
     # No deselect entry — Esc owns that; menus act ON the set.
     assert "gallery.selection.clear" not in ids
-    # Per-card actions still present — except Compare, owned by the
-    # selection section while it is visible (no same-named duplicate).
+    # Per-card actions still present — Compare removed from this menu.
     assert "gallery.make_best" in ids
     assert "gallery.reject" in ids
     assert "gallery.compare" not in ids
@@ -113,7 +112,7 @@ def test_menu_without_selection_has_no_selection_section(monkeypatch) -> None:
     ids = _action_ids(captured["entries"])
     assert not [i for i in ids if i.startswith("gallery.selection.")]
     assert "gallery.make_best" in ids
-    assert "gallery.compare" in ids
+    assert "gallery.compare" not in ids
 
 
 def test_selection_callbacks_fire(monkeypatch) -> None:
@@ -132,10 +131,9 @@ def test_selection_callbacks_fire(monkeypatch) -> None:
         on_find_similar=lambda: fired.append("find"),
     )
     trig = captured["on_triggered"]
-    trig("gallery.selection.compare", None)
     trig("gallery.selection.analyze", None)
     trig("gallery.selection.find_similar", None)
-    assert fired == ["carry", "analyze", "find"]
+    assert fired == ["analyze", "find"]
 def _owner_with_items(selected, items, order=None):
     st = SimpleNamespace(selected_paths=set(selected), items=list(items))
     if order is not None:

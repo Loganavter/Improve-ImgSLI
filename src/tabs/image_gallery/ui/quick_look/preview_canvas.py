@@ -1776,6 +1776,21 @@ class QuickLookCanvasWidget(QRhiWidget):
                 float(pos.y()) / max(1, int(self.height())),
             )
             if got is not None:
+                try:
+                    from tabs.image_gallery.ui.quick_look.preview_zoom import clamp_pan
+
+                    _dims = getattr(self, "_ql_probe_dims", None)
+                    if _dims is not None:
+                        got = (
+                            got[0],
+                            *clamp_pan(
+                                got[1], got[2], _dims[0], _dims[1],
+                                max(1, int(self.width())), max(1, int(self.height())),
+                                got[0],
+                            ),
+                        )
+                except Exception:
+                    pass
                 self._zoom, self._pan_x, self._pan_y = got
                 self._frame_key = None
                 self.update()
@@ -1814,6 +1829,18 @@ class QuickLookCanvasWidget(QRhiWidget):
                     getattr(self, "_zoom", 1.0),
                 )
                 if got is not None:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.preview_zoom import clamp_pan
+
+                        _dims = getattr(self, "_ql_probe_dims", None)
+                        if _dims is not None:
+                            got = clamp_pan(
+                                got[0], got[1], _dims[0], _dims[1],
+                                max(1, int(self.width())), max(1, int(self.height())),
+                                getattr(self, "_zoom", 1.0),
+                            )
+                    except Exception:
+                        pass
                     self._pan_x, self._pan_y = got
                     self._frame_key = None
                     self.update()

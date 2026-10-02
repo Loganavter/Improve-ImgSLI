@@ -4,6 +4,13 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="one card-resize concer
 Session-only clamp (floor 1040x680), 8px inner border strip + outer ring
 drags, card re-layout entry (``_relayout_on_card_resize``).
 Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
+
+NOTE: user drags are DISABLED (``QL_RESIZABLE = False``) — the card is
+fixed-size, laid out once by the parent. The drag-start paths below are
+kept (dead, easy revert) but short-circuited; nav-arrow walks, stranded-
+drag guards (D2/D4), release clears (D3) and cursor clearing (D1/D5)
+keep working. Pure geometry (``resize_zone_at`` / ``ring_zone_at`` /
+``clamp_card_size``) is untouched.
 """
 
 from __future__ import annotations
@@ -12,6 +19,11 @@ from PySide6.QtWidgets import QWidget
 
 from tabs.image_gallery.ui.quick_look.nav import _walk_for_nav_button, nav_button_at
 from tabs.image_gallery.ui.quick_look.preview_canvas_host import _fit_preview_slot
+
+# Kill-switch: False = fixed card, no user resize drags (nav arrows keep
+# walking). Flip to True to restore border/ring resizing with no other
+# changes (tests cover both states via the drag helpers).
+QL_RESIZABLE = False
 
 
 def reposition_grip(overlay) -> None:
@@ -545,7 +557,13 @@ def apply_resize_cursor(overlay, target, slot: str, cursor) -> None:
     (per slot), so plain hovers don't spam — you see exactly when the visible
     cursor flips and on which widget. No-op overhead when the debug flag is
     unset (one env check).
+
+    When ``QL_RESIZABLE`` is False the card is fixed-size: any resize cursor
+    is forced to None (clear), so hovers always restore the arrow while
+    stale-cursor clearing (D1/D5) keeps working.
     """
+    if not QL_RESIZABLE:
+        cursor = None
     _dbg_on, _dbg = _resize_dbg()
     try:
         if not _dbg_on:
@@ -642,6 +660,9 @@ def handle_border_press(overlay, event) -> bool:
             except Exception:
                 pass
             return True
+        if not QL_RESIZABLE:
+            # Fixed card: no border drags (nav handled above).
+            return False
         zone = resize_zone_at(content, local)
         if _dbg_on:
             _dbg(
@@ -1004,6 +1025,10 @@ def handle_ring_press(overlay, event) -> bool:
             except Exception:
                 pass
             return True
+        if not QL_RESIZABLE:
+            # Fixed card: no ring drags (nav handled above) — plain veil
+            # clicks fall through to the overlay dismiss.
+            return False
         zone = ring_zone_at(overlay, local)
         if _dbg_on:
             _dbg(

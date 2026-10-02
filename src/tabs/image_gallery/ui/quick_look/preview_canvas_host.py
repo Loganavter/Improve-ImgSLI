@@ -278,8 +278,18 @@ def release_preview_canvas_for_walk(overlay) -> None:
     item reuses the memoized store with zero source decodes and zero
     ``_store_from_pixmap`` materializations. Overlay hide/close take the
     full ``release_preview_canvas`` instead (drops everything). Never raises.
+
+    The live ``_preview_full`` pixmap IS dropped here (memos stay): it
+    carries the previous item's pixels with no provenance, and a failed
+    coarse build for the next item would otherwise leave it behind for
+    ``populate_crop`` to paint as the new item's crop (neighbor content).
+    ``_populate_preview_canvas`` re-stashes synchronously right after.
     """
     _drop_cover(overlay, "release-walk")
+    try:
+        overlay._preview_full = None
+    except Exception:
+        pass
     try:
         overlay._preview_canvas_pending = None
     except Exception:
@@ -559,6 +569,14 @@ def _populate_tiled_source(overlay, canvas, path, key) -> None:
                     setter_now = getattr(canvas_now, "set_tiled_source", None)
                     if callable(setter_now):
                         setter_now(_k, store)
+            except Exception:
+                pass
+            # Full-res data just landed: wake the sharpness-crop inset
+            # (path-guarded inside; no-op unless it is still unfilled).
+            try:
+                from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+                _qlh.refresh_crop_for(overlay, getattr(overlay, "_current_item", None))
             except Exception:
                 pass
 
@@ -1171,6 +1189,15 @@ def _wire_canvas_fallback(overlay, canvas, item) -> None:
         if _qlc_enabled():
             _qlc_log("firstFramePresented -> drop cover")
         _drop_cover(overlay, "first-frame")
+        # The canvas just presented: pyramid/thumbnail caches are warm —
+        # fill the sharpness-crop inset now instead of waiting for the
+        # analysis round-trip (see quick_look_hooks.refresh_crop_for).
+        try:
+            from tabs.image_gallery.ui import quick_look_hooks as _qlh
+
+            _qlh.refresh_crop_for(overlay, item)
+        except Exception:
+            pass
 
     try:
         canvas.firstFramePresented.connect(_on_first_frame)
