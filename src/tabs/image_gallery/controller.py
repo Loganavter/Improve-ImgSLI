@@ -1438,17 +1438,32 @@ class GalleryController:
                 except Exception:
                     overrides = {}
                 try:
+                    import time as _time
+
+                    _t0 = _time.perf_counter()
                     series, source, mode = self._run_triage_sync(
                         list(items), overrides
                     )
+                    _t1 = _time.perf_counter()
+                    series = self._commit_triage_series(series, source, mode)
+                    _t2 = _time.perf_counter()
+                    self._apply_triage_result(series, source, mode)
+                    _t3 = _time.perf_counter()
+                    try:
+                        from tabs.image_gallery.debug import gallery_debug as _dbg2
+                        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_on2
+
+                        if _dbg_on2():
+                            _dbg2(
+                                "retriage_quiet sync phases: pipeline=%.0fms commit=%.0fms apply=%.0fms",
+                                (_t1 - _t0) * 1000.0,
+                                (_t2 - _t1) * 1000.0,
+                                (_t3 - _t2) * 1000.0,
+                            )
+                    except Exception:
+                        pass
                 except Exception:
                     logger.debug("retriage_quiet sync pipeline failed", exc_info=True)
-                    raise
-                try:
-                    series = self._commit_triage_series(series, source, mode)
-                    self._apply_triage_result(series, source, mode)
-                except Exception:
-                    logger.debug("retriage_quiet sync apply failed", exc_info=True)
                     raise
                 return True
         except Exception:
