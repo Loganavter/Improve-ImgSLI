@@ -53,14 +53,27 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
     def set_qdrag_drop_handler(self, handler) -> None:
         """Duck-typed QDrag drop hook for gallery-card tab delivery (Wave C).
 
-        *handler* is ``callable(event) -> None`` and settles the event itself
-        (accept/ignore); the router lives in ``ui.main_window.tab_strip_drop``
-        so this widget never imports store/registry code. Fail-open: None (or
-        any non-callable) leaves the strip accepting nothing new — drops are
-        ignored, never misdelivered.
+        *handler* is ``callable(event, receiving_widget) -> None`` and
+        settles the event itself (accept/ignore); the router lives in
+        ``ui.main_window.tab_strip_drop`` so this widget never imports
+        store/registry code. Fail-open: None (or any non-callable) leaves
+        the strip accepting nothing new — drops are ignored, never
+        misdelivered.
         """
         try:
             self._qdrag_drop_handler = handler if callable(handler) else None
+        except Exception:
+            pass
+
+    def set_tab_dwell_switch_handler(self, handler) -> None:
+        """Browser-like dwell switch: holding a gallery drag over a tab
+        for ``TAB_DWELL_SWITCH_MS`` activates that tab, so the drop can
+        land on the tab's own content surface (grid/canvas) instead of the
+        strip router. ``callable(index)``; None disables. The strip never
+        resolves sessions itself — the installed hook does.
+        """
+        try:
+            self._tab_dwell_switch_handler = handler if callable(handler) else None
         except Exception:
             pass
 
@@ -102,16 +115,14 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             pass
         return False
 
-    def _update_drag_hover(self, event, receiving_widget=None) -> None:
-        """Highlight the tab under a gallery drag from event coordinates."""
-        from PySide6.QtCore import QPoint
-
+    def _update_drag_hover(self, event, receiving_widget=None) -> int:
+        """Highlight the tab under a gallery drag; returns hovered index."""
         try:
             bar = self.tab_bar
         except Exception:
-            return
+            return -1
         if not hasattr(bar, "set_hover_from_global"):
-            return
+            return -1
         try:
             pos = event.position()
             try:
@@ -119,12 +130,73 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             except Exception:
                 pass
             recv = receiving_widget if receiving_widget is not None else self
+            bar_pos = pos
             if recv is not bar:
                 try:
-                    pos = bar.mapFrom(recv, pos)
+                    bar_pos = bar.mapFrom(recv, pos)
                 except Exception:
+                    return -1
+            bar.set_hover_from_global(bar.mapToGlobal(bar_pos))
+        except Exception:
+            return -1
+        try:
+            idx = bar.tabAt(bar_pos)
+            if not bar.rect().contains(bar_pos):
+                idx = -1
+        except Exception:
+            idx = -1
+        try:
+            self._arm_dwell_switch(idx)
+        except Exception:
+            pass
+        return idx
+
+    #: Hold-to-open delay for a gallery drag hovering a tab (browser parity).
+    TAB_DWELL_SWITCH_MS = 700
+
+    def _arm_dwell_switch(self, index: int) -> None:
+        """(Re)start the dwell timer while hovering a non-current tab."""
+        try:
+            try:
+                current = self.currentIndex()
+            except Exception:
+                current = -2
+            if index < 0 or index == current:
+                self._cancel_dwell_switch()
+                return
+            if getattr(self, "_dwell_index", -1) == index:
+                return  # timer already running for this tab
+            self._cancel_dwell_switch()
+            self._dwell_index = index
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(
+                self.TAB_DWELL_SWITCH_MS,
+                lambda idx=index: self._fire_dwell_switch(idx),
+            )
+        except Exception:
+            pass
+
+    def _fire_dwell_switch(self, index: int) -> None:
+        """Open the tab if the drag still hovers it after the dwell."""
+        try:
+            if getattr(self, "_dwell_index", -1) != index:
+                return
+            self._dwell_index = -1
+            try:
+                if index == self.currentIndex():
                     return
-            bar.set_hover_from_global(bar.mapToGlobal(pos))
+            except Exception:
+                pass
+            handler = getattr(self, "_tab_dwell_switch_handler", None)
+            if callable(handler):
+                handler(index)
+        except Exception:
+            pass
+
+    def _cancel_dwell_switch(self) -> None:
+        try:
+            self._dwell_index = -1
         except Exception:
             pass
 
@@ -132,6 +204,10 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
         """Drop the drag hover highlight (far-offscreen point ⇒ index -1)."""
         from PySide6.QtCore import QPoint
 
+        try:
+            self._cancel_dwell_switch()
+        except Exception:
+            pass
         try:
             bar = self.tab_bar
             if hasattr(bar, "set_hover_from_global"):
