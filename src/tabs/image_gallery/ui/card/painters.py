@@ -127,7 +127,7 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
     """Draw pill badge at strip-thumb left 4 top 4 (66x44 thumb).
 
     Same rounded-pill recipe as ``_left_badge_painter``, sized for the
-    quick-look series strip: ~9px font, 4px offsets. Style shape mirrors
+    quick-look series strip: 11px font, 4px offsets. Style shape mirrors
     ``ui/card/visuals.py``: ``(filled, bg, border, text_color)``.
     """
     try:
@@ -135,13 +135,13 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
         from PySide6.QtGui import QColor, QPen
 
         filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=9, bold=False)
+        f = ui_font(pixel_size=11, bold=False)
         painter.save()
         try:
             painter.setFont(f)
             fm = painter.fontMetrics()
-            w = max(28, fm.horizontalAdvance(text) + 12)
-            h = 18
+            w = max(30, fm.horizontalAdvance(text) + 12)
+            h = 20
             x = rect.x() + 4
             y = rect.y() + 4
             r = QRectF(x, y, w, h)
@@ -156,7 +156,7 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
             else:
                 painter.setPen(QColor(0, 0, 0, 0))
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            painter.drawRoundedRect(r, 9, 9)
+            painter.drawRoundedRect(r, 10, 10)
             painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
             painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
         finally:
