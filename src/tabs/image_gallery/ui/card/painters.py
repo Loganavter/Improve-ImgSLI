@@ -1,4 +1,7 @@
-"""Painters for gallery card — badge + dots overlay (painter pipeline only)."""
+"""Painters for gallery card — badge + dots overlay (painter pipeline only).
+
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one painters concern: badge/dots overlay recipes share one stroke-alignment contract (half-pixel inset mirrors across painters so borders stay pixel-crisp)"
+"""
 
 from __future__ import annotations
 
@@ -127,8 +130,13 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
     """Draw pill badge at strip-thumb left 4 top 4 (66x44 thumb).
 
     Same rounded-pill recipe as ``_left_badge_painter``, sized for the
-    quick-look series strip: 11px font, 4px offsets. Style shape mirrors
-    ``ui/card/visuals.py``: ``(filled, bg, border, text_color)``.
+    quick-look series strip: 11px font, 4px offsets. The 1px border is
+    inset by half a pixel (``adjusted(0.5, …)``) so the stroke lands on
+    pixel centers instead of straddling fractional coords (w carries the
+    float text advance) — a straddling 1px stroke aliases into a gray
+    fringe, same class as precedent qrhi-sdf-feather-1px-one-rasterizer.
+    Style shape mirrors ``ui/card/visuals.py``: ``(filled, bg, border,
+    text_color)``.
     """
     try:
         from PySide6.QtCore import QRectF
@@ -144,7 +152,7 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
             h = 18
             x = rect.x() + 4
             y = rect.y() + 4
-            r = QRectF(x, y, w, h)
+            r = QRectF(x, y, w, h).adjusted(0.5, 0.5, -0.5, -0.5)
             # background via theme tokens
             if filled:
                 painter.setBrush(bg if isinstance(bg, QColor) else _resolve_badge_accent())
