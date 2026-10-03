@@ -1411,6 +1411,14 @@ class GalleryController:
         if not items:
             return False
         try:
+            from tabs.image_gallery.debug import gallery_debug as _dbg
+            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_on
+
+            if _dbg_on():
+                _dbg("retriage_quiet: regrouping %d restored items", len(items))
+        except Exception:
+            pass
+        try:
             self._start_triage(items, cover_grid=False)
             return True
         except Exception:
