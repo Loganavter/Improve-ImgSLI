@@ -52,6 +52,65 @@ def _action_targets(owner, path: Path) -> list[Path]:
         return list(sel_set)
 
 
+def _resolve_move_controller(owner):
+    """Controller owning ``move_paths_to_series`` (duck-typed, never raises).
+
+    Menu owners are usually the controller already (widget passes
+    ``_owner_for_triage()``); widget-shaped owners resolve through it.
+    None when no controller is reachable (storeless doubles) — callers
+    degrade gracefully.
+    """
+    try:
+        if callable(getattr(owner, "move_paths_to_series", None)):
+            return owner
+    except Exception:
+        pass
+    for attr in ("_owner_for_triage",):
+        try:
+            resolver = getattr(owner, attr, None)
+            cand = resolver() if callable(resolver) else None
+            if callable(getattr(cand, "move_paths_to_series", None)):
+                return cand
+        except Exception:
+            continue
+    try:
+        widget = getattr(owner, "_gallery_widget", None)
+        resolver = getattr(widget, "_owner_for_triage", None)
+        cand = resolver() if callable(resolver) else None
+        if callable(getattr(cand, "move_paths_to_series", None)):
+            return cand
+    except Exception:
+        pass
+    return None
+
+
+def _ctx_ungroup(owner, path: Path) -> bool:
+    """Move menu targets out of their series into the UNGROUPED tail.
+
+    File-manager rule via ``_action_targets`` (whole selection when the
+    clicked card is selected, else the clicked card alone). The explicit
+    path to UNGROUPED when no     tail section exists to drop onto — drop
+    fallback covers the tail only when it is visible. Returns the moved
+    count (0 = already ungrouped / nothing dispatched).
+    """
+    try:
+        targets = _action_targets(owner, path)
+    except Exception:
+        return False
+    if not targets:
+        return False
+    try:
+        ctrl = _resolve_move_controller(owner)
+    except Exception:
+        ctrl = None
+    if ctrl is None:
+        return False
+    try:
+        return int(ctrl.move_paths_to_series(list(targets), None))
+    except Exception:
+        return 0
+
+
 def _ctx_make_best(owner, path: Path) -> None:
     try:
         from tabs.image_gallery.use_cases import triage as _triage
