@@ -129,6 +129,7 @@ class ImageGalleryTab(TabContract):
         session_id = self._active_session_id or self._resolve_active_session_id(context)
         if session_id is not None:
             self._active_session_id = session_id
+            self._bind_gallery_copies(session_id)
             _persistence.restore_from(self, context, session_id)
 
         self._install_modal_lifetime_watch()
@@ -143,7 +144,12 @@ class ImageGalleryTab(TabContract):
     def on_activated(self, context: TabContext) -> None:
         session_id = self._resolve_active_session_id(context)
         if session_id is not None:
-            self.on_active_session_changed(session_id, context)
+            if session_id != self._active_session_id:
+                self.on_active_session_changed(session_id, context)
+            else:
+                # Same session, but emits were skipped while inactive —
+                # refresh from the OWN slot (Wave ISO activation refresh).
+                self._refresh_active_gallery_slot(context, session_id)
         if self._widget is not None:
             self._register_nav_section()
             from PySide6.QtCore import Qt
@@ -194,6 +200,34 @@ class ImageGalleryTab(TabContract):
         # selection / filter / triage mutation dispatches synchronously, so
         # there is no controller-local truth left to flush.
         self._active_session_id = session_id
+        # Session isolation (Wave ISO): the single live copy now serves the
+        # new session — rebind BEFORE restoring so slot reads address it.
+        self._bind_gallery_copies(session_id)
+        _persistence.restore_from(self, context, session_id)
+
+    def _bind_gallery_copies(self, session_id: str) -> None:
+        """Bind both live copies (controller + widget) to their OWN session.
+
+        The ONLY writer of ``_gallery_session_id`` outside construction —
+        slot reads never re-resolve per read (Wave ISO frozen seam).
+        """
+        for owner in (self._controller, self._widget):
+            try:
+                bind = getattr(owner, "bind_gallery_session", None)
+                if callable(bind):
+                    bind(session_id)
+            except Exception:
+                pass
+
+    def _refresh_active_gallery_slot(self, context: TabContext, session_id: str) -> None:
+        """Re-render the live copy from its OWN slot on (re)activation.
+
+        Emits arriving while this copy was inactive were skipped by the
+        is-active gate, so the mirror may be stale — restore re-syncs it
+        (no-op when already current). Rebinds first so a page built while
+        inactive still addresses the right session.
+        """
+        self._bind_gallery_copies(session_id)
         _persistence.restore_from(self, context, session_id)
 
     def on_deactivated(self, context: TabContext) -> None:

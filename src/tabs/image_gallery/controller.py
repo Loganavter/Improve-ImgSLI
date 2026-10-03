@@ -107,6 +107,16 @@ class GalleryController:
         self._pending_card_items: dict[str, object] = {}
         self._card_flush_scheduled = False
         self._subscribed_gallery_store = None
+        # Session isolation (Wave ISO): this live copy addresses its OWN
+        # session id for every slot read — never the active session per
+        # read. The tab binds authoritatively via bind_gallery_session
+        # (create_page / on_active_session_changed / on_activated); the
+        # constructor capture below is a best-effort fallback only.
+        self._gallery_session_id: str | None = None
+        try:
+            self._gallery_session_id = self._capture_initial_gallery_session_id()
+        except Exception:
+            self._gallery_session_id = None
         # Own-dispatch accounting: dispatch → emit is synchronous, so each
         # successful _emit/_transact arms one light (no-op) reconcile; any
         # other 'gallery' emit (undo, widget gestures, external replace)
@@ -172,25 +182,66 @@ class GalleryController:
         except Exception:
             logger.debug("gallery slot subscription failed", exc_info=True)
 
-    def _resolve_gallery_session_id(self) -> str | None:
+    def bind_gallery_session(self, session_id: str | None) -> None:
+        """(Re)bind this live copy to its OWN session id.
+
+        Called by ``ImageGalleryTab`` when the tab session is known
+        (create_page, on_active_session_changed, activation refresh). The
+        ONLY place the binding changes — slot reads never re-resolve.
+        """
+        self._gallery_session_id = session_id
+
+    def _capture_initial_gallery_session_id(self) -> str | None:
+        """Best-effort own-id capture at construction (tab bind wins later).
+
+        Only a gallery-typed active session is adopted — capturing a
+        foreign tab's session id would invert the is-active gate.
+        """
         try:
             store = self._gallery_store()
             if store is None:
                 return None
             sess = store.get_active_workspace_session()
+            if sess is None:
+                return None
+            if getattr(sess, "session_type", None) not in (None, "image_gallery"):
+                return None
             return getattr(sess, "id", None)
         except Exception:
             return None
 
+    def _is_active_gallery_tab(self) -> bool:
+        """THE sanctioned active read: own id vs active session METADATA.
+
+        True when this copy serves the active session (or when no binding
+        is known yet — unbound/storeless copies fail open to legacy
+        behavior). Emit handlers skip when False; slot DATA is never read
+        here.
+        """
+        try:
+            store = self._gallery_store()
+            if store is None:
+                return True
+            own = self._gallery_session_id
+            if own is None:
+                return True
+            active = store.get_active_workspace_session()
+            if active is None:
+                return True
+            active_id = getattr(active, "id", None)
+            if active_id is None:
+                return True
+            return active_id == own
+        except Exception:
+            return True
+
     def _gallery_slot(self):
-        """Read path: store.get_session_state_slot('gallery', session_id)."""
+        """Read path: store.get_session_state_slot('gallery', session_id=<own>)."""
         store = self._gallery_store()
         if store is None or not hasattr(store, "get_session_state_slot"):
             return None
         try:
-            return store.get_session_state_slot(
-                GALLERY_SLOT_NAME, session_id=self._resolve_gallery_session_id()
-            )
+            return store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=self._gallery_session_id)
         except Exception:
             return None
 
@@ -242,6 +293,10 @@ class GalleryController:
 
     def _on_store_changed(self, scope: str) -> None:
         if scope != GALLERY_SLOT_NAME:
+            return
+        if not self._is_active_gallery_tab():
+            # A foreign session's emit (e.g. tab B opening on an
+            # empty/loading slot) must never reconcile THIS copy's mirror.
             return
         if self._own_gallery_emits > 0:
             # Own dispatch: the local mirror was updated before emitting, so
