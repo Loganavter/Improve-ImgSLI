@@ -60,6 +60,9 @@ class ImageCompareLayoutManager:
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
+                # Hide before orphaning (stillborn-toplevel guard); the
+                # widget is re-shown below if it stays in the group.
+                item.widget().hide()
                 item.widget().setParent(None)
 
         for name in widget_names:

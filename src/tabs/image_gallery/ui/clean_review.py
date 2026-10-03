@@ -1364,6 +1364,8 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         for w in self._row_widgets:
             try:
                 self._list_layout.removeWidget(w)
+                # Hide before orphaning (stillborn-toplevel guard).
+                w.hide()
                 w.setParent(None)
                 w.deleteLater()
             except Exception:

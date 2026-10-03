@@ -557,6 +557,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             if _miss_keep:
                 w.hide()
             else:
+                # Hide before orphaning (stillborn-toplevel guard).
+                w.hide()
                 w.setParent(None)
                 w.deleteLater()
         except Exception:
