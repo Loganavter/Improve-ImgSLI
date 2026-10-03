@@ -680,6 +680,7 @@ def install_zone_drop_forwarding(owner, controller=None) -> bool:
 # -- series-header reset menu (Wave B) --------------------------------------
 
 _SERIES_RESET_ACTION_ID = "gallery.series.reset"
+_SERIES_RECLUSTER_ACTION_ID = "gallery.series.recluster"
 
 
 def _is_series_header(widget) -> bool:
@@ -692,20 +693,28 @@ def _is_series_header(widget) -> bool:
 
 
 def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
-    """Popup the series-header context menu (reset manual series).
+    """Popup the series-header context menu (reset / re-cluster series).
 
-    Single existing-surface affordance for clearing overrides: right-click
-    on any series/UNGROUPED header → "Reset manual series" →
-    ``controller.reset_series_overrides()``. Toolkit ``ContextMenu`` surface
-    (card-menu precedent), fail-soft everywhere. Returns True when a menu
-    was shown.
+    Single existing-surface affordance for manual-series management:
+    right-click on any series/UNGROUPED header → "Reset manual series"
+    (``controller.reset_series_overrides()``) and "Re-cluster series"
+    (``controller.recluster_series()`` — fresh world, pins kept). Each
+    entry appears only when the controller offers it. Toolkit
+    ``ContextMenu`` surface (card-menu precedent), fail-soft everywhere.
+    Returns True when a menu was shown.
     """
     ctrl = _explicit_controller(owner, controller)
     try:
         reset = getattr(ctrl, "reset_series_overrides", None)
     except Exception:
         reset = None
-    if not callable(reset):
+    try:
+        recluster = getattr(ctrl, "recluster_series", None)
+    except Exception:
+        recluster = None
+    has_reset = callable(reset)
+    has_recluster = callable(recluster)
+    if not (has_reset or has_recluster):
         return False
     try:
         pos = event.globalPosition().toPoint()
@@ -730,8 +739,10 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
 
     def _on_triggered(action_id: str, _data: object) -> None:
         try:
-            if action_id == _SERIES_RESET_ACTION_ID:
+            if action_id == _SERIES_RESET_ACTION_ID and has_reset:
                 reset()
+            elif action_id == _SERIES_RECLUSTER_ACTION_ID and has_recluster:
+                recluster()
         except Exception:
             pass
 
@@ -741,7 +752,12 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
     except Exception:
         return False
     try:
-        entries = (_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"),)
+        entries_list = []
+        if has_reset:
+            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"))
+        if has_recluster:
+            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, "Re-cluster series"))
+        entries = tuple(entries_list)
     except Exception:
         return False
     try:
@@ -1026,6 +1042,107 @@ def _owner_hit_pos(owner, event, receiver=None):
     return _owner_space_pos(owner, event, receiver)
 
 
+def _section_bands(owner, headers):
+    """Section header bands ``[(top_y, header)]`` top-to-bottom (owner space).
+
+    A series owns everything from its header down to the next header —
+    full width, cards, gaps, collapsed empties. Sorted by visual top so
+    recycled/reordered header widgets cannot skew the order.
+    """
+    out: list = []
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+
+        for hdr in list(headers or []):
+            try:
+                out.append((hdr.mapTo(owner, _QPoint(0, 0)).y(), hdr))
+            except Exception:
+                continue
+    except Exception:
+        return []
+    try:
+        out.sort(key=lambda t: t[0])
+    except Exception:
+        pass
+    return out
+
+
+def _series_id_for_header(grid, headers, hdr) -> tuple[bool, str | None]:
+    """Series id for one header widget (True = resolved, even to None).
+
+    UNGROUPED tail → ``(True, None)``; ``GallerySeriesHeader_<int>`` →
+    cluster index; anything else → positional fallback (series sections
+    precede the UNGROUPED tail), ``(False, None)`` when unresolvable.
+    """
+    try:
+        name = str(hdr.objectName() or "")
+    except Exception:
+        return (False, None)
+    if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
+        return (True, None)
+    index: int | None = None
+    try:
+        prefix = "GallerySeriesHeader_"
+        if name.startswith(prefix):
+            index = int(name[len(prefix):])
+    except Exception:
+        index = None
+    if index is None:
+        try:
+            hdr_pos = list(headers or []).index(hdr)
+        except Exception:
+            return (False, None)
+        try:
+            n_series = len(list(getattr(grid, "_series", None) or []))
+        except Exception:
+            n_series = 0
+        if hdr_pos < n_series:
+            index = hdr_pos
+        else:
+            return (True, None)
+    try:
+        return (True, _series_id_for_index(grid, index))
+    except Exception:
+        return (False, None)
+
+
+def _section_band_target(owner, grid, headers, pos) -> tuple[bool, str | None, object]:
+    """Band fallback: full-width section body down to the next series.
+
+    Headers and cards miss (gaps, margins, collapsed empties, area below
+    the last row) — the band from this section's header top to the next
+    header top still belongs to it; the last band runs to the owner
+    bottom. Above the first header there is no section → not found (the
+    caller keeps its UNGROUPED fallback). Returns
+    ``(found, series_id, header)``.
+    """
+    try:
+        bands = _section_bands(owner, headers)
+    except Exception:
+        return (False, None, None)
+    if not bands or pos is None:
+        return (False, None, None)
+    try:
+        y = pos.y()
+    except Exception:
+        return (False, None, None)
+    if y < bands[0][0]:
+        return (False, None, None)
+    chosen = bands[0][1]
+    for top_y, hdr in bands:
+        if top_y <= y:
+            chosen = hdr
+        else:
+            break
+    try:
+        ok, sid = _series_id_for_header(grid, headers, chosen)
+    except Exception:
+        return (False, None, None)
+    if not ok:
+        return (False, None, None)
+    return (True, sid, chosen)
+
+
 def _series_id_for_index(grid, index: int) -> str | None:
     """Series id string for cluster *index* (first member id, else fallback)."""
     try:
@@ -1169,29 +1286,12 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
         except Exception:
             continue
         try:
-            name = str(hdr.objectName() or "")
+            ok, sid = _series_id_for_header(grid, headers, hdr)
         except Exception:
-            name = ""
-        if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
-            return (True, None)
-        index: int | None = None
-        try:
-            prefix = "GallerySeriesHeader_"
-            if name.startswith(prefix):
-                index = int(name[len(prefix):])
-        except Exception:
-            index = None
-        if index is None:
-            # Position fallback: series sections precede the UNGROUPED tail.
-            try:
-                n_series = len(list(getattr(grid, "_series", None) or []))
-            except Exception:
-                n_series = 0
-            if hdr_pos < n_series:
-                index = hdr_pos
-            else:
-                return (True, None)
-        return (True, _series_id_for_index(grid, index))
+            continue
+        if ok:
+            return (True, sid)
+        continue
     # No header hit: fall back to the card under the cursor (Wave D). Series
     # bodies are ~99% cards — drops land on cards, not on thin headers.
     try:
@@ -1200,6 +1300,14 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
         found, card_sid = False, None
     if found:
         return (True, card_sid)
+    # Band fallback (Wave E): full-width section body down to the next
+    # series — gaps, margins, collapsed empties resolve to the section.
+    try:
+        found, band_sid, _band_hdr = _section_band_target(owner, grid, headers, pos)
+    except Exception:
+        found, band_sid = False, None
+    if found:
+        return (True, band_sid)
     return (True, None)
 
 
@@ -1456,7 +1564,9 @@ def _header_at(owner, pos):
     """Header widget under *pos* (OWNER coords, see ``series_target_at``).
 
     Headers first; on a miss, the card under the cursor resolves to its
-    series' header (Wave D — drops land on cards, highlight must follow).
+    series' header (Wave D — drops land on cards, highlight must follow);
+    on a card miss, the section band resolves to its header (Wave E —
+    full-width body down to the next series).
     """
     grid = getattr(owner, "_grid_view", None)
     if grid is None or pos is None:
@@ -1482,13 +1592,17 @@ def _header_at(owner, pos):
     try:
         found, card_sid = _card_hit_series(owner, grid, pos)
     except Exception:
-        return None
-    if not found:
-        return None
+        found = False
+    if found:
+        try:
+            return _header_for_series(grid, headers, card_sid)
+        except Exception:
+            pass
     try:
-        return _header_for_series(grid, headers, card_sid)
+        found, _band_sid, band_hdr = _section_band_target(owner, grid, headers, pos)
     except Exception:
         return None
+    return band_hdr if found else None
 
 
 def _grid_has_headers(owner) -> bool:

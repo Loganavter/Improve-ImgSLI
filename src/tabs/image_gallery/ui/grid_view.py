@@ -386,6 +386,18 @@ class _SeriesDropTargetLayer(Layer):
             pass
 
 
+def _section_members(entry) -> list:
+    """Member list of one cluster (Series dataclass or plain list)."""
+    try:
+        if hasattr(entry, "members"):
+            return list(getattr(entry, "members", None) or [])
+        if isinstance(entry, (list, tuple)):
+            return list(entry)
+    except Exception:
+        pass
+    return []
+
+
 class GalleryGridView(QWidget):
     """Scrollable 4-column gallery grid with pooled Button cards."""
 
@@ -781,9 +793,12 @@ class GalleryGridView(QWidget):
     ) -> None:
         """Rebuild grid with series sections.
 
-        *series* — list of clusters, each cluster ≥2 members. Singles
-        (items not in any cluster) are collected under an ``UNGROUPED`` tail.
-        ``None`` or empty clears series mode and falls back to flat ``rebuild_grid``.
+        *series* — list of clusters as member lists (``Series`` dataclasses
+        accepted too). Clusters with ≥1 members render as own SERIES
+        sections — 1-member manual sections (S2 sync-move leftovers) stay
+        visible instead of dissolving. Items in no cluster are collected
+        under an ``UNGROUPED`` tail. ``None`` or empty clears series mode
+        and falls back to the flat UNGROUPED view for all items.
         *hub_names* — per-series hub display name (e.g. source file name).
         *collapsed* — mapping of series index → collapsed bool (or set of collapsed indices).
         *mode* — gallery mode for per-dot colors (fidelity/camera/batch_synthetic), proxied to cards.
@@ -806,8 +821,10 @@ class GalleryGridView(QWidget):
             filtered: list[list[GalleryItem]] = []
             # Fall through to UNGROUPED handling below
         else:
-            # Filter clusters ≥2 per spec.
-            filtered = [list(s) for s in series if len(s) >= 2]
+            # S2: keep every non-empty cluster as its own section
+            # (1-member manual sections stay visible); Series dataclasses
+            # and plain member lists both accepted.
+            filtered = [_section_members(s) for s in series if len(_section_members(s)) >= 1]
         if not filtered:
             # No valid clusters — all items are ungrouped, show UNGROUPED header
             try:

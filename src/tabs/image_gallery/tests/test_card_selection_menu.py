@@ -470,3 +470,36 @@ def test_empty_host_right_press_opens_background_menu(qtbot) -> None:
     )
     assert view.eventFilter(host, press) is True
     assert len(fired) == 1
+
+
+def test_menu_has_ungroup_entry(monkeypatch) -> None:
+    """Explicit path to UNGROUPED when no tail section exists to drop onto."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner({Path("/a.png")})
+    card = SimpleNamespace()
+    popup_gallery_card_context_menu(
+        card, owner, Path("/a.png"), global_pos=None, selection_count=1,
+    )
+    assert "gallery.ungroup" in _action_ids(captured["entries"])
+
+
+def test_ungroup_moves_whole_selection_to_none(monkeypatch) -> None:
+    from tabs.image_gallery.ui.card import context_actions as _actions
+
+    calls: list = []
+    owner = SimpleNamespace(
+        state=SimpleNamespace(
+            selected_paths={Path("/a.png"), Path("/b.png")},
+            selected_order=[Path("/b.png"), Path("/a.png")],
+        ),
+        move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 2,
+    )
+    assert _actions._ctx_ungroup(owner, Path("/a.png")) == 2
+    assert calls == [([Path("/b.png"), Path("/a.png")], None)]
+
+
+def test_ungroup_without_controller_is_noop() -> None:
+    from tabs.image_gallery.ui.card import context_actions as _actions
+
+    owner = _owner({Path("/a.png")})
+    assert _actions._ctx_ungroup(owner, Path("/a.png")) == 0

@@ -32,6 +32,7 @@ from tabs.image_gallery.ui.card.context_actions import (
     _ctx_remove,
     _ctx_set_source,
     _ctx_toggle_reject,
+    _ctx_ungroup,
 )
 from tabs.image_gallery.ui.card.menu_track import track_open_menu
 
@@ -263,6 +264,14 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 danger=True,
             )
         )
+        # Explicit path to UNGROUPED when no tail section exists to drop
+        # onto (drop fallback covers the tail only while visible).
+        per_card.append(
+            ContextMenuAction(
+                "gallery.ungroup",
+                "Ungroup",
+            )
+        )
         entries.extend(per_card)
         if include_source:
             entries.append(
@@ -285,6 +294,8 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     _ctx_toggle_reject(owner, path)
                 elif action_id == "gallery.remove":
                     _ctx_remove(owner, path)
+                elif action_id == "gallery.ungroup":
+                    _ctx_ungroup(owner, path)
                 elif action_id == "gallery.set_as_source":
                     _ctx_set_source(owner, path)
             except Exception:

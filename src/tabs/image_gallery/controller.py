@@ -9,6 +9,7 @@ local ranking kept.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QThreadPool, QTimer
@@ -59,6 +60,12 @@ logger = logging.getLogger("ImproveImgSLI")
 # Mirrors design.md Pass 2 "when local metrics are within epsilon".
 TIE_EPSILON = 0.025  # embedding distance normalized; tuned for 8×8 HSV vectors
 
+# S2 append-attach threshold for joining the nearest EXISTING series.
+# Consumed by S1 centroid ``attach_items`` (embedding-distance gate with
+# the same threshold rule as ``cluster_items``); the attach path never
+# clusters, it only measures against live series.
+_ATTACH_THRESHOLD = 10
+
 _ERROR_KEYS = {
     AiAuthError: ("image_gallery.errors.auth", "Authentication failed — check your API key."),
     AiRateLimitError: ("image_gallery.errors.rate_limit", "Rate limited — try again later."),
@@ -79,6 +86,19 @@ class GalleryController:
         # computed series_id. Read by the triage worker via an explicit
         # snapshot argument (never by implied lookup).
         self._series_overrides: dict[str, str | None] = {}
+        # S2 stable-id counter: every seed cluster run assigns fresh
+        # ``series_<n>`` ids from here IN ORDER (see
+        # ``_assign_fresh_stable_ids`` — the S1 swap point). Never reused,
+        # never reset except on folder replace (fresh world: ``open_folder``
+        # / ``open_paths(replace=True)``). Moves keep target ids verbatim
+        # and never touch the counter.
+        self._series_next_id = 1
+        self._series_id_lock = threading.Lock()
+        # Series-view generation: bumped by every sync view rewrite (move,
+        # append-attach) so a triage worker that started earlier drops its
+        # delivery in ``_on_triage_ready`` instead of clobbering the newer
+        # manual arrangement (mirrors ``_folder_gen`` for folder switches).
+        self._series_gen = 0
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._context = context
         self._ai_settings_store = AiSettingsStore()
@@ -610,6 +630,9 @@ class GalleryController:
         t0 = time.perf_counter()
         folder = Path(folder)
         gen = self._next_folder_gen()
+        # Fresh world: stable ids restart (pins are path-keyed and stay
+        # inert for the new pool).
+        self._series_next_id = 1
         _ = gen  # sync scan below replaces state immediately; gen guards workers
         _dnd_log("open_folder: ENTER %s is_file=%s is_dir=%s", folder, folder.is_file(), folder.is_dir())
         # If a single image file was passed (user dropped one image), don't scan its parent
@@ -760,6 +783,24 @@ class GalleryController:
         if not has_dir_input and not replace and self.state.folder is not None:
             display_folder = self.state.folder
         # else: file-only drop — leave display_folder as None (no folder context)
+        # S2: the fresh state wipes series/mode/source — snapshot the live
+        # view first so the append-attach branch below can keep it.
+        try:
+            prev_series = list(self.state.series or [])
+        except Exception:
+            prev_series = []
+        try:
+            prev_mode = self.state.mode
+        except Exception:
+            prev_mode = None
+        try:
+            prev_source = self.state.source_path
+        except Exception:
+            prev_source = None
+        try:
+            prev_triage = self.state.triage_state
+        except Exception:
+            prev_triage = TriageState.IDLE
         self.state = GalleryState(folder=display_folder, items=merged, triage_state=TriageState.RUNNING)
         _dnd_log(
             "open_paths -> folder %s items=%d (has_dir=%s replace=%s old=%d new=%d) (%.1f ms)",
@@ -798,11 +839,34 @@ class GalleryController:
         # Thumbnails only for truly-new items — old ones are already loaded.
         for item in uniq:
             self._load_thumbnail(item)
-        # Triage series/mode/source describe the whole pool (set wholesale on
-        # ready), so re-run over the merged pool, not just the drop.
-        # Append into a live pool keeps its groups on screen (background
-        # progress only); a fresh pool (or replace) covers until first groups.
-        self._start_triage(merged, cover_grid=bool(replace) or not old_items)
+        # S2 append: NEW files only join the nearest EXISTING series
+        # (in-memory attach — existing membership untouched, no retriage)
+        # when a grouped view is live and quiet; otherwise the existing
+        # seed pipeline runs over the merged pool. A fresh pool (or
+        # replace) covers until first groups; appends keep groups visible.
+        if replace:
+            # Fresh world: stable ids restart.
+            self._series_next_id = 1
+            self._start_triage(merged, cover_grid=True)
+        elif not old_items:
+            self._start_triage(merged, cover_grid=True)
+        elif prev_series and prev_triage != TriageState.RUNNING:
+            self.state.series = prev_series  # type: ignore[assignment]
+            self.state.mode = prev_mode  # type: ignore[assignment]
+            self.state.source_path = prev_source  # type: ignore[assignment]
+            try:
+                self._attach_append_items(uniq)
+            except Exception:
+                logger.debug("append attach failed", exc_info=True)
+            self.state.triage_state = TriageState.DONE
+            # Newer than any in-flight triage: its delivery drops (sgen).
+            self._next_series_gen()
+            try:
+                self._apply_series_view(self.state.series)
+            except Exception:
+                logger.debug("append attach view failed", exc_info=True)
+        else:
+            self._start_triage(merged, cover_grid=False)
 
     def _on_pick_folder(self) -> None:
         start_dir = str(self.state.folder) if self.state.folder else ""
@@ -984,6 +1048,260 @@ class GalleryController:
 
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 
+    def _next_series_gen(self) -> int:
+        """Bump the series-view generation: in-flight triage goes stale."""
+        self._series_gen += 1
+        return self._series_gen
+
+    def _assign_fresh_stable_ids(self, computed) -> tuple:
+        """Seed-assign fresh stable ids to computed groups IN ORDER.
+
+        Thin owner over S1 ``translate_computed_to_stable`` (the single
+        implementation): snapshot counter + pinned ids under the id lock,
+        translate (collision-skip included), commit the returned counter.
+        Member ``series_id`` fields are rewritten to match; computed
+        ranks/centroids untouched. Returns ``(series, next_counter)``.
+        """
+        try:
+            from tabs.image_gallery.use_cases.series_override import (
+                translate_computed_to_stable as _translate,
+            )
+        except Exception:
+            return (list(computed or []), self._series_next_id)
+        try:
+            pinned = {
+                str(v)
+                for v in (self._series_overrides or {}).values()
+                if v is not None
+            }
+        except Exception:
+            pinned = set()
+        with self._series_id_lock:
+            try:
+                start = int(self._series_next_id or 1)
+            except Exception:
+                start = 1
+            try:
+                series, nxt = _translate(computed, start, skip_ids=pinned)
+            except Exception:
+                return (list(computed or []), self._series_next_id)
+            try:
+                self._series_next_id = int(nxt)
+            except Exception:
+                pass
+            return (series, self._series_next_id)
+
+    @staticmethod
+    def _section_members(entry) -> list:
+        """Member list of one cluster (Series dataclass or plain list)."""
+        try:
+            if hasattr(entry, "members"):
+                return list(getattr(entry, "members", None) or [])
+            if isinstance(entry, (list, tuple)):
+                return list(entry)
+        except Exception:
+            pass
+        return []
+
+    @staticmethod
+    def _section_id(entry, members) -> str | None:
+        """Cluster id string (Series.id, else first member's series_id)."""
+        try:
+            eid = getattr(entry, "id", None)
+            if eid is not None:
+                return str(eid)
+        except Exception:
+            pass
+        try:
+            if members:
+                sid = getattr(members[0], "series_id", None)
+                return str(sid) if sid is not None else None
+        except Exception:
+            pass
+        return None
+
+    def _restore_singletons(self, items, overrides, pre_ids, last_series, regrouped) -> list:
+        """Preserve 1-member manual sections post-apply (S2).
+
+        Base ``apply_overrides`` dissolves every group with <2 members.
+        Sync paths keep two kinds of singletons visible as own 1-member
+        ``Series`` sections instead: (a) items carrying a STRING override
+        that end UNGROUPED — restored with the PINNED id (covers moves
+        onto fresh ids plus pins surviving later moves/deliveries); (b)
+        unpinned leftovers whose pre-apply group vanished (``pre_ids``
+        given — the move path only) — restored with the PRE id.
+        0-member series close (nothing to restore) and forced-UNGROUPED
+        (None pin) never restores. Delivery calls with ``pre_ids=None``
+        (pinned only — a fresh cluster world has no leftovers).
+        """
+        try:
+            out = list(regrouped or [])
+        except Exception:
+            out = []
+        try:
+            live = list(items or [])
+        except Exception:
+            return out
+        try:
+            omap = dict(overrides or {})
+        except Exception:
+            omap = {}
+        members_of = GalleryController._section_members
+        id_of = GalleryController._section_id
+        present: set[str] = set()
+        by_id: dict[str, object] = {}
+        for entry in out:
+            members = members_of(entry)
+            eid = id_of(entry, members)
+            if eid is not None:
+                present.add(eid)
+                by_id.setdefault(eid, entry)
+        last_centroid: dict[str, object] = {}
+        last_phash: dict[str, object] = {}
+        try:
+            for entry in list(last_series or []):
+                members = members_of(entry)
+                eid = id_of(entry, members)
+                if eid is None:
+                    continue
+                try:
+                    last_centroid.setdefault(eid, getattr(entry, "centroid", None))
+                except Exception:
+                    pass
+                try:
+                    last_phash.setdefault(eid, getattr(entry, "phash_centroid", None))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        for it in live:
+            try:
+                cur = getattr(it, "series_id", None)
+            except Exception:
+                continue
+            if cur is not None:
+                continue
+            try:
+                key = str(getattr(it, "path", None))
+            except Exception:
+                continue
+            sid: str | None = None
+            try:
+                if key in omap and omap[key] is not None:
+                    sid = str(omap[key])
+            except Exception:
+                sid = None
+            if sid is None and pre_ids is not None:
+                try:
+                    pre = pre_ids.get(key)
+                    if pre is not None and str(pre) not in present:
+                        sid = str(pre)
+                except Exception:
+                    pass
+            if sid is None:
+                continue
+            if sid in by_id:
+                # Defensive rejoin: the group survived but the item fell
+                # out (should not happen — apply groups by final sid).
+                host = by_id[sid]
+                try:
+                    if hasattr(host, "members"):
+                        host.members.append(it)  # type: ignore[union-attr]
+                    elif isinstance(host, list):
+                        host.append(it)
+                    else:
+                        raise TypeError("ungroupable host")
+                    try:
+                        it.series_id = sid
+                    except Exception:
+                        pass
+                    try:
+                        it.rank = len(members_of(host))
+                    except Exception:
+                        pass
+                except Exception:
+                    try:
+                        it.series_id = sid
+                    except Exception:
+                        pass
+                    try:
+                        it.rank = 1
+                    except Exception:
+                        pass
+                continue
+            try:
+                ph = (getattr(it, "metrics", None) or {}).get("phash")
+            except Exception:
+                ph = None
+            if not isinstance(ph, int):
+                ph = last_phash.get(sid)
+            try:
+                it.series_id = sid
+            except Exception:
+                pass
+            try:
+                it.rank = 1
+            except Exception:
+                pass
+            try:
+                out.append(
+                    Series(
+                        id=sid,
+                        members=[it],
+                        centroid=last_centroid.get(sid),  # type: ignore[arg-type]
+                        phash_centroid=ph,  # type: ignore[arg-type]
+                    )
+                )
+            except Exception:
+                continue
+            try:
+                by_id[sid] = out[-1]
+                present.add(sid)
+            except Exception:
+                pass
+        try:
+            out.sort(
+                key=lambda s: (
+                    -len(members_of(s)),
+                    str(getattr(s, "id", "") or ""),
+                )
+            )
+        except Exception:
+            pass
+        return out
+
+    def _apply_series_view(self, series) -> None:
+        """Post-triage view tail for sync paths (move / append-attach).
+
+        Same delivery as ``_on_triage_ready`` minus workers: ``state.series``
+        + rank/mode/source emit + ``widget.set_triage`` + spinner off. No
+        clustering, no thread hops, no analysis starts.
+        """
+        self.state.series = series  # type: ignore[assignment]
+        try:
+            ts = getattr(self.state, "triage_state", "idle")
+            triage_s = getattr(ts, "value", ts)
+            triage_s = str(triage_s or "idle")
+        except Exception:
+            triage_s = "idle"
+        try:
+            self._emit_triage_finished(triage_s)
+        except Exception:
+            logger.debug("_apply_series_view emit failed", exc_info=True)
+        try:
+            self.widget.set_triage(series, self.state.mode, self.state.source_path)
+        except Exception:
+            logger.debug("_apply_series_view set_triage failed", exc_info=True)
+        try:
+            if hasattr(self.widget, "set_triage_done"):
+                self.widget.set_triage_done()  # type: ignore[attr-defined]
+            elif hasattr(self.widget, "toolbar") and hasattr(
+                self.widget.toolbar, "set_triage_done"
+            ):
+                self.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug("_apply_series_view set_triage_done failed", exc_info=True)
+
     def _run_triage_sync(
         self, items: list[GalleryItem], overrides: dict | None = None
     ) -> tuple[list[Series], Path | None, Mode]:
@@ -993,6 +1311,13 @@ class GalleryController:
         from tabs.image_gallery.use_cases import series_override as _override
 
         series = cluster_items(items)
+        # S2 stable ids: every seed run renames computed groups to fresh
+        # ``series_<n>`` IN ORDER before overrides apply (pins keep their
+        # stored ids verbatim — override wins in the post-pass below).
+        try:
+            series, _ = self._assign_fresh_stable_ids(series)
+        except Exception:
+            logger.debug("stable-id seed assignment failed", exc_info=True)
         # Wave B post-pass (pure): manual overrides win over computed ids.
         # ``overrides`` is an explicit snapshot taken in _start_triage (the
         # worker must not read live controller state); None keeps old
@@ -1050,7 +1375,8 @@ class GalleryController:
                     logger.debug("widget.set_scanning failed", exc_info=True)
         worker = GenericWorker(self._run_triage_sync, list(items), dict(self._series_overrides))
         gen = self._folder_gen
-        worker.signals.result.connect(lambda res, g=gen: self._on_triage_ready(res, g))
+        sgen = self._series_gen
+        worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
         # Triage outranks thumbnails so the grid labels settle first.
         try:
@@ -1290,9 +1616,15 @@ class GalleryController:
                 logger.debug("camera metrics apply failed for %s", item.path, exc_info=True)
         self._refresh_changed_metrics(changed, "camera")
 
-    def _on_triage_ready(self, result: object, gen: int | None = None) -> None:
+    def _on_triage_ready(self, result: object, gen: int | None = None, sgen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("triage result dropped: stale folder generation")
+            return
+        if sgen is not None and sgen != self._series_gen:
+            # A sync view rewrite (move / append-attach) landed while this
+            # worker was in flight — its groups predate the manual
+            # arrangement. Drop instead of clobbering it.
+            logger.debug("triage result dropped: stale series generation")
             return
         try:
             series, source, mode = result  # type: ignore[misc]
@@ -1311,6 +1643,20 @@ class GalleryController:
             )
         except Exception:
             logger.debug("series override re-apply failed", exc_info=True)
+        # S2: pinned singletons survive delivery — a fresh cluster world
+        # dissolves <2 groups, so without this a delivery would ungroup
+        # cards the user manually placed (e.g. onto fresh ids). Pinned
+        # only here (``pre_ids=None``): a fresh world has no leftovers.
+        try:
+            series = self._restore_singletons(
+                list(self.state.items),
+                self._series_overrides,
+                None,
+                series,
+                series,
+            )
+        except Exception:
+            logger.debug("pinned singleton restore failed", exc_info=True)
         self.state.series = series  # type: ignore[assignment]
         self.state.source_path = source  # type: ignore[assignment]
         self.state.mode = mode  # type: ignore[assignment]
@@ -1646,13 +1992,18 @@ class GalleryController:
     # -- manual series overrides (Wave B drop targets) ---------------------
 
     def move_paths_to_series(self, paths, series_id: str | None) -> int:
-        """Pin *paths* to *series_id* (None = forced UNGROUPED) + regroup.
+        """Pin *paths* to *series_id* (None = forced UNGROUPED) + SYNC regroup.
 
+        S2 seam: ZERO clustering, ZERO thread hops, ZERO analysis starts.
         Internal-DnD entry point (``ui/drag_drop`` routes the gallery mime
         here, never through ``open_paths``). Writes the controller-local
-        override map, then re-runs triage over the current pool via the
-        existing ``_start_triage`` path (``cover_grid=False`` — live groups
-        stay visible, same as append drops). Returns items pinned.
+        override map, regroups in memory via the base ``apply_overrides``
+        on the live items + last series (call shape
+        ``regroup(items, overrides, last_series)`` — S1 swaps the regroup
+        core mechanically), preserves 1-member leftovers as own sections,
+        then delivers the post-triage view tail directly (``state.series``
+        + emit + ``widget.set_triage`` — never the worker). Returns items
+        pinned.
         """
         from tabs.image_gallery.use_cases import series_override as _override
 
@@ -1674,8 +2025,7 @@ class GalleryController:
         # No-op guard (Wave C): every in-pool target already sits in the
         # target series (current post-override view: ``it.series_id`` after
         # the last triage, None == forced UNGROUPED) → skip the full rebuild
-        # + Stage-2 re-analysis entirely. Partial overlap proceeds for the
-        # rest only, still a single retriage.
+        # entirely. Partial overlap proceeds for the rest only.
         try:
             current_by_path = {}
             for it in self.state.items:
@@ -1703,10 +2053,262 @@ class GalleryController:
             pass
         moved = int(_override.set_override(self._series_overrides, [str(p) for p in in_pool], sid))
         try:
-            self._start_triage(list(self.state.items), cover_grid=False)
+            live = list(self.state.items)
         except Exception:
-            logger.debug("move_paths_to_series retriage failed", exc_info=True)
+            return moved
+        try:
+            pre_ids: dict[str, str | None] = {}
+            for it in live:
+                try:
+                    cur = getattr(it, "series_id", None)
+                    pre_ids[str(it.path)] = str(cur) if cur is not None else None
+                except Exception:
+                    continue
+            last_series = list(self.state.series or [])
+            regrouped = _override.apply_overrides(live, self._series_overrides, last_series)
+            regrouped = self._restore_singletons(
+                live, self._series_overrides, pre_ids, last_series, regrouped
+            )
+            # Newer than any in-flight triage: its delivery drops (sgen).
+            self._next_series_gen()
+            self._apply_series_view(regrouped)
+        except Exception:
+            logger.debug("move_paths_to_series regroup failed", exc_info=True)
         return moved
+
+    def _attach_append_items(self, new_items) -> dict:
+        """Attach NEW files to the nearest EXISTING series (S2 append path).
+
+        S1 centroid policy: one nearest-centroid decision per readable
+        unpinned item via S1 ``attach_items`` (same threshold rule as
+        ``cluster_items``). Attached items join the series (positional rank
+        at the tail), misses land UNGROUPED. Existing membership (members,
+        ranks, ids) is untouched. Paths carrying a stored override (re-drop
+        of a removed pinned file) take the pin: join the pinned group or
+        stand as a 1-member section. Unreadable files (zero phash + zero
+        embedding — cluster parity) stay UNGROUPED. Returns
+        ``{str(path): series_id | None}``.
+
+        Mutates ``state.series`` in place (member appends / singleton
+        sections); callers deliver via ``_apply_series_view``.
+        """
+        try:
+            fresh = list(new_items or [])
+        except Exception:
+            return {}
+        if not fresh:
+            return {}
+        try:
+            from tabs.image_gallery.services.clustering import signature_for as _sig
+        except Exception:
+            _sig = None  # type: ignore[assignment]
+        members_of = GalleryController._section_members
+        id_of = GalleryController._section_id
+        try:
+            groups = list(self.state.series or [])
+        except Exception:
+            groups = []
+        # Centroid attach (S1 policy): one nearest-centroid decision for all
+        # readable unpinned items via S1 ``attach_items`` — replaces the
+        # first-member-phash representative scan. Signatures come from the
+        # perceptual cache (no re-decode); unreadable items never reach it.
+        try:
+            from tabs.image_gallery.use_cases.series_override import (
+                attach_items as _attach,
+            )
+        except Exception:
+            _attach = None  # type: ignore[assignment]
+        try:
+            from tabs.image_gallery.services.clustering import signature_for as _sig2
+        except Exception:
+            _sig2 = None  # type: ignore[assignment]
+        decided: dict[str, str | None] = {}
+        try:
+            pairs: list[tuple] = []
+            for item in fresh:
+                try:
+                    key = str(getattr(item, "path", None))
+                except Exception:
+                    continue
+                try:
+                    has_pin = key in (self._series_overrides or {})
+                except Exception:
+                    has_pin = False
+                if has_pin:
+                    continue
+                try:
+                    if _sig2 is not None:
+                        _h, _e = _sig2(item.path)
+                    else:
+                        _h, _e = 0, []
+                except Exception:
+                    _h, _e = 0, []
+                try:
+                    unreadable = _h == 0 and not any(_e or [])
+                except Exception:
+                    unreadable = _h == 0
+                if unreadable:
+                    continue
+                pairs.append((key, list(_e or [])))
+            if _attach is not None and pairs:
+                try:
+                    decided = dict(
+                        _attach(pairs, groups, _ATTACH_THRESHOLD) or {}
+                    )
+                except Exception:
+                    decided = {}
+        except Exception:
+            decided = {}
+        by_id: dict[str, object] = {}
+        for entry in groups:
+            members = members_of(entry)
+            eid = id_of(entry, members)
+            if eid is not None:
+                by_id.setdefault(str(eid), entry)
+        attached: dict[str, str | None] = {}
+        for item in fresh:
+            try:
+                key = str(getattr(item, "path", None))
+            except Exception:
+                continue
+            # Stored pin wins over similarity (re-dropped pinned file).
+            try:
+                has_pin = key in (self._series_overrides or {})
+                pin = (self._series_overrides or {}).get(key) if has_pin else "auto"
+            except Exception:
+                has_pin, pin = False, "auto"
+            if has_pin:
+                sid = str(pin) if pin is not None else None
+                try:
+                    item.series_id = sid
+                except Exception:
+                    pass
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+                if sid is not None:
+                    host = by_id.get(sid)
+                    if host is not None:
+                        try:
+                            if hasattr(host, "members"):
+                                host.members.append(item)  # type: ignore[union-attr]
+                            elif isinstance(host, list):
+                                host.append(item)
+                            else:
+                                raise TypeError("ungroupable host")
+                            try:
+                                item.rank = len(members_of(host))
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            item.rank = 1
+                        except Exception:
+                            pass
+                        try:
+                            entry = Series(id=sid, members=[item])
+                        except Exception:
+                            entry = None
+                        if entry is not None:
+                            groups.append(entry)
+                            by_id[sid] = entry
+                attached[key] = sid
+                continue
+            item_hash, item_embed = 0, []
+            if _sig is not None:
+                try:
+                    item_hash, item_embed = _sig(item.path)
+                except Exception:
+                    item_hash, item_embed = 0, []
+            if not isinstance(item_hash, int):
+                item_hash = 0
+            try:
+                unreadable = item_hash == 0 and not any(item_embed or [])
+            except Exception:
+                unreadable = item_hash == 0
+            if unreadable:
+                try:
+                    item.series_id = None
+                except Exception:
+                    pass
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+                attached[key] = None
+                continue
+            hit = decided.get(key)
+            if hit is None:
+                try:
+                    item.series_id = None
+                except Exception:
+                    pass
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+                attached[key] = None
+                continue
+            rsid, entry = hit, by_id.get(str(hit))
+            if entry is None:
+                # Centroid id with no live group (should not happen — the
+                # centroids come from these groups): fail to UNGROUPED
+                # rather than leaving a dangling series_id.
+                try:
+                    item.series_id = None
+                except Exception:
+                    pass
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+                attached[key] = None
+                continue
+            try:
+                item.series_id = rsid
+            except Exception:
+                pass
+            try:
+                if hasattr(entry, "members"):
+                    entry.members.append(item)  # type: ignore[union-attr]
+                elif isinstance(entry, list):
+                    entry.append(item)
+                try:
+                    item.rank = len(members_of(entry))
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+            attached[key] = rsid
+        try:
+            self.state.series = groups  # type: ignore[assignment]
+        except Exception:
+            pass
+        return attached
+
+    def recluster_series(self) -> None:
+        """Fresh cluster+apply world with pins re-applied + rebuild.
+
+        Header/grid menu entry next to Reset. Unlike ``reset`` (which
+        clears pins), pins are KEPT: the existing ``_start_triage``
+        pipeline snapshots + re-applies overrides, assigns fresh stable
+        ids to auto groups, and rebuilds on delivery (``cover_grid=False``
+        — live groups stay visible until the fresh world lands).
+        """
+        try:
+            items = list(self.state.items)
+        except Exception:
+            items = []
+        try:
+            self._start_triage(items, cover_grid=False)
+        except Exception:
+            logger.debug("recluster_series start failed", exc_info=True)
 
     def reset_series_overrides(self) -> int:
         """Clear every manual series override + regroup automatically.
