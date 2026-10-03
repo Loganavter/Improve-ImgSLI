@@ -464,8 +464,9 @@ def drop_event(owner, event, controller=None) -> None:
                     _dnd_log("move_paths_to_series failed", exc_info=True)
                 _dnd_log(
                     "dropEvent: internal drop delivered "
-                    "(handled=%s series_id=%s n_paths=%d moved=%s)",
+                    "(handled=%s series_id=%s n_paths=%d moved=%s paths=%r)",
                     handled, series_id, len(paths), moved,
+                    [str(p) for p in list(paths)[:5]],
                 )
                 try:
                     event.accept()
