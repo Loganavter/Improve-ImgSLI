@@ -68,6 +68,18 @@ def _set_highlight(owner, active: bool) -> None:
 
 
 def drag_enter_event(owner, event) -> None:
+    # Internal gallery moves first: accept on series chrome, never as files.
+    try:
+        if has_internal_mime(event.mimeData()):
+            if _grid_has_headers(owner):
+                _dnd_log("dragEnterEvent: internal gallery mime -> accept (series targets)")
+                event.acceptProposedAction()
+            else:
+                _dnd_log("dragEnterEvent: internal gallery mime, no series chrome -> ignore")
+                event.ignore()
+            return
+    except Exception:
+        pass
     _dnd_log("dragEnterEvent: mime_hasUrls=%s", event.mimeData().hasUrls() if event.mimeData() else False)
     ok = is_acceptable_drop(owner, event)
     _dnd_log("dragEnterEvent: is_acceptable=%s", ok)
@@ -85,6 +97,21 @@ def drag_enter_event(owner, event) -> None:
 
 
 def drag_move_event(owner, event) -> None:
+    # Internal gallery moves: accept + highlight the header under cursor.
+    # The empty-state/file chrome stays off (never break external highlight).
+    try:
+        if has_internal_mime(event.mimeData()):
+            if _grid_has_headers(owner):
+                event.acceptProposedAction()
+                try:
+                    _set_series_highlight(owner, _header_at(owner, _event_pos(event)))
+                except Exception:
+                    pass
+            else:
+                event.ignore()
+            return
+    except Exception:
+        pass
     ok = is_acceptable_drop(owner, event)
     # Throttle: log only every 50 events to avoid flood (counter on owner)
     try:
@@ -102,6 +129,7 @@ def drag_move_event(owner, event) -> None:
 
 def drag_leave_event(owner, event) -> None:
     _dnd_log("dragLeaveEvent")
+    _clear_series_highlight(owner)
     _set_highlight(owner, False)
     try:
         super(type(owner), owner).dragLeaveEvent(event)
@@ -411,8 +439,46 @@ def try_open_folder(owner, folder: Path, controller=None) -> None:
 
 
 def drop_event(owner, event, controller=None) -> None:
-    """Widget-level drop — shared accept check, then shared routing."""
+    """Widget-level drop — internal gallery mime first, then shared routing."""
     _dnd_log("dropEvent: enter")
+    # Internal gallery move: resolve the series under cursor (header, else
+    # UNGROUPED tail) and pin via the controller. External file routing
+    # never runs for this mime (never open_paths/open_folder).
+    try:
+        mime = event.mimeData()
+    except Exception:
+        mime = None
+    if has_internal_mime(mime):
+        _dnd_log("dropEvent: internal gallery mime -> move_paths_to_series")
+        _set_highlight(owner, False)
+        try:
+            paths = parse_internal_paths(mime)
+            handled, series_id = series_target_at(owner, _event_pos(event))
+            ctrl = _explicit_controller(owner, controller)
+            move = getattr(ctrl, "move_paths_to_series", None)
+            if paths and handled and callable(move):
+                try:
+                    move(list(paths), series_id)
+                except Exception:
+                    _dnd_log("move_paths_to_series failed", exc_info=True)
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+            else:
+                _dnd_log(
+                    "dropEvent: internal drop ignored (paths=%d handled=%s has_move=%s)",
+                    len(paths), handled, callable(move),
+                )
+                try:
+                    event.ignore()
+                except Exception:
+                    pass
+        except Exception:
+            _dnd_log("dropEvent: internal routing failed", exc_info=True)
+        finally:
+            _clear_series_highlight(owner)
+        return
     if not is_acceptable_drop(owner, event):
         _dnd_log("dropEvent: rejected by is_acceptable_drop -> ignore")
         _set_highlight(owner, False)
@@ -480,7 +546,6 @@ class _ZoneDropFilter(QObject):
 
 def install_zone_drop_forwarding(owner, controller=None) -> bool:
     """Route drops landing on the empty-state zone through ``drop_event``.
-
     Called once from ``ImageGalleryWidget.__init__`` (thin owner) and again
     from ``attach_controller`` once the controller is known. Finds the
     zone label by objectName (``gallery_empty_drop_zone``) so this module
@@ -497,6 +562,12 @@ def install_zone_drop_forwarding(owner, controller=None) -> bool:
                     existing._controller = controller
                 except Exception:
                     pass
+            # Same install point (attach_controller): refresh the header
+            # menu binding too.
+            try:
+                install_series_header_menu(owner, controller)
+            except Exception:
+                pass
             return True
         empty = getattr(owner, "_empty_state", None)
         if empty is None:
@@ -521,6 +592,486 @@ def install_zone_drop_forwarding(owner, controller=None) -> bool:
             owner._zone_drop_filter = filt
         except Exception:
             pass
+        # Wave B: the series-header reset menu rides the same install points
+        # (init + attach) so no widget.py change is needed. Best-effort —
+        # the zone result below is unaffected.
+        try:
+            install_series_header_menu(owner, controller)
+        except Exception:
+            _dnd_log("series header menu install failed", exc_info=True)
         return True
+    except Exception:
+        return False
+
+
+# -- series-header reset menu (Wave B) --------------------------------------
+
+_SERIES_RESET_ACTION_ID = "gallery.series.reset"
+
+
+def _is_series_header(widget) -> bool:
+    """True for series/UNGROUPED section header containers."""
+    try:
+        name = str(widget.objectName() or "")
+    except Exception:
+        return False
+    return name == "GallerySeriesHeader" or name.startswith("GallerySeriesHeader_")
+
+
+def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
+    """Popup the series-header context menu (reset manual series).
+
+    Single existing-surface affordance for clearing overrides: right-click
+    on any series/UNGROUPED header → "Reset manual series" →
+    ``controller.reset_series_overrides()``. Toolkit ``ContextMenu`` surface
+    (card-menu precedent), fail-soft everywhere. Returns True when a menu
+    was shown.
+    """
+    ctrl = _explicit_controller(owner, controller)
+    try:
+        reset = getattr(ctrl, "reset_series_overrides", None)
+    except Exception:
+        reset = None
+    if not callable(reset):
+        return False
+    try:
+        pos = event.globalPosition().toPoint()
+    except Exception:
+        try:
+            pos = event.globalPos()
+        except Exception:
+            pos = None
+    if pos is None:
+        try:
+            from PySide6.QtGui import QCursor as _QCursor
+
+            pos = _QCursor.pos()
+        except Exception:
+            return False
+    try:
+        source = header.window() if hasattr(header, "window") else header
+    except Exception:
+        source = header
+    if source is None:
+        source = header
+
+    def _on_triggered(action_id: str, _data: object) -> None:
+        try:
+            if action_id == _SERIES_RESET_ACTION_ID:
+                reset()
+        except Exception:
+            pass
+
+    try:
+        from sli_ui_toolkit.widgets import ContextMenu as _CtxMenu
+        from sli_ui_toolkit.widgets import ContextMenuAction as _CtxAction
+    except Exception:
+        return False
+    try:
+        entries = (_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"),)
+    except Exception:
+        return False
+    try:
+        try:
+            menu = _CtxMenu(source, entries=tuple(entries), on_triggered=_on_triggered, surface="popup")
+        except TypeError:
+            menu = _CtxMenu(source, entries=tuple(entries), on_triggered=_on_triggered)
+    except Exception:
+        return False
+    try:
+        menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        menu.popup_at(pos)
+        return True
+    except Exception:
+        _dnd_log("header reset menu popup failed", exc_info=True)
+        return False
+
+
+class _SeriesHeaderWatcher(QObject):
+    """Attach the reset menu to series headers as they are (re)built.
+
+    Installed once on the grid's item host: ``ChildAdded`` hooks each new
+    ``GallerySeriesHeader*`` container (headers are reused by position but
+    extras are created/destroyed on regroup), and ``ContextMenu`` events on
+    hooked headers open the reset menu. Header rebuilds need no re-install.
+    """
+
+    def __init__(self, owner, controller=None):
+        super().__init__()
+        self._owner = owner
+        self._controller = controller
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            t = event.type()
+        except Exception:
+            return False
+        try:
+            if t == QEvent.Type.ChildAdded:
+                try:
+                    child = event.child()
+                except Exception:
+                    child = None
+                if child is not None and _is_series_header(child):
+                    try:
+                        child.installEventFilter(self)
+                    except Exception:
+                        pass
+                return False
+            if t == QEvent.Type.ContextMenu:
+                if _is_series_header(watched):
+                    if _open_header_reset_menu(
+                        self._owner, watched, event, self._controller
+                    ):
+                        return True
+                return False
+        except Exception as e:
+            _dnd_log("series header watcher failed: %r", e, exc_info=True)
+            return False
+        return False
+
+
+def install_series_header_menu(owner, controller=None) -> bool:
+    """Install the series-header reset-menu watcher (idempotent).
+
+    Called from ``install_zone_drop_forwarding`` so both widget init and
+    ``attach_controller`` cover it with no ``widget.py`` change. A passed
+    *controller* refreshes the binding (None never clobbers). Returns True
+    when the watcher is installed.
+    """
+    try:
+        existing = getattr(owner, "_series_header_watcher", None)
+        if existing is not None:
+            if controller is not None:
+                try:
+                    existing._controller = controller
+                except Exception:
+                    pass
+            return True
+        grid = getattr(owner, "_grid_view", None)
+        if grid is None:
+            return False
+        host = getattr(grid, "items_host", None) or grid
+        watcher = _SeriesHeaderWatcher(owner, controller)
+        try:
+            host.installEventFilter(watcher)
+        except Exception:
+            return False
+        # Seed headers already built (attach-time installs land here).
+        try:
+            for hdr in list(getattr(grid, "_series_headers", None) or []):
+                if _is_series_header(hdr):
+                    try:
+                        hdr.installEventFilter(watcher)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        try:
+            owner._series_header_watcher = watcher
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+# Canonical mime lives in ``ui/card.py`` (Wave A, defined ONCE). Payload rule
+# (verbatim): newline-separated ``file://`` URLs in ``QMimeData.data(mime)``
+# PLUS ``setUrls()``.
+from tabs.image_gallery.ui.card import GALLERY_PATHS_MIME
+
+_UNGROUPED_HEADER_NAME = "GallerySeriesHeader_ungrouped"
+
+
+def has_internal_mime(mime) -> bool:
+    """True when *mime* carries gallery-internal dragged paths."""
+    try:
+        return bool(mime is not None and mime.hasFormat(GALLERY_PATHS_MIME))
+    except Exception:
+        return False
+
+
+def parse_internal_paths(mime) -> list[Path]:
+    """Parse dragged gallery paths from the internal mime (Wave A format).
+
+    Reads newline-separated ``file://`` URLs from ``data(mime)`` and also
+    tolerates ``urls()`` (Wave A writes both). Order-preserving, deduped.
+    Never raises — corrupt payloads yield whatever parsed.
+    """
+    seen: set[str] = set()
+    out: list[Path] = []
+
+    def _take(candidate) -> None:
+        try:
+            s = str(candidate)
+        except Exception:
+            return
+        if not s or s in seen:
+            return
+        seen.add(s)
+        try:
+            out.append(Path(s))
+        except Exception:
+            pass
+
+    try:
+        raw = bytes(mime.data(GALLERY_PATHS_MIME))
+    except Exception:
+        raw = b""
+    if raw:
+        try:
+            from PySide6.QtCore import QUrl as _QUrl
+
+            for line in raw.decode("utf-8", "replace").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    local = _QUrl(line).toLocalFile()
+                except Exception:
+                    local = ""
+                _take(local or line)
+        except Exception:
+            pass
+    try:
+        for url in mime.urls():
+            try:
+                if url.isLocalFile():
+                    _take(url.toLocalFile())
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+def _event_pos(event):
+    """Cursor position in widget coords (Qt6 position() with Qt5 fallback)."""
+    try:
+        return event.position().toPoint()
+    except Exception:
+        pass
+    try:
+        return event.pos()
+    except Exception:
+        pass
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+
+        return _QPoint(0, 0)
+    except Exception:
+        return None
+
+
+def _series_id_for_index(grid, index: int) -> str | None:
+    """Series id string for cluster *index* (first member id, else fallback)."""
+    try:
+        clusters = list(getattr(grid, "_series", None) or [])
+        entry = clusters[index] if 0 <= int(index) < len(clusters) else None
+    except Exception:
+        entry = None
+    members: list = []
+    try:
+        if entry is not None:
+            if hasattr(entry, "members"):
+                members = list(getattr(entry, "members", None) or [])
+            elif isinstance(entry, (list, tuple)):
+                members = list(entry)
+    except Exception:
+        members = []
+    for m in members:
+        try:
+            sid = getattr(m, "series_id", None)
+        except Exception:
+            sid = None
+        if sid is not None:
+            try:
+                return str(sid)
+            except Exception:
+                pass
+    try:
+        return f"series_{int(index) + 1}"
+    except Exception:
+        return None
+
+
+def series_target_at(owner, pos) -> tuple[bool, str | None]:
+    """Resolve the drop-target series under *pos* (widget coords).
+
+    Returns ``(handled, series_id)``: ``series_id`` is the header cluster id
+    under the cursor, or None for the UNGROUPED tail (forced UNGROUPED —
+    also the fallback when the drop lands on no header). ``handled`` False
+    means "no series chrome to drop onto" (empty pool / flat grid) — the
+    caller must ignore the drop, never route it externally.
+    """
+    grid = getattr(owner, "_grid_view", None)
+    if grid is None:
+        # Bare doubles / storeless contexts: no chrome to hit-test, but
+        # the controller still filters to pool members — route UNGROUPED.
+        return (True, None)
+    try:
+        headers = list(getattr(grid, "_series_headers", None) or [])
+    except Exception:
+        headers = []
+    if not headers or pos is None:
+        return (False, None)
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+        from PySide6.QtCore import QRect as _QRect
+    except Exception:
+        return (False, None)
+    for hdr_pos, hdr in enumerate(headers):
+        try:
+            top = hdr.mapTo(owner, _QPoint(0, 0))
+            rect = _QRect(top, hdr.size())
+            if not rect.contains(pos):
+                continue
+        except Exception:
+            continue
+        try:
+            name = str(hdr.objectName() or "")
+        except Exception:
+            name = ""
+        if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
+            return (True, None)
+        index: int | None = None
+        try:
+            prefix = "GallerySeriesHeader_"
+            if name.startswith(prefix):
+                index = int(name[len(prefix):])
+        except Exception:
+            index = None
+        if index is None:
+            # Position fallback: series sections precede the UNGROUPED tail.
+            try:
+                n_series = len(list(getattr(grid, "_series", None) or []))
+            except Exception:
+                n_series = 0
+            if hdr_pos < n_series:
+                index = hdr_pos
+            else:
+                return (True, None)
+        return (True, _series_id_for_index(grid, index))
+    return (True, None)
+
+
+def _header_button(header):
+    """First setDown-capable button descendant of a series header (or None)."""
+    try:
+        from PySide6.QtWidgets import QWidget as _QW
+
+        for child in header.findChildren(_QW):
+            try:
+                if callable(getattr(child, "setDown", None)):
+                    return child
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _clear_series_highlight(owner) -> None:
+    """Drop the series-header drop-target highlight (fail-soft)."""
+    try:
+        current = getattr(owner, "_series_drop_target", None)
+    except Exception:
+        current = None
+    if current is None:
+        return
+    try:
+        owner._series_drop_target = None
+    except Exception:
+        pass
+    header, btn, was_enabled = current if isinstance(current, tuple) else (current, None, None)
+    if btn is None:
+        try:
+            btn = _header_button(header)
+        except Exception:
+            btn = None
+    try:
+        if btn is not None:
+            btn.setDown(False)
+    except Exception:
+        pass
+    try:
+        if was_enabled is False and btn is not None:
+            btn.setEnabled(False)
+    except Exception:
+        pass
+
+
+def _set_series_highlight(owner, header) -> None:
+    """Highlight *header* as the live drop target (pressed-state accent).
+
+    Reuses the header button's own pressed visuals — no QSS, no colors,
+    no new API. Remembers the previous target to restore it. Fail-soft:
+    headers whose button cannot render pressed state simply stay plain.
+    """
+    try:
+        current = getattr(owner, "_series_drop_target", None)
+        cur_header = current[0] if isinstance(current, tuple) else current
+        if cur_header is header:
+            return
+    except Exception:
+        pass
+    _clear_series_highlight(owner)
+    if header is None:
+        return
+    btn = _header_button(header)
+    was_enabled: bool | None = None
+    try:
+        if btn is not None:
+            try:
+                was_enabled = bool(btn.isEnabled())
+            except Exception:
+                was_enabled = None
+            if was_enabled is False:
+                # The UNGROUPED header button is disabled: enable it for the
+                # drag duration (clicks cannot land mid-drag) so the pressed
+                # state paints, then restore on clear.
+                btn.setEnabled(True)
+            btn.setDown(True)
+    except Exception:
+        pass
+    try:
+        owner._series_drop_target = (header, btn, was_enabled)
+    except Exception:
+        pass
+
+
+def _header_at(owner, pos):
+    """Header widget under *pos*, or None (hit-test without id resolve)."""
+    grid = getattr(owner, "_grid_view", None)
+    if grid is None or pos is None:
+        return None
+    try:
+        headers = list(getattr(grid, "_series_headers", None) or [])
+    except Exception:
+        return None
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+        from PySide6.QtCore import QRect as _QRect
+
+        for hdr in headers:
+            try:
+                top = hdr.mapTo(owner, _QPoint(0, 0))
+                if _QRect(top, hdr.size()).contains(pos):
+                    return hdr
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _grid_has_headers(owner) -> bool:
+    try:
+        grid = getattr(owner, "_grid_view", None)
+        return bool(grid is not None and list(getattr(grid, "_series_headers", None) or []))
     except Exception:
         return False
