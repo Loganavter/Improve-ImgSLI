@@ -104,7 +104,7 @@ def drag_move_event(owner, event) -> None:
             if _grid_has_headers(owner):
                 event.acceptProposedAction()
                 try:
-                    _set_series_highlight(owner, _header_at(owner, _event_pos(event)))
+                    _set_series_highlight(owner, _header_at(owner, _owner_hit_pos(owner, event)))
                 except Exception:
                     pass
             else:
@@ -453,14 +453,20 @@ def drop_event(owner, event, controller=None) -> None:
         _set_highlight(owner, False)
         try:
             paths = parse_internal_paths(mime)
-            handled, series_id = series_target_at(owner, _event_pos(event))
+            handled, series_id = series_target_at(owner, _owner_hit_pos(owner, event))
             ctrl = _explicit_controller(owner, controller)
             move = getattr(ctrl, "move_paths_to_series", None)
             if paths and handled and callable(move):
                 try:
-                    move(list(paths), series_id)
+                    moved = move(list(paths), series_id)
                 except Exception:
+                    moved = "error"
                     _dnd_log("move_paths_to_series failed", exc_info=True)
+                _dnd_log(
+                    "dropEvent: internal drop delivered "
+                    "(handled=%s series_id=%s n_paths=%d moved=%s)",
+                    handled, series_id, len(paths), moved,
+                )
                 try:
                     event.accept()
                 except Exception:
@@ -867,6 +873,72 @@ def _event_pos(event):
         return None
 
 
+def _owner_space_pos(owner, event):
+    """Cursor position in OWNER coords (Wave C hit-test fix).
+
+    ``QDropEvent.position()`` is RECEIVER-relative while ``series_target_at``
+    / ``_header_at`` compare against ``hdr.mapTo(owner)`` (owner space): when
+    the receiver is a viewport/zone child rather than the owner, the raw
+    pos misses the header (or hits the wrong one). Map the live cursor into
+    owner space instead. Verified against installed PySide6 (6.11.2):
+    ``QDropEvent``/``QDragMoveEvent`` expose NO global accessor (no
+    ``globalPosition``/``globalPos``), so the cursor is the only live global
+    source; events that do carry ``globalPosition()`` (single-point style)
+    use it directly. Anything failing (fakes without ``mapFromGlobal``,
+    headless cursor) falls back to the legacy receiver-relative pos.
+    """
+    try:
+        gp_fn = getattr(event, "globalPosition", None)
+        if callable(gp_fn):
+            try:
+                return owner.mapFromGlobal(gp_fn().toPoint())
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        from PySide6.QtGui import QCursor as _QCursor
+
+        return owner.mapFromGlobal(_QCursor.pos())
+    except Exception:
+        pass
+    return _event_pos(event)
+
+
+def _owner_hit_pos(owner, event):
+    """Owner-space pos for header hit-testing (Wave C, cursor-hit-wins).
+
+    Live, only the cursor mapped into owner space is in the right frame —
+    the event pos is receiver-relative and misses when the receiver is a
+    viewport/zone child rather than the owner (S2). Synthetic/offscreen
+    events carry a receiver==owner pos but a meaningless ambient cursor, so
+    when the mapped cursor hits NO header while the event pos DOES, the
+    event pos wins (the receiver presumably is the owner). A cursor hit
+    always wins ties — live truth is the cursor.
+    """
+    primary = _owner_space_pos(owner, event)
+    try:
+        if _header_at(owner, primary) is not None:
+            return primary
+    except Exception:
+        return primary
+    try:
+        legacy = _event_pos(event)
+    except Exception:
+        return primary
+    try:
+        same = bool(legacy == primary)
+    except Exception:
+        same = True
+    if not same:
+        try:
+            if _header_at(owner, legacy) is not None:
+                return legacy
+        except Exception:
+            pass
+    return primary
+
+
 def _series_id_for_index(grid, index: int) -> str | None:
     """Series id string for cluster *index* (first member id, else fallback)."""
     try:
@@ -900,7 +972,13 @@ def _series_id_for_index(grid, index: int) -> str | None:
 
 
 def series_target_at(owner, pos) -> tuple[bool, str | None]:
-    """Resolve the drop-target series under *pos* (widget coords).
+    """Resolve the drop-target series under *pos* (OWNER coords).
+
+    *pos* must already be in owner space — callers pass
+    ``_owner_hit_pos(owner, event)`` (live cursor mapped into the owner,
+    receiver-relative pos as synthetic fallback),
+    never the raw receiver-relative ``_event_pos``. Headers are compared via
+    ``hdr.mapTo(owner)``, so owner space is the only correct frame.
 
     Returns ``(handled, series_id)``: ``series_id`` is the header cluster id
     under the cursor, or None for the UNGROUPED tail (forced UNGROUPED —
@@ -1045,7 +1123,7 @@ def _set_series_highlight(owner, header) -> None:
 
 
 def _header_at(owner, pos):
-    """Header widget under *pos*, or None (hit-test without id resolve)."""
+    """Header widget under *pos* (OWNER coords, see ``series_target_at``), or None."""
     grid = getattr(owner, "_grid_view", None)
     if grid is None or pos is None:
         return None

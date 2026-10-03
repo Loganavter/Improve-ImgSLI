@@ -1671,6 +1671,36 @@ class GalleryController:
             sid = str(series_id) if series_id is not None else None
         except Exception:
             sid = None
+        # No-op guard (Wave C): every in-pool target already sits in the
+        # target series (current post-override view: ``it.series_id`` after
+        # the last triage, None == forced UNGROUPED) → skip the full rebuild
+        # + Stage-2 re-analysis entirely. Partial overlap proceeds for the
+        # rest only, still a single retriage.
+        try:
+            current_by_path = {}
+            for it in self.state.items:
+                try:
+                    current_by_path[str(it.path)] = it
+                except Exception:
+                    continue
+            rest = []
+            for p in in_pool:
+                try:
+                    cur = getattr(current_by_path.get(str(p)), "series_id", None)
+                    cur_sid = str(cur) if cur is not None else None
+                except Exception:
+                    cur_sid = "<unknown>"
+                if cur_sid != sid:
+                    rest.append(p)
+            if not rest:
+                logger.debug(
+                    "move_paths_to_series noop: %d paths already in series %s",
+                    len(in_pool), sid,
+                )
+                return 0
+            in_pool = rest
+        except Exception:
+            pass
         moved = int(_override.set_override(self._series_overrides, [str(p) for p in in_pool], sid))
         try:
             self._start_triage(list(self.state.items), cover_grid=False)
