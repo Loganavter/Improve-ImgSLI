@@ -437,7 +437,40 @@ class RootReducer:
         self.viewport_reducer = ViewportReducer()
         self.settings_reducer = SettingsReducer()
 
-    def _reduce_one(self, store: "Store", action: Action, session_type: str | None) -> tuple[Any, Any, dict[str, Any], bool, bool]:
+    @staticmethod
+    def _slot_get(store: "Store", slot_name: str, session_id: str | None):
+        """Session-addressed slot read (Wave CORE session targeting).
+
+        ``session_id=None`` keeps the exact historical call shape (active
+        session) so legacy fake stores without the kwarg keep working;
+        explicit ids address that session's slots. Viewport/settings stay
+        active-scoped in both paths — only slots are session-addressed.
+        """
+        if session_id is None:
+            return store.get_session_state_slot(slot_name)
+        return store.get_session_state_slot(slot_name, session_id=session_id)
+
+    @staticmethod
+    def _session_for_type(store: "Store", session_id: str | None):
+        """Session whose ``session_type`` gates viewport reduction.
+
+        Explicit ids resolve via ``get_workspace_session`` (unknown ids
+        fail open to the active session, mirroring Dispatcher); the
+        viewport VALUE reduced is still the active one — only the type
+        gate follows the target session.
+        """
+        if session_id is not None:
+            get_one = getattr(store, "get_workspace_session", None)
+            if callable(get_one):
+                try:
+                    target = get_one(session_id)
+                except Exception:
+                    target = None
+                if target is not None:
+                    return target
+        return store.get_active_workspace_session()
+
+    def _reduce_one(self, store: "Store", action: Action, session_type: str | None, session_id: str | None = None) -> tuple[Any, Any, dict[str, Any], bool, bool]:
         """Single-action reduction without allocating Store. Returns (new_viewport, new_settings, new_slot_values, any_slot_changed, viewport_changed)."""
         new_viewport = self.viewport_reducer.reduce(store.viewport, action, session_type)
         new_render_config = reduce_render_config_extensions(
@@ -453,14 +486,14 @@ class RootReducer:
         for slot_name, slot_reducer in iter_state_slot_reducers():
             # For intermediate steps in a transaction we need current accumulated value, not original store's
             # This helper is only for single action; caller handles accumulation for transaction.
-            current_value = store.get_session_state_slot(slot_name)
+            current_value = RootReducer._slot_get(store, slot_name, session_id)
             new_value = slot_reducer(current_value, action)
             new_slot_values[slot_name] = new_value
             if new_value is not current_value:
                 any_slot_changed = True
         return new_viewport, new_settings, new_slot_values, any_slot_changed, new_viewport is not store.viewport
 
-    def reduce(self, store: "Store", action: Action) -> "Store":
+    def reduce(self, store: "Store", action: Action, session_id: str | None = None) -> "Store":
         from core.store import Store
 
         # Transaction — single Store alloc for N inner actions (plan_image_pipeline.md Phase 5)
@@ -468,13 +501,13 @@ class RootReducer:
             inner = getattr(action, "actions", None) or []
             if not inner:
                 return store
-            active_session = store.get_active_workspace_session()
-            session_type = active_session.session_type if active_session is not None else None
+            type_session = RootReducer._session_for_type(store, session_id)
+            session_type = type_session.session_type if type_session is not None else None
             cur_viewport = store.viewport
             cur_settings = store.settings
             # accumulate slot values in dict, starting from current store
             cur_slots: dict[str, Any] = {
-                name: store.get_session_state_slot(name) for name, _ in iter_state_slot_reducers()
+                name: RootReducer._slot_get(store, name, session_id) for name, _ in iter_state_slot_reducers()
             }
             any_changed = False
             for sub in inner:
@@ -513,7 +546,7 @@ class RootReducer:
             new_store._dispatcher = store._dispatcher
             return new_store
 
-        active_session = store.get_active_workspace_session()
+        active_session = RootReducer._session_for_type(store, session_id)
         session_type = active_session.session_type if active_session is not None else None
         new_viewport = self.viewport_reducer.reduce(store.viewport, action, session_type)
         new_render_config = reduce_render_config_extensions(
@@ -529,7 +562,7 @@ class RootReducer:
         new_slot_values: dict[str, Any] = {}
         any_slot_changed = False
         for slot_name, slot_reducer in iter_state_slot_reducers():
-            current_value = store.get_session_state_slot(slot_name)
+            current_value = RootReducer._slot_get(store, slot_name, session_id)
             new_value = slot_reducer(current_value, action)
             new_slot_values[slot_name] = new_value
             if new_value is not current_value:

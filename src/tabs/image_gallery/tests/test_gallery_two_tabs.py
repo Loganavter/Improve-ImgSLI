@@ -235,3 +235,36 @@ def test_tab_reactivation_refreshes_from_own_slot(qapp) -> None:
     store._active_id = "A"
     tab.on_activated(ctx)
     assert _mirror_snapshot(ctrl_a) == snap_a
+
+
+def test_background_worker_completion_dispatches_into_own_slot() -> None:
+    """Wave CORE write side: B's late worker completion arriving while A is
+    ACTIVE lands in B's OWN slot — never in the foreign active session's.
+
+    Before session-targeted dispatch, ``_emit_gallery`` addressed the active
+    session, so a background tab's thumbnail/triage/analysis completion
+    finishing after a tab switch clobbered the newly-active tab's pool.
+    """
+    from core.state_management.gallery_actions import GalleryThumbnailsReady
+    from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+    from tabs.image_gallery.state import selectors as gallery_selectors
+
+    store = _two_session_store()
+    ctrl_a = _controller_for(store, "A")
+    _open_grouped_pool(ctrl_a, "/pics", [A1, A2])
+
+    ctrl_b = _controller_for(store, "B")
+    # A stays active throughout: B is the background tab whose worker
+    # finishes late (thumbnail completion for its just-opened pool).
+    assert store._active_id == "A"
+    ctrl_b._emit_gallery(GalleryPoolOpened(folder="/other", entries=[(B1, 7)]))
+    ctrl_b._emit_gallery(GalleryThumbnailsReady(ready=[(B1, "loaded")]))
+
+    slot_a = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id="A")
+    slot_b = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id="B")
+    assert gallery_selectors.get_item_paths(slot_a) == [A1, A2]
+    assert gallery_selectors.get_item_paths(slot_b) == [B1]
+    assert gallery_selectors.get_item_by_path(slot_b, B1).status == "loaded"
+    # A's mirror never saw B's writes (inactive skip on the read side).
+    ctrl_a._on_store_changed("gallery")
+    assert _mirror_snapshot(ctrl_a)["items"] == [A1, A2]
