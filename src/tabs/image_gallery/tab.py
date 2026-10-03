@@ -137,8 +137,11 @@ class ImageGalleryTab(TabContract):
         # pool empty or triage already running).
         self._regroup_restored_pool()
 
+        self._install_modal_lifetime_watch()
+        return self._widget
+
     def _regroup_restored_pool(self) -> None:
-        """Kick a quiet regroup of the current mirror (both entry paths)."""
+        """Kick a quiet regroup of the current mirror (all entry paths)."""
         try:
             ctrl = self._controller
             regroup = getattr(ctrl, "retriage_quiet", None)
@@ -146,9 +149,6 @@ class ImageGalleryTab(TabContract):
                 regroup()
         except Exception:
             pass
-
-        self._install_modal_lifetime_watch()
-        return self._widget
 
     @property
     def widget(self):
