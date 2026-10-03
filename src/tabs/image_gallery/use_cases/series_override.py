@@ -111,33 +111,17 @@ def _series_members(entry):
     return []
 
 
-def apply_overrides(items: list, overrides: dict, series=None) -> list:
-    """Apply *overrides* onto *items* + the computed *series* clusters.
+def _regroup_core(item_list: list, overrides_map: dict, prev_entries, keep_singletons: bool) -> list:
+    """Shared regroup engine: override wins → group by id → fixup → sort.
 
-    *series* is the ``cluster_items`` result (``list[Series]`` or member
-    lists; None/empty tolerated). Every item whose path is in *overrides*
-    gets ``series_id`` = the override (None for forced UNGROUPED);
-    computed ids stand otherwise. Final groups (by ``series_id``) with ≥2
-    members become the returned clusters; smaller groups dissolve (members
-    get ``series_id``/``rank`` None). Unchanged computed ``Series`` objects
-    are reused verbatim (ranks kept); regrouped clusters are fresh
-    ``Series`` objects with positional ranks and a member-count-weighted
-    centroid blend (None when no source centroid exists).
-
-    Returns the corrected cluster list.
+    ``keep_singletons=False`` is the legacy ``apply_overrides`` rule
+    (groups <2 dissolve to UNGROUPED); ``True`` is the Wave S1 0-close
+    rule (1-member groups stay visible). Pure apart from the
+    ``series_id``/``rank`` fixups on member items.
     """
     from tabs.image_gallery.models import Series as _Series
 
-    try:
-        item_list = list(items or [])
-    except Exception:
-        return []
-    try:
-        overrides_map = dict(overrides or {})
-    except Exception:
-        overrides_map = {}
-
-    # 1. Per-item override wins (computed ids stand otherwise).
+    # 1. Per-item override wins (other ids stand).
     for it in item_list:
         try:
             k = _key(getattr(it, "path", None))
@@ -173,10 +157,10 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
             order.append(sid_s)
         groups[sid_s].append(it)
 
-    # Index computed Series by id for reuse.
-    computed_by_id: dict[str, object] = {}
+    # Index previous Series by id for reuse.
+    prev_by_id: dict[str, object] = {}
     try:
-        for entry in list(series or []):
+        for entry in list(prev_entries or []):
             members = _series_members(entry)
             if not members:
                 continue
@@ -191,7 +175,7 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
                     cid = None
             if cid is not None:
                 try:
-                    computed_by_id[str(cid)] = entry
+                    prev_by_id[str(cid)] = entry
                 except Exception:
                     pass
     except Exception:
@@ -200,7 +184,7 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
     out: list = []
     for sid_s in order:
         members = groups[sid_s]
-        if len(members) < 2:
+        if len(members) < 2 and not keep_singletons:
             # Dissolved: manual singletons join UNGROUPED (rank cleared).
             for m in members:
                 try:
@@ -212,10 +196,10 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
                 except Exception:
                     pass
             continue
-        # Reuse the computed Series object when membership is identical
-        # (same objects) — ranks/centroid stay exactly as clustered.
+        # Reuse the previous Series object when membership is identical
+        # (same objects) — ranks/centroid stay exactly as they were.
         try:
-            prev = computed_by_id.get(sid_s)
+            prev = prev_by_id.get(sid_s)
             prev_members = _series_members(prev) if prev is not None else []
             prev_ids = {id(m) for m in prev_members}
             same = prev is not None and prev_ids == {id(m) for m in members}
@@ -224,13 +208,13 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
         if same:
             out.append(prev)
             continue
-        # Regrouped: positional ranks + blended centroid.
+        # Regrouped (0-close: incl. 1-member survivors): positional ranks.
         for rank, m in enumerate(members, start=1):
             try:
                 m.rank = rank
             except Exception:
                 pass
-        centroid = _blend_centroid(members, computed_by_id)
+        centroid = _blend_centroid(members, prev_by_id)
         phash_centroid = _blend_phash(members)
         try:
             out.append(_Series(id=sid_s, members=list(members), centroid=centroid, phash_centroid=phash_centroid))
@@ -256,6 +240,32 @@ def apply_overrides(items: list, overrides: dict, series=None) -> list:
     except Exception:
         pass
     return out
+
+
+def apply_overrides(items: list, overrides: dict, series=None) -> list:
+    """Apply *overrides* onto *items* + the computed *series* clusters.
+
+    *series* is the ``cluster_items`` result (``list[Series]`` or member
+    lists; None/empty tolerated). Every item whose path is in *overrides*
+    gets ``series_id`` = the override (None for forced UNGROUPED);
+    computed ids stand otherwise. Final groups (by ``series_id``) with ≥2
+    members become the returned clusters; smaller groups dissolve (members
+    get ``series_id``/``rank`` None). Unchanged computed ``Series`` objects
+    are reused verbatim (ranks kept); regrouped clusters are fresh
+    ``Series`` objects with positional ranks and a member-count-weighted
+    centroid blend (None when no source centroid exists).
+
+    Returns the corrected cluster list.
+    """
+    try:
+        item_list = list(items or [])
+    except Exception:
+        return []
+    try:
+        overrides_map = dict(overrides or {})
+    except Exception:
+        overrides_map = {}
+    return _regroup_core(item_list, overrides_map, series, keep_singletons=False)
 
 
 def _blend_centroid(members: list, computed_by_id: dict) -> list[float] | None:
@@ -326,3 +336,159 @@ def _blend_phash(members: list) -> int | None:
         return best
     except Exception:
         return None
+
+
+# -- Wave S1 stable-id seam (pure, no Qt/store) ------------------------------
+#
+# ``Series.id`` is STABLE within the session: monotonic ``series_<n>``,
+# never reused. The controller owns the counter (S2 wires it); the
+# functions below take it as an explicit arg and never look an owner up.
+# ``cluster_items`` output ids are SEED-ONLY: never compared, stored, or
+# shown after translation.
+
+
+def translate_computed_to_stable(computed_series, start_counter: int) -> tuple:
+    """Rename seed ids from ``cluster_items`` to stable ``series_<n>`` ids.
+
+    Fresh world, no matching needed: every entry in *computed_series*
+    (``Series`` or member list) gets the next monotonic id
+    ``series_<start_counter+1>`` … and its members' ``series_id`` is
+    rewritten to match. Member order, ranks, centroids and
+    ``phash_centroid`` are carried over verbatim; output order mirrors
+    ``cluster_items`` (size desc, then id).
+
+    Returns ``(stable_series, next_counter)`` where ``next_counter`` is
+    the last id number issued (pass it back as ``start_counter`` next
+    time so ids are never reused). Pure apart from the ``series_id``
+    fixup on member items — the same fields ``cluster_items`` mutates.
+    """
+    from tabs.image_gallery.models import Series as _Series
+
+    try:
+        entries = list(computed_series or [])
+    except Exception:
+        return ([], int(start_counter) if isinstance(start_counter, int) else 0)
+    try:
+        counter = int(start_counter)
+    except Exception:
+        counter = 0
+
+    out: list = []
+    for entry in entries:
+        members = _series_members(entry)
+        if not members:
+            continue
+        counter += 1
+        sid_s = f"series_{counter}"
+        for m in members:
+            try:
+                m.series_id = sid_s
+            except Exception:
+                pass
+        try:
+            centroid = getattr(entry, "centroid", None)
+        except Exception:
+            centroid = None
+        try:
+            phash_centroid = getattr(entry, "phash_centroid", None)
+        except Exception:
+            phash_centroid = None
+        try:
+            out.append(
+                _Series(
+                    id=sid_s,
+                    members=list(members),
+                    centroid=list(centroid) if centroid else None,
+                    phash_centroid=phash_centroid,
+                )
+            )
+        except Exception:
+            out.append(list(members))
+    try:
+        out.sort(key=lambda s: (-len(_series_members(s)), str(getattr(s, "id", ""))))
+    except Exception:
+        pass
+    return (out, counter)
+
+
+def regroup_items(items: list, overrides: dict, last_series=None) -> list:
+    """Pure regroup WITHOUT clustering: override wins, group by final id.
+
+    Steps 2-3 of ``apply_overrides`` with the ``<2 dissolve`` replaced by
+    **0-close**: 1-member manual sections STAY visible (positional rank 1,
+    id kept); zero-member groups simply never appear; the UNGROUPED fixup
+    (every item outside a surviving group is bare) is unchanged.
+
+    Items whose path is absent from *overrides* keep their current
+    ``series_id`` (no re-cluster here — fresh clustering goes through
+    ``translate_computed_to_stable`` first). ``None`` overrides force
+    UNGROUPED. Unchanged groups reuse the ``last_series`` object verbatim
+    (ranks/centroid kept); regrouped groups are fresh ``Series`` with
+    positional ranks and a member-count-weighted centroid blend.
+
+    Returns the regrouped cluster list.
+    """
+    try:
+        item_list = list(items or [])
+    except Exception:
+        return []
+    try:
+        overrides_map = dict(overrides or {})
+    except Exception:
+        overrides_map = {}
+    return _regroup_core(item_list, overrides_map, last_series, keep_singletons=True)
+
+
+def attach_items(new_items_with_signatures, existing_series, threshold: int = 10) -> dict:
+    """Map new items to existing stable series via nearest centroid.
+
+    *new_items_with_signatures* is a ``dict`` mapping path-or-key to an
+    embedding vector, or a list of ``(path_or_item, vector)`` pairs.
+    Each vector attaches to the nearest series centroid (embedding
+    distance, same threshold rule as ``cluster_items``' secondary gate)
+    or to ``None`` when no centroid is close enough.
+
+    Pure: never mutates items or series — the caller assigns the
+    returned ids. Existing membership is untouched by construction.
+    Returns ``dict[str(path-or-key), series_id | None]``.
+    """
+    from tabs.image_gallery.services import clustering as _clustering
+
+    try:
+        pairs: list[tuple] = []
+        if isinstance(new_items_with_signatures, dict):
+            try:
+                iterable = list(new_items_with_signatures.items())
+            except Exception:
+                iterable = []
+            for k, v in iterable:
+                pairs.append((k, v))
+        else:
+            for entry in list(new_items_with_signatures or []):
+                try:
+                    k, v = entry
+                except Exception:
+                    continue
+                pairs.append((k, v))
+    except Exception:
+        return {}
+
+    try:
+        centroids = _clustering.series_centroids(list(existing_series or []))
+    except Exception:
+        centroids = {}
+
+    out: dict = {}
+    for key, vec in pairs:
+        try:
+            if hasattr(key, "path"):
+                label = _key(getattr(key, "path", None))
+            else:
+                label = _key(key)
+        except Exception:
+            continue
+        try:
+            out[label] = _clustering.nearest_series_id(vec, centroids, threshold)
+        except Exception:
+            out[label] = None
+    return out
