@@ -80,6 +80,11 @@ class ImageGalleryWidget(QWidget):
         # (called by ImageGalleryTab.create_page). Until attached, the widget
         # acts as its own triage owner (storeless unit tests, fail-open).
         self._attached_controller = None
+        # Session isolation (Wave ISO): this live copy addresses its OWN
+        # session id for every slot read — never the active session per
+        # read. The tab binds authoritatively via bind_gallery_session;
+        # unbound copies fail open to legacy (active) behavior.
+        self._gallery_session_id: str | None = None
         self._items: list[GalleryItem] = []
         # View switch state: False grid, True list. Mirrors the toolbar
         # segmented switch; grid_view owns the per-card builders
@@ -351,11 +356,54 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def bind_gallery_session(self, session_id: str | None) -> None:
+        """(Re)bind this live copy to its OWN session id.
+
+        Called by ``ImageGalleryTab`` when the tab session is known
+        (create_page, on_active_session_changed, activation refresh). The
+        ONLY place the binding changes — slot reads never re-resolve.
+        """
+        self._gallery_session_id = session_id
+
+    def _is_active_gallery_tab(self) -> bool:
+        """THE sanctioned active read: own id vs active session METADATA.
+
+        True when this copy serves the active session (or when no binding
+        is known yet — unbound copies fail open to legacy behavior).
+        """
+        try:
+            from tabs.image_gallery.ui.gallery_store import (
+                resolve_owner_session_id,
+                resolve_store,
+            )
+
+            own = self._gallery_session_id
+            if own is None:
+                own = resolve_owner_session_id(self)
+            if own is None:
+                return True
+            store = resolve_store(self)
+            if store is None:
+                return True
+            active = store.get_active_workspace_session()
+            if active is None:
+                return True
+            active_id = getattr(active, "id", None)
+            if active_id is None:
+                return True
+            return active_id == own
+        except Exception:
+            return True
+
     def _on_gallery_store_changed(self, scope: str) -> None:
         try:
             if scope != "gallery":
                 return
         except Exception:
+            return
+        if not self._is_active_gallery_tab():
+            # A foreign session's emit must never re-render THIS copy
+            # from the foreign slot (the empty-slot window wipes views).
             return
         try:
             self._render_from_gallery_slot()

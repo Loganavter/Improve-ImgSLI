@@ -92,10 +92,66 @@ def dispatch_gallery(owner: Any, action: Any) -> bool:
         return False
 
 
-def read_gallery_slot(owner: Any, store: Any | None = None) -> Any | None:
-    """Read the ``gallery`` session slot for the active session; None when absent.
+def resolve_owner_session_id(owner: Any) -> str | None:
+    """Own session id for *owner* (widget/controller/tab) — never the active default.
 
-    ``None`` means "no Redux state here" (no store, no active session, or a
+    Walks explicit owner links only (``_gallery_session_id`` on the owner
+    itself, the ``_owner_for_triage`` protocol, the tab's
+    ``_active_session_id``, then ``widget``/``_widget``/``_attached_controller``
+    child links) — no implied global lookups. Returns None when no copy has
+    been bound yet (unbound legacy contexts); callers then address the
+    active session EXPLICITLY, never via the omitted default.
+    """
+    seen: set[int] = set()
+    stack: list[Any] = [owner]
+    # Protocol-first (G5): the attached controller owns the binding when the
+    # owner is a widget, so controller-side ids resolve directly.
+    try:
+        resolve = getattr(owner, "_owner_for_triage", None)
+        proto = resolve() if callable(resolve) else None
+        if proto is not None and proto is not owner:
+            stack.append(proto)
+    except Exception:
+        pass
+    while stack:
+        obj = stack.pop()
+        if obj is None or id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        try:
+            sid = getattr(obj, "_gallery_session_id", None)
+            if sid:
+                return sid
+        except Exception:
+            pass
+        try:
+            # TabContract side: the tab tracks its own active session id.
+            sid = getattr(obj, "_active_session_id", None)
+            if sid:
+                return sid
+        except Exception:
+            pass
+        for attr in ("widget", "_widget", "_attached_controller"):
+            try:
+                nxt = getattr(obj, attr, None)
+            except Exception:
+                continue
+            if nxt is not None and id(nxt) not in seen:
+                stack.append(nxt)
+    return None
+
+
+def read_gallery_slot(
+    owner: Any, session_id: str | None = None, store: Any | None = None
+) -> Any | None:
+    """Read the ``gallery`` session slot for the OWNER's session; None when absent.
+
+    ``session_id`` wins when given; otherwise the owner's own bound id
+    (``resolve_owner_session_id``). Unbound owners fall back to the active
+    session EXPLICITLY (same value the old default produced, but addressed,
+    never omitted) so storeless-era callers keep working.
+
+    ``None`` means "no Redux state here" (no store, no session, or a
     foreign session type without the slot) — callers must skip rendering,
     never clear the grid on it.
     """
@@ -103,7 +159,15 @@ def read_gallery_slot(owner: Any, store: Any | None = None) -> Any | None:
         store = store if store is not None else resolve_store(owner)
         if store is None or not hasattr(store, "get_session_state_slot"):
             return None
-        return store.get_session_state_slot(GALLERY_SLOT_NAME)
+        if session_id is None:
+            session_id = resolve_owner_session_id(owner)
+        if session_id is None:
+            try:
+                active = store.get_active_workspace_session()
+                session_id = getattr(active, "id", None)
+            except Exception:
+                session_id = None
+        return store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=session_id)
     except Exception:
         return None
 
