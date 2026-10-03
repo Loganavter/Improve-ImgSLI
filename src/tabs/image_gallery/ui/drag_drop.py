@@ -680,6 +680,7 @@ def install_zone_drop_forwarding(owner, controller=None) -> bool:
 # -- series-header reset menu (Wave B) --------------------------------------
 
 _SERIES_RESET_ACTION_ID = "gallery.series.reset"
+_SERIES_RECLUSTER_ACTION_ID = "gallery.series.recluster"
 
 
 def _is_series_header(widget) -> bool:
@@ -692,20 +693,28 @@ def _is_series_header(widget) -> bool:
 
 
 def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
-    """Popup the series-header context menu (reset manual series).
+    """Popup the series-header context menu (reset / re-cluster series).
 
-    Single existing-surface affordance for clearing overrides: right-click
-    on any series/UNGROUPED header → "Reset manual series" →
-    ``controller.reset_series_overrides()``. Toolkit ``ContextMenu`` surface
-    (card-menu precedent), fail-soft everywhere. Returns True when a menu
-    was shown.
+    Single existing-surface affordance for manual-series management:
+    right-click on any series/UNGROUPED header → "Reset manual series"
+    (``controller.reset_series_overrides()``) and "Re-cluster series"
+    (``controller.recluster_series()`` — fresh world, pins kept). Each
+    entry appears only when the controller offers it. Toolkit
+    ``ContextMenu`` surface (card-menu precedent), fail-soft everywhere.
+    Returns True when a menu was shown.
     """
     ctrl = _explicit_controller(owner, controller)
     try:
         reset = getattr(ctrl, "reset_series_overrides", None)
     except Exception:
         reset = None
-    if not callable(reset):
+    try:
+        recluster = getattr(ctrl, "recluster_series", None)
+    except Exception:
+        recluster = None
+    has_reset = callable(reset)
+    has_recluster = callable(recluster)
+    if not (has_reset or has_recluster):
         return False
     try:
         pos = event.globalPosition().toPoint()
@@ -730,8 +739,10 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
 
     def _on_triggered(action_id: str, _data: object) -> None:
         try:
-            if action_id == _SERIES_RESET_ACTION_ID:
+            if action_id == _SERIES_RESET_ACTION_ID and has_reset:
                 reset()
+            elif action_id == _SERIES_RECLUSTER_ACTION_ID and has_recluster:
+                recluster()
         except Exception:
             pass
 
@@ -741,7 +752,12 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
     except Exception:
         return False
     try:
-        entries = (_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"),)
+        entries_list = []
+        if has_reset:
+            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"))
+        if has_recluster:
+            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, "Re-cluster series"))
+        entries = tuple(entries_list)
     except Exception:
         return False
     try:

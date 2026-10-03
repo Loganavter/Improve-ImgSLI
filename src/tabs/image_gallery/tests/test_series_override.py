@@ -187,21 +187,33 @@ def _controller(items: list[GalleryItem]):
     return ctrl
 
 
-def test_move_paths_to_series_pins_and_retriages(tmp_path, monkeypatch):
+def test_move_paths_to_series_pins_and_regroups_sync(tmp_path, monkeypatch):
+    """S2: move regroups synchronously — zero triage starts, zero thread hops.
+
+    (Replaces the Wave-B retriage assertion: the move path performs no
+    clustering and starts no workers; the grid is repainted via the
+    post-triage view tail instead.)
+    """
     t1, t2 = _item(_painted(tmp_path, "c1.png", "circle")), _item(_painted(tmp_path, "c2.png", "circle"))
     ctrl = _controller([t1, t2])
-    calls: dict = {}
-
-    def _fake_triage(items, *, cover_grid=True):
-        calls["items"] = list(items)
-        calls["cover_grid"] = cover_grid
-
-    monkeypatch.setattr(ctrl, "_start_triage", _fake_triage)
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl,
+        "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append((list(items), cover_grid)),
+    )
+    seen: dict = {}
+    ctrl.widget = SimpleNamespace(
+        set_triage=lambda s, m, src: seen.setdefault("series", list(s)),
+        set_triage_done=lambda: seen.setdefault("done", True),
+    )
     moved = ctrl.move_paths_to_series([t1.path, Path("/not/in/pool.png")], "series_9")
     assert moved == 1
     assert ctrl._series_overrides == {str(t1.path): "series_9"}
-    assert calls["cover_grid"] is False
-    assert {str(it.path) for it in calls["items"]} == {str(t1.path), str(t2.path)}
+    assert triage_calls == []  # sync path: no triage worker started
+    assert t1.series_id == "series_9"  # pinned, standing as its own section
+    host = [s for s in seen["series"] if getattr(s, "id", None) == "series_9"]
+    assert len(host) == 1 and [m.path for m in list(host[0].members)] == [t1.path]
 
 
 def test_reset_series_overrides_clears_and_retriages(tmp_path, monkeypatch):

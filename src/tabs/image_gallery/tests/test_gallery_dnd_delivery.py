@@ -96,12 +96,14 @@ def test_move_noop_ungrouped_targets_to_none(tmp_path, monkeypatch):
     assert triage_calls == []
 
 
-def test_move_partial_overlap_proceeds_for_rest_once(tmp_path, monkeypatch):
+def test_move_partial_overlap_proceeds_for_rest_sync(tmp_path, monkeypatch):
+    # S2 (renamed): partial overlap regroups synchronously — zero retriage.
     a = tmp_path / "p1.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
     b = tmp_path / "p2.png"
     b.write_bytes(b"\x89PNG\r\n\x1a\n")
-    ctrl = _controller([_item(a, "series_7"), _item(b, None)])
+    ia, ib = _item(a, "series_7"), _item(b, None)
+    ctrl = _controller([ia, ib])
     triage_calls: list = []
     monkeypatch.setattr(
         ctrl, "_start_triage",
@@ -109,20 +111,26 @@ def test_move_partial_overlap_proceeds_for_rest_once(tmp_path, monkeypatch):
     )
     assert ctrl.move_paths_to_series([a, b], "series_7") == 1
     assert ctrl._series_overrides == {str(b): "series_7"}  # a untouched
-    assert triage_calls == [False]  # still exactly one retriage
+    assert triage_calls == []  # S2: sync regroup, no retriage worker
+    assert ib.series_id == "series_7"
+    host = [s for s in ctrl.state.series if getattr(s, "id", None) == "series_7"]
+    assert len(host) == 1 and len(list(host[0].members)) == 2
 
 
-def test_move_full_change_still_retriages(tmp_path, monkeypatch):
+def test_move_full_change_syncs_without_retriage(tmp_path, monkeypatch):
+    # S2 (renamed): a real move regroups synchronously — zero retriage.
     a = tmp_path / "f.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
-    ctrl = _controller([_item(a, None)])
+    ia = _item(a, None)
+    ctrl = _controller([ia])
     triage_calls: list = []
     monkeypatch.setattr(
         ctrl, "_start_triage",
         lambda items, *, cover_grid=True: triage_calls.append(cover_grid),
     )
     assert ctrl.move_paths_to_series([a], "series_9") == 1
-    assert triage_calls == [False]
+    assert triage_calls == []  # S2: sync regroup, no retriage worker
+    assert ia.series_id == "series_9"  # pinned, standing as its own section
 
 
 # -- C1: owner-space mapping + delivery logging ------------------------------
