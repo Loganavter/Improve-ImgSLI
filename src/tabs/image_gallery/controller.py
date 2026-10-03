@@ -71,6 +71,14 @@ class GalleryController:
     def __init__(self, widget, *, thread_pool: QThreadPool | None = None, context=None):
         self.widget = widget
         self.state = GalleryState()
+        # Manual series overrides (Wave B): controller-local
+        # ``dict[str(path), series_id | None]`` — None = forced UNGROUPED.
+        # In-memory only (no cross-restart persistence, explicitly out of
+        # scope). Applied as a post-pass after every cluster_items result
+        # (see _run_triage_sync / _on_triage_ready); override wins over the
+        # computed series_id. Read by the triage worker via an explicit
+        # snapshot argument (never by implied lookup).
+        self._series_overrides: dict[str, str | None] = {}
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._context = context
         self._ai_settings_store = AiSettingsStore()
@@ -976,12 +984,23 @@ class GalleryController:
 
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 
-    def _run_triage_sync(self, items: list[GalleryItem]) -> tuple[list[Series], Path | None, Mode]:
-        """Pure pipeline for GenericWorker: cluster → mode (no auto hub)."""
+    def _run_triage_sync(
+        self, items: list[GalleryItem], overrides: dict | None = None
+    ) -> tuple[list[Series], Path | None, Mode]:
+        """Pure pipeline for GenericWorker: cluster → override → mode (no auto hub)."""
         from tabs.image_gallery.services.clustering import cluster_items
         from tabs.image_gallery.services.mode import select_mode
+        from tabs.image_gallery.use_cases import series_override as _override
 
         series = cluster_items(items)
+        # Wave B post-pass (pure): manual overrides win over computed ids.
+        # ``overrides`` is an explicit snapshot taken in _start_triage (the
+        # worker must not read live controller state); None keeps old
+        # callers working and means "no overrides".
+        try:
+            series = _override.apply_overrides(items, overrides or {}, series)
+        except Exception:
+            logger.debug("series override apply failed", exc_info=True)
         # No auto source: hub_detection disabled — source stays None until
         # the user picks one explicitly ("Set as source" / context menu).
         source = None
@@ -1029,7 +1048,7 @@ class GalleryController:
                     self.widget.set_scanning(0, len(items))
                 except Exception:
                     logger.debug("widget.set_scanning failed", exc_info=True)
-        worker = GenericWorker(self._run_triage_sync, list(items))
+        worker = GenericWorker(self._run_triage_sync, list(items), dict(self._series_overrides))
         gen = self._folder_gen
         worker.signals.result.connect(lambda res, g=gen: self._on_triage_ready(res, g))
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
@@ -1282,6 +1301,16 @@ class GalleryController:
             self.state.triage_state = TriageState.ERROR
             self._emit_triage_finished("error")
             return
+        # Wave B: re-apply overrides on the GUI thread — the worker snapshot
+        # may predate drops that landed while it was in flight. Idempotent.
+        try:
+            from tabs.image_gallery.use_cases import series_override as _override
+
+            series = _override.apply_overrides(
+                list(self.state.items), self._series_overrides, series
+            )
+        except Exception:
+            logger.debug("series override re-apply failed", exc_info=True)
         self.state.series = series  # type: ignore[assignment]
         self.state.source_path = source  # type: ignore[assignment]
         self.state.mode = mode  # type: ignore[assignment]
@@ -1613,6 +1642,65 @@ class GalleryController:
         from tabs.image_gallery.use_cases.triage import show_all as _show
 
         return int(_show(self))
+
+    # -- manual series overrides (Wave B drop targets) ---------------------
+
+    def move_paths_to_series(self, paths, series_id: str | None) -> int:
+        """Pin *paths* to *series_id* (None = forced UNGROUPED) + regroup.
+
+        Internal-DnD entry point (``ui/drag_drop`` routes the gallery mime
+        here, never through ``open_paths``). Writes the controller-local
+        override map, then re-runs triage over the current pool via the
+        existing ``_start_triage`` path (``cover_grid=False`` — live groups
+        stay visible, same as append drops). Returns items pinned.
+        """
+        from tabs.image_gallery.use_cases import series_override as _override
+
+        try:
+            pool = {str(it.path) for it in self.state.items}
+        except Exception:
+            pool = set()
+        try:
+            targets = [Path(p) if not isinstance(p, Path) else p for p in list(paths or [])]
+        except Exception:
+            return 0
+        in_pool = [p for p in targets if str(p) in pool]
+        if not in_pool:
+            return 0
+        try:
+            sid = str(series_id) if series_id is not None else None
+        except Exception:
+            sid = None
+        moved = int(_override.set_override(self._series_overrides, [str(p) for p in in_pool], sid))
+        try:
+            self._start_triage(list(self.state.items), cover_grid=False)
+        except Exception:
+            logger.debug("move_paths_to_series retriage failed", exc_info=True)
+        return moved
+
+    def reset_series_overrides(self) -> int:
+        """Clear every manual series override + regroup automatically.
+
+        Reset affordance behind the series-header context menu
+        (``ui/drag_drop`` installs it at runtime — ``grid_view.py`` stays
+        untouched). Reuses the existing ``_start_triage`` rebuild path.
+        Returns entries cleared (0 = no rebuild).
+        """
+        try:
+            cleared = len(self._series_overrides)
+        except Exception:
+            cleared = 0
+        try:
+            self._series_overrides.clear()
+        except Exception:
+            pass
+        if not cleared:
+            return 0
+        try:
+            self._start_triage(list(self.state.items), cover_grid=False)
+        except Exception:
+            logger.debug("reset_series_overrides retriage failed", exc_info=True)
+        return cleared
 
     def clean_rejected(self) -> list[dict]:
         from tabs.image_gallery.use_cases.triage import clean_rejected as _clean
