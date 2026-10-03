@@ -928,15 +928,33 @@ def _owner_hit_pos(owner, event):
     except Exception:
         return primary
     try:
+        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate
+        if _gate():
+            _dnd_log("hit-pos cursor_mapped=%s legacy=%s", primary, legacy)
+    except Exception:
+        pass
+    try:
         same = bool(legacy == primary)
     except Exception:
         same = True
     if not same:
         try:
             if _header_at(owner, legacy) is not None:
+                try:
+                    from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate2
+                    if _gate2():
+                        _dnd_log("hit-pos chosen=legacy %s", legacy)
+                except Exception:
+                    pass
                 return legacy
         except Exception:
             pass
+    try:
+        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate3
+        if _gate3():
+            _dnd_log("hit-pos chosen=cursor %s", primary)
+    except Exception:
+        pass
     return primary
 
 
