@@ -696,3 +696,35 @@ def test_signature_cache_invalidates_on_file_change(tmp_path, monkeypatch):
     Image.new("RGB", (64, 64), (30, 30, 200)).save(a)  # new mtime + size
     _clustering.signature_for(a)
     assert calls["n"] == 2
+
+
+# -- Wave E: full-width section bands ------------------------------------------
+#
+# Only headers/cards were targets: gaps, margins and collapsed empties fell
+# back UNGROUPED. A section owns everything from its header down to the
+# next header (full width); the last band runs to the owner bottom.
+
+
+def test_band_gap_between_cards_resolves_section(qapp):
+    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
+    # (300, 250): right of series_2's card (ends x=110), below hdr_b (200-230).
+    assert dnd.series_target_at(owner, QPoint(300, 250)) == (True, "series_2")
+    assert dnd._header_at(owner, QPoint(300, 250)) is hdr_b
+
+
+def test_band_upper_section_body_resolves_first_series(qapp):
+    owner, hdr_a, _hb, _card = _owner_with_two_series_and_cards(qapp)
+    # (350, 100): empty area between hdr_a (0-30) and hdr_b (200).
+    assert dnd.series_target_at(owner, QPoint(350, 100)) == (True, "series_1")
+    assert dnd._header_at(owner, QPoint(350, 100)) is hdr_a
+
+
+def test_band_above_first_header_has_no_section(qapp):
+    owner = QWidget()
+    owner.resize(400, 400)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 100, 400, 30)
+    owner._grid_view = SimpleNamespace(_series_headers=[hdr], _series=[])  # type: ignore[attr-defined]
+    handled, sid = dnd.series_target_at(owner, QPoint(200, 50))
+    assert (handled, sid) == (True, None)  # falls through to UNGROUPED tail
