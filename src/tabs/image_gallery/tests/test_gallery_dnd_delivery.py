@@ -136,9 +136,12 @@ class _FakeDropEvent:
     ``!=`` owner, e.g. viewport/zone child).
     """
 
-    def __init__(self, mime: QMimeData, global_pos: QPoint):
+    def __init__(self, mime: QMimeData, global_pos: QPoint, pos=None):
         self._mime = mime
         self._global = global_pos
+        # Truthful event pos (receiver==owner frame). The S2-era decoy
+        # default stays for mapping tests that override it explicitly.
+        self._pos = QPoint(500, 500) if pos is None else pos
         self.accepted = False
         self.ignored = False
 
@@ -148,11 +151,11 @@ class _FakeDropEvent:
     def globalPosition(self):
         return QPointF(self._global)
 
-    def position(self):  # receiver-relative decoy: far from every header
-        return QPointF(QPoint(500, 500))
+    def position(self):
+        return QPointF(self._pos)
 
     def pos(self):
-        return QPoint(500, 500)
+        return QPoint(self._pos)
 
     def accept(self):
         self.accepted = True
@@ -188,16 +191,24 @@ def _owner_with_header(qapp, series_id: str):
     return owner, hdr
 
 
-def test_owner_space_pos_prefers_global_over_receiver_pos(qapp, tmp_path):
+def test_owner_space_pos_maps_known_receiver_into_owner(qapp, tmp_path):
+    """Known receiver (zone forwarding) maps through the receiver chain.
+
+    Cursor sources are poisoned during QDrag.exec (frozen QCursor.pos(),
+    move-trace proven), so ``_owner_space_pos`` never consults the cursor:
+    the event pos travels with the pointer; a known receiver maps it into
+    owner space, otherwise it already is owner-space.
+    """
     owner, hdr = _owner_with_header(qapp, "series_7")
     a = tmp_path / "twin.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
-    # Global point over the header (round-trips through mapToGlobal).
-    gp = hdr.mapToGlobal(QPoint(10, 10))
-    ev = _FakeDropEvent(_internal_mime([a]), gp)
-    assert dnd._owner_space_pos(owner, ev) == QPoint(10, 10)
-    handled, sid = dnd.series_target_at(owner, dnd._owner_space_pos(owner, ev))
-    assert (handled, sid) == (True, "series_7")
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    # Receiver == owner: event pos used as-is (no cursor consulted).
+    assert dnd._owner_space_pos(owner, ev) == QPoint(500, 500)
+    # Known child receiver offset by (100, 100): mapped back into owner.
+    zone = QWidget(owner)
+    zone.setGeometry(100, 100, 50, 50)
+    assert dnd._owner_space_pos(owner, ev, receiver=zone) == QPoint(600, 600)
 
 
 def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplog):
@@ -209,7 +220,8 @@ def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplo
     ctrl = SimpleNamespace(
         move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 2,
     )
-    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)),
+                          pos=QPoint(10, 10))
     with caplog.at_level("WARNING", logger="ImproveImgSLI"):
         dnd.drop_event(owner, ev, ctrl)
     assert ev.accepted
@@ -426,3 +438,253 @@ def test_install_binds_handler_and_settles_without_paths(qapp, router_env, monke
     ev = _Ev()
     bound["handler"](ev)
     assert ev.ignored and not ev.accepted
+
+
+# -- Wave D: series cards as drop targets --------------------------------------
+#
+# Only thin headers were targets: drops onto series bodies (cards) fell back
+# to UNGROUPED (prod log 12:48: delivered series_id=None). Cards now resolve
+# to their series; drops onto a dragged card itself hit its own series and
+# the controller no-op guard skips the retriage.
+
+
+def _owner_with_two_series_and_cards(qapp):
+    """Two 1-item series + one live card in series_2 (real geometry)."""
+    owner = QWidget()
+    owner.resize(400, 400)
+    hdr_a = QWidget(owner)
+    hdr_a.setObjectName("GallerySeriesHeader_0")
+    hdr_a.setGeometry(0, 0, 400, 30)
+    hdr_b = QWidget(owner)
+    hdr_b.setObjectName("GallerySeriesHeader_1")
+    hdr_b.setGeometry(0, 200, 400, 30)
+    item_a = SimpleNamespace(path=Path("/pool/a.png"), series_id="series_1")
+    item_b = SimpleNamespace(path=Path("/pool/b.png"), series_id="series_2")
+    card_b = QWidget(owner)
+    card_b.setGeometry(10, 240, 100, 80)
+    card_b._gallery_item = SimpleNamespace(  # type: ignore[attr-defined]
+        path=Path("/pool/b.png"), series_id="series_2"
+    )
+    owner._grid_view = SimpleNamespace(  # type: ignore[attr-defined]
+        _series_headers=[hdr_a, hdr_b],
+        _series=[[item_a], [item_b]],
+        _ungrouped=[],
+        _cards_by_path={"/pool/b.png": card_b},
+    )
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    return owner, hdr_a, hdr_b, card_b
+
+
+def test_card_hit_resolves_card_series(qapp):
+    owner, _ha, _hb, _card = _owner_with_two_series_and_cards(qapp)
+    # Over series_2's card body — no header there (headers at y 0-30, 200-230).
+    assert dnd.series_target_at(owner, QPoint(20, 250)) == (True, "series_2")
+
+
+def test_header_at_follows_card_hover(qapp):
+    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
+    assert dnd._header_at(owner, QPoint(20, 250)) is hdr_b
+
+
+def test_drop_onto_series_cards_moves(qapp, tmp_path):
+    a = tmp_path / "a.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
+    calls: list = []
+    ctrl = SimpleNamespace(
+        move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 1,
+    )
+    gp = card_b.mapToGlobal(QPoint(20, 20))
+    ev = _FakeDropEvent(_internal_mime([a]), gp, pos=QPoint(30, 260))
+    dnd.drop_event(owner, ev, ctrl)
+    assert ev.accepted
+    assert len(calls) == 1 and calls[0][1] == "series_2"
+
+
+def test_drop_onto_own_card_is_noop(qapp, tmp_path, monkeypatch):
+    """Own card hit → own series → controller guard returns 0, no retriage."""
+    from tabs.image_gallery.controller import GalleryController
+
+    b = tmp_path / "b.png"
+    b.write_bytes(b"\x89PNG\r\n\x1a\n")
+    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
+    ctrl = GalleryController(_widget_double(), context=None)
+    ctrl.state.items = [_item(b, "series_2")]
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(True),
+    )
+    assert ctrl.move_paths_to_series([b], "series_2") == 0
+    assert triage_calls == []
+
+
+# -- Wave E: colored landing indicator -----------------------------------------
+#
+# The pressed-state highlight was invisible: drops need a colored landing
+# indicator. A painter layer on the header Button
+# (``_SeriesDropTargetLayer``) paints accent underline + tint while
+# ``btn._gallery_drop_target`` is set (toggled by highlight set/clear).
+
+
+def _highlight_host(qapp):
+    from PySide6.QtWidgets import QPushButton
+
+    owner = QWidget()
+    owner.resize(400, 300)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 0, 400, 30)
+    btn = QPushButton(hdr)
+    btn.setObjectName("GallerySeriesHeaderBtn_0")
+    btn.setGeometry(0, 0, 400, 30)
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    return owner, hdr, btn
+
+
+def test_highlight_sets_and_clears_drop_target_flag(qapp):
+    owner, hdr, btn = _highlight_host(qapp)
+    assert getattr(btn, "_gallery_drop_target", False) is False
+    dnd._set_series_highlight(owner, hdr)
+    assert btn._gallery_drop_target is True
+    assert owner._series_drop_target[0] is hdr
+    dnd._clear_series_highlight(owner)
+    assert btn._gallery_drop_target is False
+    assert owner._series_drop_target is None
+
+
+def test_drop_target_layer_paints_only_when_flagged(qapp):
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.grid_view import _SeriesDropTargetLayer
+
+    layer = _SeriesDropTargetLayer()
+
+    class _Painter:
+        def __init__(self):
+            self.rects = []
+
+        def fillRect(self, x, y, w, h, color):
+            self.rects.append((x, y, w, h))
+
+    for flagged, expect in ((False, 0), (True, 2)):
+        painter = _Painter()
+        widget = SimpleNamespace(_gallery_drop_target=flagged)
+        ctx = SimpleNamespace(
+            widget=widget, rect=QRectF(0, 0, 200, 30), painter=painter
+        )
+        layer.draw(ctx, None)
+        assert len(painter.rects) == expect
+
+
+# -- Wave E: receiver-chain hit-testing ----------------------------------------
+#
+# Cursor sources are poisoned during QDrag.exec (frozen QCursor.pos(),
+# move-trace proven): the event position is the only live truth. A known
+# receiver maps into owner space; the owner itself needs no mapping.
+
+
+def test_receiver_chain_mapping_resolves_header(qapp, tmp_path):
+    owner, hdr = _owner_with_header(qapp, "series_7")
+    a = tmp_path / "twin.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    zone = QWidget(owner)
+    zone.setGeometry(100, 100, 50, 50)
+    pos = dnd._owner_hit_pos(owner, ev, receiver=zone)
+    # Zone-relative (500, 500) maps through the chain: owner == zone + offset.
+    assert pos == QPoint(600, 600)
+    # Direct owner receiver: raw event pos in owner space.
+    assert dnd._owner_hit_pos(owner, ev) == QPoint(500, 500)
+
+
+def test_highlight_flags_toolkit_button_without_setdown(qapp):
+    """Toolkit header Buttons have no setDown: flag + update must still run.
+
+    Regression: ``btn.setDown(True)`` raised AttributeError before the flag
+    write, so the Wave E landing layer never painted live (log line fired,
+    visuals did not).
+    """
+    owner = QWidget()
+    owner.resize(400, 300)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 0, 400, 30)
+    btn = QWidget(hdr)  # plain QWidget: update() yes, setDown no
+    btn.setObjectName("GallerySeriesHeaderBtn_0")
+    btn.setGeometry(0, 0, 400, 30)
+    assert not hasattr(btn, "setDown")
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    assert dnd._header_button(hdr) is btn
+    dnd._set_series_highlight(owner, hdr)
+    assert btn._gallery_drop_target is True
+    dnd._clear_series_highlight(owner)
+    assert btn._gallery_drop_target is False
+
+
+# -- Wave E perf: signature cache (re-triage must not re-decode) ----------------
+#
+# ``compute_phash`` + ``embedding`` cost ~250ms per 8MB PNG. Every series
+# move re-runs triage over UNCHANGED files — memoize per (path, mtime, size).
+
+
+def _png_pair(tmp_path):
+    from PIL import Image
+
+    a = tmp_path / "p1.png"
+    b = tmp_path / "p2.png"
+    Image.new("RGB", (64, 64), (200, 30, 30)).save(a)
+    Image.new("RGB", (64, 64), (200, 30, 30)).save(b)
+    return a, b
+
+
+def test_signature_cache_serves_second_cluster_without_decode(tmp_path, monkeypatch):
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    a, b = _png_pair(tmp_path)
+    calls = {"n": 0}
+    real_phash = _clustering.compute_phash
+    real_embed = _clustering.embedding
+
+    def _count_phash(p):
+        calls["n"] += 1
+        return real_phash(p)
+
+    monkeypatch.setattr(_clustering, "compute_phash", _count_phash)
+    monkeypatch.setattr(
+        _clustering, "embedding", lambda p: real_embed(p)
+    )
+    items = [_item(a), _item(b)]
+    first = _clustering.cluster_items(items)
+    assert calls["n"] == 2
+    second = _clustering.cluster_items([_item(a), _item(b)])
+    assert calls["n"] == 2  # no re-decode
+    assert [s.id for s in second] == [s.id for s in first]
+    assert _clustering.clear_signature_cache() == 2
+
+
+def test_signature_cache_invalidates_on_file_change(tmp_path, monkeypatch):
+    import time
+
+    from PIL import Image
+
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    a, _b = _png_pair(tmp_path)
+    calls = {"n": 0}
+    real_phash = _clustering.compute_phash
+    monkeypatch.setattr(
+        _clustering, "compute_phash", lambda p: (calls.__setitem__("n", calls["n"] + 1), real_phash(p))[1]
+    )
+    _clustering.signature_for(a)
+    assert calls["n"] == 1
+    _clustering.signature_for(a)
+    assert calls["n"] == 1
+    time.sleep(0.02)
+    Image.new("RGB", (64, 64), (30, 30, 200)).save(a)  # new mtime + size
+    _clustering.signature_for(a)
+    assert calls["n"] == 2

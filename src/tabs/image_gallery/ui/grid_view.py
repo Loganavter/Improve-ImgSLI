@@ -330,6 +330,62 @@ class _SeriesHeaderAccentLayer(Layer):
             pass
 
 
+class _SeriesDropTargetLayer(Layer):
+    """Colored landing indicator for card DnD (Wave E).
+
+    Same pattern as ``_SeriesHeaderAccentLayer``: a painter layer of the
+    header ``Button`` itself (no sibling widgets, no QSS — the painter
+    pipeline owns all visuals). Paints a full-width accent underline while
+    the header is the live drop target; the flag lives on the button
+    (``btn._gallery_drop_target``, toggled by ``ui/drag_drop`` highlight
+    set/clear + ``btn.update()``), the color resolves per-paint from the
+    selection-accent token so light/dark flips need no cached state.
+    Off while the flag is absent/False — zero paint cost outside drags.
+    """
+
+    scope = "widget"
+
+    def draw(self, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+        try:
+            widget = getattr(ctx, "widget", None)
+            if not bool(getattr(widget, "_gallery_drop_target", False)):
+                return
+            rect = ctx.rect.toRect() if hasattr(ctx.rect, "toRect") else ctx.rect
+            color = gallery_selection_accent()
+            try:
+                from PySide6.QtGui import QColor as _QC
+
+                if color is None or (hasattr(color, "isValid") and not color.isValid()):
+                    color = _QC("#0078D4")
+            except Exception:
+                pass
+            try:
+                bar_h = int(scaled_px(3))
+            except Exception:
+                bar_h = 3
+            ctx.painter.fillRect(
+                int(rect.left()), int(rect.bottom()) - bar_h,
+                int(rect.width()), bar_h, color,
+            )
+            try:
+                from PySide6.QtGui import QColor as _QC2
+
+                # Copy before setAlpha: the accent helper may hand out a
+                # shared/cached instance — never mutate it in place.
+                tint = _QC2(color) if not callable(color) else _QC2(color())
+                if not tint.isValid():
+                    tint = _QC2("#0078D4")
+                tint.setAlpha(36)
+                ctx.painter.fillRect(
+                    int(rect.left()), int(rect.top()),
+                    int(rect.width()), int(rect.height()) - bar_h, tint,
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 class GalleryGridView(QWidget):
     """Scrollable 4-column gallery grid with pooled Button cards."""
 
@@ -1372,7 +1428,8 @@ class GalleryGridView(QWidget):
                 size=(0, scaled_px(24)),
                 # 3px bar + 12px gap the sibling widget used to occupy.
                 content_padding=(scaled_px(15), 0, 0, 0),
-                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible)],
+                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible),
+                                _SeriesDropTargetLayer()],
                 parent=container,
             )
             btn.setObjectName(f"GallerySeriesHeaderBtn_{index}")
@@ -1410,7 +1467,8 @@ class GalleryGridView(QWidget):
                 size=(0, scaled_px(24)),
                 # 3px bar + 12px gap the sibling widget used to occupy.
                 content_padding=(scaled_px(15), 0, 0, 0),
-                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible)],
+                extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible),
+                                _SeriesDropTargetLayer()],
                 parent=container,
             )
             btn.setObjectName("GallerySeriesHeader_ungrouped_btn")
@@ -1848,6 +1906,17 @@ class GalleryGridView(QWidget):
             mime = build_gallery_drag_mime(dragged)
         except Exception:
             return None
+        try:
+            from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
+
+            _dnd_log(
+                "card drag start pressed=%s n_dragged=%d dragged=%r",
+                Path(press_path).name if press_path else "?",
+                len(dragged),
+                [Path(p).name for p in list(dragged)[:5]],
+            )
+        except Exception:
+            pass
         try:
             pixmap = resolve_gallery_drag_pixmap(card, owner, dragged[0])
         except Exception:
