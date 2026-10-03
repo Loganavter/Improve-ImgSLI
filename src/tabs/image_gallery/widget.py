@@ -112,6 +112,10 @@ class ImageGalleryWidget(QWidget):
                     self._jank_timer.start()
                 except Exception:
                     pass
+                try:
+                    logger.warning("[jank] watchdog armed (50ms tick, >=150ms gaps)")
+                except Exception:
+                    pass
         except Exception:
             pass
         # G2 gallery contract: controller attached once via attach_controller
