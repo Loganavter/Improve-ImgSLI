@@ -49,6 +49,100 @@ _Mode = Mode
 _SHARPNESS_THRESHOLD = 120.0
 _TIGHT_EMBED_DISTANCE = 0.35
 
+# Sharpness cache: ``_sharpness`` decodes + downscales + runs a pure-Python
+# Laplacian per file (~150ms per 8MB PNG) and ``select_mode`` calls it for
+# EVERY item on EVERY triage — including warm regroups. Memoize per
+# ``(path, mtime_ns, size)`` (same discipline as the clustering signature
+# cache); edits miss and recompute. Bounded, immutable float values.
+_SHARPNESS_CACHE: dict[tuple[str, int, int], float | None] = {}
+_SHARPNESS_CACHE_LIMIT = 4096
+
+
+def clear_sharpness_cache() -> int:
+    """Drop cached sharpness values. Returns entries cleared (tests)."""
+    try:
+        n = len(_SHARPNESS_CACHE)
+    except Exception:
+        return 0
+    try:
+        _SHARPNESS_CACHE.clear()
+    except Exception:
+        pass
+    return n
+
+
+# EXIF-presence cache: ``_has_exif`` opens + parses every file (~100ms per
+# PNG, almost always False) on each ``select_mode`` call. Same key
+# discipline as sharpness; edits miss and recompute.
+_EXIF_CACHE: dict[tuple[str, int, int], bool] = {}
+
+
+def _stat_key(path) -> tuple[str, int, int] | None:
+    try:
+        s = str(path)
+        import os
+
+        st = os.stat(s)
+        return (s, int(getattr(st, "st_mtime_ns", 0)), int(st.st_size))
+    except Exception:
+        return None
+
+
+def exif_for(path) -> bool:
+    """Cached EXIF-presence probe for *path* (content-keyed)."""
+    key = _stat_key(path)
+    if key is None:
+        return bool(_has_exif(path))
+    try:
+        if key in _EXIF_CACHE:
+            return bool(_EXIF_CACHE[key])
+    except Exception:
+        pass
+    value = bool(_has_exif(path))
+    try:
+        if len(_EXIF_CACHE) >= _SHARPNESS_CACHE_LIMIT:
+            for old in list(_EXIF_CACHE)[: _SHARPNESS_CACHE_LIMIT // 4]:
+                try:
+                    del _EXIF_CACHE[old]
+                except Exception:
+                    pass
+        _EXIF_CACHE[key] = value
+    except Exception:
+        pass
+    return value
+
+
+def sharpness_for(path) -> float | None:
+    """Cached Laplacian sharpness for *path* (content-keyed, never shared)."""
+    try:
+        s = str(path)
+    except Exception:
+        return _sharpness(path)
+    try:
+        import os
+
+        st = os.stat(s)
+        key = (s, int(getattr(st, "st_mtime_ns", 0)), int(st.st_size))
+    except Exception:
+        return _sharpness(path)
+    try:
+        if key in _SHARPNESS_CACHE:
+            return _SHARPNESS_CACHE[key]
+    except Exception:
+        pass
+    value = _sharpness(path)
+    try:
+        if len(_SHARPNESS_CACHE) >= _SHARPNESS_CACHE_LIMIT:
+            for old in list(_SHARPNESS_CACHE)[: _SHARPNESS_CACHE_LIMIT // 4]:
+                try:
+                    del _SHARPNESS_CACHE[old]
+                except Exception:
+                    pass
+        _SHARPNESS_CACHE[key] = value
+    except Exception:
+        pass
+    return value
+
 
 def _sharpness(path: Path) -> float | None:
     """Laplacian variance sharpness (grayscale). Returns None on failure."""
@@ -121,7 +215,7 @@ def _has_exif(path: Path) -> bool:
 def _average_sharpness(items: list["GalleryItem"]) -> float | None:
     vals: list[float] = []
     for it in items:
-        s = _sharpness(it.path)
+        s = sharpness_for(it.path)
         if s is not None:
             vals.append(s)
     if not vals:
@@ -138,16 +232,17 @@ def _is_tight_embedding_cloud(
     if not items or len(items) < 3:
         return False
     try:
-        from tabs.image_gallery.services.clustering import embedding as _embedding
+        from tabs.image_gallery.services.clustering import signature_for as _sig_for
     except Exception:
         return False
 
     # Quick embedding spread check: compute pairwise distances for sample (max 20 items for speed).
+    # Signatures come from the perceptual cache (no re-decode on regroups).
     sample = items[:20]
     vecs: list[list[float]] = []
     for it in sample:
         try:
-            vecs.append(_embedding(it.path))
+            vecs.append(list(_sig_for(it.path)[1]))
         except Exception:
             continue
     if len(vecs) < 2:
@@ -189,7 +284,7 @@ def select_mode(
     # (e.g., burst). Use sharpness + EXIF to distinguish.
     if items:
         # If any image has EXIF and sharpness is moderate-high → camera.
-        has_exif_any = any(_has_exif(it.path) for it in items)
+        has_exif_any = any(exif_for(it.path) for it in items)
         avg_s = _average_sharpness(items)
         if avg_s is not None and avg_s > _SHARPNESS_THRESHOLD:
             return _Mode.CAMERA

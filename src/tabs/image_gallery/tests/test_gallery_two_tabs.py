@@ -423,3 +423,42 @@ def test_signatures_cached_unit(tmp_path) -> None:
     _clustering.signature_for(a)
     assert _clustering.signatures_cached([a]) is True
     assert _clustering.signatures_cached([tmp_path / "nope.png"]) is False
+
+
+def test_sharpness_cache_serves_repeat_select_mode(tmp_path, monkeypatch) -> None:
+    """select_mode must not re-decode files on warm regroups (busy cursor)."""
+    from PIL import Image
+
+    from tabs.image_gallery.services import mode as _mode
+
+    _mode.clear_sharpness_cache()
+    for n in ("w1.png", "w2.png"):
+        Image.new("RGB", (64, 64), (200, 30, 30)).save(tmp_path / n)
+    calls = {"n": 0}
+    real = _mode._sharpness
+    monkeypatch.setattr(
+        _mode, "_sharpness", lambda p: (calls.__setitem__("n", calls["n"] + 1), real(p))[1]
+    )
+    from tabs.image_gallery.models import GalleryItem
+
+    items = [GalleryItem(path=tmp_path / n, mtime_ns=1) for n in ("w1.png", "w2.png")]
+    assert _mode.select_mode(None, items, None) == _mode.select_mode(None, items, None)
+    assert calls["n"] == 2  # decoded once, second run from cache
+
+
+def test_exif_cache_serves_repeat_select_mode(tmp_path, monkeypatch) -> None:
+    from PIL import Image
+
+    from tabs.image_gallery.services import mode as _mode
+
+    (tmp_path / "e1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    Image.new("RGB", (32, 32), (10, 10, 10)).save(tmp_path / "e2.png")
+    calls = {"n": 0}
+    real = _mode._has_exif
+    monkeypatch.setattr(
+        _mode, "_has_exif", lambda p: (calls.__setitem__("n", calls["n"] + 1), real(p))[1]
+    )
+    assert _mode.exif_for(tmp_path / "e1.png") is False
+    assert _mode.exif_for(tmp_path / "e1.png") is False
+    assert _mode.exif_for(tmp_path / "e2.png") is False
+    assert calls["n"] == 2  # once per file, repeats from cache
