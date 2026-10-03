@@ -25,6 +25,18 @@
       }
     },
     {
+      "path": "src/core/tracing/instrumentation.py",
+      "lines": 505,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-machine size=exempt reason=\"one tracer install: N monkeypatchers sharing tracer discipline — splitting scatters wrap/unwrap pairs\"",
+      "parsed": {
+        "pattern": "single-machine",
+        "size": "exempt",
+        "reason": "one tracer install: N monkeypatchers sharing tracer discipline — splitting scatters wrap/unwrap pairs"
+      }
+    },
+    {
       "path": "src/devtools/context_cloc.py",
       "lines": 810,
       "limit": 500,

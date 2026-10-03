@@ -1,4 +1,5 @@
 from __future__ import annotations
+# Audit-Meta: pattern=single-machine size=exempt reason="one tracer install: N monkeypatchers sharing tracer discipline — splitting scatters wrap/unwrap pairs"
 
 import logging
 import weakref
@@ -37,9 +38,11 @@ def _patch_dispatcher() -> None:
     orig_reduce_name = "_reducer"
     tracer = Tracer.instance()
 
-    def traced_dispatch(self, action, scope: str = "viewport"):
+    def traced_dispatch(self, action, scope: str = "viewport", session_id: str | None = None):
+        # Stay signature-transparent: forward every kwarg (a dropped kwarg
+        # hard-breaks traced runs — prod incident 2026-10-03, session_id).
         if not Tracer.enabled():
-            return orig_dispatch(self, action, scope)
+            return orig_dispatch(self, action, scope, session_id=session_id)
 
         action_type = getattr(action, "type", type(action).__name__)
         payload: dict[str, Any] = {}
@@ -48,6 +51,7 @@ def _patch_dispatcher() -> None:
         except Exception:
             payload["action"] = "<unrepr>"
         payload["scope"] = scope
+        payload["session_id"] = session_id
 
         old_viewport = self._store.viewport
         old_document = self._store.document
@@ -68,7 +72,7 @@ def _patch_dispatcher() -> None:
         )
         tracer._push_depth()
         try:
-            result = orig_dispatch(self, action, scope)
+            result = orig_dispatch(self, action, scope, session_id=session_id)
         finally:
             tracer._pop_depth()
             try:
@@ -84,6 +88,7 @@ def _patch_dispatcher() -> None:
                         "action_type": action_type,
                         "diff": diff_payload,
                         "scope": scope,
+                        "session_id": session_id,
                         "span_id": span_id,
                         "duration_ms": (time.monotonic() - t0) * 1000.0,
                     },

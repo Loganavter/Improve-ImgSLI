@@ -211,3 +211,43 @@ def test_threaded_targeted_dispatch_loses_nothing(probe_store) -> None:
     )
     assert _slot(store, sess_a.id) in {f"t{tid}-{i}" for tid in (0, 2) for i in range(per_thread)}
     assert _slot(store, sess_b.id) in {f"t{tid}-{i}" for tid in (1, 3) for i in range(per_thread)}
+
+
+def test_traced_dispatch_forwards_session_id(probe_store) -> None:
+    """Instrumentation stays signature-transparent (prod incident 2026-10-03).
+
+    With tracing installed AND enabled, ``dispatch(..., session_id=...)``
+    must reach the real dispatcher (previously ``traced_dispatch`` lacked
+    the kwarg → TypeError → gallery dispatches died under --debug and every
+    tab switch restored empty slots). Patched class restored afterwards so
+    no global state leaks into other tests.
+    """
+    from core.state_management import dispatcher as dispatcher_mod
+    from core.tracing import instrumentation as instrumentation_mod
+    from core.tracing.tracer import Tracer
+
+    orig_dispatch = dispatcher_mod.Dispatcher.dispatch
+    tracer = Tracer.instance()
+    was_enabled = bool(Tracer.enabled())
+    try:
+        instrumentation_mod.install_instrumentation()
+        store, dispatcher, sess_a, sess_b = probe_store
+        assert store.get_active_workspace_session().id == sess_b.id
+        dispatcher.dispatch(_ProbeSet(value="traced-a"), scope="test", session_id=sess_a.id)
+        assert _slot(store, sess_a.id) == "traced-a"
+        assert _slot(store, sess_b.id) is None
+        try:
+            tracer.enable()
+            dispatcher.dispatch(_ProbeSet(value="traced-a2"), scope="test", session_id=sess_a.id)
+        finally:
+            if not was_enabled:
+                tracer.disable()
+        assert _slot(store, sess_a.id) == "traced-a2"
+        assert _slot(store, sess_b.id) is None
+    finally:
+        dispatcher_mod.Dispatcher.dispatch = orig_dispatch
+        try:
+            if Tracer.enabled() != was_enabled:
+                tracer.enable() if was_enabled else tracer.disable()
+        except Exception:
+            pass
