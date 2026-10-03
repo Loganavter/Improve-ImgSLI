@@ -50,7 +50,18 @@ def _slot_selection(owner) -> list[str] | None:
             store = getattr(ctx, "store", None) or getattr(cand, "store", None)
             if store is None or not hasattr(store, "get_session_state_slot"):
                 continue
-            slot = store.get_session_state_slot(GALLERY_SLOT_NAME)
+            # Session isolation (Wave ISO): address the CANDIDATE's own
+            # session explicitly — never the active-session default (a
+            # foreign active slot would carry the wrong selection).
+            try:
+                from tabs.image_gallery.ui.gallery_store import (
+                    resolve_owner_session_id,
+                )
+
+                own_id = resolve_owner_session_id(cand)
+            except Exception:
+                own_id = None
+            slot = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=own_id)
             if slot is None:
                 continue
             return list(_selectors.get_selection(slot))
