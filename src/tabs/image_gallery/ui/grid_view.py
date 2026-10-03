@@ -1117,6 +1117,8 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             try:
+                # Hide before orphaning (stillborn-toplevel guard).
+                hdr.hide()
                 hdr.setParent(None)
                 hdr.deleteLater()
             except Exception:

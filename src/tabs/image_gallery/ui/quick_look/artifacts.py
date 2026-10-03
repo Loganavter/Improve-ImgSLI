@@ -57,6 +57,8 @@ def rebuild_artifacts(overlay, item) -> None:
         try:
             if lay is not None:
                 lay.removeWidget(w)
+            # Hide before orphaning (stillborn-toplevel guard).
+            w.hide()
             w.setParent(None)
             w.deleteLater()
         except Exception:

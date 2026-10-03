@@ -477,6 +477,10 @@ def rebuild_strip(overlay) -> None:
     for b in list(overlay._strip_buttons):
         try:
             overlay._strip_layout.removeWidget(b)
+            # Hide before orphaning: a visible widget reparented to None
+            # maps a stillborn toplevel + stale activation token (global
+            # busy cursor on Wayland — see grid_view._clear_series_headers).
+            b.hide()
             b.setParent(None)
             b.deleteLater()
         except Exception:
@@ -485,6 +489,7 @@ def rebuild_strip(overlay) -> None:
     for cap in list(getattr(overlay, "_strip_caption_labels", [])):
         try:
             overlay._strip_layout.removeWidget(cap)
+            cap.hide()
             cap.setParent(None)
             cap.deleteLater()
         except Exception:
@@ -495,6 +500,7 @@ def rebuild_strip(overlay) -> None:
             it = overlay._strip_layout.takeAt(0)
             w = it.widget() if it is not None else None
             if w is not None:
+                w.hide()
                 w.setParent(None)
                 w.deleteLater()
     except Exception:
