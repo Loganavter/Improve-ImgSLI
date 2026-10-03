@@ -135,6 +135,10 @@ class ImageGalleryTab(TabContract):
         # slot comes back FLAT — regroup quietly so returning to a tab
         # restores its sections, not an UNGROUPED pile (no-op when idle
         # pool empty or triage already running).
+        self._regroup_restored_pool()
+
+    def _regroup_restored_pool(self) -> None:
+        """Kick a quiet regroup of the current mirror (both entry paths)."""
         try:
             ctrl = self._controller
             regroup = getattr(ctrl, "retriage_quiet", None)
@@ -215,6 +219,10 @@ class ImageGalleryTab(TabContract):
         # new session — rebind BEFORE restoring so slot reads address it.
         self._bind_gallery_copies(session_id)
         _persistence.restore_from(self, context, session_id)
+        # Same regroup as the activation path: a restored pool comes back
+        # FLAT (series live only in controller memory). Gallery→gallery
+        # switches land here, not in on_activated.
+        self._regroup_restored_pool()
 
     def _bind_gallery_copies(self, session_id: str) -> None:
         """Bind both live copies (controller + widget) to their OWN session.
@@ -240,6 +248,7 @@ class ImageGalleryTab(TabContract):
         """
         self._bind_gallery_copies(session_id)
         _persistence.restore_from(self, context, session_id)
+        self._regroup_restored_pool()
 
     def on_deactivated(self, context: TabContext) -> None:
         if self._widget is not None:

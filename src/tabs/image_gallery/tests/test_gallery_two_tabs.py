@@ -308,3 +308,24 @@ def test_retriage_quiet_skips_empty_and_running(monkeypatch) -> None:
     ctrl.state.triage_state = TriageState.RUNNING
     assert ctrl.retriage_quiet() is False
     assert calls == []
+
+
+def test_session_switch_regroups_restored_pool() -> None:
+    """Gallery→gallery switches land in on_active_session_changed (not
+    on_activated) — the restored flat pool must regroup there too."""
+    from tabs.image_gallery.tab import ImageGalleryTab
+
+    calls: list = []
+    ctrl = SimpleNamespace(
+        bind_gallery_session=lambda sid: None,
+        retriage_quiet=lambda: calls.append(True) or True,
+    )
+    tab = ImageGalleryTab()
+    tab._controller = ctrl
+    tab._widget = None
+    tab._active_session_id = "sess-A"
+    tab.on_active_session_changed(
+        "sess-B", SimpleNamespace(store=None)
+    )
+    assert calls == [True]
+    assert tab._active_session_id == "sess-B"
