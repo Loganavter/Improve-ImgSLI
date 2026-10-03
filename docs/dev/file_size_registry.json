@@ -696,7 +696,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 2442,
+      "lines": 2451,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -895,6 +895,18 @@
         "pattern": "compound-widget",
         "size": "exempt",
         "reason": "toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/series_override.py",
+      "lines": 507,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-seam size=exempt reason=\"one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)\"",
+      "parsed": {
+        "pattern": "single-seam",
+        "size": "exempt",
+        "reason": "one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)"
       }
     },
     {

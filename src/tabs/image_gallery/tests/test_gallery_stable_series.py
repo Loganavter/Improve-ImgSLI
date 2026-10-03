@@ -207,3 +207,16 @@ def test_nearest_series_id_gate_and_ties():
     # Equidistant → smallest id wins (deterministic).
     tied = {"series_2": [0.25, 0.0], "series_1": [-0.25, 0.0]}
     assert cl.nearest_series_id([0.0, 0.0], tied) == "series_1"
+
+
+def test_translate_skips_pinned_ids():
+    """Seed never merges a fresh auto group into a pinned manual section."""
+    from tabs.image_gallery.use_cases import series_override as _ov
+
+    a, b = _item("a.png"), _item("b.png")
+    out, nxt = _ov.translate_computed_to_stable(
+        [Series(id="series_9", members=[a, b])], 0, skip_ids={"series_1"}
+    )
+    assert [m.series_id for m in out[0].members] == ["series_2", "series_2"]
+    assert out[0].id == "series_2"
+    assert nxt == 2

@@ -1,4 +1,5 @@
 """Manual series overrides — pure post-pass over clustering results.
+Audit-Meta: pattern=single-seam size=exempt reason="one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)"
 
 Thin-owner helpers: plain functions taking an explicit
 ``overrides: dict[str, str | None]`` map plus item lists. The map itself is
@@ -347,7 +348,7 @@ def _blend_phash(members: list) -> int | None:
 # shown after translation.
 
 
-def translate_computed_to_stable(computed_series, start_counter: int) -> tuple:
+def translate_computed_to_stable(computed_series, start_counter: int, skip_ids=None) -> tuple:
     """Rename seed ids from ``cluster_items`` to stable ``series_<n>`` ids.
 
     Fresh world, no matching needed: every entry in *computed_series*
@@ -356,6 +357,11 @@ def translate_computed_to_stable(computed_series, start_counter: int) -> tuple:
     rewritten to match. Member order, ranks, centroids and
     ``phash_centroid`` are carried over verbatim; output order mirrors
     ``cluster_items`` (size desc, then id).
+
+    *skip_ids* (optional set of id strings, e.g. live pinned sections):
+    issued ids colliding with it are skipped — a fresh auto group must
+    never merge into a pinned manual section. Skips still consume counter
+    values (monotonic, never reused, gaps allowed).
 
     Returns ``(stable_series, next_counter)`` where ``next_counter`` is
     the last id number issued (pass it back as ``start_counter`` next
@@ -372,6 +378,10 @@ def translate_computed_to_stable(computed_series, start_counter: int) -> tuple:
         counter = int(start_counter)
     except Exception:
         counter = 0
+    try:
+        skip = {str(s) for s in (skip_ids or set())}
+    except Exception:
+        skip = set()
 
     out: list = []
     for entry in entries:
@@ -380,6 +390,9 @@ def translate_computed_to_stable(computed_series, start_counter: int) -> tuple:
             continue
         counter += 1
         sid_s = f"series_{counter}"
+        while sid_s in skip:
+            counter += 1
+            sid_s = f"series_{counter}"
         for m in members:
             try:
                 m.series_id = sid_s

@@ -60,12 +60,11 @@ logger = logging.getLogger("ImproveImgSLI")
 # Mirrors design.md Pass 2 "when local metrics are within epsilon".
 TIE_EPSILON = 0.025  # embedding distance normalized; tuned for 8×8 HSV vectors
 
-# S2 append-attach: phash Hamming gate for joining the nearest EXISTING
-# series. Mirrors the ``cluster_items`` default threshold (services/
-# clustering.py) — the attach path never clusters, it only measures
-# against live members. S1's centroid ``attach_*`` replaces the
-# representative lookup inside ``_attach_append_items``, not this gate.
-_ATTACH_HAMMING_THRESHOLD = 10
+# S2 append-attach threshold for joining the nearest EXISTING series.
+# Consumed by S1 centroid ``attach_items`` (embedding-distance gate with
+# the same threshold rule as ``cluster_items``); the attach path never
+# clusters, it only measures against live series.
+_ATTACH_THRESHOLD = 10
 
 _ERROR_KEYS = {
     AiAuthError: ("image_gallery.errors.auth", "Authentication failed — check your API key."),
@@ -1055,24 +1054,20 @@ class GalleryController:
         return self._series_gen
 
     def _assign_fresh_stable_ids(self, computed) -> tuple:
-        """Seed-assign fresh stable ids to computed groups IN ORDER (S2).
+        """Seed-assign fresh stable ids to computed groups IN ORDER.
 
-        S1 SWAP POINT: S1's ``translate_*`` replaces this body via merge —
-        keep ALL seed id assignment in this ONE helper. Assigns fresh
-        ``series_<n>`` ids from the controller counter to computed groups
-        in computed order (deterministic: cluster output is size-desc,
-        then id). Member ``series_id`` fields are rewritten to match;
-        computed ranks/centroids are untouched. Counter values colliding
-        with live pinned ids are skipped (a fresh auto group must never
-        merge into a pinned manual section). The counter commit happens
-        here under the id lock (worker-thread safe).
-
-        Returns ``(series, next_counter)``.
+        Thin owner over S1 ``translate_computed_to_stable`` (the single
+        implementation): snapshot counter + pinned ids under the id lock,
+        translate (collision-skip included), commit the returned counter.
+        Member ``series_id`` fields are rewritten to match; computed
+        ranks/centroids untouched. Returns ``(series, next_counter)``.
         """
         try:
-            groups = list(computed or [])
+            from tabs.image_gallery.use_cases.series_override import (
+                translate_computed_to_stable as _translate,
+            )
         except Exception:
-            return ([], self._series_next_id)
+            return (list(computed or []), self._series_next_id)
         try:
             pinned = {
                 str(v)
@@ -1083,36 +1078,18 @@ class GalleryController:
             pinned = set()
         with self._series_id_lock:
             try:
-                nxt = int(self._series_next_id or 1)
+                start = int(self._series_next_id or 1)
             except Exception:
-                nxt = 1
-            for entry in groups:
-                try:
-                    if hasattr(entry, "members"):
-                        members = list(getattr(entry, "members", None) or [])
-                    else:
-                        members = list(entry)
-                except Exception:
-                    continue
-                if not members:
-                    continue
-                sid = f"series_{nxt}"
-                nxt += 1
-                while sid in pinned:
-                    sid = f"series_{nxt}"
-                    nxt += 1
-                try:
-                    if hasattr(entry, "members"):
-                        entry.id = sid
-                except Exception:
-                    pass
-                for it in members:
-                    try:
-                        it.series_id = sid
-                    except Exception:
-                        pass
-            self._series_next_id = nxt
-            return (groups, nxt)
+                start = 1
+            try:
+                series, nxt = _translate(computed, start, skip_ids=pinned)
+            except Exception:
+                return (list(computed or []), self._series_next_id)
+            try:
+                self._series_next_id = int(nxt)
+            except Exception:
+                pass
+            return (series, self._series_next_id)
 
     @staticmethod
     def _section_members(entry) -> list:
@@ -2102,16 +2079,15 @@ class GalleryController:
     def _attach_append_items(self, new_items) -> dict:
         """Attach NEW files to the nearest EXISTING series (S2 append path).
 
-        S1 SWAP POINT: S1's centroid ``attach_*`` replaces the
-        representative lookup inside this ONE helper — keep the inline
-        minimal logic here and nowhere else. For each new item: first
-        member phash Hamming ≤ ``_ATTACH_HAMMING_THRESHOLD`` joins that
-        series (positional rank at the tail), else UNGROUPED. Existing
-        membership (members, ranks, ids) is untouched. Paths carrying a
-        stored override (re-drop of a removed pinned file) take the pin:
-        join the pinned group or stand as a 1-member section. Unreadable
-        files (zero phash + zero embedding — cluster parity) stay
-        UNGROUPED. Returns ``{str(path): series_id | None}``.
+        S1 centroid policy: one nearest-centroid decision per readable
+        unpinned item via S1 ``attach_items`` (same threshold rule as
+        ``cluster_items``). Attached items join the series (positional rank
+        at the tail), misses land UNGROUPED. Existing membership (members,
+        ranks, ids) is untouched. Paths carrying a stored override (re-drop
+        of a removed pinned file) take the pin: join the pinned group or
+        stand as a 1-member section. Unreadable files (zero phash + zero
+        embedding — cluster parity) stay UNGROUPED. Returns
+        ``{str(path): series_id | None}``.
 
         Mutates ``state.series`` in place (member appends / singleton
         sections); callers deliver via ``_apply_series_view``.
@@ -2132,31 +2108,57 @@ class GalleryController:
             groups = list(self.state.series or [])
         except Exception:
             groups = []
-        # Representative snapshot: (sid, first-member phash, entry).
-        reps: list[tuple] = []
-        for entry in groups:
-            members = members_of(entry)
-            if not members:
-                continue
-            sid = id_of(entry, members)
-            if sid is None:
-                continue
-            rep_hash = None
-            try:
-                rep_hash = (getattr(members[0], "metrics", None) or {}).get("phash")
-            except Exception:
-                rep_hash = None
-            if not isinstance(rep_hash, int) or not rep_hash:
-                if _sig is not None:
-                    try:
-                        rep_hash, _ = _sig(members[0].path)
-                    except Exception:
-                        rep_hash = 0
-                else:
-                    rep_hash = 0
-            if not isinstance(rep_hash, int):
-                rep_hash = 0
-            reps.append((str(sid), rep_hash, entry))
+        # Centroid attach (S1 policy): one nearest-centroid decision for all
+        # readable unpinned items via S1 ``attach_items`` — replaces the
+        # first-member-phash representative scan. Signatures come from the
+        # perceptual cache (no re-decode); unreadable items never reach it.
+        try:
+            from tabs.image_gallery.use_cases.series_override import (
+                attach_items as _attach,
+            )
+        except Exception:
+            _attach = None  # type: ignore[assignment]
+        try:
+            from tabs.image_gallery.services.clustering import signature_for as _sig2
+        except Exception:
+            _sig2 = None  # type: ignore[assignment]
+        decided: dict[str, str | None] = {}
+        try:
+            pairs: list[tuple] = []
+            for item in fresh:
+                try:
+                    key = str(getattr(item, "path", None))
+                except Exception:
+                    continue
+                try:
+                    has_pin = key in (self._series_overrides or {})
+                except Exception:
+                    has_pin = False
+                if has_pin:
+                    continue
+                try:
+                    if _sig2 is not None:
+                        _h, _e = _sig2(item.path)
+                    else:
+                        _h, _e = 0, []
+                except Exception:
+                    _h, _e = 0, []
+                try:
+                    unreadable = _h == 0 and not any(_e or [])
+                except Exception:
+                    unreadable = _h == 0
+                if unreadable:
+                    continue
+                pairs.append((key, list(_e or [])))
+            if _attach is not None and pairs:
+                try:
+                    decided = dict(
+                        _attach(pairs, groups, _ATTACH_THRESHOLD) or {}
+                    )
+                except Exception:
+                    decided = {}
+        except Exception:
+            decided = {}
         by_id: dict[str, object] = {}
         for entry in groups:
             members = members_of(entry)
@@ -2238,14 +2240,7 @@ class GalleryController:
                     pass
                 attached[key] = None
                 continue
-            hit = None
-            for rsid, rhash, entry in reps:
-                try:
-                    if bin(int(item_hash) ^ int(rhash)).count("1") <= _ATTACH_HAMMING_THRESHOLD:
-                        hit = (rsid, entry)
-                        break
-                except Exception:
-                    continue
+            hit = decided.get(key)
             if hit is None:
                 try:
                     item.series_id = None
@@ -2257,7 +2252,21 @@ class GalleryController:
                     pass
                 attached[key] = None
                 continue
-            rsid, entry = hit
+            rsid, entry = hit, by_id.get(str(hit))
+            if entry is None:
+                # Centroid id with no live group (should not happen — the
+                # centroids come from these groups): fail to UNGROUPED
+                # rather than leaving a dangling series_id.
+                try:
+                    item.series_id = None
+                except Exception:
+                    pass
+                try:
+                    item.rank = None
+                except Exception:
+                    pass
+                attached[key] = None
+                continue
             try:
                 item.series_id = rsid
             except Exception:
