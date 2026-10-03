@@ -349,3 +349,131 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
     # Sort series by size descending then id for stable output.
     series_list.sort(key=lambda s: (-len(s.members), s.id))
     return series_list
+
+
+# -- Wave S1 attach support (pure, no Qt; existing functions untouched) ------
+
+
+def _embed_threshold_for(threshold: int) -> float:
+    """Embedding gate mirroring ``cluster_items``' secondary gate."""
+    try:
+        t = int(threshold)
+    except Exception:
+        t = 10
+    return 0.55 if t >= 10 else 0.4
+
+
+def series_centroids(series) -> dict:
+    """Map series id → centroid vector (mean embedding).
+
+    Reuses the stored ``Series.centroid`` when present; entries without
+    one (plain member lists, or ``Series`` with ``centroid=None``)
+    recompute the mean embedding of their members via the cached
+    ``signature_for`` path. Series with no members or no usable centroid
+    are skipped. Pure (no Qt).
+    """
+    out: dict = {}
+    try:
+        entries = list(series or [])
+    except Exception:
+        return {}
+    for entry in entries:
+        try:
+            if hasattr(entry, "members"):
+                members = list(getattr(entry, "members", None) or [])
+                try:
+                    sid = getattr(entry, "id", None)
+                except Exception:
+                    sid = None
+                try:
+                    stored = getattr(entry, "centroid", None)
+                except Exception:
+                    stored = None
+            elif isinstance(entry, (list, tuple)):
+                members = list(entry)
+                sid = None
+                stored = None
+            else:
+                continue
+            if sid is None and members:
+                try:
+                    sid = getattr(members[0], "series_id", None)
+                except Exception:
+                    sid = None
+            if sid is None:
+                continue
+            try:
+                sid_s = str(sid)
+            except Exception:
+                continue
+            if stored:
+                try:
+                    out[sid_s] = [float(v) for v in stored]
+                    continue
+                except Exception:
+                    pass
+            # No stored centroid: mean embedding over members (cached).
+            acc: list[float] | None = None
+            count = 0
+            for m in members:
+                try:
+                    _, emb = signature_for(getattr(m, "path"))
+                except Exception:
+                    continue
+                try:
+                    if acc is None:
+                        acc = [0.0] * len(emb)
+                    for i, v in enumerate(emb):
+                        if i < len(acc):
+                            acc[i] += float(v)
+                    count += 1
+                except Exception:
+                    continue
+            if acc is not None and count > 0:
+                out[sid_s] = [v / count for v in acc]
+        except Exception:
+            continue
+    return out
+
+
+def nearest_series_id(signature, centroids: dict, threshold: int = 10):
+    """Nearest centroid id for *signature* (embedding vector) or None.
+
+    Embedding-distance gate mirrors ``cluster_items``' secondary gate
+    (``0.55`` for ``threshold >= 10`` else ``0.4``): the closest
+    centroid at or inside the gate wins (ties → smallest id); anything
+    farther attaches to nothing (None). Pure (no Qt, no I/O).
+    """
+    try:
+        vec = [float(v) for v in (signature or [])]
+    except Exception:
+        return None
+    if not vec:
+        return None
+    try:
+        items = list((centroids or {}).items())
+    except Exception:
+        return None
+    gate = _embed_threshold_for(threshold)
+    best_id = None
+    best_d: float | None = None
+    for sid, centroid in items:
+        try:
+            c = [float(v) for v in (centroid or [])]
+        except Exception:
+            continue
+        if not c:
+            continue
+        try:
+            d = _embedding_distance(vec, c)
+        except Exception:
+            continue
+        if best_d is None or d < best_d or (d == best_d and str(sid) < str(best_id)):
+            best_d = d
+            best_id = sid
+    if best_d is None or best_d > gate:
+        return None
+    try:
+        return str(best_id)
+    except Exception:
+        return None

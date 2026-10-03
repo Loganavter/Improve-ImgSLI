@@ -96,12 +96,14 @@ def test_move_noop_ungrouped_targets_to_none(tmp_path, monkeypatch):
     assert triage_calls == []
 
 
-def test_move_partial_overlap_proceeds_for_rest_once(tmp_path, monkeypatch):
+def test_move_partial_overlap_proceeds_for_rest_sync(tmp_path, monkeypatch):
+    # S2 (renamed): partial overlap regroups synchronously — zero retriage.
     a = tmp_path / "p1.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
     b = tmp_path / "p2.png"
     b.write_bytes(b"\x89PNG\r\n\x1a\n")
-    ctrl = _controller([_item(a, "series_7"), _item(b, None)])
+    ia, ib = _item(a, "series_7"), _item(b, None)
+    ctrl = _controller([ia, ib])
     triage_calls: list = []
     monkeypatch.setattr(
         ctrl, "_start_triage",
@@ -109,20 +111,26 @@ def test_move_partial_overlap_proceeds_for_rest_once(tmp_path, monkeypatch):
     )
     assert ctrl.move_paths_to_series([a, b], "series_7") == 1
     assert ctrl._series_overrides == {str(b): "series_7"}  # a untouched
-    assert triage_calls == [False]  # still exactly one retriage
+    assert triage_calls == []  # S2: sync regroup, no retriage worker
+    assert ib.series_id == "series_7"
+    host = [s for s in ctrl.state.series if getattr(s, "id", None) == "series_7"]
+    assert len(host) == 1 and len(list(host[0].members)) == 2
 
 
-def test_move_full_change_still_retriages(tmp_path, monkeypatch):
+def test_move_full_change_syncs_without_retriage(tmp_path, monkeypatch):
+    # S2 (renamed): a real move regroups synchronously — zero retriage.
     a = tmp_path / "f.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
-    ctrl = _controller([_item(a, None)])
+    ia = _item(a, None)
+    ctrl = _controller([ia])
     triage_calls: list = []
     monkeypatch.setattr(
         ctrl, "_start_triage",
         lambda items, *, cover_grid=True: triage_calls.append(cover_grid),
     )
     assert ctrl.move_paths_to_series([a], "series_9") == 1
-    assert triage_calls == [False]
+    assert triage_calls == []  # S2: sync regroup, no retriage worker
+    assert ia.series_id == "series_9"  # pinned, standing as its own section
 
 
 # -- C1: owner-space mapping + delivery logging ------------------------------
@@ -688,3 +696,35 @@ def test_signature_cache_invalidates_on_file_change(tmp_path, monkeypatch):
     Image.new("RGB", (64, 64), (30, 30, 200)).save(a)  # new mtime + size
     _clustering.signature_for(a)
     assert calls["n"] == 2
+
+
+# -- Wave E: full-width section bands ------------------------------------------
+#
+# Only headers/cards were targets: gaps, margins and collapsed empties fell
+# back UNGROUPED. A section owns everything from its header down to the
+# next header (full width); the last band runs to the owner bottom.
+
+
+def test_band_gap_between_cards_resolves_section(qapp):
+    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
+    # (300, 250): right of series_2's card (ends x=110), below hdr_b (200-230).
+    assert dnd.series_target_at(owner, QPoint(300, 250)) == (True, "series_2")
+    assert dnd._header_at(owner, QPoint(300, 250)) is hdr_b
+
+
+def test_band_upper_section_body_resolves_first_series(qapp):
+    owner, hdr_a, _hb, _card = _owner_with_two_series_and_cards(qapp)
+    # (350, 100): empty area between hdr_a (0-30) and hdr_b (200).
+    assert dnd.series_target_at(owner, QPoint(350, 100)) == (True, "series_1")
+    assert dnd._header_at(owner, QPoint(350, 100)) is hdr_a
+
+
+def test_band_above_first_header_has_no_section(qapp):
+    owner = QWidget()
+    owner.resize(400, 400)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 100, 400, 30)
+    owner._grid_view = SimpleNamespace(_series_headers=[hdr], _series=[])  # type: ignore[attr-defined]
+    handled, sid = dnd.series_target_at(owner, QPoint(200, 50))
+    assert (handled, sid) == (True, None)  # falls through to UNGROUPED tail

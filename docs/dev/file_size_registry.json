@@ -696,7 +696,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 1904,
+      "lines": 2506,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -768,7 +768,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/drag_drop.py",
-      "lines": 1499,
+      "lines": 1613,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-router size=exempt reason=\"one drop-routing rule for zone+widget surfaces incl. single-writer pool discipline; splitting would scatter the accept/route/dispatch branches pinned as one unit\"",
@@ -780,7 +780,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 2041,
+      "lines": 2058,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -895,6 +895,18 @@
         "pattern": "compound-widget",
         "size": "exempt",
         "reason": "toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/series_override.py",
+      "lines": 507,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-seam size=exempt reason=\"one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)\"",
+      "parsed": {
+        "pattern": "single-seam",
+        "size": "exempt",
+        "reason": "one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)"
       }
     },
     {
