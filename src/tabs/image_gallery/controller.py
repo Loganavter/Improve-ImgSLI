@@ -143,6 +143,12 @@ class GalleryController:
         # takes the authoritative branch. This keeps newer local scalars
         # (triage RUNNING, VLM crowns) safe from stale-slot clobbering.
         self._own_gallery_emits = 0
+        # Stage-2 analysis fingerprint: artifact/fidelity/camera analyses
+        # are keyed by content — re-running them over an unchanged pool
+        # (e.g. regroup after tab return) recomputes identical results.
+        # The triage tail skips analysis starts when the fingerprint
+        # (paths + mtimes + metrics presence) matches the last run.
+        self._last_analysis_fingerprint: object = None
         self._ensure_gallery_subscription()
 
         widget.folder_pick_requested.connect(self._on_pick_folder)
@@ -1396,9 +1402,12 @@ class GalleryController:
 
         Series live only in controller memory, so a pool restored from a
         slot comes back FLAT — without this, returning to a tab leaves
-        every card UNGROUPED until the next folder open. Quiet: background
-        worker, no cover grid, staleness guarded by folder/series
-        generations (a newer triage wins). Returns True when started.
+        every card UNGROUPED until the next folder open. Fast path: when
+        every signature is cached (the common return-to-tab case) the
+        pipeline runs INLINE on the GUI thread (~ms, no worker hop, no
+        spinner flash); otherwise the background worker path. Staleness
+        guarded by folder/series generations (a newer triage wins).
+        Returns True when (re)grouping started or applied.
         """
         try:
             if getattr(self.state, "triage_state", None) not in (
@@ -1416,6 +1425,32 @@ class GalleryController:
 
             if _dbg_on():
                 _dbg("retriage_quiet: regrouping %d restored items", len(items))
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.services.clustering import (
+                signatures_cached as _cached,
+            )
+
+            if _cached(items):
+                try:
+                    overrides = dict(getattr(self, "_series_overrides", None) or {})
+                except Exception:
+                    overrides = {}
+                try:
+                    series, source, mode = self._run_triage_sync(
+                        list(items), overrides
+                    )
+                except Exception:
+                    logger.debug("retriage_quiet sync pipeline failed", exc_info=True)
+                    raise
+                try:
+                    series = self._commit_triage_series(series, source, mode)
+                    self._apply_triage_result(series, source, mode)
+                except Exception:
+                    logger.debug("retriage_quiet sync apply failed", exc_info=True)
+                    raise
+                return True
         except Exception:
             pass
         try:
@@ -1735,6 +1770,16 @@ class GalleryController:
             )
         except Exception:
             logger.debug("series override re-apply failed", exc_info=True)
+        series = self._commit_triage_series(series, source, mode)
+        self._apply_triage_result(series, source, mode)
+
+    def _commit_triage_series(self, series, source, mode):
+        """Commit a triage outcome to state (shared sync/async tail).
+
+        Pinned-singleton restore + state assignment + DONE emit. The async
+        worker path and the synchronous fast path converge here so pins
+        survive delivery identically on both.
+        """
         # S2: pinned singletons survive delivery — a fresh cluster world
         # dissolves <2 groups, so without this a delivery would ungroup
         # cards the user manually placed (e.g. onto fresh ids). Pinned
@@ -1754,6 +1799,41 @@ class GalleryController:
         self.state.mode = mode  # type: ignore[assignment]
         self.state.triage_state = TriageState.DONE
         self._emit_triage_finished("done")
+        return series
+
+    @staticmethod
+    def _analysis_fingerprint(items, source) -> tuple:
+        """Content key for Stage-2 analyses (paths + mtimes + metrics state).
+
+        Analyses derive everything from file content; identical fingerprints
+        imply identical results, so the triage tail skips restarting them
+        (e.g. regroup after tab return). Missing metrics force a re-run
+        even when paths match (fresh objects after restore).
+        """
+        try:
+            parts = []
+            for it in list(items or []):
+                try:
+                    parts.append((
+                        str(getattr(it, "path", "")),
+                        int(getattr(it, "mtime_ns", 0) or 0),
+                        bool(getattr(it, "artifacts", None)),
+                        bool(getattr(it, "metrics", None)),
+                    ))
+                except Exception:
+                    continue
+            parts.sort()
+            return (tuple(parts), str(source) if source is not None else None)
+        except Exception:
+            return ((), None)
+
+    def _apply_triage_result(self, series, source, mode) -> None:
+        """Paint a triage outcome: view update + spinner off + analyses.
+
+        Shared tail of the async worker delivery and the synchronous
+        fast path — Stage-2 analyses start only when the content
+        fingerprint changed since the last run.
+        """
         try:
             self.widget.set_triage(series, mode, source)
         except Exception:
@@ -1767,23 +1847,43 @@ class GalleryController:
                 self.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
         except Exception:
             logger.debug("toolbar.set_triage_done failed", exc_info=True)
-        # Stage 2 artifact catalog (7 detectors) — background after clustering → dots + quick look
         try:
-            self._start_artifact_analysis(list(self.state.items), source)
+            fingerprint = GalleryController._analysis_fingerprint(
+                list(self.state.items), source
+            )
         except Exception:
-            logger.debug("artifact analysis start failed", exc_info=True)
-        # Stage 2 fidelity metrics (SSIM/HF/ΔE/upscale vs source) — background, fail-closed
+            fingerprint = None
         try:
-            self._start_fidelity_analysis(list(self.state.items), source)
+            analyses_current = (
+                fingerprint is not None
+                and fingerprint == self._last_analysis_fingerprint
+            )
         except Exception:
-            logger.debug("fidelity analysis start failed", exc_info=True)
-        # Stage 2 camera scalars (sharpness/exposure/clipping) — camera mode
-        # only; the report rows exist only there, other modes stay unmeasured.
-        try:
-            if mode == Mode.CAMERA:
-                self._start_camera_metrics_analysis(list(self.state.items))
-        except Exception:
-            logger.debug("camera metrics analysis start failed", exc_info=True)
+            analyses_current = False
+        if analyses_current:
+            logger.debug("triage tail: analyses unchanged, skipping restarts")
+        else:
+            try:
+                self._last_analysis_fingerprint = fingerprint
+            except Exception:
+                pass
+            # Stage 2 artifact catalog (7 detectors) — background after clustering → dots + quick look
+            try:
+                self._start_artifact_analysis(list(self.state.items), source)
+            except Exception:
+                logger.debug("artifact analysis start failed", exc_info=True)
+            # Stage 2 fidelity metrics (SSIM/HF/ΔE/upscale vs source) — background, fail-closed
+            try:
+                self._start_fidelity_analysis(list(self.state.items), source)
+            except Exception:
+                logger.debug("fidelity analysis start failed", exc_info=True)
+            # Stage 2 camera scalars (sharpness/exposure/clipping) — camera mode
+            # only; the report rows exist only there, other modes stay unmeasured.
+            try:
+                if mode == Mode.CAMERA:
+                    self._start_camera_metrics_analysis(list(self.state.items))
+            except Exception:
+                logger.debug("camera metrics analysis start failed", exc_info=True)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:

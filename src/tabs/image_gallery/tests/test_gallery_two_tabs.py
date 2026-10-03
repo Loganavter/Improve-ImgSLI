@@ -329,3 +329,97 @@ def test_session_switch_regroups_restored_pool() -> None:
     )
     assert calls == [True]
     assert tab._active_session_id == "sess-B"
+
+
+def _painted_pngs(tmp_path, names, color=(200, 30, 30)):
+    from PIL import Image
+
+    out = []
+    for n in names:
+        p = tmp_path / n
+        Image.new("RGB", (64, 64), color).save(p)
+        out.append(p)
+    return out
+
+
+def test_retriage_quiet_sync_when_cached(qapp, tmp_path, monkeypatch) -> None:
+    """All signatures cached → inline regroup, no worker hop, series now."""
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    paths = _painted_pngs(tmp_path, ["s1.png", "s2.png"])
+    for p in paths:
+        _clustering.signature_for(p)
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=p, mtime_ns=1) for p in paths]
+    from tabs.image_gallery.models import TriageState
+
+    ctrl.state.triage_state = TriageState.IDLE
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(True),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert triage_calls == []
+    assert len(ctrl.state.series) == 1  # grouped synchronously, no ticks
+
+
+def test_retriage_quiet_worker_fallback_when_uncached(tmp_path, monkeypatch) -> None:
+    from tabs.image_gallery.models import GalleryItem, TriageState
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    (tmp_path / "u1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=tmp_path / "u1.png", mtime_ns=1)]
+    ctrl.state.triage_state = TriageState.IDLE
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(cover_grid),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert triage_calls == [False]
+
+
+def test_triage_tail_skips_repeated_analyses(qapp, tmp_path, monkeypatch) -> None:
+    """Same content twice → Stage-2 analyses start once, tie-break unaffected."""
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    paths = _painted_pngs(tmp_path, ["m1.png", "m2.png"])
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=p, mtime_ns=1) for p in paths]
+    analysis_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_artifact_analysis", lambda *a, **k: analysis_calls.append("a")
+    )
+    monkeypatch.setattr(
+        ctrl, "_start_fidelity_analysis", lambda *a, **k: analysis_calls.append("f")
+    )
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "f"]
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "f"]  # skipped: same fingerprint
+    ctrl.state.items[0].artifacts = {"x": "y"}  # type: ignore[attr-defined]
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "a", "f", "f"]  # changed → rerun
+
+
+def test_signatures_cached_unit(tmp_path) -> None:
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    assert _clustering.signatures_cached([]) is False
+    a = tmp_path / "c1.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert _clustering.signatures_cached([a]) is False
+    _clustering.signature_for(a)
+    assert _clustering.signatures_cached([a]) is True
+    assert _clustering.signatures_cached([tmp_path / "nope.png"]) is False

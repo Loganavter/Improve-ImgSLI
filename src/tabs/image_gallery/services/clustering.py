@@ -147,13 +147,11 @@ class _DSU:
 
 # -- clustering -----------------------------------------------------------
 
-# Perceptual-signature cache (Wave E perf): ``compute_phash`` + ``embedding``
-# decode + downscale every file (~250ms per 8MB PNG). Re-triage after a
-# series move re-reads UNCHANGED files, so memoize per
-# ``(path, mtime_ns, size)`` — content edits (new mtime/size) miss and
-# recompute. Module-level dict, bounded (evict oldest quarter past 4k
-# entries); values are immutable ``(phash, embedding-tuple)`` so callers
-# cannot corrupt the cache. Tests reset via ``clear_signature_cache``.
+# Perceptual-signature cache: ``compute_phash`` + ``embedding`` decode +
+# downscale every file (~250ms per 8MB PNG); re-triage re-reads UNCHANGED
+# files, so memoize per ``(path, mtime_ns, size)`` (edits miss/recompute).
+# Bounded module dict (evict oldest quarter past 4k); immutable values.
+# Tests reset via ``clear_signature_cache``.
 _SIGNATURE_CACHE: dict[tuple[str, int, int], tuple[int, tuple[float, ...]]] = {}
 _SIGNATURE_CACHE_LIMIT = 4096
 
@@ -211,6 +209,28 @@ def signature_for(path) -> tuple[int, list[float]]:
     except Exception:
         pass
     return (h, e)
+
+
+def signatures_cached(paths) -> bool:
+    """True when every path is cached (regroup without decode).
+
+    Lets callers pick a synchronous regroup over a worker hop. Stat reads
+    only — never decodes.
+    """
+    try:
+        items = list(paths or [])
+    except Exception:
+        return False
+    if not items:
+        return False
+    try:
+        for p in items:
+            path = getattr(p, "path", p)
+            if _stat_key(path) not in _SIGNATURE_CACHE:
+                return False
+        return True
+    except Exception:
+        return False
 
 
 def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Series"]:
