@@ -779,10 +779,10 @@ def install_series_header_menu(owner, controller=None) -> bool:
         return False
 
 
-# Wave B internal mime (must equal Wave A's literal; supervisor dedups on
-# merge — see B-spec §4 NOTE). Payload rule (verbatim): newline-separated
-# ``file://`` URLs in ``QMimeData.data(mime)`` PLUS ``setUrls()``.
-GALLERY_PATHS_MIME = "application/x-imgsli-gallery-paths"
+# Canonical mime lives in ``ui/card.py`` (Wave A, defined ONCE). Payload rule
+# (verbatim): newline-separated ``file://`` URLs in ``QMimeData.data(mime)``
+# PLUS ``setUrls()``.
+from tabs.image_gallery.ui.card import GALLERY_PATHS_MIME
 
 _UNGROUPED_HEADER_NAME = "GallerySeriesHeader_ungrouped"
 
