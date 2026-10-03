@@ -104,6 +104,10 @@ def drag_move_event(owner, event) -> None:
             if _grid_has_headers(owner):
                 event.acceptProposedAction()
                 try:
+                    _trace_move_positions(owner, event)
+                except Exception:
+                    pass
+                try:
                     _set_series_highlight(owner, _header_at(owner, _owner_hit_pos(owner, event)))
                 except Exception:
                     pass
@@ -125,6 +129,68 @@ def drag_move_event(owner, event) -> None:
         event.acceptProposedAction()
     else:
         event.ignore()
+
+
+def _trace_move_positions(owner, event) -> None:
+    """Bisection probe (Wave E diagnosis): cursor vs event trajectory.
+
+    Falsifiable hypothesis: during ``QDrag.exec`` the app-visible
+    ``QCursor.pos()`` is frozen (drag grab swallows mouse moves on this
+    platform) while ``QDragMoveEvent.position()`` advances with the real
+    pointer. Every ~10th internal move logs both + the mapped owner-space
+    point. Kill condition: cursor advances together with event positions —
+    then the freeze theory is dead and the offset is a mapping bug instead.
+    Throttled (counter on owner); session-only via the gallery debug flag.
+    """
+    try:
+        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate
+        if not _gate():
+            return
+    except Exception:
+        return
+    try:
+        cnt = getattr(owner, "_dnd_trace_cnt", 0) + 1
+        owner._dnd_trace_cnt = cnt
+    except Exception:
+        cnt = 1
+    if cnt % 10 != 1:
+        return
+    try:
+        ev_pos = event.position().toPoint()
+    except Exception:
+        try:
+            ev_pos = event.pos()
+        except Exception:
+            ev_pos = None
+    try:
+        from PySide6.QtGui import QCursor as _QCursor
+
+        cursor = _QCursor.pos()
+    except Exception:
+        cursor = None
+    try:
+        mapped = owner.mapFromGlobal(cursor) if cursor is not None else None
+    except Exception:
+        mapped = None
+    try:
+        recv = type(owner).__name__
+        try:
+            import PySide6.QtWidgets as _QW
+
+            w = _QW.QApplication.widgetAt(cursor) if cursor is not None else None
+            witness = type(w).__name__ if w is not None else "None"
+            try:
+                wname = str(w.objectName() or "") if w is not None else ""
+            except Exception:
+                wname = "?"
+        except Exception:
+            witness, wname = "?", "?"
+        _dnd_log(
+            "move-trace #%d ev_pos=%s cursor=%s mapped=%s widgetAt=%s(%s)",
+            cnt, ev_pos, cursor, mapped, witness, wname,
+        )
+    except Exception:
+        pass
 
 
 def drag_leave_event(owner, event) -> None:
