@@ -136,9 +136,12 @@ class _FakeDropEvent:
     ``!=`` owner, e.g. viewport/zone child).
     """
 
-    def __init__(self, mime: QMimeData, global_pos: QPoint):
+    def __init__(self, mime: QMimeData, global_pos: QPoint, pos=None):
         self._mime = mime
         self._global = global_pos
+        # Truthful event pos (receiver==owner frame). The S2-era decoy
+        # default stays for mapping tests that override it explicitly.
+        self._pos = QPoint(500, 500) if pos is None else pos
         self.accepted = False
         self.ignored = False
 
@@ -148,11 +151,11 @@ class _FakeDropEvent:
     def globalPosition(self):
         return QPointF(self._global)
 
-    def position(self):  # receiver-relative decoy: far from every header
-        return QPointF(QPoint(500, 500))
+    def position(self):
+        return QPointF(self._pos)
 
     def pos(self):
-        return QPoint(500, 500)
+        return QPoint(self._pos)
 
     def accept(self):
         self.accepted = True
@@ -188,16 +191,24 @@ def _owner_with_header(qapp, series_id: str):
     return owner, hdr
 
 
-def test_owner_space_pos_prefers_global_over_receiver_pos(qapp, tmp_path):
+def test_owner_space_pos_maps_known_receiver_into_owner(qapp, tmp_path):
+    """Known receiver (zone forwarding) maps through the receiver chain.
+
+    Cursor sources are poisoned during QDrag.exec (frozen QCursor.pos(),
+    move-trace proven), so ``_owner_space_pos`` never consults the cursor:
+    the event pos travels with the pointer; a known receiver maps it into
+    owner space, otherwise it already is owner-space.
+    """
     owner, hdr = _owner_with_header(qapp, "series_7")
     a = tmp_path / "twin.png"
     a.write_bytes(b"\x89PNG\r\n\x1a\n")
-    # Global point over the header (round-trips through mapToGlobal).
-    gp = hdr.mapToGlobal(QPoint(10, 10))
-    ev = _FakeDropEvent(_internal_mime([a]), gp)
-    assert dnd._owner_space_pos(owner, ev) == QPoint(10, 10)
-    handled, sid = dnd.series_target_at(owner, dnd._owner_space_pos(owner, ev))
-    assert (handled, sid) == (True, "series_7")
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    # Receiver == owner: event pos used as-is (no cursor consulted).
+    assert dnd._owner_space_pos(owner, ev) == QPoint(500, 500)
+    # Known child receiver offset by (100, 100): mapped back into owner.
+    zone = QWidget(owner)
+    zone.setGeometry(100, 100, 50, 50)
+    assert dnd._owner_space_pos(owner, ev, receiver=zone) == QPoint(600, 600)
 
 
 def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplog):
@@ -209,7 +220,8 @@ def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplo
     ctrl = SimpleNamespace(
         move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 2,
     )
-    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)),
+                          pos=QPoint(10, 10))
     with caplog.at_level("WARNING", logger="ImproveImgSLI"):
         dnd.drop_event(owner, ev, ctrl)
     assert ev.accepted
@@ -483,7 +495,7 @@ def test_drop_onto_series_cards_moves(qapp, tmp_path):
         move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 1,
     )
     gp = card_b.mapToGlobal(QPoint(20, 20))
-    ev = _FakeDropEvent(_internal_mime([a]), gp)
+    ev = _FakeDropEvent(_internal_mime([a]), gp, pos=QPoint(30, 260))
     dnd.drop_event(owner, ev, ctrl)
     assert ev.accepted
     assert len(calls) == 1 and calls[0][1] == "series_2"
@@ -567,40 +579,25 @@ def test_drop_target_layer_paints_only_when_flagged(qapp):
         assert len(painter.rects) == expect
 
 
-# -- Wave E: identity-first target resolution ----------------------------------
+# -- Wave E: receiver-chain hit-testing ----------------------------------------
 #
-# Geometry frames drift (maximized-window mapFromGlobal precedent): the
-# compositor-truth witness ``QApplication.widgetAt`` + ascend resolves the
-# target with no coordinates at all. Geometry stays as the synthetic
-# fallback (widgetAt None offscreen).
+# Cursor sources are poisoned during QDrag.exec (frozen QCursor.pos(),
+# move-trace proven): the event position is the only live truth. A known
+# receiver maps into owner space; the owner itself needs no mapping.
 
 
-def test_identity_card_hit_beats_geometry(qapp, monkeypatch):
-    from PySide6.QtWidgets import QApplication
-
-    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
-    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: card_b))
-    # (350, 250): empty area geometrically (no header, no card there).
-    assert dnd.series_target_at(owner, QPoint(350, 250)) == (True, "series_2")
-
-
-def test_identity_outside_subtree_falls_back_to_geometry(qapp, monkeypatch):
-    from PySide6.QtWidgets import QApplication
-
-    owner, _ha, _hb, _card = _owner_with_two_series_and_cards(qapp)
-    outsider = QWidget()
-    outsider.resize(50, 50)
-    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: outsider))
-    # Geometry over series_2's card still resolves (fallback path).
-    assert dnd.series_target_at(owner, QPoint(20, 250)) == (True, "series_2")
-
-
-def test_identity_header_hit_returns_header(qapp, monkeypatch):
-    from PySide6.QtWidgets import QApplication
-
-    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
-    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: hdr_b))
-    assert dnd._header_at(owner, QPoint(0, 0)) is hdr_b
+def test_receiver_chain_mapping_resolves_header(qapp, tmp_path):
+    owner, hdr = _owner_with_header(qapp, "series_7")
+    a = tmp_path / "twin.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)))
+    zone = QWidget(owner)
+    zone.setGeometry(100, 100, 50, 50)
+    pos = dnd._owner_hit_pos(owner, ev, receiver=zone)
+    # Zone-relative (500, 500) maps through the chain: owner == zone + offset.
+    assert pos == QPoint(600, 600)
+    # Direct owner receiver: raw event pos in owner space.
+    assert dnd._owner_hit_pos(owner, ev) == QPoint(500, 500)
 
 
 def test_highlight_flags_toolkit_button_without_setdown(qapp):

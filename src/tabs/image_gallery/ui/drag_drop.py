@@ -940,36 +940,36 @@ def _event_pos(event):
         return None
 
 
-def _owner_space_pos(owner, event):
-    """Cursor position in OWNER coords (Wave C hit-test fix).
+def _owner_space_pos(owner, event, receiver=None):
+    """Cursor position in OWNER coords (Wave E fix).
 
-    ``QDropEvent.position()`` is RECEIVER-relative while ``series_target_at``
-    / ``_header_at`` compare against ``hdr.mapTo(owner)`` (owner space): when
-    the receiver is a viewport/zone child rather than the owner, the raw
-    pos misses the header (or hits the wrong one). Map the live cursor into
-    owner space instead. Verified against installed PySide6 (6.11.2):
-    ``QDropEvent``/``QDragMoveEvent`` expose NO global accessor (no
-    ``globalPosition``/``globalPos``), so the cursor is the only live global
-    source; events that do carry ``globalPosition()`` (single-point style)
-    use it directly. Anything failing (fakes without ``mapFromGlobal``,
-    headless cursor) falls back to the legacy receiver-relative pos.
+    During ``QDrag.exec`` the app-visible ``QCursor.pos()`` is FROZEN on
+    this stack (proven by move-trace: cursor fixed while ``QDragMoveEvent``
+    positions advance) — every cursor-derived source (``mapFromGlobal``,
+    ``widgetAt``) resolves the drag ORIGIN, not the drop point. So no
+    cursor source is used here at all: the event position travels with the
+    real pointer. When the receiver is known (zone-filter forwarding passes
+    ``watched``), map through the receiver chain into owner space (pure
+    local mapping — no screen frame, per the maximized-window precedent);
+    otherwise the receiver is the owner itself (widget accepts drops
+    anywhere) and the event pos is already owner-space.
     """
     try:
-        gp_fn = getattr(event, "globalPosition", None)
-        if callable(gp_fn):
-            try:
-                return owner.mapFromGlobal(gp_fn().toPoint())
-            except Exception:
-                pass
+        pos = event.position().toPoint()
     except Exception:
-        pass
-    try:
-        from PySide6.QtGui import QCursor as _QCursor
-
-        return owner.mapFromGlobal(_QCursor.pos())
-    except Exception:
-        pass
-    return _event_pos(event)
+        try:
+            pos = event.pos()
+        except Exception:
+            return None
+    if pos is None:
+        return None
+    if receiver is not None:
+        try:
+            if receiver is not owner:
+                return receiver.mapTo(owner, pos)
+        except Exception:
+            pass
+    return pos
 
 
 def _series_for_card_path(grid, path: str):
@@ -1014,130 +1014,16 @@ def _series_for_card_path(grid, path: str):
     return (False, None)
 
 
-def _identity_target(owner, grid):
-    """Drop target by widget identity (Wave E): no coordinates at all.
+def _owner_hit_pos(owner, event, receiver=None):
+    """Owner-space pos for header hit-testing (Wave E, event-only).
 
-    ``QApplication.widgetAt(QCursor.pos())`` is the compositor-truth witness
-    (DEBUGGING.md rule 6): ascend from it while inside the owner subtree —
-    a series header resolves via its name/index, a card via
-    ``_series_for_card_path``. Returns ``(found, series_id, header_or_None)``.
-    Ghost/overlay widgets live outside the owner subtree and are skipped by
-    construction; ``widgetAt`` None (offscreen/synthetic) → not found and
-    callers use the geometry fallback.
+    Cursor sources are poisoned during ``QDrag.exec`` (frozen
+    ``QCursor.pos()`` — move-trace proven), so the event position is the
+    only live truth. ``receiver`` (when the caller knows it, e.g. zone
+    forwarding) is mapped into owner space; otherwise the event pos is
+    already owner-space (widget accepts drops anywhere).
     """
-    try:
-        from PySide6.QtWidgets import QApplication as _QApp
-
-        app = _QApp.instance()
-        if app is None:
-            return (False, None, None)
-        from PySide6.QtGui import QCursor as _QCursor
-
-        w = app.widgetAt(_QCursor.pos())
-    except Exception:
-        return (False, None, None)
-    if w is None:
-        return (False, None, None)
-    try:
-        headers = list(getattr(grid, "_series_headers", None) or [])
-    except Exception:
-        headers = []
-    try:
-        cards = dict(getattr(grid, "_cards_by_path", None) or {})
-        card_widgets = {id(c): c for c in cards.values()}
-    except Exception:
-        card_widgets = {}
-    node = w
-    try:
-        while node is not None and node is not owner:
-            try:
-                name = str(node.objectName() or "")
-            except Exception:
-                name = ""
-            if _is_series_header(node):
-                try:
-                    idx = headers.index(node)
-                except Exception:
-                    idx = None
-                sid = None
-                if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
-                    return (True, None, node)
-                if idx is not None:
-                    try:
-                        sid = _series_id_for_index(grid, idx)
-                    except Exception:
-                        sid = None
-                return (True, sid, node)
-            if id(node) in card_widgets:
-                path = _card_path(node, None)
-                if path:
-                    ok, sid = _series_for_card_path(grid, path)
-                    if ok:
-                        return (True, sid, None)
-                try:
-                    live = getattr(getattr(node, "_gallery_item", None), "series_id", None)
-                    return (True, str(live) if live is not None else None, None)
-                except Exception:
-                    return (True, None, None)
-            try:
-                node = node.parentWidget()
-            except Exception:
-                return (False, None, None)
-        return (False, None, None)
-    except Exception:
-        return (False, None, None)
-
-
-def _owner_hit_pos(owner, event):
-    """Owner-space pos for header hit-testing (Wave C, cursor-hit-wins).
-
-    Live, only the cursor mapped into owner space is in the right frame —
-    the event pos is receiver-relative and misses when the receiver is a
-    viewport/zone child rather than the owner (S2). Synthetic/offscreen
-    events carry a receiver==owner pos but a meaningless ambient cursor, so
-    when the mapped cursor hits NO header while the event pos DOES, the
-    event pos wins (the receiver presumably is the owner). A cursor hit
-    always wins ties — live truth is the cursor.
-    """
-    primary = _owner_space_pos(owner, event)
-    try:
-        if _header_at(owner, primary) is not None:
-            return primary
-    except Exception:
-        return primary
-    try:
-        legacy = _event_pos(event)
-    except Exception:
-        return primary
-    try:
-        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate
-        if _gate():
-            _dnd_log("hit-pos cursor_mapped=%s legacy=%s", primary, legacy)
-    except Exception:
-        pass
-    try:
-        same = bool(legacy == primary)
-    except Exception:
-        same = True
-    if not same:
-        try:
-            if _header_at(owner, legacy) is not None:
-                try:
-                    from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate2
-                    if _gate2():
-                        _dnd_log("hit-pos chosen=legacy %s", legacy)
-                except Exception:
-                    pass
-                return legacy
-        except Exception:
-            pass
-    try:
-        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate3
-        if _gate3():
-            _dnd_log("hit-pos chosen=cursor %s", primary)
-    except Exception:
-        pass
-    return primary
+    return _owner_space_pos(owner, event, receiver)
 
 
 def _series_id_for_index(grid, index: int) -> str | None:
@@ -1268,20 +1154,6 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
         headers = []
     if not headers or pos is None:
         return (False, None)
-    # Identity first (Wave E): widgetAt + ascend needs no coordinates and
-    # cannot drift across frames; geometry below is the synthetic fallback.
-    try:
-        found, ident_sid, _ident_hdr = _identity_target(owner, grid)
-    except Exception:
-        found, ident_sid = False, None
-    if found:
-        try:
-            from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate0
-            if _gate0():
-                _dnd_log("target via=identity series_id=%s", ident_sid)
-        except Exception:
-            pass
-        return (True, ident_sid)
     _dump_drop_geometry(owner, grid, headers, pos)
     try:
         from PySide6.QtCore import QPoint as _QPoint
@@ -1593,14 +1465,6 @@ def _header_at(owner, pos):
         headers = list(getattr(grid, "_series_headers", None) or [])
     except Exception:
         headers = []
-    # Identity first (Wave E): a live hover over a header highlights it
-    # without any coordinate math.
-    try:
-        found, _ident_sid, ident_hdr = _identity_target(owner, grid)
-    except Exception:
-        found, ident_hdr = False, None
-    if found and ident_hdr is not None:
-        return ident_hdr
     if headers:
         try:
             from PySide6.QtCore import QPoint as _QPoint
