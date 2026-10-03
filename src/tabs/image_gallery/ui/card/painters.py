@@ -140,8 +140,8 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
         try:
             painter.setFont(f)
             fm = painter.fontMetrics()
-            w = max(30, fm.horizontalAdvance(text) + 12)
-            h = 20
+            w = max(28, fm.horizontalAdvance(text) + 12)
+            h = 18
             x = rect.x() + 4
             y = rect.y() + 4
             r = QRectF(x, y, w, h)
@@ -156,7 +156,7 @@ def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # typ
             else:
                 painter.setPen(QColor(0, 0, 0, 0))
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            painter.drawRoundedRect(r, 10, 10)
+            painter.drawRoundedRect(r, 9, 9)
             painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
             painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
         finally:
