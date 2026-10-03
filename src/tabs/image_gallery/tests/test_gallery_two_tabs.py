@@ -235,3 +235,230 @@ def test_tab_reactivation_refreshes_from_own_slot(qapp) -> None:
     store._active_id = "A"
     tab.on_activated(ctx)
     assert _mirror_snapshot(ctrl_a) == snap_a
+
+
+def test_background_worker_completion_dispatches_into_own_slot() -> None:
+    """Wave CORE write side: B's late worker completion arriving while A is
+    ACTIVE lands in B's OWN slot — never in the foreign active session's.
+
+    Before session-targeted dispatch, ``_emit_gallery`` addressed the active
+    session, so a background tab's thumbnail/triage/analysis completion
+    finishing after a tab switch clobbered the newly-active tab's pool.
+    """
+    from core.state_management.gallery_actions import GalleryThumbnailsReady
+    from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
+    from tabs.image_gallery.state import selectors as gallery_selectors
+
+    store = _two_session_store()
+    ctrl_a = _controller_for(store, "A")
+    _open_grouped_pool(ctrl_a, "/pics", [A1, A2])
+
+    ctrl_b = _controller_for(store, "B")
+    # A stays active throughout: B is the background tab whose worker
+    # finishes late (thumbnail completion for its just-opened pool).
+    assert store._active_id == "A"
+    ctrl_b._emit_gallery(GalleryPoolOpened(folder="/other", entries=[(B1, 7)]))
+    ctrl_b._emit_gallery(GalleryThumbnailsReady(ready=[(B1, "loaded")]))
+
+    slot_a = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id="A")
+    slot_b = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id="B")
+    assert gallery_selectors.get_item_paths(slot_a) == [A1, A2]
+    assert gallery_selectors.get_item_paths(slot_b) == [B1]
+    assert gallery_selectors.get_item_by_path(slot_b, B1).status == "loaded"
+    # A's mirror never saw B's writes (inactive skip on the read side).
+    ctrl_a._on_store_changed("gallery")
+    assert _mirror_snapshot(ctrl_a)["items"] == [A1, A2]
+
+
+def test_retriage_quiet_regroups_restored_pool(monkeypatch) -> None:
+    """Restore brings the pool back FLAT — retriage regroups it quietly."""
+    from tabs.image_gallery.models import GalleryItem, TriageState
+
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [
+        GalleryItem(path=Path(f"/p/{n}.png"), mtime_ns=1) for n in range(3)
+    ]
+    ctrl.state.triage_state = TriageState.IDLE
+    calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: calls.append((list(items), cover_grid)),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert len(calls) == 1 and calls[0][1] is False
+    assert [str(it.path) for it in calls[0][0]] == [f"/p/{n}.png" for n in range(3)]
+
+
+def test_retriage_quiet_skips_empty_and_running(monkeypatch) -> None:
+    from tabs.image_gallery.models import TriageState
+
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: calls.append(True),
+    )
+    ctrl.state.items = []
+    assert ctrl.retriage_quiet() is False
+    from tabs.image_gallery.models import GalleryItem
+
+    ctrl.state.items = [GalleryItem(path=Path("/p/x.png"), mtime_ns=1)]
+    ctrl.state.triage_state = TriageState.RUNNING
+    assert ctrl.retriage_quiet() is False
+    assert calls == []
+
+
+def test_session_switch_regroups_restored_pool() -> None:
+    """Gallery→gallery switches land in on_active_session_changed (not
+    on_activated) — the restored flat pool must regroup there too."""
+    from tabs.image_gallery.tab import ImageGalleryTab
+
+    calls: list = []
+    ctrl = SimpleNamespace(
+        bind_gallery_session=lambda sid: None,
+        retriage_quiet=lambda: calls.append(True) or True,
+    )
+    tab = ImageGalleryTab()
+    tab._controller = ctrl
+    tab._widget = None
+    tab._active_session_id = "sess-A"
+    tab.on_active_session_changed(
+        "sess-B", SimpleNamespace(store=None)
+    )
+    assert calls == [True]
+    assert tab._active_session_id == "sess-B"
+
+
+def _painted_pngs(tmp_path, names, color=(200, 30, 30)):
+    from PIL import Image
+
+    out = []
+    for n in names:
+        p = tmp_path / n
+        Image.new("RGB", (64, 64), color).save(p)
+        out.append(p)
+    return out
+
+
+def test_retriage_quiet_sync_when_cached(qapp, tmp_path, monkeypatch) -> None:
+    """All signatures cached → inline regroup, no worker hop, series now."""
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    paths = _painted_pngs(tmp_path, ["s1.png", "s2.png"])
+    for p in paths:
+        _clustering.signature_for(p)
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=p, mtime_ns=1) for p in paths]
+    from tabs.image_gallery.models import TriageState
+
+    ctrl.state.triage_state = TriageState.IDLE
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(True),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert triage_calls == []
+    assert len(ctrl.state.series) == 1  # grouped synchronously, no ticks
+
+
+def test_retriage_quiet_worker_fallback_when_uncached(tmp_path, monkeypatch) -> None:
+    from tabs.image_gallery.models import GalleryItem, TriageState
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    (tmp_path / "u1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=tmp_path / "u1.png", mtime_ns=1)]
+    ctrl.state.triage_state = TriageState.IDLE
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(cover_grid),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert triage_calls == [False]
+
+
+def test_triage_tail_skips_repeated_analyses(qapp, tmp_path, monkeypatch) -> None:
+    """Same content twice → Stage-2 analyses start once, tie-break unaffected."""
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    paths = _painted_pngs(tmp_path, ["m1.png", "m2.png"])
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [GalleryItem(path=p, mtime_ns=1) for p in paths]
+    analysis_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_artifact_analysis", lambda *a, **k: analysis_calls.append("a")
+    )
+    monkeypatch.setattr(
+        ctrl, "_start_fidelity_analysis", lambda *a, **k: analysis_calls.append("f")
+    )
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "f"]
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "f"]  # skipped: same fingerprint
+    ctrl.state.items[0].artifacts = {"x": "y"}  # type: ignore[attr-defined]
+    ctrl._apply_triage_result([], None, None)
+    assert sorted(analysis_calls) == ["a", "a", "f", "f"]  # changed → rerun
+
+
+def test_signatures_cached_unit(tmp_path) -> None:
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    assert _clustering.signatures_cached([]) is False
+    a = tmp_path / "c1.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert _clustering.signatures_cached([a]) is False
+    _clustering.signature_for(a)
+    assert _clustering.signatures_cached([a]) is True
+    assert _clustering.signatures_cached([tmp_path / "nope.png"]) is False
+
+
+def test_sharpness_cache_serves_repeat_select_mode(tmp_path, monkeypatch) -> None:
+    """select_mode must not re-decode files on warm regroups (busy cursor)."""
+    from PIL import Image
+
+    from tabs.image_gallery.services import mode as _mode
+
+    _mode.clear_sharpness_cache()
+    for n in ("w1.png", "w2.png"):
+        Image.new("RGB", (64, 64), (200, 30, 30)).save(tmp_path / n)
+    calls = {"n": 0}
+    real = _mode._sharpness
+    monkeypatch.setattr(
+        _mode, "_sharpness", lambda p: (calls.__setitem__("n", calls["n"] + 1), real(p))[1]
+    )
+    from tabs.image_gallery.models import GalleryItem
+
+    items = [GalleryItem(path=tmp_path / n, mtime_ns=1) for n in ("w1.png", "w2.png")]
+    assert _mode.select_mode(None, items, None) == _mode.select_mode(None, items, None)
+    assert calls["n"] == 2  # decoded once, second run from cache
+
+
+def test_exif_cache_serves_repeat_select_mode(tmp_path, monkeypatch) -> None:
+    from PIL import Image
+
+    from tabs.image_gallery.services import mode as _mode
+
+    (tmp_path / "e1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    Image.new("RGB", (32, 32), (10, 10, 10)).save(tmp_path / "e2.png")
+    calls = {"n": 0}
+    real = _mode._has_exif
+    monkeypatch.setattr(
+        _mode, "_has_exif", lambda p: (calls.__setitem__("n", calls["n"] + 1), real(p))[1]
+    )
+    assert _mode.exif_for(tmp_path / "e1.png") is False
+    assert _mode.exif_for(tmp_path / "e1.png") is False
+    assert _mode.exif_for(tmp_path / "e2.png") is False
+    assert calls["n"] == 2  # once per file, repeats from cache

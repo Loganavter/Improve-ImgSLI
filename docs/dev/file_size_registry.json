@@ -3,14 +3,37 @@
   "_policy": "docs/dev/FILE_SIZE_POLICY.md",
   "entries": [
     {
+      "path": "src/core/state_management/dispatcher.py",
+      "lines": 575,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single dispatch machine — optimistic-concurrency swap + session-targeted write-back + per-session history binding share one lock discipline, must stay one file (reducers.py precedent)\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single dispatch machine — optimistic-concurrency swap + session-targeted write-back + per-session history binding share one lock discipline, must stay one file (reducers.py precedent)"
+      }
+    },
+    {
       "path": "src/core/state_management/reducers.py",
-      "lines": 552,
+      "lines": 585,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single reducer machine — viewport/settings/slot/transaction reduction scanned by settings-scalar AST dogma, must stay one file\"",
       "parsed": {
         "pattern": "state-machine",
         "reason": "single reducer machine — viewport/settings/slot/transaction reduction scanned by settings-scalar AST dogma, must stay one file"
+      }
+    },
+    {
+      "path": "src/core/tracing/instrumentation.py",
+      "lines": 505,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-machine size=exempt reason=\"one tracer install: N monkeypatchers sharing tracer discipline — splitting scatters wrap/unwrap pairs\"",
+      "parsed": {
+        "pattern": "single-machine",
+        "size": "exempt",
+        "reason": "one tracer install: N monkeypatchers sharing tracer discipline — splitting scatters wrap/unwrap pairs"
       }
     },
     {
@@ -696,7 +719,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 2506,
+      "lines": 2658,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -720,7 +743,7 @@
     },
     {
       "path": "src/tabs/image_gallery/tab.py",
-      "lines": 364,
+      "lines": 384,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
@@ -923,7 +946,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1877,
+      "lines": 1919,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

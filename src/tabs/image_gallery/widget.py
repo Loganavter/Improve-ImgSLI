@@ -76,6 +76,48 @@ class ImageGalleryWidget(QWidget):
 
         super().__init__(parent)
         self._context = context
+        # Jank watchdog (diagnosis only): QTimer ticks on the GUI thread —
+        # worker threads keep logging while the GUI loop is stuck, so plain
+        # log gaps cannot prove GUI blocks. Any inter-tick gap over the
+        # threshold is a GUI-thread stall, whatever its cause.
+        try:
+            import os as _os
+            import time as _time
+
+            if _os.environ.get("IMGSLI_JANK_WATCH", "") not in ("", "0", "no", "off"):
+                from PySide6.QtCore import QTimer as _QTimer
+
+                _last = [_time.monotonic()]
+
+                def _jank_tick():
+                    try:
+                        now = _time.monotonic()
+                        gap = now - _last[0]
+                        _last[0] = now
+                        if gap >= 0.15:
+                            logger.warning("[jank] gui-loop gap %.0fms", gap * 1000.0)
+                    except Exception:
+                        pass
+
+                self._jank_timer = _QTimer(self)
+                try:
+                    self._jank_timer.setInterval(50)
+                except Exception:
+                    pass
+                try:
+                    self._jank_timer.timeout.connect(_jank_tick)
+                except Exception:
+                    pass
+                try:
+                    self._jank_timer.start()
+                except Exception:
+                    pass
+                try:
+                    logger.warning("[jank] watchdog armed (50ms tick, >=150ms gaps)")
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # G2 gallery contract: controller attached once via attach_controller
         # (called by ImageGalleryTab.create_page). Until attached, the widget
         # acts as its own triage owner (storeless unit tests, fail-open).
