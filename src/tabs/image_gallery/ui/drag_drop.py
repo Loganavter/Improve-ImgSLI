@@ -1172,6 +1172,14 @@ def _clear_series_highlight(owner) -> None:
     try:
         if btn is not None:
             btn.setDown(False)
+            try:
+                btn._gallery_drop_target = False  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                btn.update()
+            except Exception:
+                pass
     except Exception:
         pass
     try:
@@ -1219,6 +1227,16 @@ def _set_series_highlight(owner, header) -> None:
                 # state paints, then restore on clear.
                 btn.setEnabled(True)
             btn.setDown(True)
+            # Wave E color landing indicator (painter layer on the header
+            # button reads this flag; reset in _clear_series_highlight).
+            try:
+                btn._gallery_drop_target = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                btn.update()
+            except Exception:
+                pass
     except Exception:
         pass
     try:

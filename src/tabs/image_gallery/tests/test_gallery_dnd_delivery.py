@@ -505,3 +505,63 @@ def test_drop_onto_own_card_is_noop(qapp, tmp_path, monkeypatch):
     )
     assert ctrl.move_paths_to_series([b], "series_2") == 0
     assert triage_calls == []
+
+
+# -- Wave E: colored landing indicator -----------------------------------------
+#
+# The pressed-state highlight was invisible: drops need a colored landing
+# indicator. A painter layer on the header Button
+# (``_SeriesDropTargetLayer``) paints accent underline + tint while
+# ``btn._gallery_drop_target`` is set (toggled by highlight set/clear).
+
+
+def _highlight_host(qapp):
+    from PySide6.QtWidgets import QPushButton
+
+    owner = QWidget()
+    owner.resize(400, 300)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 0, 400, 30)
+    btn = QPushButton(hdr)
+    btn.setObjectName("GallerySeriesHeaderBtn_0")
+    btn.setGeometry(0, 0, 400, 30)
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    return owner, hdr, btn
+
+
+def test_highlight_sets_and_clears_drop_target_flag(qapp):
+    owner, hdr, btn = _highlight_host(qapp)
+    assert getattr(btn, "_gallery_drop_target", False) is False
+    dnd._set_series_highlight(owner, hdr)
+    assert btn._gallery_drop_target is True
+    assert owner._series_drop_target[0] is hdr
+    dnd._clear_series_highlight(owner)
+    assert btn._gallery_drop_target is False
+    assert owner._series_drop_target is None
+
+
+def test_drop_target_layer_paints_only_when_flagged(qapp):
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.grid_view import _SeriesDropTargetLayer
+
+    layer = _SeriesDropTargetLayer()
+
+    class _Painter:
+        def __init__(self):
+            self.rects = []
+
+        def fillRect(self, x, y, w, h, color):
+            self.rects.append((x, y, w, h))
+
+    for flagged, expect in ((False, 0), (True, 2)):
+        painter = _Painter()
+        widget = SimpleNamespace(_gallery_drop_target=flagged)
+        ctx = SimpleNamespace(
+            widget=widget, rect=QRectF(0, 0, 200, 30), painter=painter
+        )
+        layer.draw(ctx, None)
+        assert len(painter.rects) == expect
