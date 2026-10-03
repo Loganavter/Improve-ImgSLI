@@ -129,8 +129,19 @@ class ImageGalleryTab(TabContract):
         session_id = self._active_session_id or self._resolve_active_session_id(context)
         if session_id is not None:
             self._active_session_id = session_id
-            self._bind_gallery_copies(session_id)
-            _persistence.restore_from(self, context, session_id)
+        self._bind_gallery_copies(session_id)
+        _persistence.restore_from(self, context, session_id)
+        # Series live only in controller memory: a pool restored from the
+        # slot comes back FLAT — regroup quietly so returning to a tab
+        # restores its sections, not an UNGROUPED pile (no-op when idle
+        # pool empty or triage already running).
+        try:
+            ctrl = self._controller
+            regroup = getattr(ctrl, "retriage_quiet", None)
+            if callable(regroup):
+                regroup()
+        except Exception:
+            pass
 
         self._install_modal_lifetime_watch()
         return self._widget

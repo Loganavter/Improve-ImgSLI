@@ -1391,6 +1391,31 @@ class GalleryController:
         mode = select_mode(series, items, source)
         return (series, source, mode)
 
+    def retriage_quiet(self) -> bool:
+        """Regroup the current pool after restore/activation (no rescan).
+
+        Series live only in controller memory, so a pool restored from a
+        slot comes back FLAT — without this, returning to a tab leaves
+        every card UNGROUPED until the next folder open. Quiet: background
+        worker, no cover grid, staleness guarded by folder/series
+        generations (a newer triage wins). Returns True when started.
+        """
+        try:
+            if getattr(self.state, "triage_state", None) not in (
+                TriageState.IDLE, TriageState.DONE, TriageState.ERROR,
+            ):
+                return False
+            items = list(getattr(self.state, "items", None) or [])
+        except Exception:
+            return False
+        if not items:
+            return False
+        try:
+            self._start_triage(items, cover_grid=False)
+            return True
+        except Exception:
+            return False
+
     def _start_triage(self, items: list[GalleryItem], *, cover_grid: bool = True) -> None:
         """Cluster in a worker, then ``set_triage`` on delivery.
 

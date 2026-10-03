@@ -268,3 +268,43 @@ def test_background_worker_completion_dispatches_into_own_slot() -> None:
     # A's mirror never saw B's writes (inactive skip on the read side).
     ctrl_a._on_store_changed("gallery")
     assert _mirror_snapshot(ctrl_a)["items"] == [A1, A2]
+
+
+def test_retriage_quiet_regroups_restored_pool(monkeypatch) -> None:
+    """Restore brings the pool back FLAT — retriage regroups it quietly."""
+    from tabs.image_gallery.models import GalleryItem, TriageState
+
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    ctrl.state.items = [
+        GalleryItem(path=Path(f"/p/{n}.png"), mtime_ns=1) for n in range(3)
+    ]
+    ctrl.state.triage_state = TriageState.IDLE
+    calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: calls.append((list(items), cover_grid)),
+    )
+    assert ctrl.retriage_quiet() is True
+    assert len(calls) == 1 and calls[0][1] is False
+    assert [str(it.path) for it in calls[0][0]] == [f"/p/{n}.png" for n in range(3)]
+
+
+def test_retriage_quiet_skips_empty_and_running(monkeypatch) -> None:
+    from tabs.image_gallery.models import TriageState
+
+    store = _two_session_store()
+    ctrl = _controller_for(store, "A")
+    calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: calls.append(True),
+    )
+    ctrl.state.items = []
+    assert ctrl.retriage_quiet() is False
+    from tabs.image_gallery.models import GalleryItem
+
+    ctrl.state.items = [GalleryItem(path=Path("/p/x.png"), mtime_ns=1)]
+    ctrl.state.triage_state = TriageState.RUNNING
+    assert ctrl.retriage_quiet() is False
+    assert calls == []
