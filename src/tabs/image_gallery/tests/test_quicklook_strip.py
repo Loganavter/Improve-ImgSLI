@@ -520,3 +520,46 @@ def test_strip_wheel_consumes_only_when_moving(qtbot):
     up = SimpleNamespace(angleDelta=lambda: QPoint(0, 120), pixelDelta=lambda: QPoint(0, 0))
     assert _strip_scroll_wheel(ov, up) is True
     ov.hide()
+
+
+def test_strip_pill_border_half_pixel_aligned():
+    """The 1px pill border must sit on pixel centers, not straddle them.
+
+    w carries the float text advance, so an unadjusted rect puts the 1px
+    stroke across pixel boundaries (gray fringe on the curve — same class
+    as precedent qrhi-sdf-feather-1px-one-rasterizer). The painter must
+    receive the 0.5-inset rect.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QColor
+
+    from tabs.image_gallery.ui.card.painters import _strip_badge_painter
+
+    calls = {}
+
+    class FakeMetrics:
+        def horizontalAdvance(self, _text):
+            return 33.7  # fractional advance: the aliasing trigger.
+
+    fake = SimpleNamespace(
+        save=lambda: None,
+        restore=lambda: None,
+        setFont=lambda _f: None,
+        fontMetrics=lambda: FakeMetrics(),
+        setBrush=lambda *_a: None,
+        setPen=lambda *_a: None,
+        setRenderHint=lambda *_a: None,
+        RenderHint=SimpleNamespace(Antialiasing=1),
+        drawRoundedRect=lambda r, *_a: calls.setdefault("rect", r),
+        drawText=lambda *_a: None,
+    )
+    _strip_badge_painter(
+        fake, QRectF(0, 0, 66, 44), "#10",
+        (True, QColor("#555555"), QColor("#d9a441"), QColor("#000000")),
+    )
+    r = calls["rect"]
+    assert abs((r.x() % 1) - 0.5) < 1e-6, f"border x must be half-pixel, got {r.x()}"
+    assert abs((r.y() % 1) - 0.5) < 1e-6, f"border y must be half-pixel, got {r.y()}"
+    assert r.width() > 0 and r.height() > 0
