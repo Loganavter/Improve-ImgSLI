@@ -1849,6 +1849,17 @@ class GalleryGridView(QWidget):
         except Exception:
             return None
         try:
+            from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
+
+            _dnd_log(
+                "card drag start pressed=%s n_dragged=%d dragged=%r",
+                Path(press_path).name if press_path else "?",
+                len(dragged),
+                [Path(p).name for p in list(dragged)[:5]],
+            )
+        except Exception:
+            pass
+        try:
             pixmap = resolve_gallery_drag_pixmap(card, owner, dragged[0])
         except Exception:
             pixmap = None
