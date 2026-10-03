@@ -120,7 +120,8 @@ def _action_ids(entries) -> list[str]:
     return ids
 
 
-def test_menu_move_present_with_selection(monkeypatch) -> None:
+def test_menu_move_absent_with_selection(monkeypatch) -> None:
+    """Move lives in drag-only now — no menu entry even with a selection."""
     from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
 
     captured = _capture_menu(monkeypatch)
@@ -128,7 +129,7 @@ def test_menu_move_present_with_selection(monkeypatch) -> None:
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=1,
     )
-    assert "gallery.selection.move" in _action_ids(captured["entries"])
+    assert "gallery.selection.move" not in _action_ids(captured["entries"])
 
 
 def test_menu_move_absent_without_selection(monkeypatch) -> None:
@@ -176,25 +177,6 @@ def test_menu_move_single_never_mutates_selection(tmp_path) -> None:
     assert _ctx_move(owner, target) is False
     assert set(owner.state.selected_paths) == before
     assert list(owner.state.selected_order) == [a]
-
-
-def test_menu_move_trigger_single_path(monkeypatch) -> None:
-    """Popup trigger for Move reaches ``_ctx_move`` (menu-rule targets)."""
-    from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
-
-    captured = _capture_menu(monkeypatch)
-    calls: list = []
-    import tabs.image_gallery.ui.card.context_actions as _actions
-
-    monkeypatch.setattr(
-        _actions, "_ctx_move", lambda o, p: calls.append((o, str(p))) or False
-    )
-    owner = _owner({Path("/a.png")})
-    popup_gallery_card_context_menu(
-        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=1,
-    )
-    captured["on_triggered"]("gallery.selection.move", None)
-    assert calls and calls[0][1] == "/a.png"
 
 
 def test_build_card_drag_arms_single_selection(qtbot) -> None:
