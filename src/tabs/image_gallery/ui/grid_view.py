@@ -706,6 +706,12 @@ class GalleryGridView(QWidget):
             item = self.items_layout.takeAt(0)
             w = item.widget()
             if w is not None and w not in list(self._cards_by_path.values()) and w not in self._pool and w not in self._series_headers:
+                try:
+                    # Stillborn-toplevel guard (see _clear_series_headers):
+                    # never orphan a visible widget.
+                    w.hide()
+                except Exception:
+                    pass
                 w.setParent(None)
 
         self._items = list(items)
@@ -1365,6 +1371,13 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             try:
+                # Same stillborn-toplevel guard as _clear_series_headers:
+                # hide before setParent(None), or the visible header maps
+                # its own toplevel + activation token for a few ms.
+                old.hide()
+            except Exception:
+                pass
+            try:
                 old.setParent(None)
                 old.deleteLater()
             except Exception:
@@ -1560,6 +1573,16 @@ class GalleryGridView(QWidget):
         for hdr in list(self._series_headers):
             try:
                 self.items_layout.removeWidget(hdr)
+            except Exception:
+                pass
+            try:
+                # Hide BEFORE dropping the parent: a still-visible widget
+                # reparented to None instantly becomes a top-level window
+                # (own wl_surface + xdg_toplevel + activation token on
+                # Wayland) for the ms until deleteLater fires — the
+                # unconsumable startup sequence behind the per-switch
+                # global busy cursor. Hidden widgets never map.
+                hdr.hide()
             except Exception:
                 pass
             try:
