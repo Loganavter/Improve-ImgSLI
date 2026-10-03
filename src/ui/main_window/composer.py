@@ -49,6 +49,16 @@ class MainWindowComposer:
         if ImageCarryService._instance is None:
             ImageCarryService._instance = ImageCarryService(self.context.store, window)
 
+        # Wave C: gallery-card QDrag onto workspace tabs (strip delegates,
+        # router in ui.main_window.tab_strip_drop). Best-effort — the gallery
+        # and window drops keep working without it.
+        try:
+            from ui.main_window.tab_strip_drop import install_tab_strip_drop
+
+            install_tab_strip_drop(window, self.context.store)
+        except Exception:
+            pass
+
         tray_manager = None
         if self._should_enable_system_tray():
             tray_manager = TrayManager(
