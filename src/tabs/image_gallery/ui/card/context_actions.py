@@ -113,6 +113,45 @@ def _ctx_compare(owner, path: Path) -> None:
         pass
 
 
+def _ctx_move(owner, path: Path) -> bool:
+    """Menu ``Move`` (parity with IC/MC ``Move``): copy-deliver the menu-rule targets.
+
+    Clicked-inside-selection → whole selection via ``carry_selected``;
+    clicked-outside → the clicked card alone via a direct ``begin_image_carry``
+    (files stay on disk — no source deletion anywhere). Never mutates the
+    selection itself. Returns True when a carry started, False otherwise
+    (empty selection, missing files, or no carry service — never raises).
+    """
+    try:
+        targets = _action_targets(owner, path)
+    except Exception:
+        return False
+    if not targets:
+        return False
+    try:
+        clicked = Path(path) if not isinstance(path, Path) else path
+    except Exception:
+        return False
+    try:
+        sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
+        sel_set = {Path(p) if not isinstance(p, Path) else p for p in sel}
+    except Exception:
+        sel_set = set()
+    try:
+        if clicked in sel_set:
+            from tabs.image_gallery.use_cases import carry as _carry
+
+            return bool(_carry.carry_selected(owner))
+        existing = [p for p in targets if p.is_file()]
+        if not existing:
+            return False
+        from events.image_carry import begin_image_carry
+
+        return bool(begin_image_carry(existing))
+    except Exception:
+        return False
+
+
 def _ctx_remove(owner, path: Path) -> None:
     """Remove target cards from the grid (files on disk stay; list-mode parity).
 

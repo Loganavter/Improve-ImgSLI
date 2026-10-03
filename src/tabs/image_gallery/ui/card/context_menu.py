@@ -192,9 +192,38 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             except Exception:
                 pass
 
+        def _do_move() -> None:
+            try:
+                # Injected carry path (the widget wires ``carry_selected``)
+                # covers the group case; the lone-card rule lives in
+                # ``_ctx_move`` (never mutates the selection).
+                if callable(on_carry):
+                    try:
+                        from tabs.image_gallery.ui.card.context_actions import (
+                            _action_targets as _move_targets,
+                        )
+
+                        sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
+                        sel_set = {str(p) for p in sel}
+                        if str(path) in sel_set and len(_move_targets(owner, path)) > 1:
+                            on_carry()
+                            return
+                    except Exception:
+                        pass
+                from tabs.image_gallery.ui.card.context_actions import _ctx_move
+
+                _ctx_move(owner, path)
+            except Exception:
+                pass
+
         entries: list = []
         if has_selection:
             sel_actions = [
+                ContextMenuAction(
+                    "gallery.selection.move",
+                    _t(translate, "image_gallery.selection.move", "Move"),
+                    enabled=has_analyze,
+                ),
                 ContextMenuAction(
                     "gallery.selection.analyze",
                     _t(translate, "image_gallery.selection.analyze", "Analyze"),
@@ -244,7 +273,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             )
         def _on_triggered(action_id: str, _data: object) -> None:
             try:
-                if action_id == "gallery.selection.analyze":
+                if action_id == "gallery.selection.move":
+                    _do_move()
+                elif action_id == "gallery.selection.analyze":
                     _do_analyze()
                 elif action_id == "gallery.selection.find_similar":
                     _do_find_similar()

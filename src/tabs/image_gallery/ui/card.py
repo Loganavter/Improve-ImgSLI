@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 
 GALLERY_CARD_W = 250
 GALLERY_CARD_H = 170
+# Frozen seam with Wave B (gallery DnD): mime type for card drags, defined
+# ONCE here. Payload = newline-separated ``file://`` URLs, plus
+# ``QMimeData.setUrls()`` with the same files (copy semantics on drop).
+GALLERY_PATHS_MIME = "application/x-imgsli-gallery-paths"
 # Reference: preview 234×110 r8 at 8,8 inside 250×170 r10 outer, bottom zone 52 (110+52+8+8=170) — balanced vertical
 _GALLERY_CONTENT_PADDING: tuple[float, float, float, float] = (8.0, 8.0, 8.0, 8.0)
 

@@ -15,7 +15,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QMimeData, QObject, QPoint, Qt, QUrl
+from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
@@ -144,6 +145,160 @@ def _grid_substrate_color():
     return _QC(0xFF, 0xFF, 0xFF)
 
 
+# -- Wave A drag source (QDrag off gallery cards) ---------------------------
+#
+# Frozen seam with Wave B: mime ``application/x-imgsli-gallery-paths``
+# (defined ONCE in ``ui/card.py`` as ``GALLERY_PATHS_MIME``). Payload =
+# newline-separated ``file://`` URLs PLUS ``QMimeData.setUrls()`` with the
+# same files (copy semantics on drop; files stay on disk — no source
+# deletion anywhere). Dragged set: current selection in ``selected_order``
+# when the pressed card is inside it, else the single pressed card.
+
+
+def dragged_paths_for_press(owner, pressed_path: Path) -> list[Path]:
+    """Cards a press-drag carries (file-manager rule, mirrors Reject).
+
+    Pressed-inside-selection → whole selection (``selected_order`` first);
+    pressed-outside → just the pressed card. Read-only (no selection write).
+    """
+    try:
+        from tabs.image_gallery.ui.card.context_actions import _action_targets
+
+        return list(_action_targets(owner, pressed_path))
+    except Exception:
+        try:
+            return [pressed_path if isinstance(pressed_path, Path) else Path(pressed_path)]
+        except Exception:
+            return []
+
+
+def build_gallery_drag_mime(paths: list[Path]) -> QMimeData:
+    """Mime for a card drag: ``file://`` URLs + ``setUrls`` (same files)."""
+    from tabs.image_gallery.ui.card import GALLERY_PATHS_MIME
+
+    urls = [QUrl.fromLocalFile(str(p)) for p in (paths or [])]
+    mime = QMimeData()
+    try:
+        mime.setData(GALLERY_PATHS_MIME, "\n".join(u.toString() for u in urls).encode("utf-8"))
+    except Exception:
+        pass
+    try:
+        mime.setUrls(urls)
+    except Exception:
+        pass
+    return mime
+
+
+def should_start_gallery_drag(press_pos: QPoint | None, cur_pos: QPoint | None) -> bool:
+    """True once the press-move passes ``QApplication.startDragDistance``."""
+    try:
+        if press_pos is None or cur_pos is None:
+            return False
+        from PySide6.QtWidgets import QApplication
+
+        return (cur_pos - press_pos).manhattanLength() >= int(QApplication.startDragDistance())
+    except Exception:
+        return False
+
+
+def resolve_gallery_drag_pixmap(card, owner, first_path: Path):
+    """Preview pixmap for a card drag (preview-only, never written back).
+
+    Pressed card cover pixmap → item thumbnail → disk preview. May be None
+    (the QDrag then carries no pixmap); callers check ``isNull`` themselves.
+    """
+    try:
+        region = card.region("cover") if card is not None and hasattr(card, "region") else None
+        pix = getattr(region, "pixmap", None)
+        if pix is not None and not pix.isNull():
+            return pix
+    except Exception:
+        pass
+    try:
+        items = getattr(getattr(owner, "state", None), "items", None) or []
+        for it in items:
+            try:
+                if Path(getattr(it, "path")) == Path(first_path):
+                    thumb = getattr(it, "thumbnail", None)
+                    if thumb is not None and not thumb.isNull():
+                        return thumb
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+    try:
+        from events.image_carry import preview_pixmap_for_path
+
+        return preview_pixmap_for_path(Path(first_path))
+    except Exception:
+        return None
+
+
+def _card_drag_path(card) -> Path | None:
+    """Path carried by *card* (same resolution as ``_bind_gallery_card``)."""
+    try:
+        item = getattr(card, "_gallery_item", None)
+        path = getattr(item, "path", None) if item is not None else None
+        if path is None:
+            path = Path(str(card.property("gallery_path") or ""))
+        return Path(path) if not isinstance(path, Path) else path
+    except Exception:
+        return None
+
+
+class _CardPressDragFilter(QObject):
+    """Card press-move → QDrag kickoff (Wave A drag source).
+
+    Installed on each pooled card (see ``GalleryGridView._ensure_card_drag``).
+    Observes only — returns False except for the release that ends a completed
+    drag (swallowed so no click activates after a drop). Marquee is
+    unaffected: it starts on empty-host presses only.
+    """
+
+    def __init__(self, card, view) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(card)
+        self._card = card
+        self._view = view
+        self._dragged = False
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is not self._card:
+            return False
+        try:
+            etype = event.type()
+        except Exception:
+            return False
+        if etype == QEvent.Type.MouseButtonPress:
+            try:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    path = _card_drag_path(self._card)
+                    if path is not None:
+                        self._dragged = False
+                        self._view.note_card_press(path, event.globalPosition().toPoint())
+            except Exception:
+                pass
+        elif etype == QEvent.Type.MouseMove:
+            try:
+                if (
+                    not self._dragged
+                    and bool(event.buttons() & Qt.MouseButton.LeftButton)
+                    and self._view.maybe_start_card_drag(self._card, event.globalPosition().toPoint())
+                ):
+                    self._dragged = True
+            except Exception:
+                pass
+        elif etype == QEvent.Type.MouseButtonRelease:
+            try:
+                self._view.clear_card_press()
+            except Exception:
+                pass
+            if self._dragged:
+                self._dragged = False
+                return True
+        return False
+
+
 class _SeriesHeaderAccentLayer(Layer):
     """Section bar painted on the header button's own left edge.
 
@@ -226,6 +381,12 @@ class GalleryGridView(QWidget):
         self._marquee_gesture = None
         self._marquee_additive = False
         self._marquee_base: set[str] = set()
+
+        # Wave A drag source: card-press origin (global pos + path). Card
+        # press-drag starts a QDrag; empty-host press-drag stays marquee
+        # (marquee refuses non-empty hosts) — never both from one gesture.
+        self._drag_press_path: str | None = None
+        self._drag_press_pos: QPoint | None = None
 
         # Stage 2 series grouping — headers only for clusters ≥2, singles under UNGROUPED tail.
         self._series: list[list[GalleryItem]] | None = None
@@ -1509,6 +1670,7 @@ class GalleryGridView(QWidget):
                 card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]
             except Exception:
                 pass
+            self._ensure_card_drag(card)
             return card
         if want_list:
             card = build_gallery_list_card(
@@ -1530,6 +1692,7 @@ class GalleryGridView(QWidget):
             card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]
         except Exception:
             pass
+        self._ensure_card_drag(card)
         return card
 
     def _recycle_card(self, str_path: str) -> None:
@@ -1600,6 +1763,122 @@ class GalleryGridView(QWidget):
                 self._on_toggle(path, additive)
             except TypeError:
                 self._on_toggle(path)
+
+    # -- Wave A drag source: card press origin + QDrag kickoff ---------------
+
+    def _ensure_card_drag(self, card) -> None:
+        """Install the press-drag filter on *card* (idempotent, pool-safe)."""
+        try:
+            if getattr(card, "_gallery_drag_installed", False):
+                return
+            filt = _CardPressDragFilter(card, self)
+            card.installEventFilter(filt)
+            card._gallery_drag_installed = True  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    def note_card_press(self, path: Path, global_pos: QPoint) -> None:
+        """Record a card-press origin (no selection write — arming is at drag start)."""
+        try:
+            self._drag_press_path = str(path)
+            self._drag_press_pos = global_pos
+        except Exception:
+            pass
+
+    def clear_card_press(self) -> None:
+        try:
+            self._drag_press_path = None
+            self._drag_press_pos = None
+        except Exception:
+            pass
+
+    def _drag_owner(self):
+        """Triage owner for drag arming (controller, or widget when storeless)."""
+        try:
+            widget = getattr(self, "_gallery_widget", None)
+            resolver = getattr(widget, "_owner_for_triage", None)
+            if callable(resolver):
+                return resolver()
+        except Exception:
+            pass
+        return None
+
+    def build_card_drag(self, card, global_pos: QPoint):  # type: ignore[no-untyped-def]
+        """Build the QDrag for the recorded press, or None (no exec here).
+
+        Threshold-gated; press on an unselected card arms single-card
+        selection first (dispatch-only via ``selection.commit`` → controller
+        ``set_selection``), press on a selected card keeps the group. Ctrl
+        toggle routing is untouched (commits on click/release elsewhere).
+        """
+        try:
+            press_path = getattr(self, "_drag_press_path", None)
+            press_pos = getattr(self, "_drag_press_pos", None)
+        except Exception:
+            return None
+        if press_path is None or press_pos is None or global_pos is None:
+            return None
+        if not should_start_gallery_drag(press_pos, global_pos):
+            return None
+        owner = self._drag_owner()
+        if owner is None:
+            return None
+        try:
+            pressed = Path(press_path)
+        except Exception:
+            return None
+        dragged = dragged_paths_for_press(owner, pressed)
+        if not dragged:
+            return None
+        try:
+            sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
+            sel_set = {Path(p) if not isinstance(p, Path) else p for p in sel}
+        except Exception:
+            sel_set = set()
+        if pressed not in sel_set:
+            # Unselected press → drag exactly the pressed card (arm first).
+            dragged = [pressed]
+            try:
+                from tabs.image_gallery.use_cases import selection as _selection
+
+                _selection.commit(owner, {pressed})
+            except Exception:
+                pass
+        try:
+            mime = build_gallery_drag_mime(dragged)
+        except Exception:
+            return None
+        try:
+            pixmap = resolve_gallery_drag_pixmap(card, owner, dragged[0])
+        except Exception:
+            pixmap = None
+        try:
+            drag = QDrag(card)
+            drag.setMimeData(mime)
+            if pixmap is not None and not pixmap.isNull():
+                drag.setPixmap(pixmap)
+                drag.setHotSpot(QPoint(0, 0))
+            return drag
+        except Exception:
+            return None
+
+    def maybe_start_card_drag(self, card, global_pos: QPoint) -> bool:
+        """Threshold → build → ``exec(CopyAction)``. Copy only; files stay."""
+        try:
+            drag = self.build_card_drag(card, global_pos)
+        except Exception:
+            return False
+        if drag is None:
+            return False
+        try:
+            drag.exec(Qt.DropAction.CopyAction)
+        except Exception:
+            pass
+        try:
+            self.clear_card_press()
+        except Exception:
+            pass
+        return True
 
     def _handle_context_menu(self, path: Path | None) -> None:
         if callable(self._on_context_menu) and path is not None:
