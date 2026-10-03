@@ -565,3 +565,39 @@ def test_drop_target_layer_paints_only_when_flagged(qapp):
         )
         layer.draw(ctx, None)
         assert len(painter.rects) == expect
+
+
+# -- Wave E: identity-first target resolution ----------------------------------
+#
+# Geometry frames drift (maximized-window mapFromGlobal precedent): the
+# compositor-truth witness ``QApplication.widgetAt`` + ascend resolves the
+# target with no coordinates at all. Geometry stays as the synthetic
+# fallback (widgetAt None offscreen).
+
+
+def test_identity_card_hit_beats_geometry(qapp, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
+    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: card_b))
+    # (350, 250): empty area geometrically (no header, no card there).
+    assert dnd.series_target_at(owner, QPoint(350, 250)) == (True, "series_2")
+
+
+def test_identity_outside_subtree_falls_back_to_geometry(qapp, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    owner, _ha, _hb, _card = _owner_with_two_series_and_cards(qapp)
+    outsider = QWidget()
+    outsider.resize(50, 50)
+    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: outsider))
+    # Geometry over series_2's card still resolves (fallback path).
+    assert dnd.series_target_at(owner, QPoint(20, 250)) == (True, "series_2")
+
+
+def test_identity_header_hit_returns_header(qapp, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
+    monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: hdr_b))
+    assert dnd._header_at(owner, QPoint(0, 0)) is hdr_b

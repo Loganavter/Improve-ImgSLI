@@ -906,6 +906,122 @@ def _owner_space_pos(owner, event):
     return _event_pos(event)
 
 
+def _series_for_card_path(grid, path: str):
+    """Cluster series id for a card path (model truth, Wave D helper).
+
+    Returns ``(resolved, series_id)``: membership in ``grid._series``
+    clusters first, UNGROUPED-tail membership (None) second. Unplaced paths
+    report ``(False, None)`` — callers fall back to the card's live attr.
+    """
+    try:
+        clusters = list(getattr(grid, "_series", None) or [])
+    except Exception:
+        clusters = []
+    for idx, entry in enumerate(clusters):
+        try:
+            members = list(entry.members) if hasattr(entry, "members") else list(entry)
+        except Exception:
+            continue
+        try:
+            hit = any(str(getattr(m, "path", "")) == path for m in members)
+        except Exception:
+            hit = False
+        if not hit:
+            continue
+        try:
+            first_sid = getattr(members[0], "series_id", None)
+            sid = str(first_sid) if first_sid is not None else None
+        except Exception:
+            sid = None
+        if sid is None:
+            try:
+                sid = _series_id_for_index(grid, idx)
+            except Exception:
+                sid = None
+        return (True, sid)
+    try:
+        tail = list(getattr(grid, "_ungrouped", None) or [])
+        if any(str(getattr(m, "path", "")) == path for m in tail):
+            return (True, None)
+    except Exception:
+        pass
+    return (False, None)
+
+
+def _identity_target(owner, grid):
+    """Drop target by widget identity (Wave E): no coordinates at all.
+
+    ``QApplication.widgetAt(QCursor.pos())`` is the compositor-truth witness
+    (DEBUGGING.md rule 6): ascend from it while inside the owner subtree —
+    a series header resolves via its name/index, a card via
+    ``_series_for_card_path``. Returns ``(found, series_id, header_or_None)``.
+    Ghost/overlay widgets live outside the owner subtree and are skipped by
+    construction; ``widgetAt`` None (offscreen/synthetic) → not found and
+    callers use the geometry fallback.
+    """
+    try:
+        from PySide6.QtWidgets import QApplication as _QApp
+
+        app = _QApp.instance()
+        if app is None:
+            return (False, None, None)
+        from PySide6.QtGui import QCursor as _QCursor
+
+        w = app.widgetAt(_QCursor.pos())
+    except Exception:
+        return (False, None, None)
+    if w is None:
+        return (False, None, None)
+    try:
+        headers = list(getattr(grid, "_series_headers", None) or [])
+    except Exception:
+        headers = []
+    try:
+        cards = dict(getattr(grid, "_cards_by_path", None) or {})
+        card_widgets = {id(c): c for c in cards.values()}
+    except Exception:
+        card_widgets = {}
+    node = w
+    try:
+        while node is not None and node is not owner:
+            try:
+                name = str(node.objectName() or "")
+            except Exception:
+                name = ""
+            if _is_series_header(node):
+                try:
+                    idx = headers.index(node)
+                except Exception:
+                    idx = None
+                sid = None
+                if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
+                    return (True, None, node)
+                if idx is not None:
+                    try:
+                        sid = _series_id_for_index(grid, idx)
+                    except Exception:
+                        sid = None
+                return (True, sid, node)
+            if id(node) in card_widgets:
+                path = _card_path(node, None)
+                if path:
+                    ok, sid = _series_for_card_path(grid, path)
+                    if ok:
+                        return (True, sid, None)
+                try:
+                    live = getattr(getattr(node, "_gallery_item", None), "series_id", None)
+                    return (True, str(live) if live is not None else None, None)
+                except Exception:
+                    return (True, None, None)
+            try:
+                node = node.parentWidget()
+            except Exception:
+                return (False, None, None)
+        return (False, None, None)
+    except Exception:
+        return (False, None, None)
+
+
 def _owner_hit_pos(owner, event):
     """Owner-space pos for header hit-testing (Wave C, cursor-hit-wins).
 
@@ -1086,6 +1202,20 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
         headers = []
     if not headers or pos is None:
         return (False, None)
+    # Identity first (Wave E): widgetAt + ascend needs no coordinates and
+    # cannot drift across frames; geometry below is the synthetic fallback.
+    try:
+        found, ident_sid, _ident_hdr = _identity_target(owner, grid)
+    except Exception:
+        found, ident_sid = False, None
+    if found:
+        try:
+            from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate0
+            if _gate0():
+                _dnd_log("target via=identity series_id=%s", ident_sid)
+        except Exception:
+            pass
+        return (True, ident_sid)
     _dump_drop_geometry(owner, grid, headers, pos)
     try:
         from PySide6.QtCore import QPoint as _QPoint
@@ -1299,44 +1429,9 @@ def _card_hit_series(owner, grid, pos) -> tuple[bool, str | None]:
             sid: str | None = None
             resolved = False
             try:
-                clusters = list(getattr(grid, "_series", None) or [])
+                resolved, sid = _series_for_card_path(grid, path)
             except Exception:
-                clusters = []
-            for idx, entry in enumerate(clusters):
-                try:
-                    members = (
-                        list(entry.members)
-                        if hasattr(entry, "members")
-                        else list(entry)
-                    )
-                except Exception:
-                    continue
-                try:
-                    hit = any(str(getattr(m, "path", "")) == path for m in members)
-                except Exception:
-                    hit = False
-                if not hit:
-                    continue
-                resolved = True
-                try:
-                    first_sid = getattr(members[0], "series_id", None)
-                    sid = str(first_sid) if first_sid is not None else None
-                except Exception:
-                    sid = None
-                if sid is None:
-                    try:
-                        sid = _series_id_for_index(grid, idx)
-                    except Exception:
-                        sid = None
-                break
-            if not resolved:
-                try:
-                    tail = list(getattr(grid, "_ungrouped", None) or [])
-                    if any(str(getattr(m, "path", "")) == path for m in tail):
-                        resolved = True
-                        sid = None
-                except Exception:
-                    pass
+                resolved, sid = False, None
             if not resolved:
                 try:
                     item = getattr(card, "_gallery_item", None)
@@ -1399,6 +1494,14 @@ def _header_at(owner, pos):
         headers = list(getattr(grid, "_series_headers", None) or [])
     except Exception:
         headers = []
+    # Identity first (Wave E): a live hover over a header highlights it
+    # without any coordinate math.
+    try:
+        found, _ident_sid, ident_hdr = _identity_target(owner, grid)
+    except Exception:
+        found, ident_hdr = False, None
+    if found and ident_hdr is not None:
+        return ident_hdr
     if headers:
         try:
             from PySide6.QtCore import QPoint as _QPoint
