@@ -83,17 +83,63 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
         except Exception:
             return False
 
-    def _handle_strip_drag_move(self, event) -> bool:
-        """Claim enter/move for gallery drags only; True = consumed."""
+    def _handle_strip_drag_move(self, event, receiving_widget=None) -> bool:
+        """Claim enter/move for gallery drags only; True = consumed.
+
+        Also mirrors the drag hover onto the tab bar: QDrag suppresses
+        mouseMoveEvents, so without this the hovered tab never highlights.
+        Position always comes from the event (QCursor is frozen mid-drag).
+        """
         try:
             if self._has_gallery_mime(event.mimeData()):
+                try:
+                    self._update_drag_hover(event, receiving_widget)
+                except Exception:
+                    pass
                 event.acceptProposedAction()
                 return True
         except Exception:
             pass
         return False
 
-    def _handle_strip_drop(self, event) -> bool:
+    def _update_drag_hover(self, event, receiving_widget=None) -> None:
+        """Highlight the tab under a gallery drag from event coordinates."""
+        from PySide6.QtCore import QPoint
+
+        try:
+            bar = self.tab_bar
+        except Exception:
+            return
+        if not hasattr(bar, "set_hover_from_global"):
+            return
+        try:
+            pos = event.position()
+            try:
+                pos = pos.toPoint()
+            except Exception:
+                pass
+            recv = receiving_widget if receiving_widget is not None else self
+            if recv is not bar:
+                try:
+                    pos = bar.mapFrom(recv, pos)
+                except Exception:
+                    return
+            bar.set_hover_from_global(bar.mapToGlobal(pos))
+        except Exception:
+            pass
+
+    def _clear_drag_hover(self) -> None:
+        """Drop the drag hover highlight (far-offscreen point ⇒ index -1)."""
+        from PySide6.QtCore import QPoint
+
+        try:
+            bar = self.tab_bar
+            if hasattr(bar, "set_hover_from_global"):
+                bar.set_hover_from_global(QPoint(-1000000, -1000000))
+        except Exception:
+            pass
+
+    def _handle_strip_drop(self, event, receiving_widget=None) -> bool:
         """Delegate gallery drops to the router hook; True = consumed."""
         try:
             if not self._has_gallery_mime(event.mimeData()):
@@ -108,7 +154,11 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
                 pass
             return True
         try:
-            handler(event)
+            try:
+                handler(event, receiving_widget if receiving_widget is not None else self)
+            except TypeError:
+                # Legacy single-arg hook.
+                handler(event)
         except Exception:
             try:
                 event.ignore()
@@ -119,7 +169,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         # Strip padding outside the tab bar (the bar itself is covered by the
         # eventFilter branch below).
-        if self._handle_strip_drag_move(event):
+        if self._handle_strip_drag_move(event, self):
             return
         try:
             super().dragEnterEvent(event)
@@ -130,7 +180,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
                 pass
 
     def dragMoveEvent(self, event) -> None:  # noqa: N802
-        if self._handle_strip_drag_move(event):
+        if self._handle_strip_drag_move(event, self):
             return
         try:
             super().dragMoveEvent(event)
@@ -141,7 +191,11 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
                 pass
 
     def dropEvent(self, event) -> None:  # noqa: N802
-        if self._handle_strip_drop(event):
+        if self._handle_strip_drop(event, self):
+            try:
+                self._clear_drag_hover()
+            except Exception:
+                pass
             return
         try:
             super().dropEvent(event)
@@ -150,6 +204,16 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
                 event.ignore()
             except Exception:
                 pass
+
+    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._clear_drag_hover()
+        except Exception:
+            pass
+        try:
+            super().dragLeaveEvent(event)
+        except Exception:
+            pass
 
     def _read_strip_color(self) -> None:
         try:
@@ -194,11 +258,16 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             # gallery-internal drags here so they never fall through to the
             # window file-drop overlay; other mimes propagate untouched.
             if _t == QEvent.Type.DragEnter or _t == QEvent.Type.DragMove:
-                if self._handle_strip_drag_move(event):
+                if self._handle_strip_drag_move(event, self.tab_bar):
                     return True
             elif _t == QEvent.Type.Drop:
-                if self._handle_strip_drop(event):
+                if self._handle_strip_drop(event, self.tab_bar):
                     return True
+            elif _t == QEvent.Type.DragLeave:
+                try:
+                    self._clear_drag_hover()
+                except Exception:
+                    pass
             if event.type() == QEvent.Type.MouseButtonRelease:
                 if event.button() == Qt.MouseButton.MiddleButton:
                     index = self.tab_bar.tabAt(event.pos())

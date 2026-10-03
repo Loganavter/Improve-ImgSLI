@@ -448,6 +448,117 @@ def test_install_binds_handler_and_settles_without_paths(qapp, router_env, monke
     assert ev.ignored and not ev.accepted
 
 
+def test_install_handler_uses_event_position_not_cursor(router_env, monkeypatch):
+    """Drop position comes from the event, never QCursor (frozen mid-drag).
+
+    Cursor parked over tab 0 while the drop event lands on tab 1 — delivery
+    must follow the event.
+    """
+    from ui.main_window import tab_strip_drop as router
+
+    tabs_by_type, scheduled = router_env
+    tabs_by_type["image_compare"] = SimpleNamespace(accepts_drop=lambda ps: True)
+    store = _FakeStore(
+        {"sess-a": _session("sess-a", "image_gallery"),
+         "sess-b": _session("sess-b", "image_compare")},
+        active_id="sess-a",
+    )
+
+    bound: dict = {}
+
+    class _Strip(_FakeStrip):
+        def set_qdrag_drop_handler(self, handler):
+            bound["handler"] = handler
+
+        def mapToGlobal(self, local):
+            return _FakeBar._ORIGIN + local
+
+    strip = _Strip()
+    window = SimpleNamespace(ui=SimpleNamespace(workspace_tabs=strip), presenter=None)
+    assert router.install_tab_strip_drop(window, store) is True
+
+    class _DropEv:
+        def __init__(self):
+            self.accepted = False
+            self.ignored = False
+
+        def mimeData(self):
+            return _internal_mime([Path("/x/a.png")])
+
+        def position(self):
+            # Tab-1 local coords (strip-local == bar-local in this fake).
+            return QPointF(225, 15)
+
+        def accept(self):
+            self.accepted = True
+
+        def ignore(self):
+            self.ignored = True
+
+    import PySide6.QtGui as _gui
+
+    monkeypatch.setattr(_gui.QCursor, "pos", staticmethod(lambda: _tab_pos(0)))
+    ev = _DropEv()
+    bound["handler"](ev, strip)
+    assert ev.accepted and not ev.ignored
+    assert strip.current == 1
+    assert scheduled == [("image_compare", [Path("/x/a.png")])]
+
+
+def _hover_strip():
+    """WorkspaceTabStrip without __init__ (methods only touch .tab_bar)."""
+    from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
+
+    strip = WorkspaceTabStrip.__new__(WorkspaceTabStrip)
+    seen: dict = {}
+
+    class _Bar:
+        def mapFrom(self, recv, pos):
+            assert recv is _recv[0]
+            return QPoint(pos.x() - 10, pos.y() - 5)
+
+        def mapToGlobal(self, pos):
+            return QPoint(1000 + pos.x(), 40 + pos.y())
+
+        def set_hover_from_global(self, gp):
+            seen["hover"] = (gp.x(), gp.y())
+
+    _recv = [None]
+    bar = _Bar()
+    strip.tab_bar = bar
+    return strip, seen, _recv
+
+
+def test_strip_drag_move_mirrors_hover_from_event():
+    from PySide6.QtCore import QMimeData
+
+    strip, seen, _recv = _hover_strip()
+
+    class _MoveEv:
+        def mimeData(self):
+            mime = QMimeData()
+            mime.setData("application/x-imgsli-gallery-paths", b"file:///x/a.png")
+            return mime
+
+        def position(self):
+            return QPointF(60, 20)
+
+        def acceptProposedAction(self):
+            pass
+
+    recv = SimpleNamespace()
+    _recv[0] = recv
+    assert strip._handle_strip_drag_move(_MoveEv(), recv) is True
+    # (60-10, 20-5) bar-local → global (1050, 55).
+    assert seen["hover"] == (1050, 55)
+
+
+def test_strip_drag_leave_clears_hover():
+    strip, seen, _recv = _hover_strip()
+    strip._clear_drag_hover()
+    assert seen["hover"] == (-1000000, -1000000)
+
+
 # -- Wave D: series cards as drop targets --------------------------------------
 #
 # Only thin headers were targets: drops onto series bodies (cards) fell back
