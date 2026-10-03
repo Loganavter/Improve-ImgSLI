@@ -1266,11 +1266,31 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
 
 
 def _header_button(header):
-    """First setDown-capable button descendant of a series header (or None)."""
+    """Header button for drop-target highlight (or None).
+
+    Prefers the toolkit header ``Button`` by object name
+    (``GallerySeriesHeaderBtn_*`` — it owns the painter layers, but has no
+    Qt ``setDown``); falls back to the first setDown-capable child
+    (legacy/PushButton doubles in tests).
+    """
     try:
         from PySide6.QtWidgets import QWidget as _QW
 
-        for child in header.findChildren(_QW):
+        children = list(header.findChildren(_QW))
+    except Exception:
+        return None
+    try:
+        for child in children:
+            try:
+                name = str(child.objectName() or "")
+            except Exception:
+                continue
+            if name.startswith("GallerySeriesHeaderBtn_"):
+                return child
+    except Exception:
+        pass
+    try:
+        for child in children:
             try:
                 if callable(getattr(child, "setDown", None)):
                     return child
@@ -1301,7 +1321,12 @@ def _clear_series_highlight(owner) -> None:
             btn = None
     try:
         if btn is not None:
-            btn.setDown(False)
+            try:
+                down = getattr(btn, "setDown", None)
+                if callable(down):
+                    down(False)
+            except Exception:
+                pass
             try:
                 btn._gallery_drop_target = False  # type: ignore[attr-defined]
             except Exception:
@@ -1356,7 +1381,15 @@ def _set_series_highlight(owner, header) -> None:
                 # drag duration (clicks cannot land mid-drag) so the pressed
                 # state paints, then restore on clear.
                 btn.setEnabled(True)
-            btn.setDown(True)
+            # setDown is Qt-widget API: toolkit Buttons do not have it —
+            # guard so the flag + update below always run (Wave E layer
+            # reads the flag, not the pressed state).
+            try:
+                down = getattr(btn, "setDown", None)
+                if callable(down):
+                    down(True)
+            except Exception:
+                pass
             # Wave E color landing indicator (painter layer on the header
             # button reads this flag; reset in _clear_series_highlight).
             try:

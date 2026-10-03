@@ -601,3 +601,27 @@ def test_identity_header_hit_returns_header(qapp, monkeypatch):
     owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
     monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda _pos: hdr_b))
     assert dnd._header_at(owner, QPoint(0, 0)) is hdr_b
+
+
+def test_highlight_flags_toolkit_button_without_setdown(qapp):
+    """Toolkit header Buttons have no setDown: flag + update must still run.
+
+    Regression: ``btn.setDown(True)`` raised AttributeError before the flag
+    write, so the Wave E landing layer never painted live (log line fired,
+    visuals did not).
+    """
+    owner = QWidget()
+    owner.resize(400, 300)
+    hdr = QWidget(owner)
+    hdr.setObjectName("GallerySeriesHeader_0")
+    hdr.setGeometry(0, 0, 400, 30)
+    btn = QWidget(hdr)  # plain QWidget: update() yes, setDown no
+    btn.setObjectName("GallerySeriesHeaderBtn_0")
+    btn.setGeometry(0, 0, 400, 30)
+    assert not hasattr(btn, "setDown")
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    assert dnd._header_button(hdr) is btn
+    dnd._set_series_highlight(owner, hdr)
+    assert btn._gallery_drop_target is True
+    dnd._clear_series_highlight(owner)
+    assert btn._gallery_drop_target is False
