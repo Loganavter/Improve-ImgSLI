@@ -622,3 +622,69 @@ def test_highlight_flags_toolkit_button_without_setdown(qapp):
     assert btn._gallery_drop_target is True
     dnd._clear_series_highlight(owner)
     assert btn._gallery_drop_target is False
+
+
+# -- Wave E perf: signature cache (re-triage must not re-decode) ----------------
+#
+# ``compute_phash`` + ``embedding`` cost ~250ms per 8MB PNG. Every series
+# move re-runs triage over UNCHANGED files — memoize per (path, mtime, size).
+
+
+def _png_pair(tmp_path):
+    from PIL import Image
+
+    a = tmp_path / "p1.png"
+    b = tmp_path / "p2.png"
+    Image.new("RGB", (64, 64), (200, 30, 30)).save(a)
+    Image.new("RGB", (64, 64), (200, 30, 30)).save(b)
+    return a, b
+
+
+def test_signature_cache_serves_second_cluster_without_decode(tmp_path, monkeypatch):
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    a, b = _png_pair(tmp_path)
+    calls = {"n": 0}
+    real_phash = _clustering.compute_phash
+    real_embed = _clustering.embedding
+
+    def _count_phash(p):
+        calls["n"] += 1
+        return real_phash(p)
+
+    monkeypatch.setattr(_clustering, "compute_phash", _count_phash)
+    monkeypatch.setattr(
+        _clustering, "embedding", lambda p: real_embed(p)
+    )
+    items = [_item(a), _item(b)]
+    first = _clustering.cluster_items(items)
+    assert calls["n"] == 2
+    second = _clustering.cluster_items([_item(a), _item(b)])
+    assert calls["n"] == 2  # no re-decode
+    assert [s.id for s in second] == [s.id for s in first]
+    assert _clustering.clear_signature_cache() == 2
+
+
+def test_signature_cache_invalidates_on_file_change(tmp_path, monkeypatch):
+    import time
+
+    from PIL import Image
+
+    from tabs.image_gallery.services import clustering as _clustering
+
+    _clustering.clear_signature_cache()
+    a, _b = _png_pair(tmp_path)
+    calls = {"n": 0}
+    real_phash = _clustering.compute_phash
+    monkeypatch.setattr(
+        _clustering, "compute_phash", lambda p: (calls.__setitem__("n", calls["n"] + 1), real_phash(p))[1]
+    )
+    _clustering.signature_for(a)
+    assert calls["n"] == 1
+    _clustering.signature_for(a)
+    assert calls["n"] == 1
+    time.sleep(0.02)
+    Image.new("RGB", (64, 64), (30, 30, 200)).save(a)  # new mtime + size
+    _clustering.signature_for(a)
+    assert calls["n"] == 2

@@ -147,6 +147,72 @@ class _DSU:
 
 # -- clustering -----------------------------------------------------------
 
+# Perceptual-signature cache (Wave E perf): ``compute_phash`` + ``embedding``
+# decode + downscale every file (~250ms per 8MB PNG). Re-triage after a
+# series move re-reads UNCHANGED files, so memoize per
+# ``(path, mtime_ns, size)`` — content edits (new mtime/size) miss and
+# recompute. Module-level dict, bounded (evict oldest quarter past 4k
+# entries); values are immutable ``(phash, embedding-tuple)`` so callers
+# cannot corrupt the cache. Tests reset via ``clear_signature_cache``.
+_SIGNATURE_CACHE: dict[tuple[str, int, int], tuple[int, tuple[float, ...]]] = {}
+_SIGNATURE_CACHE_LIMIT = 4096
+
+
+def _stat_key(path) -> tuple[str, int, int]:
+    """Cache key for *path*: string + mtime_ns + size (missing → zeros)."""
+    try:
+        s = str(path)
+    except Exception:
+        return ("", 0, 0)
+    try:
+        import os
+
+        st = os.stat(s)
+        return (s, int(getattr(st, "st_mtime_ns", 0)), int(st.st_size))
+    except Exception:
+        return (s, 0, 0)
+
+
+def clear_signature_cache() -> int:
+    """Drop all cached signatures. Returns entries cleared (tests)."""
+    try:
+        n = len(_SIGNATURE_CACHE)
+    except Exception:
+        return 0
+    try:
+        _SIGNATURE_CACHE.clear()
+    except Exception:
+        pass
+    return n
+
+
+def signature_for(path) -> tuple[int, list[float]]:
+    """Cached ``(phash, embedding)`` for *path* (list copy, never shared)."""
+    key = _stat_key(path)
+    try:
+        hit = _SIGNATURE_CACHE.get(key)
+    except Exception:
+        hit = None
+    if hit is not None:
+        try:
+            return (hit[0], list(hit[1]))
+        except Exception:
+            pass
+    h = compute_phash(path)
+    e = embedding(path)
+    try:
+        if len(_SIGNATURE_CACHE) >= _SIGNATURE_CACHE_LIMIT:
+            for old in list(_SIGNATURE_CACHE)[: _SIGNATURE_CACHE_LIMIT // 4]:
+                try:
+                    del _SIGNATURE_CACHE[old]
+                except Exception:
+                    pass
+        _SIGNATURE_CACHE[key] = (h, tuple(e))
+    except Exception:
+        pass
+    return (h, e)
+
+
 def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Series"]:
     """Group *items* into series (≥2 members) by phash + embedding distance.
 
@@ -171,8 +237,7 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
     valid: list[bool] = []
     zero_vec = [0.0] * 192
     for it in items:
-        h = compute_phash(it.path)
-        e = embedding(it.path)
+        h, e = signature_for(it.path)
         phashes.append(h)
         embeddings.append(e)
         # Valid if we could read at least something: hash non-zero or embedding non-zero,
