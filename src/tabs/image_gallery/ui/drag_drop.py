@@ -972,6 +972,76 @@ def _series_id_for_index(grid, index: int) -> str | None:
         return None
 
 
+def _dump_drop_geometry(owner, grid, headers, pos) -> None:
+    """Firehose probe (Wave D diagnosis): headers/cards geometry at drop.
+
+    Session-only, gated by the gallery debug flag (DEBUGGING.md rule 5:
+    separate unfiltered flag-lines, never mixed into curated verdicts).
+    Hypothesis under test: the drop resolves the wrong series because the
+    header/card geometry or name→id mapping does not match the visible
+    order. Kill condition: a drop whose dumped matching rect is the header
+    the user aimed at, with the expected id.
+    """
+    try:
+        from tabs.image_gallery.debug import gallery_dnd_debug_enabled as _gate
+        if not _gate():
+            return
+    except Exception:
+        return
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+        from PySide6.QtCore import QRect as _QRect
+
+        lines = ["drop-geometry pos=%s" % (pos,)]
+        for i, hdr in enumerate(headers or []):
+            try:
+                top = hdr.mapTo(owner, _QPoint(0, 0))
+                rect = _QRect(top, hdr.size())
+                lines.append(
+                    "hdr[%d] name=%r rect=%s hit=%s visible=%s" % (
+                        i, hdr.objectName(),
+                        "(%d,%d %dx%d)" % (rect.x(), rect.y(), rect.width(), rect.height()),
+                        bool(rect.contains(pos)) if pos is not None else "?",
+                        bool(hdr.isVisibleTo(owner)) if hasattr(hdr, "isVisibleTo") else "?",
+                    )
+                )
+            except Exception as e:
+                lines.append("hdr[%d] map failed: %r" % (i, e))
+        try:
+            cards = dict(getattr(grid, "_cards_by_path", None) or {})
+        except Exception:
+            cards = {}
+        for key, card in cards.items():
+            try:
+                top = card.mapTo(owner, _QPoint(0, 0))
+                rect = _QRect(top, card.size())
+                lines.append(
+                    "card %s rect=%s hit=%s visible=%s" % (
+                        str(key).split("/")[-1],
+                        "(%d,%d %dx%d)" % (rect.x(), rect.y(), rect.width(), rect.height()),
+                        bool(rect.contains(pos)) if pos is not None else "?",
+                        bool(card.isVisibleTo(owner)) if hasattr(card, "isVisibleTo") else "?",
+                    )
+                )
+            except Exception as e:
+                lines.append("card %s map failed: %r" % (key, e))
+        try:
+            order = []
+            for entry in list(getattr(grid, "_series", None) or []):
+                members = (
+                    list(entry.members) if hasattr(entry, "members") else list(entry)
+                )
+                first = getattr(members[0], "series_id", None) if members else None
+                order.append("%s:%d" % (first, len(members)))
+            lines.append("clusters=%s" % (order,))
+        except Exception as e:
+            lines.append("clusters unreadable: %r" % e)
+        for ln in lines:
+            _dnd_log(ln)
+    except Exception:
+        pass
+
+
 def series_target_at(owner, pos) -> tuple[bool, str | None]:
     """Resolve the drop-target series under *pos* (OWNER coords).
 
@@ -998,6 +1068,7 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
         headers = []
     if not headers or pos is None:
         return (False, None)
+    _dump_drop_geometry(owner, grid, headers, pos)
     try:
         from PySide6.QtCore import QPoint as _QPoint
         from PySide6.QtCore import QRect as _QRect
