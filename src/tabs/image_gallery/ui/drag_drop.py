@@ -1034,6 +1034,14 @@ def series_target_at(owner, pos) -> tuple[bool, str | None]:
             else:
                 return (True, None)
         return (True, _series_id_for_index(grid, index))
+    # No header hit: fall back to the card under the cursor (Wave D). Series
+    # bodies are ~99% cards — drops land on cards, not on thin headers.
+    try:
+        found, card_sid = _card_hit_series(owner, grid, pos)
+    except Exception:
+        found, card_sid = False, None
+    if found:
+        return (True, card_sid)
     return (True, None)
 
 
@@ -1100,6 +1108,13 @@ def _set_series_highlight(owner, header) -> None:
     _clear_series_highlight(owner)
     if header is None:
         return
+    try:
+        _dnd_log(
+            "series highlight -> %s",
+            getattr(header, "objectName", lambda: "?")(),
+        )
+    except Exception:
+        pass
     btn = _header_button(header)
     was_enabled: bool | None = None
     try:
@@ -1122,29 +1137,184 @@ def _set_series_highlight(owner, header) -> None:
         pass
 
 
+def _card_path(card, fallback_key=None):
+    """Filesystem path string for a gallery card (duck-typed, never raises)."""
+    try:
+        item = getattr(card, "_gallery_item", None)
+        path = getattr(item, "path", None) if item is not None else None
+        if path is None and card is not None and hasattr(card, "property"):
+            try:
+                path = card.property("gallery_path")
+            except Exception:
+                path = None
+        if path is None or (not str(path) and fallback_key is not None):
+            path = fallback_key
+        return str(path) if path is not None else ""
+    except Exception:
+        try:
+            return str(fallback_key) if fallback_key is not None else ""
+        except Exception:
+            return ""
+
+
+def _card_hit_series(owner, grid, pos) -> tuple[bool, str | None]:
+    """Series id of the card under *pos* (OWNER coords).
+
+    Returns ``(found, series_id)``: ``series_id`` is the owning cluster id,
+    or None for UNGROUPED-tail cards. ``found`` False means no card under
+    the cursor. Model truth first (cluster membership by path in
+    ``grid._series`` / ``grid._ungrouped``), live card attr second. Dropping
+    onto a dragged card itself resolves its own series — the controller
+    no-op guard then skips the retriage, so no exclusion is needed here.
+    """
+    if grid is None or pos is None:
+        return (False, None)
+    try:
+        cards = getattr(grid, "_cards_by_path", None) or {}
+        cards = dict(cards)
+    except Exception:
+        return (False, None)
+    if not cards:
+        return (False, None)
+    try:
+        from PySide6.QtCore import QPoint as _QPoint
+        from PySide6.QtCore import QRect as _QRect
+
+        for key, card in cards.items():
+            try:
+                top = card.mapTo(owner, _QPoint(0, 0))
+                if not _QRect(top, card.size()).contains(pos):
+                    continue
+            except Exception:
+                continue
+            path = _card_path(card, key)
+            sid: str | None = None
+            resolved = False
+            try:
+                clusters = list(getattr(grid, "_series", None) or [])
+            except Exception:
+                clusters = []
+            for idx, entry in enumerate(clusters):
+                try:
+                    members = (
+                        list(entry.members)
+                        if hasattr(entry, "members")
+                        else list(entry)
+                    )
+                except Exception:
+                    continue
+                try:
+                    hit = any(str(getattr(m, "path", "")) == path for m in members)
+                except Exception:
+                    hit = False
+                if not hit:
+                    continue
+                resolved = True
+                try:
+                    first_sid = getattr(members[0], "series_id", None)
+                    sid = str(first_sid) if first_sid is not None else None
+                except Exception:
+                    sid = None
+                if sid is None:
+                    try:
+                        sid = _series_id_for_index(grid, idx)
+                    except Exception:
+                        sid = None
+                break
+            if not resolved:
+                try:
+                    tail = list(getattr(grid, "_ungrouped", None) or [])
+                    if any(str(getattr(m, "path", "")) == path for m in tail):
+                        resolved = True
+                        sid = None
+                except Exception:
+                    pass
+            if not resolved:
+                try:
+                    item = getattr(card, "_gallery_item", None)
+                    live = getattr(item, "series_id", None)
+                    sid = str(live) if live is not None else None
+                    resolved = True
+                except Exception:
+                    pass
+            if resolved:
+                return (True, sid)
+            return (True, None)
+    except Exception:
+        pass
+    return (False, None)
+
+
+def _header_for_series(grid, headers, series_id):
+    """Header widget for *series_id* (None = UNGROUPED header), or None."""
+    try:
+        headers = list(headers or [])
+    except Exception:
+        return None
+    if not headers:
+        return None
+    try:
+        target = str(series_id) if series_id is not None else None
+    except Exception:
+        target = None
+    for hdr in headers:
+        try:
+            name = str(getattr(hdr, "objectName", lambda: "")() or "")
+        except Exception:
+            name = ""
+        if target is None:
+            if name == _UNGROUPED_HEADER_NAME or name.endswith("_ungrouped"):
+                return hdr
+        else:
+            try:
+                idx = headers.index(hdr)
+            except Exception:
+                continue
+            try:
+                if _series_id_for_index(grid, idx) == target:
+                    return hdr
+            except Exception:
+                continue
+    return None
+
+
 def _header_at(owner, pos):
-    """Header widget under *pos* (OWNER coords, see ``series_target_at``), or None."""
+    """Header widget under *pos* (OWNER coords, see ``series_target_at``).
+
+    Headers first; on a miss, the card under the cursor resolves to its
+    series' header (Wave D — drops land on cards, highlight must follow).
+    """
     grid = getattr(owner, "_grid_view", None)
     if grid is None or pos is None:
         return None
     try:
         headers = list(getattr(grid, "_series_headers", None) or [])
     except Exception:
+        headers = []
+    if headers:
+        try:
+            from PySide6.QtCore import QPoint as _QPoint
+            from PySide6.QtCore import QRect as _QRect
+
+            for hdr in headers:
+                try:
+                    top = hdr.mapTo(owner, _QPoint(0, 0))
+                    if _QRect(top, hdr.size()).contains(pos):
+                        return hdr
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    try:
+        found, card_sid = _card_hit_series(owner, grid, pos)
+    except Exception:
+        return None
+    if not found:
         return None
     try:
-        from PySide6.QtCore import QPoint as _QPoint
-        from PySide6.QtCore import QRect as _QRect
-
-        for hdr in headers:
-            try:
-                top = hdr.mapTo(owner, _QPoint(0, 0))
-                if _QRect(top, hdr.size()).contains(pos):
-                    return hdr
-            except Exception:
-                continue
+        return _header_for_series(grid, headers, card_sid)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _grid_has_headers(owner) -> bool:

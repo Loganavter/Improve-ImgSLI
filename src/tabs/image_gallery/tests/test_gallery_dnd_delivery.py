@@ -426,3 +426,82 @@ def test_install_binds_handler_and_settles_without_paths(qapp, router_env, monke
     ev = _Ev()
     bound["handler"](ev)
     assert ev.ignored and not ev.accepted
+
+
+# -- Wave D: series cards as drop targets --------------------------------------
+#
+# Only thin headers were targets: drops onto series bodies (cards) fell back
+# to UNGROUPED (prod log 12:48: delivered series_id=None). Cards now resolve
+# to their series; drops onto a dragged card itself hit its own series and
+# the controller no-op guard skips the retriage.
+
+
+def _owner_with_two_series_and_cards(qapp):
+    """Two 1-item series + one live card in series_2 (real geometry)."""
+    owner = QWidget()
+    owner.resize(400, 400)
+    hdr_a = QWidget(owner)
+    hdr_a.setObjectName("GallerySeriesHeader_0")
+    hdr_a.setGeometry(0, 0, 400, 30)
+    hdr_b = QWidget(owner)
+    hdr_b.setObjectName("GallerySeriesHeader_1")
+    hdr_b.setGeometry(0, 200, 400, 30)
+    item_a = SimpleNamespace(path=Path("/pool/a.png"), series_id="series_1")
+    item_b = SimpleNamespace(path=Path("/pool/b.png"), series_id="series_2")
+    card_b = QWidget(owner)
+    card_b.setGeometry(10, 240, 100, 80)
+    card_b._gallery_item = SimpleNamespace(  # type: ignore[attr-defined]
+        path=Path("/pool/b.png"), series_id="series_2"
+    )
+    owner._grid_view = SimpleNamespace(  # type: ignore[attr-defined]
+        _series_headers=[hdr_a, hdr_b],
+        _series=[[item_a], [item_b]],
+        _ungrouped=[],
+        _cards_by_path={"/pool/b.png": card_b},
+    )
+    owner._series_drop_target = None  # type: ignore[attr-defined]
+    return owner, hdr_a, hdr_b, card_b
+
+
+def test_card_hit_resolves_card_series(qapp):
+    owner, _ha, _hb, _card = _owner_with_two_series_and_cards(qapp)
+    # Over series_2's card body — no header there (headers at y 0-30, 200-230).
+    assert dnd.series_target_at(owner, QPoint(20, 250)) == (True, "series_2")
+
+
+def test_header_at_follows_card_hover(qapp):
+    owner, _ha, hdr_b, _card = _owner_with_two_series_and_cards(qapp)
+    assert dnd._header_at(owner, QPoint(20, 250)) is hdr_b
+
+
+def test_drop_onto_series_cards_moves(qapp, tmp_path):
+    a = tmp_path / "a.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n")
+    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
+    calls: list = []
+    ctrl = SimpleNamespace(
+        move_paths_to_series=lambda ps, sid: calls.append((list(ps), sid)) or 1,
+    )
+    gp = card_b.mapToGlobal(QPoint(20, 20))
+    ev = _FakeDropEvent(_internal_mime([a]), gp)
+    dnd.drop_event(owner, ev, ctrl)
+    assert ev.accepted
+    assert len(calls) == 1 and calls[0][1] == "series_2"
+
+
+def test_drop_onto_own_card_is_noop(qapp, tmp_path, monkeypatch):
+    """Own card hit → own series → controller guard returns 0, no retriage."""
+    from tabs.image_gallery.controller import GalleryController
+
+    b = tmp_path / "b.png"
+    b.write_bytes(b"\x89PNG\r\n\x1a\n")
+    owner, _ha, _hb, card_b = _owner_with_two_series_and_cards(qapp)
+    ctrl = GalleryController(_widget_double(), context=None)
+    ctrl.state.items = [_item(b, "series_2")]
+    triage_calls: list = []
+    monkeypatch.setattr(
+        ctrl, "_start_triage",
+        lambda items, *, cover_grid=True: triage_calls.append(True),
+    )
+    assert ctrl.move_paths_to_series([b], "series_2") == 0
+    assert triage_calls == []

@@ -768,7 +768,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/drag_drop.py",
-      "lines": 1155,
+      "lines": 1325,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-router size=exempt reason=\"one drop-routing rule for zone+widget surfaces incl. single-writer pool discipline; splitting would scatter the accept/route/dispatch branches pinned as one unit\"",
