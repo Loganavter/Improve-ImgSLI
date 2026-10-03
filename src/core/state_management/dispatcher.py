@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Callable, List
 
+# Audit-Meta: pattern=state-machine reason="single dispatch machine — optimistic-concurrency swap + session-targeted write-back + per-session history binding share one lock discipline, must stay one file (reducers.py precedent)"
 from .actions import Action
 from .reducers import RootReducer
 
@@ -139,6 +140,38 @@ _COALESCE_TYPES = frozenset(
 _RAPID_ACTION_GROUP_MS = 400
 
 
+def _targeted_slot_get(store, slot_name: str, session_id: str | None):
+    """Session-addressed slot read for dispatch snapshot/verify.
+
+    ``None`` keeps the exact historical call shape (active session) so
+    legacy fake stores without the kwarg keep working.
+    """
+    if session_id is None:
+        return store.get_session_state_slot(slot_name)
+    return store.get_session_state_slot(slot_name, session_id=session_id)
+
+
+def _history_lists_for(session) -> tuple[list, list, list]:
+    """History stacks living in ``session``'s slots (get-or-create).
+
+    Mirrors ``bind_history_for_session``'s ``_bind`` without moving the
+    dispatcher's standing binding — a session-targeted dispatch records
+    into the target's stacks while the active tab stays bound to its own.
+    """
+    def _get(slot: str) -> list:
+        stack = session.state_slots.get(slot)
+        if stack is None:
+            stack = []
+            session.state_slots[slot] = stack
+        return stack
+
+    return (
+        _get(_ACTION_HISTORY_SLOT),
+        _get(_UNDO_STACK_SLOT),
+        _get(_REDO_STACK_SLOT),
+    )
+
+
 class Dispatcher:
     """Central Redux-style dispatcher.
 
@@ -209,7 +242,20 @@ class Dispatcher:
     def store(self):
         return self._store
 
-    def dispatch(self, action: Action, scope: str = "viewport") -> None:
+    def dispatch(self, action: Action, scope: str = "viewport", session_id: str | None = None) -> None:
+        # Session targeting (Wave CORE): ``session_id=None`` (default) is
+        # EXACTLY today's active-session behavior — every existing caller
+        # keeps working unchanged. An explicit id addresses that session's
+        # slots for snapshot → reduce → write-back, binds this dispatch's
+        # history bookkeeping to that session's stacks (the dispatcher's
+        # standing binding is left untouched, so the active tab's undo is
+        # never unbound by a background dispatch), and leaves emit scope
+        # unchanged (subscribers still filter; gallery handlers session-gate).
+        # Viewport/settings stay active-scoped in both paths. Unknown ids
+        # fail open to the active path. The optimistic-concurrency check
+        # covers the targeted session consistently (snapshot vs write-back
+        # on the same session), so a concurrent mutation of the target
+        # retries instead of mis-writing.
         # Long-term Store lock fix (plan_image_compare_dnd_tiles.md Phase 3+):
         # Prepare new_viewport/new_slots copies outside the lock (includes any
         # ViewState/ViewportState cloning / dict copies / deepcopy of
@@ -228,20 +274,44 @@ class Dispatcher:
         subscribers: list = []
         emit_scope: str | None = None
 
+        # Resolve the explicit target once (stable object identity across
+        # optimistic retries — immune to a mid-dispatch tab switch).
+        # None stays None: the default active path below is untouched.
+        target_session = None
+        target_id: str | None = None
+        if session_id is not None:
+            get_one = getattr(self._store, "get_workspace_session", None)
+            if callable(get_one):
+                try:
+                    target_session = get_one(session_id)
+                except Exception:
+                    target_session = None
+            if target_session is not None:
+                target_id = session_id
+            # Unknown id: fail open — target stays None and every
+            # ``target_id``-gated call below takes the active shape.
+
         for _attempt in range(5):
             # Snapshot references without holding the lock (atomic GIL reads).
             # No deepcopy here — just identity capture for later is comparison.
             old_viewport = self._store.viewport
             old_settings = self._store.settings
             old_slots = {
-                name: self._store.get_session_state_slot(name)
+                name: _targeted_slot_get(self._store, name, target_id)
                 for name, _ in slot_reducers
             }
 
             # Heavy work outside lock: reducers may clone ViewportState /
             # deepcopy canvas_widget_state (now outside the critical section).
             try:
-                new_store = self._reducer.reduce(self._store, action)
+                # Default path keeps the historical 2-arg call shape so
+                # reducer doubles without the kwarg keep working.
+                if target_id is None:
+                    new_store = self._reducer.reduce(self._store, action)
+                else:
+                    new_store = self._reducer.reduce(
+                        self._store, action, session_id=target_id
+                    )
             except Exception as e:
                 logger.error(
                     f"Error dispatching action {action.type}: {e}", exc_info=True
@@ -266,7 +336,7 @@ class Dispatcher:
                     need_retry = True
                 else:
                     for name, _ in slot_reducers:
-                        if self._store.get_session_state_slot(name) is not old_slots[name]:
+                        if _targeted_slot_get(self._store, name, target_id) is not old_slots[name]:
                             need_retry = True
                             break
                 if need_retry:
@@ -287,33 +357,60 @@ class Dispatcher:
                 self._store.viewport = new_viewport
                 self._store.settings = new_settings
 
-                # The active workspace session owns the state slots and
+                # The owning workspace session holds the state slots and
                 # ``viewport``. Reducers return fresh instances, so the
                 # session's references must be re-pointed here — otherwise
                 # switching back to this session restores the pre-action
                 # state (lost image lists, lost view state, etc).
-                active_session = None
-                get_active = getattr(self._store, "get_active_workspace_session", None)
-                if callable(get_active):
-                    try:
-                        active_session = get_active()
-                    except Exception:
-                        active_session = None
+                # Session-targeted dispatch re-points the TARGET session
+                # (pre-resolved above); the default path re-resolves the
+                # active session exactly as before.
+                owner_session = target_session
+                if owner_session is None:
+                    get_active = getattr(self._store, "get_active_workspace_session", None)
+                    if callable(get_active):
+                        try:
+                            owner_session = get_active()
+                        except Exception:
+                            owner_session = None
 
                 for name, _ in slot_reducers:
                     new_value = new_slots[name]
                     if new_value is not old_slots.get(name):
-                        self._store.set_session_state_slot(
-                            name, new_value, emit_scope=""
-                        )
-                        if active_session is not None:
-                            active_session.state_slots[name] = new_value
-                if active_session is not None:
-                    active_session.viewport = new_viewport
+                        if target_id is None:
+                            self._store.set_session_state_slot(
+                                name, new_value, emit_scope=""
+                            )
+                        else:
+                            self._store.set_session_state_slot(
+                                name, new_value, session_id=target_id, emit_scope=""
+                            )
+                        if owner_session is not None:
+                            owner_session.state_slots[name] = new_value
+                # Viewport stays active-scoped: the default path re-points
+                # the active session exactly as before; an explicit target
+                # never receives the active-derived viewport object (that
+                # would alias two sessions onto one ViewportState).
+                if target_id is None:
+                    if owner_session is not None:
+                        owner_session.viewport = new_viewport
 
-                self._action_history.append(action)
-                if len(self._action_history) > self._max_history_size:
-                    self._action_history.pop(0)
+                # History binds the TARGET session for explicit dispatches
+                # (same stacks the active path would use), never the
+                # currently-bound foreign session's stacks. The standing
+                # binding is left untouched — a background dispatch must not
+                # unbind the active tab's undo.
+                if target_session is not None:
+                    hist_list, undo_list, redo_list = _history_lists_for(target_session)
+                else:
+                    hist_list, undo_list, redo_list = (
+                        self._action_history,
+                        self._undo_stack,
+                        self._redo_stack,
+                    )
+                hist_list.append(action)
+                if len(hist_list) > self._max_history_size:
+                    hist_list.pop(0)
 
                 if action.type in _UNDOABLE_TYPES:
                     after = (new_viewport, new_slots)
@@ -326,9 +423,9 @@ class Dispatcher:
                         and (now - last_ts) * 1000.0 < _RAPID_ACTION_GROUP_MS
                     )
                     if (
-                        not self._redo_stack
-                        and self._undo_stack
-                        and self._undo_stack[-1][0] == action.type
+                        not redo_list
+                        and undo_list
+                        and undo_list[-1][0] == action.type
                         and (
                             action.type in _COALESCE_TYPES or rapid_burst
                         )
@@ -336,16 +433,16 @@ class Dispatcher:
                         # Continuous gesture or a rapid same-type burst:
                         # move the undo "after" forward so one undo step
                         # returns to the pre-gesture/pre-burst state.
-                        self._undo_stack[-1] = (
+                        undo_list[-1] = (
                             action.type,
-                            self._undo_stack[-1][1],
+                            undo_list[-1][1],
                             after,
                         )
                     else:
-                        self._undo_stack.append((action.type, before, after))
-                    if len(self._undo_stack) > self._max_history_size:
-                        self._undo_stack.pop(0)
-                    self._redo_stack.clear()
+                        undo_list.append((action.type, before, after))
+                    if len(undo_list) > self._max_history_size:
+                        undo_list.pop(0)
+                    redo_list.clear()
 
                 subscribers = list(self._subscribers)
                 emit_scope = scope

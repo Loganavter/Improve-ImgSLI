@@ -44,11 +44,16 @@ class FakeGalleryDispatcher:
         self._store = store
         self.calls: list[tuple[Any, str]] = []
 
-    def dispatch(self, action: Any, scope: str = "viewport") -> None:
+    def dispatch(self, action: Any, scope: str = "viewport", session_id: str | None = None) -> None:
         self.calls.append((action, scope))
         if scope != GALLERY_SLOT_NAME:
             return
-        session = self._store.get_workspace_session(self._store._active_id)
+        # Wave CORE mirror of Dispatcher session targeting: explicit ids
+        # address that session's slots (unknown ids fail open to active),
+        # None keeps the historical active behavior.
+        session = self._store.get_workspace_session(session_id) if session_id is not None else None
+        if session is None:
+            session = self._store.get_workspace_session(self._store._active_id)
         if session is None:
             return
         current = session.state_slots.get(
@@ -87,9 +92,9 @@ class FakeGalleryStore:
     def get_dispatcher(self) -> FakeGalleryDispatcher:
         return self._dispatcher
 
-    def transact(self, actions: list, *, scope: str = GALLERY_SLOT_NAME) -> None:
+    def transact(self, actions: list, *, scope: str = GALLERY_SLOT_NAME, session_id: str | None = None) -> None:
         for action in actions or []:
-            self._dispatcher.dispatch(action, scope=scope)
+            self._dispatcher.dispatch(action, scope=scope, session_id=session_id)
 
     def batch_changes(self):
         return nullcontext()

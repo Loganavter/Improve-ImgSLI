@@ -144,7 +144,7 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
                 for scope in scopes:
                     self.emit_state_change(scope)
 
-    def transact(self, actions: list, scope: str = "document") -> None:
+    def transact(self, actions: list, scope: str = "document", session_id: str | None = None) -> None:
         """Single-dispatch transaction (plan_image_pipeline.md Phase 5).
 
         Coalesces N actions (e.g. SetFullResImage + SetImagePath + SetPreview)
@@ -153,7 +153,10 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         work (new_viewport / new_slots copies) is prepared outside
         Dispatcher._lock; the lock only does ``is`` comparison + atomic swap.
 
-        Falls back to sequential dispatch for fake stores without dispatcher.
+        ``session_id`` threads through to ``Dispatcher.dispatch`` (Wave CORE
+        session targeting): None = active-session behavior, explicit id =
+        that session's slots. Falls back to sequential dispatch for fake
+        stores without dispatcher.
         """
         dispatcher = self.get_dispatcher()
         if dispatcher is None:
@@ -175,12 +178,20 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
             )
         # fast path: single action → direct dispatch (avoid wrapping)
         if len(actions) == 1:
-            dispatcher.dispatch(actions[0], scope=scope)
+            if session_id is None:
+                dispatcher.dispatch(actions[0], scope=scope)
+            else:
+                dispatcher.dispatch(actions[0], scope=scope, session_id=session_id)
             return
         try:
             from core.state_management.transaction import TransactionAction
 
-            dispatcher.dispatch(TransactionAction(actions), scope=scope)
+            if session_id is None:
+                dispatcher.dispatch(TransactionAction(actions), scope=scope)
+            else:
+                dispatcher.dispatch(
+                    TransactionAction(actions), scope=scope, session_id=session_id
+                )
         except Exception:
             # fallback: sequential — each failure is logged loudly, never
             # skipped in silence.
@@ -192,7 +203,10 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
             )
             for a in actions:
                 try:
-                    dispatcher.dispatch(a, scope=scope)
+                    if session_id is None:
+                        dispatcher.dispatch(a, scope=scope)
+                    else:
+                        dispatcher.dispatch(a, scope=scope, session_id=session_id)
                 except Exception:
                     logger.exception(
                         "Store.transact sequential fallback failed for "

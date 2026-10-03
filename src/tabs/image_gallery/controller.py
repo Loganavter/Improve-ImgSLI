@@ -266,8 +266,12 @@ class GalleryController:
             return None
 
     def _emit_gallery(self, action) -> bool:
-        """Write path: dispatcher.dispatch(..., scope='gallery').
+        """Write path: dispatcher.dispatch(..., scope='gallery', session_id=<own>).
 
+        Session-targeted (Wave CORE): a background copy's late worker
+        completion lands in its OWN session's slots even while another tab
+        is active. None-safe: unbound (None) falls back to the default
+        active path, fail-open as before.
         Never mutates slot values directly. Returns False (local-only) when
         no dispatcher is wired — callers always mirror locally first.
         """
@@ -281,7 +285,7 @@ class GalleryController:
                 return False
             self._own_gallery_emits += 1
             try:
-                dispatcher.dispatch(action, scope=GALLERY_SLOT_NAME)
+                dispatcher.dispatch(action, scope=GALLERY_SLOT_NAME, session_id=self._gallery_session_id)
             except Exception:
                 self._own_gallery_emits -= 1
                 raise
@@ -302,7 +306,7 @@ class GalleryController:
                 return False
             self._own_gallery_emits += 1
             try:
-                store.transact(list(batch), scope=GALLERY_SLOT_NAME)
+                store.transact(list(batch), scope=GALLERY_SLOT_NAME, session_id=self._gallery_session_id)
             except Exception:
                 self._own_gallery_emits -= 1
                 raise
