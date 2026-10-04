@@ -38,3 +38,23 @@ def test_gates_dump_with_key_no_crash(qtbot, caplog, monkeypatch) -> None:
     # Degenerate inputs must not raise either.
     with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
         log_card_gates(SimpleNamespace(), None, "sync-hide")
+
+
+def test_card_tooltip_set_on_build_and_rebind(qtbot) -> None:
+    """Hover tooltip shows the full file name, on build and on rebind."""
+    from PySide6.QtWidgets import QWidget
+
+    from tabs.image_gallery.ui.card import update_gallery_card
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    card = build_gallery_card(
+        GalleryItem(path=Path("/gallery/very_long_filename_01.png"), mtime_ns=1),
+        parent=parent, owner=None,
+    )
+    assert card.toolTip().split("\n")[0] == "very_long_filename_01.png"
+    # Pooled rebind to another item must refresh the tooltip, never stale.
+    update_gallery_card(
+        card, GalleryItem(path=Path("/gallery/other_name_02.png"), mtime_ns=2)
+    )
+    assert card.toolTip().split("\n")[0] == "other_name_02.png"
