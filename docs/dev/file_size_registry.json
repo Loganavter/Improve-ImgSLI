@@ -719,7 +719,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 2658,
+      "lines": 3200,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -731,7 +731,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 643,
+      "lines": 633,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
@@ -803,7 +803,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 2083,
+      "lines": 2193,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",

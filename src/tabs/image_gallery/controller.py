@@ -9,10 +9,11 @@ local ranking kept.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
 
@@ -49,6 +50,18 @@ from tabs.image_gallery.services.ai_client import (
 from tabs.image_gallery.services.ai_settings_store import AiSettingsStore
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
+from tabs.image_gallery.debug import (
+    gallery_artifacts_disabled as _artifacts_disabled,
+)
+from tabs.image_gallery.debug import (
+    gallery_camera_disabled as _camera_disabled,
+)
+from tabs.image_gallery.debug import (
+    gallery_fidelity_disabled as _fidelity_disabled,
+)
+from tabs.image_gallery.debug import (
+    gallery_thumbs_disabled as _thumbs_disabled,
+)
 from tabs.image_gallery.services.filtering import filter_items
 from tabs.image_gallery.services.folder_scanner import scan_folder
 from tabs.image_gallery.services.thumbnail_cache import render_and_cache_thumbnail
@@ -65,6 +78,94 @@ TIE_EPSILON = 0.025  # embedding distance normalized; tuned for 8×8 HSV vectors
 # the same threshold rule as ``cluster_items``); the attach path never
 # clusters, it only measures against live series.
 _ATTACH_THRESHOLD = 10
+
+# -- Bounded gallery scheduler (Phase 2b+3) --------------------------------
+# Measured Phase-0 waste: open_folder queued N thumbnail workers + the
+# triage tail fanned out three whole-pool batch workers, all on
+# QThreadPool.globalInstance() — 500 files ≈ 40x oversubscription,
+# off-screen items decoded first, each stage re-decoding every file.
+# One scheduler owns gallery concurrency: a DEDICATED QThreadPool (never
+# the process-wide globalInstance) plus the single frozen entry
+# ``GalleryController.schedule(items, priority)``. Lane reservation is by
+# priority only: visible thumbs > batch (triage + proxy chunks) >
+# background thumbs — finite lanes, so neither lane starves the other.
+VISIBLE_THUMB_PRIORITY = 4
+TRIAGE_PRIORITY = 2
+PROXY_BATCH_PRIORITY = 2
+BACKGROUND_THUMB_PRIORITY = 0
+
+# Dedicated pool sizing over os.cpu_count(): floor 4 so a small folder
+# still overlaps thumb decode + triage + proxy batch + one VLM call
+# without serializing single-item latency; cap 8 because PIL decodes are
+# CPU-bound (no gain past cores) and each in-flight proxy holds <= ~3 MB
+# plus thumb decode buffers — more threads only grow peak RSS against
+# the pool budget shared with the rest of the app.
+_GALLERY_SCHED_MIN_THREADS = 4
+_GALLERY_SCHED_MAX_THREADS = 8
+
+# Batch analysis chunking: one proxy worker per 50 items (500 files = 10
+# workers, not 500). Progress surfaces through the existing
+# toolbar/background-scanning hooks only when multi-chunk.
+_GALLERY_PROXY_CHUNK = 50
+
+# Proxy decode-cache bound enforced controller-side (services/proxy.py
+# keeps its own 256-entry limit, owned by wave A1): 256 x <= ~3 MB
+# (~1024^2 RGB) ≈ 768 MB worst case exceeds a background tab's budget,
+# so batch delivery trims oldest-inserted entries down to 96 (≈ <= 288 MB
+# while covering a typical folder's working set; insertion order is a
+# cheap LRU stand-in — warm hits are not reordered, folder churn evicts).
+_GALLERY_PROXY_CACHE_CAP = 96
+
+
+def _scheduler_thread_count() -> int:
+    """Dedicated pool size: os.cpu_count() clamped to [4, 8]."""
+    try:
+        n = int(os.cpu_count() or _GALLERY_SCHED_MIN_THREADS)
+    except Exception:
+        n = _GALLERY_SCHED_MIN_THREADS
+    return max(_GALLERY_SCHED_MIN_THREADS, min(_GALLERY_SCHED_MAX_THREADS, n))
+
+
+def _new_gallery_pool() -> QThreadPool:
+    """Dedicated gallery pool (never QThreadPool.globalInstance())."""
+    pool = QThreadPool()
+    try:
+        pool.setMaxThreadCount(_scheduler_thread_count())
+    except Exception:
+        pass
+    return pool
+
+
+class _GalleryVisibilityPauseFilter(QObject):
+    """Hide/Show watcher: pause the background thumb queue while hidden.
+
+    Mirrors the tab's modal-lifetime Hide filter: only an explicit page
+    hide (``watched.isHidden()``) pauses — ancestor-driven hides (window
+    minimize, ``isHidden()`` False) are ignored. Show resumes the drain.
+    Installed by the controller so no tab.py change is needed; every
+    delivery path keeps its ``_folder_gen`` check regardless.
+    """
+
+    def __init__(self, controller: GalleryController, watched: QObject | None) -> None:
+        super().__init__(watched)
+        self._controller = controller
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        try:
+            kind = event.type()
+            if kind == QEvent.Type.Hide and watched.isHidden():
+                try:
+                    self._controller.pause_background()
+                except Exception:
+                    pass
+            elif kind == QEvent.Type.Show:
+                try:
+                    self._controller.resume_background()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
 _ERROR_KEYS = {
     AiAuthError: ("image_gallery.errors.auth", "Authentication failed — check your API key."),
@@ -99,7 +200,7 @@ class GalleryController:
         # delivery in ``_on_triage_ready`` instead of clobbering the newer
         # manual arrangement (mirrors ``_folder_gen`` for folder switches).
         self._series_gen = 0
-        self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        self._thread_pool = thread_pool or _new_gallery_pool()
         self._context = context
         self._ai_settings_store = AiSettingsStore()
         # Generation tokens against async races: bumped on every folder switch
@@ -150,6 +251,19 @@ class GalleryController:
         # (paths + mtimes + metrics presence) matches the last run.
         self._last_analysis_fingerprint: object = None
         self._ensure_gallery_subscription()
+        # -- bounded scheduler (Phase 2b+3): counters, background queue --
+        self._sched_lock = threading.Lock()
+        self._sched_pending = 0  # accepted-but-unfinished pool workers
+        self._sched_active = 0  # actually executing (tracked wrapper)
+        self._sched_peak = 0  # max _sched_active observed (tests)
+        self._bg_queue: list[tuple[object, int]] = []  # paused (item, gen)
+        self._bg_paused = False
+        self._thumb_inflight: set[str] = set()  # str(path) with a live worker
+        self._proxy_done = 0
+        self._proxy_total = 0
+        self._visibility_pause_filter = None
+        self._subscribe_visible_range()
+        self._install_visibility_pause()
 
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
@@ -161,6 +275,14 @@ class GalleryController:
     def _next_folder_gen(self) -> int:
         """Bump the folder generation: all in-flight workers go stale."""
         self._folder_gen += 1
+        # Fresh world: drop paused background entries — even if one were
+        # started it could never be delivered (gen check is the backstop).
+        try:
+            queue = getattr(self, "_bg_queue", None)
+            if isinstance(queue, list):
+                queue.clear()
+        except Exception:
+            pass
         return self._folder_gen
 
     def clear_to_empty(self) -> None:
@@ -181,6 +303,286 @@ class GalleryController:
 
     def _is_current_folder_gen(self, gen: int) -> bool:
         return gen == self._folder_gen
+
+    # -- bounded scheduler (Phase 2b+3; frozen seam: schedule) --------------
+
+    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None) -> int:
+        """Single scheduler entry for gallery concurrency (frozen seam).
+
+        ``items`` is a list of GalleryItem; ``priority`` is a Qt pool
+        priority (``VISIBLE_THUMB_PRIORITY`` / ``PROXY_BATCH_PRIORITY`` /
+        ``BACKGROUND_THUMB_PRIORITY``). ``op`` selects the lane: ``"thumb"``
+        (one worker per item) or ``"proxy"`` (chunked single-pass
+        Stage-2 batches, ``source`` = triage source path, ``wanted`` =
+        stage subset to apply, ``include_camera`` = run camera scalars).
+        Returns workers started (background-paused items queue instead and
+        return 0 until resumed). No Store/EventBus writes; every delivery
+        keeps its generation check — queued entries from an old gen are
+        dropped, never delivered.
+        """
+        batch = list(items or [])
+        if gen is None:
+            try:
+                gen = self._folder_gen
+            except Exception:
+                gen = 0
+        if op == "proxy":
+            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera)
+        return self._schedule_thumbs(batch, int(priority), gen)
+
+    def sched_stats(self) -> dict:
+        """Scheduler introspection (tests / debugging)."""
+        try:
+            with self._sched_lock:
+                pending = int(self._sched_pending)
+                active = int(self._sched_active)
+                peak = int(self._sched_peak)
+        except Exception:
+            pending, active, peak = (0, 0, 0)
+        try:
+            queued = len(self._bg_queue)
+        except Exception:
+            queued = 0
+        return {"pending": pending, "active": active, "peak": peak, "queued": queued}
+
+    def _tracked(self, fn):
+        """Wrap a worker body with active/peak accounting (pool depth)."""
+        def _run(*args, **kwargs):
+            try:
+                with self._sched_lock:
+                    self._sched_active += 1
+                    if self._sched_active > self._sched_peak:
+                        self._sched_peak = self._sched_active
+            except Exception:
+                pass
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                try:
+                    with self._sched_lock:
+                        self._sched_active -= 1
+                except Exception:
+                    pass
+        return _run
+
+    def _pool_start(self, worker, priority: int | None) -> None:
+        """Start one worker with pending accounting (all pool traffic)."""
+        try:
+            with self._sched_lock:
+                self._sched_pending += 1
+        except Exception:
+            pass
+        try:
+            finished = getattr(getattr(worker, "signals", None), "finished", None)
+            if finished is not None and hasattr(finished, "connect"):
+                try:
+                    finished.connect(self._on_sched_finished)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if priority is None:
+                self._thread_pool.start(worker)
+            else:
+                self._thread_pool.start(worker, priority)
+        except TypeError:
+            self._thread_pool.start(worker)
+
+    def _on_sched_finished(self) -> None:
+        try:
+            with self._sched_lock:
+                self._sched_pending = max(0, self._sched_pending - 1)
+        except Exception:
+            pass
+
+    def _schedule_thumbs(self, items: list, priority: int, gen: int) -> int:
+        """One thumbnail worker per item (visible-first caller partitions)."""
+        if _thumbs_disabled():
+            _dbg("scheduler: thumbnails skipped (IMGSLI_GALLERY_NO_THUMBS)")
+            return 0
+        started = 0
+        for item in items:
+            try:
+                key = str(item.path)
+            except Exception:
+                continue
+            try:
+                if key in self._thumb_inflight:
+                    continue
+                if getattr(item, "thumbnail_status", None) == ThumbnailStatus.LOADED:
+                    continue
+            except Exception:
+                pass
+            # Paused background lane queues instead of starting.
+            try:
+                paused = bool(self._bg_paused)
+            except Exception:
+                paused = False
+            if paused and priority <= BACKGROUND_THUMB_PRIORITY:
+                try:
+                    self._bg_queue.append((item, gen))
+                except Exception:
+                    pass
+                continue
+            try:
+                item.thumbnail_status = ThumbnailStatus.LOADING
+            except Exception:
+                pass
+            try:
+                self._thumb_inflight.add(key)
+            except Exception:
+                pass
+            worker = GenericWorker(
+                self._tracked(render_and_cache_thumbnail), item.path, item.mtime_ns
+            )
+            worker.signals.result.connect(
+                lambda cache_path, path=item.path, g=gen: self._on_thumbnail_ready(path, cache_path, g)
+            )
+            worker.signals.error.connect(
+                lambda err, path=item.path, g=gen: self._on_thumbnail_error(path, g)
+            )
+            self._pool_start(worker, priority)
+            started += 1
+        return started
+
+    def _begin_folder_schedule(self, items: list, gen: int) -> None:
+        """Visible-first partition for a fresh folder (open_folder only).
+
+        Cards intersecting the viewport (+ overscan) decode first at
+        ``VISIBLE_THUMB_PRIORITY``; the rest drain from the background
+        lane. ``visible_paths()`` fails open to everything when the grid
+        is not laid out yet — identical to the old flood, never a
+        starvation. Widgets without the Phase-2a API (older doubles)
+        take the same fail-open path.
+        """
+        try:
+            visible = getattr(self.widget, "visible_paths", None)
+            paths = visible() if callable(visible) else None
+        except Exception:
+            paths = None
+        try:
+            if paths:
+                visible_keys = {str(p) for p in paths}
+            else:
+                visible_keys = set()
+        except Exception:
+            visible_keys = set()
+        if not visible_keys:
+            try:
+                visible_keys = {str(it.path) for it in items}
+            except Exception:
+                visible_keys = set()
+        first: list = []
+        rest: list = []
+        for it in items:
+            try:
+                (first if str(it.path) in visible_keys else rest).append(it)
+            except Exception:
+                continue
+        self.schedule(first, VISIBLE_THUMB_PRIORITY, gen=gen)
+        self.schedule(rest, BACKGROUND_THUMB_PRIORITY, gen=gen)
+
+    def _subscribe_visible_range(self) -> None:
+        """Reprioritize on scroll (grid debounces 120 ms upstream)."""
+        try:
+            sig = getattr(self.widget, "visible_range_changed", None)
+            connect = getattr(sig, "connect", None)
+            if callable(connect):
+                connect(self._on_visible_range_changed)
+        except Exception:
+            logger.debug("visible_range_changed subscription failed", exc_info=True)
+
+    def _on_visible_range_changed(self, paths: object) -> None:
+        """Scroll delivery: newly visible items jump the thumb queue."""
+        try:
+            keys = {str(p) for p in (paths or [])}
+        except Exception:
+            return
+        if not keys:
+            return
+        try:
+            gen = self._folder_gen
+        except Exception:
+            gen = 0
+        for item in list(getattr(self.state, "items", None) or []):
+            try:
+                if str(item.path) not in keys:
+                    continue
+                if getattr(item, "thumbnail_status", None) == ThumbnailStatus.LOADED:
+                    continue
+                if str(item.path) in self._thumb_inflight:
+                    continue
+            except Exception:
+                continue
+            try:
+                self.schedule([item], VISIBLE_THUMB_PRIORITY, gen=gen)
+            except Exception:
+                pass
+
+    def _install_visibility_pause(self) -> None:
+        """Pause the background lane while the tab page is hidden."""
+        try:
+            widget = self.widget
+            install = getattr(widget, "installEventFilter", None)
+            if not callable(install):
+                return
+            try:
+                parent = widget if isinstance(widget, QObject) else None
+            except Exception:
+                parent = None
+            filt = _GalleryVisibilityPauseFilter(self, parent)
+            install(filt)
+            self._visibility_pause_filter = filt
+        except Exception:
+            logger.debug("visibility pause filter install failed", exc_info=True)
+
+    def pause_background(self) -> None:
+        """Pause the background thumb lane (tab hidden)."""
+        try:
+            self._bg_paused = True
+        except Exception:
+            pass
+
+    def resume_background(self) -> None:
+        """Resume the background lane; stale entries drop, fresh drain."""
+        try:
+            self._bg_paused = False
+        except Exception:
+            return
+        try:
+            queued = list(self._bg_queue)
+            self._bg_queue.clear()
+        except Exception:
+            return
+        try:
+            current = self._folder_gen
+        except Exception:
+            current = 0
+        fresh = [it for (it, g) in queued if g == current]
+        if fresh:
+            try:
+                self.schedule(fresh, BACKGROUND_THUMB_PRIORITY, gen=current)
+            except Exception:
+                logger.debug("background resume schedule failed", exc_info=True)
+
+    def _trim_proxy_cache(self) -> int:
+        """Bound the shared proxy decode cache (insertion-order eviction)."""
+        try:
+            from tabs.image_gallery.services import proxy as _proxy
+
+            cache = _proxy._PROXY_CACHE
+            excess = len(cache) - _GALLERY_PROXY_CACHE_CAP
+            if excess <= 0:
+                return 0
+            for key in list(cache)[:excess]:
+                try:
+                    del cache[key]
+                except Exception:
+                    pass
+            return max(0, excess)
+        except Exception:
+            return 0
 
     # -- gallery slot (Wave-2 Redux; scope 'gallery') -------------------------
 
@@ -746,8 +1148,7 @@ class GalleryController:
                 entries=[(str(it.path), it.mtime_ns) for it in items],
             )
         )
-        for item in items:
-            self._load_thumbnail(item)
+        self._begin_folder_schedule(items, gen)
         self._start_triage(items)
         _dnd_log("open_folder: EXIT ok (%.1f ms)", (time.perf_counter() - t0) * 1000)
 
@@ -962,23 +1363,25 @@ class GalleryController:
 
     # -- thumbnails ----------------------------------------------------------
 
-    def _load_thumbnail(self, item: GalleryItem) -> None:
-        item.thumbnail_status = ThumbnailStatus.LOADING
-        gen = self._folder_gen
-        worker = GenericWorker(render_and_cache_thumbnail, item.path, item.mtime_ns)
-        worker.signals.result.connect(
-            lambda cache_path, path=item.path, g=gen: self._on_thumbnail_ready(path, cache_path, g)
-        )
-        worker.signals.error.connect(
-            lambda err, path=item.path, g=gen: self._on_thumbnail_error(path, g)
-        )
-        # Thumbnails are lowest priority: triage/artifact/VLM workers jump ahead.
+    def _load_thumbnail(self, item: GalleryItem, *, priority: int | None = None) -> None:
+        """Schedule one thumbnail load (visible-first callers pass priority).
+
+        Default is ``VISIBLE_THUMB_PRIORITY`` (fail-open): single loads are
+        user-triggered or already-visible, so latency must not regress. The
+        folder-open path partitions explicitly via ``_begin_folder_schedule``.
+        """
+        if priority is None:
+            priority = VISIBLE_THUMB_PRIORITY
         try:
-            self._thread_pool.start(worker, 0)
-        except TypeError:
-            self._thread_pool.start(worker)
+            self.schedule([item], int(priority), gen=self._folder_gen)
+        except Exception:
+            logger.debug("thumbnail schedule failed for %s", getattr(item, "path", "?"), exc_info=True)
 
     def _on_thumbnail_ready(self, path: Path, cache_path: Path | None, gen: int | None = None) -> None:
+        try:
+            self._thumb_inflight.discard(str(path))
+        except Exception:
+            pass
         if gen is not None and not self._is_current_folder_gen(gen):
             return  # folder switched mid-flight — late thumbnail dropped
         item = self._find_item(path)
@@ -1012,6 +1415,10 @@ class GalleryController:
             pass
 
     def _on_thumbnail_error(self, path: Path, gen: int | None = None) -> None:
+        try:
+            self._thumb_inflight.discard(str(path))
+        except Exception:
+            pass
         if gen is not None and not self._is_current_folder_gen(gen):
             return
         item = self._find_item(path)
@@ -1062,7 +1469,7 @@ class GalleryController:
         self.widget.refresh_card(item)
 
         worker = GenericWorker(
-            analyze_image_sync,
+            self._tracked(analyze_image_sync),
             item.path,
             base_url=settings.base_url,
             api_key=settings.api_key,
@@ -1077,7 +1484,7 @@ class GalleryController:
         worker.signals.error.connect(
             lambda err, path=item.path, g=gen: self._on_analysis_error(path, err, g)
         )
-        self._thread_pool.start(worker)
+        self._pool_start(worker, None)
 
     def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1515,16 +1922,13 @@ class GalleryController:
                     self.widget.set_scanning(0, len(items))
                 except Exception:
                     logger.debug("widget.set_scanning failed", exc_info=True)
-        worker = GenericWorker(self._run_triage_sync, list(items), dict(self._series_overrides))
+        worker = GenericWorker(self._tracked(self._run_triage_sync), list(items), dict(self._series_overrides))
         gen = self._folder_gen
         sgen = self._series_gen
         worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
-        # Triage outranks thumbnails so the grid labels settle first.
-        try:
-            self._thread_pool.start(worker, 2)
-        except TypeError:
-            self._thread_pool.start(worker)
+        # Triage outranks background thumbnails so the grid labels settle first.
+        self._pool_start(worker, TRIAGE_PRIORITY)
 
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""
@@ -1544,16 +1948,16 @@ class GalleryController:
     def _start_artifact_analysis(self, items: list[GalleryItem], source_path: Path | None) -> None:
         if not items:
             return
+        if _artifacts_disabled():
+            _dbg("artifact analysis skipped (IMGSLI_GALLERY_NO_ARTIFACTS)")
+            return
         # Run in background via GenericWorker (never UI-blocking).
         try:
             gen = self._folder_gen
-            worker = GenericWorker(self._run_artifacts_sync, list(items), source_path)
+            worker = GenericWorker(self._tracked(self._run_artifacts_sync), list(items), source_path)
             worker.signals.result.connect(lambda res, g=gen: self._on_artifacts_ready(res, g))
             worker.signals.error.connect(self._on_artifacts_error)
-            try:
-                self._thread_pool.start(worker, 1)
-            except TypeError:
-                self._thread_pool.start(worker)
+            self._pool_start(worker, 1)
         except Exception:
             logger.debug("artifact worker start failed", exc_info=True)
 
@@ -1563,6 +1967,10 @@ class GalleryController:
         # result: dict[str(path), dict[Artifact, Severity]]
         if not isinstance(result, dict):
             return
+        self._apply_artifact_map(result)
+
+    def _apply_artifact_map(self, result: dict) -> None:
+        """Shared artifact delivery: batched repaint + quick-look refresh."""
         # Batch the card refresh: per-item refresh_card re-sweeps selection
         # over the whole grid (O(N^2) repaints in one delivery → stalled UI
         # thread → compositor busy cursor + dropped quick-look frames at the
@@ -1635,19 +2043,19 @@ class GalleryController:
         """
         if not items or source_path is None:
             return
+        if _fidelity_disabled():
+            _dbg("fidelity analysis skipped (IMGSLI_GALLERY_NO_FIDELITY)")
+            return
         try:
             from tabs.image_gallery.services.fidelity_metrics import run_fidelity_sync
 
             gen = self._folder_gen
-            worker = GenericWorker(run_fidelity_sync, list(items), source_path)
+            worker = GenericWorker(self._tracked(run_fidelity_sync), list(items), source_path)
             worker.signals.result.connect(lambda res, g=gen: self._on_fidelity_ready(res, g))
             worker.signals.error.connect(
                 lambda err: logger.debug("fidelity worker error: %r", err, exc_info=True)
             )
-            try:
-                self._thread_pool.start(worker, 1)
-            except TypeError:
-                self._thread_pool.start(worker)
+            self._pool_start(worker, 1)
         except Exception:
             logger.debug("fidelity worker start failed", exc_info=True)
 
@@ -1656,6 +2064,10 @@ class GalleryController:
             return  # folder switched — late fidelity metrics dropped
         if not isinstance(result, dict):
             return
+        self._apply_fidelity_map(result)
+
+    def _apply_fidelity_map(self, result: dict) -> None:
+        """Shared fidelity delivery: batched repaint + overlay refresh."""
         # Same batching as _on_artifacts_ready: skip items whose 4 keys did
         # not change, refresh the rest with one selection sweep.
         required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
@@ -1694,19 +2106,19 @@ class GalleryController:
         """
         if not items:
             return
+        if _camera_disabled():
+            _dbg("camera metrics analysis skipped (IMGSLI_GALLERY_NO_CAMERA)")
+            return
         try:
             from tabs.image_gallery.services.camera_metrics import run_camera_metrics_sync
 
             gen = self._folder_gen
-            worker = GenericWorker(run_camera_metrics_sync, list(items))
+            worker = GenericWorker(self._tracked(run_camera_metrics_sync), list(items))
             worker.signals.result.connect(lambda res, g=gen: self._on_camera_metrics_ready(res, g))
             worker.signals.error.connect(
                 lambda err: logger.debug("camera metrics worker error: %r", err, exc_info=True)
             )
-            try:
-                self._thread_pool.start(worker, 1)
-            except TypeError:
-                self._thread_pool.start(worker)
+            self._pool_start(worker, 1)
         except Exception:
             logger.debug("camera metrics worker start failed", exc_info=True)
 
@@ -1738,6 +2150,10 @@ class GalleryController:
             return  # folder switched — late camera metrics dropped
         if not isinstance(result, dict):
             return
+        self._apply_camera_map(result)
+
+    def _apply_camera_map(self, result: dict) -> None:
+        """Shared camera delivery: merge scalars + repaint + overlay."""
         try:
             from tabs.image_gallery.use_cases import quality as _quality
         except Exception:
@@ -1757,6 +2173,142 @@ class GalleryController:
             except Exception:
                 logger.debug("camera metrics apply failed for %s", item.path, exc_info=True)
         self._refresh_changed_metrics(changed, "camera")
+
+    # -- unified Stage-2 proxy step (Phase 2b+3; single-pass) ------------------
+
+    @staticmethod
+    def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool) -> dict:
+        """One chunk worker body: shared-proxy single pass (wave A1 API)."""
+        from tabs.image_gallery.services.proxy import run_proxy_stages_sync
+
+        try:
+            return dict(run_proxy_stages_sync(list(chunk), source_path, include_camera=include_camera))
+        except Exception:
+            logger.debug("proxy chunk failed", exc_info=True)
+            return {}
+
+    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None) -> int:
+        """Chunked proxy batches: one worker per 50 items (never N)."""
+        chunks = [items[i:i + _GALLERY_PROXY_CHUNK] for i in range(0, len(items), _GALLERY_PROXY_CHUNK)]
+        if not chunks:
+            return 0
+        if include_camera is None:
+            try:
+                include_camera = bool(getattr(self.state, "mode", None) == Mode.CAMERA)
+            except Exception:
+                include_camera = False
+        try:
+            wanted_set = frozenset(wanted) if wanted else frozenset(("artifacts", "fidelity", "camera"))
+        except Exception:
+            wanted_set = frozenset(("artifacts", "fidelity", "camera"))
+        self._proxy_done = 0
+        self._proxy_total = len(chunks)
+        started = 0
+        for chunk in chunks:
+            worker = GenericWorker(
+                self._tracked(GalleryController._run_proxy_chunk_sync),
+                list(chunk), source, include_camera,
+            )
+            worker.signals.result.connect(
+                lambda res, g=gen, w=wanted_set: self._on_proxy_batch_ready(res, g, w)
+            )
+            worker.signals.error.connect(
+                lambda err: logger.debug("proxy batch worker error: %r", err, exc_info=True)
+            )
+            self._pool_start(worker, priority)
+            started += 1
+        # Chunk fan-out for tests (50-item batching assertion).
+        try:
+            self._sched_chunk_workers = int(getattr(self, "_sched_chunk_workers", 0)) + started
+        except Exception:
+            pass
+        return started
+
+    def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode) -> None:
+        """Triage-tail Stage 2: ONE single-pass background step (proxy).
+
+        Replaces the old three whole-pool batch workers (artifact +
+        fidelity + camera) with chunked ``run_proxy_stages_sync`` workers
+        sharing one bounded decode per file. Fail-closed per item,
+        path-keyed delivery into the existing apply tails; the
+        ``_analysis_fingerprint`` skip above stays the gate.
+        """
+        if not items:
+            return
+        want_artifacts = not _artifacts_disabled()
+        want_fidelity = not _fidelity_disabled() and source_path is not None
+        try:
+            want_camera = not _camera_disabled() and mode == Mode.CAMERA
+        except Exception:
+            want_camera = False
+        if not (want_artifacts or want_fidelity or want_camera):
+            _dbg("proxy analysis skipped: all Stage-2 lanes kill-switched")
+            return
+        wanted = frozenset(
+            [s for s, w in (
+                ("artifacts", want_artifacts),
+                ("fidelity", want_fidelity),
+                ("camera", want_camera),
+            ) if w]
+        )
+        try:
+            self.schedule(
+                list(items), PROXY_BATCH_PRIORITY, op="proxy",
+                source=source_path, gen=self._folder_gen, wanted=wanted,
+                include_camera=want_camera,
+            )
+        except Exception:
+            logger.debug("proxy analysis start failed", exc_info=True)
+
+    def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
+        """One chunk delivery: fan out by path into the legacy apply tails."""
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return  # folder switched — late proxy chunk dropped
+        if not isinstance(result, dict):
+            return
+        try:
+            wanted_set = set(wanted or ("artifacts", "fidelity", "camera"))
+        except Exception:
+            wanted_set = {"artifacts", "fidelity", "camera"}
+        try:
+            if "artifacts" in wanted_set:
+                arts = {
+                    k: (v.get("artifacts") if isinstance(v, dict) else None)
+                    for k, v in result.items()
+                }
+                self._apply_artifact_map(arts)
+            if "fidelity" in wanted_set:
+                fid = {
+                    k: (v.get("fidelity") if isinstance(v, dict) else None)
+                    for k, v in result.items()
+                }
+                self._apply_fidelity_map(fid)
+            if "camera" in wanted_set:
+                cam = {
+                    k: (v.get("camera") if isinstance(v, dict) else None)
+                    for k, v in result.items()
+                }
+                self._apply_camera_map(cam)
+        finally:
+            try:
+                self._proxy_done += 1
+                total = int(self._proxy_total)
+                done = int(self._proxy_done)
+            except Exception:
+                total, done = (0, 0)
+            # Multi-chunk progress only: single-chunk (small-folder) runs
+            # stay silent so small-folder latency/behavior cannot regress.
+            if total > 1:
+                background = getattr(self.widget, "set_background_scanning", None)
+                if callable(background):
+                    try:
+                        background(done, total)
+                    except Exception:
+                        logger.debug("proxy progress hook failed", exc_info=True)
+            try:
+                self._trim_proxy_cache()
+            except Exception:
+                pass
 
     def _on_triage_ready(self, result: object, gen: int | None = None, sgen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1882,23 +2434,16 @@ class GalleryController:
                 self._last_analysis_fingerprint = fingerprint
             except Exception:
                 pass
-            # Stage 2 artifact catalog (7 detectors) — background after clustering → dots + quick look
+            # Single-pass Stage 2 (Phase 2b+3): ONE shared-proxy background
+            # step replaces the three whole-pool batch workers (artifact +
+            # fidelity + camera). Delivered strictly by path into the
+            # existing apply tails (batched repaint + quick-look hooks);
+            # the per-stage entry points above stay working but the tail no
+            # longer fans out through them.
             try:
-                self._start_artifact_analysis(list(self.state.items), source)
+                self._start_proxy_analysis(list(self.state.items), source, mode)
             except Exception:
-                logger.debug("artifact analysis start failed", exc_info=True)
-            # Stage 2 fidelity metrics (SSIM/HF/ΔE/upscale vs source) — background, fail-closed
-            try:
-                self._start_fidelity_analysis(list(self.state.items), source)
-            except Exception:
-                logger.debug("fidelity analysis start failed", exc_info=True)
-            # Stage 2 camera scalars (sharpness/exposure/clipping) — camera mode
-            # only; the report rows exist only there, other modes stay unmeasured.
-            try:
-                if mode == Mode.CAMERA:
-                    self._start_camera_metrics_analysis(list(self.state.items))
-            except Exception:
-                logger.debug("camera metrics analysis start failed", exc_info=True)
+                logger.debug("proxy analysis start failed", exc_info=True)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:
@@ -2085,7 +2630,7 @@ class GalleryController:
 
         worker.signals.result.connect(_on_result)
         worker.signals.error.connect(_on_error)
-        self._thread_pool.start(worker)
+        self._pool_start(worker, None)
 
     def _apply_tie_break_result(self, a: GalleryItem, b: GalleryItem, result) -> None:
         """Apply VLM winner: mark winner is_best/crown_rank, clear pending badges."""
@@ -2640,10 +3185,7 @@ class GalleryController:
             lambda extra, g=gen, fg=folder_gen: self._on_brief_filter_ready(extra, g, fg)
         )
         worker.signals.error.connect(lambda _err: None)
-        try:
-            self._thread_pool.start(worker, 0)
-        except TypeError:
-            self._thread_pool.start(worker)
+        self._pool_start(worker, 0)
 
     def _on_brief_filter_ready(self, extra_paths: set, filter_gen: int, folder_gen: int) -> None:
         if filter_gen != self._filter_gen or not self._is_current_folder_gen(folder_gen):

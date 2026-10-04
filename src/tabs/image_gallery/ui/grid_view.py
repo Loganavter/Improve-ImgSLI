@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QMimeData, QObject, QPoint, Qt, QUrl
+from PySide6.QtCore import QEvent, QMimeData, QObject, QPoint, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
 
@@ -401,6 +401,13 @@ def _section_members(entry) -> list:
 class GalleryGridView(QWidget):
     """Scrollable 4-column gallery grid with pooled Button cards."""
 
+    # Phase 2a — visible-range signals (wave B prioritizes these paths).
+    # Emitted (debounced) with a ``list[Path]`` payload in display order.
+    visible_range_changed = Signal(object)
+    VISIBLE_RANGE_DEBOUNCE_MS = 120
+    # Overscan above/below the viewport, in screenfuls.
+    VISIBLE_RANGE_OVERSCAN_SCREENS = 1
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("GalleryGridView")
@@ -444,6 +451,17 @@ class GalleryGridView(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         host.setLayout(layout)
         self.items_layout = layout
+
+        # Phase 2a — debounced visible-range recompute. Rapid scrolls
+        # restart the single-shot timer, so per-pixel valueChanged storms
+        # coalesce into one emit (see _emit_visible_range).
+        self._visible_debounce = QTimer(self)
+        self._visible_debounce.setSingleShot(True)
+        self._visible_debounce.setInterval(self.VISIBLE_RANGE_DEBOUNCE_MS)
+        self._visible_debounce.timeout.connect(self._emit_visible_range)
+        self._last_visible_paths: list[str] | None = None
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._schedule_visible_range_emit)
+        self.scroll_area.horizontalScrollBar().valueChanged.connect(self._schedule_visible_range_emit)
 
         # Marquee gesture lives on the host; created lazily via marquee module.
         self._marquee_gesture = None
@@ -757,6 +775,7 @@ class GalleryGridView(QWidget):
             self.items_layout.activate()
         except Exception:
             logger.debug("rebuild_grid: layout activate failed", exc_info=True)
+        self._schedule_visible_range_emit()
 
     def _rebuild_next_chunk(self) -> None:
         pending = getattr(self, "_rebuild_pending", None)
@@ -787,6 +806,97 @@ class GalleryGridView(QWidget):
                 self.items_layout.activate()
             except Exception:
                 logger.debug("_rebuild_next_chunk: layout activate failed", exc_info=True)
+            self._schedule_visible_range_emit()
+
+    # -- Phase 2a visible range ----------------------------------------
+    # Wave B (thumbnail prioritization) calls visible_paths() and listens
+    # to visible_range_changed. Geometry comes from layout/card geometry
+    # only — never from pixmap data or arrival order. Pure additive API:
+    # no existing rebuild/refresh/selection/scroll path changes behavior.
+
+    def visible_paths(self) -> list[Path]:
+        """Paths of cards intersecting the viewport (+ vertical overscan).
+
+        Returns the ``item.path`` objects (the same identity
+        ``controller._find_item`` compares with ``==``), in top-to-bottom
+        display order (card ``y``, then ``x``). A partially visible card
+        at the viewport edge counts as visible. Empty grid -> ``[]``.
+        """
+        try:
+            items = list(getattr(self, "_items", None) or [])
+        except Exception:
+            return []
+        if not items:
+            return []
+        try:
+            viewport = self.scroll_area.viewport()
+            vh = viewport.height()
+            vw = viewport.width()
+        except Exception:
+            return [it.path for it in items]
+        if vh <= 0 or vw <= 0:
+            # Not laid out yet (never shown): fail open with everything
+            # in display order so callers never starve thumbnails.
+            return [it.path for it in items]
+        try:
+            vbar = self.scroll_area.verticalScrollBar()
+            hbar = self.scroll_area.horizontalScrollBar()
+            vval = int(vbar.value())
+            hval = int(hbar.value())
+        except Exception:
+            vval, hval = 0, 0
+        try:
+            overscan = int(vh * self.VISIBLE_RANGE_OVERSCAN_SCREENS)
+        except Exception:
+            overscan = int(vh)
+        y0 = vval - overscan
+        y1 = vval + vh + overscan
+        x0 = hval
+        x1 = hval + vw
+        scored: list[tuple[int, int, object]] = []
+        for item in items:
+            try:
+                card = self._cards_by_path.get(str(item.path))
+            except Exception:
+                card = None
+            if card is None:
+                continue
+            try:
+                g = card.geometry()
+            except Exception:
+                continue
+            # Card geometry is in items_host coordinates; the visible
+            # host rect starts at the scrollbar values. Inclusive edges:
+            # a partially visible card at the boundary counts.
+            if g.right() >= x0 and g.left() <= x1 and g.bottom() >= y0 and g.top() <= y1:
+                scored.append((int(g.y()), int(g.x()), item.path))
+        scored.sort(key=lambda t: (t[0], t[1]))
+        return [p for _, _, p in scored]
+
+    def _schedule_visible_range_emit(self, *_args) -> None:
+        """Restart the single-shot debounce timer (scroll storms coalesce)."""
+        try:
+            self._visible_debounce.start()
+        except Exception:
+            pass
+
+    def _emit_visible_range(self) -> None:
+        """Recompute and emit visible_range_changed if the set changed."""
+        try:
+            paths = self.visible_paths()
+        except Exception:
+            return
+        try:
+            key = [str(p) for p in paths]
+        except Exception:
+            return
+        if key == self._last_visible_paths:
+            return
+        self._last_visible_paths = key
+        try:
+            self.visible_range_changed.emit(list(paths))
+        except Exception:
+            pass
 
     # -- Stage 2 series grouping ----------------------------------------
 

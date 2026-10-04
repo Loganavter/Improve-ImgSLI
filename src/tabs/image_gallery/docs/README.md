@@ -3,11 +3,12 @@
 The Image Gallery is a workspace tab that browses images from a folder in a
 grid. It registers the `image_gallery` session blueprint.
 
-Product & interaction design (triage pipeline, analysis modes, UX states):
-[design.md](design.md). Visual mockups: [design/](design/).
+Product & interaction design (triage pipeline, analysis modes, UX states;
+full design notes moved to the private knowledge plane in d1a6a066).
+Visual mockups: [design/](design/).
 
-Quick Look preview rendering (single-source tiled live path, bounds, content
-identity): [quick_look_tiled_renderer.md](quick_look_tiled_renderer.md).
+Quick Look preview rendering notes (single-source tiled live path, bounds,
+content identity) moved to the private knowledge plane in d1a6a066.
 
 Local docs live here (`src/tabs/image_gallery/docs/`) per the tab-doc
 placement rule — see [docs/dev/tabs/index.md(../../../../docs/dev/tabs/index.md).
