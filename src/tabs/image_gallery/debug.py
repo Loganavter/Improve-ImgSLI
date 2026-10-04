@@ -9,6 +9,16 @@ disabled.
 Env var:
     IMGSLI_GALLERY_DEBUG=1  — enable all gallery debug streams.
 
+Kill-switches (Phase 2b+3 bounded scheduler; each checked at schedule
+time via the ``*_disabled()`` helper below — no worker starts, nothing
+is delivered for a disabled stage; the triage fingerprint and tie-break
+Stage 3 are never gated):
+    IMGSLI_GALLERY_NO_THUMBS=1     — skip thumbnail scheduling.
+    IMGSLI_GALLERY_NO_ARTIFACTS=1  — skip the artifact catalog (legacy
+        wrapper and the unified proxy step's artifact apply).
+    IMGSLI_GALLERY_NO_FIDELITY=1   — skip fidelity metrics.
+    IMGSLI_GALLERY_NO_CAMERA=1     — skip camera scalars (camera mode).
+
 Tags:
     [gallery-dnd]   — DnD entry points, handle_drop / dropEvent decisions,
                       open_folder / open_paths routing.
@@ -95,3 +105,23 @@ def ql_cover_enabled() -> bool:
 def ql_cover(msg: str, *args, **kwargs) -> None:
     if ql_cover_enabled():
         logger.warning("[ql-cover] " + msg, *args, **kwargs)
+
+
+def gallery_thumbs_disabled() -> bool:
+    """Kill-switch: skip thumbnail scheduling entirely."""
+    return _env_flag("IMGSLI_GALLERY_NO_THUMBS")
+
+
+def gallery_artifacts_disabled() -> bool:
+    """Kill-switch: skip the Stage-2 artifact catalog."""
+    return _env_flag("IMGSLI_GALLERY_NO_ARTIFACTS")
+
+
+def gallery_fidelity_disabled() -> bool:
+    """Kill-switch: skip Stage-2 fidelity metrics."""
+    return _env_flag("IMGSLI_GALLERY_NO_FIDELITY")
+
+
+def gallery_camera_disabled() -> bool:
+    """Kill-switch: skip Stage-2 camera scalars."""
+    return _env_flag("IMGSLI_GALLERY_NO_CAMERA")
