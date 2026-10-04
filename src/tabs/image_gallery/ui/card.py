@@ -281,6 +281,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         pass
     apply_fixed_gallery_card_size(card)
     _attach_item(card, actual_item)
+    _set_card_tooltip(card, actual_item)
     try:
         _, _dcols = _dots_for_item(actual_item, mode=mode)
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
@@ -337,6 +338,32 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         except Exception:
             pass
     return card
+
+
+def _set_card_tooltip(card: Button, item: GalleryItem) -> None:
+    """Hover tooltip: full file name first, then analysis extras.
+
+    Called from BOTH build_gallery_card (fresh pooled cards) and
+    update_gallery_card (rebinds) — a card must never show a stale or
+    missing tooltip.
+    """
+    try:
+        parts = [item.name]
+        analysis = getattr(item, "analysis", None)
+        if analysis is not None:
+            if getattr(analysis, "description", None):
+                parts.append(analysis.description)
+            if getattr(analysis, "tags", None):
+                parts.append(", ".join(analysis.tags))
+        err = getattr(item, "analysis_error", None)
+        if err:
+            parts.append(str(err))
+        vlm_err = getattr(item, "vlm_tie_error", None)
+        if vlm_err:
+            parts.append(f"VLM tie-break: {vlm_err}")
+        card.setToolTip("\n".join(parts))
+    except Exception:
+        pass
 
 
 def update_gallery_card(card: Button, item: GalleryItem, mode: object = None, owner: object = None) -> None:
@@ -412,23 +439,7 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None, ow
             pass
     rows = _text_rows(item, translate=None, mode=_mode)
     card.update_region("text", rows=rows)
-    try:
-        parts = [item.name]
-        analysis = getattr(item, "analysis", None)
-        if analysis is not None:
-            if getattr(analysis, "description", None):
-                parts.append(analysis.description)
-            if getattr(analysis, "tags", None):
-                parts.append(", ".join(analysis.tags))
-        err = getattr(item, "analysis_error", None)
-        if err:
-            parts.append(str(err))
-        vlm_err = getattr(item, "vlm_tie_error", None)
-        if vlm_err:
-            parts.append(f"VLM tie-break: {vlm_err}")
-        card.setToolTip("\n".join(parts))
-    except Exception:
-        pass
+    _set_card_tooltip(card, item)
     try:
         _apply_rejected_visuals(card, item)
     except Exception:
