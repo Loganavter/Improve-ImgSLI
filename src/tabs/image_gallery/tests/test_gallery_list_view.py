@@ -253,7 +253,7 @@ def test_list_title_single_row(qtbot) -> None:
     rows = _list_text_rows(it)
     assert len(rows) == 1
     row = rows[0]
-    assert row.text == "a.png" and row.weight == "normal" and row.size == 16 and row.marquee is True
+    assert row.text == "a.png" and row.weight == "normal" and row.size == 16 and row.marquee is False  # static truncated rows (marquee storm retired)
     it.rank = 3
     it.is_best = True
     rows = _list_text_rows(it)
