@@ -387,7 +387,14 @@ def test_retriage_quiet_worker_fallback_when_uncached(tmp_path, monkeypatch) -> 
 
 
 def test_triage_tail_skips_repeated_analyses(qapp, tmp_path, monkeypatch) -> None:
-    """Same content twice → Stage-2 analyses start once, tie-break unaffected."""
+    """Same content twice → unified Stage-2 proxy step starts once.
+
+    Phase 2b+3: the tail no longer fans out three batch workers — one
+    single-pass proxy step replaces _start_artifact_analysis +
+    _start_fidelity_analysis + _start_camera_metrics_analysis (those
+    entry points stay working, asserted in test_pipeline_scheduler).
+    Fingerprint skip / rerun-on-change semantics are unchanged.
+    """
     from tabs.image_gallery.models import GalleryItem
     from tabs.image_gallery.services import clustering as _clustering
 
@@ -396,20 +403,17 @@ def test_triage_tail_skips_repeated_analyses(qapp, tmp_path, monkeypatch) -> Non
     store = _two_session_store()
     ctrl = _controller_for(store, "A")
     ctrl.state.items = [GalleryItem(path=p, mtime_ns=1) for p in paths]
-    analysis_calls: list = []
+    proxy_calls: list = []
     monkeypatch.setattr(
-        ctrl, "_start_artifact_analysis", lambda *a, **k: analysis_calls.append("a")
-    )
-    monkeypatch.setattr(
-        ctrl, "_start_fidelity_analysis", lambda *a, **k: analysis_calls.append("f")
+        ctrl, "_start_proxy_analysis", lambda *a, **k: proxy_calls.append(1)
     )
     ctrl._apply_triage_result([], None, None)
-    assert sorted(analysis_calls) == ["a", "f"]
+    assert proxy_calls == [1]
     ctrl._apply_triage_result([], None, None)
-    assert sorted(analysis_calls) == ["a", "f"]  # skipped: same fingerprint
+    assert proxy_calls == [1]  # skipped: same fingerprint
     ctrl.state.items[0].artifacts = {"x": "y"}  # type: ignore[attr-defined]
     ctrl._apply_triage_result([], None, None)
-    assert sorted(analysis_calls) == ["a", "a", "f", "f"]  # changed → rerun
+    assert proxy_calls == [1, 1]  # changed → rerun
 
 
 def test_signatures_cached_unit(tmp_path) -> None:

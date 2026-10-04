@@ -146,7 +146,7 @@ class _GalleryVisibilityPauseFilter(QObject):
     delivery path keeps its ``_folder_gen`` check regardless.
     """
 
-    def __init__(self, controller: GalleryController, watched: QObject) -> None:
+    def __init__(self, controller: GalleryController, watched: QObject | None) -> None:
         super().__init__(watched)
         self._controller = controller
 
