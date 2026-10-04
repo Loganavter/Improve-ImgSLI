@@ -372,7 +372,12 @@ def test_proxy_delivery_applies_strictly_by_path(monkeypatch, qtbot) -> None:
 
 
 def test_proxy_cache_stays_bounded_under_200(monkeypatch, tmp_path: Path) -> None:
-    """200 synthetic proxies exceed the 96-entry controller cap -> trim."""
+    """200 synthetic proxies stay within the single 96-entry LRU bound.
+
+    Follow-up F1 made proxy.py own one true-LRU cap (96): the fill itself
+    bounds to 96, so the controller trim is a no-op here (still asserted
+    for the over-cap path it owns). Warm survivors serve without decode.
+    """
     from PIL import Image
 
     from tabs.image_gallery.services import proxy as _proxy
@@ -386,11 +391,11 @@ def test_proxy_cache_stays_bounded_under_200(monkeypatch, tmp_path: Path) -> Non
             paths.append(p)
         for p in paths:
             assert _proxy.proxy_for(p) is not None
-        assert len(_proxy._PROXY_CACHE) == 200
+        assert len(_proxy._PROXY_CACHE) == _proxy.PROXY_CACHE_LIMIT
         widget = _WidgetStub()
         ctrl, _pool = _make_ctrl(widget)
         evicted = ctrl._trim_proxy_cache()
-        assert evicted == 200 - 96
+        assert evicted == 0
         assert len(_proxy._PROXY_CACHE) <= 96
         # Warm survivors still serve without a decode.
         assert _proxy.proxy_for(paths[-1]) is not None

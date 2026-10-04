@@ -19,8 +19,8 @@ which return new images).
 
 Pure + Qt-free (safe for ``GenericWorker``); no Store/EventBus writes.
 
-INTERFACE: ``PROXY_MAX_EDGE``, ``Proxy``, ``proxy_for``,
-``clear_proxy_cache``, ``run_proxy_stages_sync``.
+INTERFACE: ``PROXY_MAX_EDGE``, ``PROXY_CACHE_LIMIT``, ``Proxy``,
+``proxy_for``, ``clear_proxy_cache``, ``run_proxy_stages_sync``.
 """
 
 from __future__ import annotations
@@ -38,7 +38,12 @@ logger = logging.getLogger("ImproveImgSLI")
 #: caps further down (512 / 64) and is resolution-insensitive past that.
 PROXY_MAX_EDGE = 1024
 
-_PROXY_CACHE_LIMIT = 256
+#: Single canonical proxy-cache bound (true LRU, owned here): 96 x <=3MB
+#: ~= <=288MB worst-case RSS, matches the controller trim so
+#: ``_trim_proxy_cache`` keeps working untouched.
+PROXY_CACHE_LIMIT = 96
+
+_PROXY_CACHE_LIMIT = PROXY_CACHE_LIMIT  # backwards-compat alias; single bound owned here.
 
 
 class Proxy(NamedTuple):
@@ -49,6 +54,14 @@ class Proxy(NamedTuple):
 
 
 _PROXY_CACHE: dict[tuple[str, int, int], Proxy] = {}
+
+
+def _touch_proxy_entry(key: tuple[str, int, int]) -> None:
+    """Mark *key* most-recently-used (plain-dict reorder, no lock — same no-lock discipline as the rest of this module)."""
+    try:
+        _PROXY_CACHE[key] = _PROXY_CACHE.pop(key)
+    except Exception:
+        pass
 
 
 def clear_proxy_cache() -> int:
@@ -132,17 +145,21 @@ def proxy_for(path: Path | str) -> Proxy | None:
     except Exception:
         hit = None
     if hit is not None:
+        _touch_proxy_entry(key)
         return hit
     proxy = _build_proxy(p)
     if proxy is None:
         return None
     try:
-        if len(_PROXY_CACHE) >= _PROXY_CACHE_LIMIT:
-            for old in list(_PROXY_CACHE)[: _PROXY_CACHE_LIMIT // 4]:
-                try:
-                    del _PROXY_CACHE[old]
-                except Exception:
-                    pass
+        while len(_PROXY_CACHE) >= PROXY_CACHE_LIMIT:
+            try:
+                oldest = next(iter(_PROXY_CACHE))
+            except StopIteration:
+                break
+            try:
+                del _PROXY_CACHE[oldest]
+            except Exception:
+                break
         _PROXY_CACHE[key] = proxy
     except Exception:
         pass

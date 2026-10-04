@@ -116,25 +116,65 @@ def test_canvas_path_distinct_sources_distinct_content(qtbot, tmp_path, monkeypa
 
 def test_canvas_path_huge_source_no_full_frame(qtbot, tmp_path, monkeypatch):
     """2400px source through the canvas path: no full-frame decode anywhere."""
+    from PySide6.QtCore import QThreadPool
+    from PySide6.QtWidgets import QApplication
+
     from engine.store import tiled_pixel_store as tps_mod
 
     big = _png(tmp_path, "big.png", "#3a6ea5", w=2400, h=1800)
+    big_key = str(big)
     fired: list = []
+
+    # Quarantine the spy window (flake guard): earlier tests may leave
+    # thumbnail/triage workers draining on the shared global pool, and
+    # their TiledPixelStore calls would land in these spies. Drain first;
+    # the per-path filters below are the deterministic backstop (leaked
+    # parentless scheduler pools cannot be drained globally).
+    try:
+        QThreadPool.globalInstance().waitForDone(10000)
+    except Exception:
+        pass
+    for _ in range(3):
+        try:
+            QApplication.processEvents()
+        except Exception:
+            break
 
     orig_from_path = tps_mod.TiledPixelStore.from_path
     orig_materialize = tps_mod.TiledPixelStore.materialize_full
     orig_qimage = tps_mod.qimage_from_pixel_source
 
     def _spy_from_path(*args, **kwargs):
-        fired.append("from_path")
+        # Record only decodes OF THIS TEST's file — stragglers decoding
+        # their own files are cross-test noise, not a canvas-path verdict.
+        # Filter errors record (fail-closed for the test verdict).
+        try:
+            if not args or str(args[0]) == big_key:
+                fired.append("from_path")
+        except Exception:
+            fired.append("from_path")
         return orig_from_path(*args, **kwargs)
 
     def _spy_materialize(self):
-        fired.append("materialize_full")
+        try:
+            if str(getattr(self, "_path", "") or "") in ("", big_key):
+                fired.append("materialize_full")
+        except Exception:
+            fired.append("materialize_full")
         return orig_materialize(self)
 
     def _spy_qimage(*args, **kwargs):
-        fired.append("qimage_from_pixel_source")
+        # TiledPixelStore sources filter by path like above; bare PIL/QImage
+        # sources carry no path — they can only arise from in-window canvas
+        # rendering of this test's own pixels, so they always count.
+        # Filter errors record (fail-closed for the test verdict).
+        try:
+            src = args[0] if args else None
+            src_path = str(getattr(src, "_path", "") or "")
+            if not (src_path and src_path != big_key):
+                fired.append("qimage_from_pixel_source")
+        except Exception:
+            fired.append("qimage_from_pixel_source")
         return orig_qimage(*args, **kwargs)
 
     monkeypatch.setattr(tps_mod.TiledPixelStore, "from_path", _spy_from_path)

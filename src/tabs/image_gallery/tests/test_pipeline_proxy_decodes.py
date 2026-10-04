@@ -275,3 +275,73 @@ def test_proxy_bounded_edge_and_old_names_importable(tmp_path: Path) -> None:
     assert callable(camera_metrics.estimate_noise)
     assert callable(camera_metrics.measure_camera_from_image)
     assert callable(camera_metrics.estimate_noise_from_image)
+
+
+def _tiny(path: Path, seed: int) -> Path:
+    from PIL import Image
+
+    img = Image.new("RGB", (16, 16), (seed % 256, (seed * 7) % 256, (seed * 13) % 256))
+    img.save(path)
+    return path
+
+
+def test_proxy_true_lru_touch_on_hit(tmp_path: Path) -> None:
+    """True LRU: a touched hot entry survives while the coldest is evicted."""
+    from tabs.image_gallery.services import proxy as proxy_mod
+    from tabs.image_gallery.services.proxy import _stat_key, clear_proxy_cache, proxy_for
+
+    assert proxy_mod.PROXY_CACHE_LIMIT == 96
+    clear_proxy_cache()
+    cap = proxy_mod.PROXY_CACHE_LIMIT
+    files = [_tiny(tmp_path / f"lru{i:03d}.png", i) for i in range(cap)]
+    for f in files:
+        assert proxy_for(f) is not None
+    assert len(proxy_mod._PROXY_CACHE) == cap
+    hot_key = _stat_key(files[0])
+    cold_key = _stat_key(files[1])
+    assert hot_key is not None and cold_key is not None
+    # Touch the oldest entry: it becomes most-recently-used.
+    hot_before = proxy_for(files[0])
+    assert hot_before is not None
+    # Insert one cold entry beyond the cap: exactly one LRU eviction.
+    extra = _tiny(tmp_path / "lru_extra.png", 9999)
+    assert proxy_for(extra) is not None
+    assert len(proxy_mod._PROXY_CACHE) <= cap
+    assert hot_key in proxy_mod._PROXY_CACHE, "touched hot entry was evicted"
+    assert cold_key not in proxy_mod._PROXY_CACHE, "coldest entry should be evicted first"
+    assert _stat_key(extra) in proxy_mod._PROXY_CACHE
+    # Hot hit returns the same cached value (no behavior change on values).
+    assert proxy_for(files[0]) is hot_before
+    clear_proxy_cache()
+
+
+def test_proxy_cap_bound_200_item_run(tmp_path: Path) -> None:
+    """200-item synthetic run stays bounded; resident hots never redecode."""
+    from tabs.image_gallery.services import proxy as proxy_mod
+    from tabs.image_gallery.services.proxy import clear_proxy_cache, proxy_for
+
+    cap = proxy_mod.PROXY_CACHE_LIMIT
+    assert cap == 96
+    clear_proxy_cache()
+    files = [_tiny(tmp_path / f"cap{i:03d}.png", i) for i in range(200)]
+    for f in files:
+        assert proxy_for(f) is not None
+        assert len(proxy_mod._PROXY_CACHE) <= cap
+    assert len(proxy_mod._PROXY_CACHE) == cap
+    # Resident hots = the most recent entries; re-requests must be warm.
+    hots = files[-10:]
+    before = {str(f): proxy_for(f) for f in hots}
+    spy = _OpenSpy().start()
+    try:
+        for f in hots:
+            got = proxy_for(f)
+            assert got is not None
+            assert got is before[str(f)], f"{f.name} redecoded instead of warm hit"
+    finally:
+        spy.stop()
+    assert spy.total == 0, dict(spy.counts)
+    # clear_proxy_cache semantics unchanged: returns entries cleared.
+    cleared = clear_proxy_cache()
+    assert cleared == cap
+    assert len(proxy_mod._PROXY_CACHE) == 0
+    assert clear_proxy_cache() == 0
