@@ -567,77 +567,67 @@ _DETECTORS: dict[Artifact, object] = {
 }
 
 
+def analyze_images(
+    pil_image: Image.Image | None,
+    source_image: Image.Image | None = None,
+) -> dict[Artifact, Severity]:
+    """Run all 7 detectors over already-decoded images (no file I/O).
+
+    Shared proxy entry: pass the ``services/proxy.proxy_for`` bytes (or any
+    PIL images) instead of decoding per stage. Never mutates or closes the
+    inputs (they may be shared cached proxies). Returns all 7 keys, clean
+    on error or when *pil_image* is None (fail-closed).
+    """
+    result: dict[Artifact, Severity] = {}
+    for art in Artifact:
+        result[art] = _SEV_CLEAN
+    if pil_image is None:
+        return result
+    for art, fn in _DETECTORS.items():
+        try:
+            sev = fn(pil_image, source_image)  # type: ignore[arg-type]
+            # Normalize to Severity enum (accept plain str returns).
+            if isinstance(sev, str):
+                try:
+                    sev = Severity(sev.lower())  # type: ignore[call-arg]
+                except Exception:
+                    sev = _SEV_CLEAN
+            result[art] = sev  # type: ignore[assignment]
+        except Exception:
+            result[art] = _SEV_CLEAN
+    return result
+
+
 def analyze_artifacts(path: Path | str, source_path: Path | str | None = None) -> dict[Artifact, Severity]:
     """Analyze *path* for all 7 artifacts.
 
     Returns ``dict[Artifact, Severity]`` with all 7 keys (clean on error).
     ``source_path`` when provided is used for the three source-relative
     detectors (over-smoothing, invented texture, noise amplification).
+
+    Proxy-shared (Phase 1): item + source come from the bounded
+    ``services/proxy`` cache — cold path decodes each file once total no
+    matter how many stages run, warm path decodes nothing.
     """
-    result: dict[Artifact, Severity] = {}
-    # Default to clean for all.
-    for art in Artifact:
-        result[art] = _SEV_CLEAN
+    from tabs.image_gallery.services.proxy import proxy_for
+
     try:
         p = Path(path)
-        if not p.is_file():
-            return result
-        with Image.open(p) as im:
-            # Ensure we have a copy without lazy load.
-            try:
-                im.load()
-            except Exception:
-                pass
-            # Normalize mode for consistency.
-            if im.mode not in ("RGB", "RGBA", "L"):
-                try:
-                    im = im.convert("RGB")
-                except Exception:
-                    pass
-            # Use a copy for detectors (they may resize).
-            pil_image = im.copy()
-
-        source_image = None
-        if source_path is not None:
-            try:
-                sp = Path(source_path)
-                if sp.is_file() and sp.resolve() != p.resolve():
-                    with Image.open(sp) as sim:
-                        try:
-                            sim.load()
-                        except Exception:
-                            pass
-                        if sim.mode not in ("RGB", "RGBA", "L"):
-                            try:
-                                sim = sim.convert("RGB")
-                            except Exception:
-                                pass
-                        source_image = sim.copy()
-            except Exception:
-                source_image = None
-
-        for art, fn in _DETECTORS.items():
-            try:
-                sev = fn(pil_image, source_image)  # type: ignore[arg-type]
-                # Normalize to Severity enum (accept plain str returns).
-                if isinstance(sev, str):
-                    try:
-                        sev = Severity(sev.lower())  # type: ignore[call-arg]
-                    except Exception:
-                        sev = _SEV_CLEAN
-                result[art] = sev  # type: ignore[assignment]
-            except Exception:
-                result[art] = _SEV_CLEAN
-        # Clean up.
-        try:
-            pil_image.close()
-        except Exception:
-            pass
-        if source_image is not None:
-            try:
-                source_image.close()
-            except Exception:
-                pass
     except Exception:
-        pass
-    return result
+        p = Path(str(path))
+    proxy = proxy_for(p)
+    if proxy is None:
+        result: dict[Artifact, Severity] = {}
+        for art in Artifact:
+            result[art] = _SEV_CLEAN
+        return result
+    source_image = None
+    if source_path is not None:
+        try:
+            sp = Path(source_path)
+            if sp.resolve() != p.resolve():
+                src_proxy = proxy_for(sp)
+                source_image = src_proxy.image if src_proxy is not None else None
+        except Exception:
+            source_image = None
+    return analyze_images(proxy.image, source_image)

@@ -731,7 +731,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 643,
+      "lines": 633,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",

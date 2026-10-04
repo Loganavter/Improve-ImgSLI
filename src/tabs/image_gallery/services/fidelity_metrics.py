@@ -102,12 +102,88 @@ def _mean_rgb_distance(item_image, source_image) -> float | None:
         return None
 
 
+def compute_fidelity_from_images(
+    item_image,
+    source_image,
+    *,
+    item_size: tuple[int, int] | None = None,
+    source_size: tuple[int, int] | None = None,
+) -> dict:
+    """Compute the 4 fidelity keys over already-decoded images (no file I/O).
+
+    Shared proxy entry: pass the ``services/proxy.proxy_for`` bytes (or any
+    PIL RGB images). ``item_size`` / ``source_size`` are the ORIGINAL
+    full-res (w, h) pairs the upscale factor divides (proxies carry them as
+    ``Proxy.size``); when omitted they fall back to the given images' own
+    sizes. Returns any measurable subset; empty when nothing measurable
+    (fail-closed — callers must not fabricate missing keys).
+    """
+    from shared.analysis.metrics import calculate_ssim
+
+    out: dict = {}
+    if item_image is None or source_image is None:
+        return {}
+    try:
+        iw, ih = tuple(item_size) if item_size else tuple(item_image.size)
+    except Exception:
+        iw, ih = (0, 0)
+    try:
+        sw, sh = tuple(source_size) if source_size else tuple(source_image.size)
+    except Exception:
+        sw, sh = (0, 0)
+    # W5: snapshot the PRE-CAP original dimensions here, before any
+    try:
+        orig_item_size = (iw, ih)
+        orig_source_size = (sw, sh)
+    except Exception:
+        orig_item_size = orig_source_size = (0, 0)
+    try:
+        ssim_val = calculate_ssim(_cap_edge(item_image, _SSIM_MAX_EDGE), _cap_edge(source_image, _SSIM_MAX_EDGE))
+        if ssim_val is not None:
+            out["ssim"] = max(0.0, min(1.0, float(ssim_val)))
+    except Exception:
+        logger.debug("fidelity: ssim failed (images)", exc_info=True)
+    try:
+        hf_out = _hf_energy(item_image)
+        hf_in = _hf_energy(source_image)
+        if hf_out is not None and hf_in is not None and hf_in > 1e-9:
+            out["hf_ratio"] = float(hf_out / hf_in - 1.0)
+    except Exception:
+        logger.debug("fidelity: hf_ratio failed (images)", exc_info=True)
+    try:
+        de = _mean_rgb_distance(item_image, source_image)
+        if de is not None and de >= 0:
+            out["delta_e"] = float(de)
+    except Exception:
+        logger.debug("fidelity: delta_e failed (images)", exc_info=True)
+    try:
+        # W4 item 7: factor by LONG side (portrait-safe), from the PRE-CAP
+        # snapshot above (W5). Log both sizes at the read site.
+        iw2, ih2 = orig_item_size
+        sw2, sh2 = orig_source_size
+        liw2, lsw2 = max(iw2, ih2), max(sw2, sh2)
+        if lsw2 > 0 and liw2 > 0:
+            factor = max(1, int(round(liw2 / lsw2)))
+            out["upscale_factor"] = factor
+            logger.debug(
+                "fidelity upscale: item=%dx%d source=%dx%d long=%d/%d factor=%d (pre-cap)",
+                iw2, ih2, sw2, sh2, liw2, lsw2, factor,
+            )
+    except Exception:
+        logger.debug("fidelity: upscale_factor failed (images)", exc_info=True)
+    return out
+
+
 def compute_fidelity_metrics(item_path: Path | str, source_path: Path | str) -> dict:
     """Compute the 4 fidelity keys for one item vs the source (no Qt, no state).
 
     Returns a dict with any subset of ``ssim`` / ``hf_ratio`` / ``delta_e`` /
     ``upscale_factor`` that could be measured; empty when either file is
     unreadable (fail-closed — callers must not fabricate missing keys).
+
+    Proxy-shared (Phase 1): item + source come from the bounded
+    ``services/proxy`` cache — cold path decodes each file once total,
+    warm path decodes nothing.
     """
     out: dict = {}
     item_path = Path(item_path)
@@ -116,69 +192,23 @@ def compute_fidelity_metrics(item_path: Path | str, source_path: Path | str) -> 
         # Source vs itself: identity scores, no engine call needed.
         return {"ssim": 1.0, "hf_ratio": 0.0, "delta_e": 0.0, "upscale_factor": 1}
     try:
-        from PIL import Image as _Image
-
-        from shared.analysis.metrics import calculate_ssim
+        from tabs.image_gallery.services.proxy import proxy_for
 
         try:
-            with _Image.open(item_path) as im_item_raw:
-                item_image = im_item_raw.convert("RGB")
-                item_image.load()
-            with _Image.open(source_path) as im_src_raw:
-                source_image = im_src_raw.convert("RGB")
-                source_image.load()
+            item_proxy = proxy_for(item_path)
+            source_proxy = proxy_for(source_path)
         except Exception:
             logger.debug("fidelity: unreadable pair %s vs %s", item_path, source_path, exc_info=True)
             return {}
-        # W5: snapshot the PRE-CAP original dimensions here, before any
-        # engine call. The scalar engines resample internally
-        # (``_cap_edge`` copies for SSIM/HF/ΔE, ``_pair_arrays`` aligns),
-        # but the upscale factor must always divide ORIGINAL long sides:
-        # reading sizes after the engine calls risks a capped-long vs
-        # capped-long ratio (≈1 for any large pair — the live ×1 class of
-        # bug). These locals are the only sizes the factor may use.
-        try:
-            orig_item_size = tuple(item_image.size)
-            orig_source_size = tuple(source_image.size)
-        except Exception:
-            orig_item_size = orig_source_size = (0, 0)
-        try:
-            ssim_val = calculate_ssim(_cap_edge(item_image, _SSIM_MAX_EDGE), _cap_edge(source_image, _SSIM_MAX_EDGE))
-            if ssim_val is not None:
-                out["ssim"] = max(0.0, min(1.0, float(ssim_val)))
-        except Exception:
-            logger.debug("fidelity: ssim failed for %s", item_path, exc_info=True)
-        try:
-            hf_out = _hf_energy(item_image)
-            hf_in = _hf_energy(source_image)
-            if hf_out is not None and hf_in is not None and hf_in > 1e-9:
-                out["hf_ratio"] = float(hf_out / hf_in - 1.0)
-        except Exception:
-            logger.debug("fidelity: hf_ratio failed for %s", item_path, exc_info=True)
-        try:
-            de = _mean_rgb_distance(item_image, source_image)
-            if de is not None and de >= 0:
-                out["delta_e"] = float(de)
-        except Exception:
-            logger.debug("fidelity: delta_e failed for %s", item_path, exc_info=True)
-        try:
-            # W4 item 7: factor by LONG side (portrait-safe — a width-only
-            # ratio misreads portrait pairs), from the PRE-CAP snapshot
-            # above (W5) — never from post-engine sizes. Log both sizes at
-            # the read site so a live ×1 can be diagnosed (truly-1 vs
-            # misread vs item-smaller-than-source clamp).
-            iw, ih = orig_item_size
-            sw, sh = orig_source_size
-            liw, lsw = max(iw, ih), max(sw, sh)
-            if lsw > 0 and liw > 0:
-                factor = max(1, int(round(liw / lsw)))
-                out["upscale_factor"] = factor
-                logger.debug(
-                    "fidelity upscale: item=%dx%d source=%dx%d long=%d/%d factor=%d (pre-cap)",
-                    iw, ih, sw, sh, liw, lsw, factor,
-                )
-        except Exception:
-            logger.debug("fidelity: upscale_factor failed for %s", item_path, exc_info=True)
+        if item_proxy is None or source_proxy is None:
+            logger.debug("fidelity: unreadable pair %s vs %s", item_path, source_path, exc_info=True)
+            return {}
+        return compute_fidelity_from_images(
+            item_proxy.image,
+            source_proxy.image,
+            item_size=item_proxy.size,
+            source_size=source_proxy.size,
+        )
     except Exception:
         logger.debug("fidelity: engine import/open failed for %s", item_path, exc_info=True)
     return out
