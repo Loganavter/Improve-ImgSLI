@@ -122,7 +122,7 @@ def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
         text = f"{text} {badges}"
     # Static truncated text (same reason as grid cards: the 60fps
     # marquee storm never paid off — task-marquee-mass-opt-research).
-    return [ButtonRow(text=text, size=16, weight="normal", h_align=Qt.AlignmentFlag.AlignLeft, marquee=False)]
+    return [ButtonRow(text=text, size=16, weight="normal", h_align=Qt.AlignmentFlag.AlignLeft, marquee=False, elide=True)]
 
 
 def _list_meta_rows(item: GalleryItem) -> list[ButtonRow]:

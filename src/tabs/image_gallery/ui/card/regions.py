@@ -122,6 +122,7 @@ def _text_rows(
             # Static truncated text: marquee crawl (60fps repaint per card)
             # never paid off — see deferred task-marquee-mass-opt-research.
             marquee=False,
+            elide=True,
             strikethrough=_rejected,
         ),
     ]
@@ -168,6 +169,7 @@ def _text_rows(
                     size=11,
                     h_align=Qt.AlignmentFlag.AlignLeft,
                     marquee=False,  # static: see name row above.
+                    elide=True,
                     strikethrough=_rejected,
                 )
             )
