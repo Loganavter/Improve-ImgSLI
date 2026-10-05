@@ -759,3 +759,82 @@ def test_ungrouped_items_form_strip_group(qtbot):
     QApplication.processEvents()
     assert [m.path for m in ov._series_items] == [a.path, b.path, c.path]
     ov.hide()
+
+
+def _strip_captions(ov):
+    from sli_ui_toolkit.widgets import Button
+
+    return [b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_caption_")]
+
+
+def _caption_texts(ov) -> list:
+    out = []
+    for cap in _strip_captions(ov):
+        try:
+            for region in cap.regions():
+                for row in getattr(region, "rows", None) or []:
+                    text = getattr(row, "text", "")
+                    if text:
+                        out.append(text)
+        except Exception:
+            continue
+    return out
+
+
+def test_strip_captions_carry_filenames(qtbot, tmp_path):
+    """Every strip thumb carries a filename caption (one per series item)."""
+    paths = [_real_png(tmp_path, f"photo-{i}-with-a-long-name.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    assert sorted(_caption_texts(ov)) == sorted(p.name for p in paths)
+    assert ov._strip_caption_labels and len(ov._strip_caption_labels) == 3
+    ov.hide()
+
+
+def test_strip_caption_row_is_marquee(qtbot, tmp_path):
+    """Caption rows scroll on overflow (ButtonRow marquee, static-cached)."""
+    paths = [_real_png(tmp_path, f"c{i}.png") for i in range(2)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    rows = []
+    for cap in _strip_captions(ov):
+        for region in cap.regions():
+            rows.extend(getattr(region, "rows", None) or [])
+    assert rows, "caption has no rows"
+    assert all(getattr(r, "marquee", False) is True for r in rows)
+    ov.hide()
+
+
+def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
+    """Right-click on a NON-viewing thumb pops the shared card menu for it.
+
+    Same helper as the grid cards (ui/card.py); the target is the thumb's
+    own item path, not the currently viewing one.
+    """
+    import tabs.image_gallery.ui.card.context_menu as _menu_mod
+
+    calls = []
+    monkeypatch.setattr(
+        _menu_mod,
+        "popup_gallery_card_context_menu",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    paths = [_real_png(tmp_path, f"m{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    assert ov._current_idx == 0
+    target = None
+    for b in _strip_buttons(ov):
+        if b.property("gallery_path") == str(paths[2]):
+            target = b
+            break
+    assert target is not None
+    target.rightClicked.emit()
+    QApplication.processEvents()
+    assert len(calls) == 1
+    (args, _kwargs) = calls[0]
+    assert Path(args[2]) == paths[2]
+    ov.hide()

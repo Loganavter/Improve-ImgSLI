@@ -820,9 +820,60 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 pass
         cont_lay.addWidget(btn)
-        # No under-thumb captions: the rank pill ("…" for pending) already
-        # carries the state, and the row must stay a uniform height for
-        # the pill overhang budget.
+        # Under-thumb filename caption (marquee when overflowing) + shared
+        # card context menu — same idiom as the grid cards living in the
+        # OpaqueFillHost: ButtonRow(marquee=True) via the toolkit static
+        # cache, popup_gallery_card_context_menu for actions. Bounded cost:
+        # the strip shows a handful of thumbs, not the 25-card gallery the
+        # mass-marquee deferral (task-marquee-mass-opt-research) is about.
+        try:
+            _caption_text = Path(str(getattr(m, "path", "") or "")).name
+        except Exception:
+            _caption_text = ""
+        try:
+            caption = Button(
+                rows=[ButtonRow(text=_caption_text, size=10, ratio=1.0, h_align=Qt.AlignmentFlag.AlignHCenter, marquee=True)],
+                variant="ghost",
+                size=(66, scaled_px(14)),
+                parent=container,
+            )
+            caption.setObjectName(f"quicklook_caption_{idx}")
+            try:
+                from PySide6.QtCore import Qt as _QtCap
+
+                caption.setCursor(_QtCap.CursorShape.ArrowCursor)
+            except Exception:
+                pass
+            cont_lay.addWidget(caption)
+            overlay._strip_caption_labels.append(caption)
+        except Exception:
+            pass
+        def _make_strip_menu(item=m, anchor=btn):
+            def _show_menu():
+                try:
+                    from PySide6.QtGui import QCursor as _QCursor
+
+                    _gp = _QCursor.pos()
+                except Exception:
+                    _gp = None
+                try:
+                    from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
+
+                    _owner = getattr(overlay, "_owner", None)
+                    popup_gallery_card_context_menu(
+                        anchor, _owner, Path(str(getattr(item, "path", "") or "")), global_pos=_gp
+                    )
+                except Exception:
+                    pass
+            return _show_menu
+
+        _show_menu = _make_strip_menu()
+        # Card wiring pattern (ui/card.py): rightClicked opens the shared
+        # menu; bind eagerly — same late-closure hazard as _switch above.
+        try:
+            btn.rightClicked.connect(_show_menu)
+        except Exception:
+            pass
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
         # First build is shown later via an ancestor show(); on every later
