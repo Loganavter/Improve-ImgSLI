@@ -1651,12 +1651,12 @@ class GalleryGridView(QWidget):
                 parent=container,
             )
             btn.setObjectName(f"GallerySeriesHeaderBtn_{index}")
-            try:
-                from sli_ui_toolkit.managers import ThemeManager
-
-                ThemeManager.get_instance().theme_changed.connect(btn.update)
-            except Exception:
-                pass
+            # NOTE: no theme_changed.connect(btn.update) here on purpose —
+            # Button.__init__ already subscribes, and a duplicate connection
+            # is undisconnectable by slot (disconnect removes one, later
+            # calls return False), leaving a stale slot that fires into the
+            # dead wrapper on the next theme flip (order-dependent suite
+            # crash: stale Button.update with garbage self).
             try:
                 btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
             except Exception:
@@ -1690,12 +1690,9 @@ class GalleryGridView(QWidget):
                 parent=container,
             )
             btn.setObjectName("GallerySeriesHeader_ungrouped_btn")
-            try:
-                from sli_ui_toolkit.managers import ThemeManager
-
-                ThemeManager.get_instance().theme_changed.connect(btn.update)
-            except Exception:
-                pass
+            # NOTE: no theme_changed.connect(btn.update) — see above,
+            # Button.__init__ already subscribes; duplicates are
+            # undisconnectable and crash the suite via stale slots.
             try:
                 btn.setEnabled(False)
             except Exception:
