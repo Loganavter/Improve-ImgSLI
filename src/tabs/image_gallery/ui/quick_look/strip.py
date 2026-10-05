@@ -140,6 +140,18 @@ class _StripLassoFilter(QObject):
         super().__init__(host)
         self._overlay = overlay
         self._host = host
+        # All lasso geometry lives in SCROLL-VIEWPORT coordinates, not host
+        # coordinates: the host sizes to its contents and can be much
+        # narrower than the viewport, so a host-parented band clips to a
+        # sliver near the cards and host-space rects miss. The viewport
+        # spans the full visible strip width (live-proven: picked=0 with a
+        # 590px rect while the host held 2 thumbs).
+        try:
+            _scroll = getattr(overlay, "_strip_scroll", None)
+            _view = _scroll.viewport() if _scroll is not None else None
+        except Exception:
+            _view = None
+        self._view = _view if _view is not None else host
         self._origin = None
         self._band = None
         # Dedup key of the last processed press/move/release: one physical
@@ -150,33 +162,38 @@ class _StripLassoFilter(QObject):
         # receiver and correct coords) takes effect.
         self._seen = None
 
-    def _to_host(self, widget, pos):
-        # mapTo(widget -> host) is only valid DOWN the hierarchy
-        # (watched is host itself or its descendant: thumb button, rank
-        # pill, container). For ancestors ABOVE the host (scroll viewport
-        # and beyond) the direction flips — mapFrom(host <- ancestor);
-        # anything else goes through the global round-trip. A wrong
-        # direction logs "mapTo(): parent must be in parent hierarchy"
-        # and yields garbage rects pinned near the cards (live-proven).
+    def _to_strip(self, widget, pos):
+        # Viewport-space mapping (see __init__ for why not host-space):
+        # mapTo(widget -> viewport) is valid for the viewport itself and
+        # everything inside it (host, containers, buttons, pills); above
+        # the viewport the direction flips to mapFrom; anything else goes
+        # through the global round-trip. A wrong direction logs
+        # "mapTo(): parent must be in parent hierarchy" and yields
+        # garbage rects (live-proven).
         try:
-            if widget is None or widget is self._host:
+            view = self._view
+            if widget is None or widget is view:
                 return pos
             try:
-                if self._host.isAncestorOf(widget):
-                    return widget.mapTo(self._host, pos)
+                if view.isAncestorOf(widget):
+                    return widget.mapTo(view, pos)
             except Exception:
                 pass
             try:
-                if widget.isAncestorOf(self._host):
-                    return self._host.mapFrom(widget, pos)
+                if widget.isAncestorOf(view):
+                    return view.mapFrom(widget, pos)
             except Exception:
                 pass
             try:
-                return self._host.mapFromGlobal(widget.mapToGlobal(pos))
+                return view.mapFromGlobal(widget.mapToGlobal(pos))
             except Exception:
                 return pos
         except Exception:
             return pos
+
+    def _to_host(self, widget, pos):
+        # Kept for compatibility; new code uses _to_strip (viewport space).
+        return self._to_strip(widget, pos)
 
     def _threshold(self) -> int:
         try:
@@ -230,7 +247,7 @@ class _StripLassoFilter(QObject):
                             return False
                         self._seen = _key
                         self._hide_band()
-                        self._origin = self._to_host(watched, _pos)
+                        self._origin = self._to_strip(watched, _pos)
                         try:
                             from tabs.image_gallery.debug import gallery_debug as _dbg
 
@@ -257,13 +274,13 @@ class _StripLassoFilter(QObject):
                             if _mkey == self._seen:
                                 return False
                             self._seen = _mkey
-                            cur = self._to_host(watched, _raw)
+                            cur = self._to_strip(watched, _raw)
                             dx = cur.x() - self._origin.x()
                             dy = cur.y() - self._origin.y()
                             if self._band is None and (abs(dx) + abs(dy)) >= self._threshold():
                                 from PySide6.QtWidgets import QRubberBand as _QRB
 
-                                self._band = _QRB(_QRB.Shape.Rectangle, self._host)
+                                self._band = _QRB(_QRB.Shape.Rectangle, self._view)
                                 try:
                                     self._band.show()
                                 except Exception:
@@ -318,23 +335,37 @@ class _StripLassoFilter(QObject):
 
 
 def _strip_apply_lasso_selection(overlay, rect) -> None:
-    """Select strip items whose containers intersect *rect* (host coords).
+    """Select strip items whose containers intersect *rect* (viewport coords).
 
-    Series order is preserved (container order == series order). Writes
-    the owner selection (``set_selection`` wholesale when available, else
-    direct ``state`` writes — same fallback idiom as the triage UI) and
-    refreshes thumb checked visuals.
+    Container geometries map into the same viewport space (valid downward
+    mapping). Series order is preserved (container order == series order).
+    Writes the owner selection (``set_selection`` wholesale when available,
+    else direct ``state`` writes — same fallback idiom as the triage UI)
+    and refreshes thumb checked visuals.
     """
     try:
         containers = list(getattr(overlay, "_strip_buttons", None) or [])
         items = list(getattr(overlay, "_series_items", None) or [])
     except Exception:
         return
+    try:
+        _scroll = getattr(overlay, "_strip_scroll", None)
+        _view = _scroll.viewport() if _scroll is not None else None
+    except Exception:
+        _view = None
     picked: list[str] = []
     try:
+        from PySide6.QtCore import QRect as _QR2
+
         for container, m in zip(containers, items):
             try:
                 g = container.geometry()
+                if _view is not None:
+                    try:
+                        _top = container.mapTo(_view, g.topLeft())
+                        g = _QR2(_top, g.size())
+                    except Exception:
+                        pass
             except Exception:
                 continue
             try:
@@ -349,6 +380,17 @@ def _strip_apply_lasso_selection(overlay, rect) -> None:
     except Exception:
         pass
     picked = [p for p in picked if p]
+    try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg4
+
+        _dbg4(
+            "strip lasso picked=%d rect=%s containers=%d",
+            len(picked),
+            rect,
+            len(containers),
+        )
+    except Exception:
+        pass
     try:
         overlay._strip_selected_paths = set(picked)
     except Exception:

@@ -796,14 +796,6 @@ def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
     ov.hide()
 
 
-def _thumb_center_in_host(ov, btn):
-    host = ov._strip_host
-    try:
-        return btn.mapTo(host, btn.rect().center())
-    except Exception:
-        return None
-
-
 def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     """Drag across two thumbs selects both, keeps preview unmoved.
 
@@ -820,13 +812,27 @@ def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     assert ov._current_idx == 0
     thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
     assert len(thumbs) == 3
-    p0 = _thumb_center_in_host(ov, thumbs[str(paths[0])])
-    p1 = _thumb_center_in_host(ov, thumbs[str(paths[1])])
-    assert p0 is not None and p1 is not None
     host = ov._strip_host
+
+    def _drag_span():
+        # Live container geometry, read fresh: the strip relayouts
+        # asynchronously (pitch drifts between events), so span with a
+        # margin instead of trusting pre-drag thumb centers.
+        cs = list(ov._strip_buttons)
+        g0, g1 = cs[0].geometry(), cs[1].geometry()
+        mid = (g0.center().y() + g1.center().y()) // 2
+        return (g0.left() - 30, mid), (g1.right() + 30, mid)
+
+    from PySide6.QtCore import QPoint as _QP
+
+    p0t, _ = _drag_span()
+    p0 = _QP(*p0t)
     qtbot.mousePress(host, _Qt.MouseButton.LeftButton, pos=p0)
+    _, p1t = _drag_span()
+    p1 = _QP(*p1t)
     qtbot.mouseMove(host, p1)
-    qtbot.mouseRelease(host, _Qt.MouseButton.LeftButton, pos=p1)
+    _, p2t = _drag_span()
+    qtbot.mouseRelease(host, _Qt.MouseButton.LeftButton, pos=_QP(*p2t))
     QApplication.processEvents()
     assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
     assert ov._current_idx == 0
@@ -917,15 +923,23 @@ def test_strip_lasso_from_viewport_coords(qtbot, tmp_path):
     host = ov._strip_host
     viewport = ov._strip_scroll.viewport()
     thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    p0 = thumbs[str(paths[0])].mapTo(
-        viewport, thumbs[str(paths[0])].rect().center()
-    )
-    p1 = thumbs[str(paths[1])].mapTo(
-        viewport, thumbs[str(paths[1])].rect().center()
-    )
+
+    def _span_vp():
+        # Viewport-space span with margin, read fresh (see host test).
+        from PySide6.QtCore import QPoint as _QP
+
+        cs = list(ov._strip_buttons)
+        g0 = cs[0].mapTo(viewport, cs[0].rect().topLeft())
+        g1 = cs[1].mapTo(viewport, cs[1].rect().bottomRight())
+        mid = (g0.y() + g1.y()) // 2
+        return _QP(g0.x() - 30, mid), _QP(g1.x() + 30, mid)
+
+    p0, _ = _span_vp()
     qtbot.mousePress(viewport, _Qt.MouseButton.LeftButton, pos=p0)
+    _, p1 = _span_vp()
     qtbot.mouseMove(viewport, p1)
-    qtbot.mouseRelease(viewport, _Qt.MouseButton.LeftButton, pos=p1)
+    _, p2 = _span_vp()
+    qtbot.mouseRelease(viewport, _Qt.MouseButton.LeftButton, pos=p2)
     QApplication.processEvents()
     assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
     assert ov._current_idx == 0
