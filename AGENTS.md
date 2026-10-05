@@ -229,6 +229,10 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/<target_test>.py
 
 When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/`.
 
+### Local-green merges
+
+The merge-readiness signal is the **local** run (contracts + affected suites, ~2 min), not CI (~4+ min queue+run). Do not block merges waiting on CI: CI is an async backstop. If CI goes red post-merge, fix forward the same day. Every PR body cites its local evidence (what was run, counts).
+
 ## Debugging Runtime Issues
 
 When something goes wrong after a click / zoom / state change and the cause is not obvious from the diff:
