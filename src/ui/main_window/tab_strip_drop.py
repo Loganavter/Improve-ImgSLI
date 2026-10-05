@@ -251,6 +251,54 @@ def _switch_session(main_window, store, tabs, session_id: str, tab_index: int) -
         return False
 
 
+def install_tab_dwell_switch(main_window, store) -> bool:
+    """Bind the strip's hold-to-open hook (browser parity).
+
+    Holding a gallery drag over a tab for the strip's dwell interval
+    activates that tab, so the drop lands on the tab's own content surface
+    (grid/canvas drop squares, same as files from the OS) instead of the
+    strip router. Skips the already-active tab (drop-back). Idempotent.
+    """
+    try:
+        ui = getattr(main_window, "ui", None)
+        strip = getattr(ui, "workspace_tabs", None) if ui is not None else None
+        if strip is None:
+            return False
+        setter = getattr(strip, "set_tab_dwell_switch_handler", None)
+        if not callable(setter):
+            return False
+
+        def _on_dwell_switch(index: int) -> None:
+            try:
+                index = int(index)
+            except Exception:
+                return
+            if index < 0:
+                return
+            try:
+                session_id = strip.tabData(index)
+            except Exception:
+                return
+            if not session_id:
+                return
+            try:
+                active_id = getattr(getattr(store, "workspace", None), "active_session_id", None)
+            except Exception:
+                active_id = None
+            if session_id == active_id:
+                return
+            _switch_session(main_window, store, strip, session_id, index)
+            logger.debug("TabStripDrop: dwell-switched to session %s", session_id)
+
+        try:
+            setter(_on_dwell_switch)
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def install_tab_strip_drop(main_window, store) -> bool:
     """Bind the strip's drop hook to :func:`deliver_gallery_drop` (idempotent).
 

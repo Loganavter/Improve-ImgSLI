@@ -559,6 +559,118 @@ def test_strip_drag_leave_clears_hover():
     assert seen["hover"] == (-1000000, -1000000)
 
 
+# -- Wave E: dwell-switch (browser hold-to-open) -------------------------------
+
+
+def _dwell_strip(monkeypatch, current=0):
+    """Strip with fake bar; QTimer.singleShot fires immediately."""
+    from PySide6.QtCore import QTimer
+
+    monkeypatch.setattr(QTimer, "singleShot", staticmethod(lambda ms, fn: fn()))
+    from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
+
+    strip = WorkspaceTabStrip.__new__(WorkspaceTabStrip)
+    seen: dict = {}
+
+    class _Bar:
+        def mapFrom(self, recv, pos):
+            return QPoint(pos.x(), pos.y())
+
+        def mapToGlobal(self, pos):
+            return QPoint(1000 + pos.x(), 40 + pos.y())
+
+        def rect(self):
+            return QRect(0, 0, 300, 30)
+
+        def tabAt(self, pos):
+            if QRect(0, 0, 150, 30).contains(pos):
+                return 0
+            if QRect(150, 0, 150, 30).contains(pos):
+                return 1
+            return -1
+
+        def set_hover_from_global(self, gp):
+            seen["hover"] = (gp.x(), gp.y())
+
+    strip.tab_bar = _Bar()
+    strip.currentIndex = lambda: current
+    strip._dwell_index = -1
+    strip._tab_dwell_switch_handler = None
+    fired: list = []
+    strip.set_tab_dwell_switch_handler(fired.append)
+    return strip, seen, fired
+
+
+def _dwell_move_ev(x=225, y=15):
+    from PySide6.QtCore import QMimeData
+
+    class _MoveEv:
+        def mimeData(self):
+            mime = QMimeData()
+            mime.setData("application/x-imgsli-gallery-paths", b"file:///x/a.png")
+            return mime
+
+        def position(self):
+            return QPointF(x, y)
+
+        def acceptProposedAction(self):
+            pass
+
+    return _MoveEv()
+
+
+def test_dwell_switch_fires_for_noncurrent_tab(monkeypatch):
+    strip, seen, fired = _dwell_strip(monkeypatch, current=0)
+    assert strip._handle_strip_drag_move(_dwell_move_ev(), SimpleNamespace()) is True
+    assert seen["hover"] == (1225, 55)
+    assert fired == [1]
+
+
+def test_dwell_switch_skipped_for_current_tab(monkeypatch):
+    strip, seen, fired = _dwell_strip(monkeypatch, current=1)
+    assert strip._handle_strip_drag_move(_dwell_move_ev(), SimpleNamespace()) is True
+    assert seen["hover"] == (1225, 55)
+    assert fired == []
+
+
+def test_dwell_switch_cancelled_on_hover_change(monkeypatch):
+    strip, seen, fired = _dwell_strip(monkeypatch, current=0)
+    strip._dwell_index = 1  # armed for tab 1, drag moved on
+    strip._fire_dwell_switch(0)
+    assert fired == []
+    strip._fire_dwell_switch(1)
+    assert fired == [1]
+
+
+def test_install_dwell_switch_routes_session(router_env):
+    from ui.main_window import tab_strip_drop as router
+
+    _tabs_by_type, _scheduled = router_env
+    store = _FakeStore(
+        {"sess-a": _session("sess-a", "image_gallery"),
+         "sess-b": _session("sess-b", "image_compare")},
+        active_id="sess-a",
+    )
+    switched: list = []
+
+    class _Strip(_FakeStrip):
+        def set_tab_dwell_switch_handler(self, handler):
+            self._dwell = handler
+
+    strip = _Strip()
+    workspace = SimpleNamespace(
+        switch_workspace_session=lambda sid: switched.append(sid) or True
+    )
+    controller = SimpleNamespace(workspace=workspace)
+    presenter = SimpleNamespace(main_controller=controller)
+    window = SimpleNamespace(ui=SimpleNamespace(workspace_tabs=strip), presenter=presenter)
+    assert router.install_tab_dwell_switch(window, store) is True
+    strip._dwell(1)
+    assert switched == ["sess-b"]
+    strip._dwell(0)  # active tab — no-op
+    assert switched == ["sess-b"]
+
+
 # -- Wave D: series cards as drop targets --------------------------------------
 #
 # Only thin headers were targets: drops onto series bodies (cards) fell back

@@ -53,9 +53,13 @@ class MainWindowComposer:
         # router in ui.main_window.tab_strip_drop). Best-effort — the gallery
         # and window drops keep working without it.
         try:
-            from ui.main_window.tab_strip_drop import install_tab_strip_drop
+            from ui.main_window.tab_strip_drop import (
+                install_tab_dwell_switch,
+                install_tab_strip_drop,
+            )
 
             install_tab_strip_drop(window, self.context.store)
+            install_tab_dwell_switch(window, self.context.store)
         except Exception:
             pass
 
