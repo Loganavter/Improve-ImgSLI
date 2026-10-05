@@ -898,3 +898,35 @@ def test_strip_mirrors_grid_selection(qtbot, tmp_path):
     assert not _checked(by_path[str(paths[1])])
     assert _checked(by_path[str(paths[2])])
     ov.hide()
+
+
+def test_strip_lasso_from_viewport_coords(qtbot, tmp_path):
+    """Drag delivered to the scroll viewport selects (ancestor mapping).
+
+    Viewport presses carry viewport coordinates; mapping them with
+    widget.mapTo(host) is invalid (host is the viewport's child, not
+    its parent — Qt warns 'parent must be in parent hierarchy' and the
+    rect lands as garbage). Regression: full-width drags must select.
+    """
+    from PySide6.QtCore import Qt as _Qt
+
+    paths = [_real_png(tmp_path, f"v{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    host = ov._strip_host
+    viewport = ov._strip_scroll.viewport()
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    p0 = thumbs[str(paths[0])].mapTo(
+        viewport, thumbs[str(paths[0])].rect().center()
+    )
+    p1 = thumbs[str(paths[1])].mapTo(
+        viewport, thumbs[str(paths[1])].rect().center()
+    )
+    qtbot.mousePress(viewport, _Qt.MouseButton.LeftButton, pos=p0)
+    qtbot.mouseMove(viewport, p1)
+    qtbot.mouseRelease(viewport, _Qt.MouseButton.LeftButton, pos=p1)
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
+    assert ov._current_idx == 0
+    ov.hide()

@@ -151,10 +151,30 @@ class _StripLassoFilter(QObject):
         self._seen = None
 
     def _to_host(self, widget, pos):
+        # mapTo(widget -> host) is only valid DOWN the hierarchy
+        # (watched is host itself or its descendant: thumb button, rank
+        # pill, container). For ancestors ABOVE the host (scroll viewport
+        # and beyond) the direction flips — mapFrom(host <- ancestor);
+        # anything else goes through the global round-trip. A wrong
+        # direction logs "mapTo(): parent must be in parent hierarchy"
+        # and yields garbage rects pinned near the cards (live-proven).
         try:
             if widget is None or widget is self._host:
                 return pos
-            return widget.mapTo(self._host, pos)
+            try:
+                if self._host.isAncestorOf(widget):
+                    return widget.mapTo(self._host, pos)
+            except Exception:
+                pass
+            try:
+                if widget.isAncestorOf(self._host):
+                    return self._host.mapFrom(widget, pos)
+            except Exception:
+                pass
+            try:
+                return self._host.mapFromGlobal(widget.mapToGlobal(pos))
+            except Exception:
+                return pos
         except Exception:
             return pos
 
