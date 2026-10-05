@@ -25,10 +25,16 @@ Differences from carry (all deliberate):
 * a target tab that declines (``accepts_drop`` False) is ignored + logged.
 * unknown sessions are ignored + logged.
 
-Wiring: ``MainWindowComposer.compose`` installs one bound handler via
-``install_tab_strip_drop`` (single call site — it already holds
-``main_window`` + ``store``).
-"""
+    Wiring: ``MainWindowComposer.compose`` installs one bound handler via
+    ``install_tab_strip_drop`` (single call site — it already holds
+    ``main_window`` + ``store``).
+
+    Position sourcing (Wayland correctness): ``QCursor.pos()`` is FROZEN for
+    the whole ``QDrag.exec`` on this stack (proven by move-trace), so the
+    drop position always comes from the drop event itself —
+    ``receiver.mapToGlobal(event.position())`` is pure geometry math and
+    stays correct mid-drag. Never ``QCursor`` here.
+    """
 
 from __future__ import annotations
 
@@ -249,8 +255,9 @@ def install_tab_strip_drop(main_window, store) -> bool:
     """Bind the strip's drop hook to :func:`deliver_gallery_drop` (idempotent).
 
     Returns True when a strip with ``set_qdrag_drop_handler`` was found and
-    bound. The handler reads the global cursor itself (drop events carry no
-    global accessor in the installed Qt build) and settles the event, so the
+    bound. The handler takes ``(event, receiving_widget)`` — the drop
+    position is derived from the event (``mapToGlobal(event.position())``),
+    never from ``QCursor`` (frozen mid-drag) — and settles the event, so the
     strip widget never imports store/registry code.
     """
     try:
@@ -262,11 +269,22 @@ def install_tab_strip_drop(main_window, store) -> bool:
         if not callable(setter):
             return False
 
-        def _on_strip_drop(event) -> None:
+        def _event_global_pos(event, receiving_widget):
             try:
-                from PySide6.QtGui import QCursor as _QCursor
+                local = event.position()
+                try:
+                    local = local.toPoint()
+                except Exception:
+                    pass
+                return receiving_widget.mapToGlobal(local)
+            except Exception:
+                return None
 
-                global_pos = _QCursor.pos()
+        def _on_strip_drop(event, receiving_widget=None) -> None:
+            try:
+                global_pos = _event_global_pos(
+                    event, receiving_widget if receiving_widget is not None else strip
+                )
             except Exception:
                 global_pos = None
             if global_pos is None:
