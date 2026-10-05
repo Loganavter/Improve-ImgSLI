@@ -9,13 +9,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tabs.image_gallery.ui.quick_look.headers import series_size_note
 from tabs.image_gallery.ui.quick_look.preview import _fast_image_size, _source_dimensions
 
 
 def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None:
-    """Filename + dims/format/size meta line. *owner* is the explicit triage
-    owner (threaded from the overlay's ``show_for``); None keeps the overlay
-    fallback inside ``_item_smaller_than_source`` for direct unit calls."""
+    """Filename + dims/format/size meta line (sidebar top row).
+
+    S4 mockup meta order: dims · format · size (+ upscale suffix), then the
+    series size note (``same size WxH`` / ``mixed sizes`` / upscales label
+    for multi-item series). *owner* is the explicit triage owner (threaded
+    from the overlay's ``show_for``); None keeps the overlay fallback
+    inside ``_item_smaller_than_source`` for direct unit calls."""
     try:
         overlay._filename_label.setText(str(getattr(item, "name", Path(getattr(item, "path", "")).name)))
     except Exception:
@@ -84,6 +89,12 @@ def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None
                 meta_parts.append("upscale from source")
         elif upscale_n is not None and upscale_n > 1:
             meta_parts.append(f"upscale ×{upscale_n}")
+        try:
+            _series_note = series_size_note(overlay)
+        except Exception:
+            _series_note = ""
+        if _series_note:
+            meta_parts.append(_series_note)
         overlay._meta_label.setText(" · ".join(meta_parts))
     except Exception:
         pass

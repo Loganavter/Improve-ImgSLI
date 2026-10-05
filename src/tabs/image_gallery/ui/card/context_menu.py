@@ -7,7 +7,10 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    when a non-empty selection exists. No "clear selection" entry by design
    — deselect is Esc, menus offer actions ON the set.
 2. Per-card actions mirroring the hover capsule: Make best / Reject /
-   Remove from view (+ Set as source in fidelity mode).
+   Remove from view (+ Set as source in fidelity mode), plus the manual
+   grouping pair — Ungroup (dissolve into the tail) and Group (pin the
+   menu-rule targets into a brand-new series; multi-select only, hidden
+   when the selection is already exactly one whole series).
    Make best / Reject / Remove from view apply to the whole selection when
    the clicked card is selected (file-manager rule), else to the clicked
    card alone.
@@ -31,6 +34,7 @@ from pathlib import Path
 
 from tabs.image_gallery.ui.card.context_actions import (
     _action_targets,
+    _ctx_group,
     _ctx_make_best,
     _ctx_remove,
     _ctx_set_source,
@@ -60,6 +64,78 @@ def _selection_count(owner) -> int:
         return len(sel)
     except Exception:
         return 0
+
+
+def _targets_are_single_series(owner, targets) -> bool:
+    """True when *targets* are exactly one whole live series (fail-open False).
+
+    Grouping a complete series would pin it onto a fresh id and rebuild
+    for nothing — the menu hides Group in that case (Ungroup stays: it
+    dissolves). Reads controller ``state.series`` plus the grid mirror
+    (``_grid_view._series`` clusters); the UNGROUPED tail is not a series.
+    """
+    try:
+        tset = {str(p) for p in (targets or [])}
+    except Exception:
+        return False
+    if len(tset) < 2:
+        return False
+    try:
+        candidates: list = []
+        try:
+            st = getattr(owner, "state", None)
+            if st is not None and getattr(st, "series", None):
+                candidates.extend(list(st.series or []))
+        except Exception:
+            pass
+        try:
+            gv = getattr(owner, "_grid_view", None)
+            if gv is not None and getattr(gv, "_series", None):
+                candidates.extend(list(gv._series or []))
+        except Exception:
+            pass
+        for entry in candidates:
+            try:
+                if hasattr(entry, "members"):
+                    members = list(getattr(entry, "members", None) or [])
+                elif isinstance(entry, (list, tuple)):
+                    members = list(entry)
+                else:
+                    continue
+                if len(members) >= 2 and {str(getattr(m, "path", None)) for m in members} == tset:
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
+    return False
+
+
+def _targets_any_grouped(owner, targets) -> bool:
+    """True unless every target is positively UNGROUPED (fail-open True).
+
+    Hides Ungroup for an all-UNGROUPED set (nothing to dissolve — the
+    move path would no-op). Targets missing from the known pool (storeless
+    doubles) keep the old visible behavior; only a positively-known
+    all-ungrouped set hides the entry. Mirrors ``_targets_all_rejected``.
+    """
+    try:
+        tset = {str(t) for t in (targets or [])}
+        if not tset:
+            return False
+        from tabs.image_gallery.use_cases import triage as _triage
+
+        pool: dict[str, bool] = {}
+        for it in _triage._items_of(owner):
+            try:
+                pool[str(Path(it.path))] = getattr(it, "series_id", None) is not None
+            except Exception:
+                continue
+        if any(t not in pool for t in tset):
+            return True
+        return any(pool[t] for t in tset)
+    except Exception:
+        return True
 
 
 def _targets_all_rejected(owner, targets) -> bool:
@@ -240,12 +316,26 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         )
         # Explicit path to UNGROUPED when no tail section exists to drop
         # onto (drop fallback covers the tail only while visible).
-        per_card.append(
-            ContextMenuAction(
-                "gallery.ungroup",
-                "Ungroup",
+        # Hidden for all-UNGROUPED targets (nothing to dissolve).
+        if _targets_any_grouped(owner, _menu_targets):
+            per_card.append(
+                ContextMenuAction(
+                    "gallery.ungroup",
+                    "Ungroup",
+                )
             )
-        )
+        # Reverse path: pin the menu-rule targets into a brand-new manual
+        # series. Multi-select only (≥2 targets), and never for a complete
+        # series on its own (already one group — regrouping is a no-op).
+        # Sits next to Ungroup, same per-card section; plain "Group" like
+        # the plain "Ungroup" (no counts in this menu's per-card labels).
+        if len(_menu_targets) >= 2 and not _targets_are_single_series(owner, _menu_targets):
+            per_card.append(
+                ContextMenuAction(
+                    "gallery.group",
+                    "Group",
+                )
+            )
         entries.extend(per_card)
         if include_source:
             entries.append(
@@ -268,6 +358,8 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     _ctx_remove(owner, path)
                 elif action_id == "gallery.ungroup":
                     _ctx_ungroup(owner, path)
+                elif action_id == "gallery.group":
+                    _ctx_group(owner, path)
                 elif action_id == "gallery.set_as_source":
                     _ctx_set_source(owner, path)
             except Exception:

@@ -67,7 +67,16 @@ def test_collapsed_series_keeps_full_header_title(qtbot) -> None:
     text = _header_btn_text(btn)
     assert "HUB-A" in text
     assert "VARIANTS" in text
-    assert text.strip().upper().endswith("▶")
+    # The collapse arrow is a painter layer at the button's right edge,
+    # never trailing text — long titles elide without clipping it.
+    assert "▼" not in text and "▶" not in text
+    from tabs.image_gallery.ui.grid_view import _SeriesCollapseArrowLayer
+
+    layers = list(getattr(getattr(btn, "_painter", None), "layers", None) or [])
+    arrows = [layer for layer in layers if isinstance(layer, _SeriesCollapseArrowLayer)]
+    assert len(arrows) == 1
+    assert arrows[0]._collapsible is True
+    assert arrows[0]._collapsed is True  # toggled collapsed above
     # Accent bar is the button's own painter layer (simple-flyout pattern),
     # not a sibling widget: it cannot drift from the label.
     from tabs.image_gallery.ui.grid_view import _SeriesHeaderAccentLayer
@@ -76,6 +85,39 @@ def test_collapsed_series_keeps_full_header_title(qtbot) -> None:
     accent = [layer for layer in layers if isinstance(layer, _SeriesHeaderAccentLayer)]
     assert len(accent) == 1
     assert accent[0]._collapsible is True
+
+
+def test_long_hub_keeps_arrow_layer_and_elides_title(qtbot) -> None:
+    """A hub name wider than the band elides the title, never the arrow."""
+    from tabs.image_gallery.ui.grid_view import _SeriesCollapseArrowLayer
+
+    items = _items("a.png", "b.png", "c.png")
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1900, 900)
+    w.show()
+    w.rebuild_grid(items)
+    gv = w._grid_view
+    qtbot.wait(400)
+    long_hub = "NEW-2X_POOH_RPLKSR_CANDIDATE_1_387K-000629-0001.PNG-" + "X" * 120
+    gv.set_series([items], hub_names=[long_hub], collapsed={})
+    btn = gv.findChild(object, "GallerySeriesHeaderBtn_0")
+    assert btn is not None
+    # Title row elides right…
+    region = btn.region("_main")
+    rows = getattr(region, "rows", None) or getattr(region, "_rows", None) or []
+    assert rows and bool(getattr(rows[0], "elide", False)) is True
+    text = _header_btn_text(btn)
+    assert "▼" not in text and "▶" not in text
+    # …while the arrow layer stays on the button with live state.
+    layers = list(getattr(getattr(btn, "_painter", None), "layers", None) or [])
+    arrows = [layer for layer in layers if isinstance(layer, _SeriesCollapseArrowLayer)]
+    assert len(arrows) == 1 and arrows[0]._collapsed is False
+    # Collapse flips the layer (no widget rebuild), expand flips back.
+    gv._toggle_collapse(0)
+    assert arrows[0]._collapsed is True
+    gv._toggle_collapse(0)
+    assert arrows[0]._collapsed is False
 
 
 def test_flat_grid_resets_column_minimums(qtbot) -> None:

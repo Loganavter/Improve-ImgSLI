@@ -5,9 +5,8 @@ Session-only clamp (floor 1040x680), 8px inner border strip + outer ring
 drags, card re-layout entry (``_relayout_on_card_resize``).
 Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
 
-NOTE: user drags are DISABLED (``QL_RESIZABLE = False``) — the card is
-fixed-size, laid out once by the parent. The drag-start paths below are
-kept (dead, easy revert) but short-circuited; nav-arrow walks, stranded-
+NOTE: user drags are ENABLED (``QL_RESIZABLE = True``) — border/ring
+resizing live; nav-arrow walks, stranded-
 drag guards (D2/D4), release clears (D3) and cursor clearing (D1/D5)
 keep working. Pure geometry (``resize_zone_at`` / ``ring_zone_at`` /
 ``clamp_card_size``) is untouched.
@@ -23,7 +22,7 @@ from tabs.image_gallery.ui.quick_look.preview_canvas_host import _fit_preview_sl
 # Kill-switch: False = fixed card, no user resize drags (nav arrows keep
 # walking). Flip to True to restore border/ring resizing with no other
 # changes (tests cover both states via the drag helpers).
-QL_RESIZABLE = False
+QL_RESIZABLE = True
 
 
 def reposition_grip(overlay) -> None:

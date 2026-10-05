@@ -385,16 +385,36 @@ def handle_key(owner, event) -> None:
                 delta = 1
             elif key == Qt.Key.Key_Up:
                 try:
-                    from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
+                    gv = getattr(owner, "_grid_view", None)
+                    nav = getattr(gv, "nav_columns_for", None)
+                    if callable(nav):
+                        try:
+                            delta = -int(nav(cur))
+                        except Exception:
+                            from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
 
-                    delta = -int(GRID_COLUMNS)
+                            delta = -int(GRID_COLUMNS)
+                    else:
+                        from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
+
+                        delta = -int(GRID_COLUMNS)
                 except Exception:
                     delta = -4
             elif key == Qt.Key.Key_Down:
                 try:
-                    from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
+                    gv = getattr(owner, "_grid_view", None)
+                    nav = getattr(gv, "nav_columns_for", None)
+                    if callable(nav):
+                        try:
+                            delta = int(nav(cur))
+                        except Exception:
+                            from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
 
-                    delta = int(GRID_COLUMNS)
+                            delta = int(GRID_COLUMNS)
+                    else:
+                        from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
+
+                        delta = int(GRID_COLUMNS)
                 except Exception:
                     delta = 4
             nxt_idx = max(0, min(len(items) - 1, cur_idx + delta))

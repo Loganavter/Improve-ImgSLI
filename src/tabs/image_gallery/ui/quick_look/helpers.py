@@ -40,8 +40,6 @@ from tabs.image_gallery.ui.quick_look.preview import (
 )
 from tabs.image_gallery.ui.quick_look.insets import (
     populate_source_inset,
-    populate_crop,
-    refresh_crop_for,
 )
 from tabs.image_gallery.ui.quick_look.meta import (
     populate_filename_meta,
@@ -51,7 +49,7 @@ from tabs.image_gallery.ui.quick_look.meta import (
 )
 from tabs.image_gallery.ui.quick_look.headers import (
     populate_report_header,
-    populate_series_header,
+    series_size_note,
 )
 from tabs.image_gallery.ui.quick_look.nav import (
     reposition_nav_buttons,
@@ -101,14 +99,12 @@ __all__ = [
     "_source_dimensions",
     "populate_preview",
     "populate_source_inset",
-    "populate_crop",
-    "refresh_crop_for",
     "populate_filename_meta",
     "_item_smaller_than_source",
     "local_brief_fallback",
     "populate_brief",
     "populate_report_header",
-    "populate_series_header",
+    "series_size_note",
     "reposition_nav_buttons",
     "nav_button_at",
     "_walk_for_nav_button",

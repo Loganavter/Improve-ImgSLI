@@ -72,98 +72,49 @@ def _size_note(items) -> str:
         return ""
     first = dims_list[0]
     if all(d == first for d in dims_list):
-        return f" · same size {first[0]}×{first[1]}"
-    return " · mixed sizes"
+        return f"same size {first[0]}×{first[1]}"
+    return "mixed sizes"
 
 
-def populate_series_header(overlay, owner=None) -> None:
-    """S4 mockup series context: ``Series 1 · <hub>`` + fidelity subline.
+def series_size_note(overlay) -> str:
+    """Series size/upscale note for the filename meta line (sidebar top).
 
-    *owner* is the explicit triage owner (threaded from the overlay's
-    ``show_for``); when None, falls back to the overlay's stored owner for
-    direct unit calls (back-compat — production always passes it).
+    Multi-item series only: fidelity members larger than the source read
+    ``"N upscales of one source"``; anything with known member dims adds
+    the size tracker (``"same size WxH"`` / ``"mixed sizes"``). Counts and
+    rejected tallies are deliberately excluded (user-facing series chrome
+    is gone — the strip carries identity now).
     """
     try:
-        items = list(overlay._series_items or [])
+        items = list(getattr(overlay, "_series_items", None) or [])
         n = len(items)
-        cur = getattr(overlay, "_current_item", None)
-        # 1-based cluster index among the owner's series (display only —
-        # triage ownership stays in use_cases/wave A, never duplicated here).
-        idx = 1
+        if n <= 1:
+            return ""
         try:
-            if owner is None:
-                try:
-                    owner = overlay._owner
-                except Exception:
-                    owner = None
-            series_raw = getattr(getattr(owner, "state", None), "series", None)
-            if series_raw:
-                clusters: list[list] = []
-                for entry in list(series_raw):
-                    if hasattr(entry, "members"):
-                        clusters.append(list(getattr(entry, "members") or []))
-                    elif isinstance(entry, (list, tuple)):
-                        clusters.append(list(entry))
-                if clusters and cur is not None:
-                    try:
-                        cur_path = Path(getattr(cur, "path", ""))
-                        for i, cl in enumerate(clusters):
-                            if any(Path(getattr(m, "path", "")) == cur_path for m in cl):
-                                idx = i + 1
-                                break
-                    except Exception:
-                        pass
+            is_fidelity = bool(getattr(overlay, "_source_path", None) is not None)
         except Exception:
-            pass
-        # Hub label: source stem when a source is set, else the first member
-        # stem of the viewing cluster (a real member, never invented).
-        hub = ""
-        try:
-            src = getattr(overlay, "_source_path", None)
-            if src is not None:
-                hub = Path(src).stem
-            elif items:
-                hub = Path(getattr(items[0], "path", "")).stem
-        except Exception:
-            pass
-        if n > 1:
-            overlay._series_header.setText(f"Series {idx} · {hub}" if hub else f"Series {idx}")
-        else:
-            overlay._series_header.setText("Single")
-        rejected_cnt = sum(1 for m in items if bool(getattr(m, "rejected", False)))
-        pending = sum(1 for m in items if bool(getattr(m, "vlm_tie_pending", False)))
-        if n > 1:
+            is_fidelity = False
+        parts: list[str] = []
+        if is_fidelity:
+            # Honest label: "upscales" only when members are actually
+            # larger than the source (long side).
             try:
-                is_fidelity = bool(getattr(overlay, "_source_path", None) is not None)
-            except Exception:
-                is_fidelity = False
-            size_note = _size_note(items)
-            if is_fidelity:
-                # Honest label: "upscales" only when members are actually
-                # larger than the source (long side). Same-size FullHD sets
-                # or unknown dims are "images", never fabricated upscales.
-                label = f"{n} images of one source"
-                try:
-                    from tabs.image_gallery.ui.quick_look.preview import _fast_image_size
+                from tabs.image_gallery.ui.quick_look.preview import _fast_image_size
 
-                    src_dims = _fast_image_size(getattr(overlay, "_source_path", ""))
-                    member_dims = [_member_dims(m) for m in items]
-                    if (
-                        src_dims is not None
-                        and member_dims
-                        and all(d is not None for d in member_dims)
-                        and all(max(d[0], d[1]) > max(src_dims[0], src_dims[1]) for d in member_dims)  # type: ignore[index]
-                    ):
-                        label = f"{n} upscales of one source"
-                except Exception:
-                    pass
-                sub = f"{label} · {rejected_cnt} rejected{size_note}"
-            else:
-                sub = f"{n} images · {rejected_cnt} rejected{size_note}"
-            if pending:
-                sub += f" · {pending} tie-break pending"
-            overlay._series_sub.setText(sub)
-        else:
-            overlay._series_sub.setText("ungrouped")
+                src_dims = _fast_image_size(getattr(overlay, "_source_path", ""))
+                member_dims = [_member_dims(m) for m in items]
+                if (
+                    src_dims is not None
+                    and member_dims
+                    and all(d is not None for d in member_dims)
+                    and all(max(d[0], d[1]) > max(src_dims[0], src_dims[1]) for d in member_dims)  # type: ignore[index]
+                ):
+                    parts.append(f"{n} upscales of one source")
+            except Exception:
+                pass
+        size_note = _size_note(items)
+        if size_note:
+            parts.append(size_note)
+        return " · ".join(parts)
     except Exception:
-        pass
+        return ""

@@ -1,11 +1,12 @@
 """Stage 2 S4 quick look — TopLevelInWindowOverlay with two-panel layout.
 Audit-Meta: pattern=thin-owner reason="thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip"
 
-Left: large preview (pixmap, source inset for fidelity mode, sharpness-crop inset)
+Left: large preview (pixmap, source inset for fidelity mode)
      + prev/next walk the series (←→).
 Right: metric bars per mode (SSIM/sharpness/exposure), artifact rows with
-       mini-visualizations (stub), series strip (SOURCE/viewing/pending/rejected
-       thumbs clickable), bottom bar buttons.
+       mini-visualizations (stub), filename meta + brief (series note, no
+       counts); bottom: full-width series strip (SOURCE/viewing/pending/
+       rejected thumbs clickable), bottom bar buttons.
 Public toolkit only: TopLevelInWindowOverlay, Button variant="surface", Label,
 scaled_px. No setStyleSheet — painter pipeline owns visuals.
 """
@@ -344,7 +345,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         return super().eventFilter(watched, event)
 
     # W10: the 8px ring OUTSIDE the card (on the veil) is probed here at
-    # overlay level. Card resize drags are disabled (QL_RESIZABLE=False):
+    # overlay level. Card resize drags are enabled (QL_RESIZABLE=True):
     # W11 ring/plate presses inside either nav-arrow rect walk the series
     # via the helpers (arrows never start a drag); other ring presses fall
     # through to the veil dismiss below. Plain veil clicks dismiss the
@@ -559,12 +560,14 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         owner = self._owner
         mode_val = source = series_raw = None
+        all_items = None
         try:
             st = getattr(owner, "state", None) if owner is not None else None
             if st is not None:
                 mode_val = getattr(st, "mode", None)
                 source = getattr(st, "source_path", None)
                 series_raw = getattr(st, "series", None)
+                all_items = getattr(st, "items", None)
             else:
                 mode_val = getattr(owner, "_mode", None) if owner is not None else None
                 source = getattr(owner, "_source_path", None) if owner is not None else None
@@ -575,7 +578,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         self._source_path = Path(source) if source is not None else None
         if _dbg_on:
             _t_state = _time.perf_counter()
-        self._series_items = self._resolve_series(item, series_raw)
+        self._series_items = self._resolve_series(item, series_raw, all_items)
         self._current_idx = 0
         try:
             for i, m in enumerate(self._series_items):
@@ -605,6 +608,15 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             self.raise_()
             self.setFocus(Qt.FocusReason.PopupFocusReason)
+        except Exception:
+            pass
+        # Re-assert the modal input grab AFTER show: populate-time rebuilds
+        # must never leave the overlay disabled/transparent (a visible but
+        # hit-test-invisible veil passes every press to the gallery beneath
+        # while looking modal — clicks select behind it, X/veil go dead).
+        try:
+            self.setEnabled(True)
+            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         except Exception:
             pass
         if _dbg_on:
@@ -709,11 +721,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             try:
                 from tabs.image_gallery.ui.quick_look.helpers import (
                     populate_brief,
-                    populate_crop,
                     populate_filename_meta,
                 )
 
-                populate_crop(self, item, is_fidelity)
                 populate_filename_meta(self, item, is_fidelity, getattr(self, "_owner", None))
             except Exception:
                 pass
@@ -767,36 +777,68 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def refresh_quick_look(self, item) -> None:
         self.refresh_artifacts(item)
 
-    def _resolve_series(self, item, series_raw) -> list:
+    def _resolve_series(self, item, series_raw, all_items=None) -> list:
+        """Cluster for *item*: its series, or the ungrouped group.
+
+        Multi-member cluster wins. A singleton cluster (or no cluster at
+        all) falls back to the ungrouped group — every item outside a
+        multi-member cluster, in folder order — so the strip and the nav
+        arrows keep working instead of stranding one lonely thumb. The
+        grid shows singles under its UNGROUPED tail the same way.
+        """
         if series_raw is None:
             try:
                 series_raw = getattr(self._owner, "_series", None) if self._owner is not None else None
             except Exception:
                 series_raw = None
-        if not series_raw:
-            return [item]
         normalized: list[list] = []
-        for entry in list(series_raw):
-            if hasattr(entry, "members"):
-                members = list(getattr(entry, "members") or [])
-            elif isinstance(entry, (list, tuple)):
-                members = list(entry)
-            else:
-                members = [entry]
-            if members:
-                normalized.append(members)
-        if not normalized:
-            return [item]
+        if series_raw:
+            for entry in list(series_raw):
+                if hasattr(entry, "members"):
+                    members = list(getattr(entry, "members") or [])
+                elif isinstance(entry, (list, tuple)):
+                    members = list(entry)
+                else:
+                    members = [entry]
+                if members:
+                    normalized.append(members)
         try:
             cur_path = Path(getattr(item, "path", ""))
         except Exception:
-            return normalized[0] if normalized else [item]
+            cur_path = None
+            if normalized:
+                return normalized[0] if normalized else [item]
+            return [item]
         for cl in normalized:
             try:
                 if any(Path(getattr(m, "path", "")) == cur_path for m in cl):
-                    return list(cl)
+                    if len(cl) > 1:
+                        return list(cl)
+                    break  # singleton cluster → ungrouped group below
             except Exception:
                 continue
+        try:
+            grouped = set()
+            for cl in normalized:
+                if len(cl) <= 1:
+                    continue
+                for m in cl:
+                    try:
+                        grouped.add(Path(getattr(m, "path", "")))
+                    except Exception:
+                        continue
+            pool = list(all_items) if all_items else [item]
+            ungrouped = []
+            for m in pool:
+                try:
+                    if Path(getattr(m, "path", "")) not in grouped:
+                        ungrouped.append(m)
+                except Exception:
+                    continue
+            if len(ungrouped) > 1:
+                return ungrouped
+        except Exception:
+            pass
         return [item]
 
     def _populate(self) -> None:
@@ -841,11 +883,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             from tabs.image_gallery.ui.quick_look.helpers import (
                 populate_brief,
-                populate_crop,
                 populate_filename_meta,
                 populate_preview,
                 populate_report_header,
-                populate_series_header,
                 populate_source_inset,
             )
             if _dbg_on:
@@ -857,10 +897,6 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             populate_source_inset(self, item, is_fidelity, _populate_owner)
             if _dbg_on:
                 _dbg("quick look populate source-inset=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-                _t = _time.perf_counter()
-            populate_crop(self, item, is_fidelity)
-            if _dbg_on:
-                _dbg("quick look populate crop=%.1fms", (_time.perf_counter() - _t) * 1000.0)
                 _t = _time.perf_counter()
             populate_filename_meta(self, item, is_fidelity, _populate_owner)
             if _dbg_on:
@@ -882,13 +918,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             _dbg("quick look populate artifacts=%.1fms", (_time.perf_counter() - _t) * 1000.0)
             _t = _time.perf_counter()
         try:
-            from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh, populate_brief as _pb
-            _psh(self, _populate_owner)
+            from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
             _pb(self, item)
         except Exception:
             pass
         if _dbg_on:
-            _dbg("quick look populate series+brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
+            _dbg("quick look populate brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
             _t = _time.perf_counter()
         self._rebuild_strip()
         if _dbg_on:
@@ -1127,8 +1162,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         A full ``_populate()`` rebuilds the preview pipeline (TileStore
         stream + pyramid, ~1s per 5K file) — pure waste when only the
         rejected flag changed. Refresh just the flag-dependent chrome:
-        reject label, series header (rejected count), brief and strip
-        badges. Preview, metrics, artifacts and report stay untouched.
+        reject label, brief and strip dim. Preview, metrics, artifacts
+        and report stay untouched.
         """
         item = self._current_item
         if item is None:
@@ -1141,9 +1176,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         try:
             from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
-            from tabs.image_gallery.ui.quick_look.helpers import populate_series_header as _psh
 
-            _psh(self, self._owner)
             _pb(self, item)
         except Exception:
             pass

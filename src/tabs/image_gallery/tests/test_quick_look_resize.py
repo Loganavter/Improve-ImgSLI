@@ -567,11 +567,11 @@ def test_second_press_keeps_first_drag(qtbot):
 
 
 def test_fast_jump_to_child_clears_plate_cursor(qtbot):
-    """D5: fixed card — border hovers show the arrow, stale cursors clear.
+    """D5: resizable card — border hovers show the resize cursor.
 
-    No resize affordance: hovering the edge strip keeps the plain arrow
-    (never SizeHor), and a stale plate cursor still clears on the next
-    landing move over content children.
+    Resize affordance live (QL_RESIZABLE): hovering the edge strip shows
+    SizeHor, and a stale plate cursor still clears on the next landing
+    move over content children.
     """
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtGui import QCursor
@@ -583,10 +583,10 @@ def test_fast_jump_to_child_clears_plate_cursor(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, mates[0], mates)
     content = ov._content
-    # Edge strip hover: plain arrow, no resize cursor.
+    # Edge strip hover: resize cursor (affordance live).
     qtbot.mouseMove(content, QPoint(content.width() - 4, 100))
     QApplication.processEvents()
-    assert content.cursor().shape() == Qt.CursorShape.ArrowCursor
+    assert content.cursor().shape() == Qt.CursorShape.SizeHorCursor
     # Stale-cursor clearing still works: a stranded SizeHor drops back
     # to the arrow on landing moves.
     content.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
@@ -602,13 +602,48 @@ def test_fast_jump_to_child_clears_plate_cursor(qtbot):
     ov.hide()
 
 
+def test_ring_drag_resizes_card(qtbot):
+    """W10 ring drag (QL_RESIZABLE): press outside-right + move grows the card."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from tabs.image_gallery.ui.quick_look.resize import ring_zone_at
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    c0 = ov._content.geometry()
+    # Bottom-right ring corner (clear of the mid-edge nav arrows).
+    pt = QPoint(c0.x() + c0.width() - 1, c0.y() + c0.height() + 4)
+    assert ring_zone_at(ov, pt) == "bottom_right"
+    w0, h0 = ov._content.width(), ov._content.height()
+    QTest.mousePress(ov, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, pt)
+    QApplication.processEvents()
+    assert ov._border_drag is not None
+    QTest.mouseMove(ov, QPoint(pt.x() + 60, pt.y() + 40))
+    QApplication.processEvents()
+    QTest.mouseRelease(ov, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                        QPoint(pt.x() + 60, pt.y() + 40))
+    QApplication.processEvents()
+    assert ov._border_drag is None
+    assert ov._content.width() > w0 and ov._content.height() > h0
+    assert ov.isVisible()  # a resize drag never dismisses the overlay
+    ov.hide()
+
+
 def test_strip_uses_overlay_area_with_autohiding_h_bar(qtbot):
-    """Strip scrolls via toolkit OverlayScrollArea (thin bar, auto-hide)."""
+    """Strip scrolls via toolkit OverlayScrollArea (thin bar, auto-hide).
+
+    The strip rides the full-width bottom row (not the 296px sidebar), so
+    overflow needs a long filmstrip: 16 thumbs (~1206px) exceed the row
+    while 6 would fit without scrolling.
+    """
     from PySide6.QtWidgets import QApplication
 
     from sli_ui_toolkit.widgets import MinimalistScrollBar, OverlayScrollArea
 
-    mates = [_item(f"up{i}.png", rank=i) for i in (1, 2, 3, 4, 5, 6)]
+    mates = [_item(f"up{i}.png", rank=i) for i in range(1, 17)]
     ov = _make_overlay(qtbot)
     _show(ov, mates[0], mates)
     QApplication.processEvents()
@@ -618,7 +653,7 @@ def test_strip_uses_overlay_area_with_autohiding_h_bar(qtbot):
     assert scroll.widgetResizable() is False
     hbar = scroll.custom_h_scrollbar
     assert isinstance(hbar, MinimalistScrollBar)
-    assert hbar.maximum() > hbar.minimum()  # overflow: 6 thumbs
+    assert hbar.maximum() > hbar.minimum()  # overflow: 16 thumbs
     assert hbar.isVisible()
     # Column containment holds (the original 446-vs-329 overflow fix).
     assert ov._report_host.minimumSizeHint().width() <= scroll.viewport().width()

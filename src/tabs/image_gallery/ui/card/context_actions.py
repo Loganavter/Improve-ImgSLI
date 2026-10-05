@@ -111,6 +111,34 @@ def _ctx_ungroup(owner, path: Path) -> bool:
         return 0
 
 
+def _ctx_group(owner, path: Path):
+    """Pin menu targets into a brand-new manual series (multi-select).
+
+    File-manager rule via ``_action_targets`` (whole selection when the
+    clicked card is selected, else the clicked card alone). Needs ≥2
+    targets — grouping one card is a no-op section-wise (use Ungroup to
+    dissolve instead). Returns the new series id, or None when nothing
+    moved / no controller is reachable (storeless doubles degrade
+    gracefully).
+    """
+    try:
+        targets = _action_targets(owner, path)
+    except Exception:
+        return None
+    if not targets or len(targets) < 2:
+        return None
+    try:
+        ctrl = _resolve_move_controller(owner)
+    except Exception:
+        ctrl = None
+    if ctrl is None or not callable(getattr(ctrl, "group_paths_as_new_series", None)):
+        return None
+    try:
+        return ctrl.group_paths_as_new_series(list(targets))
+    except Exception:
+        return None
+
+
 def _ctx_make_best(owner, path: Path) -> None:
     try:
         from tabs.image_gallery.use_cases import triage as _triage

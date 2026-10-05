@@ -133,22 +133,12 @@ def test_pyramid_center_third_binds_own_region(qtbot, tmp_path):
 
 
 def test_populate_crop_missing_source_leaves_gap(qtbot, tmp_path):
-    """Crop inset with no decodable source draws the gap marker, not pixels."""
-    regions: dict = {}
+    """Crop inset removed: populate is a no-op (no widgets, no work)."""
+    from tabs.image_gallery.ui.quick_look.insets import populate_crop
 
-    class _Pix:
-        def update_region(self, name, pixmap=None, text=None):
-            regions[name] = (pixmap, text)
-
-    class _Host:
-        def setVisible(self, visible):
-            regions["visible"] = visible
-
-    overlay = SimpleNamespace(_crop_host=_Host(), _crop_pix=_Pix(), _preview_full=None)
+    overlay = SimpleNamespace(_preview_full=None)
     populate_crop(overlay, SimpleNamespace(path=str(tmp_path / "missing.png"), thumbnail=None))
-    assert regions.get("visible") is True
-    pixmap, text = regions.get("thumb", (None, None))
-    assert pixmap is None and text == "—"
+    assert getattr(overlay, "_crop_host", None) is None
 
 
 def test_populate_source_inset_missing_source_shows_gap(qtbot, tmp_path):

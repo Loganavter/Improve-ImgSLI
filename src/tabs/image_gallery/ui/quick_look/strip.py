@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Qt, QEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ButtonRegion, Label
+from sli_ui_toolkit.widgets import Button, ButtonFamily, ButtonRegion, ButtonRow
 
 
 def _strip_thumb_pitch(overlay) -> int:
@@ -158,37 +158,139 @@ def ensure_strip_visible(overlay) -> None:
         pass
 
 
-def _apply_strip_badge(btn, badge_text, badge_style) -> None:
-    """Apply a strip pill via the toolkit Button badge API.
+def _strip_rank_text_and_style(m, is_source: bool):
+    """Rank pill content for one series member (badge-button input).
 
-    ``badge_style`` is the ``(filled, bg, border, text)`` tuple used across
-    gallery pills. ``None`` text clears the badge. Toolkit-painted, so it
-    scrolls/repaints with the button itself — no overlay pass needed.
+    Priority (mirrors the old badge order): pending "…" > rejected None >
+    SOURCE > #N. Returns ``(text, outline, text_color, width_px)`` — the
+    pill fills white with ``outline`` as its 1px border — or None when no
+    pill is shown. Never raises.
     """
     try:
-        if badge_text is None:
+        from PySide6.QtGui import QColor as _QC
+
+        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
+        from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
+
+        _strip_is_dark = _strip_dark()
+        _ink = _QC("#000000")
+        if bool(getattr(m, "vlm_tie_pending", False)):
+            bg = _strip_token("surface.button", "#8a8a8a" if not _strip_is_dark else "#5a5a5a")
+            if bg is None:
+                bg = _QC(90, 90, 90)
+            return ("…", bg, _ink, scaled_px(24))
+        if bool(getattr(m, "rejected", False)):
+            return None  # no pill — dim effect carries the signal
+        if is_source:
+            _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
+            return ("SOURCE", _gold, _ink, scaled_px(58))
+        _rank = getattr(m, "rank", None)
+        _crown = getattr(m, "crown_rank", None)
+        _rv = _crown if _crown is not None else _rank
+        if _rv is None and bool(getattr(m, "is_best", False)):
+            _rv = 1
+        if _rv is None:
+            return None
+        # Synced with grid cards (ui/card/visuals.py): no BEST pill —
+        # the leader shows its #N rank like every ranked item.
+        try:
+            _text = f"#{int(_rv)}"
+        except Exception:
+            _text = str(_rv)
+        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+        return (_text, _rank_bg, _ink, scaled_px(34))
+    except Exception:
+        return None
+
+
+def _strip_family(overlay):
+    """Shared-hover family for strip thumbs + rank pills (created once).
+
+    One family for both: hovering a thumb lights its pill (and siblings),
+    hovering a pill lights the thumbs — the strip reads as one control.
+    """
+    try:
+        fam = getattr(overlay, "_strip_family", None)
+        if fam is None:
+            fam = ButtonFamily(overlay)
             try:
-                btn.setBadge(None)
+                fam.setSharedHover(True)
             except Exception:
                 pass
-            return
-        try:
-            btn.setBadge(str(badge_text))
-        except Exception:
-            return
-        try:
-            filled, bg, border, txt = badge_style
-            btn.setBadgeStyle(
-                filled=bool(filled),
-                bordered=border is not None,
-                background_color=bg,
-                border_color=border,
-                text_color=txt,
-            )
-        except Exception:
-            pass
+            overlay._strip_family = fam
+        return fam
+    except Exception:
+        return None
+
+
+def _strip_family_add(overlay, button) -> None:
+    """Link a strip button into the shared-hover family. Never raises."""
+    try:
+        fam = _strip_family(overlay)
+        if fam is not None and button is not None:
+            fam.addButton(button)
     except Exception:
         pass
+
+
+def _repin_strip_rank_buttons(overlay) -> None:
+    """Pin each rank pill centered on its thumb's bottom edge (half out).
+
+    Rank buttons are layout-external children of the thumb container — the
+    container reserves the overhang below the thumb — so container resizes
+    never move them: re-pin after rebuilds and host resizes. Never raises.
+    """
+    try:
+        containers = list(getattr(overlay, "_strip_buttons", None) or [])
+    except Exception:
+        return
+    for idx, container in enumerate(containers):
+        try:
+            thumb = container.findChild(Button, f"quicklook_strip_{idx}")
+            pill = container.findChild(Button, f"quicklook_rank_{idx}")
+            if thumb is None or pill is None:
+                continue
+            tg = thumb.geometry()
+            # Fresh pills report 0 live width until shown — but the pill
+            # size is fixed at build, so pin from the minimum (valid
+            # immediately), hint as the last resort.
+            try:
+                pw = int(pill.minimumWidth()) or int(pill.sizeHint().width())
+            except Exception:
+                pw = 0
+            try:
+                ph = int(pill.minimumHeight()) or int(pill.sizeHint().height())
+            except Exception:
+                ph = 0
+            if pw <= 0 or ph <= 0:
+                continue
+            pill.move(
+                tg.x() + max(0, (tg.width() - pw) // 2),
+                tg.y() + max(0, tg.height() - ph // 2),
+            )
+        except Exception:
+            continue
+
+
+class _StripRepinFilter(QObject):
+    """Host-resize filter: re-pin rank pills when the strip settles.
+
+    Installed once per overlay (parented to the host); layout settling
+    after a rebuild is async, so the end-of-rebuild repin alone can pin
+    from stale geometry. Never raises.
+    """
+
+    def __init__(self, overlay, parent=None):
+        super().__init__(parent)
+        self._overlay = overlay
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            if event.type() == QEvent.Type.Resize:
+                _repin_strip_rank_buttons(self._overlay)
+        except Exception:
+            pass
+        return False
 
 
 def ensure_strip_scroll(overlay) -> None:
@@ -207,6 +309,17 @@ def ensure_strip_scroll(overlay) -> None:
                 pass
     except Exception:
         pass
+    try:
+        # Single/ungrouped item: no filmstrip to show — hide the whole row
+        # (it would be one lonely thumb) instead of an empty control.
+        # Runs here (not at the rebuild tail) so the selection-only fast
+        # path keeps it in sync too.
+        n_items = len(getattr(overlay, "_series_items", None) or [])
+        row = getattr(overlay, "_strip_row", None)
+        if row is not None:
+            row.setVisible(n_items > 1)
+    except Exception:
+        pass
     ensure_strip_visible(overlay)
 
 
@@ -214,8 +327,8 @@ def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped
     """Strip thumb overlay: card hover wash only.
 
     Visual hover only (no IconActionFlyout/capsule on strip thumbs).
-    Thumb pills (rank/SOURCE/pending) render via the toolkit Button badge
-    API (``btn.setBadge``), which paints with the button itself.
+    Rank pills are real buttons now (bottom-center of each thumb), not
+    painted badges.
     """
     try:
         from tabs.image_gallery.ui.card.painters import _gallery_hover_wash
@@ -226,7 +339,7 @@ def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped
 
 
 def _strip_rank_key(m) -> tuple:
-    """Rank identity for one series member (badge input).
+    """Rank identity for one series member (rank-pill input).
 
     Mirrors the badge priority in ``rebuild_strip``: crown_rank wins over
     rank, which wins over the is_best fallback.
@@ -284,12 +397,12 @@ def _strip_fingerprint(overlay) -> tuple:
 def _refresh_strip_selection(overlay) -> None:
     """In-place selection refresh over the existing strip widgets.
 
-    Updates checked/border/badge/opacity from live item flags; creates no
-    widgets, touches no layout. Raises on any structural surprise so the
+    Updates checked/border/opacity from live item flags; creates no
+    widgets, touches no layout. Rank pill text is structural (ranks are in
+    the fingerprint), so pills are untouched here — only the viewing
+    outline moves. Raises on any structural surprise so the
     caller falls back to the full rebuild (fail-open: performance only,
-    never correctness). Captions are untouched: they only exist for
-    tie-break pending items, and pending flags are part of the fingerprint
-    (unchanged on this path by construction).
+    never correctness).
     """
     from sli_ui_toolkit.widgets import Button as _RefreshButton
 
@@ -313,9 +426,9 @@ def _refresh_strip_selection(overlay) -> None:
         current_idx = 0
     for idx, container in enumerate(containers):
         m = items[idx]
-        btn = container.findChild(_RefreshButton)
+        btn = container.findChild(_RefreshButton, f"quicklook_strip_{idx}")
         if btn is None:
-            raise RuntimeError(f"strip refresh: no Button in container {idx}")
+            raise RuntimeError(f"strip refresh: no thumb Button in container {idx}")
         is_viewing = idx == current_idx
         is_source = False
         try:
@@ -327,75 +440,6 @@ def _refresh_strip_selection(overlay) -> None:
         pending = bool(getattr(m, "vlm_tie_pending", False))
         was_blocked = btn.blockSignals(True)
         try:
-            # Toolkit badge: pending … only (mirrors rebuild_strip).
-            try:
-                if pending:
-                    btn.setBadge("…")
-                    try:
-                        from tabs.image_gallery.ui.quick_look.helpers import _token_color, _token_rgba_qcolor
-
-                        from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark
-
-                        dark = _ql_is_dark()
-                        bg = _token_color("surface.button", "#8a8a8a" if not dark else "#5a5a5a")
-                        from PySide6.QtGui import QColor as _QC
-
-                        try:
-                            from sli_ui_toolkit.managers import ThemeManager
-
-                            from ui.theming import try_resolve_theme_color
-
-                            _txt = try_resolve_theme_color(ThemeManager.get_instance(), "button.primary.text")
-                            txt_col = _txt if isinstance(_txt, _QC) else _QC(_txt) if isinstance(_txt, str) else None
-                            if _txt is None or txt_col is None:
-                                txt_col = _QC("#000000" if not dark else "#ffffff")
-                        except Exception:
-                            txt_col = _QC("#000000" if not dark else "#ffffff")
-                        if bg is None:
-                            bg = _QC(90, 90, 90)
-                        btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
-                    except Exception:
-                        pass
-                else:
-                    btn.setBadge(None)
-            except Exception:
-                pass
-            # Overlay pill badge (mirrors rebuild_strip priority).
-            try:
-                from PySide6.QtGui import QColor as _QC
-
-                from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
-                from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
-
-                _strip_is_dark = _strip_dark()
-                _badge_text = None
-                _badge_style = None
-                if pending:
-                    pass  # toolkit … badge above; no overlay pill
-                elif rejected:
-                    pass  # no badge — dim effect below carries the signal
-                elif is_source:
-                    _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
-                    _badge_text = "SOURCE"
-                    _badge_style = (True, _gold, _gold, _QC("#000000"))
-                else:
-                    _rank = getattr(m, "rank", None)
-                    _crown = getattr(m, "crown_rank", None)
-                    _rv = _crown if _crown is not None else _rank
-                    if _rv is None and bool(getattr(m, "is_best", False)):
-                        _rv = 1
-                    if _rv is not None:
-                        try:
-                            _badge_text = f"#{int(_rv)}"
-                        except Exception:
-                            _badge_text = str(_rv)
-                        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-                        _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
-                # Pending keeps the toolkit "…" badge above: do not clear it.
-                if not pending:
-                    _apply_strip_badge(btn, _badge_text, _badge_style)
-            except Exception:
-                pass
             try:
                 btn.setChecked(bool(is_viewing))
             except Exception:
@@ -461,7 +505,7 @@ def rebuild_strip(overlay) -> None:
     # fit the 296px right column with no h-scroll. (The layout itself is
     # built in helpers.py, out of W6 scope; its spacing is overridden.)
     # Selection-only fast path: same series/triage/theme/scale as the last
-    # full rebuild → update checked/border/badge/opacity in place, no widget
+    # full rebuild → update checked/border/opacity in place, no widget
     # churn. Any mismatch (or first build) falls through to today's rebuild.
     try:
         _fp_now = _strip_fingerprint(overlay)
@@ -544,11 +588,14 @@ def rebuild_strip(overlay) -> None:
         container = QWidget(overlay._strip_host)
         container.setObjectName(f"quicklook_strip_container_{idx}")
         cont_lay = QVBoxLayout(container)
-        cont_lay.setContentsMargins(0, 0, 0, 0)
+        # Bottom reserve for the rank pill overhang: the pill straddles
+        # the thumb's bottom edge (half out), so the container extends
+        # past the thumb instead of clipping it.
+        cont_lay.setContentsMargins(0, 0, 0, scaled_px(8))
         cont_lay.setSpacing(scaled_px(2))
         cont_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         # S4: thumbnail goes on a ButtonRegion (Button has no pixmap
-        # param); text/badge/click/opacity behavior unchanged.
+        # param); text/click/opacity behavior unchanged.
         regions = None
         if thumb_pm is not None and not thumb_pm.isNull():
             try:
@@ -570,7 +617,7 @@ def rebuild_strip(overlay) -> None:
             # W6: 66px thumbs per svg (x=816/892/968/1044 w=66 h=44).
             # Series switch re-populates the overlay (~300ms) — let the
             # ripple finish first (same defer_click as the bar buttons).
-            # overlay_painter: card hover wash + strip badge pill (visual
+            # overlay_painter: card hover wash (visual
             # hover only, no flyout/capsule on strip thumbs).
             btn = Button(text="", variant="surface", size=(66, 44), parent=container, regions=regions, defer_click="ripple", overlay_painter=_strip_overlay_painter)
         else:
@@ -584,84 +631,13 @@ def rebuild_strip(overlay) -> None:
             btn.setCursor(_Qt.CursorShape.ArrowCursor)
         except Exception:
             pass
+        # Rank pill is a real button now (bottom-center of the thumb, in a
+        # shared-hover ButtonFamily) — no toolkit badge anywhere on thumbs.
+        # Priority: pending "…" > rejected (none) > SOURCE > #N.
         try:
-            if pending:
-                btn.setBadge("…")
-                try:
-                    from tabs.image_gallery.ui.quick_look.helpers import _token_color, _token_rgba_qcolor
-
-                    from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _ql_is_dark
-
-                    dark = _ql_is_dark()
-                    bg = _token_color("surface.button", "#8a8a8a" if not dark else "#5a5a5a")
-                    # badge text via theme token with light/dark-aware fallback
-                    from PySide6.QtGui import QColor as _QC
-
-                    try:
-                        from sli_ui_toolkit.managers import ThemeManager
-
-                        from ui.theming import try_resolve_theme_color
-
-                        _txt = try_resolve_theme_color(ThemeManager.get_instance(), "button.primary.text")
-                        txt_col = _txt if isinstance(_txt, _QC) else _QC(_txt) if isinstance(_txt, str) else None
-                        if _txt is None or txt_col is None:
-                            txt_col = _QC("#000000" if not dark else "#ffffff")
-                    except Exception:
-                        txt_col = _QC("#000000" if not dark else "#ffffff")
-                    if bg is None:
-                        bg = _QC(90, 90, 90)
-                    btn.setBadgeStyle(filled=True, background_color=bg, text_color=txt_col)
-                except Exception:
-                    pass
+            _rank_spec = _strip_rank_text_and_style(m, is_source)
         except Exception:
-            pass
-        # Thumb pills render via the toolkit Button badge API
-        # (``_apply_strip_badge`` above): rank/SOURCE text with the same
-        # priority. The toolkit badge path below is used ONLY for the …
-        # pending case. Priority: pending (toolkit) > rejected (none — the
-        # dim 0.4 opacity effect carries the signal) > SOURCE > ★ BEST > #N.
-        try:
-            if not pending:
-                btn.setBadge(None)
-        except Exception:
-            pass
-        try:
-            from PySide6.QtGui import QColor as _QC
-
-            from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
-            from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
-
-            _strip_is_dark = _strip_dark()
-            _badge_text = None
-            _badge_style = None
-            if pending:
-                pass  # toolkit … badge above; no overlay pill
-            elif rejected:
-                pass  # no badge — dim effect below carries the signal
-            elif is_source:
-                _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
-                _badge_text = "SOURCE"
-                _badge_style = (True, _gold, _gold, _QC("#000000"))
-            else:
-                # Synced with grid cards (ui/card/visuals.py): no BEST pill —
-                # the leader shows its #N rank like every ranked item.
-                _rank = getattr(m, "rank", None)
-                _crown = getattr(m, "crown_rank", None)
-                _rv = _crown if _crown is not None else _rank
-                if _rv is None and bool(getattr(m, "is_best", False)):
-                    _rv = 1
-                if _rv is not None:
-                    try:
-                        _badge_text = f"#{int(_rv)}"
-                    except Exception:
-                        _badge_text = str(_rv)
-                    _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-                    _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
-            # Pending keeps the toolkit "…" badge above: do not clear it.
-            if not pending:
-                _apply_strip_badge(btn, _badge_text, _badge_style)
-        except Exception:
-            pass
+            _rank_spec = None
         try:
             btn.setProperty("gallery_path", str(getattr(m, "path", "")))
         except Exception:
@@ -739,7 +715,7 @@ def rebuild_strip(overlay) -> None:
                             target_idx = i
                             break
                     # Clicking the already-viewing thumb: re-assert strip
-                    # visuals only (badges/checked), skip the full repopulate
+                    # visuals only (checked), skip the full repopulate
                     # (preview+metrics+artifacts rebuild looks like a blink
                     # with zero content change). Path equality is the item
                     # identity here (objects are re-resolved across layers).
@@ -788,25 +764,65 @@ def rebuild_strip(overlay) -> None:
             btn.clicked.connect(_switch)
         except Exception:
             pass
-        cont_lay.addWidget(btn)
-        caption_text = ""
-        if pending:
-            caption_text = "tie-break pending"
-        elif is_viewing and len(overlay._series_items) > 1:
-            caption_text = ""
-        if caption_text:
+        # Thumb joins the shared-hover family (rank pills join below).
+        _strip_family_add(overlay, btn)
+        # Rank badge-button: a real pill bottom-center inside the thumb
+        # (edge-touching), walking to the same item. Siblings share one
+        # ButtonFamily (shared hover); positioning is layout-external, so
+        # _repin_strip_rank_buttons pins it after the rebuild settles.
+        if _rank_spec is not None:
             try:
-                from tabs.image_gallery.ui.quick_look.helpers import _make_label as _strip_label
+                _rank_text, _rank_bg, _rank_txt, _rank_w = _rank_spec
+                rank_btn = Button(
+                    rows=[ButtonRow(text=str(_rank_text), size=11, ratio=1.0, color=_rank_txt)],
+                    variant="surface",
+                    size=(int(_rank_w), scaled_px(16)),
+                    corner_radius=scaled_px(8),
+                    parent=container,
+                )
+                rank_btn.setObjectName(f"quicklook_rank_{idx}")
+                if _rank_bg is not None:
+                    try:
+                        # White opaque fill (override layer) + the kind color
+                        # as a 1px outline — the pill reads as a capsule,
+                        # never a gray chip or a translucent wash.
+                        from PySide6.QtGui import QColor as _QCO
+
+                        _white = _QCO("#ffffff")
+                        _white.setAlpha(255)
+                        rank_btn.set_override_bg_color(_white)
+                        rank_btn.set_border_color(_rank_bg)
+                        try:
+                            rank_btn.setProperty("borderWidth", 1)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                try:
+                    from PySide6.QtCore import Qt as _QtRank
+
+                    rank_btn.setCursor(_QtRank.CursorShape.ArrowCursor)
+                except Exception:
+                    pass
+                try:
+                    rank_btn.regionClicked.connect(lambda _region_id=None, _sw=_switch: _sw())
+                except Exception:
+                    pass
+                try:
+                    rank_btn.clicked.connect(_switch)
+                except Exception:
+                    pass
+                try:
+                    rank_btn.show()
+                except Exception:
+                    pass
+                _strip_family_add(overlay, rank_btn)
             except Exception:
-                _strip_label = Label  # type: ignore
-            if _strip_label is Label:
-                cap = Label(caption_text, pixel_size=11, parent=container)
-            else:
-                cap = _strip_label(caption_text, parent=container, pixel_size=11, pt=11.5)
-            cap.setObjectName(f"quicklook_strip_cap_{idx}")
-            cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            cont_lay.addWidget(cap)
-            overlay._strip_caption_labels.append(cap)
+                pass
+        cont_lay.addWidget(btn)
+        # No under-thumb captions: the rank pill ("…" for pending) already
+        # carries the state, and the row must stay a uniform height for
+        # the pill overhang budget.
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
         # First build is shown later via an ancestor show(); on every later
@@ -836,6 +852,37 @@ def rebuild_strip(overlay) -> None:
     except Exception:
         pass
     ensure_strip_scroll(overlay)
+    try:
+        # Rank pills are layout-external: pin from live geometry. Container
+        # geometry at the end of a rebuild is still settling (thumbs ride
+        # to their final x a pass later), so watch every container's Resize
+        # too — not just the host's. One filter object, installed once per
+        # widget (re-installs are idempotent).
+        try:
+            filt = getattr(overlay, "_strip_repin_filter", None)
+            if filt is None:
+                host0 = getattr(overlay, "_strip_host", None)
+                filt = _StripRepinFilter(overlay, host0 if host0 is not None else overlay)
+                overlay._strip_repin_filter = filt
+            try:
+                host = getattr(overlay, "_strip_host", None)
+                if host is not None:
+                    host.installEventFilter(filt)
+            except Exception:
+                pass
+            for container in list(getattr(overlay, "_strip_buttons", None) or []):
+                try:
+                    container.installEventFilter(filt)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        _repin_strip_rank_buttons(overlay)
+    except Exception:
+        pass
     try:
         # Badge pass reads live geometry — repaint after the rebuild.
         overlay.update()

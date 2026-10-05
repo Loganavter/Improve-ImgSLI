@@ -436,12 +436,13 @@ def build_overlay_ui(overlay) -> None:
     # and would revert the mockup-pt font.)
     # Filename caption lives here, centered, where the mode pill used to be
     # (the report title already carries the mode: Fidelity/Camera/Batch).
-    # S4 mockup meta order: name · dims · format · size (populated by
-    # populate_filename_meta). Both labels keep natural widths so the pair
-    # centers as one line; the name elides only when genuinely squeezed
-    # (Preferred, not Ignored — Ignored parks labels at minimum width and
-    # the caption collapses to "114…"). The leading spacer balances the
-    # trailing close button (28 + 8 spacing) so the group is truly centered.
+    # The dims/format/size meta line lives in the right sidebar as its top
+    # row (populated by populate_filename_meta), not in this row.
+    # The name keeps its natural width so it centers as one line; it
+    # elides only when genuinely squeezed (Preferred, not Ignored —
+    # Ignored parks labels at minimum width and the caption collapses to
+    # "114…"). The leading spacer balances the trailing close button
+    # (28 + 8 spacing) so the group is truly centered.
     overlay._filename_label = _make_label("", parent=overlay._content, pixel_size=14, pt=14, elide=True, minimum_width=40)
     overlay._filename_label.setObjectName("quicklook_filename")
     try:
@@ -452,20 +453,14 @@ def build_overlay_ui(overlay) -> None:
         overlay._filename_label.setSizePolicy(QSizePolicy.Policy.Preferred, overlay._filename_label.sizePolicy().verticalPolicy())
     except Exception:
         pass
-    overlay._meta_label = _make_label("", parent=overlay._content, pixel_size=11, pt=11.5, minimum_width=40)
-    overlay._meta_label.setObjectName("quicklook_meta")
-    try:
-        overlay._meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    except Exception:
-        pass
     chip_row.addSpacing(36)
     chip_row.addStretch(1)
     chip_row.addWidget(overlay._filename_label)
-    chip_row.addWidget(overlay._meta_label)
     chip_row.addStretch(1)
     overlay._close_btn = Button(text="✕", variant="surface", size=(28, 28), parent=overlay._content)
     overlay._close_btn.setObjectName("quicklook_close")
-    overlay._close_btn.clicked.connect(overlay.hide)
+    # Full dismiss (filters + dismissed signal), not bare hide().
+    overlay._close_btn.clicked.connect(lambda _checked=False: overlay.dismiss())
     chip_row.addWidget(overlay._close_btn)
     outer.addLayout(chip_row)
     mid = QHBoxLayout()
@@ -546,9 +541,8 @@ def build_overlay_ui(overlay) -> None:
     # the same slot frame.
     overlay._preview_canvas = None
     overlay._preview_store = None
-    # Source inset, SHARPNESS-CROP parity: an absolute block bottom-left
-    # OVER the preview image (not in the flow) — title pill above the
-    # pixmap, like the crop block.
+    # Source inset: an absolute block bottom-left OVER the preview image
+    # (not in the flow) — title pill above the pixmap.
     overlay._source_inset_host = QWidget(preview_host)
     overlay._source_inset_host.setObjectName("quicklook_source_inset_host")
     src_lay = QVBoxLayout(overlay._source_inset_host)
@@ -637,45 +631,6 @@ def build_overlay_ui(overlay) -> None:
     src_lay.addWidget(overlay._source_inset_pix)
     overlay._source_inset_host.raise_()
     overlay._source_inset_host.hide()
-    # Crop block: absolute bottom-left over the preview, like the source
-    # inset (not in the flow).
-    overlay._crop_host = QWidget(preview_host)
-    overlay._crop_host.setObjectName("quicklook_crop_host")
-    crop_lay = QVBoxLayout(overlay._crop_host)
-    crop_lay.setContentsMargins(0, 0, 0, 0)
-    crop_lay.setSpacing(scaled_px(2))
-    overlay._crop_title = _make_label("SHARPNESS CROP", parent=overlay._crop_host, pixel_size=11, pt=11.5)
-    overlay._crop_title.setObjectName("quicklook_crop_title")
-    # Capsule backing behind the title — opaque white pill (dark glyph text
-    # for contrast in both themes), hugging the label width.
-    try:
-        glyph = _token_color("gallery.nav.glyph", "#23262b")
-        if glyph is not None:
-            overlay._crop_title.setTextColor(glyph)
-    except Exception:
-        pass
-    try:
-        crop_pill = _AccentPillHost(overlay._crop_host, fill="white")
-        crop_pill.setObjectName("quicklook_crop_title_pill")
-        crop_pill_lay = QHBoxLayout(crop_pill)
-        crop_pill_lay.setContentsMargins(scaled_px(10), scaled_px(2), scaled_px(10), scaled_px(2))
-        crop_pill_lay.setSpacing(0)
-        overlay._crop_title.setParent(crop_pill)
-        crop_pill_lay.addWidget(overlay._crop_title)
-        overlay._crop_title_pill = crop_pill
-        crop_lay.addWidget(crop_pill, 0, Qt.AlignmentFlag.AlignLeft)
-        # Reparenting resets the explicit font — re-assert the pt size after.
-        _apply_point_size(overlay._crop_title, 11.5)
-    except Exception:
-        try:
-            crop_lay.addWidget(overlay._crop_title)
-        except Exception:
-            pass
-    overlay._crop_pix = _make_inset_thumb_button(overlay._crop_host)
-    overlay._crop_pix.setObjectName("quicklook_crop_pix")
-    crop_lay.addWidget(overlay._crop_pix)
-    overlay._crop_host.raise_()
-    overlay._crop_host.hide()
     preview_row.addWidget(preview_host, 1)
     overlay._next_btn = Button(rows=[ButtonRow(text="›", size=QUICK_LOOK_NAV_GLYPH_PT, ratio=1.0, color=_nav_glyph)], variant="surface", size=(36, 36), corner_radius=18, parent=overlay, defer_click="ripple")
     overlay._next_btn.setObjectName("quicklook_next")
@@ -727,8 +682,21 @@ def build_overlay_ui(overlay) -> None:
     right_lay.setContentsMargins(0, 0, 0, 0)
     # W5: 10→4 (see outer spacing note — the 296px column must fit the
     # 680 card with metrics + 3 artifact rows + series + brief, no scroll).
-    right_lay.setSpacing(scaled_px(4))
+    # The dims/format/size meta row on top costs ~25px — gaps densify 4→3
+    # to keep the same no-scroll budget with one more row.
+    right_lay.setSpacing(scaled_px(3))
     right_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+    # S4 mockup meta order (dims · format · size, populated by
+    # populate_filename_meta) rides the sidebar as its top row, above the
+    # report title. Elided to the column like the sublines (Ignored keeps
+    # the full-text hint from widening the 296px column).
+    overlay._meta_label = _make_label("", parent=right_host, pixel_size=11, pt=11.5, elide=True, minimum_width=40)
+    overlay._meta_label.setObjectName("quicklook_meta")
+    try:
+        overlay._meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    except Exception:
+        pass
+    right_lay.addWidget(overlay._meta_label)
     overlay._report_title = _make_label("Fidelity report", parent=right_host, pixel_size=13, pt=13)
     overlay._report_title.setObjectName("quicklook_report_title")
     right_lay.addWidget(overlay._report_title)
@@ -747,51 +715,12 @@ def build_overlay_ui(overlay) -> None:
     # owns row/spacer placement after every rebuild.
     overlay._report_host = right_host
     overlay._right_lay = right_lay
-    # S4 mockup divider before the series context block (svg:462) — a
-    # file-local 1px painted rule (W4 item 3); the toolkit Divider is a
-    # button-region dataclass, not a widget.
+    # S4 mockup divider before the brief block (svg:462) — a file-local 1px
+    # painted rule (W4 item 3); the toolkit Divider is a button-region
+    # dataclass, not a widget.
     overlay._div_series = _RuleWidget(right_host)
     overlay._div_series.setObjectName("quicklook_div_series")
     right_lay.addWidget(overlay._div_series)
-    # W7: the hub stem can be a long filename ("Series 1 · <stem>":
-    # probe measured 315px) — elide to the column like the sublines.
-    overlay._series_header = _make_label("Series", parent=right_host, pixel_size=13, pt=13, elide=True, minimum_width=40)
-    overlay._series_header.setObjectName("quicklook_series_header")
-    right_lay.addWidget(overlay._series_header)
-    overlay._series_sub = _make_label("", parent=right_host, pixel_size=11, pt=11.0, elide=True, minimum_width=40)
-    overlay._series_sub.setObjectName("quicklook_series_sub")
-    right_lay.addWidget(overlay._series_sub)
-    # Strip lives in its own horizontal scroller: 4×66px thumbs span 294px
-    # and fit the 296px column, but 5+ thumbs (6×66+5×10=446px) forced the
-    # whole right_host to 446px while the viewport is ~329px — every row
-    # painted ~117px past the card edge. OverlayScrollArea (toolkit,
-    # horizontal overlay bar + auto-hide included) confines the overflow
-    # to the strip so the column never exceeds the viewport.
-    from sli_ui_toolkit.widgets import OverlayScrollArea
-
-    overlay._strip_scroll = OverlayScrollArea(
-        right_host, widget_resizable=False, corner_radius=0
-    )
-    overlay._strip_scroll.setObjectName("quicklook_strip_scroll")
-    try:
-        # Ignored: the 446px strip content must never widen the column —
-        # same trick as the elided labels (sizeHint ignored, minimum floors).
-        overlay._strip_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        overlay._strip_scroll.setMinimumWidth(scaled_px(120))
-        overlay._strip_scroll.setMinimumHeight(scaled_px(48))
-    except Exception:
-        pass
-    overlay._strip_host = QWidget(overlay._strip_scroll)
-    overlay._strip_host.setObjectName("quicklook_strip_host")
-    overlay._strip_layout = QHBoxLayout(overlay._strip_host)
-    overlay._strip_layout.setContentsMargins(0, 0, 0, 0)
-    overlay._strip_layout.setSpacing(scaled_px(6))
-    overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-    try:
-        overlay._strip_scroll.setWidget(overlay._strip_host)
-    except Exception:
-        pass
-    right_lay.addWidget(overlay._strip_scroll)
     overlay._brief_label = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
     overlay._brief_label.setObjectName("quicklook_brief")
     overlay._brief_label.setWordWrap(True)
@@ -821,6 +750,43 @@ def build_overlay_ui(overlay) -> None:
     # maximum); the column floor is the 296px minimum above.
     mid.addWidget(right_scroll, 1)
     outer.addLayout(mid, 1)
+    # Series strip row (full card width under preview + sidebar): the
+    # horizontal filmstrip breathes beyond 296px; the column keeps report
+    # rows + brief only. No series text block — counts/hub are gone, the
+    # size note rides the sidebar meta line instead.
+    strip_row = QWidget(overlay._content)
+    strip_row.setObjectName("quicklook_strip_row")
+    overlay._strip_row = strip_row
+    strip_lay = QHBoxLayout(strip_row)
+    strip_lay.setContentsMargins(0, 0, 0, 0)
+    strip_lay.setSpacing(scaled_px(16))
+    strip_lay.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    # The filmstrip lives in its own horizontal scroller (toolkit
+    # OverlayScrollArea: horizontal overlay bar + auto-hide included) so
+    # any thumb count fits the row without widening the card.
+    from sli_ui_toolkit.widgets import OverlayScrollArea
+
+    overlay._strip_scroll = OverlayScrollArea(
+        strip_row, widget_resizable=False, corner_radius=0
+    )
+    overlay._strip_scroll.setObjectName("quicklook_strip_scroll")
+    try:
+        overlay._strip_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        overlay._strip_scroll.setMinimumHeight(scaled_px(56))
+    except Exception:
+        pass
+    overlay._strip_host = QWidget(overlay._strip_scroll)
+    overlay._strip_host.setObjectName("quicklook_strip_host")
+    overlay._strip_layout = QHBoxLayout(overlay._strip_host)
+    overlay._strip_layout.setContentsMargins(0, 0, 0, 0)
+    overlay._strip_layout.setSpacing(scaled_px(6))
+    overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    try:
+        overlay._strip_scroll.setWidget(overlay._strip_host)
+    except Exception:
+        pass
+    strip_lay.addWidget(overlay._strip_scroll, 1)
+    outer.addWidget(strip_row)
     # S4 mockup divider above the bottom action bar (svg:648) — painted
     # rule, see _div_series.
     overlay._div_bar = _RuleWidget(overlay._content)
@@ -903,8 +869,8 @@ def build_overlay_ui(overlay) -> None:
                 pass
     except Exception:
         pass
-    # No corner grip: the card is fixed-size (QL_RESIZABLE=False) — no
-    # resize handles at all. The attribute stays None so grip-aware helpers
+    # No corner grip: the card is resizable via border+ring (QL_RESIZABLE=True) — no
+    # corner handle. The attribute stays None so grip-aware helpers
     # no-op cleanly.
     overlay._resize_grip = None
     reposition_grip(overlay)

@@ -2,8 +2,11 @@
 Audit-Meta: pattern=state-machine size=exempt reason="single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
 
 Uses ``OverlayScrollArea`` + ``OpaqueFillHost`` + ``QGridLayout`` with a
-reused ``Button`` pool (4 columns, rebuild_grid / refresh_card /
-set_card_visible / apply_selection). Keeps the same contracts as
+reused ``Button`` pool (responsive columns, rebuild_grid / refresh_card /
+set_card_visible / apply_selection). Wide viewports grow past GRID_COLUMNS
+so cards fill the right half; with 2+ sections and enough width the first
+section lays out left and the rest right with a draggable center splitter.
+Keeps the same contracts as
 ``session_picker/recent/items_view.py``: list mode reuses this ONE view and
 only swaps the card builders (``ui/list/``) + placement columns.
 ``scaled_px`` is used for every geometry constant; no ad-hoc stylesheets —
@@ -51,6 +54,20 @@ GRID_SPACING = 24
 GRID_MARGIN = 0
 GRID_MARGIN_TOP = 0
 GRID_MARGIN_BOTTOM = 0
+# Responsive grid: wide viewports grow past GRID_COLUMNS so the right half
+# fills instead of staying empty (fixed 4 left the whole right side blank
+# on ~1900px windows). Never shrinks below GRID_COLUMNS (narrow parity +
+# offscreen tests stay at 4).
+GRID_COLUMNS_MAX = 12
+# Side-by-side series bands need at least this many total columns: the first
+# section goes left, the rest stack right, with a draggable separator column
+# between them (the "center splitter"). Below this — single stacked band.
+GRID_BAND_MIN_TOTAL = 6
+GRID_SEPARATOR_COL_W = 8
+# Series-header collapse arrow: painted as a button layer at the right
+# edge (never trailing text) — long hub names elide without eating it.
+# The title row reserves this width via right content_padding.
+SERIES_ARROW_RESERVE = 22
 
 # Optional virtual buffer for later full virtualization; not used in MVP rebuild
 # but kept for marquee hit-testing parity.
@@ -462,6 +479,159 @@ class _SeriesDropTargetLayer(Layer):
             pass
 
 
+class _BandSeparatorHandle(QWidget):
+    """Draggable center splitter between side-by-side series bands.
+
+    Thin (8px) widget living in its own ``QGridLayout`` column, spanning all
+    rows. Horizontal drag adjusts the left-band width; the grid replans live
+    as column boundaries are crossed (no-op while inside one column — the
+    surgical reconcile in ``_rebuild_series`` converges without teardown).
+    Paints nothing (transparent); the SplitHCursor + tooltip afford dragging.
+    """
+
+    def __init__(self, view, parent=None) -> None:
+        super().__init__(parent)
+        self._view = view
+        self._press_x: int | None = None
+        try:
+            self.setObjectName("GalleryBandSeparator")
+            self.setCursor(Qt.CursorShape.SplitHCursor)
+            self.setToolTip("Drag to resize series panes")
+            self.setMouseTracking(True)
+            self.setFixedWidth(scaled_px(GRID_SEPARATOR_COL_W))
+        except Exception:
+            pass
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._press_x = int(event.globalPosition().x())
+                event.accept()
+                return
+        except Exception:
+            pass
+        try:
+            super().mousePressEvent(event)
+        except Exception:
+            pass
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        try:
+            if self._press_x is not None and bool(event.buttons() & Qt.MouseButton.LeftButton):
+                view = self._view
+                dx = int(event.globalPosition().x()) - int(self._press_x)
+                try:
+                    stride = int(view._grid_stride_px())
+                except Exception:
+                    stride = 0
+                if stride > 0 and abs(dx) >= stride // 2:
+                    try:
+                        if bool(view._nudge_split_by_px(dx)):
+                            self._press_x = int(event.globalPosition().x())
+                    except Exception:
+                        pass
+                event.accept()
+                return
+        except Exception:
+            pass
+        try:
+            super().mouseMoveEvent(event)
+        except Exception:
+            pass
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._press_x = None
+        except Exception:
+            pass
+        try:
+            super().mouseReleaseEvent(event)
+        except Exception:
+            pass
+
+
+def _strip_header_arrow(text: str) -> str:
+    """Header title without a trailing collapse arrow (owned by a layer)."""
+    display = str(text or "").strip()
+    if display.endswith("▼") or display.endswith("▶"):
+        display = display[:-1].strip()
+    return display
+
+
+def _disconnect_btn_theme(btn) -> None:
+    """Drop a header button's ``theme_changed → update`` slot, if present.
+
+    Header buttons outlive nothing: without this, every destroyed grid
+    leaves dangling Python slots on the singleton signal, and a later
+    theme flip re-enters them from the Qt event loop (order-dependent
+    event-loop errors/segfaults across tests and folder switches).
+    """
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        ThemeManager.get_instance().theme_changed.disconnect(btn.update)
+    except Exception:
+        pass
+
+
+class _SeriesCollapseArrowLayer(Layer):
+    """Collapse arrow painted at the header button's own right edge.
+
+    Same pattern as ``_SeriesHeaderAccentLayer``: the ▼/▶ affordance is a
+    painter layer of the header ``Button`` itself, not trailing text — a
+    long hub name elides (``ElideRight``) without ever clipping the arrow
+    mid-glyph. The title row reserves this width via right
+    ``content_padding``. Color resolves per-paint from the header-text
+    token, so theme flips need no cached state.
+    """
+
+    scope = "widget"
+
+    def __init__(self, collapsible: bool = True, collapsed: bool = False) -> None:
+        self._collapsible = bool(collapsible)
+        self._collapsed = bool(collapsed)
+
+    def draw(self, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+        try:
+            if not self._collapsible:
+                return
+            rect = ctx.rect.toRect() if hasattr(ctx.rect, "toRect") else ctx.rect
+            arrow = "▶" if self._collapsed else "▼"
+            color = _gallery_header_text_color()
+            p = ctx.painter
+            try:
+                p.save()
+            except Exception:
+                pass
+            try:
+                font = p.font()
+                try:
+                    font.setPixelSize(int(scaled_px(14)))
+                except Exception:
+                    pass
+                p.setFont(font)
+            except Exception:
+                pass
+            try:
+                p.setPen(color)
+            except Exception:
+                pass
+            try:
+                p.drawText(
+                    rect,
+                    int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
+                    arrow,
+                )
+            except Exception:
+                pass
+            try:
+                p.restore()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 def _section_members(entry) -> list:
     """Member list of one cluster (Series dataclass or plain list)."""
     try:
@@ -560,6 +730,29 @@ class GalleryGridView(QWidget):
         # View mode: grid (4-col cards) or list (1-col rows). Pool is
         # flushed on switch so builders never mix (see set_view_mode).
         self._view_mode: str = VIEW_GRID
+        # Responsive columns: how many card columns the last layout used.
+        # Grows past GRID_COLUMNS on wide viewports (right half fills);
+        # offscreen/hidden views stay at GRID_COLUMNS (test parity).
+        self._applied_columns: int = GRID_COLUMNS
+        # Center-splitter override: left-band column count set by dragging
+        # the band separator (None = auto half). Reset on width change.
+        self._split_left: int | None = None
+        # Last side-by-side band geometry: (left_cols, right_cols, sep_col)
+        # or None when sections stack in one full-width band.
+        self._band_state: tuple[int, int, int] | None = None
+        self._band_separator: QWidget | None = None
+        # Debounced column adaptation on resizes (dragging a window edge
+        # must not replan per pixel — one reflow after it settles).
+        self._adapt_timer = QTimer(self)
+        self._adapt_timer.setSingleShot(True)
+        try:
+            self._adapt_timer.setInterval(150)
+        except Exception:
+            pass
+        try:
+            self._adapt_timer.timeout.connect(self._adapt_columns_and_reflow)
+        except Exception:
+            pass
         # A2: mode for per-dot card colors (fidelity/camera/batch_synthetic) — proxied from widget set_triage.
         self._mode: object = None
         try:
@@ -568,10 +761,51 @@ class GalleryGridView(QWidget):
             ThemeManager.get_instance().theme_changed.connect(self._on_gallery_theme_changed)
         except Exception:
             pass
+        # Teardown hygiene: header buttons (and this view) hold
+        # ``theme_changed`` slots on a process-wide singleton that does NOT
+        # auto-disconnect dead Python callables — drop them when the C++
+        # object dies so later theme flips never re-enter the event loop
+        # through destroyed widgets (see _disconnect_btn_theme).
+        try:
+            self.destroyed.connect(self._disconnect_theme_slots)
+        except Exception:
+            pass
         try:
             self.set_fill_color(_grid_substrate_color())
         except Exception:
             pass
+
+    def _disconnect_theme_slots(self, _obj=None) -> None:
+        """Drop all ``theme_changed`` slots owned by this view (teardown).
+
+        Runs on ``destroyed``: only signal-side surgery (no C++ touches),
+        so it is safe while children are already half-gone.
+        """
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            sig = ThemeManager.get_instance().theme_changed
+        except Exception:
+            return
+        try:
+            sig.disconnect(self._on_gallery_theme_changed)
+        except Exception:
+            pass
+        try:
+            headers = list(getattr(self, "_series_headers", []) or [])
+        except Exception:
+            headers = []
+        for hdr in headers:
+            try:
+                btn = hdr.findChild(Button)
+            except Exception:
+                btn = None
+            if btn is None:
+                continue
+            try:
+                sig.disconnect(btn.update)
+            except Exception:
+                pass
 
     def _on_gallery_theme_changed(self) -> None:
         """Repaint grid surfaces on theme flip: accent, card fills, selection."""
@@ -648,6 +882,13 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         self._view_mode = want
+        if want == VIEW_GRID:
+            # Fresh mode: re-derive responsive columns for this viewport
+            # (a list→grid switch must not inherit a stale narrow count).
+            try:
+                self._applied_columns = int(self._compute_columns())
+            except Exception:
+                pass
         try:
             items = list(self._items)
         except Exception:
@@ -725,6 +966,340 @@ class GalleryGridView(QWidget):
             except Exception:
                 continue
 
+    def _grid_stride_px(self) -> int:
+        """Card width + gap: horizontal pitch of one grid column."""
+        try:
+            return int(scaled_px(GALLERY_CARD_W)) + int(scaled_px(GRID_SPACING))
+        except Exception:
+            return 274
+
+    def _available_grid_width(self) -> int:
+        """Viewport width available for cards (0 when unknown/hidden)."""
+        try:
+            for src in (self.scroll_area.viewport(), self.items_host, self):
+                try:
+                    w = int(src.width())
+                except Exception:
+                    continue
+                if w > 0:
+                    return w
+        except Exception:
+            pass
+        return 0
+
+    def _compute_columns(self) -> int:
+        """Column count for the current viewport width.
+
+        Wide viewports grow past GRID_COLUMNS so cards fill the right half
+        instead of hugging the left edge. Never shrinks below GRID_COLUMNS
+        (narrow-window parity; hidden/offscreen views keep 4).
+        """
+        if self._view_mode == VIEW_LIST:
+            return 1
+        try:
+            if not self.isVisible():
+                return GRID_COLUMNS
+        except Exception:
+            return GRID_COLUMNS
+        avail = self._available_grid_width()
+        if avail <= 0:
+            return GRID_COLUMNS
+        try:
+            spacing = int(scaled_px(GRID_SPACING))
+        except Exception:
+            spacing = 24
+        stride = self._grid_stride_px()
+        if stride <= 0:
+            return GRID_COLUMNS
+        try:
+            fit = int((avail + spacing) // stride)
+        except Exception:
+            return GRID_COLUMNS
+        if fit < GRID_COLUMNS:
+            return GRID_COLUMNS
+        return max(GRID_COLUMNS, min(GRID_COLUMNS_MAX, fit))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        try:
+            super().resizeEvent(event)
+        except Exception:
+            pass
+        try:
+            self._adapt_timer.start()
+        except Exception:
+            pass
+
+    def _adapt_columns_and_reflow(self) -> None:
+        """Recompute columns after a resize settles; reflow when changed."""
+        try:
+            if self._view_mode == VIEW_LIST:
+                return
+            new = int(self._compute_columns())
+        except Exception:
+            return
+        try:
+            if new == int(self._applied_columns):
+                return
+            self._applied_columns = int(new)
+            self._split_left = None
+        except Exception:
+            return
+        try:
+            if self._series is not None:
+                self._rebuild_series()
+            elif getattr(self, "_rebuild_pending", None) is not None:
+                try:
+                    self._rebuild_pending = None
+                    self._rebuild_index = 0
+                except Exception:
+                    pass
+                self._reflow_flat()
+            else:
+                self._reflow_flat()
+        except Exception:
+            logger.debug("_adapt_columns_and_reflow failed", exc_info=True)
+
+    def _reflow_flat(self) -> None:
+        """Re-place flat-grid cards for a new column count (no pool churn).
+
+        Unlike ``rebuild_grid`` this never recycles cards: live widgets are
+        only re-added at new positions, so a window-edge drag reflows
+        without content refreshes.
+        """
+        try:
+            items = list(self._items or [])
+        except Exception:
+            items = []
+        if not items:
+            try:
+                self._hide_band_separator()
+            except Exception:
+                pass
+            self._sync_series_column_widths(series_mode=False)
+            self._update_host_height(0)
+            return
+        while self.items_layout.count():
+            try:
+                self.items_layout.takeAt(0)
+            except Exception:
+                break
+        try:
+            self._hide_band_separator()
+        except Exception:
+            pass
+        for idx, item in enumerate(items):
+            try:
+                key = str(item.path)
+            except Exception:
+                continue
+            card = self._cards_by_path.get(key)
+            if card is None:
+                try:
+                    card = self._acquire_card(item)
+                except Exception:
+                    continue
+                self._cards_by_path[key] = card
+            try:
+                r, c = divmod(idx, self.grid_columns)
+            except Exception:
+                r, c = idx, 0
+            try:
+                self.items_layout.addWidget(card, r, c)
+                card.show()
+            except Exception:
+                logger.debug("_reflow_flat: card placement failed", exc_info=True)
+        try:
+            self.apply_selection(self._selection)
+        except Exception:
+            pass
+        self._sync_series_column_widths(series_mode=False)
+        self._update_host_height(len(items))
+        try:
+            self.items_layout.activate()
+        except Exception:
+            logger.debug("_reflow_flat: layout activate failed", exc_info=True)
+        try:
+            self._schedule_visible_range_emit()
+        except Exception:
+            pass
+
+    # -- side-by-side series bands + center splitter ---------------------
+
+    def _bands_active(self) -> bool:
+        """True when the last series layout split sections into two bands."""
+        try:
+            return self._band_state is not None
+        except Exception:
+            return False
+
+    def _plan_bands(self, sections: list[dict]) -> list[tuple[list[dict], int, int]]:
+        """Split *sections* into layout bands.
+
+        Returns ``[(sections, band_cols, col_offset), ...]`` — one entry for
+        the stacked full-width band, two when the viewport fits side-by-side
+        series (first section left, the rest right, separator column between).
+        """
+        try:
+            total = int(self.grid_columns)
+        except Exception:
+            total = GRID_COLUMNS
+        if self._view_mode == VIEW_LIST or total < GRID_BAND_MIN_TOTAL or len(sections) < 2:
+            return [(list(sections), int(total), 0)]
+        left = self._split_left
+        try:
+            left = int(left) if left is not None else int(total // 2)
+        except Exception:
+            left = int(total // 2)
+        left = max(2, min(int(total) - 3, int(left)))
+        right = int(total) - int(left) - 1  # one column for the separator
+        if left < 2 or right < 2:
+            return [(list(sections), int(total), 0)]
+        return [([sections[0]], int(left), 0), (list(sections[1:]), int(right), int(left) + 1)]
+
+    def _plan_band_entries(
+        self,
+        subset: list[dict],
+        band_cols: int,
+        col_off: int,
+        base_row: int,
+        headers: list,
+        hdr_start: int,
+    ) -> tuple[list[tuple], int, int]:
+        """Plan entries for one band; returns (entries, rows_used, hdr_next)."""
+        entries: list[tuple] = []
+        row = int(base_row)
+        hi = int(hdr_start)
+        for sec in subset:
+            try:
+                header = headers[hi]
+                hi += 1
+            except Exception:
+                continue
+            entries.append((header, row, int(col_off), 1, int(band_cols)))
+            row += 1
+            if sec.get("kind") == "series" and sec.get("collapsed"):
+                continue
+            for pos, item in enumerate(sec.get("items") or []):
+                try:
+                    card = self._cards_by_path.get(str(item.path))
+                except Exception:
+                    card = None
+                if card is None:
+                    continue
+                try:
+                    r, c = divmod(int(pos), max(1, int(band_cols)))
+                except Exception:
+                    r, c = int(pos), 0
+                entries.append((card, row + r, int(col_off) + c, 1, 1))
+            try:
+                n = len(sec.get("items") or [])
+                rows_needed = (n + int(band_cols) - 1) // int(band_cols) if n else 0
+            except Exception:
+                rows_needed = 0
+            row += int(rows_needed)
+        return entries, int(row - base_row), int(hi)
+
+    def _ensure_band_separator(self):
+        """Lazily create the draggable center-splitter handle."""
+        sep = getattr(self, "_band_separator", None)
+        try:
+            import shiboken6
+
+            if sep is not None and not shiboken6.isValid(sep):
+                sep = None
+        except Exception:
+            pass
+        if sep is None:
+            try:
+                sep = _BandSeparatorHandle(self, self.items_host)
+                self._band_separator = sep
+            except Exception:
+                return None
+        return sep
+
+    def _hide_band_separator(self) -> None:
+        try:
+            sep = getattr(self, "_band_separator", None)
+            if sep is not None:
+                try:
+                    self.items_layout.removeWidget(sep)
+                except Exception:
+                    pass
+                try:
+                    sep.hide()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self._band_state = None
+        except Exception:
+            pass
+
+    def _nudge_split_by_px(self, dx: int) -> bool:
+        """Shift the center split by a drag delta; True when replanned."""
+        try:
+            if self._view_mode == VIEW_LIST or not self._bands_active():
+                return False
+            total = int(self._applied_columns)
+            st = self._band_state or (total // 2, total - total // 2 - 1, total // 2)
+            left = int(st[0])
+            stride = self._grid_stride_px()
+            if stride <= 0:
+                return False
+            step = int(round(float(dx) / float(stride)))
+            if step == 0:
+                return False
+            want = max(2, min(int(total) - 3, int(left) + int(step)))
+            if want == int(left):
+                return False
+            self._split_left = int(want)
+            self._rebuild_series()
+            return True
+        except Exception:
+            return False
+
+    def set_split_left(self, left_cols: int) -> None:
+        """Programmatic center-split (tests / restore); replans when banded."""
+        try:
+            total = int(self._applied_columns)
+            self._split_left = max(2, min(int(total) - 3, int(left_cols)))
+        except Exception:
+            return
+        try:
+            if self._series is not None:
+                self._rebuild_series()
+        except Exception:
+            pass
+
+    def nav_columns_for(self, path=None) -> int:
+        """Up/Down arrow step for *path*'s band (band width when banded)."""
+        try:
+            if self._view_mode == VIEW_LIST:
+                return 1
+            st = getattr(self, "_band_state", None)
+            if not st:
+                return int(self.grid_columns)
+            left, right, sep_col = int(st[0]), int(st[1]), int(st[2])
+            col = None
+            if path is not None:
+                try:
+                    card = self._cards_by_path.get(str(path))
+                    if card is not None:
+                        idx = self.items_layout.indexOf(card)
+                        if idx >= 0:
+                            col = int(self.items_layout.getItemPosition(idx)[1])
+                except Exception:
+                    col = None
+            if col is None:
+                return int(self.grid_columns)
+            return int(left if col < sep_col else right)
+        except Exception:
+            try:
+                return int(self.grid_columns)
+            except Exception:
+                return GRID_COLUMNS
+
     # -- public API expected by controller/widget --------------------------
 
     # Systemic fix 2026-08-26: O(N) sync rebuild blocked UI for 1k+ items
@@ -796,6 +1371,10 @@ class GalleryGridView(QWidget):
             self._recycle_card(path)
         # Remove any leftover widgets from layout (headers + empty label etc. not managed here).
         self._clear_series_headers()
+        try:
+            self._hide_band_separator()
+        except Exception:
+            pass
         while self.items_layout.count():
             item = self.items_layout.takeAt(0)
             w = item.widget()
@@ -1098,19 +1677,12 @@ class GalleryGridView(QWidget):
         Updates the label text, object names and the collapse-button closure
         (which captures the section index — a reused widget at a new
         position must toggle the new section). UNGROUPED headers (index
-        None) get their toggle disconnected.
+        None) get their toggle disconnected. The collapse arrow stays a
+        painter layer (never text): flags + title reserve flip here so a
+        series ↔ UNGROUPED slot reuse never clips the arrow.
         """
-        display = str(text or "").strip()
         is_collapsible = index is not None
-        arrow = "▶" if collapsed else "▼"
-        if is_collapsible:
-            if not display.endswith("▼") and not display.endswith("▶"):
-                display = f"{display} {arrow}"
-            elif display[-1] in ("▼", "▶"):
-                display = display[:-1].strip() + f" {arrow}"
-        else:
-            if display.endswith("▼") or display.endswith("▶"):
-                display = display[:-1].strip()
+        display = _strip_header_arrow(text)
         try:
             header.setObjectName(
                 f"GallerySeriesHeader_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped"
@@ -1134,18 +1706,30 @@ class GalleryGridView(QWidget):
                 "_main",
                 rows=[ButtonRow(
                     text=display.upper(), size=16, color=_gallery_header_text_color(),
-                    h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0,
+                    h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0, elide=True,
                 )],
             )
         except Exception:
             pass
         try:
             # A reused header slot may flip series ↔ UNGROUPED: repoint the
-            # accent layer's palette (accent vs dialog.border) with it.
+            # accent layer's palette (accent vs dialog.border) with it, flip
+            # the arrow layer's visibility/state, and reserve/clear the
+            # title's right padding so the arrow never overlaps text.
             _painter = getattr(btn, "_painter", None)
             for _layer in list(getattr(_painter, "layers", None) or []):
                 if isinstance(_layer, _SeriesHeaderAccentLayer):
                     _layer._collapsible = bool(is_collapsible)
+                elif isinstance(_layer, _SeriesCollapseArrowLayer):
+                    _layer._collapsible = bool(is_collapsible)
+                    _layer._collapsed = bool(collapsed)
+            try:
+                btn.setContentPadding(
+                    (scaled_px(15), 0,
+                     scaled_px(SERIES_ARROW_RESERVE) if is_collapsible else 0, 0)
+                )
+            except Exception:
+                pass
             btn.update()
         except Exception:
             pass
@@ -1201,6 +1785,10 @@ class GalleryGridView(QWidget):
             for path in list(self._cards_by_path):
                 self._recycle_card(path)
             self._clear_series_headers()
+            try:
+                self._hide_band_separator()
+            except Exception:
+                pass
             while self.items_layout.count():
                 try:
                     self.items_layout.takeAt(0)
@@ -1310,40 +1898,47 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
         self._series_headers = _new_headers
-        # 5. plan target rows, then relayout ONLY when the live grid already
+        # 5. plan target cells, then relayout ONLY when the live grid already
         # diverges. Append already places the fresh card at the tail; the
         # set_triage that follows describes the SAME plan. Re-adding every
         # widget identically there is a second visible reposition (bug 3:
         # "jumps twice"). Compute the target and skip the takeAt/addWidget
         # storm when the layout already matches — set_series then converges
         # to a no-op instead of jumping.
+        #
+        # Wide viewports split sections into two side-by-side bands (first
+        # section left, the rest right, draggable separator between) so the
+        # right half fills instead of staying empty; narrow windows stack
+        # every section full-width as before.
         _plan: list[tuple] = []
-        _plan_row = 0
+        try:
+            _bands = self._plan_bands(_sections)
+        except Exception:
+            _bands = [(_sections, self.grid_columns, 0)]
+        _band_state_new = None
+        _plan_rows = 0
         _plan_hdr = 0
-        for sec in _sections:
+        for _subset, _bcols, _coff in _bands:
             try:
-                _plan_header = _new_headers[_plan_hdr]
-                _plan_hdr += 1
+                _entries, _used, _plan_hdr = self._plan_band_entries(
+                    _subset, int(_bcols), int(_coff), 0, _new_headers, int(_plan_hdr))
             except Exception:
                 continue
-            _plan.append((_plan_header, _plan_row, 0, 1, self.grid_columns))
-            _plan_row += 1
-            if sec["kind"] == "series" and sec["collapsed"]:
-                continue
-            for pos, item in enumerate(sec["items"]):
-                try:
-                    card = self._cards_by_path.get(str(item.path))
-                except Exception:
-                    card = None
-                if card is None:
-                    continue
-                try:
-                    r, c = divmod(pos, self.grid_columns)
-                except Exception:
-                    r, c = pos, 0
-                _plan.append((card, _plan_row + r, c, 1, 1))
-            rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
-            _plan_row += rows_needed
+            _plan.extend(_entries)
+            _plan_rows = max(int(_plan_rows), int(_used))
+        if len(_bands) > 1:
+            try:
+                _sep = self._ensure_band_separator()
+                _sep_col = int(_bands[0][1])  # left band width == separator column
+                if _sep is not None:
+                    _plan.append((_sep, 0, _sep_col, max(1, int(_plan_rows)), 1))
+                    _band_state_new = (int(_bands[0][1]), int(_bands[1][1]), int(_sep_col))
+            except Exception:
+                _band_state_new = None
+        try:
+            self._band_state = _band_state_new
+        except Exception:
+            pass
         _layout_matches = False
         try:
             _layout_matches = self.items_layout.count() == len(_plan)
@@ -1360,7 +1955,7 @@ class GalleryGridView(QWidget):
         except Exception:
             _layout_matches = False
         if _layout_matches:
-            current_row = _plan_row
+            current_row = _plan_rows
             for _w, _r, _c, _rs, _cs in _plan:
                 try:
                     _w.show()
@@ -1368,45 +1963,35 @@ class GalleryGridView(QWidget):
                     logger.debug("_rebuild_series: reveal matched widget failed", exc_info=True)
         else:
             # Drop layout items only (widgets stay alive/parented), re-add per
-            # plan with the same row math as before.
+            # plan (stacked or banded — same math as the plan above).
             while self.items_layout.count():
                 try:
                     self.items_layout.takeAt(0)
                 except Exception:
                     break
+            if _band_state_new is None:
+                try:
+                    self._hide_band_separator()
+                except Exception:
+                    pass
             current_row = 0
-            _hdr_pos = 0
-            for sec in _sections:
+            for _w, _r, _c, _rs, _cs in _plan:
                 try:
-                    header = _new_headers[_hdr_pos]
-                    _hdr_pos += 1
+                    self.items_layout.addWidget(_w, _r, _c, _rs, _cs)
+                    _w.show()
                 except Exception:
-                    continue
-                try:
-                    self.items_layout.addWidget(header, current_row, 0, 1, self.grid_columns)
-                    header.show()
-                except Exception:
-                    logger.debug("_rebuild_series: header placement failed", exc_info=True)
-                current_row += 1
-                if sec["kind"] == "series" and sec["collapsed"]:
-                    continue
-                for pos, item in enumerate(sec["items"]):
-                    try:
-                        card = self._cards_by_path.get(str(item.path))
-                    except Exception:
-                        card = None
-                    if card is None:
-                        continue
-                    try:
-                        r, c = divmod(pos, self.grid_columns)
-                        self.items_layout.addWidget(card, current_row + r, c)
-                        card.show()
-                    except Exception:
-                        logger.debug("_rebuild_series: card placement failed", exc_info=True)
-                rows_needed = (len(sec["items"]) + self.grid_columns - 1) // self.grid_columns if sec["items"] else 0
-                current_row += rows_needed
+                    logger.debug("_rebuild_series: widget placement failed", exc_info=True)
+            current_row = _plan_rows
 
         self._sync_series_column_widths(series_mode=True)
+        try:
+            # The separator column is a thin handle, not a card column —
+            # _sync above pins every column to the card width.
+            if self._band_state is not None:
+                self.items_layout.setColumnMinimumWidth(
+                    int(self._band_state[2]), scaled_px(GRID_SEPARATOR_COL_W))
+        except Exception:
+            pass
         self.apply_selection(self._selection)
         self._update_host_height_for_series(current_row)
         if not _layout_matches:
@@ -1474,6 +2059,32 @@ class GalleryGridView(QWidget):
             return
         try:
             ungrouped = list(getattr(self, "_ungrouped", []) or [])
+            # Side-by-side bands anchor the tail in the right band with its
+            # own column math — the incremental rowCount plan below only fits
+            # the stacked band, so banded appends go through the surgical
+            # _rebuild_series instead (reuses every live card/header).
+            try:
+                _n_series = len(list(getattr(self, "_series", []) or []))
+                _tail_after = len(ungrouped) + len(fresh)
+                _secs_after = int(_n_series) + (1 if int(_tail_after) > 0 else 0)
+            except Exception:
+                _secs_after = 0
+            if self._bands_active() or self._would_band_with(_secs_after):
+                try:
+                    self._ungrouped = ungrouped + list(fresh)
+                except Exception:
+                    logger.debug("append_new_cards: ungrouped sync failed", exc_info=True)
+                for item in fresh:
+                    try:
+                        _card = self._acquire_card(item)
+                        self._cards_by_path[str(item.path)] = _card
+                    except Exception:
+                        continue
+                try:
+                    self._rebuild_series()
+                except Exception:
+                    logger.debug("append_new_cards: banded rebuild failed", exc_info=True)
+                return
             # Ensure exactly one UNGROUPED tail header widget exists. State
             # (_ungrouped) and the actual header widget can disagree after a
             # fail-open earlier pass; anchoring cards to a header that isn't
@@ -1493,7 +2104,7 @@ class GalleryGridView(QWidget):
                     hub_name=None, collapsed=False, index=None,
                 )
                 self._series_headers.append(header)
-                self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
+                self.items_layout.addWidget(header, row, 0, 1, self._tail_header_span())
                 header.show()
             base = int(self.items_layout.rowCount())
             pos0 = len(ungrouped)
@@ -1533,6 +2144,28 @@ class GalleryGridView(QWidget):
         except Exception:
             logger.debug("append_new_cards: selection sweep failed", exc_info=True)
 
+    def _tail_header_span(self) -> int:
+        """Column span for the UNGROUPED tail header (right band when split)."""
+        try:
+            st = getattr(self, "_band_state", None)
+            if st:
+                return max(1, int(st[1]))
+        except Exception:
+            pass
+        try:
+            return max(1, int(self.grid_columns))
+        except Exception:
+            return GRID_COLUMNS
+
+    def _would_band_with(self, sections_count: int) -> bool:
+        """True when *sections_count* sections would lay out side-by-side."""
+        try:
+            if self._view_mode == VIEW_LIST:
+                return False
+            return int(self._applied_columns) >= GRID_BAND_MIN_TOTAL and int(sections_count) >= 2
+        except Exception:
+            return False
+
     def _refresh_ungrouped_header_count(self, total: int) -> None:
         """Recreate only the UNGROUPED tail header with a fresh count.
 
@@ -1559,6 +2192,12 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             try:
+                _old_btn = old.findChild(Button)
+                if _old_btn is not None:
+                    _disconnect_btn_theme(_old_btn)
+            except Exception:
+                pass
+            try:
                 # Same stillborn-toplevel guard as _clear_series_headers:
                 # hide before setParent(None), or the visible header maps
                 # its own toplevel + activation token for a few ms.
@@ -1579,7 +2218,7 @@ class GalleryGridView(QWidget):
             try:
                 if row is None:
                     row = int(self.items_layout.rowCount())
-                self.items_layout.addWidget(header, row, 0, 1, self.grid_columns)
+                self.items_layout.addWidget(header, row, 0, 1, self._tail_header_span())
                 header.show()
             except Exception:
                 pass
@@ -1607,19 +2246,9 @@ class GalleryGridView(QWidget):
     ) -> QWidget:
         """Series header — ghost Button with the 3×14 accent bar as its own layer (real_design.md:59)."""
         is_collapsible = index is not None
-        arrow = "▶" if collapsed else "▼"
-        display = text.strip()
-        # Only collapsible series get arrow; UNGROUPED has no arrow (SVG)
-        if is_collapsible:
-            if not display.endswith("▼") and not display.endswith("▶"):
-                display = f"{display} {arrow}"
-            else:
-                if display[-1] in ("▼", "▶"):
-                    display = display[:-1].strip() + f" {arrow}"
-        else:
-            # Strip any arrow for UNGROUPED
-            if display.endswith("▼") or display.endswith("▶"):
-                display = display[:-1].strip()
+        # The collapse arrow is a painter layer at the button's right edge,
+        # never trailing text — long hub names elide without clipping it.
+        display = _strip_header_arrow(text)
         # Container with 3×14 bar
         container = QWidget(self.items_host)
         container.setObjectName(f"GallerySeriesHeader_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped")
@@ -1639,15 +2268,17 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col3, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0, elide=True)],
                     )
                 ],
                 variant="ghost",
                 size=(0, scaled_px(24)),
-                # 3px bar + 12px gap the sibling widget used to occupy.
-                content_padding=(scaled_px(15), 0, 0, 0),
+                # 3px bar + 12px gap the sibling widget used to occupy;
+                # right reserve keeps the elided title clear of the arrow layer.
+                content_padding=(scaled_px(15), 0, scaled_px(SERIES_ARROW_RESERVE), 0),
                 extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible),
-                                _SeriesDropTargetLayer()],
+                                _SeriesDropTargetLayer(),
+                                _SeriesCollapseArrowLayer(collapsible=True, collapsed=collapsed)],
                 parent=container,
             )
             btn.setObjectName(f"GallerySeriesHeaderBtn_{index}")
@@ -1678,15 +2309,19 @@ class GalleryGridView(QWidget):
                 regions=[
                     ButtonRegion(
                         id="_main",
-                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0)],
+                        rows=[ButtonRow(text=display.upper(), size=16, color=_header_col4, h_align=Qt.AlignmentFlag.AlignLeft, ratio=1.0, elide=True)],
                     )
                 ],
                 variant="ghost",
                 size=(0, scaled_px(24)),
                 # 3px bar + 12px gap the sibling widget used to occupy.
+                # The arrow layer is always present (hidden when not
+                # collapsible) so series ↔ UNGROUPED slot reuse never
+                # rebuilds layers — _retitle_header flips flags only.
                 content_padding=(scaled_px(15), 0, 0, 0),
                 extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible),
-                                _SeriesDropTargetLayer()],
+                                _SeriesDropTargetLayer(),
+                                _SeriesCollapseArrowLayer(collapsible=False)],
                 parent=container,
             )
             btn.setObjectName("GallerySeriesHeader_ungrouped_btn")
@@ -1758,6 +2393,12 @@ class GalleryGridView(QWidget):
         for hdr in list(self._series_headers):
             try:
                 self.items_layout.removeWidget(hdr)
+            except Exception:
+                pass
+            try:
+                _btn = hdr.findChild(Button)
+                if _btn is not None:
+                    _disconnect_btn_theme(_btn)
             except Exception:
                 pass
             try:
@@ -2207,7 +2848,12 @@ class GalleryGridView(QWidget):
 
     @property
     def grid_columns(self) -> int:
-        return 1 if self._view_mode == VIEW_LIST else GRID_COLUMNS
+        if self._view_mode == VIEW_LIST:
+            return 1
+        try:
+            return max(1, int(getattr(self, "_applied_columns", GRID_COLUMNS)))
+        except Exception:
+            return GRID_COLUMNS
 
     @property
     def items(self) -> list[GalleryItem]:

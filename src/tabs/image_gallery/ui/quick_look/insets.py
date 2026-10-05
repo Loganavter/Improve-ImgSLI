@@ -1,14 +1,13 @@
-"""Quick look inset populates — source + sharpness-crop (plain functions).
+"""Quick look inset populates — source inset (plain functions).
 
 Split from ``preview.py`` per CODE_PATTERNS.md thin owner + ui/ (the file
 hit the 500-line contract gate): preview pixmaps stay in ``preview.py``,
 inset content lives here. Import paths are unchanged via ``helpers.py``
-re-exports.
+re-exports. The sharpness-crop inset was removed (see ``populate_crop``).
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from tabs.image_gallery.ui.quick_look.preview import (
@@ -18,98 +17,13 @@ from tabs.image_gallery.ui.quick_look.preview import (
     _thumb_pixmap,
 )
 
-# Sharpness-crop memo: per-overlay cache of the FINAL post-scale pixmap,
-# keyed (normpath, mtime_ns, size, scaled_w, scaled_h). Item-path change
-# invalidates via the key itself; the dict lives on the overlay (no global
-# pixmap leaks) and evicts oldest past the cap.
-_CROP_CACHE_MAX = 8
-
-
-def _crop_cache_key(item_path, scaled_w: int, scaled_h: int):
-    """Cache key for the memoized crop pixmap, or None (fail-open: recompute).
-
-    Never raises — any stat/normalize failure returns None so the caller
-    falls through to today's recompute path.
-    """
-    try:
-        norm = os.path.normpath(str(item_path))
-        if not norm:
-            return None
-        st = os.stat(norm)
-        return (norm, int(st.st_mtime_ns), int(st.st_size), int(scaled_w), int(scaled_h))
-    except Exception:
-        return None
-
-
-def _crop_cache_lookup(overlay, key):
-    """Return the cached pixmap for *key*, or None on miss/any error."""
-    try:
-        if key is None:
-            return None
-        cache = getattr(overlay, "_crop_cache", None)
-        if not isinstance(cache, dict):
-            return None
-        hit = cache.get(key)
-        if hit is None:
-            return None
-        try:
-            if hit.isNull():
-                return None
-        except Exception:
-            return None
-        # LRU touch: re-insert so eviction drops the stalest entry.
-        try:
-            cache.pop(key, None)
-            cache[key] = hit
-        except Exception:
-            pass
-        return hit
-    except Exception:
-        return None
-
-
-def _crop_cache_store(overlay, key, pixmap) -> None:
-    """Store the final crop pixmap under *key* (bounded, fail-open)."""
-    try:
-        if key is None or pixmap is None:
-            return
-        try:
-            if pixmap.isNull():
-                return
-        except Exception:
-            return
-        try:
-            cache = getattr(overlay, "_crop_cache", None)
-        except Exception:
-            return
-        if not isinstance(cache, dict):
-            cache = {}
-            try:
-                overlay._crop_cache = cache
-            except Exception:
-                return
-        try:
-            if key not in cache and len(cache) >= _CROP_CACHE_MAX:
-                try:
-                    oldest = next(iter(cache))
-                except StopIteration:
-                    oldest = None
-                if oldest is not None:
-                    cache.pop(oldest, None)
-            cache[key] = pixmap
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-
 def reposition_preview_insets(overlay) -> None:
-    """Pin the source/crop inset blocks bottom-left inside the preview.
+    """Pin the source inset block bottom-left inside the preview.
 
-    Both blocks are absolute children of the preview host (overlaying the
-    GPU canvas); at most one is visible per mode (fidelity ↔ crop).
-    Bottom-left with 12px margins; fixed size from sizeHint with constant
-    floors — never from the live size (that ratchets upward on every grow).
+    The block is an absolute child of the preview host (overlaying the
+    GPU canvas). Bottom-left with 12px margins; fixed size from sizeHint
+    with constant floors — never from the live size (that ratchets upward
+    on every grow).
     """
     try:
         from sli_ui_toolkit.managers import scaled_px
@@ -118,11 +32,19 @@ def reposition_preview_insets(overlay) -> None:
         if preview_host is None:
             return
         margin = scaled_px(12)
-        for attr in ("_source_inset_host", "_crop_host"):
+        for attr in ("_source_inset_host",):
             try:
                 inset = getattr(overlay, attr, None)
                 if inset is None:
                     continue
+                try:
+                    # Explicit hide only (isHidden, not isVisible):
+                    # positioning must also run while an ancestor is still
+                    # hidden (pre-show repositions).
+                    if inset.isHidden():
+                        continue
+                except Exception:
+                    pass
                 w = inset.sizeHint().width()
                 h = inset.sizeHint().height()
                 if w <= 0:
@@ -274,168 +196,13 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
 
 
 def populate_crop(overlay, item, is_fidelity: bool = False) -> None:
-    """Sharpness-crop inset — non-fidelity modes only.
+    """Sharpness-crop inset — REMOVED, kept as a no-op for call compat.
 
-    S4 v2 LIGHT is fidelity mode and draws no ``SHARPNESS CROP`` inset
-    (camera/batch modes keep it). Hidden in fidelity, shown otherwise.
+    The corner crop block no longer exists (no widget, no decode work).
     """
-    try:
-        overlay._crop_host.setVisible(not bool(is_fidelity))
-    except Exception:
-        pass
-    if is_fidelity:
-        return
-    try:
-        from sli_ui_toolkit.managers import scaled_px
-        from PySide6.QtCore import Qt
-        _scaled_w = scaled_px(150)
-        _scaled_h = scaled_px(84)
-        # Memo hit: skip ALL decode/copy/scale work below. Key + lookup
-        # are fail-open on their own so a cache error can never abort the
-        # recompute path (the outer try would swallow the whole populate).
-        try:
-            _crop_key = _crop_cache_key(getattr(item, "path", ""), _scaled_w, _scaled_h)
-        except Exception:
-            _crop_key = None
-        try:
-            _cached = _crop_cache_lookup(overlay, _crop_key)
-        except Exception:
-            _cached = None
-        if _cached is not None:
-            try:
-                overlay._crop_pix.update_region("thumb", pixmap=_cached)
-            except Exception:
-                pass
-            return
-        # Reuse the already-stashed bounded preview when possible — avoids
-        # a second decode for the non-fidelity crop inset.
-        pm_full = getattr(overlay, "_preview_full", None)
-        try:
-            if pm_full is None or pm_full.isNull():
-                pm_full = None
-        except Exception:
-            pm_full = None
-        if pm_full is None:
-            # Coarse-direct center crop (bounded — no full decode). Success
-            # populates straight from the level's own bytes and returns; any
-            # miss falls through to the thumbnail/reader ladder below.
-            try:
-                _direct = _pyramid_pixmap_for(getattr(item, "path", ""), center_third=True, long_edge=512)
-            except Exception:
-                _direct = None
-            try:
-                _direct_ok = _direct is not None and not _direct.isNull()
-            except Exception:
-                _direct_ok = False
-            if _direct_ok:
-                try:
-                    crop_scaled = _direct.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-                    _crop_cache_store(overlay, _crop_key, crop_scaled)
-                    overlay._crop_pix.update_region("thumb", pixmap=crop_scaled)
-                except Exception:
-                    pass
-                return
-            try:
-                # Bounded ladder only: item thumbnail, then an
-                # aspect-correct scaled-reader read (long edge 1024) —
-                # never a full QPixmap decode (~6 GB for a 40k source).
-                # A miss fails open (inset skipped below).
-                try:
-                    _th = getattr(item, "thumbnail", None)
-                    pm_full = _th if (_th is not None and not _th.isNull()) else None
-                except Exception:
-                    pm_full = None
-                if pm_full is None:
-                    try:
-                        _ip = getattr(item, "path", "")
-                        _idims = _source_dimensions(item, _ip)
-                        if _idims is not None and _idims[0] > 0 and _idims[1] > 0:
-                            _isc = min(1024.0 / _idims[0], 1024.0 / _idims[1], 1.0)
-                            _itw = max(1, int(round(_idims[0] * _isc)))
-                            _ith = max(1, int(round(_idims[1] * _isc)))
-                            pm_full = _load_scaled_pixmap(_ip, _itw, _ith)
-                    except Exception:
-                        pm_full = None
-                if pm_full is not None and pm_full.isNull():
-                    pm_full = None
-            except Exception:
-                pm_full = None
-        if pm_full is not None and not pm_full.isNull():
-            w = pm_full.width()
-            h = pm_full.height()
-            cw = max(1, w // 3)
-            ch = max(1, h // 3)
-            x = max(0, (w - cw) // 2)
-            y = max(0, (h - ch) // 2)
-            crop = pm_full.copy(x, y, cw, ch)
-            crop_scaled = crop.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            _crop_cache_store(overlay, _crop_key, crop_scaled)
-            overlay._crop_pix.update_region("thumb", pixmap=crop_scaled)
-        else:
-            thumb = getattr(item, "thumbnail", None)
-            if thumb is not None and not thumb.isNull():
-                _thumb_scaled = thumb.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-                _crop_cache_store(overlay, _crop_key, _thumb_scaled)
-                overlay._crop_pix.update_region("thumb", pixmap=_thumb_scaled)
-            else:
-                overlay._crop_pix.update_region("thumb", pixmap=None, text="—")
-    except Exception:
-        pass
+    return
 
 
 def refresh_crop_for(owner, item_or_path) -> bool:
-    """Refresh ONLY the sharpness-crop inset for the open item.
-
-    The crop has no async loader of its own: on a cold open its inputs
-    (``_preview_full`` / thumbnail / pyramid sample) are not ready yet,
-    so the first ``_populate`` pass fails it open while the canvas streams
-    on its own pipeline — and the inset only fills in later as a side
-    effect of analysis delivery. Call this the moment image data lands
-    (first frame, tiled store, thumbnail): ``populate_crop`` reuses the
-    already-warm sources (memo-gated, zero new decodes on hit) instead
-    of waiting seconds for the analysis round-trip.
-
-    Guards (content-identity): overlay must exist and be visible, the
-    delivered path must equal the CURRENT item (never paint a neighbor
-    after a walk), and the crop host must be shown (non-fidelity mode).
-    Returns True when a refresh was attempted.
-    """
-    try:
-        overlay = getattr(owner, "_quick_look_overlay", None)
-        if overlay is None:
-            try:
-                w = getattr(owner, "widget", None)
-                overlay = getattr(w, "_quick_look_overlay", None)
-            except Exception:
-                overlay = None
-        if overlay is None:
-            return False
-        try:
-            if not overlay.isVisible():
-                return False
-        except Exception:
-            return False
-        try:
-            target = Path(getattr(item_or_path, "path", item_or_path))
-        except Exception:
-            return False
-        try:
-            cur = getattr(overlay, "_current_item", None)
-            if cur is None or Path(getattr(cur, "path", "")) != target:
-                return False
-            item = cur
-        except Exception:
-            return False
-        try:
-            host = getattr(overlay, "_crop_host", None)
-            if host is None or not host.isVisible():
-                return False
-        except Exception:
-            return False
-        try:
-            populate_crop(overlay, item, False)
-        except Exception:
-            return False
-        return True
-    except Exception:
-        return False
+    """Sharpness-crop refresh — REMOVED, always False (kept for call compat)."""
+    return False

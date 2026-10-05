@@ -356,6 +356,10 @@ class QuickLookCanvasWidget(QRhiWidget):
             self._tiled_source = None
             return
         try:
+            self._reset_tiled_pump_state()
+        except Exception:
+            pass
+        try:
             self._ensure_tile_renderer()
         except Exception:
             logger.debug("QuickLook preview: tile renderer setup failed open", exc_info=True)
@@ -370,6 +374,10 @@ class QuickLookCanvasWidget(QRhiWidget):
             self._tiled_source = None
             self._tile_bound_source = None
             self._tile_level_ready = False
+        except Exception:
+            pass
+        try:
+            self._reset_tiled_pump_state()
         except Exception:
             pass
         try:
@@ -519,6 +527,10 @@ class QuickLookCanvasWidget(QRhiWidget):
             self._tile_level_ready = False
             if renderer is not None:
                 renderer.release()
+        except Exception:
+            pass
+        try:
+            self._reset_tiled_pump_state()
         except Exception:
             pass
         try:
@@ -1291,13 +1303,76 @@ class QuickLookCanvasWidget(QRhiWidget):
             )
         except Exception:
             _posted = False
+        # Per-pump logging is cover-timeline only (IMGSLI_QL_COVER_DEBUG):
+        # at full streaming rate this fires hundreds of times per second.
         try:
-            logger.debug("QuickLook preview: pump posted=%s", bool(_posted))
+            from tabs.image_gallery.debug import ql_cover as _ql_log
+
+            _ql_log("QuickLook preview: pump posted=%s", bool(_posted))
         except Exception:
             pass
         if not _posted:
             try:
                 self.update()
+            except Exception:
+                pass
+
+    def _pump_throttled(self, stall_frames: int) -> None:
+        """Backoff pump for a stalled (no-progress) tile stream.
+
+        Same destination as ``_pump_next_frame`` but rate-limited: when
+        residency plateaus without reaching ``covered`` (missing level,
+        unsettled cascade), full-rate pumping saturates the GUI loop and
+        the log for zero forward progress. One pending singleShot at a
+        time, 32ms → 250ms cap, so uploads still drain to completion.
+        Never raises.
+        """
+        try:
+            if bool(getattr(self, "_throttled_pump_pending", False)):
+                return
+            self._throttled_pump_pending = True
+        except Exception:
+            return
+        try:
+            shift = max(0, min(int(stall_frames), 4))
+            interval = min(250, 16 * (2 ** int(shift)))
+        except Exception:
+            interval = 64
+        try:
+            from PySide6.QtCore import QTimer as _QTimer
+
+            _QTimer.singleShot(int(interval), self._fire_throttled_pump)
+        except Exception:
+            try:
+                self._throttled_pump_pending = False
+            except Exception:
+                pass
+
+    def _fire_throttled_pump(self) -> None:
+        """Fire one throttled pump (singleShot callback). Never raises."""
+        try:
+            self._throttled_pump_pending = False
+        except Exception:
+            pass
+        try:
+            if not bool(self.isVisible()):
+                return
+        except Exception:
+            return
+        try:
+            self._pump_next_frame()
+        except Exception:
+            pass
+
+    def _reset_tiled_pump_state(self) -> None:
+        """Clear pump progress marks (source bind/drop/teardown). Never raises."""
+        for attr, val in (
+            ("_tiled_pump_mark", None),
+            ("_tiled_stall_frames", 0),
+            ("_throttled_pump_pending", False),
+        ):
+            try:
+                setattr(self, attr, val)
             except Exception:
                 pass
 
@@ -1516,15 +1591,39 @@ class QuickLookCanvasWidget(QRhiWidget):
             # ``covered``, so it will only complete if frames keep coming.
             # Without this, uploads stall until an unrelated repaint (mouse
             # move) and the coarse raster lingers — or, if the raster also
-            # misses, the canvas stays a hole. Only pump when this frame made
-            # progress (a resident/drawn tile), so a dead store cannot spin.
+            # misses, the canvas stays a hole. Pump at full rate ONLY on
+            # forward progress (resident count grew): a plateau (same tiles
+            # redrawn, coverage never completing) used to spin _pump at full
+            # GUI-loop rate forever — log spam plus an event loop too
+            # saturated for resize drags. Plateaus back off instead.
             try:
-                if getattr(result, "drawn", False) or int(
-                    getattr(result, "resident", 0) or 0
-                ) > 0:
-                    self._pump_next_frame()
+                res_n = int(getattr(result, "resident", 0) or 0)
             except Exception:
-                pass
+                res_n = 0
+            drew = bool(getattr(result, "drawn", False))
+            if not drew and res_n <= 0:
+                return False
+            try:
+                last_mark = getattr(self, "_tiled_pump_mark", None)
+            except Exception:
+                last_mark = None
+            if last_mark is None or int(res_n) != int(last_mark):
+                try:
+                    self._tiled_pump_mark = int(res_n)
+                except Exception:
+                    pass
+                try:
+                    self._tiled_stall_frames = 0
+                except Exception:
+                    pass
+                self._pump_next_frame()
+            else:
+                try:
+                    stall = int(getattr(self, "_tiled_stall_frames", 0) or 0) + 1
+                    self._tiled_stall_frames = stall
+                except Exception:
+                    stall = 1
+                self._pump_throttled(stall)
             return False
         except Exception:
             logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)

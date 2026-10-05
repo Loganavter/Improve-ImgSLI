@@ -116,13 +116,10 @@ ALLOWLIST: dict[tuple[str, int], str] = {
         "owner_for_triage legacy owner._owner READ (last-resort bind, protocol-first since G5)"
     ),
     # --- overlay._owner fallback reads (R3: test-required SimpleNamespace doubles pass owner=None) ---
-    ("src/tabs/image_gallery/ui/quick_look/meta.py", 112): (
+    ("src/tabs/image_gallery/ui/quick_look/meta.py", 123): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
-    ("src/tabs/image_gallery/ui/quick_look/headers.py", 96): (
-        "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
-    ),
-    ("src/tabs/image_gallery/ui/quick_look/insets.py", 186): (
+    ("src/tabs/image_gallery/ui/quick_look/insets.py", 108): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
     # --- storeless setattr fallback (R4) ---

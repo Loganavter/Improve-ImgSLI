@@ -566,11 +566,11 @@ def test_fit_preview_slot_puts_canvas_and_cover_on_host(qtbot):
 
 
 def test_insets_parented_to_preview_host(qtbot):
-    """Source/crop insets overlay the GPU canvas (host children, not label)."""
+    """Source inset overlays the GPU canvas (host child, not label)."""
     ov = _make_overlay(qtbot)
     host = ov._preview_host
     assert ov._source_inset_host.parentWidget() is host
-    assert ov._crop_host.parentWidget() is host
+    assert getattr(ov, "_crop_host", None) is None
     ov.hide()
 
 

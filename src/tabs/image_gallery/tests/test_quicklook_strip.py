@@ -4,8 +4,10 @@
 - ``regionClicked`` on a strip thumb switches the preview (clicked alone
   never fired: the thumb region id is ``"thumb"``, not ``"_main"``).
 - Card-style badge contract: rejected → no pill, leader → ``#N`` like every
-  ranked item (no BEST pill), ranked → ``#N`` (toolkit Button badge;
-  pending shows ``…``).
+  ranked item (no BEST pill), ranked → ``#N`` (real pill button;
+  pending shows ``…``). Rank pills are plain Buttons — no shared-hover
+  ButtonFamily anywhere (dropped): pills walk to their item on click
+  with no hover sync.
 """
 
 from __future__ import annotations
@@ -73,6 +75,44 @@ def _strip_buttons(ov):
     return [b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")]
 
 
+def _rank_buttons(ov):
+    from sli_ui_toolkit.widgets import Button
+
+    return [b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_rank_")]
+
+
+def _rank_pills_by_path(ov):
+    """Rank pill button per series path (None when the thumb has no pill)."""
+    from sli_ui_toolkit.widgets import Button as _B
+
+    out = {}
+    for container in list(getattr(ov, "_strip_buttons", None) or []):
+        thumb = next(
+            (b for b in container.findChildren(_B) if b.objectName().startswith("quicklook_strip_")),
+            None,
+        )
+        if thumb is None:
+            continue
+        pill = next(
+            (b for b in container.findChildren(_B) if b.objectName().startswith("quicklook_rank_")),
+            None,
+        )
+        out[str(thumb.property("gallery_path"))] = pill
+    return out
+
+
+def _pill_text(pill):
+    try:
+        for region in pill.regions():
+            for row in getattr(region, "rows", None) or []:
+                text = getattr(row, "text", "")
+                if text:
+                    return text
+    except Exception:
+        pass
+    return ""
+
+
 def test_thumb_pixmap_cover_crops_to_exact_66x44(tmp_path):
     """Wide and tall sources both land on exactly 66×44 (cover, center-crop)."""
     wide_p = _real_png(tmp_path, "wide.png", 200, 50)
@@ -129,32 +169,98 @@ def test_region_clicked_switches_preview(qtbot, tmp_path):
 
 
 def test_rejected_thumb_has_no_badge(qtbot, tmp_path):
-    """Rejected strip thumbs carry no pill (dim effect is the signal)."""
+    """Rejected strip thumbs carry no rank pill (dim effect is the signal)."""
     p1 = _real_png(tmp_path, "v.png")
     p2 = _real_png(tmp_path, "r.png")
     viewing = GalleryItem(path=p1, mtime_ns=1)
     rejected = GalleryItem(path=p2, mtime_ns=2, rejected=True)
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [viewing, rejected])
-    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    assert by_path[str(p2)]._badge is None
+    pills = _rank_pills_by_path(ov)
+    assert pills[str(p2)] is None
+    # ...and no toolkit badge anywhere on the thumbs.
+    for b in _strip_buttons(ov):
+        assert b._badge is None
     ov.hide()
 
 
 def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
-    """Leader → #N like every ranked item (no BEST pill); ranked → #N (black on toggle bg)."""
+    """Leader → #N like every ranked item (no BEST pill); ranked → #N as a
+    real pill button under the shared-hover family."""
+    from sli_ui_toolkit.widgets import ButtonFamily
+
     paths = [_real_png(tmp_path, f"s{i}.png") for i in range(3)]
     leader = GalleryItem(path=paths[0], mtime_ns=1, is_best=True)
     ranked = GalleryItem(path=paths[1], mtime_ns=2, rank=3)
     plain = GalleryItem(path=paths[2], mtime_ns=3)
     ov = _make_overlay(qtbot)
     _show(ov, leader, [leader, ranked, plain])
-    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    # Toolkit Button badge carries the rank (black on toggle bg).
-    assert by_path[str(paths[0])]._badge == "#1"
-    assert by_path[str(paths[1])]._badge == "#3"
-    assert by_path[str(paths[2])]._badge is None
-    assert bool(by_path[str(paths[0])].property("badgeFilled")) is True
+    pills = _rank_pills_by_path(ov)
+    assert _pill_text(pills[str(paths[0])]) == "#1"
+    assert _pill_text(pills[str(paths[1])]) == "#3"
+    assert pills[str(paths[2])] is None
+    # Thumbs + pills live in one shared-hover family, thumbs carry no paint.
+    fam = getattr(ov, "_strip_family", None)
+    assert isinstance(fam, ButtonFamily)
+    assert fam.sharedHover() is True
+    thumbs = [b for b in _strip_buttons(ov)]
+    assert {id(b) for b in fam.buttons()} == {
+        id(pills[str(paths[0])]),
+        id(pills[str(paths[1])]),
+        *[id(b) for b in thumbs],
+    }
+    for b in _strip_buttons(ov):
+        assert b._badge is None
+    # Opaque white fill (override layer) + 1px kind-color outline.
+    for pill in (pills[str(paths[0])], pills[str(paths[1])]):
+        bg = pill._override_bg_color
+        assert bg is not None and bg.alpha() == 255
+        assert (bg.red(), bg.green(), bg.blue()) == (255, 255, 255)
+        assert pill.borderColor() is not None
+        assert int(pill.property("borderWidth") or 0) >= 1
+    ov.hide()
+
+
+def test_rank_pill_bottom_center_inside_thumb(qtbot, tmp_path):
+    """Rank pill straddles the thumb's bottom edge (half out, centered)."""
+    p1 = _real_png(tmp_path, "v.png")
+    p2 = _real_png(tmp_path, "o.png")
+    viewing = GalleryItem(path=p1, mtime_ns=1, rank=1)
+    other = GalleryItem(path=p2, mtime_ns=2, rank=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, other])
+    QApplication.processEvents()
+    QApplication.processEvents()
+    pills = _rank_pills_by_path(ov)
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert len(pills) == 2
+    for path, pill in pills.items():
+        assert pill is not None
+        thumb = thumbs[path]
+        tg, pg = thumb.geometry(), pill.geometry()
+        # Horizontally centered on the thumb…
+        assert pg.center().x() == tg.center().x()
+        # …vertically centered on its bottom edge (half overhang).
+        assert pg.center().y() == tg.bottom()
+        assert pg.top() >= tg.top()
+        assert pg.bottom() > tg.bottom()
+    ov.hide()
+
+
+def test_rank_pill_click_walks_preview(qtbot, tmp_path):
+    """Clicking a rank pill walks the preview like clicking its thumb."""
+    paths = [_real_png(tmp_path, f"c{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1, rank=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    assert ov._current_idx == 0
+    pills = _rank_pills_by_path(ov)
+    target = pills[str(paths[1])]
+    assert target is not None
+    target.clicked.emit()
+    QApplication.processEvents()
+    assert ov._current_item.path == paths[1]
+    assert ov._current_idx == 1
     ov.hide()
 
 
@@ -446,9 +552,9 @@ def test_walk_follows_current_thumb(qtbot):
     Nothing in the app ever scrolled the strip (OverlayScrollArea glides
     only the vertical bar; the strip overflows horizontally), so walks
     left the current thumb out of view. Verified failing pre-fix
-    (hbar stays 0 after walking to the last of 8).
+    (hbar stays 0 after walking to the last of 16).
     """
-    mates = [_item(f"fl{i}.png", rank=i) for i in range(1, 9)]
+    mates = [_item(f"fl{i}.png", rank=i) for i in range(1, 17)]
     ov = _make_overlay(qtbot)
     _show(ov, mates[0], mates)
     QApplication.processEvents()
@@ -456,12 +562,12 @@ def test_walk_follows_current_thumb(qtbot):
     bar = ov._strip_scroll.horizontalScrollBar()
     assert bar.maximum() > bar.minimum(), "need overflow for a follow test"
     assert bar.value() == bar.minimum()
-    for _ in range(7):
+    for _ in range(15):
         ov._walk(1)
         QApplication.processEvents()
-    assert ov._current_idx == 7
+    assert ov._current_idx == 15
     assert bar.value() > bar.minimum(), "strip must follow to the last thumb"
-    for _ in range(7):
+    for _ in range(15):
         ov._walk(-1)
         QApplication.processEvents()
     assert ov._current_idx == 0
@@ -494,7 +600,7 @@ def test_strip_wheel_consumes_only_when_moving(qtbot):
 
     from tabs.image_gallery.ui.quick_look.strip import _strip_scroll_wheel
 
-    mates = [_item(f"wh{i}.png", rank=i) for i in range(1, 9)]
+    mates = [_item(f"wh{i}.png", rank=i) for i in range(1, 17)]
     ov = _make_overlay(qtbot)
     _show(ov, mates[0], mates)
     QApplication.processEvents()
@@ -509,4 +615,147 @@ def test_strip_wheel_consumes_only_when_moving(qtbot):
     assert _strip_scroll_wheel(ov, down) is False, "at the edge the wheel must propagate outward"
     up = SimpleNamespace(angleDelta=lambda: QPoint(0, 120), pixelDelta=lambda: QPoint(0, 0))
     assert _strip_scroll_wheel(ov, up) is True
+    ov.hide()
+
+
+def test_strip_row_spans_full_width_under_mid(qtbot):
+    """Strip section lives in a full-width bottom row, not the sidebar."""
+    from PySide6.QtWidgets import QWidget
+
+    mates = [_item(f"rw{i}.png", rank=i) for i in (1, 2)]
+    ov = _make_overlay(qtbot)
+    _show(ov, mates[0], mates)
+    QApplication.processEvents()
+    row = ov.findChild(QWidget, "quicklook_strip_row")
+    assert row is not None
+    assert row.parentWidget() is ov._content
+    # Filmstrip rides the row; no series text widgets exist anywhere.
+    assert ov._strip_scroll.parentWidget() is row
+    assert ov.findChild(QWidget, "quicklook_series_box") is None
+    assert ov.findChild(QWidget, "quicklook_series_header") is None
+    assert ov.findChild(QWidget, "quicklook_series_sub") is None
+    assert getattr(ov, "_series_header", None) is None
+    assert getattr(ov, "_series_sub", None) is None
+    # …and nothing series-related stays in the right column layout.
+    names = set()
+    lay = ov._right_lay
+    for i in range(lay.count()):
+        w = lay.itemAt(i).widget()
+        if w is not None:
+            names.add(w.objectName())
+    assert "quicklook_series_header" not in names
+    assert "quicklook_strip_scroll" not in names
+    assert "quicklook_series_box" not in names
+    # Row spans the card: wider than the 296px sidebar column.
+    assert row.width() > ov.findChild(QWidget, "quicklook_right_scroll").width()
+    ov.hide()
+
+
+def test_strip_hover_is_shared_both_directions(qtbot, tmp_path):
+    """Shared family hover: thumb hover lights its pill, pill hover lights
+    the thumb — no separate hover per control."""
+    from PySide6.QtCore import QPoint
+
+    from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
+
+    def _hovered(btn):
+        try:
+            regions = btn.regions()
+        except Exception:
+            regions = []
+        try:
+            for region in regions:
+                if ButtonState.HOVERED in btn._controller.states(region.id):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    p1 = _real_png(tmp_path, "v.png")
+    p2 = _real_png(tmp_path, "o.png")
+    viewing = GalleryItem(path=p1, mtime_ns=1, rank=1)
+    other = GalleryItem(path=p2, mtime_ns=2, rank=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, viewing, [viewing, other])
+    QApplication.processEvents()
+    pills = _rank_pills_by_path(ov)
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    t0, q0 = thumbs[str(p1)], pills[str(p1)]
+    t1, q1 = thumbs[str(p2)], pills[str(p2)]
+    # Thumb hover reaches the pills.
+    qtbot.mouseMove(t0, QPoint(33, 10))
+    QApplication.processEvents()
+    assert _hovered(t0)
+    assert _hovered(q0)
+    assert _hovered(q1)
+    # Pill hover reaches back to the thumb.
+    qtbot.mouseMove(q1, QPoint(17, 8))
+    QApplication.processEvents()
+    assert _hovered(t1)
+    assert _hovered(q0)
+    assert _hovered(q1)
+    ov.hide()
+
+
+def test_strip_row_hidden_for_single_item(qtbot):
+    """Ungrouped single item: no lonely-thumb row, the filmstrip hides."""
+    from PySide6.QtWidgets import QWidget
+
+    a = _item("solo.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    QApplication.processEvents()
+    row = ov.findChild(QWidget, "quicklook_strip_row")
+    assert row is not None
+    assert row.isHidden()
+    b = _item("b.png")
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    assert not row.isHidden()
+    ov.hide()
+
+
+def test_ungrouped_items_form_strip_group(qtbot):
+    """Ungrouped items share one strip group: opening any of them lists
+    every item outside multi-member clusters (folder order), with walks."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QWidget
+
+    from tabs.image_gallery.models import GalleryItem, Mode
+    from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+
+    def _show_full(overlay, item, series, items):
+        owner = SimpleNamespace(
+            state=SimpleNamespace(mode=Mode.FIDELITY, source_path=None, series=series, items=items)
+        )
+        overlay.show_for(item, owner)
+        try:
+            parent = getattr(overlay, "_parity_test_parent", None) or overlay.parentWidget()
+            if parent is not None:
+                parent.resize(1280, 800)
+                parent.show()
+        except Exception:
+            pass
+        QApplication.processEvents()
+
+    a = _item("a.png")
+    b = _item("b.png")
+    c = _item("c.png")
+    d = _item("d.png")
+    items = [a, b, c, d]
+    ov = _make_overlay(qtbot)
+    _show_full(ov, c, [[a, b]], items)
+    QApplication.processEvents()
+    assert [m.path for m in ov._series_items] == [c.path, d.path]
+    assert not ov.findChild(QWidget, "quicklook_strip_row").isHidden()
+    assert len(_strip_buttons(ov)) == 2
+    # Multi-member cluster still wins for its own members.
+    _show_full(ov, a, [[a, b]], items)
+    QApplication.processEvents()
+    assert [m.path for m in ov._series_items] == [a.path, b.path]
+    # Singleton cluster joins the ungrouped pool, not a lonely row.
+    _show_full(ov, c, [[c]], [a, b, c])
+    QApplication.processEvents()
+    assert [m.path for m in ov._series_items] == [a.path, b.path, c.path]
     ov.hide()

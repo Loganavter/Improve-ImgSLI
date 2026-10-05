@@ -79,6 +79,13 @@ TIE_EPSILON = 0.025  # embedding distance normalized; tuned for 8×8 HSV vectors
 # clusters, it only measures against live series.
 _ATTACH_THRESHOLD = 10
 
+# S2 tail-cluster bound: regrouping the UNGROUPED tail after an append
+# runs inline on the GUI thread. Signatures come from the perceptual cache
+# (only genuinely new files decode), but the pairwise pass itself is
+# O(n^2) arithmetic — past this many tail candidates the drop would jank,
+# so huge tails stay manual ("Re-cluster series" from the header menu).
+_TAIL_CLUSTER_LIMIT = 1000
+
 # -- Bounded gallery scheduler (Phase 2b+3) --------------------------------
 # Measured Phase-0 waste: open_folder queued N thumbnail workers + the
 # triage tail fanned out three whole-pool batch workers, all on
@@ -1324,6 +1331,14 @@ class GalleryController:
                 self._attach_append_items(uniq)
             except Exception:
                 logger.debug("append attach failed", exc_info=True)
+            # S2 tail regroup: attach never compares new files with each
+            # other, so mutually-similar drops would sit UNGROUPED until a
+            # manual re-cluster. Regroup the tail (old singletons + fresh
+            # misses) into new series; existing membership untouched.
+            try:
+                self._cluster_tail_into_series()
+            except Exception:
+                logger.debug("append tail cluster failed", exc_info=True)
             self.state.triage_state = TriageState.DONE
             # Newer than any in-flight triage: its delivery drops (sgen).
             self._next_series_gen()
@@ -1396,15 +1411,6 @@ class GalleryController:
             else:
                 item.thumbnail = pixmap
                 item.thumbnail_status = ThumbnailStatus.LOADED
-                # The sharpness-crop inset has no loader of its own: wake
-                # it the moment the thumbnail lands (zero-decode branch)
-                # instead of waiting for the analysis round-trip.
-                try:
-                    from tabs.image_gallery.ui import quick_look_hooks as _qlh
-
-                    _qlh.refresh_crop_for(self.widget, item)
-                except Exception:
-                    pass
         # Card repaint is coalesced per tick (see _queue_card_refresh) — a
         # per-item refresh_card here re-swept selection over the whole grid.
         self._queue_card_refresh(item)
@@ -1665,6 +1671,13 @@ class GalleryController:
                 sid = None
             if sid is None and pre_ids is not None:
                 try:
+                    if key in omap:
+                        # Explicit override wins — including forced
+                        # UNGROUPED (None pin): the item must never be
+                        # re-pinned to its pre-apply series, or the last
+                        # member of a dissolved group resurrects it and
+                        # can never be ungrouped.
+                        continue
                     pre = pre_ids.get(key)
                     if pre is not None and str(pre) not in present:
                         sid = str(pre)
@@ -2828,6 +2841,66 @@ class GalleryController:
             logger.debug("move_paths_to_series regroup failed", exc_info=True)
         return moved
 
+    def group_paths_as_new_series(self, paths) -> str | None:
+        """Pin *paths* into a brand-new manual series + SYNC regroup.
+
+        Context-menu "Group" entry point (multi-select): mints a fresh
+        stable id from the series counter (pinned + live ids skipped —
+        never reused, never collides), then routes through
+        ``move_paths_to_series`` (override pins + in-memory regroup +
+        view, zero clustering, zero thread hops). Members may come from
+        anywhere (UNGROUPED tail, other series); leftovers keep their
+        sections via the move path's singleton restore. Returns the new
+        series id, or None when nothing moved.
+        """
+        try:
+            targets = [Path(p) if not isinstance(p, Path) else p for p in list(paths or [])]
+        except Exception:
+            return None
+        if not targets:
+            return None
+        try:
+            with self._series_id_lock:
+                used: set[str] = set()
+                try:
+                    for v in (self._series_overrides or {}).values():
+                        if v is not None:
+                            used.add(str(v))
+                except Exception:
+                    pass
+                try:
+                    for entry in (self.state.series or []):
+                        eid = GalleryController._section_id(
+                            entry, GalleryController._section_members(entry)
+                        )
+                        if eid is not None:
+                            used.add(str(eid))
+                except Exception:
+                    pass
+                # Same convention as translate_computed_to_stable: the
+                # counter holds the LAST issued number, candidates start
+                # past it (monotonic, never reused, gaps allowed).
+                try:
+                    n = int(self._series_next_id or 1)
+                except Exception:
+                    n = 1
+                while True:
+                    n += 1
+                    if f"series_{n}" not in used:
+                        break
+                new_id = f"series_{n}"
+                try:
+                    self._series_next_id = int(n)
+                except Exception:
+                    pass
+        except Exception:
+            return None
+        try:
+            moved = int(self.move_paths_to_series(targets, new_id))
+        except Exception:
+            return None
+        return new_id if moved > 0 else None
+
     def _attach_append_items(self, new_items) -> dict:
         """Attach NEW files to the nearest EXISTING series (S2 append path).
 
@@ -3043,6 +3116,77 @@ class GalleryController:
         except Exception:
             pass
         return attached
+
+    def _cluster_tail_into_series(self) -> list:
+        """Form NEW series from the UNGROUPED tail (S2 append follow-up).
+
+        Runs after ``_attach_append_items`` in the quiet-append branch.
+        Candidates are the current tail — old singletons plus fresh attach
+        misses — minus pinned paths (pins were already placed by attach).
+        ``cluster_items`` groups them (same threshold as the seed run);
+        groups ≥2 join ``state.series`` with fresh stable ids continuing
+        the ``series_<n>`` counter (pinned ids skipped). Existing series
+        (members, ranks, ids) and the triage mode are untouched; misses
+        stay UNGROUPED.
+
+        Cheap by construction, not by batching: ``cluster_items`` reads
+        the perceptual signature cache keyed ``(path, mtime_ns, size)``,
+        so unchanged files never re-decode — appending 1 file to a tail
+        of 50 decodes exactly 1 file, the rest is integer/float compares.
+        Past ``_TAIL_CLUSTER_LIMIT`` candidates the quadratic pass would
+        jank the GUI thread, so it is skipped (manual Re-cluster covers
+        huge tails). Returns the new groups (possibly []).
+        """
+        try:
+            items = list(getattr(self.state, "items", None) or [])
+            groups = list(getattr(self.state, "series", None) or [])
+        except Exception:
+            return []
+        try:
+            member_paths: set[str] = set()
+            for entry in groups:
+                for m in GalleryController._section_members(entry):
+                    try:
+                        member_paths.add(str(getattr(m, "path", None)))
+                    except Exception:
+                        continue
+        except Exception:
+            member_paths = set()
+        try:
+            pinned = {str(k) for k in (getattr(self, "_series_overrides", None) or {})}
+        except Exception:
+            pinned = set()
+        tail = []
+        for it in items:
+            try:
+                key = str(getattr(it, "path", None))
+            except Exception:
+                continue
+            if key in member_paths or key in pinned:
+                continue
+            tail.append(it)
+        if len(tail) < 2 or len(tail) > _TAIL_CLUSTER_LIMIT:
+            return []
+        try:
+            from tabs.image_gallery.services.clustering import cluster_items as _cluster
+        except Exception:
+            return []
+        try:
+            fresh_groups = list(_cluster(list(tail), _ATTACH_THRESHOLD) or [])
+        except Exception:
+            logger.debug("tail cluster failed", exc_info=True)
+            return []
+        if not fresh_groups:
+            return []
+        try:
+            fresh_groups, _ = self._assign_fresh_stable_ids(fresh_groups)
+        except Exception:
+            pass
+        try:
+            self.state.series = list(groups) + list(fresh_groups)
+        except Exception:
+            return []
+        return list(fresh_groups)
 
     def recluster_series(self) -> None:
         """Fresh cluster+apply world with pins re-applied + rebuild.
