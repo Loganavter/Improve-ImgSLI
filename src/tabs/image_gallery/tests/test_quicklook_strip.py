@@ -865,3 +865,36 @@ def test_strip_plain_click_still_walks(qtbot, tmp_path):
     assert ov._current_idx == 2
     assert ov._strip_selected_paths == set()
     ov.hide()
+
+
+def test_strip_mirrors_grid_selection(qtbot, tmp_path):
+    """Thumbs read as selected what the grid selected (owner state).
+
+    Cards multi-selected in the gallery grid must show selected on the
+    QL strip — otherwise the strip shows a clean row on top of selected
+    cards. Non-series paths are ignored.
+    """
+    from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS
+    from tabs.image_gallery.ui.quick_look.strip import rebuild_strip
+
+    paths = [_real_png(tmp_path, f"g{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    ov._owner.state.selected_paths = {str(paths[0]), str(paths[2]), "/elsewhere/x.png"}
+    ov._owner.state.selected_order = [str(paths[0]), str(paths[2])]
+    rebuild_strip(ov)
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[2])}
+
+    def _checked(btn):
+        try:
+            return _BS.CHECKED in btn._controller.states("thumb")
+        except Exception:
+            return False
+
+    by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert _checked(by_path[str(paths[0])])
+    assert not _checked(by_path[str(paths[1])])
+    assert _checked(by_path[str(paths[2])])
+    ov.hide()

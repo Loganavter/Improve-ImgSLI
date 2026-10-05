@@ -119,9 +119,21 @@ class _StripLassoFilter(QObject):
     and walk the preview — that click is swallowed via
     ``overlay._strip_lasso_ate_click`` (checked first in ``_make_switch``).
 
-    Installed on the host, every thumb container, thumb button and rank
-    pill (presses on children never reach the host filter); positions
-    map to host coordinates. Never raises.
+    Installed on the host, the scroll viewport (full strip width —
+    viewport gaps past the host edge must start a lasso too) and every
+    thumb container, thumb button and rank pill (presses on children
+    never reach the host filter); positions map to host coordinates.
+
+    Two guards keep coordinates honest. First, dedup: one physical event
+    reaches this filter once per ancestor (receiver, then each parent it
+    propagates to) with IDENTICAL raw type/buttons/pos, and a second
+    mapping would use the wrong widget's coordinates — repeats are
+    skipped so exactly the first delivery (watched == receiver, correct
+    coords) takes effect. Second, plain containers (host/viewport/thumb
+    container) swallow handled Left press/move/release so nothing
+    propagates further; buttons/pills are never swallowed (clicks,
+    ripple, hover stay intact — and buttons accept presses/releases
+    themselves, so those never propagate anyway). Never raises.
     """
 
     def __init__(self, overlay, host):
@@ -130,6 +142,13 @@ class _StripLassoFilter(QObject):
         self._host = host
         self._origin = None
         self._band = None
+        # Dedup key of the last processed press/move/release: one physical
+        # event reaches this filter once per ancestor (receiver, then each
+        # parent it propagates to) with IDENTICAL type/buttons/pos, and the
+        # second mapping would use the wrong widget's coordinates. Skip
+        # repeats so exactly one handling (the first, with watched ==
+        # receiver and correct coords) takes effect.
+        self._seen = None
 
     def _to_host(self, widget, pos):
         try:
@@ -156,16 +175,54 @@ class _StripLassoFilter(QObject):
                 pass
 
     def eventFilter(self, watched, event):  # noqa: N802
+        # Return policy (kills double-delivery: a press handled on the host
+        # must never ALSO be processed on the viewport — propagated events
+        # keep the original receiver's coordinates, so the second mapping
+        # produces garbage rects):
+        # - plain containers (host/viewport/thumb container): swallow
+        #   handled Left press/move/release (nothing else needs them; no
+        #   grab is set, so later moves hit-test fresh with watched ==
+        #   receiver and every mapping stays correct);
+        # - buttons/pills: never swallow (clicks, ripple, hover stay
+        #   intact; buttons accept presses/releases themselves, so nothing
+        #   propagates further anyway).
         try:
             from PySide6.QtCore import QPoint as _QP
             from PySide6.QtCore import QRect as _QR
 
+            try:
+                from sli_ui_toolkit.widgets import Button as _BL
+
+                _is_button = isinstance(watched, _BL)
+            except Exception:
+                _is_button = False
             t = event.type()
             if t == QEvent.Type.MouseButtonPress:
                 try:
                     if event.button() == Qt.MouseButton.LeftButton:
+                        try:
+                            _pos = event.position().toPoint()
+                            _key = (t, event.button(), _pos.x(), _pos.y())
+                        except Exception:
+                            self._origin = None
+                            return False
+                        if _key == self._seen:
+                            return False
+                        self._seen = _key
                         self._hide_band()
-                        self._origin = self._to_host(watched, event.position().toPoint())
+                        self._origin = self._to_host(watched, _pos)
+                        try:
+                            from tabs.image_gallery.debug import gallery_debug as _dbg
+
+                            _dbg(
+                                "strip lasso press on=%s pos=%s",
+                                type(watched).__name__,
+                                self._origin,
+                            )
+                        except Exception:
+                            pass
+                        if not _is_button:
+                            return True
                 except Exception:
                     self._origin = None
             elif t == QEvent.Type.MouseMove:
@@ -175,7 +232,12 @@ class _StripLassoFilter(QObject):
                             self._origin = None
                             self._hide_band()
                         else:
-                            cur = self._to_host(watched, event.position().toPoint())
+                            _raw = event.position().toPoint()
+                            _mkey = (t, event.buttons(), _raw.x(), _raw.y())
+                            if _mkey == self._seen:
+                                return False
+                            self._seen = _mkey
+                            cur = self._to_host(watched, _raw)
                             dx = cur.x() - self._origin.x()
                             dy = cur.y() - self._origin.y()
                             if self._band is None and (abs(dx) + abs(dy)) >= self._threshold():
@@ -186,15 +248,35 @@ class _StripLassoFilter(QObject):
                                     self._band.show()
                                 except Exception:
                                     pass
+                                try:
+                                    from tabs.image_gallery.debug import gallery_debug as _dbg2
+
+                                    _dbg2("strip lasso band shown origin=%s", self._origin)
+                                except Exception:
+                                    pass
                             if self._band is not None:
                                 self._band.setGeometry(_QR(_QP(self._origin), _QP(cur)).normalized())
+                                if not _is_button:
+                                    return True
                     except Exception:
                         pass
             elif t == QEvent.Type.MouseButtonRelease:
                 try:
                     if event.button() == Qt.MouseButton.LeftButton and self._origin is not None:
-                        if self._band is not None and self._band.isVisible():
+                        _rpos = event.position().toPoint()
+                        _rkey = (t, event.button(), _rpos.x(), _rpos.y())
+                        if _rkey == self._seen:
+                            return False
+                        self._seen = _rkey
+                        _had_band = self._band is not None and self._band.isVisible()
+                        if _had_band:
                             rect = self._band.geometry().normalized()
+                            try:
+                                from tabs.image_gallery.debug import gallery_debug as _dbg3
+
+                                _dbg3("strip lasso release rect=%s", rect)
+                            except Exception:
+                                pass
                             if rect.width() >= 4 or rect.height() >= 4:
                                 try:
                                     self._overlay._strip_lasso_ate_click = True
@@ -206,6 +288,8 @@ class _StripLassoFilter(QObject):
                                     pass
                         self._origin = None
                         self._hide_band()
+                        if _had_band and not _is_button:
+                            return True
                 except Exception:
                     pass
         except Exception:
@@ -732,6 +816,40 @@ def _refresh_strip_selection(overlay) -> None:
                 pass
 
 
+def _strip_seed_selection_from_owner(overlay) -> None:
+    """Mirror the grid selection into the strip's picked set.
+
+    Cards selected in the gallery grid (owner ``state.selected_paths``)
+    must read as selected on the QL strip thumbs — otherwise the strip
+    shows an unselected row on top of selected cards (inverted UX). The
+    owner is the source of truth: replace (not union), restricted to
+    series members. Owners without a ``selected_paths`` state (bare
+    test doubles) leave the overlay set untouched.
+    """
+    try:
+        owner = getattr(overlay, "_owner", None)
+        st = getattr(owner, "state", None)
+        if st is None or not hasattr(st, "selected_paths"):
+            return
+        try:
+            names = set(str(p) for p in (getattr(st, "selected_paths", None) or set()))
+        except Exception:
+            return
+        try:
+            members = set(
+                str(getattr(m, "path", "") or "")
+                for m in (getattr(overlay, "_series_items", None) or [])
+            )
+        except Exception:
+            members = set()
+        try:
+            overlay._strip_selected_paths = {p for p in names if not members or p in members}
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def rebuild_strip(overlay) -> None:
     # W6: svg pitch is 76px (thumbs x=816/892/968/1044, 66 wide) — the
     # HBox spacing is pinned here so 4 thumbs span 4*66+3*10=294px and
@@ -740,6 +858,10 @@ def rebuild_strip(overlay) -> None:
     # Selection-only fast path: same series/triage/theme/scale as the last
     # full rebuild → update checked/border/opacity in place, no widget
     # churn. Any mismatch (or first build) falls through to today's rebuild.
+    try:
+        _strip_seed_selection_from_owner(overlay)
+    except Exception:
+        pass
     try:
         _fp_now = _strip_fingerprint(overlay)
     except Exception:
@@ -1166,10 +1288,12 @@ def rebuild_strip(overlay) -> None:
     except Exception:
         pass
     try:
-        # Marquee-selection lasso: one filter object, installed on the host
+        # Marquee-selection lasso: one filter object, installed on the host,
+        # the scroll viewport (presses on viewport gaps past the host never
+        # reach the host — the working zone must span the full strip width),
         # and every interactive child (thumb button, rank pill, container —
         # presses on children never reach the host). Re-installs on the
-        # long-lived host are guarded; rebuilt children are always fresh.
+        # long-lived host/viewport are guarded; rebuilt children are fresh.
         from sli_ui_toolkit.widgets import Button as _BL
 
         _host = getattr(overlay, "_strip_host", None)
@@ -1182,6 +1306,14 @@ def rebuild_strip(overlay) -> None:
                 if not getattr(_host, "_strip_lasso_installed", False):
                     _host.installEventFilter(_lasso)
                     _host._strip_lasso_installed = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                _scroll = getattr(overlay, "_strip_scroll", None)
+                _viewport = _scroll.viewport() if _scroll is not None else None
+                if _viewport is not None and not getattr(_viewport, "_strip_lasso_installed", False):
+                    _viewport.installEventFilter(_lasso)
+                    _viewport._strip_lasso_installed = True  # type: ignore[attr-defined]
             except Exception:
                 pass
             for _container in list(getattr(overlay, "_strip_buttons", None) or []):
