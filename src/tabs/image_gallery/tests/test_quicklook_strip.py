@@ -4,9 +4,8 @@
 - ``regionClicked`` on a strip thumb switches the preview (clicked alone
   never fired: the thumb region id is ``"thumb"``, not ``"_main"``).
 - Card-style badge contract: rejected → no pill, leader → ``#N`` like every
-  ranked item (no BEST pill), ranked → ``#N`` (``_gallery_badge`` +
-  ``_gallery_badge_style`` overlay pills; the toolkit badge stays ``None``
-  except tie-break pending).
+  ranked item (no BEST pill), ranked → ``#N`` (toolkit Button badge;
+  pending shows ``…``).
 """
 
 from __future__ import annotations
@@ -138,7 +137,6 @@ def test_rejected_thumb_has_no_badge(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [viewing, rejected])
     by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    assert getattr(by_path[str(p2)], "_gallery_badge", None) is None
     assert by_path[str(p2)]._badge is None
     ov.hide()
 
@@ -152,19 +150,11 @@ def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, leader, [leader, ranked, plain])
     by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    assert by_path[str(paths[0])]._gallery_badge == "#1"
-    assert by_path[str(paths[1])]._gallery_badge == "#3"
-    assert getattr(by_path[str(paths[2])], "_gallery_badge", None) is None
-    # Style shape mirrors visuals.py: (filled, bg, border, text_color).
-    for key in (str(paths[0]), str(paths[1])):
-        style = by_path[key]._gallery_badge_style
-        assert isinstance(style, tuple) and len(style) == 4
-        assert style[0] is True
-    assert by_path[str(paths[0])]._gallery_badge_style[3] == QColor("#000000")
-    assert by_path[str(paths[1])]._gallery_badge_style[3] == QColor("#000000")
-    # Overlay pills, never the toolkit badge.
-    assert by_path[str(paths[0])]._badge is None
-    assert by_path[str(paths[1])]._badge is None
+    # Toolkit Button badge carries the rank (black on toggle bg).
+    assert by_path[str(paths[0])]._badge == "#1"
+    assert by_path[str(paths[1])]._badge == "#3"
+    assert by_path[str(paths[2])]._badge is None
+    assert bool(by_path[str(paths[0])].property("badgeFilled")) is True
     ov.hide()
 
 
@@ -520,46 +510,3 @@ def test_strip_wheel_consumes_only_when_moving(qtbot):
     up = SimpleNamespace(angleDelta=lambda: QPoint(0, 120), pixelDelta=lambda: QPoint(0, 0))
     assert _strip_scroll_wheel(ov, up) is True
     ov.hide()
-
-
-def test_strip_pill_border_half_pixel_aligned():
-    """The 1px pill border must sit on pixel centers, not straddle them.
-
-    w carries the float text advance, so an unadjusted rect puts the 1px
-    stroke across pixel boundaries (gray fringe on the curve — same class
-    as precedent qrhi-sdf-feather-1px-one-rasterizer). The painter must
-    receive the 0.5-inset rect.
-    """
-    from types import SimpleNamespace
-
-    from PySide6.QtCore import QRectF
-    from PySide6.QtGui import QColor
-
-    from tabs.image_gallery.ui.card.painters import _strip_badge_painter
-
-    calls = {}
-
-    class FakeMetrics:
-        def horizontalAdvance(self, _text):
-            return 33.7  # fractional advance: the aliasing trigger.
-
-    fake = SimpleNamespace(
-        save=lambda: None,
-        restore=lambda: None,
-        setFont=lambda _f: None,
-        fontMetrics=lambda: FakeMetrics(),
-        setBrush=lambda *_a: None,
-        setPen=lambda *_a: None,
-        setRenderHint=lambda *_a: None,
-        RenderHint=SimpleNamespace(Antialiasing=1),
-        drawRoundedRect=lambda r, *_a: calls.setdefault("rect", r),
-        drawText=lambda *_a: None,
-    )
-    _strip_badge_painter(
-        fake, QRectF(0, 0, 66, 44), "#10",
-        (True, QColor("#555555"), QColor("#d9a441"), QColor("#000000")),
-    )
-    r = calls["rect"]
-    assert abs((r.x() % 1) - 0.5) < 1e-6, f"border x must be half-pixel, got {r.x()}"
-    assert abs((r.y() % 1) - 0.5) < 1e-6, f"border y must be half-pixel, got {r.y()}"
-    assert r.width() > 0 and r.height() > 0

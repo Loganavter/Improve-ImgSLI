@@ -90,69 +90,22 @@ def _resolve_badge_text() -> object:
 
 
 def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type: ignore[no-untyped-def]
-    """Draw pill badge at preview left 8 top 6 (card 8+6=14) per real_design.md:2.5 and svg x52 y206."""
+    """Draw pill badge at preview left 13 top 6 per real_design.md:2.5 and svg x52 y206."""
     try:
         from PySide6.QtCore import QRectF
         from PySide6.QtGui import QColor, QPen
 
         filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=11, bold=False)
+        f = ui_font(pixel_size=13, bold=False)
         painter.save()
         try:
             painter.setFont(f)
             fm = painter.fontMetrics()
             w = max(28, fm.horizontalAdvance(text) + 12)
             h = 18
-            x = rect.x() + 8
+            x = rect.x() + 13
             y = rect.y() + 8 + 6
             r = QRectF(x, y, w, h)
-            # background via theme tokens
-            if filled:
-                painter.setBrush(bg if isinstance(bg, QColor) else _resolve_badge_accent())
-            else:
-                painter.setBrush(_resolve_unfilled_bg())
-            # border
-            if border is not None:
-                painter.setPen(QPen(border, 1))
-            else:
-                painter.setPen(QColor(0, 0, 0, 0))
-            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            painter.drawRoundedRect(r, 9, 9)
-            painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
-            painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
-        finally:
-            painter.restore()
-    except Exception:
-        pass
-
-
-def _strip_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type: ignore[no-untyped-def]
-    """Draw pill badge at strip-thumb left 4 top 4 (66x44 thumb).
-
-    Same rounded-pill recipe as ``_left_badge_painter``, sized for the
-    quick-look series strip: 11px font, 4px offsets. The 1px border is
-    inset by half a pixel (``adjusted(0.5, …)``) so the stroke lands on
-    pixel centers instead of straddling fractional coords (w carries the
-    float text advance) — a straddling 1px stroke aliases into a gray
-    fringe, same class as precedent qrhi-sdf-feather-1px-one-rasterizer.
-    Style shape mirrors ``ui/card/visuals.py``: ``(filled, bg, border,
-    text_color)``.
-    """
-    try:
-        from PySide6.QtCore import QRectF
-        from PySide6.QtGui import QColor, QPen
-
-        filled, bg, border, txt_col = style
-        f = ui_font(pixel_size=11, bold=False)
-        painter.save()
-        try:
-            painter.setFont(f)
-            fm = painter.fontMetrics()
-            w = max(28, fm.horizontalAdvance(text) + 12)
-            h = 18
-            x = rect.x() + 4
-            y = rect.y() + 4
-            r = QRectF(x, y, w, h).adjusted(0.5, 0.5, -0.5, -0.5)
             # background via theme tokens
             if filled:
                 painter.setBrush(bg if isinstance(bg, QColor) else _resolve_badge_accent())

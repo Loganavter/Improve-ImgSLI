@@ -158,6 +158,39 @@ def ensure_strip_visible(overlay) -> None:
         pass
 
 
+def _apply_strip_badge(btn, badge_text, badge_style) -> None:
+    """Apply a strip pill via the toolkit Button badge API.
+
+    ``badge_style`` is the ``(filled, bg, border, text)`` tuple used across
+    gallery pills. ``None`` text clears the badge. Toolkit-painted, so it
+    scrolls/repaints with the button itself — no overlay pass needed.
+    """
+    try:
+        if badge_text is None:
+            try:
+                btn.setBadge(None)
+            except Exception:
+                pass
+            return
+        try:
+            btn.setBadge(str(badge_text))
+        except Exception:
+            return
+        try:
+            filled, bg, border, txt = badge_style
+            btn.setBadgeStyle(
+                filled=bool(filled),
+                bordered=border is not None,
+                background_color=bg,
+                border_color=border,
+                text_color=txt,
+            )
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def ensure_strip_scroll(overlay) -> None:
     """Install the wheel filter once, then follow the current thumb."""
     try:
@@ -178,30 +211,16 @@ def ensure_strip_scroll(overlay) -> None:
 
 
 def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
-    """Strip thumb overlay: card hover wash + strip-size badge pill.
+    """Strip thumb overlay: card hover wash only.
 
-    Visual hover only (no IconActionFlyout/capsule on strip thumbs) plus
-    the ``_gallery_badge`` pill drawn by the strip-size painter from
-    ``ui/card/painters.py``.
+    Visual hover only (no IconActionFlyout/capsule on strip thumbs).
+    Thumb pills (rank/SOURCE/pending) render via the toolkit Button badge
+    API (``btn.setBadge``), which paints with the button itself.
     """
     try:
         from tabs.image_gallery.ui.card.painters import _gallery_hover_wash
 
         _gallery_hover_wash(painter, ctx, tm)
-    except Exception:
-        pass
-    try:
-        from tabs.image_gallery.ui.card.painters import _strip_badge_painter
-
-        widget = getattr(ctx, "widget", None)
-        if widget is None:
-            return
-        b_text = getattr(widget, "_gallery_badge", None)
-        b_style = getattr(widget, "_gallery_badge_style", None)
-        if b_text and b_style is not None:
-            rect = getattr(ctx, "rect", None)
-            if rect is not None:
-                _strip_badge_painter(painter, rect, str(b_text), b_style)
     except Exception:
         pass
 
@@ -372,14 +391,9 @@ def _refresh_strip_selection(overlay) -> None:
                             _badge_text = str(_rv)
                         _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
                         _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
-                if _badge_text is not None:
-                    btn._gallery_badge = _badge_text
-                    btn._gallery_badge_style = _badge_style
-                else:
-                    try:
-                        btn._gallery_badge = None
-                    except Exception:
-                        pass
+                # Pending keeps the toolkit "…" badge above: do not clear it.
+                if not pending:
+                    _apply_strip_badge(btn, _badge_text, _badge_style)
             except Exception:
                 pass
             try:
@@ -461,6 +475,11 @@ def rebuild_strip(overlay) -> None:
             if _fp_stored == _fp_now and _n_items and len(_buttons) == _n_items:
                 _refresh_strip_selection(overlay)
                 ensure_strip_scroll(overlay)
+                try:
+                    # Badge pass reads live attrs — repaint after in-place refresh.
+                    overlay.update()
+                except Exception:
+                    pass
                 return
         except Exception:
             pass
@@ -596,11 +615,11 @@ def rebuild_strip(overlay) -> None:
                     pass
         except Exception:
             pass
-        # Card-style overlay pills (visuals.py contract): btn._gallery_badge
-        # + btn._gallery_badge_style, drawn by _strip_badge_painter. The
-        # toolkit badge=/setBadge path is used ONLY for the … pending case
-        # above. Priority: pending (toolkit) > rejected (none — the dim 0.4
-        # opacity effect carries the signal) > SOURCE > ★ BEST > #N.
+        # Thumb pills render via the toolkit Button badge API
+        # (``_apply_strip_badge`` above): rank/SOURCE text with the same
+        # priority. The toolkit badge path below is used ONLY for the …
+        # pending case. Priority: pending (toolkit) > rejected (none — the
+        # dim 0.4 opacity effect carries the signal) > SOURCE > ★ BEST > #N.
         try:
             if not pending:
                 btn.setBadge(None)
@@ -638,14 +657,9 @@ def rebuild_strip(overlay) -> None:
                         _badge_text = str(_rv)
                     _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
                     _badge_style = (True, _rank_bg, _rank_bg, _QC("#000000"))
-            if _badge_text is not None:
-                btn._gallery_badge = _badge_text
-                btn._gallery_badge_style = _badge_style
-            else:
-                try:
-                    btn._gallery_badge = None
-                except Exception:
-                    pass
+            # Pending keeps the toolkit "…" badge above: do not clear it.
+            if not pending:
+                _apply_strip_badge(btn, _badge_text, _badge_style)
         except Exception:
             pass
         try:
@@ -822,3 +836,8 @@ def rebuild_strip(overlay) -> None:
     except Exception:
         pass
     ensure_strip_scroll(overlay)
+    try:
+        # Badge pass reads live geometry — repaint after the rebuild.
+        overlay.update()
+    except Exception:
+        pass

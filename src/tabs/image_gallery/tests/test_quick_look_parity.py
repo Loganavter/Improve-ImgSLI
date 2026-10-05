@@ -995,13 +995,11 @@ def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
         assert len(regions) == 1
         assert regions[0].pixmap is not None and not regions[0].pixmap.isNull()
         assert regions[0].image_fill == "cover"
-    # Card-style badge contract: SOURCE on source, #N on ranked viewing —
-    # overlay pills (_gallery_badge), never the toolkit badge or Button text.
+    # Badge contract: SOURCE on source, #N on ranked viewing — toolkit
+    # Button badge (top-right), never Button text.
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path[str(p1)]._gallery_badge == "SOURCE"
-    assert by_path[str(p2)]._gallery_badge == "#2"
-    assert by_path[str(p1)]._badge is None
-    assert by_path[str(p2)]._badge is None
+    assert by_path[str(p1)]._badge == "SOURCE"
+    assert by_path[str(p2)]._badge == "#2"
     assert by_path[str(p1)]._text == ""
     ov.hide()
 
@@ -1309,7 +1307,6 @@ def test_strip_rejected_badge_is_x(qtbot, tmp_path):
         for b in ov._strip_host.findChildren(Button)
         if b.objectName().startswith("quicklook_strip_")
     }
-    assert getattr(by_path[str(p2)], "_gallery_badge", None) is None
     assert by_path[str(p2)]._badge is None
     assert by_path[str(p2)]._text == ""
     ov.hide()
@@ -1486,11 +1483,10 @@ def test_strip_four_thumbs_fit_296px_column(qtbot):
     assert scroll.horizontalScrollBar().isVisible() is False
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.verticalScrollBar().isVisible() is False
-    # Badge contract still holds at the new size (card-style overlay pills).
+    # Badge contract still holds at the new size (toolkit Button badge).
     by_path = {b.property("gallery_path"): b for b in buttons}
-    assert by_path["/gallery/a.png"]._gallery_badge == "#1"
-    assert by_path["/gallery/b.png"]._gallery_badge == "#2"
-    assert by_path["/gallery/a.png"]._badge is None
+    assert by_path["/gallery/a.png"]._badge == "#1"
+    assert by_path["/gallery/b.png"]._badge == "#2"
     ov.hide()
 
 
