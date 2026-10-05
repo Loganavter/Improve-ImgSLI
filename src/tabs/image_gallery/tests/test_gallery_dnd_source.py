@@ -265,3 +265,85 @@ def test_action_targets_mirror_reject_rule() -> None:
     owner = _owner({a, b}, order=[b, a])
     assert _action_targets(owner, a) == [b, a]
     assert _action_targets(owner, c) == [c]
+
+
+def _solid_pixmap(w: int, h: int, color: str = "#ffffff"):
+    from PySide6.QtGui import QColor, QPixmap
+
+    pm = QPixmap(w, h)
+    pm.fill(QColor(color))
+    return pm
+
+
+def test_drag_pixmap_shrinks_single(qapp) -> None:
+    from tabs.image_gallery.ui.grid_view import (
+        GALLERY_DRAG_PREVIEW_EDGE,
+        compose_gallery_drag_pixmap,
+    )
+
+    out = compose_gallery_drag_pixmap(_solid_pixmap(400, 300), 1)
+    assert not out.isNull()
+    assert max(out.width(), out.height()) == GALLERY_DRAG_PREVIEW_EDGE
+    # Aspect kept: 4:3.
+    assert (out.width(), out.height()) == (GALLERY_DRAG_PREVIEW_EDGE, GALLERY_DRAG_PREVIEW_EDGE * 3 // 4)
+
+
+def test_drag_pixmap_multi_has_count_badge(qapp) -> None:
+    from tabs.image_gallery.ui.grid_view import compose_gallery_drag_pixmap
+
+    single = compose_gallery_drag_pixmap(_solid_pixmap(400, 300), 1)
+    multi = compose_gallery_drag_pixmap(_solid_pixmap(400, 300), 5)
+    # Badge hangs half outside: canvas grows by the badge radius (15).
+    assert multi.width() == single.width() + 15
+    assert multi.height() == single.height() + 15
+    img_multi = multi.toImage()
+    # Top-right corner: blue pill (white text on #0096FF), not white.
+    blue = 0
+    total = 0
+    for dx in range(30):
+        for dy in range(30):
+            total += 1
+            c = img_multi.pixelColor(multi.width() - 1 - dx, dy)
+            if c.blue() > 120 and c.red() < 120 and c.green() < 160:
+                blue += 1
+    assert blue > total // 4
+    # And single has no blue pixels there at all.
+    img_single = single.toImage()
+    for dx in range(30):
+        for dy in range(30):
+            c = img_single.pixelColor(single.width() - 1 - dx, dy)
+            assert (c.red(), c.green(), c.blue()) == (255, 255, 255)
+
+
+def test_drag_pixmap_badge_circle_then_capsule(qapp) -> None:
+    """Single digit → circle (30x30 pill); 10+ → wider capsule."""
+    from tabs.image_gallery.ui.grid_view import compose_gallery_drag_pixmap
+
+    one = compose_gallery_drag_pixmap(_solid_pixmap(400, 300), 5)
+    many = compose_gallery_drag_pixmap(_solid_pixmap(400, 300), 42)
+    assert one.width() == 112 + 15  # preview + badge radius overhang
+    assert many.size() == one.size()  # canvas fixed; capsule grows left
+
+    def blue_span(pm):
+        img = pm.toImage()
+        xs = [
+            x
+            for x in range(pm.width())
+            for y in range(30)
+            if (lambda c: c.blue() > 120 and c.red() < 120)(img.pixelColor(x, y))
+        ]
+        return (min(xs), max(xs)) if xs else (0, 0)
+
+    lo1, hi1 = blue_span(one)
+    lo2, hi2 = blue_span(many)
+    assert hi1 - lo1 <= 30  # circle
+    assert hi2 - lo2 > hi1 - lo1  # capsule wider
+
+
+def test_drag_pixmap_null_base_is_none(qapp) -> None:
+    from PySide6.QtGui import QPixmap
+
+    from tabs.image_gallery.ui.grid_view import compose_gallery_drag_pixmap
+
+    assert compose_gallery_drag_pixmap(QPixmap(), 5) is None
+    assert compose_gallery_drag_pixmap(None, 1) is None

@@ -235,6 +235,82 @@ def resolve_gallery_drag_pixmap(card, owner, first_path: Path):
         return None
 
 
+#: QDrag preview edge (px): card covers are grid-sized (~200px+) — too big
+#: to aim with under the cursor. Shrunk with aspect kept.
+GALLERY_DRAG_PREVIEW_EDGE = 112
+
+
+def compose_gallery_drag_pixmap(base, count: int = 1):
+    """Shrink a drag source pixmap + count badge for multi-drags.
+
+    Single image → small preview only; N > 1 → blue pill with the white
+    count at the preview's top-right corner, half hanging outside
+    (circle for a single digit, capsule beyond — file-manager parity). Returns None when *base* is null so callers keep
+    the no-pixmap fallback.
+    """
+    try:
+        n = int(count or 0)
+    except Exception:
+        n = 0
+    try:
+        if base is None or base.isNull():
+            return None
+    except Exception:
+        return None
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
+
+        scaled = base.scaled(
+            GALLERY_DRAG_PREVIEW_EDGE,
+            GALLERY_DRAG_PREVIEW_EDGE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if n <= 1:
+            return scaled
+        # White on gallery-accent blue: max contrast for a small readout
+        # on any thumbnail underneath (dark pills wash out on dark photos).
+        # Single digit → circle; 10+ → capsule (like card pills) so the
+        # text fits. Right edge pinned half-outside the preview.
+        font = QFont()
+        font.setBold(True)
+        font.setPixelSize(18)
+        badge_h = 30
+        if len(str(n)) < 2:
+            pill_w = badge_h
+        else:
+            from PySide6.QtGui import QFontMetrics
+
+            pill_w = QFontMetrics(font).horizontalAdvance(str(n)) + 20
+        badge_r = badge_h // 2
+        overhang = badge_r
+        out = QPixmap(scaled.width() + overhang, scaled.height() + badge_r)
+        out.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(out)
+        try:
+            painter.drawPixmap(0, badge_r, scaled)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#0096FF"))
+            bx = scaled.width() + overhang - pill_w
+            painter.drawRoundedRect(bx, 0, pill_w, badge_h, badge_r, badge_r)
+            painter.setFont(font)
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(
+                bx, 0, pill_w, badge_h,
+                Qt.AlignmentFlag.AlignCenter, str(n),
+            )
+        finally:
+            painter.end()
+        return out
+    except Exception:
+        try:
+            return base
+        except Exception:
+            return None
+
+
 def _card_drag_path(card) -> Path | None:
     """Path carried by *card* (same resolution as ``_bind_gallery_card``)."""
     try:
@@ -2071,6 +2147,8 @@ class GalleryGridView(QWidget):
             pass
         try:
             pixmap = resolve_gallery_drag_pixmap(card, owner, dragged[0])
+            # Shrink to cursor size + count badge for multi-drags.
+            pixmap = compose_gallery_drag_pixmap(pixmap, len(dragged))
         except Exception:
             pixmap = None
         try:
