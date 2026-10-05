@@ -104,6 +104,224 @@ class _StripWheelFilter(QObject):
         return False
 
 
+class _StripLassoFilter(QObject):
+    """Rubber-band multi-select (marquee selection) on the strip.
+
+    Left-press + drag past the drag threshold opens a QRubberBand over
+    the host; on release every thumb container intersecting the rect
+    joins the selection (owner ``selected_paths``/``selected_order`` in
+    series order — the Group action's ≥2-targets input). A release that
+    never passed the threshold is an ordinary click: the filter returns
+    False without touching anything and the thumb's own switch path runs.
+
+    When the press started on a thumb and a lasso DID show, the trailing
+    release would still fire the thumb click (same widget press+release)
+    and walk the preview — that click is swallowed via
+    ``overlay._strip_lasso_ate_click`` (checked first in ``_make_switch``).
+
+    Installed on the host, every thumb container, thumb button and rank
+    pill (presses on children never reach the host filter); positions
+    map to host coordinates. Never raises.
+    """
+
+    def __init__(self, overlay, host):
+        super().__init__(host)
+        self._overlay = overlay
+        self._host = host
+        self._origin = None
+        self._band = None
+
+    def _to_host(self, widget, pos):
+        try:
+            if widget is None or widget is self._host:
+                return pos
+            return widget.mapTo(self._host, pos)
+        except Exception:
+            return pos
+
+    def _threshold(self) -> int:
+        try:
+            from PySide6.QtWidgets import QApplication as _QA
+
+            return max(4, int(_QA.startDragDistance()))
+        except Exception:
+            return 8
+
+    def _hide_band(self):
+        band, self._band = self._band, None
+        if band is not None:
+            try:
+                band.hide()
+            except Exception:
+                pass
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        try:
+            from PySide6.QtCore import QPoint as _QP
+            from PySide6.QtCore import QRect as _QR
+
+            t = event.type()
+            if t == QEvent.Type.MouseButtonPress:
+                try:
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        self._hide_band()
+                        self._origin = self._to_host(watched, event.position().toPoint())
+                except Exception:
+                    self._origin = None
+            elif t == QEvent.Type.MouseMove:
+                if self._origin is not None:
+                    try:
+                        if not (event.buttons() & Qt.MouseButton.LeftButton):
+                            self._origin = None
+                            self._hide_band()
+                        else:
+                            cur = self._to_host(watched, event.position().toPoint())
+                            dx = cur.x() - self._origin.x()
+                            dy = cur.y() - self._origin.y()
+                            if self._band is None and (abs(dx) + abs(dy)) >= self._threshold():
+                                from PySide6.QtWidgets import QRubberBand as _QRB
+
+                                self._band = _QRB(_QRB.Shape.Rectangle, self._host)
+                                try:
+                                    self._band.show()
+                                except Exception:
+                                    pass
+                            if self._band is not None:
+                                self._band.setGeometry(_QR(_QP(self._origin), _QP(cur)).normalized())
+                    except Exception:
+                        pass
+            elif t == QEvent.Type.MouseButtonRelease:
+                try:
+                    if event.button() == Qt.MouseButton.LeftButton and self._origin is not None:
+                        if self._band is not None and self._band.isVisible():
+                            rect = self._band.geometry().normalized()
+                            if rect.width() >= 4 or rect.height() >= 4:
+                                try:
+                                    self._overlay._strip_lasso_ate_click = True
+                                except Exception:
+                                    pass
+                                try:
+                                    _strip_apply_lasso_selection(self._overlay, rect)
+                                except Exception:
+                                    pass
+                        self._origin = None
+                        self._hide_band()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
+
+
+def _strip_apply_lasso_selection(overlay, rect) -> None:
+    """Select strip items whose containers intersect *rect* (host coords).
+
+    Series order is preserved (container order == series order). Writes
+    the owner selection (``set_selection`` wholesale when available, else
+    direct ``state`` writes — same fallback idiom as the triage UI) and
+    refreshes thumb checked visuals.
+    """
+    try:
+        containers = list(getattr(overlay, "_strip_buttons", None) or [])
+        items = list(getattr(overlay, "_series_items", None) or [])
+    except Exception:
+        return
+    picked: list[str] = []
+    try:
+        for container, m in zip(containers, items):
+            try:
+                g = container.geometry()
+            except Exception:
+                continue
+            try:
+                if not g.intersects(rect):
+                    continue
+            except Exception:
+                continue
+            try:
+                picked.append(str(getattr(m, "path", "") or ""))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    picked = [p for p in picked if p]
+    try:
+        overlay._strip_selected_paths = set(picked)
+    except Exception:
+        pass
+    owner = getattr(overlay, "_owner", None)
+    try:
+        setter = getattr(owner, "set_selection", None)
+        if callable(setter):
+            try:
+                setter(list(picked))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        st = getattr(owner, "state", None)
+        if st is not None:
+            if hasattr(st, "selected_paths"):
+                try:
+                    st.selected_paths = set(picked)
+                except Exception:
+                    pass
+            if hasattr(st, "selected_order"):
+                try:
+                    st.selected_order = list(picked)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    try:
+        _strip_refresh_selection(overlay)
+    except Exception:
+        pass
+
+
+def _strip_refresh_selection(overlay) -> None:
+    """Repaint thumb selection state: lasso-selected or not.
+
+    Region-level CHECKED (``Button.setChecked`` is a no-op without a
+    toggle capability) — distinct from the viewing accent border.
+    """
+    try:
+        selected = set(getattr(overlay, "_strip_selected_paths", None) or set())
+    except Exception:
+        selected = set()
+    try:
+        from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
+        from sli_ui_toolkit.widgets import Button as _B
+
+        for container in list(getattr(overlay, "_strip_buttons", None) or []):
+            try:
+                thumb = next(
+                    (b for b in container.findChildren(_B) if b.objectName().startswith("quicklook_strip_")),
+                    None,
+                )
+                if thumb is None:
+                    continue
+                path = str(thumb.property("gallery_path") or "")
+                was = thumb.blockSignals(True)
+                try:
+                    thumb._controller.set_state("thumb", ButtonState.CHECKED, path in selected)
+                except Exception:
+                    pass
+                try:
+                    thumb.blockSignals(was)
+                except Exception:
+                    pass
+                try:
+                    thumb.update()
+                except Exception:
+                    pass
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
 def _strip_scroll_wheel(overlay, event) -> bool:
     """Apply one wheel event to the strip horizontal bar. True if consumed."""
     try:
@@ -441,7 +659,22 @@ def _refresh_strip_selection(overlay) -> None:
         was_blocked = btn.blockSignals(True)
         try:
             try:
-                btn.setChecked(bool(is_viewing))
+                _sel = set(getattr(overlay, "_strip_selected_paths", None) or set())
+            except Exception:
+                _sel = set()
+            try:
+                _p = str(getattr(m, "path", "") or "")
+            except Exception:
+                _p = ""
+            try:
+                btn.setChecked(bool(is_viewing) or _p in _sel)
+            except Exception:
+                pass
+            try:
+                # Region-level selection visual (setChecked needs toggle).
+                from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS2
+
+                btn._controller.set_state("thumb", _BS2.CHECKED, _p in _sel)
             except Exception:
                 pass
             # Border: verified clear path is set_border_color(None) (sets the
@@ -645,6 +878,19 @@ def rebuild_strip(overlay) -> None:
         try:
             if is_viewing:
                 btn.setChecked(True)
+            else:
+                try:
+                    _sel = set(getattr(overlay, "_strip_selected_paths", None) or set())
+                except Exception:
+                    _sel = set()
+                if str(getattr(m, "path", "") or "") in _sel:
+                    # Region-level: setChecked is a no-op without toggle.
+                    try:
+                        from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS
+
+                        btn._controller.set_state("thumb", _BS.CHECKED, True)
+                    except Exception:
+                        pass
         except Exception:
             pass
         try:
@@ -697,6 +943,15 @@ def rebuild_strip(overlay) -> None:
 
         def _make_switch(target=m):
             def _do():
+                try:
+                    # Lasso release on this same thumb: swallow the trailing
+                    # click (set by _StripLassoFilter) so a drag-select does
+                    # not also walk the preview.
+                    if getattr(overlay, "_strip_lasso_ate_click", False):
+                        overlay._strip_lasso_ate_click = False
+                        return
+                except Exception:
+                    pass
                 try:
                     from tabs.image_gallery.debug import gallery_debug as _dbg
 
@@ -820,34 +1075,10 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 pass
         cont_lay.addWidget(btn)
-        # Under-thumb filename caption (marquee when overflowing) + shared
-        # card context menu — same idiom as the grid cards living in the
-        # OpaqueFillHost: ButtonRow(marquee=True) via the toolkit static
-        # cache, popup_gallery_card_context_menu for actions. Bounded cost:
-        # the strip shows a handful of thumbs, not the 25-card gallery the
-        # mass-marquee deferral (task-marquee-mass-opt-research) is about.
-        try:
-            _caption_text = Path(str(getattr(m, "path", "") or "")).name
-        except Exception:
-            _caption_text = ""
-        try:
-            caption = Button(
-                rows=[ButtonRow(text=_caption_text, size=10, ratio=1.0, h_align=Qt.AlignmentFlag.AlignHCenter, marquee=True)],
-                variant="ghost",
-                size=(66, scaled_px(14)),
-                parent=container,
-            )
-            caption.setObjectName(f"quicklook_caption_{idx}")
-            try:
-                from PySide6.QtCore import Qt as _QtCap
-
-                caption.setCursor(_QtCap.CursorShape.ArrowCursor)
-            except Exception:
-                pass
-            cont_lay.addWidget(caption)
-            overlay._strip_caption_labels.append(caption)
-        except Exception:
-            pass
+        # Shared card context menu (same idiom as the grid cards living
+        # in the OpaqueFillHost): popup_gallery_card_context_menu for the
+        # thumb's own item. No filename captions — the rank pill already
+        # carries the state and the row stays a uniform height.
         def _make_strip_menu(item=m, anchor=btn):
             def _show_menu():
                 try:
@@ -932,6 +1163,33 @@ def rebuild_strip(overlay) -> None:
         pass
     try:
         _repin_strip_rank_buttons(overlay)
+    except Exception:
+        pass
+    try:
+        # Marquee-selection lasso: one filter object, installed on the host
+        # and every interactive child (thumb button, rank pill, container —
+        # presses on children never reach the host). Re-installs on the
+        # long-lived host are guarded; rebuilt children are always fresh.
+        from sli_ui_toolkit.widgets import Button as _BL
+
+        _host = getattr(overlay, "_strip_host", None)
+        _lasso = getattr(overlay, "_strip_lasso_filter", None)
+        if _lasso is None and _host is not None:
+            _lasso = _StripLassoFilter(overlay, _host)
+            overlay._strip_lasso_filter = _lasso
+        if _lasso is not None and _host is not None:
+            try:
+                if not getattr(_host, "_strip_lasso_installed", False):
+                    _host.installEventFilter(_lasso)
+                    _host._strip_lasso_installed = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            for _container in list(getattr(overlay, "_strip_buttons", None) or []):
+                for _w in [_container, *_container.findChildren(_BL)]:
+                    try:
+                        _w.installEventFilter(_lasso)
+                    except Exception:
+                        continue
     except Exception:
         pass
     try:

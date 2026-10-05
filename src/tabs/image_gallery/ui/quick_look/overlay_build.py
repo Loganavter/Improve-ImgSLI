@@ -878,3 +878,8 @@ def build_overlay_ui(overlay) -> None:
     overlay._metric_rows: list = []
     overlay._artifact_rows: list = []
     overlay._strip_caption_labels: list = []
+    # Marquee (rubber-band) selection state: picked item paths + trailing-
+    # click swallow flag for the lasso filter (see strip._StripLassoFilter).
+    overlay._strip_selected_paths: set = set()
+    overlay._strip_lasso_ate_click = False
+    overlay._strip_lasso_filter = None

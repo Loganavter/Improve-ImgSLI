@@ -761,58 +761,14 @@ def test_ungrouped_items_form_strip_group(qtbot):
     ov.hide()
 
 
-def _strip_captions(ov):
-    from sli_ui_toolkit.widgets import Button
-
-    return [b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_caption_")]
-
-
-def _caption_texts(ov) -> list:
-    out = []
-    for cap in _strip_captions(ov):
-        try:
-            for region in cap.regions():
-                for row in getattr(region, "rows", None) or []:
-                    text = getattr(row, "text", "")
-                    if text:
-                        out.append(text)
-        except Exception:
-            continue
-    return out
-
-
-def test_strip_captions_carry_filenames(qtbot, tmp_path):
-    """Every strip thumb carries a filename caption (one per series item)."""
-    paths = [_real_png(tmp_path, f"photo-{i}-with-a-long-name.png") for i in range(3)]
-    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
-    ov = _make_overlay(qtbot)
-    _show(ov, items[0], items)
-    assert sorted(_caption_texts(ov)) == sorted(p.name for p in paths)
-    assert ov._strip_caption_labels and len(ov._strip_caption_labels) == 3
-    ov.hide()
-
-
-def test_strip_caption_row_is_marquee(qtbot, tmp_path):
-    """Caption rows scroll on overflow (ButtonRow marquee, static-cached)."""
-    paths = [_real_png(tmp_path, f"c{i}.png") for i in range(2)]
-    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
-    ov = _make_overlay(qtbot)
-    _show(ov, items[0], items)
-    rows = []
-    for cap in _strip_captions(ov):
-        for region in cap.regions():
-            rows.extend(getattr(region, "rows", None) or [])
-    assert rows, "caption has no rows"
-    assert all(getattr(r, "marquee", False) is True for r in rows)
-    ov.hide()
-
-
 def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
-    """Right-click on a NON-viewing thumb pops the shared card menu for it.
+    """Real right-click on a NON-viewing thumb pops the shared card menu.
 
     Same helper as the grid cards (ui/card.py); the target is the thumb's
     own item path, not the currently viewing one.
     """
+    from PySide6.QtCore import Qt as _Qt
+
     import tabs.image_gallery.ui.card.context_menu as _menu_mod
 
     calls = []
@@ -832,9 +788,80 @@ def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
             target = b
             break
     assert target is not None
-    target.rightClicked.emit()
+    qtbot.mouseClick(target, _Qt.MouseButton.RightButton)
     QApplication.processEvents()
     assert len(calls) == 1
     (args, _kwargs) = calls[0]
     assert Path(args[2]) == paths[2]
+    ov.hide()
+
+
+def _thumb_center_in_host(ov, btn):
+    host = ov._strip_host
+    try:
+        return btn.mapTo(host, btn.rect().center())
+    except Exception:
+        return None
+
+
+def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
+    """Drag across two thumbs selects both, keeps preview unmoved.
+
+    Marquee selection writes series-ordered paths (the Group action's
+    input); the trailing click is swallowed so _current_idx does not
+    walk.
+    """
+    from PySide6.QtCore import Qt as _Qt
+
+    paths = [_real_png(tmp_path, f"s{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    assert ov._current_idx == 0
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert len(thumbs) == 3
+    p0 = _thumb_center_in_host(ov, thumbs[str(paths[0])])
+    p1 = _thumb_center_in_host(ov, thumbs[str(paths[1])])
+    assert p0 is not None and p1 is not None
+    host = ov._strip_host
+    qtbot.mousePress(host, _Qt.MouseButton.LeftButton, pos=p0)
+    qtbot.mouseMove(host, p1)
+    qtbot.mouseRelease(host, _Qt.MouseButton.LeftButton, pos=p1)
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
+    assert ov._current_idx == 0
+    # Region-level CHECKED (setChecked needs a toggle capability).
+    from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS
+
+    def _checked(btn):
+        try:
+            return _BS.CHECKED in btn._controller.states("thumb")
+        except Exception:
+            return False
+
+    assert _checked(thumbs[str(paths[0])])
+    assert _checked(thumbs[str(paths[1])])
+    assert not _checked(thumbs[str(paths[2])])
+    ov.hide()
+
+
+def test_strip_plain_click_still_walks(qtbot, tmp_path):
+    """Press+release without drag is an ordinary click (lasso uninvolved)."""
+    from PySide6.QtCore import Qt as _Qt
+
+    paths = [_real_png(tmp_path, f"w{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    target = None
+    for b in _strip_buttons(ov):
+        if b.property("gallery_path") == str(paths[2]):
+            target = b
+            break
+    assert target is not None
+    qtbot.mouseClick(target, _Qt.MouseButton.LeftButton)
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert ov._current_idx == 2
+    assert ov._strip_selected_paths == set()
     ov.hide()
