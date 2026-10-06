@@ -6,6 +6,16 @@ Human-oriented cheat sheet: [docs/dev/README.md](docs/dev/README.md). IDE-specif
 
 The codebase is a Python/PySide6 application under `src/` (production, declarative, well-decomposed).
 
+## Broken? Run the diagnosis ladder first
+
+Before any mechanism hypothesis for a bug/flicker/crash: **blast radius →
+working-sibling diff** (nearest non-broken path of the same class — highest
+yield) → grep known-bad comments → cheapest one-line discriminator → **only
+then** mechanism. Two live probes without a narrowed layer ⇒ stop. Full ladder:
+`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`; evidence + anti-shortcut
+index: `../improve-imgsli-internal-docs/docs/dev/investigations/circling-map-2026-10-06.md`.
+(Skill `diagnosis-ladder`.)
+
 ---
 
 ## Agent Tooling

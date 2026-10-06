@@ -48,6 +48,17 @@
       }
     },
     {
+      "path": "src/devtools/ui_layout_dump.py",
+      "lines": 522,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"one dump concern: widget-tree snapshot + input-state for dead-overlay triage in a single pass\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "one dump concern: widget-tree snapshot + input-state for dead-overlay triage in a single pass"
+      }
+    },
+    {
       "path": "src/engine/cache/display_tier_service.py",
       "lines": 1258,
       "limit": 500,
@@ -815,7 +826,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1301,
+      "lines": 1445,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -850,7 +861,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 2017,
+      "lines": 2018,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
@@ -862,7 +873,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 1509,
+      "lines": 1625,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
@@ -886,7 +897,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1393,
+      "lines": 1496,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
@@ -1138,7 +1149,7 @@
     },
     {
       "path": "src/ui/canvas_infra/rhi/rhi_backend.py",
-      "lines": 698,
+      "lines": 739,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single RHI backend lifecycle — backend selection + QRhiWidget init\"",

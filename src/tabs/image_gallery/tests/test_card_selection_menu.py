@@ -64,6 +64,7 @@ def _capture_menu(monkeypatch):
         captured["entries"] = tuple(entries)
         captured["on_triggered"] = on_triggered
         captured["key"] = key
+        captured["source_widget"] = source_widget
         return _FakeMenu(source_widget, entries=entries, on_triggered=on_triggered)
 
     monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
@@ -503,3 +504,24 @@ def test_ungroup_without_controller_is_noop() -> None:
 
     owner = _owner({Path("/a.png")})
     assert _actions._ctx_ungroup(owner, Path("/a.png")) == 0
+
+
+def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
+    """Regression (inv-2026-10-06 ql-rhi-menu-first): the popup must be
+    parented to the CARD, never the top-level window. A ``Qt.Popup`` whose
+    QWidget parent is the MainWindow breaks Wayland compositing for the whole
+    window (in-window translucency -> black, fresh QRhiWidget mint fails).
+    MC parents to its canvas, IC to its flyout; gallery must parent to the card.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    captured = _capture_menu(monkeypatch)
+    window = QWidget()
+    card = QWidget(window)
+    try:
+        owner = _owner(set())
+        popup_gallery_card_context_menu(card, owner, Path("/a.png"), global_pos=None)
+        assert captured.get("source_widget") is card
+        assert captured.get("source_widget") is not card.window()
+    finally:
+        window.close()

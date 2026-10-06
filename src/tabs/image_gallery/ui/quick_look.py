@@ -514,6 +514,115 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
+    def _grab_close_frame(self):
+        """Grab the last canvas frame for the close cover (None on miss)."""
+        try:
+            canvas = getattr(self, "_preview_canvas", None)
+            if canvas is None:
+                return None
+            try:
+                if not canvas.isVisible():
+                    return None
+            except Exception:
+                pass
+            try:
+                shot = canvas.grab()
+            except Exception:
+                return None
+            try:
+                if shot is None or shot.isNull():
+                    return None
+            except Exception:
+                return None
+            return shot
+        except Exception:
+            return None
+
+    def _plant_close_cover(self, shot) -> None:
+        """Freeze *shot* as an opaque raster cover (call while visible).
+
+        The canvas is a NATIVE window: when it unmaps, the compositor has
+        nothing for that rect for 1-2 frames (black flash) — no amount of
+        backing-store repainting fixes a compositor-level hole (proven:
+        synchronous grid pre-paint changed nothing). The cover is a plain
+        non-native QLabel: shown + repaint()ed synchronously while the
+        overlay is still up, it rides out the unmap and hides with the
+        overlay in the same stack. Next show_for drops it via the existing
+        "re-cover" path (release drops covers too, so plant AFTER release,
+        from a frame grabbed BEFORE it). Fail-open: no frame → no cover.
+        """
+        try:
+            if shot is None:
+                return
+            try:
+                if shot.isNull():
+                    return
+            except Exception:
+                return
+            try:
+                host = getattr(self, "_preview_host", None)
+                if host is None:
+                    return
+                from PySide6.QtCore import Qt as _Qt
+                from PySide6.QtWidgets import QLabel as _QLabel
+
+                cover = _QLabel(host)
+                try:
+                    cover.setObjectName("quicklook_preview_close_cover")
+                except Exception:
+                    pass
+                try:
+                    cover.setAlignment(_Qt.AlignmentFlag.AlignCenter)
+                except Exception:
+                    pass
+                try:
+                    cover.setPixmap(shot)
+                except Exception:
+                    return
+                try:
+                    cover.setAutoFillBackground(True)
+                except Exception:
+                    pass
+                try:
+                    cover.setGeometry(host.rect())
+                except Exception:
+                    pass
+                try:
+                    cover.show()
+                    cover.raise_()
+                    cover.repaint()
+                except Exception:
+                    pass
+                try:
+                    self._preview_cover = cover
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def hide(self) -> None:  # noqa: N802
+        # Cover-then-release-then-hide, all while still visible: planting in
+        # hideEvent would be too late (hidden parent never paints). Covers
+        # every path — direct hide(), close() (via its internal hide) and
+        # toolkit dismiss() — since all funnel through here.
+        try:
+            if self.isVisible():
+                shot = self._grab_close_frame()
+                try:
+                    self._release_preview_resources()
+                except Exception:
+                    pass
+                if shot is not None:
+                    self._plant_close_cover(shot)
+        except Exception:
+            pass
+        try:
+            super().hide()
+        except Exception:
+            pass
+
     def hideEvent(self, event) -> None:  # noqa: N802
         try:
             self._release_preview_resources()
@@ -522,11 +631,26 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        # Same cover-then-release order as hide(): the default closeEvent
+        # hides only at its end, but our release runs first — grab the
+        # frame here while the canvas still presents. The internal hide()
+        # below finds the canvas already released (grab misses, idempotent
+        # release) and keeps the planted cover.
         try:
-            self._release_preview_resources()
+            if self.isVisible():
+                shot = self._grab_close_frame()
+                try:
+                    self._release_preview_resources()
+                except Exception:
+                    pass
+                if shot is not None:
+                    self._plant_close_cover(shot)
         except Exception:
             pass
-        super().closeEvent(event)
+        try:
+            super().closeEvent(event)
+        except Exception:
+            pass
 
     def show_for(self, item, owner=None) -> None:
         import time as _time
@@ -619,6 +743,26 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         except Exception:
             pass
+        if _dbg_on:
+            try:
+                from PySide6.QtWidgets import QApplication as _QA2
+
+                _app2 = _QA2.instance()
+                _grab = None
+                try:
+                    from PySide6.QtWidgets import QWidget as _QW2
+
+                    _grab = _QW2.mouseGrabber()
+                except Exception:
+                    pass
+                _dbg(
+                    "quick look show input grabber=%s focus=%s active=%s",
+                    type(_grab).__name__ if _grab is not None else None,
+                    type(_app2.focusWidget()).__name__ if _app2 is not None and _app2.focusWidget() is not None else None,
+                    type(_app2.activeWindow()).__name__ if _app2 is not None and _app2.activeWindow() is not None else None,
+                )
+            except Exception:
+                pass
         if _dbg_on:
             _t_show = _time.perf_counter()
         try:

@@ -564,7 +564,7 @@ def persist_rhi_backend_setting(backend_name: str) -> None:
         logger.exception("Failed to persist rhi_backend=%s", backend_name)
 
 
-def configure_rhi_widget(widget: QRhiWidget) -> None:
+def configure_rhi_widget(widget: QRhiWidget, *, watch_failures: bool = True) -> None:
     name = requested_rhi_backend_name()
     if name == "vulkan" and _vulkan_rejected_for_process:
         name = platform_fallback_rhi_backend()
@@ -610,17 +610,20 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
                 top = widget.window()
                 wh = top.windowHandle() if top is not None else None
                 logger.error(
-                    "[rhi-debug] widget=%s size=%s visible=%s "
+                    "[rhi-debug] widget=%s size=%s visible=%s hidden=%s "
                     "top=%s top_size=%s top_visible=%s top_exposed=%s "
+                    "top_active=%s "
                     "top_translucent=%s top_flags=%s platform=%s "
                     "surface_type=%s backing_store_type=%s",
                     type(widget).__name__,
                     widget.size(),
                     widget.isVisible(),
+                    widget.isHidden(),
                     type(top).__name__ if top is not None else None,
                     top.size() if top is not None else None,
                     top.isVisible() if top is not None else None,
                     wh.isExposed() if wh is not None else None,
+                    top.isActiveWindow() if top is not None else None,
                     top.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
                     if top is not None
                     else None,
@@ -639,12 +642,39 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
         ):
             persist_rhi_backend_setting(fallback)
 
-    widget.renderFailed.connect(_on_render_failed)
+    if watch_failures:
+        # Throwaway primers (ensure_window_rhi) opt out: they fail on every
+        # offscreen/software run by construction, and this handler would
+        # persist the platform fallback before any real canvas exists.
+        widget.renderFailed.connect(_on_render_failed)
     install = getattr(widget, "installEventFilter", None)
     if callable(install):
         from ui.canvas_infra.rhi.rhi_focus import install_qrhi_focus_parking
 
         install_qrhi_focus_parking(widget)
+
+
+class _RhiSurfacePrimer(QRhiWidget):
+    """One-shot top-level promotion primer (1x1, invisible in practice).
+
+    `initialize()` runs exactly once, on the first successful RHI setup --
+    i.e. exactly when the top-level backingstore promotion this primer
+    exists to force has happened. Self-destructs there, so the primer never
+    outlives startup. If RHI setup never succeeds (offscreen/software), it
+    lingers inertly -- the same footprint as the old hidden primer.
+    `deleteLater()` is thread-safe (posts to the GUI loop) although
+    `initialize()` runs on the render thread.
+    """
+
+    def initialize(self, command_buffer) -> None:  # noqa: N802
+        try:
+            logger.debug("rhi primer: first RHI setup done, self-destructing")
+        except Exception:
+            pass
+        try:
+            self.deleteLater()
+        except Exception:
+            pass
 
 
 def ensure_window_rhi(window) -> None:
@@ -665,21 +695,32 @@ def ensure_window_rhi(window) -> None:
 
     Mirrors the fix used by Telegram Desktop's `lib_ui` toolkit
     (`GL::EnsureWindowRhi`, `ui/rhi/rhi_surface.cpp`): create a throwaway,
-    1x1, hidden `QRhiWidget` child of the top-level window as early as
+    1x1 `QRhiWidget` child of the top-level window as early as
     possible (before any real content, ideally before the platform window
     helper sets up CSD/native-window state), so the promotion happens once,
     synchronously enough in practice, off the interaction path -- instead of
     racing against the real canvas's first show. See
     docs/dev/investigations/lazy-legacy-shell-plan.md for the investigation.
+
+    The primer is SHOWN, not hidden: a hidden widget never receives paint
+    events, so `ensureRhi()` (and the promotion) would never run there --
+    the old `hide()` made this primer a silent no-op
+    (`inv-2026-10-06-ql-rhi-menu-first`, Timeline #5). 1x1 at the corner
+    with `WA_TransparentForMouseEvents` is invisible in practice, and the
+    primer self-destructs on its first successful RHI init (`initialize()`),
+    so it never outlives startup. If no frame ever presents (offscreen/software), it
+    lingers inertly -- the same footprint as the old hidden primer.
     """
     try:
         from PySide6.QtCore import Qt
 
-        primer = QRhiWidget(window)
+        primer = _RhiSurfacePrimer(window)
+        primer.setObjectName("rhi_surface_primer")
         primer.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        configure_rhi_widget(primer)
+        configure_rhi_widget(primer, watch_failures=False)
         primer.setGeometry(0, 0, 1, 1)
-        primer.hide()
+        primer.show()
+        logger.debug("rhi primer: installed shown 1x1 on %s", type(window).__name__)
     except Exception:
         logger.exception("ensure_window_rhi: failed to create RHI primer widget")
 

@@ -1,4 +1,5 @@
 """Headless dump of the live widget tree — layout + geometry + bound actions.
+Audit-Meta: pattern=thin-owner-target reason="one dump concern: widget-tree snapshot + input-state for dead-overlay triage in a single pass"
 
 Complements the Find Action catalog (``ui/actions/registry.py``), which lists
 *what* the app can do but not *where* those controls sit. This walks the real
@@ -300,6 +301,24 @@ def _node(
         "visible": widget.isVisible(),
         "enabled": widget.isEnabled(),
     }
+    # Input-state for dead-overlay diagnosis (hit-test invisible overlays):
+    # transparent-for-mouse, focus, active. Only recorded when True to keep
+    # dumps small (absence == False).
+    try:
+        if widget.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents):
+            node["transparent_for_mouse"] = True
+    except Exception:
+        pass
+    try:
+        if widget.hasFocus():
+            node["has_focus"] = True
+    except Exception:
+        pass
+    try:
+        if widget.isActiveWindow():
+            node["is_active_window"] = True
+    except Exception:
+        pass
     text = _text_of(widget)
     if text:
         node["text"] = text
@@ -410,6 +429,54 @@ def dump_ui_layout(root: QWidget, registry: ActionRegistry) -> dict[str, Any]:
     theme = _resolve_theme_tokens(used_families)
     if theme:
         node["theme"] = theme
+    # Live input diagnosis (dead-overlay triage): every top-level (a stuck
+    # invisible popup never appears in a single-root dump) + process-wide
+    # grabber/focus/active. Additive keys only.
+    try:
+        app = QApplication.instance()
+        tops = []
+        if isinstance(app, QApplication):
+            for w in app.topLevelWidgets():
+                try:
+                    g = w.geometry()
+                    tops.append(
+                        {
+                            "class": type(w).__name__,
+                            "object_name": w.objectName(),
+                            "geometry": [g.x(), g.y(), g.width(), g.height()],
+                            "visible": w.isVisible(),
+                        }
+                    )
+                except Exception:
+                    continue
+        node["top_levels"] = tops
+    except Exception:
+        pass
+    try:
+        _input: dict[str, Any] = {}
+        app = QApplication.instance()
+        try:
+            _grabber = QWidget.mouseGrabber()
+            if _grabber is not None:
+                _input["mouse_grabber"] = f"{type(_grabber).__name__}:{_grabber.objectName()}"
+        except Exception:
+            pass
+        try:
+            _fw = app.focusWidget() if app is not None else None
+            if _fw is not None:
+                _input["focus_widget"] = f"{type(_fw).__name__}:{_fw.objectName()}"
+        except Exception:
+            pass
+        try:
+            _aw = app.activeWindow() if app is not None else None
+            if _aw is not None:
+                _input["active_window"] = f"{type(_aw).__name__}:{_aw.objectName()}"
+        except Exception:
+            pass
+        if _input:
+            node["input_state"] = _input
+    except Exception:
+        pass
     return node
 
 
@@ -428,6 +495,27 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     used_families: dict[str, tuple] = {}
     nodes = [_node(w, action_map, used_families) for w in windows]
     out: dict[str, Any] = {"windows": nodes, "geometry_space": GEOMETRY_SPACE}
+    # Process-wide input state for dead-overlay diagnosis: a stuck popup
+    # grab or lost focus explains hit-test-invisible windows that look
+    # fine node-by-node.
+    try:
+        grabber = QWidget.mouseGrabber()
+        if grabber is not None:
+            out["mouse_grabber"] = f"{type(grabber).__name__}:{grabber.objectName()}"
+    except Exception:
+        pass
+    try:
+        fw = app.focusWidget() if app is not None else None
+        if fw is not None:
+            out["focus_widget"] = f"{type(fw).__name__}:{fw.objectName()}"
+    except Exception:
+        pass
+    try:
+        aw = app.activeWindow() if app is not None else None
+        if aw is not None:
+            out["active_window"] = f"{type(aw).__name__}:{aw.objectName()}"
+    except Exception:
+        pass
     theme = _resolve_theme_tokens(used_families)
     if theme:
         out["theme"] = theme

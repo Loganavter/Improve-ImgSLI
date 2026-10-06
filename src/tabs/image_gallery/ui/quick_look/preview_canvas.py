@@ -212,6 +212,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             logger.debug("QuickLook preview: set_source failed open", exc_info=True)
         try:
             self._frame_ok = False
+            self._ql_preframe_fails = 0
             self._settle_pumped = False
             self._settle_scheduled = False
             self._zoom = 1.0

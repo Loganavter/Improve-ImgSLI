@@ -2804,3 +2804,39 @@ def test_filename_centered_in_top_row_no_mode_chip_no_brief_divider(qtbot):
     # one line, elide only when genuinely squeezed.
     assert "1x-HurrDeblur-SuperUltraCompact.png" in ov._filename_label.text()
     ov.hide()
+
+
+def test_overlay_hide_plants_close_cover(qtbot, tmp_path):
+    """Hiding the overlay freezes the last canvas frame as an opaque cover.
+
+    The canvas is a NATIVE window: when it unmaps, the compositor has
+    nothing for that rect for 1-2 frames (black flash) — backing-store
+    repaints cannot fix a compositor-level hole (a synchronous grid
+    pre-paint was tried and changed nothing). The cover is a plain
+    non-native QLabel with canvas.grab(): shown + repaint()ed while the
+    overlay is still up, it hides with the overlay in the same stack.
+    """
+    from pathlib import Path
+
+    from PySide6.QtGui import QColor, QPixmap
+
+    from tabs.image_gallery.models import GalleryItem
+
+    pm = QPixmap(200, 100)
+    pm.fill(QColor("#3a6ea5"))
+    p = tmp_path / "v.png"
+    assert pm.save(str(p), "PNG")
+    item = GalleryItem(path=p, mtime_ns=1)
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    QApplication.processEvents()
+    ov.hide()
+    QApplication.processEvents()
+    cover = getattr(ov, "_preview_cover", None)
+    assert cover is not None, "no close cover planted on hide"
+    assert cover.objectName() == "quicklook_preview_close_cover"
+    try:
+        pix = cover.pixmap()
+    except Exception:
+        pix = None
+    assert pix is not None and not pix.isNull(), "close cover has no frame"

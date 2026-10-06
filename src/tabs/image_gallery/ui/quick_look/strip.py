@@ -161,6 +161,9 @@ class _StripLassoFilter(QObject):
         # repeats so exactly one handling (the first, with watched ==
         # receiver and correct coords) takes effect.
         self._seen = None
+        # Right-press anchor for release-time menu (same grab-race reason
+        # as the lasso: the popup opens on release, never mid-press).
+        self._rpress = None
 
     def _to_strip(self, widget, pos):
         # Viewport-space mapping (see __init__ for why not host-space):
@@ -262,6 +265,23 @@ class _StripLassoFilter(QObject):
                             return True
                 except Exception:
                     self._origin = None
+                # Release-time menu (NOT press-time rightClicked): opening a
+                # native popup mid-press races the button's active mouse grab
+                # (focus/grab churn) and flashes the GPU canvas — the IC
+                # canvas opens its menu on release for the same reason.
+                # rightClicked also fires on press AND the Button consumes
+                # right presses (no contextMenuEvent is ever synthesized),
+                # so neither fits; the filter observes everything first.
+                try:
+                    if event.button() == Qt.MouseButton.RightButton:
+                        try:
+                            _rp = event.position().toPoint()
+                        except Exception:
+                            self._rpress = None
+                        else:
+                            self._rpress = (watched, self._to_strip(watched, _rp))
+                except Exception:
+                    self._rpress = None
             elif t == QEvent.Type.MouseMove:
                 if self._origin is not None:
                     try:
@@ -329,8 +349,115 @@ class _StripLassoFilter(QObject):
                             return True
                 except Exception:
                     pass
+                try:
+                    if event.button() == Qt.MouseButton.RightButton and self._rpress is not None:
+                        _w0, _p0 = self._rpress
+                        self._rpress = None
+                        try:
+                            _rp1 = event.position().toPoint()
+                            _cur = self._to_strip(watched, _rp1)
+                            _moved = abs(_cur.x() - _p0.x()) + abs(_cur.y() - _p0.y())
+                        except Exception:
+                            _moved = None
+                            _cur = None
+                        if _moved is not None and _moved < self._threshold() and _cur is not None:
+                            try:
+                                _strip_open_menu_for(self._overlay, watched, _cur)
+                            except Exception:
+                                pass
+                except Exception:
+                    self._rpress = None
         except Exception:
             pass
+        return False
+
+
+def _strip_open_menu_for(overlay, watched, view_pos) -> bool:
+    """Open the shared card menu for the strip item under *view_pos*.
+
+    Resolves the item from the pressed widget (thumb button carries
+    ``gallery_path``; containers map by index; anything else by
+    position), then calls the grid cards' ``popup_gallery_card_context_menu``
+    with the overlay owner. True when a menu was opened. Never raises.
+    """
+    try:
+        from PySide6.QtGui import QCursor as _QCursor
+
+        from sli_ui_toolkit.widgets import Button as _MB
+
+        try:
+            _gp = _QCursor.pos()
+        except Exception:
+            _gp = None
+        anchor = None
+        path = ""
+        try:
+            if isinstance(watched, _MB):
+                path = str(watched.property("gallery_path") or "")
+                anchor = watched
+        except Exception:
+            pass
+        try:
+            containers = list(getattr(overlay, "_strip_buttons", None) or [])
+            items = list(getattr(overlay, "_series_items", None) or [])
+        except Exception:
+            containers, items = [], []
+        if not path:
+            try:
+                idx = None
+                for i, c in enumerate(containers):
+                    try:
+                        if watched is c:
+                            idx = i
+                            break
+                        if isinstance(watched, _MB) and watched.parentWidget() is c:
+                            idx = i
+                            break
+                    except Exception:
+                        continue
+                if idx is None and view_pos is not None:
+                    try:
+                        _scroll = getattr(overlay, "_strip_scroll", None)
+                        _view = _scroll.viewport() if _scroll is not None else None
+                    except Exception:
+                        _view = None
+                    if _view is not None:
+                        from PySide6.QtCore import QPoint as _QP3
+                        from PySide6.QtCore import QRect as _QR3
+
+                        for i, c in enumerate(containers):
+                            try:
+                                _g = _QR3(c.mapTo(_view, c.rect().topLeft()), c.rect().size())
+                                if _g.contains(_QP3(int(view_pos.x()), int(view_pos.y()))):
+                                    idx = i
+                                    break
+                            except Exception:
+                                continue
+                if idx is not None and 0 <= idx < len(items):
+                    try:
+                        path = str(getattr(items[idx], "path", "") or "")
+                    except Exception:
+                        pass
+                    if anchor is None:
+                        try:
+                            anchor = containers[idx]
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        if not path:
+            return False
+        try:
+            from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
+
+            _owner = getattr(overlay, "_owner", None)
+            popup_gallery_card_context_menu(
+                anchor, _owner, Path(path), global_pos=_gp
+            )
+            return True
+        except Exception:
+            return False
+    except Exception:
         return False
 
 
@@ -1259,36 +1386,12 @@ def rebuild_strip(overlay) -> None:
             except Exception:
                 pass
         cont_lay.addWidget(btn)
-        # Shared card context menu (same idiom as the grid cards living
-        # in the OpaqueFillHost): popup_gallery_card_context_menu for the
-        # thumb's own item. No filename captions — the rank pill already
-        # carries the state and the row stays a uniform height.
-        def _make_strip_menu(item=m, anchor=btn):
-            def _show_menu():
-                try:
-                    from PySide6.QtGui import QCursor as _QCursor
-
-                    _gp = _QCursor.pos()
-                except Exception:
-                    _gp = None
-                try:
-                    from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
-
-                    _owner = getattr(overlay, "_owner", None)
-                    popup_gallery_card_context_menu(
-                        anchor, _owner, Path(str(getattr(item, "path", "") or "")), global_pos=_gp
-                    )
-                except Exception:
-                    pass
-            return _show_menu
-
-        _show_menu = _make_strip_menu()
-        # Card wiring pattern (ui/card.py): rightClicked opens the shared
-        # menu; bind eagerly — same late-closure hazard as _switch above.
-        try:
-            btn.rightClicked.connect(_show_menu)
-        except Exception:
-            pass
+        # Shared card context menu (same entries as the grid cards living
+        # in the OpaqueFillHost) opens release-time from _StripLassoFilter
+        # below — never on press (a native popup mid-press races the
+        # button's active grab and flashes the GPU canvas; the IC canvas
+        # opens its menu on release for the same reason). See
+        # _strip_open_menu_for.
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
         # First build is shown later via an ancestor show(); on every later

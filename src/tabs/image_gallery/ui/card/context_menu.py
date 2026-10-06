@@ -365,9 +365,15 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             except Exception:
                 pass
 
-        source = card.window() if card is not None and hasattr(card, "window") else card
-        if source is None:
-            source = card
+        # Parent the popup to the CARD (a content widget), never the
+        # MainWindow: a Qt.Popup whose QWidget parent is the top-level breaks
+        # compositing for the whole window on Wayland/XWayland (in-window
+        # translucency turns black, e.g. toasts; every fresh QRhiWidget mint
+        # then fails -> Quick Look dead). Mirrors MC (canvas parent) and IC
+        # (unified-flyout parent); MC's interaction.py carries the same
+        # warning for menu_parent=MainWindow. See
+        # inv-2026-10-06-ql-rhi-menu-first.
+        source = card
         pos = global_pos
         if pos is None:
             try:
