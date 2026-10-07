@@ -206,6 +206,24 @@ def test_parse_strips_reasoning_block_before_json():
     assert r.verdict == "keep"
 
 
+def test_ratelimit_headers_compact():
+    from tabs.image_gallery.services.ai_client import _ratelimit_headers
+
+    h = {
+        "X-RateLimit-Limit": "20",
+        "X-RateLimit-Remaining": "0",
+        "Retry-After": "30",
+        "X-Request-Id": "abc",
+        "Content-Type": "application/json",
+    }
+    s = _ratelimit_headers(h)
+    assert "x-ratelimit-limit=20" in s
+    assert "x-ratelimit-remaining=0" in s
+    assert "retry-after=30" in s
+    assert "x-request-id=abc" in s
+    assert "content-type" not in s
+
+
 def test_build_request_forces_json_and_hides_reasoning_on_openrouter(tmp_path):
     from tabs.image_gallery.services.ai_client import build_request
 

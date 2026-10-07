@@ -5,18 +5,46 @@ precedent, ``shared.clipboard_images``) — no new dependency. ``call_sync`` mus
 only ever run on a worker thread (see ``controller.GalleryController``, which
 wraps it in a ``GenericWorker``), never on the UI thread.
 """
+# Audit-Meta: pattern=wire-client size=551 reason="one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract"
 
 from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from shared.debug_flags import env_flag as _env_flag
 from tabs.image_gallery.models import AiAnalysisResult
+
+logger = logging.getLogger("ImproveImgSLI")
+
+
+def _ai_debug(msg: str, *args) -> None:
+    """``IMGSLI_AI_DEBUG=1``-gated AI client trace ([ai] prefix).
+
+    Logs the request shape, response status and ``x-ratelimit-*`` headers
+    (429 diagnosis) — never the API key or image bytes.
+    """
+    if _env_flag("IMGSLI_AI_DEBUG"):
+        logger.warning("[ai] " + msg, *args)
+
+
+def _ratelimit_headers(headers) -> str:
+    """Compact x-ratelimit-* + retry-after summary for one response."""
+    try:
+        out = []
+        for k, v in (headers or {}).items():
+            lk = str(k).lower()
+            if lk.startswith("x-ratelimit") or lk in ("retry-after", "x-request-id"):
+                out.append(f"{lk}={v}")
+        return " ".join(out)
+    except Exception:
+        return ""
 
 PROMPT_TEMPLATE = (
     "You assess TECHNICAL image quality for a gallery that compares many "
@@ -259,6 +287,15 @@ def build_request(
         # OpenRouter extension: keep the reasoning trace out of the response
         # (chain-of-thought models otherwise leak it into `content`).
         payload["reasoning"] = {"exclude": True}
+    _ai_debug(
+        "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
+        "reasoning_exclude=%s prompt_chars=%d",
+        model,
+        openrouter,
+        len(metrics or {}),
+        "reasoning" in payload,
+        len(text),
+    )
     return payload
 
 
@@ -296,36 +333,54 @@ def call_sync(base_url: str, api_key: str, payload: dict, *, timeout: float = 30
         },
         method="POST",
     )
+    _ai_debug("POST %s", url)
     attempt = 0
     while True:
         attempt += 1
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read()
+            _ai_debug(
+                "HTTP %s attempt=%d %s",
+                getattr(response, "status", "?"),
+                attempt,
+                _ratelimit_headers(getattr(response, "headers", None)),
+            )
         except urllib.error.HTTPError as exc:
             body = ""
             try:
                 body = exc.read().decode("utf-8", errors="replace")
             except Exception:
                 pass
+            _ai_debug(
+                "HTTP %s attempt=%d %s body=%.200s",
+                exc.code,
+                attempt,
+                _ratelimit_headers(exc.headers),
+                body.replace("\n", " "),
+            )
             if exc.code in (401, 403):
                 raise AiAuthError(f"HTTP {exc.code}: {body}") from exc
             if exc.code == 429:
                 retry_after = exc.headers.get("Retry-After") if exc.headers else None
                 if attempt < _RETRY_MAX_ATTEMPTS:
+                    _ai_debug("429 retry %d after %.1fs", attempt, _retry_delay_s(retry_after, attempt))
                     time.sleep(_retry_delay_s(retry_after, attempt))
                     continue
                 raise AiRateLimitError(f"HTTP 429: {body}", retry_after=retry_after) from exc
             if exc.code is not None and 500 <= exc.code <= 599:
                 retry_after = exc.headers.get("Retry-After") if exc.headers else None
                 if attempt < _RETRY_MAX_ATTEMPTS:
+                    _ai_debug("5xx retry %d after %.1fs", attempt, _retry_delay_s(retry_after, attempt))
                     time.sleep(_retry_delay_s(retry_after, attempt))
                     continue
                 raise AiServerError(f"HTTP {exc.code}: {body}", retry_after=retry_after) from exc
             raise AiNetworkError(f"HTTP {exc.code}: {body}") from exc
         except urllib.error.URLError as exc:
+            _ai_debug("URLError: %s", exc.reason)
             raise AiNetworkError(str(exc.reason)) from exc
         except TimeoutError as exc:
+            _ai_debug("timeout after %.1fs", timeout)
             raise AiNetworkError("request timed out") from exc
         break
 
@@ -450,12 +505,15 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         raise AiResponseError("empty response content")
 
     obj = _extract_json(content)
+    _ai_debug("parse content_chars=%d json_found=%s", len(content), obj is not None)
     if obj is None:
         # Accept the legacy KEY: value format, but NOT free-form prose /
         # chain-of-thought: dumping the model's reasoning into the block is
         # worse than an honest parse error (surfaced as "Could not parse…").
         if _looks_like_legacy_lines(content):
+            _ai_debug("parse fallback=legacy_lines")
             return _parse_lines(content, model)
+        _ai_debug("parse NO-JSON -> AiResponseError first200=%.200s", content.replace("\n", " "))
         raise AiResponseError("model did not return the required JSON object")
 
     comp_raw = obj.get("composition")
@@ -483,6 +541,10 @@ def analyze_image_sync(
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread."""
     openrouter = "openrouter" in str(base_url or "").lower()
+    _ai_debug(
+        "analyze start path=%s model=%s host=%s metrics=%d",
+        image_path, model, base_url, len(metrics or {}),
+    )
     payload = build_request(
         image_path, model=model, metrics=metrics, openrouter=openrouter
     )

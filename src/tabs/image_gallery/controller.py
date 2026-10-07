@@ -1476,6 +1476,12 @@ class GalleryController:
     def analyze_item(self, item: GalleryItem) -> None:
         cached = load_cached_analysis(item.path, item.mtime_ns)
         if cached is not None:
+            try:
+                from tabs.image_gallery.services.ai_client import _ai_debug
+
+                _ai_debug("analyze cache HIT path=%s (no API call)", item.path)
+            except Exception:
+                pass
             item.analysis = cached
             item.analysis_status = AnalysisStatus.DONE
             item.analysis_error = None
@@ -1515,6 +1521,18 @@ class GalleryController:
         item.analysis_status = AnalysisStatus.PENDING
         item.analysis_error = None
         self.widget.refresh_card(item)
+
+        try:
+            from tabs.image_gallery.services.ai_client import _ai_debug
+
+            _ai_debug(
+                "analyze MISS -> API call path=%s model=%s base_url=%s",
+                item.path,
+                settings.model,
+                settings.base_url,
+            )
+        except Exception:
+            pass
 
         # Measured metrics ride along as authoritative context for the model.
         try:
