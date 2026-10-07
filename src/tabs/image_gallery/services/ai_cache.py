@@ -52,6 +52,19 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
             verdict = "unknown"
         if verdict not in ("keep", "reject"):
             verdict = "unknown"
+        from tabs.image_gallery.models import AiDefect
+
+        defects = []
+        for d in data.get("defects", []) or []:
+            try:
+                if isinstance(d, dict):
+                    defects.append(AiDefect(
+                        kind=str(d.get("kind", "") or "other"),
+                        severity=str(d.get("severity", "") or "mild"),
+                        note=str(d.get("note", "") or ""),
+                    ))
+            except Exception:
+                continue
         return AiAnalysisResult(
             description=data["description"],
             tags=tuple(data.get("tags", ())),
@@ -63,6 +76,8 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
             composition=_score("composition"),
             verdict=verdict,
             verdict_reason=str(data.get("verdict_reason", "") or ""),
+            defects=tuple(defects),
+            confidence=float(data.get("confidence", 0.0) or 0.0),
         )
     except Exception:
         logger.debug("Gallery AI cache read failed for %s", path, exc_info=True)
@@ -117,6 +132,11 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                     "composition": result.composition,
                     "verdict": result.verdict,
                     "verdict_reason": result.verdict_reason,
+                    "defects": [
+                        {"kind": d.kind, "severity": d.severity, "note": d.note}
+                        for d in (result.defects or ())
+                    ],
+                    "confidence": result.confidence,
                 }
             ),
             encoding="utf-8",

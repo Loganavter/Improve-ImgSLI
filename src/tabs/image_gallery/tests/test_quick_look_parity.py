@@ -305,48 +305,40 @@ def test_camera_noise_and_wb_rows_present_when_metrics_exist(qtbot):
         for row in ov._metric_rows
         for lbl in row.findChildren(_QlLabel)
     ]
-    assert "Noise" in texts
-    assert any("warm" in t for t in texts)
+    # Positive wording + canonical quality %: Noise→Clean, WB→White balance.
+    assert "Clean" in texts
+    assert "White balance" in texts
+    assert any(t == "80%" for t in texts)  # Clean: noise 0.20 → 80%
     ov.hide()
 
 
-def test_clipping_warn_threshold_is_five_percent(qtbot):
-    """Clipping <5% (ordinary lamps/speculars) keeps the ok bar, not warn.
+def test_clipping_reported_as_positive_quality(qtbot):
+    """Clipping shows as Highlight-detail quality: 0% loss → 100% quality.
 
-    Regression: warn fired above 2%, flagging stage lights at 2.6%.
-    Note: the warn/ok split colors the BAR fill; the value text is always
-    ok-green. Relative assertion (no theme hexes): the 2.6% fill matches
-    the ok Sharpness fill; the 6.0% fill does not.
+    Regression target: the old report showed raw clipped-pixel % and an
+    ad-hoc bar; the canonical score is direction-normalized (higher=better).
     """
-    from tabs.image_gallery.ui.quick_look.bars import _BarWidget
-
-    def _fills(item):
+    def _clipping_text(item):
         ov = _make_overlay(qtbot)
         _show(ov, item, [item], mode=Mode.CAMERA)
         try:
-            out = {}
             for row in ov._metric_rows:
-                titles = [lbl.text() for lbl in row.findChildren(_QlLabel)]
-                bars = row.findChildren(_BarWidget)
-                if not bars:
-                    continue
-                fill = getattr(bars[0], "_explicit_fill", None)
-                for title in ("Sharpness (Laplacian var)", "Clipping %"):
-                    if title in titles:
-                        out[title] = fill.name().lower() if fill is not None else None
-            return out
+                labels = row.findChildren(_QlLabel)
+                if any(lbl.text() == "Highlight detail" for lbl in labels):
+                    return next(lbl.text() for lbl in labels if lbl.text().endswith("%"))
         finally:
             ov.hide()
+        return None
 
-    low = _fills(
+    low = _clipping_text(
         _item("low.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 2.6})
     )
-    high = _fills(
+    high = _clipping_text(
         _item("high.png", metrics={"sharpness": 150.0, "exposure": 0.5, "clipping": 6.0})
     )
-    assert low["Clipping %"] is not None and high["Clipping %"] is not None
-    assert low["Clipping %"] == low["Sharpness (Laplacian var)"]
-    assert high["Clipping %"] != high["Sharpness (Laplacian var)"]
+    assert low == "74%"  # 1 - 2.6/10 → 74%
+    assert high == "40%"  # 1 - 6.0/10 → 40%
+    assert low != high
 
 
 def test_noise_value_color_matches_bar_severity(qtbot):
@@ -363,7 +355,7 @@ def test_noise_value_color_matches_bar_severity(qtbot):
             for row in ov._metric_rows:
                 labels = row.findChildren(_QlLabel)
                 titles = [lbl.text() for lbl in labels]
-                if "Noise" not in titles:
+                if "Clean" not in titles:
                     continue
                 bars = row.findChildren(_BarWidget)
                 value = next(
@@ -378,6 +370,8 @@ def test_noise_value_color_matches_bar_severity(qtbot):
         finally:
             ov.hide()
 
+    # Clean 46% (mid band) vs Clean 80% (good band): value and bar agree,
+    # and the two bands differ.
     warn = _row_colors(_item("n1.png", metrics={"sharpness": 150.0, "noise": 0.54}))
     assert warn["value"] is not None and warn["value"] == warn["bar"]
     ok = _row_colors(_item("n2.png", metrics={"sharpness": 150.0, "noise": 0.2}))
@@ -924,7 +918,7 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
         for row in ov._metric_rows
         for lbl in row.findChildren(_QlLabel)
     ]
-    assert any("0.94" in t for t in after)
+    assert any("94%" in t for t in after)  # Source match 0.94 → 94%
     assert not any("not measured" in t for t in after)
     assert "upscale ×4" in ov._meta_label._original_text
     assert ov._brief_label.text().startswith("vs #2:")
@@ -2842,19 +2836,26 @@ def test_overlay_hide_plants_close_cover(qtbot, tmp_path):
     assert pix is not None and not pix.isNull(), "close cover has no frame"
 
 
-def test_quicklook_analysis_block_shows_full_description_and_all_tags(qtbot):
-    """The sidebar owns the model output: full description + every tag.
+def test_quicklook_analysis_block_shows_verdict_defects_not_scene(qtbot):
+    """The sidebar reports quality: verdict + defects, never scene/tags.
 
-    The card keeps its first-3 summary row; the QL block must carry all
-    of them (the tooltip is not a display surface).
+    Scene description and content tags are identical across variants of the
+    same picture, so the block must ignore them even when a legacy cache
+    entry carries them.
     """
-    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+    from tabs.image_gallery.models import AiAnalysisResult, AiDefect, AnalysisStatus
 
-    tags = ("cat", "sofa", "window-light", "portrait", "indoor")
     a = _item(
         "a.png",
         analysis=AiAnalysisResult(
-            description="A cat on a sofa", tags=tags, model="m", analyzed_at_iso="t"
+            description="A cat on a sofa",
+            tags=("cat", "sofa", "portrait"),
+            model="m",
+            analyzed_at_iso="t",
+            verdict="reject",
+            verdict_reason="Visible halo on edges.",
+            defects=(AiDefect("halo", "flagged", "strong edge glow"),),
+            confidence=0.8,
         ),
         analysis_status=AnalysisStatus.DONE,
     )
@@ -2863,23 +2864,27 @@ def test_quicklook_analysis_block_shows_full_description_and_all_tags(qtbot):
     _show(ov, a, [a, b])
     assert ov._analysis_title.isVisibleTo(ov)
     assert ov._analysis_desc.isVisibleTo(ov)
-    assert ov._analysis_desc.text() == "A cat on a sofa"
-    assert ov._analysis_tags.isVisibleTo(ov)
-    for t in tags:
-        assert t in ov._analysis_tags.text()
+    text = ov._analysis_desc.text()
+    assert "REJECT" in text and "1 defect" in text
+    assert "confidence 80%" in text
+    assert "Visible halo on edges." in text
+    # Scene content never appears.
+    assert "A cat on a sofa" not in text
+    assert "cat" not in text
+    assert "halo" in ov._analysis_tags.text().lower()
     assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
 
 
-def test_quicklook_analysis_block_shows_scores_and_verdict(qtbot):
-    """Scored analyses render axes + verdict, not the caption."""
+def test_quicklook_analysis_block_shows_composition_and_confidence(qtbot):
+    """Verdict/composition/confidence render; measured axes are not repeated."""
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item(
         "a.png",
         analysis=AiAnalysisResult(
-            description="A cat.",
-            tags=("cat", "sofa"),
+            description="",
+            tags=(),
             model="m",
             analyzed_at_iso="t",
             sharpness=85,
@@ -2888,6 +2893,7 @@ def test_quicklook_analysis_block_shows_scores_and_verdict(qtbot):
             composition=80,
             verdict="keep",
             verdict_reason="Clean and sharp.",
+            confidence=0.9,
         ),
         analysis_status=AnalysisStatus.DONE,
     )
@@ -2895,12 +2901,12 @@ def test_quicklook_analysis_block_shows_scores_and_verdict(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b])
     text = ov._analysis_desc.text()
-    assert "Quality 83" in text
     # Sharpness/Noise/Exposure are NOT repeated here: the metric rows above
     # already report them with real measured values.
     assert "Sharpness" not in text and "Noise" not in text and "Exposure" not in text
-    assert "Composition 80" in text
+    assert "Composition 80%" in text
     assert "KEEP" in text
+    assert "confidence 90%" in text
     assert "Clean and sharp." in text
     assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
@@ -3002,7 +3008,7 @@ def test_quicklook_analysis_hydrates_cache_on_open(qtbot, tmp_path, monkeypatch)
     QApplication.processEvents()
     assert hydrated == [item.path]
     assert item.analysis_status == AnalysisStatus.DONE
-    assert "Quality 83" in ov._analysis_desc.text()
+    assert "KEEP" in ov._analysis_desc.text()
     ov.hide()
 
 

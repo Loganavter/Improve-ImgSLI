@@ -485,7 +485,7 @@ def test_metrics_row_cache_lru_bound(qtbot):
     first_rows = list(ov._metric_rows)
     first_texts = _row_texts(ov)
     assert first_rows and first_texts
-    assert any("0.50" in t for t in first_texts)
+    assert any("50%" in t for t in first_texts)  # SSIM 0.50 → Source match 50%
     for _ in range(9):
         ov._walk(1)
         QApplication.processEvents()

@@ -1476,10 +1476,12 @@ class ImageGalleryWidget(QWidget):
         if card is not None:
             try:
                 tip_parts = [item.name]
-                if item.analysis is not None:
-                    tip_parts.append(item.analysis.description)
-                    if item.analysis.tags:
-                        tip_parts.append(", ".join(item.analysis.tags))
+                try:
+                    from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
+
+                    tip_parts.extend(analysis_tooltip_lines(item.analysis))
+                except Exception:
+                    pass
                 if item.analysis_error:
                     tip_parts.append(item.analysis_error)
                 card.setToolTip("\n".join(tip_parts))

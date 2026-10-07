@@ -611,6 +611,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # NOTE: was #e8b64c (dark-only) — now gallery.status.warn light/dark chain.
         return _token_qcolor("gallery.status.warn", "#b77900", "#d9a441")
 
+    def _bad_color():
+        # NOTE: was dark-only reds before — now gallery.status.danger light/dark chain.
+        return _token_qcolor("gallery.status.danger", "#c0392b", "#d64545")
+
     def _muted_color():
         return _token_qcolor("gallery.status.neutral", "#8a8a8a")
 
@@ -622,22 +626,47 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         (W5: keeps .text() verbatim for readers that match on it)."""
         _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color(), value_elide=False)
 
+    # Canonical scores drive both the text and the bar: every metric reads
+    # as "NN%" where higher is always better (see services.metric_scores).
+    from tabs.image_gallery.services.metric_scores import (
+        raw_for as _raw_for,
+        score_band as _score_band,
+        score_for as _score_for,
+        spec_for as _spec_for,
+    )
+
+    def _band_color(score: int):
+        band = _score_band(score)
+        if band == "good":
+            return _ok_color()
+        if band == "bad":
+            return _bad_color()
+        return _warn_color()
+
+    def _add_score_row(spec_id: str, *, extra: str = "", gap: bool = True) -> bool:
+        """One measured metric as ``NN%`` (+ optional suffix). A missing
+        measurement stays an explicit gap row when ``gap`` (matching the
+        historical per-metric behavior: noise/WB hide instead). Returns
+        True when measured."""
+        spec = _spec_for(spec_id)
+        if spec is None:
+            return False
+        got = _raw_for(spec, metrics)
+        if got is None:
+            if gap:
+                _add_unmeasured_row(spec.label)
+            return False
+        _key, raw = got
+        score = _score_for(spec, raw)
+        col = _band_color(score)
+        value = f"{score}%" + (f" · {extra}" if extra else "")
+        _add_metric_row(spec.label, value, score / 100.0, col, value_color=col)
+        return True
+
     if is_fidelity:
-        ssim = metrics.get("ssim")
         rank = getattr(item, "rank", None) or getattr(item, "crown_rank", None)
         rank_txt = f"#{rank} of {len(overlay._series_items)}" if rank is not None else f"#{overlay._current_idx+1} of {len(overlay._series_items)}"
-        if ssim is None:
-            _add_unmeasured_row("SSIM vs source")
-        else:
-            try:
-                ssim_f = float(ssim)
-            except Exception:
-                ssim_f = None
-            if ssim_f is None:
-                _add_unmeasured_row("SSIM vs source")
-            else:
-                ssim_f = max(0.0, min(1.0, ssim_f))
-                _add_metric_row("SSIM vs source", f"{ssim_f:.2f} · {rank_txt}", ssim_f, _ok_color())
+        _add_score_row("ssim", extra=rank_txt)
         subline = ssim_subline(overlay, item)
         if subline:
             sub_row = QWidget(host)
@@ -646,17 +675,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub_lay.setSpacing(0)
             sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=11, pt=11.0, color_token="list_item.text.rating", elide=True, minimum_width=40))
             overlay._metric_rows.append(sub_row)
-        hf = metrics.get("hf_ratio") if "hf_ratio" in metrics else metrics.get("detail_gain")
-        hf_f = None
-        if hf is not None:
-            try:
-                hf_f = float(hf)
-            except Exception:
-                hf_f = None
-        if hf_f is None:
-            _add_unmeasured_row("Detail gain (HF ratio)")
+        # Detail keeps its dual restored/invented bar (special widget) but the
+        # header value is the canonical quality score.
+        _spec = _spec_for("detail_gain")
+        _hf = _raw_for(_spec, metrics) if _spec is not None else None
+        if _hf is None:
+            _add_unmeasured_row(_spec.label if _spec is not None else "Detail")
         else:
-            pct = f"{int(hf_f*100):+d}% " + ("plausible" if hf_f >= 0 else "loss")
+            _key, hf_f = _hf
+            score = _score_for(_spec, hf_f)
             row = QWidget(host)
             rl = QVBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
@@ -664,10 +691,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = _make_label("Detail gain (HF ratio)", parent=row, pixel_size=11, pt=11.5)
+            t = _make_label(_spec.label, parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
             # W7: value takes free row width via stretch (see _add_metric_row).
-            v = _make_label(pct, parent=row, pixel_size=11, pt=11.5, color=_ok_color(), elide=True, minimum_width=40)
+            v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
             try:
                 v.setAlignment(Qt.AlignmentFlag.AlignRight)
             except Exception:
@@ -688,131 +715,18 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub.addWidget(lab_r)
             rl.addLayout(sub)
             overlay._metric_rows.append(row)
-        de = metrics.get("delta_e") if "delta_e" in metrics else metrics.get("deltaE") or metrics.get("color_shift")
-        de_f = None
-        if de is not None:
-            try:
-                de_f = float(de)
-            except Exception:
-                de_f = None
-        if de_f is None:
-            _add_unmeasured_row("Color shift ΔE")
-        else:
-            de_frac = max(0.0, min(1.0, de_f / 10.0))
-            de_label = f"{de_f:.1f} · " + ("imperceptible" if de_f < 2.3 else "visible" if de_f < 5 else "strong")
-            _add_metric_row("Color shift ΔE", de_label, de_frac, _ok_color() if de_f < 3 else _warn_color(),
-            value_color=_ok_color() if de_f < 3 else _warn_color())
+        _add_score_row("color_accuracy")
     elif "CAMERA" in mode_str:
-        sharp = metrics.get("sharpness")
-        sharp_f = None
-        if sharp is not None:
-            try:
-                sharp_f = float(sharp)
-            except Exception:
-                sharp_f = None
-        if sharp_f is None:
-            _add_unmeasured_row("Sharpness (Laplacian var)")
-        else:
-            frac = max(0.0, min(1.0, sharp_f / 400.0))
-            _add_metric_row("Sharpness (Laplacian var)", f"{sharp_f:.0f}", frac, _ok_color() if sharp_f > 100 else _warn_color(),
-            value_color=_ok_color() if sharp_f > 100 else _warn_color())
-        exposure = metrics.get("exposure")
-        exp_f = None
-        if exposure is not None:
-            try:
-                exp_f = float(exposure)
-            except Exception:
-                exp_f = None
-        if exp_f is None:
-            _add_unmeasured_row("Exposure")
-        else:
-            frac2 = max(0.0, min(1.0, exp_f if exp_f <= 1 else exp_f / 100))
-            exp_label = f"{exp_f:.2f}" if exp_f <= 1 else f"{exp_f:.0f}%"
-            _add_metric_row("Exposure", exp_label, frac2, _ok_color())
-        clipping = metrics.get("clipping") or metrics.get("clipping_pct")
-        clip_f = None
-        if clipping is not None:
-            try:
-                clip_f = float(clipping)
-            except Exception:
-                clip_f = None
-        if clip_f is None:
-            _add_unmeasured_row("Clipping %")
-        else:
-            frac3 = max(0.0, min(1.0, clip_f / 10 if clip_f > 1 else clip_f))
-            # A few percent of clipped speculars/lamps is normal in photos —
-            # warn only from 5% (was 2%, flagging ordinary stage lights).
-            _add_metric_row("Clipping %", f"{clip_f:.1f}%", frac3, _warn_color() if clip_f > 5 else _ok_color(),
-            value_color=_warn_color() if clip_f > 5 else _ok_color())
-        noise = None
-        for nk in ("noise", "noise_estimate", "noise_level"):
-            if metrics.get(nk) is not None:
-                noise = metrics.get(nk)
-                break
-        if noise is not None:
-            try:
-                n_f = float(noise)
-                if n_f <= 1.0:
-                    n_frac = max(0.0, min(1.0, n_f))
-                    n_text = f"{n_f:.2f}"
-                elif n_f <= 10.0:
-                    n_frac = max(0.0, min(1.0, n_f / 10.0))
-                    n_text = f"{n_f:.1f}"
-                else:
-                    n_frac = max(0.0, min(1.0, n_f / 100.0))
-                    n_text = f"{n_f:.0f}%"
-                _add_metric_row("Noise", n_text, n_frac, _warn_color() if n_frac > 0.5 else _ok_color(),
-            value_color=_warn_color() if n_frac > 0.5 else _ok_color())
-            except Exception:
-                pass
-        wb = None
-        for wk in ("wb_shift", "white_balance"):
-            if metrics.get(wk) is not None:
-                wb = metrics.get(wk)
-                break
-        if wb is not None:
-            try:
-                wb_f = float(wb)
-                if wb_f > 0.05:
-                    wb_text = f"{wb_f:+.2f} · warm"
-                elif wb_f < -0.05:
-                    wb_text = f"{wb_f:+.2f} · cool"
-                else:
-                    wb_text = f"{wb_f:+.2f} · neutral"
-                wb_frac = max(0.0, min(1.0, abs(wb_f)))
-                _add_metric_row("WB shift", wb_text, wb_frac, _warn_color() if wb_frac > 0.15 else _ok_color(),
-            value_color=_warn_color() if wb_frac > 0.15 else _ok_color())
-            except Exception:
-                try:
-                    wb_text = str(wb)
-                    _add_metric_row("WB shift", wb_text, 0.5, _ok_color())
-                except Exception:
-                    pass
+        _add_score_row("sharpness")
+        _add_score_row("exposure")
+        _add_score_row("clipping")
+        # Noise/WB have no "not measured" placeholder by design: when absent
+        # the rows simply hide (unchanged historical behavior).
+        _add_score_row("noise", gap=False)
+        _add_score_row("white_balance", gap=False)
     else:
-        dist = metrics.get("embedding_dist_to_centroid")
-        d_f = None
-        if dist is not None:
-            try:
-                d_f = float(dist)
-            except Exception:
-                d_f = None
-        if d_f is None:
-            _add_unmeasured_row("Distance to centroid")
-        else:
-            frac = max(0.0, min(1.0, 1.0 - min(1.0, d_f)))
-            _add_metric_row("Distance to centroid", f"{d_f:.2f}", frac, _ok_color())
-        aesthetic = metrics.get("aesthetic") or metrics.get("aesthetic_score")
-        aes_f = None
-        if aesthetic is not None:
-            try:
-                aes_f = float(aesthetic)
-            except Exception:
-                aes_f = None
-        if aes_f is None:
-            _add_unmeasured_row("Aesthetic (tie-break)")
-        else:
-            frac2 = max(0.0, min(1.0, aes_f if aes_f <= 1 else aes_f / 10))
-            _add_metric_row("Aesthetic (tie-break)", f"{aes_f:.2f}", frac2, _ok_color())
+        _add_score_row("typicality")
+        _add_score_row("aesthetic")
 
     # Flat placement (rows + uniform spacers) is owned by the coordinator —
     # it also re-seats the artifact rows, so either rebuild order converges.

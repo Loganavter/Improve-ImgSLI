@@ -212,6 +212,30 @@ def gallery_selection_accent(theme_manager=None):  # type: ignore[no-untyped-def
         return _accent_color()
 
 
+def analysis_tooltip_lines(analysis) -> list[str]:
+    """Verdict + defect summary lines for a card tooltip.
+
+    The gallery reports quality, not scene content: a card tooltip shows
+    the keep/reject verdict with its reason and the defect kinds — never
+    the (variant-identical) scene description or content tags.
+    """
+    out: list[str] = []
+    if analysis is None:
+        return out
+    verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
+    reason = str(getattr(analysis, "verdict_reason", "") or "")
+    if verdict in ("keep", "reject"):
+        out.append(verdict.upper() + (f" — {reason}" if reason else ""))
+    kinds = [
+        str(getattr(d, "kind", "")).replace("_", " ")
+        for d in (getattr(analysis, "defects", ()) or ())
+        if getattr(d, "kind", None)
+    ]
+    if kinds:
+        out.append("defects: " + ", ".join(kinds))
+    return out
+
+
 def apply_gallery_selection(card: Button, selected: bool, accent=None) -> None:  # type: ignore[no-untyped-def]
     try:
         from ui.widgets.shelf.selection import apply_card_selected

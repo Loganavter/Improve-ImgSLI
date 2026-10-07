@@ -60,21 +60,34 @@ class TriageState(str, Enum):
 
 
 @dataclass(frozen=True)
+class AiDefect:
+    """One quality defect the model reported (kind + severity + note)."""
+
+    kind: str
+    severity: str = "mild"  # "clean" | "mild" | "flagged"
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class AiAnalysisResult:
     description: str
     tags: tuple[str, ...]
     model: str
     analyzed_at_iso: str
-    # Technical-quality verdict (the app's analysis format — scores drive
-    # ranking, the caption stays for search/tooltip only). Axis scores are
-    # 0-100, -1 means unscored (old cache entries, unparsed replies).
-    # verdict is one of "keep" | "reject" | "unknown".
+    # Technical-quality verdict (the app's analysis format). Axis scores are
+    # 0-100 quality (higher=better), -1 means unscored. ``sharpness``/
+    # ``noise``/``exposure`` are filled from the MEASURED detectors (the
+    # model's own estimates are not trusted there); ``composition`` is the
+    # AI-only axis. ``description``/``tags`` are legacy/optional — the
+    # gallery reports quality, not scene content.
     sharpness: int = -1
     noise: int = -1
     exposure: int = -1
     composition: int = -1
-    verdict: str = "unknown"
+    verdict: str = "unknown"  # "keep" | "reject" | "unknown"
     verdict_reason: str = ""
+    defects: tuple[AiDefect, ...] = ()
+    confidence: float = 0.0
 
 
 def ai_quality_score(result: AiAnalysisResult | None) -> float | None:

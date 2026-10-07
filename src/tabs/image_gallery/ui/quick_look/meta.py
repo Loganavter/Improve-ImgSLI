@@ -302,47 +302,38 @@ def populate_brief(overlay, item) -> None:
             pass
 
 
-def _analysis_scores_line(analysis) -> str:
-    """Summary line: mean Quality + only the AI-only axis (Composition).
-
-    The metric rows above already report sharpness/noise/exposure with
-    real measured values — repeating the AI's parallel 0-100 estimates of
-    the same axes (different scale, different method) was pure noise. The
-    mean stays because it drives ``Sort: AI quality``; Composition stays
-    because no local detector measures it. Empty when nothing is scored.
-    """
+def _defect_lines(defects) -> str:
+    """One line per reported defect: 'kind (severity): note'."""
+    out = []
     try:
-        from tabs.image_gallery.models import ai_quality_score
-
-        parts = []
-        mean = ai_quality_score(analysis)
-        if mean is not None:
-            parts.append(f"Quality {int(round(mean))}")
-        try:
-            comp = int(getattr(analysis, "composition", -1))
-        except Exception:
-            comp = -1
-        if comp >= 0:
-            parts.append(f"Composition {comp}")
-        return " · ".join(parts)
+        for d in defects or ():
+            kind = str(getattr(d, "kind", "") or "").replace("_", " ").strip()
+            sev = str(getattr(d, "severity", "") or "").strip()
+            note = str(getattr(d, "note", "") or "").strip()
+            if not kind:
+                continue
+            line = f"{kind} ({sev})" if sev else kind
+            if note:
+                line += f": {note}"
+            out.append(line)
     except Exception:
         return ""
+    return "\n".join(out)
 
 
 def populate_analysis(overlay, item) -> None:
-    """Fill the sidebar AI-analysis block (scores + verdict + ALL tags).
+    """Fill the sidebar AI-analysis block (quality verdict + defects).
 
-    The model output lives here, not in the card tooltip: DONE shows the
-    mean AI quality + the AI-only Composition axis, the keep/reject
-    verdict with its reason, and every tag (the card row keeps its
-    first-3 summary). Sharpness/noise/exposure are deliberately NOT
-    repeated — the metric rows above already carry the measured values.
-    Old cache entries without scores fall back to the plain description. PENDING shows a running
-    line; ERROR shows the error and keeps the Analyze trigger for retry;
-    NOT_ANALYZED shows the header + trigger only. A disk-cached analysis
-    is hydrated first (via the owner hook), so the block shows it the
-    moment the overlay opens instead of waiting for an Analyze click.
-    Never raises.
+    The model output lives here, not in the card tooltip. DONE shows the
+    keep/reject verdict with its reason, the reported defects, the AI-only
+    Composition axis and the model's confidence. Sharpness/noise/exposure
+    are NOT repeated — the metric rows above carry the measured values.
+    Legacy caption-only cache entries fall back to the plain description.
+    PENDING shows a running line; ERROR shows the error and keeps the
+    Analyze trigger for retry; NOT_ANALYZED shows the header + trigger
+    only. A disk-cached analysis is hydrated first (via the owner hook),
+    so the block shows it the moment the overlay opens instead of waiting
+    for an Analyze click. Never raises.
     """
     try:
         try:
@@ -369,30 +360,34 @@ def populate_analysis(overlay, item) -> None:
         desc_text, tags_text = "", ""
         show_btn = False
         if analysis is not None and status_val == "done":
+            show_btn = True
             try:
-                tags = list(getattr(analysis, "tags", None) or [])
-                tags_text = ", ".join(str(t).strip() for t in tags if str(t).strip())
-            except Exception:
-                tags_text = ""
-            try:
-                scores = _analysis_scores_line(analysis)
                 verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
                 reason = str(getattr(analysis, "verdict_reason", "") or "")
+                defects = list(getattr(analysis, "defects", ()) or ())
+                comp = int(getattr(analysis, "composition", -1) or -1)
+                conf = float(getattr(analysis, "confidence", 0.0) or 0.0)
+                legacy_desc = str(getattr(analysis, "description", "") or "")
             except Exception:
-                scores, verdict, reason = "", "unknown", ""
-            show_btn = True
-            if scores:
-                desc_text = scores
+                verdict, reason, defects, comp, conf, legacy_desc = "unknown", "", [], -1, 0.0, ""
+            defects_text = _defect_lines(defects)
+            if verdict in ("keep", "reject") or defects or comp >= 0:
+                parts = []
                 if verdict in ("keep", "reject"):
-                    desc_text += f" · {verdict.upper()}"
-                    if reason:
-                        desc_text += f" — {reason}"
+                    parts.append(verdict.upper())
+                if defects:
+                    parts.append(f"{len(defects)} defect(s)" if len(defects) != 1 else "1 defect")
+                if comp >= 0:
+                    parts.append(f"Composition {comp}%")
+                if conf > 0:
+                    parts.append(f"confidence {int(round(conf * 100))}%")
+                if reason:
+                    parts.append(reason)
+                desc_text = " · ".join(parts)
+                tags_text = defects_text
             else:
-                # Old cache entries (caption-only): show the description.
-                try:
-                    desc_text = str(getattr(analysis, "description", "") or "")
-                except Exception:
-                    desc_text = ""
+                # Legacy caption-only cache entry: show the description.
+                desc_text = legacy_desc
         elif status_val == "pending":
             desc_text = "Analyzing…"
         elif status_val == "error":

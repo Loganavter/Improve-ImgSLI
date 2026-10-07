@@ -18,31 +18,45 @@ from pathlib import Path
 from tabs.image_gallery.models import AiAnalysisResult
 
 PROMPT_TEMPLATE = (
-    "Rate this image's technical quality 0-100 on four axes (higher is "
-    "better; for NOISE higher means cleaner), then give a keep/reject "
-    "verdict with one short reason, then a one-sentence description plus "
-    "a handful of tags. Respond in exactly this format, one item per "
-    "line, no other text:\n"
-    "SHARPNESS: <0-100>\n"
-    "NOISE: <0-100>\n"
-    "EXPOSURE: <0-100>\n"
-    "COMPOSITION: <0-100>\n"
-    "VERDICT: <keep|reject>\n"
-    "REASON: <one short sentence>\n"
-    "DESCRIPTION: <one sentence>\n"
-    "TAGS: <comma-separated tags>"
+    "You assess TECHNICAL image quality for a gallery that compares many "
+    "processing variants (upscalers, restorations) of the SAME picture. "
+    "Judge quality and DEFECTS only — never describe the scene, objects or "
+    "content: they are identical across variants and add nothing.\n"
+    "You are given the locally measured metrics; treat them as authoritative "
+    "and do not contradict them.\n"
+    "Reply with ONLY a JSON object, no prose and no code fences:\n"
+    '{"verdict": "keep|reject", "reason": "<= 1 short sentence", '
+    '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
+    'over_smoothing|invented_texture|clipping|other", '
+    '"severity": "mild|flagged", "note": "short"}], '
+    '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
+    "Use an empty defects list when the image is clean. composition is your "
+    "subjective framing/quality score — the one axis the local detectors "
+    "cannot measure."
+)
+
+_DEFECT_KINDS = (
+    "halo",
+    "banding",
+    "blocking",
+    "chroma_fringing",
+    "noise",
+    "over_smoothing",
+    "invented_texture",
+    "clipping",
+    "other",
 )
 
 
-def _parse_score(value: str) -> int:
-    """Parse a 0-100 axis score, clamped; -1 when unparsable."""
+def _parse_score(value) -> int:
+    """Parse a 0-100 score, clamped; -1 when unparsable."""
     try:
         return max(0, min(100, int(float(str(value).strip().rstrip("%")))))
     except Exception:
         return -1
 
 
-def _parse_verdict(value: str) -> str:
+def _parse_verdict(value) -> str:
     """Normalize to keep | reject | unknown."""
     try:
         v = str(value).strip().lower()
@@ -53,6 +67,41 @@ def _parse_verdict(value: str) -> str:
     if v.startswith("reject"):
         return "reject"
     return "unknown"
+
+
+def _parse_confidence(value) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except Exception:
+        return 0.0
+
+
+def _parse_defects(value) -> tuple:
+    """Normalize a defects list into ``AiDefect`` tuples (kind/severity)."""
+    from tabs.image_gallery.models import AiDefect
+
+    out = []
+    if not isinstance(value, list):
+        return ()
+    for item in value:
+        if isinstance(item, str):
+            kind, severity, note = item, "mild", ""
+        elif isinstance(item, dict):
+            kind = str(item.get("kind", "") or "").strip().lower().replace(" ", "_")
+            severity = str(item.get("severity", "") or "mild").strip().lower()
+            note = str(item.get("note", "") or "").strip()
+        else:
+            continue
+        if not kind:
+            continue
+        if kind not in _DEFECT_KINDS:
+            kind = "other"
+        if severity not in ("clean", "mild", "flagged"):
+            severity = "mild"
+        if severity == "clean":
+            continue  # a "clean" defect is not a defect
+        out.append(AiDefect(kind=kind, severity=severity, note=note))
+    return tuple(out)
 
 _EXT_TO_MIME = {
     ".png": "png",
@@ -103,17 +152,37 @@ class AiResponseError(AiClientError):
     """Malformed/unexpected response body."""
 
 
-def build_request(image_path: Path, *, model: str, prompt: str = PROMPT_TEMPLATE) -> dict:
+def build_request(
+    image_path: Path,
+    *,
+    model: str,
+    prompt: str = PROMPT_TEMPLATE,
+    metrics: dict | None = None,
+) -> dict:
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
     data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    text = prompt
+    # Inject the locally measured metrics as authoritative context so the
+    # model reasons over real numbers instead of re-estimating them.
+    if metrics:
+        try:
+            from tabs.image_gallery.services.metric_scores import (
+                format_measured_for_prompt,
+            )
+
+            block = format_measured_for_prompt(metrics)
+        except Exception:
+            block = ""
+        if block:
+            text = f"{prompt}\n\nMEASURED METRICS (authoritative):\n{block}"
     return {
         "model": model,
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": text},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/{mime};base64,{data}"},
@@ -198,15 +267,32 @@ def call_sync(base_url: str, api_key: str, payload: dict, *, timeout: float = 30
         raise AiResponseError(f"invalid JSON in response: {exc}") from exc
 
 
-def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
+def _extract_json(content: str) -> dict | None:
+    """Best-effort JSON object out of a model reply (fences/prose tolerated)."""
+    s = content.strip()
+    if s.startswith("```"):
+        s = s.strip("`").strip()
+        if s[:4].lower() == "json":
+            s = s[4:].strip()
     try:
-        content = raw["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise AiResponseError(f"unexpected response shape: {exc}") from exc
+        obj = json.loads(s)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+    try:
+        i, j = s.find("{"), s.rfind("}")
+        if 0 <= i < j:
+            obj = json.loads(s[i : j + 1])
+            if isinstance(obj, dict):
+                return obj
+    except Exception:
+        pass
+    return None
 
-    if not isinstance(content, str) or not content.strip():
-        raise AiResponseError("empty response content")
 
+def _parse_lines(content: str, model: str) -> AiAnalysisResult:
+    """Legacy line-order fallback (DESCRIPTION/TAGS/VERDICT lines)."""
     description = content.strip()
     tags: tuple[str, ...] = ()
     sharpness = noise = exposure = composition = -1
@@ -231,7 +317,6 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
             verdict = _parse_verdict(line.split(":", 1)[1])
         elif upper.startswith("REASON:"):
             reason = line.split(":", 1)[1].strip()
-
     return AiAnalysisResult(
         description=description,
         tags=tags,
@@ -246,10 +331,44 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
     )
 
 
+def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
+    try:
+        content = raw["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise AiResponseError(f"unexpected response shape: {exc}") from exc
+
+    if not isinstance(content, str) or not content.strip():
+        raise AiResponseError("empty response content")
+
+    obj = _extract_json(content)
+    if obj is None:
+        # Model ignored the JSON contract — fall back to the legacy parser
+        # rather than failing the whole analysis.
+        return _parse_lines(content, model)
+
+    comp_raw = obj.get("composition")
+    return AiAnalysisResult(
+        description="",
+        tags=(),
+        model=model,
+        analyzed_at_iso=datetime.now(timezone.utc).isoformat(),
+        composition=_parse_score(comp_raw) if comp_raw is not None else -1,
+        verdict=_parse_verdict(obj.get("verdict", "")),
+        verdict_reason=str(obj.get("reason", "") or "").strip(),
+        defects=_parse_defects(obj.get("defects")),
+        confidence=_parse_confidence(obj.get("confidence")),
+    )
+
+
 def analyze_image_sync(
-    image_path: Path, *, base_url: str, api_key: str, model: str
+    image_path: Path,
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    metrics: dict | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread."""
-    payload = build_request(image_path, model=model)
+    payload = build_request(image_path, model=model, metrics=metrics)
     raw = call_sync(base_url, api_key, payload)
     return parse_response(raw, model=model)

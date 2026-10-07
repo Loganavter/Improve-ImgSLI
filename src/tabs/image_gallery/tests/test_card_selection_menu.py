@@ -436,9 +436,9 @@ def test_empty_menu_sort_view_present_and_checked(monkeypatch) -> None:
     )
     sort_menu = _submenu("gallery.sort_by", captured["entries"])
     assert [a.action_id for a in sort_menu.children] == [
-        "gallery.sort.rank", "gallery.sort.name", "gallery.sort.date",
+        "gallery.sort.rank", "gallery.sort.name", "gallery.sort.date", "gallery.sort.quality",
     ]
-    assert [a.checked for a in sort_menu.children] == [False, True, False]
+    assert [a.checked for a in sort_menu.children] == [False, True, False, False]
     view_menu = _submenu("gallery.view", captured["entries"])
     assert [(a.action_id, a.checked) for a in view_menu.children] == [
         ("gallery.view.grid", False), ("gallery.view.list", True),

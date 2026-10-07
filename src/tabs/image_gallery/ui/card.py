@@ -349,12 +349,12 @@ def _set_card_tooltip(card: Button, item: GalleryItem) -> None:
     """
     try:
         parts = [item.name]
-        analysis = getattr(item, "analysis", None)
-        if analysis is not None:
-            if getattr(analysis, "description", None):
-                parts.append(analysis.description)
-            if getattr(analysis, "tags", None):
-                parts.append(", ".join(analysis.tags))
+        try:
+            from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
+
+            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None)))
+        except Exception:
+            pass
         err = getattr(item, "analysis_error", None)
         if err:
             parts.append(str(err))

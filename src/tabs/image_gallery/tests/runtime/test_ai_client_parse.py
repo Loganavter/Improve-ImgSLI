@@ -107,3 +107,76 @@ def test_ai_quality_score_partial_axes():
     r = AiAnalysisResult(description="d", tags=(), model="m", analyzed_at_iso="t", sharpness=80)
     assert ai_quality_score(r) == pytest.approx(80.0)
     assert ai_quality_score(None) is None
+
+
+def _json_reply(obj) -> dict:
+    import json as _json
+
+    return {"choices": [{"message": {"content": _json.dumps(obj)}}]}
+
+
+def test_parse_json_contract_verdict_defects_confidence():
+    raw = _json_reply(
+        {
+            "verdict": "reject",
+            "reason": "Strong halo on edges.",
+            "defects": [
+                {"kind": "halo", "severity": "flagged", "note": "edge glow"},
+                {"kind": "Band'ing", "severity": "mild"},
+                {"kind": "bogus_kind", "severity": "mild"},
+                {"kind": "noise", "severity": "clean"},  # dropped: not a defect
+            ],
+            "composition": 72,
+            "confidence": 0.85,
+        }
+    )
+    r = parse_response(raw, model="m")
+    assert r.verdict == "reject"
+    assert r.verdict_reason == "Strong halo on edges."
+    assert r.composition == 72
+    assert r.confidence == pytest.approx(0.85)
+    kinds = [d.kind for d in r.defects]
+    assert kinds == ["halo", "other", "other"]  # unknown kinds → "other", clean dropped
+    assert r.defects[0].severity == "flagged"
+    # Scene caption is not part of the new contract.
+    assert r.description == "" and r.tags == ()
+
+
+def test_parse_json_in_code_fences_and_prose():
+    content = 'Sure!\n```json\n{"verdict": "keep", "reason": "ok", "defects": []}\n```'
+    raw = {"choices": [{"message": {"content": content}}]}
+    r = parse_response(raw, model="m")
+    assert r.verdict == "keep"
+    assert r.defects == ()
+    assert r.composition == -1
+
+
+def test_parse_malformed_json_falls_back_to_lines():
+    raw = {"choices": [{"message": {"content": "not json at all"}}]}
+    r = parse_response(raw, model="m")
+    assert r.description == "not json at all"
+    assert r.verdict == "unknown"
+
+
+def test_build_request_injects_measured_metrics(tmp_path):
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    payload = build_request(
+        img, model="m", metrics={"sharpness": 200.0, "noise": 0.2}
+    )
+    text = payload["messages"][0]["content"][0]["text"]
+    assert "MEASURED METRICS (authoritative):" in text
+    assert "- Sharpness: 200 (quality 50%)" in text
+    assert "- Clean: 0.2 (quality 80%)" in text
+
+
+def test_build_request_without_metrics_has_no_block(tmp_path):
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    payload = build_request(img, model="m")
+    text = payload["messages"][0]["content"][0]["text"]
+    assert "MEASURED METRICS" not in text

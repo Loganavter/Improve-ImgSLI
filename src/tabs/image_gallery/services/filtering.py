@@ -12,6 +12,31 @@ from __future__ import annotations
 from tabs.image_gallery.models import AnalysisStatus, GalleryItem
 
 
+def _analysis_haystack(analysis) -> str:
+    """Searchable text for one analysis result — verdict/defects first.
+
+    The gallery reports quality (verdict reason + defect kinds), so those
+    are the searchable signal; legacy caption/tags are included when an
+    old cache entry still carries them.
+    """
+    parts = [
+        str(getattr(analysis, "verdict_reason", "") or ""),
+        str(getattr(analysis, "verdict", "") or ""),
+    ]
+    for d in getattr(analysis, "defects", ()) or ():
+        try:
+            parts.append(str(getattr(d, "kind", "") or "").replace("_", " "))
+            parts.append(str(getattr(d, "note", "") or ""))
+        except Exception:
+            continue
+    try:
+        parts.append(str(getattr(analysis, "description", "") or ""))
+        parts.append(" ".join(getattr(analysis, "tags", ()) or ()))
+    except Exception:
+        pass
+    return " ".join(p for p in parts if p).lower()
+
+
 def _vlm_haystack(item: GalleryItem) -> str:
     parts: list[str] = []
     # In-memory brief (controller populates after request_compare_brief)
@@ -69,7 +94,7 @@ def filter_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
             continue
         hay_found = False
         if item.analysis_status == AnalysisStatus.DONE and item.analysis is not None:
-            haystack = (item.analysis.description + " " + " ".join(item.analysis.tags) + " " + getattr(item.analysis, "verdict_reason", "")).lower()
+            haystack = _analysis_haystack(item.analysis)
             if query in haystack:
                 matched.append(item)
                 hay_found = True
@@ -101,7 +126,7 @@ def match_fast_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
             matched.append(item)
             continue
         if item.analysis_status == AnalysisStatus.DONE and item.analysis is not None:
-            haystack = (item.analysis.description + " " + " ".join(item.analysis.tags) + " " + getattr(item.analysis, "verdict_reason", "")).lower()
+            haystack = _analysis_haystack(item.analysis)
             if query in haystack:
                 matched.append(item)
                 continue

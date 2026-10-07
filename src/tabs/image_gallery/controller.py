@@ -1516,12 +1516,18 @@ class GalleryController:
         item.analysis_error = None
         self.widget.refresh_card(item)
 
+        # Measured metrics ride along as authoritative context for the model.
+        try:
+            _metrics = dict(getattr(item, "metrics", None) or {})
+        except Exception:
+            _metrics = {}
         worker = GenericWorker(
             self._tracked(analyze_image_sync),
             item.path,
             base_url=settings.base_url,
             api_key=settings.api_key,
             model=settings.model,
+            metrics=_metrics,
         )
         gen = self._folder_gen
         worker.signals.result.connect(
@@ -1534,12 +1540,48 @@ class GalleryController:
         )
         self._pool_start(worker, None)
 
+    def _merge_measured_metrics(self, result, item):
+        """Overwrite the model's sharpness/noise/exposure with MEASURED
+        quality scores (the detectors are authoritative); keep the AI-only
+        composition axis. Returns the (possibly) replaced result. Never
+        raises — on any failure the original result is returned."""
+        try:
+            from dataclasses import replace
+
+            from tabs.image_gallery.services import metric_scores as _ms
+        except Exception:
+            return result
+        try:
+            metrics = getattr(item, "metrics", None) or {}
+            if not isinstance(metrics, dict) or not metrics:
+                return result
+            axes = {sid: score for sid, _label, _raw, score in _ms.measured_scores(metrics)}
+        except Exception:
+            return result
+        kwargs = {}
+        sharp = axes.get("sharpness")
+        if sharp is not None:
+            kwargs["sharpness"] = sharp
+        noise = axes.get("noise")  # already positive "Clean" quality
+        if noise is not None:
+            kwargs["noise"] = noise
+        exposure = axes.get("exposure")
+        if exposure is not None:
+            kwargs["exposure"] = exposure
+        if not kwargs:
+            return result
+        try:
+            return replace(result, **kwargs)
+        except Exception:
+            return result
+
     def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             return  # folder switched — late analysis dropped
         item = self._find_item(path)
         if item is None:
             return
+        result = self._merge_measured_metrics(result, item)
         save_analysis(path, mtime_ns, result)
         item.analysis = result
         item.analysis_status = AnalysisStatus.DONE
