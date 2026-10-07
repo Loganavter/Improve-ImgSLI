@@ -168,20 +168,18 @@ def test_right_column_stretches_with_min_296_on_resize(qtbot, tmp_path):
 
 
 def test_right_contents_fill_stretched_column(qtbot, tmp_path):
-    """W13: bars/histograms fill the stretched column; thumbs do NOT grow.
+    """W13: bars (metric + artifact, both _BarWidget) fill the stretched
+    column; strip thumbs do NOT grow.
 
-    Bar widgets and histogram containers track the live column width
-    (bar COUNT and thumb sizes fixed, gaps absorb the extra).
+    Bar widgets track the live column width (bar count and thumb sizes
+    fixed, gaps absorb the extra). Artifacts are unified % bars now, so
+    every report bar is a _BarWidget.
     """
     from sli_ui_toolkit.managers import scaled_px
     from sli_ui_toolkit.widgets import Button
 
     from tabs.image_gallery.models import Artifact, Severity
     from tabs.image_gallery.ui.quick_look.bars import _BarWidget
-    from tabs.image_gallery.ui.quick_look.histograms import (
-        _BandingCombHistogram,
-        _GenericHistogram,
-    )
 
     src_p = _real_png(tmp_path, "src.png")
     mates = []
@@ -202,43 +200,27 @@ def test_right_contents_fill_stretched_column(qtbot, tmp_path):
     def _widths():
         scroll = ov.findChild(QScrollArea, "quicklook_right_scroll")
         bars = ov._report_host.findChildren(_BarWidget)
-        hist = None
-        for cls in (_BandingCombHistogram, _GenericHistogram):
-            found = ov._report_host.findChildren(cls)
-            if found:
-                hist = found[0]
-                break
         thumbs = [
             b
             for b in ov._strip_host.findChildren(Button)
             if b.objectName().startswith("quicklook_strip_")
         ]
-        return scroll, bars, hist, thumbs
+        return scroll, bars, thumbs
 
-    scroll, bars, hist, thumbs = _widths()
-    assert bars, "expected metric bars"
-    assert hist is not None, "expected an artifact histogram"
+    scroll, bars, thumbs = _widths()
+    assert bars, "expected bars"
     assert len(thumbs) == 4
     viewport_w = scroll.viewport().width()
     for bar in bars:
         assert abs(bar.width() - viewport_w) <= 4
-    hist_w_before = hist.width()
-    hist_bars_before = len(hist._bars)
-    assert hist_w_before > 0
     col_w_before = scroll.width()
     _grow(qtbot, ov)
-    scroll, bars, hist2, thumbs = _widths()
+    scroll, bars, thumbs = _widths()
     viewport_w = scroll.viewport().width()
     assert scroll.width() > col_w_before
-    # Bars track the wider viewport...
+    # Bars track the wider viewport; strip thumbs keep their fixed size.
     for bar in bars:
         assert abs(bar.width() - viewport_w) <= 4
-    # ...the histogram container stretches with a fixed bar count...
-    assert hist2.width() > hist_w_before
-    assert len(hist2._bars) == hist_bars_before
-    for fill, _kind in hist2._bars:
-        assert fill.width() == scaled_px(9)
-    # ...and strip thumbs keep their fixed size.
     for b in thumbs:
         assert b.width() == scaled_px(66)
     assert scroll.horizontalScrollBar().maximum() == 0

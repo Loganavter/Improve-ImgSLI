@@ -22,11 +22,11 @@ def test_parse_well_formed_response():
     assert result.analyzed_at_iso
 
 
-def test_parse_missing_delimiters_falls_back_to_full_text():
+def test_parse_missing_delimiters_raises():
+    """Free-form text without the contract is rejected, not shown."""
     raw = {"choices": [{"message": {"content": "just a plain description"}}]}
-    result = parse_response(raw, model="test/model")
-    assert result.description == "just a plain description"
-    assert result.tags == ()
+    with pytest.raises(AiResponseError):
+        parse_response(raw, model="test/model")
 
 
 def test_parse_missing_choices_raises():
@@ -151,11 +151,28 @@ def test_parse_json_in_code_fences_and_prose():
     assert r.composition == -1
 
 
-def test_parse_malformed_json_falls_back_to_lines():
-    raw = {"choices": [{"message": {"content": "not json at all"}}]}
+def test_parse_freeform_prose_raises_instead_of_dumping_cot():
+    """A reasoning dump with no JSON and no legacy markers must NOT be shown.
+
+    Regression: the model answered with chain-of-thought prose; the block
+    displayed it verbatim. Now it is a clean parse error.
+    """
+    cot = (
+        "Let me analyze the measured metrics:\n"
+        "- Sharpness: 253 (quality 63%) - moderate\n"
+        "Let me think about other potential defects:\n"
+        "- No obvious halos"
+    )
+    raw = {"choices": [{"message": {"content": cot}}]}
+    with pytest.raises(AiResponseError):
+        parse_response(raw, model="m")
+
+
+def test_parse_legacy_line_format_still_falls_back():
+    raw = {"choices": [{"message": {"content": "DESCRIPTION: a cat\nTAGS: cat, sofa"}}]}
     r = parse_response(raw, model="m")
-    assert r.description == "not json at all"
-    assert r.verdict == "unknown"
+    assert r.description == "a cat"
+    assert r.tags == ("cat", "sofa")
 
 
 def test_build_request_injects_measured_metrics(tmp_path):

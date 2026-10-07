@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -32,7 +33,9 @@ PROMPT_TEMPLATE = (
     '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
     "Use an empty defects list when the image is clean. composition is your "
     "subjective framing/quality score — the one axis the local detectors "
-    "cannot measure."
+    "cannot measure.\n"
+    "Output the JSON object ONLY: no reasoning, no analysis steps, no "
+    "preamble, no prose before or after."
 )
 
 _DEFECT_KINDS = (
@@ -291,6 +294,29 @@ def _extract_json(content: str) -> dict | None:
     return None
 
 
+_LEGACY_LINE_RE = re.compile(
+    r"^\s*(DESCRIPTION|TAGS|VERDICT|SHARPNESS|NOISE|EXPOSURE|COMPOSITION|REASON)\s*:",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_legacy_lines(content: str) -> bool:
+    """True only when EVERY non-empty line is a legacy ``KEY: value`` line.
+
+    A blanket "contains a marker" check is fooled by chain-of-thought that
+    happens to write ``- Sharpness: 253 (quality 63%)`` — that must NOT be
+    mistaken for the legacy format (it would dump the reasoning).
+    """
+    try:
+        lines = [ln for ln in content.splitlines() if ln.strip()]
+    except Exception:
+        return False
+    if not lines:
+        return False
+    hits = sum(1 for ln in lines if _LEGACY_LINE_RE.match(ln))
+    return hits == len(lines)
+
+
 def _parse_lines(content: str, model: str) -> AiAnalysisResult:
     """Legacy line-order fallback (DESCRIPTION/TAGS/VERDICT lines)."""
     description = content.strip()
@@ -342,9 +368,12 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
 
     obj = _extract_json(content)
     if obj is None:
-        # Model ignored the JSON contract — fall back to the legacy parser
-        # rather than failing the whole analysis.
-        return _parse_lines(content, model)
+        # Accept the legacy KEY: value format, but NOT free-form prose /
+        # chain-of-thought: dumping the model's reasoning into the block is
+        # worse than an honest parse error (surfaced as "Could not parse…").
+        if _looks_like_legacy_lines(content):
+            return _parse_lines(content, model)
+        raise AiResponseError("model did not return the required JSON object")
 
     comp_raw = obj.get("composition")
     return AiAnalysisResult(

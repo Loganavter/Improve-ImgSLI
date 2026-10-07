@@ -6,6 +6,19 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 
+# Unified quality view of a categorical artifact: higher = cleaner/better.
+_ARTIFACT_QUALITY = {"clean": 100, "mild": 50, "flagged": 15}
+# Positive titles so the row reads like the metric rows (higher = better).
+_POSITIVE_ARTIFACT_LABELS = {
+    "banding": "Gradients",
+    "halo": "Edges",
+    "over_smoothing": "Detail",
+    "invented_texture": "Texture",
+    "blocking": "Blocks",
+    "chroma_fringing": "Chroma",
+    "noise_amplification": "Clean",
+}
+
 
 def rebuild_artifacts(overlay, item) -> None:
     """Rebuild artifact rows — the mode triple, same three as the card dots.
@@ -39,6 +52,9 @@ def rebuild_artifacts(overlay, item) -> None:
     except Exception:
         artifacts = ["banding", "halo"]
         shown = [(aid, "clean") for aid in artifacts]
+    # Drop the noise artifact row: the measured "Clean" metric above already
+    # reports noise (continuously), so a second Noise row is a duplicate.
+    shown = [(aid, sev) for aid, sev in shown if aid != "noise_amplification"]
 
 
     # Delivery handlers fire per worker result: rebuilding identical rows
@@ -73,48 +89,27 @@ def rebuild_artifacts(overlay, item) -> None:
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
-        title_map = {
-            "banding": "Banding",
-            "halo": "Halo / overshoot",
-            "over_smoothing": "Over-smoothing",
-            "invented_texture": "Invented texture",
-            "blocking": "Blocking",
-            "chroma_fringing": "Chroma fringing",
-            "noise_amplification": "Noise",
-        }
-        t = _make_label(title_map.get(aid, aid), parent=row, pixel_size=11, pt=11.5)
-        header.addWidget(t)
-        header.addStretch(1)
-        # P0-8: no region analysis exists — never claim one. Severity only.
-        lvl_label = {"clean": "clean edges" if aid == "halo" else "clean", "mild": "mild", "flagged": "flagged"}[lvl]
-        # S4 mockup severity colors: mild amber, flagged red — single mapping in
-        # ui/card/dots.py (frozen seam: no second severity mapping here).
+        # Unified 0-100% quality, same reading as the metric rows above:
+        # POSITIVE label + NN%, higher always better. Severity maps to a
+        # quality score (clean 100 / mild 50 / flagged 15); the value/bar
+        # color reuses the single severity mapping (ui/card/dots.py).
+        label = _POSITIVE_ARTIFACT_LABELS.get(aid, aid)
+        score = _ARTIFACT_QUALITY.get(lvl, 100)
         try:
             from tabs.image_gallery.ui.card.dots import _severity_color as _dots_severity_color
 
             sev_color = _dots_severity_color(lvl)
         except Exception:
             sev_color = None
-        v = _make_label(lvl_label, parent=row, pixel_size=11, pt=11.5, color=sev_color)
+        t = _make_label(label, parent=row, pixel_size=11, pt=11.5)
+        header.addWidget(t)
+        header.addStretch(1)
+        v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=sev_color)
         header.addWidget(v)
         rl.addLayout(header)
-        if aid == "banding":
-            # Banding keeps histogram + base + caption (W4 item 8).
-            from tabs.image_gallery.ui.quick_look.histograms import _BandingCombHistogram
+        from tabs.image_gallery.ui.quick_look.bars import _BarWidget
 
-            hist = _BandingCombHistogram(severity=lvl, parent=row)
-        elif aid == "halo":
-            # Halo renders as a horizontal _BarWidget like the metric rows
-            # (W4 item 8): severity-mapped fraction in the severity color.
-            from tabs.image_gallery.ui.quick_look.bars import _BarWidget
-
-            halo_frac = {"clean": 0.15, "mild": 0.5, "flagged": 0.9}[lvl]
-            hist = _BarWidget(fraction=halo_frac, fill_color=sev_color, parent=row)
-        else:
-            from tabs.image_gallery.ui.quick_look.histograms import _GenericHistogram
-
-            hist = _GenericHistogram(severity=lvl, parent=row)
-        rl.addWidget(hist)
+        rl.addWidget(_BarWidget(fraction=score / 100.0, fill_color=sev_color, parent=row))
         overlay._artifact_rows.append(row)
     # Flat placement (rows + uniform spacers) is owned by the coordinator.
     try:

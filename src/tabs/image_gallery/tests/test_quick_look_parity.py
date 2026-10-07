@@ -120,7 +120,7 @@ def test_no_region_suffix_on_any_artifact(qtbot):
             for w in ov._artifact_rows
             for lbl in w.findChildren(_QlLabel)
         ]
-        assert "mild" in texts
+        assert "50%" in texts  # mild → 50% unified quality
         assert all("sky region" not in t for t in texts)
         ov.hide()
 
@@ -143,10 +143,10 @@ def test_all_artifact_rows_shown_including_clean(qtbot):
         for lbl in w.findChildren(_QlLabel)
     ]
     titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    assert any("Banding" in t for t in titles)
-    assert any("Halo" in t for t in titles)
-    assert any("Blocking" in t for t in titles)
-    assert "clean" in texts
+    assert any("Gradients" in t for t in titles)
+    assert any("Edges" in t for t in titles)
+    assert any("Blocks" in t for t in titles)
+    assert "100%" in texts  # clean → 100% unified quality
     ov.hide()
 
 
@@ -169,12 +169,12 @@ def test_non_clean_artifact_rows_shown(qtbot):
         for w in ov._artifact_rows
         for lbl in w.findChildren(_QlLabel)
     ]
-    assert "mild" in texts and "flagged" in texts
+    assert "50%" in texts and "15%" in texts  # mild / flagged → unified quality
     ov.hide()
 
 
-def test_camera_triplet_rows_match_card_dots(qtbot):
-    """Camera rows are noise/chroma/halo — the same triple as the dots."""
+def test_camera_rows_unified_positive_percent(qtbot):
+    """Camera artifacts render positive %; the duplicate Noise row is dropped."""
     item = _item(
         "cm.png",
         artifacts={
@@ -187,13 +187,15 @@ def test_camera_triplet_rows_match_card_dots(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, item, [item], mode=Mode.CAMERA)
     titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    assert len(ov._artifact_rows) == 3
-    assert any("Noise" in t for t in titles)
+    # noise_amplification dropped (the measured "Clean" metric covers it).
+    assert len(ov._artifact_rows) == 2
     assert any("Chroma" in t for t in titles)
-    assert any("Halo" in t for t in titles)
+    assert any("Edges" in t for t in titles)
+    assert not any("Noise" in t for t in titles)
+    assert not any("Halo" in t for t in titles)
     assert not any("Banding" in t for t in titles)
     texts = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    assert "mild" in texts and "flagged" in texts
+    assert "100%" in texts and "15%" in texts
     ov.hide()
 
 
@@ -206,7 +208,7 @@ def test_halo_renders_as_bar_widget(qtbot):
     _show(ov, item, [item])
     halo_rows = [
         w for w in ov._artifact_rows
-        if any("Halo" in lbl.text() for lbl in w.findChildren(_QlLabel))
+        if any("Edges" in lbl.text() for lbl in w.findChildren(_QlLabel))
     ]
     assert len(halo_rows) == 1
     assert halo_rows[0].findChild(_BarWidget) is not None
