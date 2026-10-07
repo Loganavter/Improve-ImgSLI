@@ -2956,6 +2956,62 @@ def test_metric_row_header_includes_ai_axis_note(qtbot):
     ov.hide()
 
 
+def test_refresh_metrics_rebuilds_when_axis_notes_arrive(qtbot):
+    """A late analysis (axis_notes) must rebuild the metric rows in place."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item("a.png", metrics={"noise": 0.9})
+    b = _item("b.png", metrics={"noise": 0.2})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b], mode=Mode.CAMERA)
+    before = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert not any("coarse film grain" in t for t in before)
+    a.analysis = AiAnalysisResult(
+        description="", tags=(), model="m", analyzed_at_iso="t",
+        axis_notes={"noise": "coarse film grain"},
+    )
+    a.analysis_status = AnalysisStatus.DONE
+    ov.refresh_metrics(a)
+    QApplication.processEvents()
+    after = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "Clean — coarse film grain" in after
+    ov.hide()
+
+
+def test_axis_notes_hydrated_before_metrics_on_open(qtbot, tmp_path, monkeypatch):
+    """A disk-cached analysis with notes shows them on open (no walk)."""
+    from tabs.image_gallery.models import AiAnalysisResult
+    from tabs.image_gallery.services import ai_cache
+
+    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
+    ai_cache.save_analysis(
+        Path("/g/hnote.png"),
+        7,
+        AiAnalysisResult(
+            description="", tags=(), model="m", analyzed_at_iso="t",
+            axis_notes={"noise": "coarse film grain"},
+        ),
+    )
+    item = GalleryItem(path=Path("/g/hnote.png"), mtime_ns=7, metrics={"noise": 0.9})
+    other = GalleryItem(path=Path("/g/z.png"), mtime_ns=1)
+    ov = _make_overlay(qtbot)
+    owner = SimpleNamespace(
+        state=SimpleNamespace(
+            mode=Mode.CAMERA, source_path=None, series=[[item, other]], items=[item, other]
+        ),
+        hydrate_cached_analysis=lambda it: ai_cache.hydrate_item(it),
+    )
+    ov.show_for(item, owner)
+    parent = getattr(ov, "_parity_test_parent", None)
+    if parent is not None:
+        parent.resize(1280, 800)
+        parent.show()
+    QApplication.processEvents()
+    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "Clean — coarse film grain" in titles
+    ov.hide()
+
+
 def test_artifact_row_header_includes_ai_axis_note(qtbot):
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 

@@ -1023,6 +1023,17 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
+        # Hydrate the cached analysis BEFORE metrics/artifacts rebuild: their
+        # row headers carry the AI axis_notes, so the analysis must be on the
+        # item by then (otherwise a cached analysis opens without notes).
+        try:
+            if getattr(item, "analysis", None) is None:
+                _owner = getattr(self, "_owner", None)
+                _hydrate = getattr(_owner, "hydrate_cached_analysis", None)
+                if callable(_hydrate):
+                    _hydrate(item)
+        except Exception:
+            pass
         # Explicit triage owner for the populate helpers (G3: helpers take
         # owner instead of reading the private attr).
         try:

@@ -55,18 +55,25 @@ def rebuild_artifacts(overlay, item) -> None:
     # Drop the noise artifact row: the measured "Clean" metric above already
     # reports noise (continuously), so a second Noise row is a duplicate.
     shown = [(aid, sev) for aid, sev in shown if aid != "noise_amplification"]
+    # The AI axis_notes render in the headers — include them in the change
+    # key so a late analysis triggers a rebuild (else the notes never show).
+    try:
+        _notes = dict(getattr(getattr(item, "analysis", None), "axis_notes", {}) or {})
+    except Exception:
+        _notes = {}
+    shown_key = [(aid, lvl, _notes.get(aid, "")) for aid, lvl in shown]
 
 
     # Delivery handlers fire per worker result: rebuilding identical rows
     # (widget teardown + creation + layout activation) in the same tick as
     # the grid repaint storm stalls the loop. Skip when nothing changed.
     try:
-        if list(getattr(overlay, "_artifact_sevs", None) or []) == shown:
+        if list(getattr(overlay, "_artifact_sevs", None) or []) == shown_key:
             return
     except Exception:
         pass
     try:
-        overlay._artifact_sevs = list(shown)
+        overlay._artifact_sevs = list(shown_key)
     except Exception:
         pass
     for w in list(overlay._artifact_rows):

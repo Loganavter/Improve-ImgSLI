@@ -98,6 +98,18 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             item_path = str(getattr(item, "path", "") or "")
         except Exception:
             item_path = ""
+        # AI axis_notes render in the row headers — they must invalidate the
+        # fingerprint so a late analysis rebuilds the rows (else the notes
+        # never appear on an already-built row set).
+        try:
+            notes_part = tuple(
+                sorted(
+                    (str(k), str(v))
+                    for k, v in (getattr(getattr(item, "analysis", None), "axis_notes", {}) or {}).items()
+                )
+            )
+        except Exception:
+            notes_part = ()
         try:
             series = list(getattr(overlay, "_series_items", None) or [])
             series_len = len(series)
@@ -116,7 +128,7 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             sp = int(scaled_px(2))
         except Exception:
             sp = 2
-        return (item_path, metrics_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
+        return (item_path, metrics_part, notes_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
     except Exception:
         return ()
 
