@@ -219,7 +219,7 @@ class GalleryToolbar(QWidget):
 
         # Sort picker — surface button + SimpleOptionsFlyout (mode_picker.py
         # precedent: button, populate(labels, current), show_below, item_chosen).
-        self._sort_items = ["Sort: Rank", "Sort: Name", "Sort: Date"]
+        self._sort_items = ["Sort: Rank", "Sort: Name", "Sort: Date", "Sort: AI quality"]
         self._sort_index = 0
         self._sort_flyout: SimpleOptionsFlyout | None = None
         self._sort_combo = Button(

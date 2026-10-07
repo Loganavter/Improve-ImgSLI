@@ -38,11 +38,31 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
         return None
     try:
         data = json.loads(cache_path.read_text(encoding="utf-8"))
+
+        def _score(key: str) -> int:
+            try:
+                v = int(data.get(key, -1))
+            except Exception:
+                return -1
+            return v if 0 <= v <= 100 else -1
+
+        try:
+            verdict = str(data.get("verdict", "unknown") or "unknown").lower()
+        except Exception:
+            verdict = "unknown"
+        if verdict not in ("keep", "reject"):
+            verdict = "unknown"
         return AiAnalysisResult(
             description=data["description"],
             tags=tuple(data.get("tags", ())),
             model=data["model"],
             analyzed_at_iso=data["analyzed_at_iso"],
+            sharpness=_score("sharpness"),
+            noise=_score("noise"),
+            exposure=_score("exposure"),
+            composition=_score("composition"),
+            verdict=verdict,
+            verdict_reason=str(data.get("verdict_reason", "") or ""),
         )
     except Exception:
         logger.debug("Gallery AI cache read failed for %s", path, exc_info=True)
@@ -59,6 +79,12 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                     "tags": list(result.tags),
                     "model": result.model,
                     "analyzed_at_iso": result.analyzed_at_iso,
+                    "sharpness": result.sharpness,
+                    "noise": result.noise,
+                    "exposure": result.exposure,
+                    "composition": result.composition,
+                    "verdict": result.verdict,
+                    "verdict_reason": result.verdict_reason,
                 }
             ),
             encoding="utf-8",

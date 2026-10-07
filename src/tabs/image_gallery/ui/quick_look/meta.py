@@ -287,14 +287,42 @@ def populate_brief(overlay, item) -> None:
             pass
 
 
+def _analysis_scores_line(analysis) -> str:
+    """One-line axis scores + mean, or '' when nothing is scored."""
+    try:
+        from tabs.image_gallery.models import ai_quality_score
+
+        axes = []
+        for label, key in (
+            ("Sharpness", "sharpness"),
+            ("Noise", "noise"),
+            ("Exposure", "exposure"),
+            ("Composition", "composition"),
+        ):
+            try:
+                v = int(getattr(analysis, key, -1))
+            except Exception:
+                v = -1
+            if v >= 0:
+                axes.append(f"{label} {v}")
+        if not axes:
+            return ""
+        mean = ai_quality_score(analysis)
+        head = f"Quality {int(round(mean))}" if mean is not None else "Quality"
+        return head + " · " + " · ".join(axes)
+    except Exception:
+        return ""
+
+
 def populate_analysis(overlay, item) -> None:
-    """Fill the sidebar AI-analysis block (description + ALL tags).
+    """Fill the sidebar AI-analysis block (scores + verdict + ALL tags).
 
     The model output lives here, not in the card tooltip: DONE shows the
-    full description plus every tag (the card row keeps its first-3
-    summary); PENDING shows a running line; ERROR shows the error and
-    keeps the Analyze trigger for retry; NOT_ANALYZED shows the header +
-    trigger only. Never raises.
+    axis scores, the keep/reject verdict with its reason, and every tag
+    (the card row keeps its first-3 summary). Old cache entries without
+    scores fall back to the plain description. PENDING shows a running
+    line; ERROR shows the error and keeps the Analyze trigger for retry;
+    NOT_ANALYZED shows the header + trigger only. Never raises.
     """
     try:
         try:
@@ -314,14 +342,28 @@ def populate_analysis(overlay, item) -> None:
         show_btn = False
         if analysis is not None and status_val == "done":
             try:
-                desc_text = str(getattr(analysis, "description", "") or "")
-            except Exception:
-                desc_text = ""
-            try:
                 tags = list(getattr(analysis, "tags", None) or [])
                 tags_text = ", ".join(str(t).strip() for t in tags if str(t).strip())
             except Exception:
                 tags_text = ""
+            try:
+                scores = _analysis_scores_line(analysis)
+                verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
+                reason = str(getattr(analysis, "verdict_reason", "") or "")
+            except Exception:
+                scores, verdict, reason = "", "unknown", ""
+            if scores:
+                desc_text = scores
+                if verdict in ("keep", "reject"):
+                    desc_text += f" · {verdict.upper()}"
+                    if reason:
+                        desc_text += f" — {reason}"
+            else:
+                # Old cache entries (caption-only): show the description.
+                try:
+                    desc_text = str(getattr(analysis, "description", "") or "")
+                except Exception:
+                    desc_text = ""
         elif status_val == "pending":
             desc_text = "Analyzing…"
         elif status_val == "error":

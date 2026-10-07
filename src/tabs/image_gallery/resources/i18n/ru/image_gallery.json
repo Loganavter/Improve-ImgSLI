@@ -44,6 +44,7 @@
     "sort_rank": "Ранг",
     "sort_name": "Имя",
     "sort_date": "Дата",
+    "sort_quality": "Качество ИИ",
     "view_grid": "Сетка",
     "view_list": "Список"
   }

@@ -254,3 +254,49 @@ def test_sort_and_mode_combos_reject_drops(qtbot):
     assert toolbar.sort_combo.acceptDrops() is False
     assert toolbar._mode_combo is not None
     assert toolbar._mode_combo.acceptDrops() is False
+
+
+# --------------------------------------------------------------------------
+# Sort: AI quality orders by score, unscored sink
+# --------------------------------------------------------------------------
+
+
+def _scored_item(name: str, mean: int) -> GalleryItem:
+    from tabs.image_gallery.models import AiAnalysisResult
+
+    return GalleryItem(
+        path=Path(f"/g/{name}"),
+        mtime_ns=0,
+        analysis=AiAnalysisResult(
+            description="d",
+            tags=(),
+            model="m",
+            analyzed_at_iso="t",
+            sharpness=mean,
+            noise=mean,
+            exposure=mean,
+            composition=mean,
+        ),
+    )
+
+
+def test_sort_ai_quality_orders_by_score_unscored_last(qapp):
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    hi = _scored_item("hi.png", 90)
+    lo = _scored_item("lo.png", 40)
+    plain = GalleryItem(path=Path("/g/plain.png"), mtime_ns=0)
+    fake, calls = _sort_self(items=[plain, lo, hi], series=[])
+    ImageGalleryWidget._on_sort_changed(fake, "Sort: AI quality")
+    assert len(calls["rebuild"]) == 1
+    assert [it.path.name for it in calls["rebuild"][0]] == ["hi.png", "lo.png", "plain.png"]
+
+
+def test_sort_menu_lists_ai_quality(qtbot):
+    from tabs.image_gallery.ui.card.sort_view_menu import SORT_OPTIONS
+    from tabs.image_gallery.ui.toolbar import GalleryToolbar
+
+    toolbar = GalleryToolbar()
+    qtbot.addWidget(toolbar)
+    assert "Sort: AI quality" in list(toolbar._sort_items)
+    assert ("gallery.sort.quality", "image_gallery.sort_quality", "AI quality", 3) in SORT_OPTIONS

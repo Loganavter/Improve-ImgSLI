@@ -69,7 +69,7 @@ def filter_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
             continue
         hay_found = False
         if item.analysis_status == AnalysisStatus.DONE and item.analysis is not None:
-            haystack = item.analysis.description.lower() + " " + " ".join(item.analysis.tags).lower()
+            haystack = (item.analysis.description + " " + " ".join(item.analysis.tags) + " " + getattr(item.analysis, "verdict_reason", "")).lower()
             if query in haystack:
                 matched.append(item)
                 hay_found = True
@@ -101,7 +101,7 @@ def match_fast_items(items: list[GalleryItem], query: str) -> list[GalleryItem]:
             matched.append(item)
             continue
         if item.analysis_status == AnalysisStatus.DONE and item.analysis is not None:
-            haystack = item.analysis.description.lower() + " " + " ".join(item.analysis.tags).lower()
+            haystack = (item.analysis.description + " " + " ".join(item.analysis.tags) + " " + getattr(item.analysis, "verdict_reason", "")).lower()
             if query in haystack:
                 matched.append(item)
                 continue

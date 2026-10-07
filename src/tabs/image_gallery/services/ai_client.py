@@ -18,11 +18,41 @@ from pathlib import Path
 from tabs.image_gallery.models import AiAnalysisResult
 
 PROMPT_TEMPLATE = (
-    "Describe this image in one short sentence, then list a handful of "
-    "single-word or short-phrase tags. Respond in exactly this format:\n"
+    "Rate this image's technical quality 0-100 on four axes (higher is "
+    "better; for NOISE higher means cleaner), then give a keep/reject "
+    "verdict with one short reason, then a one-sentence description plus "
+    "a handful of tags. Respond in exactly this format, one item per "
+    "line, no other text:\n"
+    "SHARPNESS: <0-100>\n"
+    "NOISE: <0-100>\n"
+    "EXPOSURE: <0-100>\n"
+    "COMPOSITION: <0-100>\n"
+    "VERDICT: <keep|reject>\n"
+    "REASON: <one short sentence>\n"
     "DESCRIPTION: <one sentence>\n"
     "TAGS: <comma-separated tags>"
 )
+
+
+def _parse_score(value: str) -> int:
+    """Parse a 0-100 axis score, clamped; -1 when unparsable."""
+    try:
+        return max(0, min(100, int(float(str(value).strip().rstrip("%")))))
+    except Exception:
+        return -1
+
+
+def _parse_verdict(value: str) -> str:
+    """Normalize to keep | reject | unknown."""
+    try:
+        v = str(value).strip().lower()
+    except Exception:
+        return "unknown"
+    if v.startswith("keep"):
+        return "keep"
+    if v.startswith("reject"):
+        return "reject"
+    return "unknown"
 
 _EXT_TO_MIME = {
     ".png": "png",
@@ -91,7 +121,7 @@ def build_request(image_path: Path, *, model: str, prompt: str = PROMPT_TEMPLATE
                 ],
             }
         ],
-        "max_tokens": 400,
+        "max_tokens": 600,
     }
 
 
@@ -179,19 +209,40 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
 
     description = content.strip()
     tags: tuple[str, ...] = ()
+    sharpness = noise = exposure = composition = -1
+    verdict, reason = "unknown", ""
     for line in content.splitlines():
         line = line.strip()
-        if line.upper().startswith("DESCRIPTION:"):
+        upper = line.upper()
+        if upper.startswith("DESCRIPTION:"):
             description = line.split(":", 1)[1].strip()
-        elif line.upper().startswith("TAGS:"):
+        elif upper.startswith("TAGS:"):
             raw_tags = line.split(":", 1)[1]
             tags = tuple(t.strip() for t in raw_tags.split(",") if t.strip())
+        elif upper.startswith("SHARPNESS:"):
+            sharpness = _parse_score(line.split(":", 1)[1])
+        elif upper.startswith("NOISE:"):
+            noise = _parse_score(line.split(":", 1)[1])
+        elif upper.startswith("EXPOSURE:"):
+            exposure = _parse_score(line.split(":", 1)[1])
+        elif upper.startswith("COMPOSITION:"):
+            composition = _parse_score(line.split(":", 1)[1])
+        elif upper.startswith("VERDICT:"):
+            verdict = _parse_verdict(line.split(":", 1)[1])
+        elif upper.startswith("REASON:"):
+            reason = line.split(":", 1)[1].strip()
 
     return AiAnalysisResult(
         description=description,
         tags=tags,
         model=model,
         analyzed_at_iso=datetime.now(timezone.utc).isoformat(),
+        sharpness=sharpness,
+        noise=noise,
+        exposure=exposure,
+        composition=composition,
+        verdict=verdict,
+        verdict_reason=reason,
     )
 
 

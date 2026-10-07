@@ -665,6 +665,20 @@ class ImageGalleryWidget(QWidget):
         if "date" in key:
             # Newest first: use mtime_ns descending
             return lambda it: -int(getattr(it, "mtime_ns", 0) or 0)
+        if "quality" in key:
+            # AI quality first (higher mean score first); unscored items sink.
+            def _quality_key(it):
+                try:
+                    from tabs.image_gallery.models import ai_quality_score
+
+                    score = ai_quality_score(getattr(it, "analysis", None))
+                except Exception:
+                    score = None
+                if score is None:
+                    return (1, 0.0)
+                return (0, -float(score))
+
+            return _quality_key
         if "rank" in key:
             # Rank 1 first, then embedding distance
             def _rank_key(it):

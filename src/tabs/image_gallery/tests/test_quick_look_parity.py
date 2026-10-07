@@ -2871,6 +2871,54 @@ def test_quicklook_analysis_block_shows_full_description_and_all_tags(qtbot):
     ov.hide()
 
 
+def test_quicklook_analysis_block_shows_scores_and_verdict(qtbot):
+    """Scored analyses render axes + verdict, not the caption."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        analysis=AiAnalysisResult(
+            description="A cat.",
+            tags=("cat", "sofa"),
+            model="m",
+            analyzed_at_iso="t",
+            sharpness=85,
+            noise=90,
+            exposure=78,
+            composition=80,
+            verdict="keep",
+            verdict_reason="Clean and sharp.",
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    text = ov._analysis_desc.text()
+    assert "Quality 83" in text
+    assert "Sharpness 85" in text and "Noise 90" in text
+    assert "KEEP" in text
+    assert "Clean and sharp." in text
+    assert not ov._analysis_btn.isVisibleTo(ov)
+    ov.hide()
+
+
+def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
+    """Unscored (legacy cache) analyses still show the description."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        analysis=AiAnalysisResult(description="Old caption.", tags=(), model="m", analyzed_at_iso="t"),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov._analysis_desc.text() == "Old caption."
+    ov.hide()
+
+
 def test_quicklook_analysis_block_states(qtbot):
     """PENDING/ERROR/empty render the running line, the error, or the trigger."""
     from tabs.image_gallery.models import AnalysisStatus

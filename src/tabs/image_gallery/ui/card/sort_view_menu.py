@@ -26,6 +26,7 @@ SORT_OPTIONS = (
     ("gallery.sort.rank", "image_gallery.sort_rank", "Rank", 0),
     ("gallery.sort.name", "image_gallery.sort_name", "Name", 1),
     ("gallery.sort.date", "image_gallery.sort_date", "Date", 2),
+    ("gallery.sort.quality", "image_gallery.sort_quality", "AI quality", 3),
 )
 
 VIEW_OPTIONS = (
@@ -154,7 +155,7 @@ def handle_sort_view_action(  # type: ignore[no-untyped-def]
     on_view_toggled=None,
 ) -> bool:
     """Dispatch a Sort by / View submenu action; True when handled."""
-    if action_id in ("gallery.sort.rank", "gallery.sort.name", "gallery.sort.date"):
+    if action_id in ("gallery.sort.rank", "gallery.sort.name", "gallery.sort.date", "gallery.sort.quality"):
         if not callable(on_sort_index):
             return False
         try:

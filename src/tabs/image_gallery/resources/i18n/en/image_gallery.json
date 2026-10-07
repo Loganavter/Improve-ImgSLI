@@ -44,6 +44,7 @@
     "sort_rank": "Rank",
     "sort_name": "Name",
     "sort_date": "Date",
+    "sort_quality": "AI quality",
     "view_grid": "Grid",
     "view_list": "List"
   }

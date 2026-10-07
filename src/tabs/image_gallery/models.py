@@ -65,6 +65,35 @@ class AiAnalysisResult:
     tags: tuple[str, ...]
     model: str
     analyzed_at_iso: str
+    # Technical-quality verdict (the app's analysis format — scores drive
+    # ranking, the caption stays for search/tooltip only). Axis scores are
+    # 0-100, -1 means unscored (old cache entries, unparsed replies).
+    # verdict is one of "keep" | "reject" | "unknown".
+    sharpness: int = -1
+    noise: int = -1
+    exposure: int = -1
+    composition: int = -1
+    verdict: str = "unknown"
+    verdict_reason: str = ""
+
+
+def ai_quality_score(result: AiAnalysisResult | None) -> float | None:
+    """Mean of the scored axes (0-100), or None when nothing is scored."""
+    try:
+        if result is None:
+            return None
+        axes = [
+            result.sharpness,
+            result.noise,
+            result.exposure,
+            result.composition,
+        ]
+        scored = [int(v) for v in axes if int(v) >= 0]
+    except Exception:
+        return None
+    if not scored:
+        return None
+    return sum(scored) / len(scored)
 
 
 @dataclass(frozen=True)
