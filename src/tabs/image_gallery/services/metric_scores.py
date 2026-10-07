@@ -96,6 +96,10 @@ SPECS: tuple[MetricSpec, ...] = (
     MetricSpec("color_accuracy", "Color accuracy", ("delta_e", "deltaE", "color_shift"), _lower_is_better(10.0)),
     MetricSpec("typicality", "Typicality", ("embedding_dist_to_centroid",), _lower_is_better(1.0)),
     MetricSpec("aesthetic", "Aesthetic", ("aesthetic", "aesthetic_score"), _aesthetic),
+    # Learned perceptual metrics (optional backend): lower = closer to source.
+    # Caps chosen so typical upscaler distances map to the mid band.
+    MetricSpec("lpips", "Perceptual (LPIPS)", ("lpips",), _lower_is_better(0.8)),
+    MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6)),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -166,6 +170,8 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "color_accuracy": ("accurate color", "slight color shift", "off color"),
     "typicality": ("typical", "somewhat atypical", "outlier"),
     "aesthetic": ("pleasing", "ordinary", "unappealing"),
+    "lpips": ("perceptually close", "slight perceptual drift", "perceptually far"),
+    "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "composition": ("well composed", "ok composition", "poor composition"),
     "banding": ("smooth gradients", "mild banding", "visible banding"),
     "halo": ("clean edges", "some halo", "strong halo"),

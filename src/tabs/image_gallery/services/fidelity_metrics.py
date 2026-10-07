@@ -156,6 +156,16 @@ def compute_fidelity_from_images(
             out["delta_e"] = float(de)
     except Exception:
         logger.debug("fidelity: delta_e failed (images)", exc_info=True)
+    # Optional learned perceptual metrics (LPIPS/DISTS) — only when the backend
+    # is installed; absent backend returns {} so the report is unchanged.
+    try:
+        from tabs.image_gallery.services.quality_models import pair_metrics as _learned
+
+        learned = _learned(item_image, source_image)
+        if learned:
+            out.update(learned)
+    except Exception:
+        logger.debug("fidelity: learned metrics failed (images)", exc_info=True)
     try:
         # W4 item 7: factor by LONG side (portrait-safe), from the PRE-CAP
         # snapshot above (W5). Log both sizes at the read site.
