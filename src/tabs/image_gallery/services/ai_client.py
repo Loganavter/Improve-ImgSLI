@@ -240,6 +240,15 @@ class AiResponseError(AiClientError):
     """Malformed/unexpected response body."""
 
 
+# OpenRouter-only fallback chain (tried in order when the primary model's
+# provider is exhausted/overloaded). Cheap, vision, structured-output-capable.
+# Only used when the base_url is OpenRouter; not valid on plain OpenAI APIs.
+DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
+    "z-ai/glm-5.3-flash",
+    "openai/gpt-6-luna",
+)
+
+
 def build_request(
     image_path: Path,
     *,
@@ -247,6 +256,7 @@ def build_request(
     prompt: str = PROMPT_TEMPLATE,
     metrics: dict | None = None,
     openrouter: bool = False,
+    fallback_models: tuple[str, ...] | None = None,
 ) -> dict:
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
@@ -295,14 +305,21 @@ def build_request(
             "sort": "throughput",
             "allow_fallbacks": True,
         }
+        # Model fallback chain: if the primary is exhausted (429 upstream),
+        # OpenRouter tries the next one in order instead of failing outright.
+        chain = [model] + [m for m in (fallback_models or DEFAULT_FALLBACK_MODELS) if m and m != model]
+        if len(chain) > 1:
+            payload["models"] = chain
+            payload["route"] = "fallback"
     _ai_debug(
         "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
-        "reasoning_exclude=%s provider_routing=%s prompt_chars=%d",
+        "reasoning_exclude=%s provider_routing=%s chain=%s prompt_chars=%d",
         model,
         openrouter,
         len(metrics or {}),
         "reasoning" in payload,
         "provider" in payload,
+        payload.get("models"),
         len(text),
     )
     return payload
@@ -547,6 +564,7 @@ def analyze_image_sync(
     api_key: str,
     model: str,
     metrics: dict | None = None,
+    fallback_models: tuple[str, ...] | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread."""
     openrouter = "openrouter" in str(base_url or "").lower()
@@ -555,7 +573,11 @@ def analyze_image_sync(
         image_path, model, base_url, len(metrics or {}),
     )
     payload = build_request(
-        image_path, model=model, metrics=metrics, openrouter=openrouter
+        image_path,
+        model=model,
+        metrics=metrics,
+        openrouter=openrouter,
+        fallback_models=fallback_models,
     )
     raw = call_sync(base_url, api_key, payload)
     return parse_response(raw, model=model)

@@ -234,10 +234,29 @@ def test_build_request_forces_json_and_hides_reasoning_on_openrouter(tmp_path):
     assert p["reasoning"] == {"exclude": True}
     assert p["provider"]["require_parameters"] is True
     assert p["provider"]["allow_fallbacks"] is True
+    # Default fallback chain, primary first, no duplicate.
+    assert p["models"] == ["m", "z-ai/glm-5.3-flash", "openai/gpt-6-luna"]
+    assert p["route"] == "fallback"
     p2 = build_request(img, model="m")
     assert p2["response_format"] == {"type": "json_object"}
     assert "reasoning" not in p2
     assert "provider" not in p2
+    assert "models" not in p2
+
+
+def test_build_request_fallback_chain_no_duplicate_and_override(tmp_path):
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    # Primary already in the defaults → not repeated.
+    p = build_request(img, model="openai/gpt-6-luna", openrouter=True)
+    assert p["models"] == ["openai/gpt-6-luna", "z-ai/glm-5.3-flash"]
+    # Explicit override wins.
+    p2 = build_request(
+        img, model="a", openrouter=True, fallback_models=("b", "c", "a")
+    )
+    assert p2["models"] == ["a", "b", "c"]
 
 
 def test_build_request_injects_measured_metrics(tmp_path):
