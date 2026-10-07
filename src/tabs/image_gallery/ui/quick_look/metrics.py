@@ -738,6 +738,13 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             rl.addLayout(sub)
             overlay._metric_rows.append(row)
         _add_score_row("color_accuracy")
+        # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
+        # when the backend is installed (the keys are absent otherwise), so no
+        # empty row ever appears.
+        if "dists" in metrics:
+            _add_score_row("dists", gap=False)
+        if "lpips" in metrics:
+            _add_score_row("lpips", gap=False)
     elif "CAMERA" in mode_str:
         _add_score_row("sharpness")
         _add_score_row("exposure")

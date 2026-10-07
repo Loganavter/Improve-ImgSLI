@@ -1,0 +1,14 @@
+# Optional learned perceptual metrics for the gallery fidelity report.
+#
+# Adds LPIPS + DISTS (via `piq`) as "Perceptual" rows — the standard-benchmark
+# winners for ranking variants against a source (BAPPS 2AFC: DISTS 77.2 /
+# LPIPS 73.4 vs SSIM 59.9 on val/traditional; see
+# internal-docs inv-gallery-learned-metrics).
+#
+# This is OPTIONAL: without it the gallery runs exactly as before and those
+# rows are simply absent. It pulls torch + torchvision (~0.6-2 GB); install
+# only where the extra fidelity quality is wanted.
+#
+#   pip install -r requirements-quality.txt
+#
+piq>=0.8

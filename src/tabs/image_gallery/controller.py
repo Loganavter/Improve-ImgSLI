@@ -2221,8 +2221,11 @@ class GalleryController:
     def _apply_fidelity_map(self, result: dict) -> None:
         """Shared fidelity delivery: batched repaint + overlay refresh."""
         # Same batching as _on_artifacts_ready: skip items whose 4 keys did
-        # not change, refresh the rest with one selection sweep.
+        # not change, refresh the rest with one selection sweep. Optional
+        # learned perceptual keys (LPIPS/DISTS) ride along when the backend is
+        # installed; absent backend → they are simply not in the entry.
         required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
+        optional = ("lpips", "dists")
         try:
             from tabs.image_gallery.use_cases import quality as _quality
         except Exception:
@@ -2242,8 +2245,12 @@ class GalleryController:
                 continue
             if _quality is None:
                 continue
+            keys = {k: entry[k] for k in required}
+            for k in optional:
+                if k in entry:
+                    keys[k] = entry[k]
             try:
-                if _quality.set_metrics(item, {k: entry[k] for k in required}):
+                if _quality.set_metrics(item, keys):
                     changed.append(item)
             except Exception:
                 logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
