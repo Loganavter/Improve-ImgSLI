@@ -233,6 +233,17 @@ def main():
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
 
+    # Project-wide widget substitution (toolkit scrollbar policy): every
+    # stock scroll area gets MinimalistScrollBar bars at polish time, so no
+    # call site can silently reintroduce the native look. Fail-open: a
+    # broken policy must never block startup.
+    try:
+        from sli_ui_toolkit.widgets import install_scrollbar_policy
+
+        install_scrollbar_policy(app)
+    except Exception:
+        pass
+
     # Probe after QApplication exists. Vulkan instance create needs a GUI app;
     # fall back before any QRhiWidget is constructed.
     effective_rhi, rhi_fallback_reason = resolve_rhi_backend_with_fallback(

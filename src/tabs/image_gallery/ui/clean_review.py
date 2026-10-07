@@ -31,7 +31,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.layout_settle import settle_layout
@@ -43,6 +43,7 @@ from sli_ui_toolkit.widgets import (
     Button,
     ButtonRow,
     Label,
+    OverlayScrollArea,
     TopLevelInWindowOverlay,
     ToastAction,
     ToastManager,
@@ -908,7 +909,9 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # Scrollable list — Phase 6: single flat-strip host (frameless,
         # borderless over the plate; the strip scrolls horizontally, never
         # vertically — mockup v3 has no per-series boxes, no series headers).
-        self._scroll = QScrollArea(self._content)
+        # Unification: toolkit overlay scrollbar (corner_radius=0 keeps the
+        # current square look — only the scrollbar changes, not the shape).
+        self._scroll = OverlayScrollArea(self._content, corner_radius=0)
         self._scroll.setWidgetResizable(True)
         self._scroll.setObjectName("clean_review_scroll")
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1389,7 +1392,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # thumbs (mockup v3 "scrollable strip" — capped cells exceed the
         # modal width, so the strip scrolls horizontally past the cap to
         # the +N tile). NoFrame: borderless strip over the plate.
-        strip_scroll = QScrollArea(self._list_host)
+        strip_scroll = OverlayScrollArea(self._list_host, corner_radius=0)
         strip_scroll.setObjectName("clean_review_filmstrip")
         strip_scroll.setWidgetResizable(True)
         strip_scroll.setFrameShape(QFrame.Shape.NoFrame)

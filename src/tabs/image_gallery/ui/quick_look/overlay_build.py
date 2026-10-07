@@ -401,10 +401,10 @@ def build_overlay_ui(overlay) -> None:
     No QSS, painter pipeline only, lazy imports for theming.
     """
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QHBoxLayout, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QHBoxLayout, QFrame, QSizePolicy, QVBoxLayout, QWidget
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, CustomSplit
+    from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, CustomSplit, OverlayScrollArea
 
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
@@ -646,7 +646,10 @@ def build_overlay_ui(overlay) -> None:
     # W4 item 4: the Esc hint lives at the right end of the bottom button
     # bar (built below), not in the left column. Nothing added here.
     mid.addWidget(left, 1)
-    right_scroll = QScrollArea(overlay._content)
+    # Unification: the sidebar rides the toolkit overlay scrollbar like the
+    # strip and the grid (corner_radius=0 keeps the current square look —
+    # only the scrollbar changes, not the column shape).
+    right_scroll = OverlayScrollArea(overlay._content, corner_radius=0)
     right_scroll.setObjectName("quicklook_right_scroll")
     # W13: the mockup's right column is min 296px (svg x=816 w=296) and
     # STRETCHES with the card — a minimum, never a fixed width. The
@@ -806,8 +809,6 @@ def build_overlay_ui(overlay) -> None:
     # The filmstrip lives in its own horizontal scroller (toolkit
     # OverlayScrollArea: horizontal overlay bar + auto-hide included) so
     # any thumb count fits the row without widening the card.
-    from sli_ui_toolkit.widgets import OverlayScrollArea
-
     overlay._strip_scroll = OverlayScrollArea(
         strip_row, widget_resizable=False, corner_radius=0
     )
