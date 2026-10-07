@@ -35,10 +35,12 @@ PROMPT_TEMPLATE = (
     "axis_notes: for each axis you can judge FROM THE IMAGE, a SHORT phrase "
     "(2-5 words) of what you actually see — e.g. noise: \"coarse film "
     "grain\", sharpness: \"soft, mushy edges\", halo: \"bright edge glow\". "
-    "Allowed axis ids: sharpness, exposure, clipping, noise, white_balance, "
-    "ssim, detail_gain, color_accuracy, typicality, aesthetic, composition, "
-    "banding, halo, blocking, over_smoothing, invented_texture, "
-    "chroma_fringing. Omit axes you cannot judge.\n"
+    "Give a note for EVERY measured axis listed above AND every defect you "
+    "report — never omit one (if the exact axis is not shown, skip only that "
+    "one). Allowed axis ids: sharpness, exposure, clipping, noise, "
+    "white_balance, ssim, detail_gain, color_accuracy, typicality, "
+    "aesthetic, composition, banding, halo, blocking, over_smoothing, "
+    "invented_texture, chroma_fringing.\n"
     "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
     "restatement. Say what the processing actually did to it, whether the "
     "result is usable, and what a human should watch for. Base it on what "
@@ -216,6 +218,7 @@ def build_request(
     model: str,
     prompt: str = PROMPT_TEMPLATE,
     metrics: dict | None = None,
+    openrouter: bool = False,
 ) -> dict:
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
@@ -234,7 +237,7 @@ def build_request(
             block = ""
         if block:
             text = f"{prompt}\n\nMEASURED METRICS (authoritative):\n{block}"
-    return {
+    payload: dict = {
         "model": model,
         "messages": [
             {
@@ -249,7 +252,14 @@ def build_request(
             }
         ],
         "max_tokens": 900,
+        # Force a JSON object so reasoning models cannot answer in prose.
+        "response_format": {"type": "json_object"},
     }
+    if openrouter:
+        # OpenRouter extension: keep the reasoning trace out of the response
+        # (chain-of-thought models otherwise leak it into `content`).
+        payload["reasoning"] = {"exclude": True}
+    return payload
 
 
 # Retry policy for overloaded servers (429 / 5xx): honor Retry-After, else
@@ -325,9 +335,27 @@ def call_sync(base_url: str, api_key: str, payload: dict, *, timeout: float = 30
         raise AiResponseError(f"invalid JSON in response: {exc}") from exc
 
 
+_REASONING_BLOCK_RE = re.compile(
+    r"<(think|thinking|reasoning|analysis)>.*?</\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _strip_reasoning(text: str) -> str:
+    """Remove chain-of-thought wrappers many reasoning models emit.
+
+    `` thinking…<｜end▁of▁thinking｜>`` / ``<reasoning>…</reasoning>`` blocks are dropped so
+    the JSON extractor only sees the answer, not the model's scratchpad.
+    """
+    try:
+        return _REASONING_BLOCK_RE.sub("", str(text)).strip()
+    except Exception:
+        return text
+
+
 def _extract_json(content: str) -> dict | None:
     """Best-effort JSON object out of a model reply (fences/prose tolerated)."""
-    s = content.strip()
+    s = _strip_reasoning(content)
     if s.startswith("```"):
         s = s.strip("`").strip()
         if s[:4].lower() == "json":
@@ -454,6 +482,9 @@ def analyze_image_sync(
     metrics: dict | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread."""
-    payload = build_request(image_path, model=model, metrics=metrics)
+    openrouter = "openrouter" in str(base_url or "").lower()
+    payload = build_request(
+        image_path, model=model, metrics=metrics, openrouter=openrouter
+    )
     raw = call_sync(base_url, api_key, payload)
     return parse_response(raw, model=model)

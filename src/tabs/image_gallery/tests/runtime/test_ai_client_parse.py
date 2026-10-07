@@ -196,6 +196,29 @@ def test_parse_axis_notes_normalized_to_known_ids():
     }
 
 
+def test_parse_strips_reasoning_block_before_json():
+    content = (
+        " thinkingLet me reason about sharpness and noise...<｜end▁of▁thinking｜>"
+        '{"verdict": "keep", "reason": "ok", "defects": []}'
+    )
+    raw = {"choices": [{"message": {"content": content}}]}
+    r = parse_response(raw, model="m")
+    assert r.verdict == "keep"
+
+
+def test_build_request_forces_json_and_hides_reasoning_on_openrouter(tmp_path):
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    p = build_request(img, model="m", openrouter=True)
+    assert p["response_format"] == {"type": "json_object"}
+    assert p["reasoning"] == {"exclude": True}
+    p2 = build_request(img, model="m")
+    assert p2["response_format"] == {"type": "json_object"}
+    assert "reasoning" not in p2
+
+
 def test_build_request_injects_measured_metrics(tmp_path):
     from tabs.image_gallery.services.ai_client import build_request
 

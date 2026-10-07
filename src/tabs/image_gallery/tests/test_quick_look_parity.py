@@ -308,8 +308,9 @@ def test_camera_noise_and_wb_rows_present_when_metrics_exist(qtbot):
         for lbl in row.findChildren(_QlLabel)
     ]
     # Positive wording + canonical quality %: Noise→Clean, WB→White balance.
-    assert "Clean" in texts
-    assert "White balance" in texts
+    # Titles carry a short band descriptor ("Clean — clean").
+    assert any(t.startswith("Clean") for t in texts)
+    assert any(t.startswith("White balance") for t in texts)
     assert any(t == "80%" for t in texts)  # Clean: noise 0.20 → 80%
     ov.hide()
 
@@ -326,7 +327,7 @@ def test_clipping_reported_as_positive_quality(qtbot):
         try:
             for row in ov._metric_rows:
                 labels = row.findChildren(_QlLabel)
-                if any(lbl.text() == "Highlight detail" for lbl in labels):
+                if any(lbl.text().startswith("Highlight detail") for lbl in labels):
                     return next(lbl.text() for lbl in labels if lbl.text().endswith("%"))
         finally:
             ov.hide()
@@ -357,7 +358,7 @@ def test_noise_value_color_matches_bar_severity(qtbot):
             for row in ov._metric_rows:
                 labels = row.findChildren(_QlLabel)
                 titles = [lbl.text() for lbl in labels]
-                if "Clean" not in titles:
+                if not any(t.startswith("Clean") for t in titles):
                     continue
                 bars = row.findChildren(_BarWidget)
                 value = next(
@@ -2910,9 +2911,9 @@ def test_quicklook_analysis_block_no_summary_line(qtbot):
     text = ov._analysis_desc.text()
     assert text == "Clean and sharp."  # just the conclusion, no summary line
     assert "Composition" not in text and "confidence" not in text.lower()
-    # Composition lives as a metric row now.
+    # Composition lives as a metric row now (title carries a band note).
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert "Composition" in titles
+    assert any(t.startswith("Composition") for t in titles)
     assert "Composition 80%" not in titles  # value is the separate right label
     assert any(lbl.text() == "80%" for row in ov._metric_rows for lbl in row.findChildren(_QlLabel))
     assert ov._analysis_btn.isVisibleTo(ov)
@@ -3012,6 +3013,17 @@ def test_axis_notes_hydrated_before_metrics_on_open(qtbot, tmp_path, monkeypatch
     QApplication.processEvents()
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
     assert "Clean — coarse film grain" in titles
+    ov.hide()
+
+
+def test_metric_row_header_has_fallback_note_without_ai(qtbot):
+    """No AI analysis → rows still carry a short band descriptor."""
+    a = _item("a.png", metrics={"exposure": 0.5, "noise": 0.9})
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a], mode=Mode.CAMERA)
+    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "Exposure — well exposed" in titles  # 0.5 → good
+    assert any(t.startswith("Clean — ") for t in titles)  # noise 0.9 → bad band
     ov.hide()
 
 

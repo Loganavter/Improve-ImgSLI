@@ -101,13 +101,20 @@ def rebuild_artifacts(overlay, item) -> None:
         # quality score (clean 100 / mild 50 / flagged 15); the value/bar
         # color reuses the single severity mapping (ui/card/dots.py).
         label = _POSITIVE_ARTIFACT_LABELS.get(aid, aid)
+        score = _ARTIFACT_QUALITY.get(lvl, 100)
         try:
             _note = (getattr(getattr(item, "analysis", None), "axis_notes", {}) or {}).get(aid)
         except Exception:
             _note = None
+        if not _note:
+            try:
+                from tabs.image_gallery.services.metric_scores import fallback_note as _fb
+
+                _note = _fb(aid, score)
+            except Exception:
+                _note = ""
         if _note:
             label = f"{label} — {_note}"
-        score = _ARTIFACT_QUALITY.get(lvl, 100)
         try:
             from tabs.image_gallery.ui.card.dots import _severity_color as _dots_severity_color
 

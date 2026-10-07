@@ -153,6 +153,41 @@ def score_band(score: int) -> str:
     return "bad"
 
 
+# Band descriptors (good, mid, bad) used when the AI gave no axis note, so
+# every row still carries a short meaning. English — same as the AI notes.
+_FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
+    "sharpness": ("sharp", "slightly soft", "very soft"),
+    "exposure": ("well exposed", "slightly off", "poorly exposed"),
+    "clipping": ("highlights preserved", "minor clipping", "clipped highlights"),
+    "noise": ("clean", "visible grain", "heavy noise/grain"),
+    "white_balance": ("neutral", "slight color cast", "strong color cast"),
+    "ssim": ("close to source", "some drift", "far from source"),
+    "detail_gain": ("detail preserved", "slight shift", "detail lost or invented"),
+    "color_accuracy": ("accurate color", "slight color shift", "off color"),
+    "typicality": ("typical", "somewhat atypical", "outlier"),
+    "aesthetic": ("pleasing", "ordinary", "unappealing"),
+    "composition": ("well composed", "ok composition", "poor composition"),
+    "banding": ("smooth gradients", "mild banding", "visible banding"),
+    "halo": ("clean edges", "some halo", "strong halo"),
+    "blocking": ("no blocking", "mild blocking", "strong blocking"),
+    "over_smoothing": ("detail kept", "slightly smooth", "over-smoothed"),
+    "invented_texture": ("authentic texture", "some invented texture", "invented texture"),
+    "chroma_fringing": ("no fringing", "mild fringing", "strong fringing"),
+}
+
+
+def fallback_note(axis_id: str, score: int) -> str:
+    """Short band descriptor for an axis with no AI note (always present)."""
+    try:
+        row = _FALLBACK_NOTES.get(str(axis_id))
+        if not row:
+            return ""
+        band = score_band(score)
+        return row[0] if band == "good" else row[2] if band == "bad" else row[1]
+    except Exception:
+        return ""
+
+
 def format_measured_for_prompt(metrics: dict) -> str:
     """Human/LLM-readable measured metrics block ('Label: raw (quality%)')."""
     lines = []

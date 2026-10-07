@@ -586,8 +586,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     except Exception:
         _axis_notes = {}
 
-    def _titled(label: str, spec_id: str) -> str:
-        note = _axis_notes.get(spec_id)
+    def _titled(label: str, spec_id: str, score: int) -> str:
+        # AI vision note when present, else a band descriptor so every row
+        # still carries a short meaning.
+        note = _axis_notes.get(spec_id) or _fallback_note(spec_id, score)
         return f"{label} — {note}" if note else label
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
@@ -651,6 +653,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     # Canonical scores drive both the text and the bar: every metric reads
     # as "NN%" where higher is always better (see services.metric_scores).
     from tabs.image_gallery.services.metric_scores import (
+        fallback_note as _fallback_note,
         raw_for as _raw_for,
         score_band as _score_band,
         score_for as _score_for,
@@ -682,7 +685,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         score = _score_for(spec, raw)
         col = _band_color(score)
         value = f"{score}%" + (f" · {extra}" if extra else "")
-        _add_metric_row(_titled(spec.label, spec_id), value, score / 100.0, col, value_color=col)
+        _add_metric_row(_titled(spec.label, spec_id, score), value, score / 100.0, col, value_color=col)
         return True
 
     if is_fidelity:
@@ -713,7 +716,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = _make_label(_titled(_spec.label, "detail_gain"), parent=row, pixel_size=11, pt=11.5)
+            t = _make_label(_titled(_spec.label, "detail_gain", score), parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
             # W7: value takes free row width via stretch (see _add_metric_row).
             v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
@@ -757,7 +760,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _comp = -1
     if _comp >= 0:
         _ccol = _band_color(_comp)
-        _add_metric_row(_titled("Composition", "composition"), f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol)
+        _add_metric_row(_titled("Composition", "composition", _comp), f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol)
 
     # Flat placement (rows + uniform spacers) is owned by the coordinator —
     # it also re-seats the artifact rows, so either rebuild order converges.
