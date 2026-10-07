@@ -2932,6 +2932,53 @@ def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
     ov.hide()
 
 
+def test_metric_row_header_includes_ai_axis_note(qtbot):
+    """AI per-axis note is appended to the metric row title (Label — note)."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        metrics={"sharpness": 200.0, "noise": 0.9},
+        analysis=AiAnalysisResult(
+            description="",
+            tags=(),
+            model="m",
+            analyzed_at_iso="t",
+            axis_notes={"noise": "coarse film grain", "sharpness": "soft edges"},
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a], mode=Mode.CAMERA)
+    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "Clean — coarse film grain" in titles
+    assert "Sharpness — soft edges" in titles
+    ov.hide()
+
+
+def test_artifact_row_header_includes_ai_axis_note(qtbot):
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        metrics={},
+        artifacts={Artifact.HALO: Severity.MILD},
+        analysis=AiAnalysisResult(
+            description="",
+            tags=(),
+            model="m",
+            analyzed_at_iso="t",
+            axis_notes={"halo": "bright edge glow"},
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
+    assert "Edges — bright edge glow" in titles
+    ov.hide()
+
+
 def test_quicklook_analysis_text_is_selectable(qtbot):
     """The verdict/defect text can be selected (copied out), toolkit Label."""
     from PySide6.QtCore import Qt as _Qt

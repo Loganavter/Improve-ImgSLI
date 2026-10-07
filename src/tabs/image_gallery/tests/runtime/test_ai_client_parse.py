@@ -175,6 +175,27 @@ def test_parse_legacy_line_format_still_falls_back():
     assert r.tags == ("cat", "sofa")
 
 
+def test_parse_axis_notes_normalized_to_known_ids():
+    raw = _json_reply(
+        {
+            "verdict": "keep",
+            "reason": "ok",
+            "defects": [],
+            "axis_notes": {
+                "noise": "coarse film grain",
+                "sharpness": "  soft, mushy edges  ",
+                "bogus_axis": "x",
+                "halo": "",
+            },
+        }
+    )
+    r = parse_response(raw, model="m")
+    assert r.axis_notes == {
+        "noise": "coarse film grain",
+        "sharpness": "soft, mushy edges",
+    }
+
+
 def test_build_request_injects_measured_metrics(tmp_path):
     from tabs.image_gallery.services.ai_client import build_request
 

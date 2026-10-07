@@ -78,6 +78,11 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
             verdict_reason=str(data.get("verdict_reason", "") or ""),
             defects=tuple(defects),
             confidence=float(data.get("confidence", 0.0) or 0.0),
+            axis_notes={
+                str(k): str(v)
+                for k, v in (data.get("axis_notes", {}) or {}).items()
+                if str(v).strip()
+            },
         )
     except Exception:
         logger.debug("Gallery AI cache read failed for %s", path, exc_info=True)
@@ -137,6 +142,7 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                         for d in (result.defects or ())
                     ],
                     "confidence": result.confidence,
+                    "axis_notes": dict(result.axis_notes or {}),
                 }
             ),
             encoding="utf-8",

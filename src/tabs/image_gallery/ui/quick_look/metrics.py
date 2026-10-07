@@ -567,6 +567,16 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     metrics = getattr(item, "metrics", None) or {}
     if not isinstance(metrics, dict):
         metrics = {}
+    # AI vision note per axis (canonical metric id → short phrase), shown as
+    # "Label — note" in the row header when present.
+    try:
+        _axis_notes = dict(getattr(getattr(item, "analysis", None), "axis_notes", {}) or {})
+    except Exception:
+        _axis_notes = {}
+
+    def _titled(label: str, spec_id: str) -> str:
+        note = _axis_notes.get(spec_id)
+        return f"{label} — {note}" if note else label
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
         row = QWidget(host)
@@ -660,7 +670,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         score = _score_for(spec, raw)
         col = _band_color(score)
         value = f"{score}%" + (f" · {extra}" if extra else "")
-        _add_metric_row(spec.label, value, score / 100.0, col, value_color=col)
+        _add_metric_row(_titled(spec.label, spec_id), value, score / 100.0, col, value_color=col)
         return True
 
     if is_fidelity:
@@ -691,7 +701,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = _make_label(_spec.label, parent=row, pixel_size=11, pt=11.5)
+            t = _make_label(_titled(_spec.label, "detail_gain"), parent=row, pixel_size=11, pt=11.5)
             header.addWidget(t)
             # W7: value takes free row width via stretch (see _add_metric_row).
             v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)

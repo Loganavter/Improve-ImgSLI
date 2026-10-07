@@ -43,12 +43,14 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
         composition=80,
         verdict="keep",
         verdict_reason="Clean.",
+        axis_notes={"noise": "coarse film grain"},
     )
     ai_cache.save_analysis(path, 123, result)
     assert ai_cache.load_cached_analysis(path, 123) == result
     stored = json.loads(next(tmp_path.iterdir()).read_text(encoding="utf-8"))
     assert stored["sharpness"] == 85
     assert stored["verdict"] == "keep"
+    assert stored["axis_notes"] == {"noise": "coarse film grain"}
 
 
 def test_legacy_caption_only_cache_loads_as_unscored(tmp_path, monkeypatch):

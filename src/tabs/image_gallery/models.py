@@ -88,6 +88,9 @@ class AiAnalysisResult:
     verdict_reason: str = ""
     defects: tuple[AiDefect, ...] = ()
     confidence: float = 0.0
+    # Short, vision-based note per axis (canonical metric id → phrase), shown
+    # next to the metric label, e.g. {"noise": "coarse film grain"}.
+    axis_notes: dict[str, str] = field(default_factory=dict)
 
 
 def ai_quality_score(result: AiAnalysisResult | None) -> float | None:

@@ -30,7 +30,15 @@ PROMPT_TEMPLATE = (
     '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
     'over_smoothing|invented_texture|clipping|other", '
     '"severity": "mild|flagged", "note": "short visual description"}], '
-    '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
+    '"composition": <0-100>, "confidence": <0.0-1.0>, '
+    '"axis_notes": {"<axis_id>": "<short phrase>"}}\n'
+    "axis_notes: for each axis you can judge FROM THE IMAGE, a SHORT phrase "
+    "(2-5 words) of what you actually see — e.g. noise: \"coarse film "
+    "grain\", sharpness: \"soft, mushy edges\", halo: \"bright edge glow\". "
+    "Allowed axis ids: sharpness, exposure, clipping, noise, white_balance, "
+    "ssim, detail_gain, color_accuracy, typicality, aesthetic, banding, "
+    "halo, blocking, over_smoothing, invented_texture, chroma_fringing. "
+    "Omit axes you cannot judge.\n"
     "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
     "restatement. Say what the processing actually did to it, whether the "
     "result is usable, and what a human should watch for. Base it on what "
@@ -82,6 +90,47 @@ def _parse_confidence(value) -> float:
         return max(0.0, min(1.0, float(value)))
     except Exception:
         return 0.0
+
+
+_AXIS_IDS = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    "ssim",
+    "detail_gain",
+    "color_accuracy",
+    "typicality",
+    "aesthetic",
+    "banding",
+    "halo",
+    "blocking",
+    "over_smoothing",
+    "invented_texture",
+    "chroma_fringing",
+)
+
+
+def _parse_axis_notes(value) -> dict:
+    """Normalize the axis_notes map: canonical ids only, short non-empty."""
+    out: dict[str, str] = {}
+    if not isinstance(value, dict):
+        return out
+    for k, v in value.items():
+        try:
+            key = str(k).strip().lower()
+        except Exception:
+            continue
+        if key not in _AXIS_IDS:
+            continue
+        try:
+            note = str(v).strip()
+        except Exception:
+            continue
+        if note:
+            out[key] = note[:120]
+    return out
 
 
 def _parse_defects(value) -> tuple:
@@ -198,7 +247,7 @@ def build_request(
                 ],
             }
         ],
-        "max_tokens": 600,
+        "max_tokens": 900,
     }
 
 
@@ -391,6 +440,7 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         verdict_reason=str(obj.get("reason", "") or "").strip(),
         defects=_parse_defects(obj.get("defects")),
         confidence=_parse_confidence(obj.get("confidence")),
+        axis_notes=_parse_axis_notes(obj.get("axis_notes")),
     )
 
 

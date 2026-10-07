@@ -1593,6 +1593,12 @@ class GalleryController:
             ql = getattr(self.widget, "_quick_look_overlay", None)
             if ql is not None and hasattr(ql, "refresh_analysis"):
                 ql.refresh_analysis(item)
+            # Axis notes ride the metric/artifact row headers — rebuild them
+            # too so the notes appear without a walk/reopen.
+            if ql is not None and hasattr(ql, "refresh_metrics"):
+                ql.refresh_metrics(item)
+            if ql is not None and hasattr(ql, "refresh_artifacts"):
+                ql.refresh_artifacts(item)
         except Exception:
             pass
 
