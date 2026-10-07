@@ -799,9 +799,9 @@ def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
 def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     """Drag across two thumbs selects both, keeps preview unmoved.
 
-    Marquee selection writes series-ordered paths (the Group action's
-    input); the trailing click is swallowed so _current_idx does not
-    walk.
+    Marquee selection is Quick Look's own: it writes the overlay's picked
+    set only and never touches the owner/grid selection; the trailing
+    click is swallowed so _current_idx does not walk.
     """
     from PySide6.QtCore import Qt as _Qt
 
@@ -810,6 +810,8 @@ def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, items[0], items)
     assert ov._current_idx == 0
+    # Seed a stray owner selection: a strip lasso must leave it alone.
+    ov._owner.state.selected_paths = {"/seeded/keep.png"}
     thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
     assert len(thumbs) == 3
     host = ov._strip_host
@@ -836,7 +838,10 @@ def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     QApplication.processEvents()
     assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
     assert ov._current_idx == 0
-    # Region-level CHECKED (setChecked needs a toggle capability).
+    # The owner/grid selection is untouched by a strip lasso.
+    assert ov._owner.state.selected_paths == {"/seeded/keep.png"}
+    # Region-level CHECKED (setChecked needs a toggle capability), plus
+    # the marker the overlay painter reads over the cover pixmap.
     from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS
 
     def _checked(btn):
@@ -848,6 +853,9 @@ def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     assert _checked(thumbs[str(paths[0])])
     assert _checked(thumbs[str(paths[1])])
     assert not _checked(thumbs[str(paths[2])])
+    assert bool(thumbs[str(paths[0])].property("strip_selected"))
+    assert bool(thumbs[str(paths[1])].property("strip_selected"))
+    assert not bool(thumbs[str(paths[2])].property("strip_selected"))
     ov.hide()
 
 
@@ -873,12 +881,12 @@ def test_strip_plain_click_still_walks(qtbot, tmp_path):
     ov.hide()
 
 
-def test_strip_mirrors_grid_selection(qtbot, tmp_path):
-    """Thumbs read as selected what the grid selected (owner state).
+def test_strip_selection_does_not_mirror_grid(qtbot, tmp_path):
+    """Quick Look selection is local: grid picks never seed the strip.
 
-    Cards multi-selected in the gallery grid must show selected on the
-    QL strip — otherwise the strip shows a clean row on top of selected
-    cards. Non-series paths are ignored.
+    Multi-selecting cards in the gallery grid and opening a strip must
+    leave the strip clean — the grid and the QL strip no longer share
+    selection in either direction.
     """
     from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState as _BS
     from tabs.image_gallery.ui.quick_look.strip import rebuild_strip
@@ -891,7 +899,7 @@ def test_strip_mirrors_grid_selection(qtbot, tmp_path):
     ov._owner.state.selected_order = [str(paths[0]), str(paths[2])]
     rebuild_strip(ov)
     QApplication.processEvents()
-    assert ov._strip_selected_paths == {str(paths[0]), str(paths[2])}
+    assert ov._strip_selected_paths == set()
 
     def _checked(btn):
         try:
@@ -900,9 +908,11 @@ def test_strip_mirrors_grid_selection(qtbot, tmp_path):
             return False
 
     by_path = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
-    assert _checked(by_path[str(paths[0])])
+    assert not _checked(by_path[str(paths[0])])
     assert not _checked(by_path[str(paths[1])])
-    assert _checked(by_path[str(paths[2])])
+    assert not _checked(by_path[str(paths[2])])
+    assert not bool(by_path[str(paths[0])].property("strip_selected"))
+    assert not bool(by_path[str(paths[2])].property("strip_selected"))
     ov.hide()
 
 
@@ -943,4 +953,100 @@ def test_strip_lasso_from_viewport_coords(qtbot, tmp_path):
     QApplication.processEvents()
     assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
     assert ov._current_idx == 0
+    ov.hide()
+
+
+def test_strip_plain_click_clears_selection(qtbot, tmp_path):
+    """A plain strip click drops the lasso selection (local only).
+
+    The release path with no marquee clears the overlay's picked set; the
+    trailing button click is still swallowed once (lasso contract), the
+    next click walks normally. The owner/grid selection is untouched.
+    """
+    from PySide6.QtCore import Qt as _Qt
+    from PySide6.QtCore import QPoint as _QP
+
+    paths = [_real_png(tmp_path, f"k{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    ov._owner.state.selected_paths = set()
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    host = ov._strip_host
+
+    cs = list(ov._strip_buttons)
+    g0, g1 = cs[0].geometry(), cs[1].geometry()
+    mid = (g0.center().y() + g1.center().y()) // 2
+    qtbot.mousePress(host, _Qt.MouseButton.LeftButton, pos=_QP(g0.left() - 30, mid))
+    qtbot.mouseMove(host, _QP(g1.right() + 30, mid))
+    qtbot.mouseRelease(host, _Qt.MouseButton.LeftButton, pos=_QP(g1.right() + 30, mid))
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
+
+    # Plain click on the viewing thumb: the pick is cleared on release;
+    # the trailing click is swallowed (no walk) per the lasso contract.
+    qtbot.mouseClick(thumbs[str(paths[0])], _Qt.MouseButton.LeftButton)
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == set()
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert ov._current_idx == 0
+    assert ov._owner.state.selected_paths == set()
+
+    # The next plain click walks normally with the slate clean.
+    qtbot.mouseClick(thumbs[str(paths[2])], _Qt.MouseButton.LeftButton)
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert ov._current_idx == 2
+    assert ov._strip_selected_paths == set()
+    ov.hide()
+
+
+def test_strip_selection_overlay_paints_marker(qtbot, tmp_path):
+    """The selection marker is paint, not just controller state.
+
+    Region-level CHECKED renders behind the cover pixmap, so covered
+    thumbs need the explicit overlay marker: a selected thumb must change
+    pixels (tint + border) while an unselected one leaves them alone.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QRectF as _QRF
+    from PySide6.QtGui import QColor as _QC
+    from PySide6.QtGui import QImage as _QImg
+    from PySide6.QtGui import QPainter as _QPainter
+
+    from tabs.image_gallery.ui.quick_look.strip import _strip_selection_overlay
+
+    paths = [_real_png(tmp_path, f"o{i}.png") for i in range(2)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    sel, plain = _strip_buttons(ov)[0], _strip_buttons(ov)[1]
+    sel.setProperty("strip_selected", True)
+    plain.setProperty("strip_selected", False)
+
+    def _painted(btn):
+        img = _QImg(66, 44, _QImg.Format.Format_ARGB32)
+        img.fill(_QC("#123456"))
+        px = _QPainter(img)
+        try:
+            _strip_selection_overlay(
+                px,
+                SimpleNamespace(
+                    widget=btn, rect=_QRF(0, 0, 66, 44), corner_radii=(6, 6, 6, 6)
+                ),
+                None,
+            )
+        finally:
+            px.end()
+        return img
+
+    before, after_sel, after_plain = (
+        _QC("#123456"),
+        _painted(sel),
+        _painted(plain),
+    )
+    assert after_sel.pixelColor(33, 22) != before
+    assert after_plain.pixelColor(33, 22) == before
     ov.hide()

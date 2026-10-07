@@ -897,7 +897,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1496,
+      "lines": 1569,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
