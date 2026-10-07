@@ -160,6 +160,14 @@ def measure_camera_from_image(image) -> dict[str, float]:
             out["noise"] = noise
     except Exception:
         pass
+    # Optional no-reference overall quality (BRISQUE) — only when the learned
+    # backend is installed; absent backend adds nothing.
+    try:
+        from tabs.image_gallery.services.quality_models import nr_metrics as _nr
+
+        out.update(_nr(image))
+    except Exception:
+        pass
     return out
 
 

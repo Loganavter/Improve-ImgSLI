@@ -753,6 +753,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # the rows simply hide (unchanged historical behavior).
         _add_score_row("noise", gap=False)
         _add_score_row("white_balance", gap=False)
+        # Optional no-reference overall quality (BRISQUE) when the learned
+        # backend is installed; absent backend adds no row.
+        if "brisque" in metrics:
+            _add_score_row("brisque", gap=False)
     else:
         _add_score_row("typicality")
         _add_score_row("aesthetic")

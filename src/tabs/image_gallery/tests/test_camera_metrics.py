@@ -68,7 +68,10 @@ def test_worker_entry_keys_by_path(tmp_path: Path) -> None:
 
     a = SimpleNamespace(path=_paint(tmp_path / "a.png", "gray"))
     out = run_camera_metrics_sync([a])
-    assert set(out[str(a.path)]) == {"sharpness", "exposure", "clipping_pct", "noise"}
+    got = set(out[str(a.path)])
+    required = {"sharpness", "exposure", "clipping_pct", "noise"}
+    # `brisque` appears only when the optional learned backend is installed.
+    assert required <= got <= required | {"brisque"}
 
 
 def test_camera_ready_delivery(tmp_path: Path) -> None:
