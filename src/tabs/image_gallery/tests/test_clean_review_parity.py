@@ -389,7 +389,9 @@ def test_filmstrip_horizontally_scrollable(qtbot, tmp_path):
 
     strip = overlay.findChild(QScrollArea, "clean_review_filmstrip")
     assert strip is not None
-    assert strip.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    # Overlay invariant: native bars stay hidden — horizontal overflow is
+    # served by the floating custom bar, not the native one.
+    assert strip.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert strip.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert strip.widget() is not None
     # Cap + tile still hold inside the scrollable strip.
@@ -555,8 +557,9 @@ def test_flat_cap_applies_across_series(qtbot, tmp_path):
 
 
 def test_scroll_areas_frameless_horizontal_only(qtbot, tmp_path):
-    """Phase 6: both scroll areas are NoFrame, vertical AlwaysOff,
-    horizontal AsNeeded (borderless strip over the plate)."""
+    """Phase 6: both scroll areas are NoFrame with native bars AlwaysOff
+    (overlay invariant — the floating custom bars serve overflow, so no
+    native scrollbar can appear over the plate)."""
     from PySide6.QtWidgets import QFrame
 
     owner = _make_owner(tmp_path, [str(tmp_path / "a.jpg")])
@@ -567,7 +570,7 @@ def test_scroll_areas_frameless_horizontal_only(qtbot, tmp_path):
     for scroll in (overlay._scroll, strip):
         assert scroll.frameShape() == QFrame.Shape.NoFrame
         assert scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        assert scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
 
 
 # -- P0-10: app-side dim veil ------------------------------------------

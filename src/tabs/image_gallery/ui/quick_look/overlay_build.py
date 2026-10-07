@@ -670,9 +670,11 @@ def build_overlay_ui(overlay) -> None:
     right_scroll.setWidgetResizable(True)
     # W7: widths are bounded by construction (296px column, elided text,
     # fixed thumbs) — a full-text sizeHint must never summon a scrollbar.
-    # Horizontal is AlwaysOff; vertical stays AsNeeded.
+    # Native bars stay AlwaysOff (overlay widget invariant — the floating
+    # custom bar appears on overflow by itself); re-enforced by the
+    # toolkit scrollbar policy at polish time.
     right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     right_host = QWidget(right_scroll)
     right_host.setObjectName("quicklook_right_host")
     # W13: the host expands with the scroll viewport (the scroll area is

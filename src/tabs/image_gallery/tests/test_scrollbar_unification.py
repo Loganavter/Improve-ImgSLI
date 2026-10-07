@@ -85,20 +85,31 @@ def _make_cr_overlay(qtbot, owner) -> CleanReviewOverlay:
 
 
 def test_quicklook_right_column_uses_overlay_scrollarea(qtbot):
+    from PySide6.QtCore import Qt as _Qt
+
     a = _ql_item("a.png")
     b = _ql_item("b.png")
     ov = _make_ql_overlay(qtbot)
     _show_ql(ov, a, [a, b])
     right = ov.findChild(QWidget, "quicklook_right_scroll")
     assert isinstance(right, OverlayScrollArea)
+    # Leftover stock-era AsNeeded resurrected the native bar next to the
+    # custom one — native policies stay AlwaysOff on overlay areas.
+    assert right.verticalScrollBarPolicy() == _Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert right.horizontalScrollBarPolicy() == _Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     ov.hide()
 
 
 def test_clean_review_scrolls_use_overlay_scrollarea(qtbot, tmp_path):
+    from PySide6.QtCore import Qt as _Qt
+
     overlay = _make_cr_overlay(qtbot, _make_cr_owner(tmp_path))
     assert isinstance(overlay._scroll, OverlayScrollArea)
     filmstrip = overlay.findChild(QWidget, "clean_review_filmstrip")
     assert isinstance(filmstrip, OverlayScrollArea)
+    for area in (overlay._scroll, filmstrip):
+        assert area.verticalScrollBarPolicy() == _Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert area.horizontalScrollBarPolicy() == _Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     overlay.hide()
 
 

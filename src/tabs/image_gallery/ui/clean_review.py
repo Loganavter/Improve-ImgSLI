@@ -915,8 +915,11 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._scroll.setWidgetResizable(True)
         self._scroll.setObjectName("clean_review_scroll")
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Native bars stay hidden (overlay invariant — the floating custom
+        # bars appear on overflow by themselves); re-enforced by the toolkit
+        # scrollbar policy at polish time.
         self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list_host = QWidget()
         self._list_host.setObjectName("clean_review_list_host")
         self._list_layout = QVBoxLayout(self._list_host)
@@ -1396,8 +1399,10 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         strip_scroll.setObjectName("clean_review_filmstrip")
         strip_scroll.setWidgetResizable(True)
         strip_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Native bars stay hidden (overlay invariant — the floating custom
+        # bar appears on horizontal overflow by itself).
         strip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        strip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        strip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         filmstrip = QWidget()
         filmstrip.setObjectName("clean_review_filmstrip_inner")
