@@ -1339,6 +1339,23 @@ class GalleryController:
                 self._cluster_tail_into_series()
             except Exception:
                 logger.debug("append tail cluster failed", exc_info=True)
+            # Stage-2 analyses (artifacts + fidelity + camera) for the NEW
+            # items. The attach path deliberately skips re-clustering ("no
+            # retriage"), but analysis is per-item and independent of
+            # membership — without this the appended card kept "not measured"
+            # rows while the first-drop cards were fully analyzed. Mirror
+            # _apply_triage_result's fingerprint bookkeeping so a later
+            # regroup does not re-run the whole pool.
+            try:
+                self._last_analysis_fingerprint = GalleryController._analysis_fingerprint(
+                    list(self.state.items), prev_source
+                )
+            except Exception:
+                pass
+            try:
+                self._start_proxy_analysis(list(uniq), prev_source, prev_mode)
+            except Exception:
+                logger.debug("append analysis start failed", exc_info=True)
             self.state.triage_state = TriageState.DONE
             # Newer than any in-flight triage: its delivery drops (sgen).
             self._next_series_gen()
