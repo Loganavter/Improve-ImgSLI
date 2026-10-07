@@ -26,16 +26,21 @@ PROMPT_TEMPLATE = (
     "You are given the locally measured metrics; treat them as authoritative "
     "and do not contradict them.\n"
     "Reply with ONLY a JSON object, no prose and no code fences:\n"
-    '{"verdict": "keep|reject", "reason": "<= 1 short sentence", '
+    '{"verdict": "keep|reject", "reason": "practical assessment", '
     '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
     'over_smoothing|invented_texture|clipping|other", '
-    '"severity": "mild|flagged", "note": "short"}], '
+    '"severity": "mild|flagged", "note": "short visual description"}], '
     '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
+    "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
+    "restatement. Say what the processing actually did to it, whether the "
+    "result is usable, and what a human should watch for. Base it on what "
+    "you SEE; do NOT repeat the measured metric values or their scores "
+    "(those are already shown above).\n"
     "Use an empty defects list when the image is clean. composition is your "
     "subjective framing/quality score — the one axis the local detectors "
     "cannot measure.\n"
     "Output the JSON object ONLY: no reasoning, no analysis steps, no "
-    "preamble, no prose before or after."
+    "preamble, no prose before or after the JSON."
 )
 
 _DEFECT_KINDS = (

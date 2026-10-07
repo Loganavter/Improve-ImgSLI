@@ -2867,13 +2867,15 @@ def test_quicklook_analysis_block_shows_verdict_defects_not_scene(qtbot):
     assert ov._analysis_title.isVisibleTo(ov)
     assert ov._analysis_desc.isVisibleTo(ov)
     text = ov._analysis_desc.text()
-    assert "REJECT" in text and "1 defect" in text
+    assert "REJECT" in text
     assert "confidence 80%" in text
     assert "Visible halo on edges." in text
     # Scene content never appears.
     assert "A cat on a sofa" not in text
     assert "cat" not in text
-    assert "halo" in ov._analysis_tags.text().lower()
+    # Defects are compact chips (kind · severity), not prose notes.
+    assert "halo (flagged)" in ov._analysis_tags.text().lower()
+    assert "strong edge glow" not in ov._analysis_tags.text()
     assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
 

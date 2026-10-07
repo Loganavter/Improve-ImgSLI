@@ -302,32 +302,34 @@ def populate_brief(overlay, item) -> None:
             pass
 
 
-def _defect_lines(defects) -> str:
-    """One line per reported defect: 'kind (severity): note'."""
+def _defect_chips(defects) -> str:
+    """Compact defect chips: 'kind (severity)' joined by ' · '.
+
+    The free-text per-defect note is deliberately NOT shown — the model
+    only repeated the measured metrics with it; the chip is the signal.
+    """
     out = []
     try:
         for d in defects or ():
             kind = str(getattr(d, "kind", "") or "").replace("_", " ").strip()
-            sev = str(getattr(d, "severity", "") or "").strip()
-            note = str(getattr(d, "note", "") or "").strip()
             if not kind:
                 continue
-            line = f"{kind} ({sev})" if sev else kind
-            if note:
-                line += f": {note}"
-            out.append(line)
+            sev = str(getattr(d, "severity", "") or "").strip()
+            out.append(f"{kind} ({sev})" if sev else kind)
     except Exception:
         return ""
-    return "\n".join(out)
+    return " · ".join(out)
 
 
 def populate_analysis(overlay, item) -> None:
     """Fill the sidebar AI-analysis block (quality verdict + defects).
 
-    The model output lives here, not in the card tooltip. DONE shows the
-    keep/reject verdict with its reason, the reported defects, the AI-only
-    Composition axis and the model's confidence. Sharpness/noise/exposure
-    are NOT repeated — the metric rows above carry the measured values.
+    The model output lives here, not in the card tooltip. DONE shows a
+    compact structured line (verdict · Composition · confidence), then a
+    PRACTICAL conclusion (reason: what the processing did, whether the
+    result is usable, what to watch — no metric restatement), then defect
+    chips (kind · severity). Sharpness/noise/exposure are NOT repeated —
+    the metric rows above carry the measured values.
     Legacy caption-only cache entries fall back to the plain description.
     PENDING shows a running line; ERROR shows the error and keeps the
     Analyze trigger for retry; NOT_ANALYZED shows the header + trigger
@@ -370,20 +372,22 @@ def populate_analysis(overlay, item) -> None:
                 legacy_desc = str(getattr(analysis, "description", "") or "")
             except Exception:
                 verdict, reason, defects, comp, conf, legacy_desc = "unknown", "", [], -1, 0.0, ""
-            defects_text = _defect_lines(defects)
-            if verdict in ("keep", "reject") or defects or comp >= 0:
-                parts = []
+            defects_text = _defect_chips(defects)
+            if verdict in ("keep", "reject") or defects or comp >= 0 or reason:
+                # Line 1 = compact structured verdict; body = the practical
+                # conclusion (reason); chips = defect kinds.
+                head = []
                 if verdict in ("keep", "reject"):
-                    parts.append(verdict.upper())
-                if defects:
-                    parts.append(f"{len(defects)} defect(s)" if len(defects) != 1 else "1 defect")
+                    head.append(verdict.upper())
                 if comp >= 0:
-                    parts.append(f"Composition {comp}%")
+                    head.append(f"Composition {comp}%")
                 if conf > 0:
-                    parts.append(f"confidence {int(round(conf * 100))}%")
+                    head.append(f"confidence {int(round(conf * 100))}%")
+                line1 = " · ".join(head)
                 if reason:
-                    parts.append(reason)
-                desc_text = " · ".join(parts)
+                    desc_text = f"{line1}\n{reason}" if line1 else reason
+                else:
+                    desc_text = line1
                 tags_text = defects_text
             else:
                 # Legacy caption-only cache entry: show the description.
