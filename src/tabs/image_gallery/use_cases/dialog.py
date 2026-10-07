@@ -94,9 +94,12 @@ def pick_folder_dialog(owner, start_dir: str = "") -> str | None:  # type: ignor
         filt += " ".join(f"*{e}" for e in sorted(_EXTS))
         filt += ");;All files (*)"
         dlg = QFileDialog(base, "Pick folder or image", start_dir, filt)
+        # Native dialog like everywhere else in the app (export, project
+        # open/save, video editor): no DontUseNativeDialog — the gallery
+        # was the only non-native outlier. Folder picking stays on the
+        # getExistingDirectory fallback below.
         try:
             dlg.setFileMode(QFileDialog.FileMode.ExistingFiles)
-            dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         except Exception:
             pass
         if dlg.exec():
