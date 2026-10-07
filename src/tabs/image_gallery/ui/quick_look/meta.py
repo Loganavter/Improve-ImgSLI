@@ -285,3 +285,90 @@ def populate_brief(overlay, item) -> None:
             overlay._brief_label.setVisible(False)
         except Exception:
             pass
+
+
+def populate_analysis(overlay, item) -> None:
+    """Fill the sidebar AI-analysis block (description + ALL tags).
+
+    The model output lives here, not in the card tooltip: DONE shows the
+    full description plus every tag (the card row keeps its first-3
+    summary); PENDING shows a running line; ERROR shows the error and
+    keeps the Analyze trigger for retry; NOT_ANALYZED shows the header +
+    trigger only. Never raises.
+    """
+    try:
+        try:
+            _st = getattr(item, "analysis_status", None)
+            status_val = str(getattr(_st, "value", _st) or "")
+        except Exception:
+            status_val = ""
+        try:
+            analysis = getattr(item, "analysis", None)
+        except Exception:
+            analysis = None
+        try:
+            err = getattr(item, "analysis_error", None)
+        except Exception:
+            err = None
+        desc_text, tags_text = "", ""
+        show_btn = False
+        if analysis is not None and status_val == "done":
+            try:
+                desc_text = str(getattr(analysis, "description", "") or "")
+            except Exception:
+                desc_text = ""
+            try:
+                tags = list(getattr(analysis, "tags", None) or [])
+                tags_text = ", ".join(str(t).strip() for t in tags if str(t).strip())
+            except Exception:
+                tags_text = ""
+        elif status_val == "pending":
+            desc_text = "Analyzing…"
+        elif status_val == "error":
+            desc_text = str(err or "Analysis failed.")
+            show_btn = True
+        else:
+            # NOT_ANALYZED (or unknown): header + trigger only.
+            show_btn = True
+        try:
+            div = getattr(overlay, "_div_analysis", None)
+            if div is not None:
+                div.setVisible(True)
+        except Exception:
+            pass
+        try:
+            head = getattr(overlay, "_analysis_head", None)
+            if head is not None:
+                head.setVisible(True)
+        except Exception:
+            pass
+        try:
+            btn = getattr(overlay, "_analysis_btn", None)
+            if btn is not None:
+                btn.setVisible(bool(show_btn))
+        except Exception:
+            pass
+        try:
+            desc = getattr(overlay, "_analysis_desc", None)
+            if desc is not None:
+                if desc_text:
+                    desc.setText(desc_text)
+                    desc.setVisible(True)
+                else:
+                    desc.setText("")
+                    desc.setVisible(False)
+        except Exception:
+            pass
+        try:
+            tags_lbl = getattr(overlay, "_analysis_tags", None)
+            if tags_lbl is not None:
+                if tags_text:
+                    tags_lbl.setText(tags_text)
+                    tags_lbl.setVisible(True)
+                else:
+                    tags_lbl.setText("")
+                    tags_lbl.setVisible(False)
+        except Exception:
+            pass
+    except Exception:
+        pass

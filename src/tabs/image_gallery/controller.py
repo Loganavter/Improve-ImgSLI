@@ -1503,6 +1503,14 @@ class GalleryController:
         item.analysis_status = AnalysisStatus.DONE
         item.analysis_error = None
         self.widget.refresh_card(item)
+        # Quick look sidebar owns the model output: refresh the open
+        # overlay's analysis block in place (path-guarded, no reopen).
+        try:
+            ql = getattr(self.widget, "_quick_look_overlay", None)
+            if ql is not None and hasattr(ql, "refresh_analysis"):
+                ql.refresh_analysis(item)
+        except Exception:
+            pass
 
     def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1523,6 +1531,12 @@ class GalleryController:
         item.analysis_status = AnalysisStatus.ERROR
         item.analysis_error = message or str(value)
         self.widget.refresh_card(item)
+        try:
+            ql = getattr(self.widget, "_quick_look_overlay", None)
+            if ql is not None and hasattr(ql, "refresh_analysis"):
+                ql.refresh_analysis(item)
+        except Exception:
+            pass
 
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 

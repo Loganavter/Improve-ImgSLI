@@ -819,6 +819,33 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
+    def refresh_analysis(self, item) -> None:
+        """Rebuild the sidebar AI-analysis block for the open overlay.
+
+        Mirrors ``refresh_artifacts``: no-op when hidden or for another
+        item (path-guarded, never copied between items). Called when the
+        analysis worker lands so the block needs no reopen. Never raises.
+        """
+        try:
+            cur = getattr(self, "_current_item", None)
+            if cur is None:
+                return
+            try:
+                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
+                    return
+            except Exception:
+                if cur is not item:
+                    return
+            if not self.isVisible():
+                return
+            try:
+                from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa_r
+                _pa_r(self, item)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def refresh_metrics(self, item) -> None:
         """W1 seam — W2 calls this from ``_on_fidelity_ready`` / set-source paths.
 
@@ -1066,6 +1093,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             _pb(self, item)
         except Exception:
             pass
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa
+            _pa(self, item)
+        except Exception:
+            pass
         if _dbg_on:
             _dbg("quick look populate brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
             _t = _time.perf_counter()
@@ -1257,6 +1289,31 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         # Set as source stay open (triage continues); X still closes.
         try:
             self.hide()
+        except Exception:
+            pass
+
+    def _on_analyze(self) -> None:
+        """Trigger AI analysis for the currently viewed item (sidebar button).
+
+        Delegates to the owner (controller.analyze_item_by_path); the block
+        shows the PENDING line immediately and refresh_analysis fills it in
+        when the worker lands. Owners without the hook (bare test doubles)
+        are a silent no-op. Never raises.
+        """
+        try:
+            item = getattr(self, "_current_item", None)
+            if item is None:
+                return
+            owner = getattr(self, "_owner", None)
+            fn = getattr(owner, "analyze_item_by_path", None)
+            if not callable(fn):
+                return
+            fn(Path(getattr(item, "path", "")))
+        except Exception:
+            return
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa_a
+            _pa_a(self, item)
         except Exception:
             pass
 

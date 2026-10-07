@@ -46,6 +46,7 @@ from tabs.image_gallery.ui.quick_look.meta import (
     _item_smaller_than_source,
     local_brief_fallback,
     populate_brief,
+    populate_analysis,
 )
 from tabs.image_gallery.ui.quick_look.headers import (
     populate_report_header,
@@ -103,6 +104,7 @@ __all__ = [
     "_item_smaller_than_source",
     "local_brief_fallback",
     "populate_brief",
+    "populate_analysis",
     "populate_report_header",
     "series_size_note",
     "reposition_nav_buttons",

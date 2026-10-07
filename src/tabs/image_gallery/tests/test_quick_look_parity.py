@@ -2840,3 +2840,110 @@ def test_overlay_hide_plants_close_cover(qtbot, tmp_path):
     except Exception:
         pix = None
     assert pix is not None and not pix.isNull(), "close cover has no frame"
+
+
+def test_quicklook_analysis_block_shows_full_description_and_all_tags(qtbot):
+    """The sidebar owns the model output: full description + every tag.
+
+    The card keeps its first-3 summary row; the QL block must carry all
+    of them (the tooltip is not a display surface).
+    """
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    tags = ("cat", "sofa", "window-light", "portrait", "indoor")
+    a = _item(
+        "a.png",
+        analysis=AiAnalysisResult(
+            description="A cat on a sofa", tags=tags, model="m", analyzed_at_iso="t"
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert ov._analysis_title.isVisibleTo(ov)
+    assert ov._analysis_desc.isVisibleTo(ov)
+    assert ov._analysis_desc.text() == "A cat on a sofa"
+    assert ov._analysis_tags.isVisibleTo(ov)
+    for t in tags:
+        assert t in ov._analysis_tags.text()
+    assert not ov._analysis_btn.isVisibleTo(ov)
+    ov.hide()
+
+
+def test_quicklook_analysis_block_states(qtbot):
+    """PENDING/ERROR/empty render the running line, the error, or the trigger."""
+    from tabs.image_gallery.models import AnalysisStatus
+    from tabs.image_gallery.ui.quick_look.meta import populate_analysis
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    # NOT_ANALYZED: header + trigger only.
+    assert ov._analysis_title.isVisibleTo(ov)
+    assert ov._analysis_btn.isVisibleTo(ov)
+    assert not ov._analysis_desc.isVisibleTo(ov)
+    assert not ov._analysis_tags.isVisibleTo(ov)
+    # PENDING: running line, no trigger.
+    a.analysis_status = AnalysisStatus.PENDING
+    populate_analysis(ov, a)
+    QApplication.processEvents()
+    assert ov._analysis_desc.isVisibleTo(ov)
+    assert ov._analysis_desc.text() == "Analyzing…"
+    assert not ov._analysis_btn.isVisibleTo(ov)
+    # ERROR: error text + trigger back for retry.
+    a.analysis_status = AnalysisStatus.ERROR
+    a.analysis_error = "boom"
+    populate_analysis(ov, a)
+    QApplication.processEvents()
+    assert ov._analysis_desc.text() == "boom"
+    assert ov._analysis_btn.isVisibleTo(ov)
+    ov.hide()
+
+
+def test_quicklook_analysis_button_triggers_owner(qtbot):
+    """The sidebar Analyze button delegates to the owner's analyze hook."""
+    from PySide6.QtCore import Qt as _Qt
+
+    calls = []
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    # Owners without the hook (bare doubles) are a silent no-op.
+    ov._on_analyze()
+    assert calls == []
+    ov._owner.analyze_item_by_path = lambda p: calls.append(p)
+    assert ov._analysis_btn.isVisibleTo(ov)
+    qtbot.mouseClick(ov._analysis_btn, _Qt.MouseButton.LeftButton)
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert len(calls) == 1
+    assert Path(calls[0]) == a.path
+    ov.hide()
+
+
+def test_quicklook_refresh_analysis_updates_open_overlay(qtbot):
+    """A landed worker refreshes the open block in place (no reopen)."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    assert not ov._analysis_desc.isVisibleTo(ov)
+    a.analysis = AiAnalysisResult(
+        description="late landing", tags=("x", "y"), model="m", analyzed_at_iso="t"
+    )
+    a.analysis_status = AnalysisStatus.DONE
+    ov.refresh_analysis(a)
+    QApplication.processEvents()
+    assert ov._analysis_desc.isVisibleTo(ov)
+    assert ov._analysis_desc.text() == "late landing"
+    # Another item: no-op, never copied across.
+    c = _item("c.png")
+    ov.refresh_analysis(c)
+    QApplication.processEvents()
+    assert ov._analysis_desc.text() == "late landing"
+    ov.hide()
