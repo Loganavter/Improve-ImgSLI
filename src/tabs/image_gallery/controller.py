@@ -1451,6 +1451,28 @@ class GalleryController:
             return
         self.analyze_item(item)
 
+    def hydrate_cached_analysis(self, item: GalleryItem) -> bool:
+        """Fill ``item`` from the disk cache only (Quick Look pre-read).
+
+        No worker, no settings check — lets the overlay show a cached
+        analysis the moment it opens instead of waiting for an Analyze
+        click. Refreshes the card when something was hydrated. Never raises.
+        """
+        try:
+            from tabs.image_gallery.services.ai_cache import hydrate_item
+        except Exception:
+            return False
+        try:
+            if not hydrate_item(item):
+                return False
+        except Exception:
+            return False
+        try:
+            self.widget.refresh_card(item)
+        except Exception:
+            pass
+        return True
+
     def analyze_item(self, item: GalleryItem) -> None:
         cached = load_cached_analysis(item.path, item.mtime_ns)
         if cached is not None:
@@ -1460,6 +1482,26 @@ class GalleryController:
             self.widget.refresh_card(item)
             return
 
+        self._begin_analysis(item)
+
+    def reanalyze_item_by_path(self, path: Path) -> None:
+        item = self._find_item(path)
+        if item is None:
+            return
+        self.reanalyze_item(item)
+
+    def reanalyze_item(self, item: GalleryItem) -> None:
+        """Force a fresh analysis, bypassing the disk cache (Re-analyze).
+
+        Same worker pipeline as :meth:`analyze_item` minus the cache
+        short-circuit; completion overwrites the cache entry. Never raises.
+        """
+        try:
+            self._begin_analysis(item)
+        except Exception:
+            pass
+
+    def _begin_analysis(self, item: GalleryItem) -> None:
         settings = self._ai_settings_store.load()
         if not settings.enabled or not settings.api_key or not settings.model:
             item.analysis_status = AnalysisStatus.ERROR

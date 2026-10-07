@@ -2867,7 +2867,7 @@ def test_quicklook_analysis_block_shows_full_description_and_all_tags(qtbot):
     assert ov._analysis_tags.isVisibleTo(ov)
     for t in tags:
         assert t in ov._analysis_tags.text()
-    assert not ov._analysis_btn.isVisibleTo(ov)
+    assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
 
 
@@ -2896,10 +2896,13 @@ def test_quicklook_analysis_block_shows_scores_and_verdict(qtbot):
     _show(ov, a, [a, b])
     text = ov._analysis_desc.text()
     assert "Quality 83" in text
-    assert "Sharpness 85" in text and "Noise 90" in text
+    # Sharpness/Noise/Exposure are NOT repeated here: the metric rows above
+    # already report them with real measured values.
+    assert "Sharpness" not in text and "Noise" not in text and "Exposure" not in text
+    assert "Composition 80" in text
     assert "KEEP" in text
     assert "Clean and sharp." in text
-    assert not ov._analysis_btn.isVisibleTo(ov)
+    assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
 
 
@@ -2916,6 +2919,115 @@ def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b])
     assert ov._analysis_desc.text() == "Old caption."
+    ov.hide()
+
+
+def _scored_analysis(**kw):
+    from tabs.image_gallery.models import AiAnalysisResult
+
+    base = dict(
+        description="A cat.",
+        tags=("cat",),
+        model="m",
+        analyzed_at_iso="t",
+        sharpness=85,
+        noise=90,
+        exposure=78,
+        composition=80,
+        verdict="keep",
+        verdict_reason="Clean.",
+    )
+    base.update(kw)
+    return AiAnalysisResult(**base)
+
+
+def test_quicklook_analysis_button_retitles(qtbot, monkeypatch):
+    """DONE offers Re-analyze, fresh items offer Analyze (painter text)."""
+    import tabs.image_gallery.ui.quick_look.labels_theme as _lt
+    from tabs.image_gallery.models import AnalysisStatus
+
+    texts = []
+    monkeypatch.setattr(
+        _lt, "_set_colored_text", lambda b, t, c=None: texts.append((b.objectName(), t))
+    )
+    a = _item("a.png", analysis=_scored_analysis(), analysis_status=AnalysisStatus.DONE)
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    mine = [t for name, t in texts if name == "quicklook_analysis_btn"]
+    assert mine == ["Re-analyze"]
+    assert getattr(ov, "_analysis_btn_mode", None) == "Re-analyze"
+    # The trigger must actually be VISIBLE on DONE (regression: the text
+    # switched but the button stayed hidden).
+    assert ov._analysis_btn.isVisibleTo(ov)
+    ov.hide()
+
+
+def test_quicklook_analysis_click_routes_reanalyze_vs_analyze(qtbot):
+    """Re-analyze on DONE items, plain Analyze on fresh ones."""
+    from PySide6.QtCore import Qt as _Qt
+
+    from tabs.image_gallery.models import AnalysisStatus
+
+    ana_calls, re_calls = [], []
+    a = _item("a.png", analysis=_scored_analysis(), analysis_status=AnalysisStatus.DONE)
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    ov._owner.analyze_item_by_path = lambda p: ana_calls.append(p)
+    ov._owner.reanalyze_item_by_path = lambda p: re_calls.append(p)
+    qtbot.mouseClick(ov._analysis_btn, _Qt.MouseButton.LeftButton)
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert len(re_calls) == 1 and Path(re_calls[0]) == a.path
+    assert ana_calls == []
+    ov.hide()
+
+
+def test_quicklook_analysis_hydrates_cache_on_open(qtbot, tmp_path, monkeypatch):
+    """A disk-cached analysis shows immediately, no Analyze click needed."""
+    from tabs.image_gallery.models import AnalysisStatus
+    from tabs.image_gallery.services import ai_cache
+    from tabs.image_gallery.ui.quick_look.meta import populate_analysis
+
+    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
+    ai_cache.save_analysis(Path("/g/h.png"), 7, _scored_analysis())
+    item = GalleryItem(path=Path("/g/h.png"), mtime_ns=7)
+    other = GalleryItem(path=Path("/g/z.png"), mtime_ns=1)
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item, other])
+    hydrated = []
+    ov._owner.hydrate_cached_analysis = lambda it: hydrated.append(it.path) or ai_cache.hydrate_item(it)
+    populate_analysis(ov, item)
+    QApplication.processEvents()
+    assert hydrated == [item.path]
+    assert item.analysis_status == AnalysisStatus.DONE
+    assert "Quality 83" in ov._analysis_desc.text()
+    ov.hide()
+
+
+def test_quicklook_brief_divider_follows_brief_block(qtbot):
+    """No dangling rule above the analysis block when the brief is empty."""
+    from tabs.image_gallery.models import CompareBrief
+
+    solo = _item("solo.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, solo, [solo])
+    QApplication.processEvents()
+    assert not ov._brief_label.isVisibleTo(ov)
+    assert not ov._div_series.isVisibleTo(ov)
+    assert ov._analysis_title.isVisibleTo(ov)
+    a = _item(
+        "a.png",
+        vlm_brief=CompareBrief(
+            pair=("a", "b"), summary="A is sharper.", differences=(), tags=(), model="m", created_at_iso="t"
+        ),
+    )
+    b = _item("b.png")
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    assert ov._brief_label.isVisibleTo(ov)
+    assert ov._div_series.isVisibleTo(ov)
     ov.hide()
 
 

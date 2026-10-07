@@ -280,36 +280,51 @@ def populate_brief(overlay, item) -> None:
         else:
             overlay._brief_label.setText("")
             overlay._brief_label.setVisible(False)
+        # The section divider belongs to the brief block: an empty brief
+        # with a dangling rule reads as two dividers in a row next to the
+        # analysis divider below.
+        try:
+            div = getattr(overlay, "_div_series", None)
+            if div is not None:
+                div.setVisible(bool(brief))
+        except Exception:
+            pass
     except Exception:
         try:
             overlay._brief_label.setVisible(False)
         except Exception:
             pass
+        try:
+            div = getattr(overlay, "_div_series", None)
+            if div is not None:
+                div.setVisible(False)
+        except Exception:
+            pass
 
 
 def _analysis_scores_line(analysis) -> str:
-    """One-line axis scores + mean, or '' when nothing is scored."""
+    """Summary line: mean Quality + only the AI-only axis (Composition).
+
+    The metric rows above already report sharpness/noise/exposure with
+    real measured values — repeating the AI's parallel 0-100 estimates of
+    the same axes (different scale, different method) was pure noise. The
+    mean stays because it drives ``Sort: AI quality``; Composition stays
+    because no local detector measures it. Empty when nothing is scored.
+    """
     try:
         from tabs.image_gallery.models import ai_quality_score
 
-        axes = []
-        for label, key in (
-            ("Sharpness", "sharpness"),
-            ("Noise", "noise"),
-            ("Exposure", "exposure"),
-            ("Composition", "composition"),
-        ):
-            try:
-                v = int(getattr(analysis, key, -1))
-            except Exception:
-                v = -1
-            if v >= 0:
-                axes.append(f"{label} {v}")
-        if not axes:
-            return ""
+        parts = []
         mean = ai_quality_score(analysis)
-        head = f"Quality {int(round(mean))}" if mean is not None else "Quality"
-        return head + " · " + " · ".join(axes)
+        if mean is not None:
+            parts.append(f"Quality {int(round(mean))}")
+        try:
+            comp = int(getattr(analysis, "composition", -1))
+        except Exception:
+            comp = -1
+        if comp >= 0:
+            parts.append(f"Composition {comp}")
+        return " · ".join(parts)
     except Exception:
         return ""
 
@@ -318,13 +333,26 @@ def populate_analysis(overlay, item) -> None:
     """Fill the sidebar AI-analysis block (scores + verdict + ALL tags).
 
     The model output lives here, not in the card tooltip: DONE shows the
-    axis scores, the keep/reject verdict with its reason, and every tag
-    (the card row keeps its first-3 summary). Old cache entries without
-    scores fall back to the plain description. PENDING shows a running
+    mean AI quality + the AI-only Composition axis, the keep/reject
+    verdict with its reason, and every tag (the card row keeps its
+    first-3 summary). Sharpness/noise/exposure are deliberately NOT
+    repeated — the metric rows above already carry the measured values.
+    Old cache entries without scores fall back to the plain description. PENDING shows a running
     line; ERROR shows the error and keeps the Analyze trigger for retry;
-    NOT_ANALYZED shows the header + trigger only. Never raises.
+    NOT_ANALYZED shows the header + trigger only. A disk-cached analysis
+    is hydrated first (via the owner hook), so the block shows it the
+    moment the overlay opens instead of waiting for an Analyze click.
+    Never raises.
     """
     try:
+        try:
+            if getattr(item, "analysis", None) is None:
+                owner = getattr(overlay, "_owner", None)
+                hydrate = getattr(owner, "hydrate_cached_analysis", None)
+                if callable(hydrate):
+                    hydrate(item)
+        except Exception:
+            pass
         try:
             _st = getattr(item, "analysis_status", None)
             status_val = str(getattr(_st, "value", _st) or "")
@@ -352,6 +380,7 @@ def populate_analysis(overlay, item) -> None:
                 reason = str(getattr(analysis, "verdict_reason", "") or "")
             except Exception:
                 scores, verdict, reason = "", "unknown", ""
+            show_btn = True
             if scores:
                 desc_text = scores
                 if verdict in ("keep", "reject"):
@@ -388,6 +417,24 @@ def populate_analysis(overlay, item) -> None:
             btn = getattr(overlay, "_analysis_btn", None)
             if btn is not None:
                 btn.setVisible(bool(show_btn))
+                # DONE keeps the trigger as Re-analyze (forced re-run);
+                # everything else offers the first Analyze.
+                want = "Re-analyze" if status_val == "done" else "Analyze"
+                try:
+                    mode = getattr(overlay, "_analysis_btn_mode", None)
+                except Exception:
+                    mode = None
+                if mode != want:
+                    try:
+                        from tabs.image_gallery.ui.quick_look.labels_theme import _set_colored_text
+
+                        _set_colored_text(btn, want, None)
+                    except Exception:
+                        pass
+                    try:
+                        overlay._analysis_btn_mode = want
+                    except Exception:
+                        pass
         except Exception:
             pass
         try:

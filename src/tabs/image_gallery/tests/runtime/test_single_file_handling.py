@@ -290,3 +290,36 @@ def test_widget_pick_dialog_allows_image_file(tmp_path: Path, qtbot, monkeypatch
     assert chosen == str(fake_file)
     assert Path(chosen).is_file()
     assert Path(chosen).suffix == ".jpg"
+
+
+def test_reanalyze_bypasses_cache_and_starts_worker(tmp_path, monkeypatch):
+    """Re-analyze ignores the disk cache: PENDING + worker, never instant DONE."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+    from tabs.image_gallery.services import ai_cache
+    from tabs.image_gallery.services.ai_settings_store import AiSettings
+
+    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
+    path = tmp_path / "img.png"
+    path.write_bytes(b"\x00")
+    ai_cache.save_analysis(
+        path,
+        7,
+        AiAnalysisResult(
+            description="old", tags=(), model="m", analyzed_at_iso="t",
+            sharpness=10, noise=10, exposure=10, composition=10,
+            verdict="reject", verdict_reason="old",
+        ),
+    )
+    widget = _WidgetStub()
+    ctrl, _store = _make_ctrl(widget)
+    monkeypatch.setattr(
+        ctrl._ai_settings_store,
+        "load",
+        lambda: AiSettings(enabled=True, api_key="k", model="m"),
+    )
+    started = []
+    ctrl._pool_start = lambda worker, _=None: started.append(worker)  # type: ignore[method-assign]
+    item = GalleryItem(path=path, mtime_ns=7)
+    ctrl.reanalyze_item(item)
+    assert item.analysis_status == AnalysisStatus.PENDING
+    assert len(started) == 1

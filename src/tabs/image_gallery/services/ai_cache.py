@@ -69,6 +69,38 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
         return None
 
 
+def hydrate_item(item) -> bool:  # type: ignore[no-untyped-def]
+    """Fill ``item.analysis`` from the disk cache only (no worker, no settings).
+
+    Marks ``item._ai_cache_checked`` so repeated calls are free (callers
+    invoke this on every overlay populate). Returns True when the item now
+    carries an analysis. Never raises.
+    """
+    try:
+        if getattr(item, "analysis", None) is not None:
+            return True
+        if bool(getattr(item, "_ai_cache_checked", False)):
+            return False
+        try:
+            item._ai_cache_checked = True
+        except Exception:
+            pass
+        cached = load_cached_analysis(item.path, item.mtime_ns)
+        if cached is None:
+            return False
+        try:
+            from tabs.image_gallery.models import AnalysisStatus
+
+            item.analysis = cached
+            item.analysis_status = AnalysisStatus.DONE
+            item.analysis_error = None
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
     cache_path = _cache_path(path, mtime_ns)
     try:

@@ -1295,17 +1295,27 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def _on_analyze(self) -> None:
         """Trigger AI analysis for the currently viewed item (sidebar button).
 
-        Delegates to the owner (controller.analyze_item_by_path); the block
-        shows the PENDING line immediately and refresh_analysis fills it in
-        when the worker lands. Owners without the hook (bare test doubles)
-        are a silent no-op. Never raises.
+        A finished analysis re-runs forced (``reanalyze_item_by_path``,
+        cache bypassed); otherwise delegates to ``analyze_item_by_path``.
+        The block shows the PENDING line immediately and refresh_analysis
+        fills it in when the worker lands. Owners without the hook (bare
+        test doubles) are a silent no-op. Never raises.
         """
         try:
             item = getattr(self, "_current_item", None)
             if item is None:
                 return
             owner = getattr(self, "_owner", None)
-            fn = getattr(owner, "analyze_item_by_path", None)
+            try:
+                _st = getattr(item, "analysis_status", None)
+                _st_val = str(getattr(_st, "value", _st) or "")
+            except Exception:
+                _st_val = ""
+            fn = None
+            if _st_val == "done" and getattr(item, "analysis", None) is not None:
+                fn = getattr(owner, "reanalyze_item_by_path", None)
+            if not callable(fn):
+                fn = getattr(owner, "analyze_item_by_path", None)
             if not callable(fn):
                 return
             fn(Path(getattr(item, "path", "")))
