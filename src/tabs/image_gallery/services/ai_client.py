@@ -284,16 +284,25 @@ def build_request(
         "response_format": {"type": "json_object"},
     }
     if openrouter:
-        # OpenRouter extension: keep the reasoning trace out of the response
-        # (chain-of-thought models otherwise leak it into `content`).
+        # OpenRouter extensions:
+        # - reasoning.exclude: keep the chain-of-thought out of `content`.
+        # - provider routing: a cheap model's default host can be an overloaded
+        #   shared pool (429 upstream_provider_shared_pool, e.g. DeepInfra);
+        #   pick a healthy provider that actually supports response_format.
         payload["reasoning"] = {"exclude": True}
+        payload["provider"] = {
+            "require_parameters": True,
+            "sort": "throughput",
+            "allow_fallbacks": True,
+        }
     _ai_debug(
         "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
-        "reasoning_exclude=%s prompt_chars=%d",
+        "reasoning_exclude=%s provider_routing=%s prompt_chars=%d",
         model,
         openrouter,
         len(metrics or {}),
         "reasoning" in payload,
+        "provider" in payload,
         len(text),
     )
     return payload

@@ -232,9 +232,12 @@ def test_build_request_forces_json_and_hides_reasoning_on_openrouter(tmp_path):
     p = build_request(img, model="m", openrouter=True)
     assert p["response_format"] == {"type": "json_object"}
     assert p["reasoning"] == {"exclude": True}
+    assert p["provider"]["require_parameters"] is True
+    assert p["provider"]["allow_fallbacks"] is True
     p2 = build_request(img, model="m")
     assert p2["response_format"] == {"type": "json_object"}
     assert "reasoning" not in p2
+    assert "provider" not in p2
 
 
 def test_build_request_injects_measured_metrics(tmp_path):
