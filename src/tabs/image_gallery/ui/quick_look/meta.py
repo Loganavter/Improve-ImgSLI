@@ -361,33 +361,35 @@ def populate_analysis(overlay, item) -> None:
             err = None
         desc_text, tags_text = "", ""
         show_btn = False
+        verdict_text, verdict_color = "", None
         if analysis is not None and status_val == "done":
             show_btn = True
             try:
                 verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
                 reason = str(getattr(analysis, "verdict_reason", "") or "")
                 defects = list(getattr(analysis, "defects", ()) or ())
-                comp = int(getattr(analysis, "composition", -1) or -1)
-                conf = float(getattr(analysis, "confidence", 0.0) or 0.0)
                 legacy_desc = str(getattr(analysis, "description", "") or "")
             except Exception:
-                verdict, reason, defects, comp, conf, legacy_desc = "unknown", "", [], -1, 0.0, ""
+                verdict, reason, defects, legacy_desc = "unknown", "", [], ""
             defects_text = _defect_chips(defects)
-            if verdict in ("keep", "reject") or defects or comp >= 0 or reason:
-                # Line 1 = compact structured verdict; body = the practical
-                # conclusion (reason); chips = defect kinds.
-                head = []
-                if verdict in ("keep", "reject"):
-                    head.append(verdict.upper())
-                if comp >= 0:
-                    head.append(f"Composition {comp}%")
-                if conf > 0:
-                    head.append(f"confidence {int(round(conf * 100))}%")
-                line1 = " · ".join(head)
-                if reason:
-                    desc_text = f"{line1}\n{reason}" if line1 else reason
-                else:
-                    desc_text = line1
+            # No summary line: verdict is a colored badge in the header, the
+            # body is the practical conclusion, the chips are the defects.
+            # Numbers (Composition) live in the metric rows, not here.
+            if verdict in ("keep", "reject"):
+                verdict_text = verdict.upper()
+                try:
+                    from tabs.image_gallery.ui.quick_look.helpers import _token_color as _tc
+
+                    verdict_color = _tc(
+                        "gallery.status.ok" if verdict == "keep" else "gallery.status.danger",
+                        "#2e7d32" if verdict == "keep" else "#c0392b",
+                    )
+                except Exception:
+                    verdict_color = None
+                desc_text = reason
+                tags_text = defects_text
+            elif defects or reason:
+                desc_text = reason
                 tags_text = defects_text
             else:
                 # Legacy caption-only cache entry: show the description.
@@ -410,6 +412,22 @@ def populate_analysis(overlay, item) -> None:
             head = getattr(overlay, "_analysis_head", None)
             if head is not None:
                 head.setVisible(True)
+        except Exception:
+            pass
+        try:
+            vlabel = getattr(overlay, "_analysis_verdict", None)
+            if vlabel is not None:
+                if verdict_text:
+                    vlabel.setText(verdict_text)
+                    if verdict_color is not None:
+                        try:
+                            vlabel.setTextColor(verdict_color)
+                        except Exception:
+                            pass
+                    vlabel.setVisible(True)
+                else:
+                    vlabel.setText("")
+                    vlabel.setVisible(False)
         except Exception:
             pass
         try:

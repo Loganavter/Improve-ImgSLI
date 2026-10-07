@@ -766,6 +766,11 @@ def build_overlay_ui(overlay) -> None:
     overlay._analysis_title = _make_label("AI analysis", parent=analysis_head, pixel_size=13, pt=13)
     overlay._analysis_title.setObjectName("quicklook_analysis_title")
     analysis_head_lay.addWidget(overlay._analysis_title)
+    # Verdict badge: KEEP/REJECT next to the title, colored (set in
+    # populate_analysis). No numbers here — those live in the metric rows.
+    overlay._analysis_verdict = _make_label("", parent=analysis_head, pixel_size=11, pt=11.5)
+    overlay._analysis_verdict.setObjectName("quicklook_analysis_verdict")
+    analysis_head_lay.addWidget(overlay._analysis_verdict)
     analysis_head_lay.addStretch(1)
     overlay._analysis_btn = Button(text="Analyze", variant="surface", parent=analysis_head, defer_click="ripple")
     overlay._analysis_btn.setObjectName("quicklook_analysis_btn")

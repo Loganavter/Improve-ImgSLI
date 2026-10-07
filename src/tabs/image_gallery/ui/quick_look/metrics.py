@@ -749,6 +749,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     else:
         _add_score_row("typicality")
         _add_score_row("aesthetic")
+    # AI-only Composition axis (no local detector) as a normal row so the
+    # block stays text-free — numbers live in rows.
+    try:
+        _comp = int(getattr(getattr(item, "analysis", None), "composition", -1) or -1)
+    except Exception:
+        _comp = -1
+    if _comp >= 0:
+        _ccol = _band_color(_comp)
+        _add_metric_row(_titled("Composition", "composition"), f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol)
 
     # Flat placement (rows + uniform spacers) is owned by the coordinator —
     # it also re-seats the artifact rows, so either rebuild order converges.

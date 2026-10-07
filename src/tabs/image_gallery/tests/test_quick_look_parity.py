@@ -2866,10 +2866,12 @@ def test_quicklook_analysis_block_shows_verdict_defects_not_scene(qtbot):
     _show(ov, a, [a, b])
     assert ov._analysis_title.isVisibleTo(ov)
     assert ov._analysis_desc.isVisibleTo(ov)
+    # Verdict is a badge, not a line of text in the body.
+    assert ov._analysis_verdict.text() == "REJECT"
     text = ov._analysis_desc.text()
-    assert "REJECT" in text
-    assert "confidence 80%" in text
     assert "Visible halo on edges." in text
+    assert "REJECT" not in text  # no summary line in the body
+    assert "confidence" not in text.lower()
     # Scene content never appears.
     assert "A cat on a sofa" not in text
     assert "cat" not in text
@@ -2880,8 +2882,8 @@ def test_quicklook_analysis_block_shows_verdict_defects_not_scene(qtbot):
     ov.hide()
 
 
-def test_quicklook_analysis_block_shows_composition_and_confidence(qtbot):
-    """Verdict/composition/confidence render; measured axes are not repeated."""
+def test_quicklook_analysis_block_no_summary_line(qtbot):
+    """Verdict is a badge; Composition is a row; no numbers in the body."""
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item(
@@ -2904,14 +2906,15 @@ def test_quicklook_analysis_block_shows_composition_and_confidence(qtbot):
     b = _item("b.png")
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b])
+    assert ov._analysis_verdict.text() == "KEEP"
     text = ov._analysis_desc.text()
-    # Sharpness/Noise/Exposure are NOT repeated here: the metric rows above
-    # already report them with real measured values.
-    assert "Sharpness" not in text and "Noise" not in text and "Exposure" not in text
-    assert "Composition 80%" in text
-    assert "KEEP" in text
-    assert "confidence 90%" in text
-    assert "Clean and sharp." in text
+    assert text == "Clean and sharp."  # just the conclusion, no summary line
+    assert "Composition" not in text and "confidence" not in text.lower()
+    # Composition lives as a metric row now.
+    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "Composition" in titles
+    assert "Composition 80%" not in titles  # value is the separate right label
+    assert any(lbl.text() == "80%" for row in ov._metric_rows for lbl in row.findChildren(_QlLabel))
     assert ov._analysis_btn.isVisibleTo(ov)
     ov.hide()
 
@@ -3129,7 +3132,7 @@ def test_quicklook_analysis_hydrates_cache_on_open(qtbot, tmp_path, monkeypatch)
     QApplication.processEvents()
     assert hydrated == [item.path]
     assert item.analysis_status == AnalysisStatus.DONE
-    assert "KEEP" in ov._analysis_desc.text()
+    assert ov._analysis_verdict.text() == "KEEP"
     ov.hide()
 
 

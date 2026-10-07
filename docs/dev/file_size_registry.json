@@ -837,7 +837,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
-      "lines": 827,
+      "lines": 836,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",
@@ -849,7 +849,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 933,
+      "lines": 938,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",

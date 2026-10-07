@@ -36,9 +36,9 @@ PROMPT_TEMPLATE = (
     "(2-5 words) of what you actually see — e.g. noise: \"coarse film "
     "grain\", sharpness: \"soft, mushy edges\", halo: \"bright edge glow\". "
     "Allowed axis ids: sharpness, exposure, clipping, noise, white_balance, "
-    "ssim, detail_gain, color_accuracy, typicality, aesthetic, banding, "
-    "halo, blocking, over_smoothing, invented_texture, chroma_fringing. "
-    "Omit axes you cannot judge.\n"
+    "ssim, detail_gain, color_accuracy, typicality, aesthetic, composition, "
+    "banding, halo, blocking, over_smoothing, invented_texture, "
+    "chroma_fringing. Omit axes you cannot judge.\n"
     "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
     "restatement. Say what the processing actually did to it, whether the "
     "result is usable, and what a human should watch for. Base it on what "
@@ -103,6 +103,7 @@ _AXIS_IDS = (
     "color_accuracy",
     "typicality",
     "aesthetic",
+    "composition",
     "banding",
     "halo",
     "blocking",
