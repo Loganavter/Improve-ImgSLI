@@ -45,7 +45,12 @@ def _load() -> dict | bool:
         try:
             import piq  # type: ignore
 
-            _models = {"lpips": piq.LPIPS(), "dists": piq.DISTS()}
+            _models = {
+                "lpips": piq.LPIPS(),
+                "dists": piq.DISTS(),
+                # NR overall quality (no reference needed) for camera/batch.
+                "brisque": piq.brisque,
+            }
             logger.debug("learned quality backend ready (piq)")
         except Exception:
             logger.debug("learned quality backend unavailable", exc_info=True)
@@ -104,4 +109,33 @@ def pair_metrics(item_image, source_image, *, max_edge: int = _LEARNED_MAX_EDGE)
         return {k: v for k, v in out.items() if v == v and v not in (float("inf"), float("-inf"))}
     except Exception:
         logger.debug("learned pair metrics failed", exc_info=True)
+        return {}
+
+
+def nr_metrics(image, *, max_edge: int = _LEARNED_MAX_EDGE) -> dict:
+    """No-reference overall quality (BRISQUE, lower = better) for one image.
+
+    For camera/batch modes where there is no source to anchor against. Returns
+    ``{}`` when the backend is unavailable — fail-open to "not measured".
+    """
+    models = _load()
+    if not models or image is None:
+        return {}
+    try:
+        import torch
+
+        w, h = image.size
+        m = max(int(w), int(h))
+        if m > max_edge > 0:
+            scale = max_edge / m
+            size = (max(1, int(w * scale)), max(1, int(h * scale)))
+        else:
+            size = (max(1, int(w)), max(1, int(h)))
+        # BRISQUE operates on the 0-255 scale.
+        t = _tensor(image, size) * 255.0
+        with torch.no_grad():
+            value = float(models["brisque"](t, data_range=255.0).item())
+        return {"brisque": value} if value == value else {}
+    except Exception:
+        logger.debug("nr_metrics failed", exc_info=True)
         return {}

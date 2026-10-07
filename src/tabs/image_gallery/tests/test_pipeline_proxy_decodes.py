@@ -210,7 +210,9 @@ def test_fidelity_equivalence_and_keys(tmp_path: Path) -> None:
     item = _paint(tmp_path / "item.png", "checker")
     clear_proxy_cache()
     via_paths = compute_fidelity_metrics(item, source)
-    assert set(via_paths) == {"ssim", "hf_ratio", "delta_e", "upscale_factor"}
+    base = {"ssim", "hf_ratio", "delta_e", "upscale_factor"}
+    # `lpips`/`dists` appear only when the optional learned backend is installed.
+    assert base <= set(via_paths) <= base | {"lpips", "dists"}
     item_proxy = proxy_for(item)
     src_proxy = proxy_for(source)
     assert item_proxy is not None and src_proxy is not None

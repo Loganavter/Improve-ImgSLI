@@ -34,10 +34,17 @@ def test_pair_metrics_none_images(monkeypatch) -> None:
     assert qm.pair_metrics(None, None) == {}
 
 
+def test_nr_metrics_unavailable_returns_empty(monkeypatch) -> None:
+    from tabs.image_gallery.services import quality_models as qm
+
+    monkeypatch.setattr(qm, "_models", False)
+    assert qm.nr_metrics(_img()) == {}
+
+
 def test_learned_metric_specs_map_lower_is_better() -> None:
     from tabs.image_gallery.services import metric_scores as ms
 
-    for mid, cap in (("lpips", 0.8), ("dists", 0.6)):
+    for mid, cap in (("lpips", 0.8), ("dists", 0.6), ("brisque", 50.0)):
         spec = ms.spec_for(mid)
         assert spec is not None and spec.label
         assert ms.score_for(spec, 0.0) == 100

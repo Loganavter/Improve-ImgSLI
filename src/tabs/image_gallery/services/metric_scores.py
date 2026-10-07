@@ -100,6 +100,8 @@ SPECS: tuple[MetricSpec, ...] = (
     # Caps chosen so typical upscaler distances map to the mid band.
     MetricSpec("lpips", "Perceptual (LPIPS)", ("lpips",), _lower_is_better(0.8)),
     MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6)),
+    # No-reference overall quality (BRISQUE; 0 = best, lower is better).
+    MetricSpec("brisque", "Perceptual quality", ("brisque",), _lower_is_better(50.0)),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -172,6 +174,7 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "aesthetic": ("pleasing", "ordinary", "unappealing"),
     "lpips": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
+    "brisque": ("perceptually clean", "some degradation", "poor perceptual quality"),
     "composition": ("well composed", "ok composition", "poor composition"),
     "banding": ("smooth gradients", "mild banding", "visible banding"),
     "halo": ("clean edges", "some halo", "strong halo"),
