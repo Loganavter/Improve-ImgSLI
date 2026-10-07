@@ -1,5 +1,5 @@
 """Stage 2 artifact catalog — 7 local detectors + severity.
-Audit-Meta: pattern=tiled-pipeline size=670 reason="7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
+Audit-Meta: pattern=tiled-pipeline size=679 reason="7 pure detectors sharing PIL/numpy helpers + source-anchor delta — single catalog lifecycle"
 
 Pure PIL/numpy, no Qt (so workers can run off the main thread and tests
 stay headless).  Each detector is a pure function:
@@ -8,7 +8,10 @@ stay headless).  Each detector is a pure function:
 
 Heuristics are intentionally simple — histogram / Laplacian / DCT-ish /
 gradient approximations — and only need to be directionally correct for
-the triage pipeline (warm/red dots + quick look report).
+the triage pipeline (warm/red dots + quick look report). When a source is
+available, the absolute detectors are anchored to it (see ``_ANCHORED`` /
+``_anchor_severity``): only a severity worse than the source's own counts,
+so a constant content bias cancels in the delta.
 
 Public API:
     Severity enum  — clean / mild / flagged
@@ -57,6 +60,47 @@ except Exception:  # pragma: no cover — fallback when models not importable
 _SEV_CLEAN = Severity.CLEAN if hasattr(Severity, "CLEAN") else Severity("clean")  # type: ignore
 _SEV_MILD = Severity.MILD if hasattr(Severity, "MILD") else Severity("mild")  # type: ignore
 _SEV_FLAGGED = Severity.FLAGGED if hasattr(Severity, "FLAGGED") else Severity("flagged")  # type: ignore
+
+_SEV_RANK = {_SEV_CLEAN: 0, _SEV_MILD: 1, _SEV_FLAGGED: 2}
+
+# Absolute (no-reference) detectors carry a constant content bias — crisp cel
+# art reads as "halo", a clean sky can read as "banding". A gallery compares
+# variants of the SAME source, so that bias is identical across variants and
+# cancels in the delta. When a source image is available these four are
+# anchored: only a severity *worse than the source's own* counts. The three
+# source-relative detectors (over_smoothing / invented_texture /
+# noise_amplification) already compare against the source — never anchor them.
+_ANCHORED: tuple = (
+    Artifact.BANDING,
+    Artifact.HALO,
+    Artifact.BLOCKING,
+    Artifact.CHROMA_FRINGING,
+)
+
+
+def _coerce_severity(value) -> "Severity":
+    """Normalize a detector return (Enum or plain str) to ``Severity``."""
+    if isinstance(value, str):
+        try:
+            return Severity(value.lower())  # type: ignore[call-arg]
+        except Exception:
+            return _SEV_CLEAN
+    return value if value in _SEV_RANK else _SEV_CLEAN
+
+
+def _anchor_severity(cand, source) -> "Severity":
+    """Candidate severity relative to the source's own severity (the delta).
+
+    ``cand == source`` (self-pair) ⇒ ``clean``: a constant content bias cannot
+    manufacture an artifact. Only a candidate genuinely worse than its source
+    flags (one level worse ⇒ ``mild``, two+ ⇒ ``flagged``).
+    """
+    delta = _SEV_RANK.get(_coerce_severity(cand), 0) - _SEV_RANK.get(_coerce_severity(source), 0)
+    if delta >= 2:
+        return _SEV_FLAGGED
+    if delta == 1:
+        return _SEV_MILD
+    return _SEV_CLEAN
 
 # ---------------------------------------------------------------------------
 # numpy helpers — imported lazily so the module still imports on systems
@@ -577,6 +621,12 @@ def analyze_images(
     PIL images) instead of decoding per stage. Never mutates or closes the
     inputs (they may be shared cached proxies). Returns all 7 keys, clean
     on error or when *pil_image* is None (fail-closed).
+
+    When *source_image* is given, the absolute detectors in ``_ANCHORED`` are
+    reported as a delta vs the source (self-pair ⇒ clean) so a constant content
+    bias cannot manufacture an artifact; the source-relative detectors already
+    compare against the source and are left as-is. With no source the old
+    absolute severities are returned unchanged.
     """
     result: dict[Artifact, Severity] = {}
     for art in Artifact:
@@ -585,13 +635,12 @@ def analyze_images(
         return result
     for art, fn in _DETECTORS.items():
         try:
-            sev = fn(pil_image, source_image)  # type: ignore[arg-type]
-            # Normalize to Severity enum (accept plain str returns).
-            if isinstance(sev, str):
-                try:
-                    sev = Severity(sev.lower())  # type: ignore[call-arg]
-                except Exception:
-                    sev = _SEV_CLEAN
+            if source_image is not None and art in _ANCHORED:
+                cand = _coerce_severity(fn(pil_image, None))  # type: ignore[arg-type]
+                src = _coerce_severity(fn(source_image, None))  # type: ignore[arg-type]
+                sev = _anchor_severity(cand, src)
+            else:
+                sev = _coerce_severity(fn(pil_image, source_image))  # type: ignore[arg-type]
             result[art] = sev  # type: ignore[assignment]
         except Exception:
             result[art] = _SEV_CLEAN

@@ -98,18 +98,20 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             item_path = str(getattr(item, "path", "") or "")
         except Exception:
             item_path = ""
-        # AI axis_notes render in the row headers — they must invalidate the
-        # fingerprint so a late analysis rebuilds the rows (else the notes
-        # never appear on an already-built row set).
+        # Metric rows depend on the AI-only Composition axis (a row) — include
+        # the analysis identity so a late analysis still rebuilds the row set.
+        # Per-axis AI notes are NOT part of the rows anymore (plan UX contract).
         try:
-            notes_part = tuple(
-                sorted(
-                    (str(k), str(v))
-                    for k, v in (getattr(getattr(item, "analysis", None), "axis_notes", {}) or {}).items()
-                )
+            _a = getattr(item, "analysis", None)
+            analysis_part = (
+                int(getattr(_a, "composition", -1) or -1),
+                str(getattr(_a, "verdict", "") or ""),
+                tuple(
+                    sorted(str(getattr(d, "kind", "")) for d in (getattr(_a, "defects", ()) or ()))
+                ),
             )
         except Exception:
-            notes_part = ()
+            analysis_part = ()
         try:
             series = list(getattr(overlay, "_series_items", None) or [])
             series_len = len(series)
@@ -128,7 +130,7 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             sp = int(scaled_px(2))
         except Exception:
             sp = 2
-        return (item_path, metrics_part, notes_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
+        return (item_path, metrics_part, analysis_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
     except Exception:
         return ()
 
@@ -579,17 +581,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     metrics = getattr(item, "metrics", None) or {}
     if not isinstance(metrics, dict):
         metrics = {}
-    # AI vision note per axis (canonical metric id → short phrase), shown as
-    # "Label — note" in the row header when present.
-    try:
-        _axis_notes = dict(getattr(getattr(item, "analysis", None), "axis_notes", {}) or {})
-    except Exception:
-        _axis_notes = {}
-
     def _titled(label: str, spec_id: str, score: int) -> str:
-        # AI vision note when present, else a band descriptor so every row
-        # still carries a short meaning.
-        note = _axis_notes.get(spec_id) or _fallback_note(spec_id, score)
+        # Local band descriptor only. The VLM does not own per-axis notes
+        # (plan-gallery-ai-quality UX contract): its read lives in the AI
+        # block (verdict/reason/defect chips), never on a measured row — so
+        # the row reads as one measured answer, not two competing systems.
+        note = _fallback_note(spec_id, score)
         return f"{label} — {note}" if note else label
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:

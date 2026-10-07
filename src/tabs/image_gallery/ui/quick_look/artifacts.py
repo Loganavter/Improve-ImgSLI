@@ -55,13 +55,9 @@ def rebuild_artifacts(overlay, item) -> None:
     # Drop the noise artifact row: the measured "Clean" metric above already
     # reports noise (continuously), so a second Noise row is a duplicate.
     shown = [(aid, sev) for aid, sev in shown if aid != "noise_amplification"]
-    # The AI axis_notes render in the headers — include them in the change
-    # key so a late analysis triggers a rebuild (else the notes never show).
-    try:
-        _notes = dict(getattr(getattr(item, "analysis", None), "axis_notes", {}) or {})
-    except Exception:
-        _notes = {}
-    shown_key = [(aid, lvl, _notes.get(aid, "")) for aid, lvl in shown]
+    # Rows depend only on the local (source-anchored) severity — no AI note in
+    # the change key (plan-gallery-ai-quality UX contract).
+    shown_key = [(aid, lvl) for aid, lvl in shown]
 
 
     # Delivery handlers fire per worker result: rebuilding identical rows
@@ -102,17 +98,15 @@ def rebuild_artifacts(overlay, item) -> None:
         # color reuses the single severity mapping (ui/card/dots.py).
         label = _POSITIVE_ARTIFACT_LABELS.get(aid, aid)
         score = _ARTIFACT_QUALITY.get(lvl, 100)
+        # Local band descriptor only — the VLM's per-axis read is never shown
+        # on the row (plan-gallery-ai-quality UX contract; its narration lives
+        # in the AI block). The severity is already source-anchored upstream.
         try:
-            _note = (getattr(getattr(item, "analysis", None), "axis_notes", {}) or {}).get(aid)
-        except Exception:
-            _note = None
-        if not _note:
-            try:
-                from tabs.image_gallery.services.metric_scores import fallback_note as _fb
+            from tabs.image_gallery.services.metric_scores import fallback_note as _fb
 
-                _note = _fb(aid, score)
-            except Exception:
-                _note = ""
+            _note = _fb(aid, score)
+        except Exception:
+            _note = ""
         if _note:
             label = f"{label} — {_note}"
         try:

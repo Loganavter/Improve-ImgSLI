@@ -2936,8 +2936,12 @@ def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
     ov.hide()
 
 
-def test_metric_row_header_includes_ai_axis_note(qtbot):
-    """AI per-axis note is appended to the metric row title (Label — note)."""
+def test_metric_row_header_uses_local_note_not_ai(qtbot):
+    """AI per-axis notes are NOT shown on rows; the local band note is.
+
+    plan-gallery-ai-quality UX contract: one measured answer per row, the VLM
+    read lives in the AI block only.
+    """
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item(
@@ -2955,13 +2959,16 @@ def test_metric_row_header_includes_ai_axis_note(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.CAMERA)
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert "Clean — coarse film grain" in titles
-    assert "Sharpness — soft edges" in titles
+    assert not any("coarse film grain" in t for t in titles)
+    assert not any("soft edges" in t for t in titles)
+    # Local band descriptors still carry meaning (noise 0.9 -> bad, sharp 200 -> mid).
+    assert "Clean — heavy noise/grain" in titles
+    assert "Sharpness — slightly soft" in titles
     ov.hide()
 
 
-def test_refresh_metrics_rebuilds_when_axis_notes_arrive(qtbot):
-    """A late analysis (axis_notes) must rebuild the metric rows in place."""
+def test_refresh_metrics_rebuilds_when_analysis_arrives(qtbot):
+    """A late analysis (Composition) must rebuild the metric rows in place."""
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item("a.png", metrics={"noise": 0.9})
@@ -2969,21 +2976,20 @@ def test_refresh_metrics_rebuilds_when_axis_notes_arrive(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b], mode=Mode.CAMERA)
     before = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert not any("coarse film grain" in t for t in before)
+    assert not any(t.startswith("Composition") for t in before)
     a.analysis = AiAnalysisResult(
-        description="", tags=(), model="m", analyzed_at_iso="t",
-        axis_notes={"noise": "coarse film grain"},
+        description="", tags=(), model="m", analyzed_at_iso="t", composition=80,
     )
     a.analysis_status = AnalysisStatus.DONE
     ov.refresh_metrics(a)
     QApplication.processEvents()
     after = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert "Clean — coarse film grain" in after
+    assert any(t.startswith("Composition") for t in after)
     ov.hide()
 
 
-def test_axis_notes_hydrated_before_metrics_on_open(qtbot, tmp_path, monkeypatch):
-    """A disk-cached analysis with notes shows them on open (no walk)."""
+def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
+    """A disk-cached analysis shows in the AI block on open (no walk)."""
     from tabs.image_gallery.models import AiAnalysisResult
     from tabs.image_gallery.services import ai_cache
 
@@ -2993,7 +2999,7 @@ def test_axis_notes_hydrated_before_metrics_on_open(qtbot, tmp_path, monkeypatch
         7,
         AiAnalysisResult(
             description="", tags=(), model="m", analyzed_at_iso="t",
-            axis_notes={"noise": "coarse film grain"},
+            verdict="keep", verdict_reason="Usable result.",
         ),
     )
     item = GalleryItem(path=Path("/g/hnote.png"), mtime_ns=7, metrics={"noise": 0.9})
@@ -3011,8 +3017,9 @@ def test_axis_notes_hydrated_before_metrics_on_open(qtbot, tmp_path, monkeypatch
         parent.resize(1280, 800)
         parent.show()
     QApplication.processEvents()
+    assert ov._analysis_desc.text() == "Usable result."
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert "Clean — coarse film grain" in titles
+    assert not any("coarse film grain" in t for t in titles)
     ov.hide()
 
 
@@ -3027,7 +3034,7 @@ def test_metric_row_header_has_fallback_note_without_ai(qtbot):
     ov.hide()
 
 
-def test_artifact_row_header_includes_ai_axis_note(qtbot):
+def test_artifact_row_header_uses_local_note_not_ai(qtbot):
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item(
@@ -3046,7 +3053,9 @@ def test_artifact_row_header_includes_ai_axis_note(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a])
     titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    assert "Edges — bright edge glow" in titles
+    assert not any("bright edge glow" in t for t in titles)
+    # Local band note for a mild halo still carries meaning.
+    assert any(t.startswith("Edges — ") for t in titles)
     ov.hide()
 
 

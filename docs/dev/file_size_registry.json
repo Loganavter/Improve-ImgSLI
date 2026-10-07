@@ -742,7 +742,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/ai_client.py",
-      "lines": 583,
+      "lines": 577,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=wire-client size=551 reason=\"one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
@@ -754,14 +754,14 @@
     },
     {
       "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 633,
+      "lines": 682,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
+      "raw": "pattern=tiled-pipeline size=679 reason=\"7 pure detectors sharing PIL/numpy helpers + source-anchor delta — single catalog lifecycle\"",
       "parsed": {
         "pattern": "tiled-pipeline",
-        "size": "670",
-        "reason": "7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
+        "size": "679",
+        "reason": "7 pure detectors sharing PIL/numpy helpers + source-anchor delta — single catalog lifecycle"
       }
     },
     {
@@ -838,7 +838,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1523,
+      "lines": 1524,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -849,7 +849,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
-      "lines": 839,
+      "lines": 836,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",

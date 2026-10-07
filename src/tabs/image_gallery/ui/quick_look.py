@@ -1023,9 +1023,10 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
-        # Hydrate the cached analysis BEFORE metrics/artifacts rebuild: their
-        # row headers carry the AI axis_notes, so the analysis must be on the
-        # item by then (otherwise a cached analysis opens without notes).
+        # Hydrate the cached analysis BEFORE the report rebuild: the AI block
+        # (verdict/reason/defects) and the Composition row must be on the item
+        # by then (otherwise a cached analysis opens empty). Per-axis AI notes
+        # no longer render on rows (plan-gallery-ai-quality UX contract).
         try:
             if getattr(item, "analysis", None) is None:
                 _owner = getattr(self, "_owner", None)

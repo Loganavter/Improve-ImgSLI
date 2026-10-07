@@ -52,31 +52,25 @@ PROMPT_TEMPLATE = (
     "Judge quality and DEFECTS only — never describe the scene, objects or "
     "content: they are identical across variants and add nothing.\n"
     "You are given the locally measured metrics; treat them as authoritative "
-    "and do not contradict them.\n"
+    "and do not contradict them. The per-axis numbers and severities are the "
+    "local detectors' job — do NOT restate or re-judge them per axis; give "
+    "ONE overall conclusion instead.\n"
     "Reply with ONLY a JSON object, no prose and no code fences:\n"
     '{"verdict": "keep|reject", "reason": "practical assessment", '
     '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
     'over_smoothing|invented_texture|clipping|other", '
     '"severity": "mild|flagged", "note": "short visual description"}], '
-    '"composition": <0-100>, "confidence": <0.0-1.0>, '
-    '"axis_notes": {"<axis_id>": "<short phrase>"}}\n'
-    "axis_notes: for each axis you can judge FROM THE IMAGE, a SHORT phrase "
-    "(2-5 words) of what you actually see — e.g. noise: \"coarse film "
-    "grain\", sharpness: \"soft, mushy edges\", halo: \"bright edge glow\". "
-    "Give a note for EVERY measured axis listed above AND every defect you "
-    "report — never omit one (if the exact axis is not shown, skip only that "
-    "one). Allowed axis ids: sharpness, exposure, clipping, noise, "
-    "white_balance, ssim, detail_gain, color_accuracy, typicality, "
-    "aesthetic, composition, banding, halo, blocking, over_smoothing, "
-    "invented_texture, chroma_fringing.\n"
+    '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
+    "defects: report only artifacts you actually SEE; prefer an empty list "
+    "when the image is clean. These are top-level observations, not a "
+    "per-axis verdict.\n"
     "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
     "restatement. Say what the processing actually did to it, whether the "
     "result is usable, and what a human should watch for. Base it on what "
     "you SEE; do NOT repeat the measured metric values or their scores "
     "(those are already shown above).\n"
-    "Use an empty defects list when the image is clean. composition is your "
-    "subjective framing/quality score — the one axis the local detectors "
-    "cannot measure.\n"
+    "composition is your subjective framing/quality score — the one axis the "
+    "local detectors cannot measure.\n"
     "Output the JSON object ONLY: no reasoning, no analysis steps, no "
     "preamble, no prose before or after the JSON."
 )
