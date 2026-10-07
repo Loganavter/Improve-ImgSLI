@@ -256,10 +256,15 @@ def detect_banding(pil_image: Image.Image, source_image: Image.Image | None = No
 
 
 def detect_halo(pil_image: Image.Image, source_image: Image.Image | None = None) -> Severity:
-    """Halo / edge overshoot — gradient overshoot ratio at strong edges.
+    """Halo / edge overshoot — pixels that overshoot the local edge plateau.
 
-    Oversharpening produces bright/dark halos near strong edges:
-    Laplacian magnitude spikes near high-gradient pixels.
+    A plain (even crisp/cel) step edge is monotonic: the pixels on each side of
+    a strong edge sit at their plateau values. Oversharpening overshoots *past*
+    the plateau — a bright rim on the bright side, a dark rim on the dark side
+    — and that is the only signature that separates a real halo from a plain
+    hard edge. The old ring-Laplacian heuristic flagged any strong edge (crisp
+    cartoons, JPEG ringing); this measures plateau exceedance instead and flags
+    only when the overshoot is systematic across strong edges (robust median).
     """
     try:
         arr = _to_gray_array(pil_image)
@@ -267,59 +272,37 @@ def detect_halo(pil_image: Image.Image, source_image: Image.Image | None = None)
         if arr is None or np is None:
             return _SEV_CLEAN
         h, w = arr.shape
-        if h < 8 or w < 8:
+        if h < 12 or w < 12:
             return _SEV_CLEAN
-        # Gradient magnitude via abs diff.
-        gx = np.zeros_like(arr)
-        gy = np.zeros_like(arr)
-        gx[:, :-1] = np.abs(arr[:, 1:] - arr[:, :-1])
-        gy[:-1, :] = np.abs(arr[1:, :] - arr[:-1, :])
-        grad = np.maximum(gx, gy)
-        # Strong edge mask: top 8% of gradient.
-        try:
-            thr = float(np.percentile(grad, 92))
-        except Exception:
-            thr = 30.0
-        thr = max(thr, 18.0)
-        edge_mask = grad >= thr
-        edge_count = int(np.sum(edge_mask))
-        if edge_count < 20:
+        samples = []
+        # Horizontal edges between x and x+1: plateaus at x-2 / x+3, near
+        # pixels at x / x+1. Overshoot = a near pixel beyond the plateau range.
+        _L, _ln, _rn, _R = arr[:, 2:-4], arr[:, 4:-2], arr[:, 5:-1], arr[:, 7:]
+        n = min(_L.shape[1], _ln.shape[1], _rn.shape[1], _R.shape[1])
+        if n > 0:
+            L, ln, rn, R = _L[:, :n], _ln[:, :n], _rn[:, :n], _R[:, :n]
+            strong = np.abs(R - L) >= max(float(np.percentile(np.abs(R - L), 90)), 12.0)
+            hi, lo = np.maximum(L, R), np.minimum(L, R)
+            over = np.maximum(np.maximum(rn - hi, lo - rn), np.maximum(ln - hi, lo - ln))
+            samples.append(np.maximum(over, 0.0)[strong])
+        # Vertical edges.
+        _T, _tn, _bn, _B = arr[2:-4, :], arr[4:-2, :], arr[5:-1, :], arr[7:, :]
+        m = min(_T.shape[0], _tn.shape[0], _bn.shape[0], _B.shape[0])
+        if m > 0:
+            T, tn, bn, B = _T[:m], _tn[:m], _bn[:m], _B[:m]
+            strong = np.abs(B - T) >= max(float(np.percentile(np.abs(B - T), 90)), 12.0)
+            hi, lo = np.maximum(T, B), np.minimum(T, B)
+            over = np.maximum(np.maximum(bn - hi, lo - bn), np.maximum(tn - hi, lo - tn))
+            samples.append(np.maximum(over, 0.0)[strong])
+        allv = [s for s in samples if s.size]
+        if not allv:
             return _SEV_CLEAN
-        lap = _laplacian(arr)
-        if lap is None:
-            return _SEV_CLEAN
-        # Dilate edge mask 1px to include halo ring.
-        # Approximate dilation by OR with shifted copies (numpy).
-        try:
-            dilated = np.copy(edge_mask)
-            dilated[1:, :] |= edge_mask[:-1, :]
-            dilated[:-1, :] |= edge_mask[1:, :]
-            dilated[:, 1:] |= edge_mask[:, :-1]
-            dilated[:, :-1] |= edge_mask[:, 1:]
-            # Ring = dilated & ~edge_mask
-            ring = dilated & (~edge_mask)
-            ring_count = int(np.sum(ring))
-            if ring_count < 10:
-                return _SEV_CLEAN
-            # Overshoot ratio: mean |lap| in ring vs edge.
-            mean_lap_ring = float(np.mean(np.abs(lap[ring]))) if ring_count else 0.0
-            mean_lap_edge = float(np.mean(np.abs(lap[edge_mask]))) if edge_count else 1.0
-            # Normalize by local contrast: divide by mean gradient at edges.
-            mean_grad_edge = float(np.mean(grad[edge_mask])) if edge_count else 1.0
-            # Overshoot score: halo ringing gives high lap in ring relative to gradient.
-            # Heuristic: ring lap / (grad_edge+1)
-            score = mean_lap_ring / (mean_grad_edge + 8.0)
-            # Alternatively use ratio ring/edge lap.
-            ratio = mean_lap_ring / (mean_lap_edge + 1e-6) if mean_lap_edge > 1e-6 else 0.0
-            # Combine.
-            combined = max(score * 3.0, ratio * 0.5)
-            if combined >= 0.55:
-                return _SEV_FLAGGED
-            if combined >= 0.30:
-                return _SEV_MILD
-            return _SEV_CLEAN
-        except Exception:
-            return _SEV_CLEAN
+        median_over = float(np.median(np.concatenate(allv)))
+        if median_over >= 4.0:
+            return _SEV_FLAGGED
+        if median_over >= 2.0:
+            return _SEV_MILD
+        return _SEV_CLEAN
     except Exception:
         return _SEV_CLEAN
 
