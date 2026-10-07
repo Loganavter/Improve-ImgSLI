@@ -18,7 +18,7 @@ from PIL import Image
 from PySide6.QtCore import QThreadPool
 
 from tabs.image_gallery.controller import GalleryController
-from tabs.image_gallery.models import GalleryItem, GalleryState, Series, TriageState
+from tabs.image_gallery.models import GalleryItem, GalleryState, Mode, Series, TriageState
 
 
 def _vsplit(path: Path, left: tuple, right: tuple, w: int = 64, h: int = 64) -> Path:
@@ -172,6 +172,32 @@ def test_tail_cluster_uses_cached_signatures(tmp_path, monkeypatch) -> None:
     # Only the genuinely-new file decoded; the cached tail never re-read.
     assert sorted(decoded) == sorted([f"phash:{red_b}", f"embed:{red_b}"])
     assert [s.id for s in ctrl.state.series] == ["series_2", "series_3"]
+
+
+def test_append_starts_stage2_analysis_for_new_items(tmp_path, monkeypatch) -> None:
+    """Appended items get Stage-2 analyses (artifacts/fidelity/camera).
+
+    Regression: the quiet-append attach path attached the card but never
+    called ``_start_proxy_analysis``, so a file dropped after the first
+    series showed "not measured" rows while the first-drop cards were fully
+    analyzed.
+    """
+    ctrl, _widget, _blues = _grouped_ctrl(tmp_path)
+    ctrl.state.mode = Mode.CAMERA
+    ctrl.state.source_path = None
+    calls: list = []
+    monkeypatch.setattr(
+        ctrl,
+        "_start_proxy_analysis",
+        lambda items, src, mode: calls.append((list(items), src, mode)),
+    )
+    new = _vsplit(tmp_path / "new.png", (180, 30, 30), (10, 10, 10))
+    ctrl.open_paths([new])
+    assert calls, "expected a Stage-2 analysis start on append"
+    items, src, mode = calls[-1]
+    assert [str(it.path) for it in items] == [str(new)]
+    assert src is None
+    assert mode == Mode.CAMERA
 
 
 def test_huge_tail_skips_quadratic_pass(tmp_path) -> None:
