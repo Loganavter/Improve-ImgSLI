@@ -772,7 +772,10 @@ def build_overlay_ui(overlay) -> None:
     overlay._analysis_btn.clicked.connect(overlay._on_analyze)
     analysis_head_lay.addWidget(overlay._analysis_btn)
     right_lay.addWidget(analysis_head)
-    overlay._analysis_desc = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
+    # selectable: the verdict/defect text is meant to be copied out (toolkit
+    # Label, TextSelectableByMouse|Keyboard) — stock QLabel drag-select would
+    # fight the scroll area otherwise.
+    overlay._analysis_desc = _make_label("", parent=right_host, pixel_size=11, pt=11.5, selectable=True)
     overlay._analysis_desc.setObjectName("quicklook_analysis_desc")
     overlay._analysis_desc.setWordWrap(True)
     try:
@@ -781,7 +784,7 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     right_lay.addWidget(overlay._analysis_desc)
-    overlay._analysis_tags = _make_label("", parent=right_host, pixel_size=11, pt=11.5)
+    overlay._analysis_tags = _make_label("", parent=right_host, pixel_size=11, pt=11.5, selectable=True)
     overlay._analysis_tags.setObjectName("quicklook_analysis_tags")
     overlay._analysis_tags.setWordWrap(True)
     try:

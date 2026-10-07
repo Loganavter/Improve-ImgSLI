@@ -2928,6 +2928,20 @@ def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
     ov.hide()
 
 
+def test_quicklook_analysis_text_is_selectable(qtbot):
+    """The verdict/defect text can be selected (copied out), toolkit Label."""
+    from PySide6.QtCore import Qt as _Qt
+
+    a = _item("a.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a])
+    for lbl in (ov._analysis_desc, ov._analysis_tags):
+        flags = lbl.textInteractionFlags()
+        assert bool(flags & _Qt.TextInteractionFlag.TextSelectableByMouse)
+        assert bool(flags & _Qt.TextInteractionFlag.TextSelectableByKeyboard)
+    ov.hide()
+
+
 def _scored_analysis(**kw):
     from tabs.image_gallery.models import AiAnalysisResult
 
