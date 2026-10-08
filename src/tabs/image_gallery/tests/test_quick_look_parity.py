@@ -554,9 +554,8 @@ def test_set_source_flips_report_to_fidelity(qtbot):
     _show(ov, b, [a, b], mode=Mode.CAMERA)
     assert ov._report_title.text() == "" and not ov._report_title.isVisibleTo(ov._report_host)
     ov._on_set_source()
-    # b is now the source AND the viewed item → source state, not a
-    # self-comparison ("Source match 100%", "vs #1").
-    assert ov._report_title.text() == "Source"
+    # b is now the source AND the viewed item → no comparison report at all.
+    assert ov._report_title.text() == ""
     assert ov._owner.state.mode == Mode.FIDELITY
     assert ov._owner.state.source_path == b.path
     ov.hide()
@@ -568,9 +567,11 @@ def test_viewing_source_shows_source_state_not_self_compare(qtbot):
     variant = _item("v.png", metrics={"ssim": 0.9, "hf_ratio": 0.1, "delta_e": 2.0, "upscale_factor": 2})
     ov = _make_overlay(qtbot)
     _show(ov, src, [src, variant], source=src.path)
-    assert ov._report_title.text() == "Source"
+    # No header, no comparison rows, no "vs #N" brief for the source.
+    assert ov._report_title.text() == ""
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
     assert not any("Source match" in t for t in titles)
+    assert ov._brief_label.text() == ""
     ov.hide()
 
 

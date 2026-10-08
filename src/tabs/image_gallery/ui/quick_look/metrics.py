@@ -696,13 +696,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     except Exception:
         _viewing_source = False
     if is_fidelity and _viewing_source:
-        _add_metric_row(
-            "Source",
-            "reference — variants are compared to this",
-            1.0,
-            _ok_color(),
-            value_elide=False,
-        )
+        pass  # the source is the reference — no comparison report rows
     elif is_fidelity:
         rank = getattr(item, "rank", None) or getattr(item, "crown_rank", None)
         rank_txt = f"#{rank} of {len(overlay._series_items)}" if rank is not None else f"#{overlay._current_idx+1} of {len(overlay._series_items)}"

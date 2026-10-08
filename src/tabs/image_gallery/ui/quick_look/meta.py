@@ -249,6 +249,18 @@ def local_brief_fallback(item, series_items) -> str:
 
 def populate_brief(overlay, item) -> None:
     try:
+        # The source is the reference — no "vs #N" comparison brief for it.
+        try:
+            _sp = getattr(overlay, "_source_path", None)
+            if _sp is not None and Path(getattr(item, "path", "")) == Path(_sp):
+                overlay._brief_label.setText("")
+                overlay._brief_label.setVisible(False)
+                div = getattr(overlay, "_div_series", None)
+                if div is not None:
+                    div.setVisible(False)
+                return
+        except Exception:
+            pass
         brief = ""
         vlm_brief = getattr(item, "vlm_brief", None)
         status = getattr(item, "vlm_brief_status", "none")
