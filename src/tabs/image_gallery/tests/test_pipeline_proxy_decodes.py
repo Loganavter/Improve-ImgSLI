@@ -211,8 +211,10 @@ def test_fidelity_equivalence_and_keys(tmp_path: Path) -> None:
     clear_proxy_cache()
     via_paths = compute_fidelity_metrics(item, source)
     base = {"ssim", "hf_ratio", "delta_e", "upscale_factor"}
-    # `lpips`/`dists` appear only when the optional learned backend is installed.
-    assert base <= set(via_paths) <= base | {"lpips", "dists"}
+    # `clipping_delta` is always present; `lpips`/`dists` only with the optional
+    # learned backend installed.
+    assert base <= set(via_paths) <= base | {"clipping_delta", "lpips", "dists"}
+    assert "clipping_delta" in via_paths
     item_proxy = proxy_for(item)
     src_proxy = proxy_for(source)
     assert item_proxy is not None and src_proxy is not None

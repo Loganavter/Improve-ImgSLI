@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 _SSIM_MAX_EDGE = 1024
 _HF_MAX_EDGE = 512
 _DELTAE_THUMB = 64
+_CLIP_MAX_EDGE = 512
 
 
 def _cap_edge(image, max_edge: int):
@@ -102,6 +103,23 @@ def _mean_rgb_distance(item_image, source_image) -> float | None:
         return None
 
 
+def _clipping_pct(image, max_edge: int = _CLIP_MAX_EDGE) -> float | None:
+    """Percent of pixels at the luminance extremes (<=2 or >=253), 0..100."""
+    try:
+        import numpy as np
+
+        gray = _cap_edge(image.convert("L"), max_edge)
+        arr = np.asarray(gray, dtype=np.uint8)
+        n = int(arr.size)
+        if n <= 0:
+            return None
+        extreme = int(np.count_nonzero((arr <= 2) | (arr >= 253)))
+        return 100.0 * extreme / n
+    except Exception:
+        logger.debug("fidelity clipping failed", exc_info=True)
+        return None
+
+
 def compute_fidelity_from_images(
     item_image,
     source_image,
@@ -156,6 +174,17 @@ def compute_fidelity_from_images(
             out["delta_e"] = float(de)
     except Exception:
         logger.debug("fidelity: delta_e failed (images)", exc_info=True)
+    # Source-relative clipping: how much MORE the item clips than the source
+    # (percentage points; >0 = the variant introduced blown highlights/crushed
+    # blacks). This is the form that matters for comparing variants — the
+    # absolute camera `clipping_pct` has no reference.
+    try:
+        clip_item = _clipping_pct(item_image)
+        clip_source = _clipping_pct(source_image)
+        if clip_item is not None and clip_source is not None:
+            out["clipping_delta"] = float(clip_item - clip_source)
+    except Exception:
+        logger.debug("fidelity: clipping_delta failed (images)", exc_info=True)
     # Optional learned perceptual metrics (LPIPS/DISTS) — only when the backend
     # is installed; absent backend returns {} so the report is unchanged.
     try:

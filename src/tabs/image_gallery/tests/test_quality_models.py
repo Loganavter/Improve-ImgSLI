@@ -81,7 +81,12 @@ def test_learned_metric_specs_map_lower_is_better() -> None:
 
     # (id, best-value, worst-value) — BRISQUE can be negative, so its range is
     # [-20, 60], not [0, cap].
-    for mid, lo, hi in (("lpips", 0.0, 0.8), ("dists", 0.0, 0.6), ("brisque", -20.0, 60.0)):
+    for mid, lo, hi in (
+        ("lpips", 0.0, 0.8),
+        ("dists", 0.0, 0.6),
+        ("brisque", -20.0, 60.0),
+        ("clipping_delta", 0.0, 5.0),
+    ):
         spec = ms.spec_for(mid)
         assert spec is not None and spec.label
         assert ms.score_for(spec, lo) == 100
@@ -98,6 +103,21 @@ def test_artifact_mild_note_reads_as_possible() -> None:
     assert fb("halo", 15) == "strong halo"  # committed
     assert fb("banding", 50) == "possible banding"
     assert fb("chroma_fringing", 50) == "possible fringing"
+
+
+def test_clipping_delta_is_source_relative() -> None:
+    """Clipping is measured as a delta vs the source, not absolute."""
+    import numpy as np
+
+    from tabs.image_gallery.services.fidelity_metrics import compute_fidelity_from_images
+
+    src = np.full((64, 64, 3), 128, np.uint8)
+    item = src.copy()
+    item[:32, :] = 255  # top half blown to highlight
+    out = compute_fidelity_from_images(_img_from(item), _img_from(src))
+    assert out["clipping_delta"] > 40  # ~half the pixels newly clipped
+    same = compute_fidelity_from_images(_img_from(src), _img_from(src))
+    assert abs(same["clipping_delta"]) < 1e-6
 
 
 def test_fidelity_without_backend_has_no_learned_keys(monkeypatch) -> None:

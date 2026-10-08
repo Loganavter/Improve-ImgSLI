@@ -2233,7 +2233,7 @@ class GalleryController:
         # learned perceptual keys (LPIPS/DISTS) ride along when the backend is
         # installed; absent backend → they are simply not in the entry.
         required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
-        optional = ("lpips", "dists")
+        optional = ("clipping_delta", "lpips", "dists")
         try:
             from tabs.image_gallery.use_cases import quality as _quality
         except Exception:

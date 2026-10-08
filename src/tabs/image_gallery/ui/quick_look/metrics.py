@@ -738,6 +738,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             rl.addLayout(sub)
             overlay._metric_rows.append(row)
         _add_score_row("color_accuracy")
+        # Source-relative clipping (how much more this variant clips than the
+        # source). Shown only when measured.
+        if "clipping_delta" in metrics:
+            try:
+                _cd = float(metrics.get("clipping_delta"))
+            except Exception:
+                _cd = 0.0
+            _add_score_row("clipping_delta", gap=False, extra=f"{_cd:+.2f}%")
         # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
         # when the backend is installed (the keys are absent otherwise), so no
         # empty row ever appears.

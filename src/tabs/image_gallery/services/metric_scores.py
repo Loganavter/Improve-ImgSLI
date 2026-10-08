@@ -93,6 +93,12 @@ def _brisque(v: float) -> float:
     return _clamp01(1.0 - (_clamp_raw(v) + 20.0) / 80.0)
 
 
+def _clipping_delta(v: float) -> float:
+    """Source-relative clipping (percentage points): 0 = same as source (best);
+    positive = the variant added blown highlights / crushed blacks."""
+    return _clamp01(1.0 - max(0.0, _clamp_raw(v)) / 5.0)
+
+
 # Order = report order. Positive labels: Noise→Clean, Clipping→Highlight
 # detail, ΔE→Color accuracy, SSIM→Source match.
 SPECS: tuple[MetricSpec, ...] = (
@@ -112,6 +118,8 @@ SPECS: tuple[MetricSpec, ...] = (
     MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6)),
     # No-reference naturalness (BRISQUE; lower is better, can be negative).
     MetricSpec("brisque", "Naturalness", ("brisque",), _brisque),
+    # Source-relative clipping delta (percentage points; 0 = same as source).
+    MetricSpec("clipping_delta", "Clipping vs source", ("clipping_delta",), _clipping_delta),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -189,6 +197,7 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "lpips": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "brisque": ("natural", "slightly unnatural", "unnatural"),
+    "clipping_delta": ("no added clipping", "slight added clipping", "added clipping"),
     "composition": ("well composed", "ok composition", "poor composition"),
     "banding": ("smooth gradients", "possible banding", "visible banding"),
     "halo": ("clean edges", "possible halo", "strong halo"),
