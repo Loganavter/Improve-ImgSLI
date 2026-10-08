@@ -217,6 +217,24 @@ def run_proxy_stages_sync(
             entry["artifacts"] = analyze_images(proxy.image, src_img)
         except Exception:
             logger.debug("proxy batch: artifacts failed for %s", own, exc_info=True)
+        # Coarse localization for the artifacts that actually fired (SalArt-VQA:
+        # tie a claim to local evidence). Only non-clean axes, so the tile pass
+        # stays cheap; failures leave no map.
+        try:
+            from tabs.image_gallery.services.artifact_maps import localize as _localize
+
+            maps: dict = {}
+            for art, sev in (entry.get("artifacts") or {}).items():
+                sv = str(getattr(sev, "value", sev)).lower()
+                if sv == "clean":
+                    continue
+                m = _localize(proxy.image, art, src_img, grid=5)
+                if m is not None:
+                    maps[str(getattr(art, "value", art))] = m
+            if maps:
+                entry["artifact_maps"] = maps
+        except Exception:
+            logger.debug("proxy batch: localization failed for %s", own, exc_info=True)
         if source_path is not None and src_proxy is not None:
             try:
                 try:

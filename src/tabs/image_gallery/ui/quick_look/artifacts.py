@@ -8,6 +8,29 @@ from sli_ui_toolkit.managers import scaled_px
 
 # Unified quality view of a categorical artifact: higher = cleaner/better.
 _ARTIFACT_QUALITY = {"clean": 100, "mild": 50, "flagged": 15}
+
+
+def _heatmap_pixmap(rows, px: int = 22):
+    """Coarse localization grid (0..1) -> green→yellow→red mini pixmap."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QImage, QPixmap
+
+    g = len(rows)
+    if g <= 0:
+        return None
+    img = QImage(g, g, QImage.Format.Format_ARGB32)
+    for y, row in enumerate(rows):
+        for x, value in enumerate(row):
+            try:
+                v = max(0.0, min(1.0, float(value)))
+            except Exception:
+                v = 0.0
+            r = int(255 * min(1.0, v * 2.0))
+            gg = int(255 * min(1.0, (1.0 - v) * 2.0))
+            img.setPixelColor(x, y, QColor(r, gg, 0))
+    return QPixmap.fromImage(img).scaled(
+        px, px, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation
+    )
 # Positive titles so the row reads like the metric rows (higher = better).
 _POSITIVE_ARTIFACT_LABELS = {
     "banding": "Gradients",
@@ -117,6 +140,21 @@ def rebuild_artifacts(overlay, item) -> None:
             sev_color = None
         t = _make_label(label, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
+        # Coarse localization map (where the artifact fired) when available.
+        try:
+            _hm = item.artifact_maps.get(aid) if isinstance(getattr(item, "artifact_maps", None), dict) else None
+        except Exception:
+            _hm = None
+        if _hm:
+            try:
+                from PySide6.QtWidgets import QLabel as _QLabel
+
+                _hm_lbl = _QLabel(row)
+                _hm_lbl.setPixmap(_heatmap_pixmap(_hm))
+                _hm_lbl.setToolTip("where this artifact is strongest")
+                header.addWidget(_hm_lbl)
+            except Exception:
+                pass
         header.addStretch(1)
         v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=sev_color)
         header.addWidget(v)

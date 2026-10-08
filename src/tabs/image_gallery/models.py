@@ -155,6 +155,9 @@ class GalleryItem:
     provenance_series_id: str | None = None
     # Stage 2 artifact catalog — 7 detectors, severity per artifact (design.md:67-83)
     artifacts: dict[Artifact, Severity] = field(default_factory=dict)
+    # Coarse localization per artifact name ({name: [[0..1]*grid]*grid}) for the
+    # axes that fired — a "where to look" hint (SalArt-VQA grounding).
+    artifact_maps: dict = field(default_factory=dict)
     # Stage 3 VLM fields — tie-break pending/silent degrade + compare briefs
     vlm_tie_pending: bool = False
     vlm_tie_result: TieBreakResult | None = None

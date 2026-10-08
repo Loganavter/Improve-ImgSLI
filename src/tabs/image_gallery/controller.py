@@ -2121,7 +2121,7 @@ class GalleryController:
             return
         self._apply_artifact_map(result)
 
-    def _apply_artifact_map(self, result: dict) -> None:
+    def _apply_artifact_map(self, result: dict, maps: dict | None = None) -> None:
         """Shared artifact delivery: batched repaint + quick-look refresh."""
         # Batch the card refresh: per-item refresh_card re-sweeps selection
         # over the whole grid (O(N^2) repaints in one delivery → stalled UI
@@ -2138,6 +2138,14 @@ class GalleryController:
             arts = result.get(key)
             if arts is None:
                 continue
+            # Localization rides the artifact delivery; store it even when the
+            # severities are unchanged (a first analysis after a metric-only
+            # rebuild still needs the map).
+            if maps is not None:
+                try:
+                    item.artifact_maps = maps.get(key) or {}
+                except Exception:
+                    pass
             if _quality is None:
                 continue
             try:
@@ -2435,7 +2443,11 @@ class GalleryController:
                     k: (v.get("artifacts") if isinstance(v, dict) else None)
                     for k, v in result.items()
                 }
-                self._apply_artifact_map(arts)
+                maps = {
+                    k: (v.get("artifact_maps") if isinstance(v, dict) else None)
+                    for k, v in result.items()
+                }
+                self._apply_artifact_map(arts, maps)
             if "fidelity" in wanted_set:
                 fid = {
                     k: (v.get("fidelity") if isinstance(v, dict) else None)
