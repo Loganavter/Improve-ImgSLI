@@ -685,7 +685,25 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _add_metric_row(_titled(spec.label, spec_id, score), value, score / 100.0, col, value_color=col)
         return True
 
-    if is_fidelity:
+    # A source is the reference, not a variant — comparing it to itself
+    # ("Source match 100%", "vs #1") is nonsense. Render a source state.
+    _viewing_source = False
+    try:
+        from pathlib import Path as _P
+
+        _sp = getattr(overlay, "_source_path", None)
+        _viewing_source = _sp is not None and _P(getattr(item, "path", "")) == _P(_sp)
+    except Exception:
+        _viewing_source = False
+    if is_fidelity and _viewing_source:
+        _add_metric_row(
+            "Source",
+            "reference — variants are compared to this",
+            1.0,
+            _ok_color(),
+            value_elide=False,
+        )
+    elif is_fidelity:
         rank = getattr(item, "rank", None) or getattr(item, "crown_rank", None)
         rank_txt = f"#{rank} of {len(overlay._series_items)}" if rank is not None else f"#{overlay._current_idx+1} of {len(overlay._series_items)}"
         _add_score_row("ssim", extra=rank_txt)
