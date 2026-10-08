@@ -83,6 +83,16 @@ def _aesthetic(v: float) -> float:
     return _clamp01(r if r <= 1.0 else r / 10.0)
 
 
+def _brisque(v: float) -> float:
+    """BRISQUE (piq) -> quality in [0, 1]; lower score is better.
+
+    piq's BRISQUE is roughly in [-20, 60] and can be negative, so the generic
+    ``_lower_is_better(cap)`` (which assumes [0, cap]) clamped every negative
+    to 100 % — a display bug. Map the plausible range linearly instead.
+    """
+    return _clamp01(1.0 - (_clamp_raw(v) + 20.0) / 80.0)
+
+
 # Order = report order. Positive labels: Noise→Clean, Clipping→Highlight
 # detail, ΔE→Color accuracy, SSIM→Source match.
 SPECS: tuple[MetricSpec, ...] = (
@@ -100,8 +110,8 @@ SPECS: tuple[MetricSpec, ...] = (
     # Caps chosen so typical upscaler distances map to the mid band.
     MetricSpec("lpips", "Perceptual (LPIPS)", ("lpips",), _lower_is_better(0.8)),
     MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6)),
-    # No-reference overall quality (BRISQUE; 0 = best, lower is better).
-    MetricSpec("brisque", "Perceptual quality", ("brisque",), _lower_is_better(50.0)),
+    # No-reference naturalness (BRISQUE; lower is better, can be negative).
+    MetricSpec("brisque", "Naturalness", ("brisque",), _brisque),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -174,7 +184,7 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "aesthetic": ("pleasing", "ordinary", "unappealing"),
     "lpips": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
-    "brisque": ("perceptually clean", "some degradation", "poor perceptual quality"),
+    "brisque": ("natural", "slightly unnatural", "unnatural"),
     "composition": ("well composed", "ok composition", "poor composition"),
     "banding": ("smooth gradients", "mild banding", "visible banding"),
     "halo": ("clean edges", "some halo", "strong halo"),

@@ -44,12 +44,14 @@ def test_nr_metrics_unavailable_returns_empty(monkeypatch) -> None:
 def test_learned_metric_specs_map_lower_is_better() -> None:
     from tabs.image_gallery.services import metric_scores as ms
 
-    for mid, cap in (("lpips", 0.8), ("dists", 0.6), ("brisque", 50.0)):
+    # (id, best-value, worst-value) — BRISQUE can be negative, so its range is
+    # [-20, 60], not [0, cap].
+    for mid, lo, hi in (("lpips", 0.0, 0.8), ("dists", 0.0, 0.6), ("brisque", -20.0, 60.0)):
         spec = ms.spec_for(mid)
         assert spec is not None and spec.label
-        assert ms.score_for(spec, 0.0) == 100
-        assert ms.score_for(spec, cap) == 0
-        assert ms.score_for(spec, 0.2) > ms.score_for(spec, 0.5)
+        assert ms.score_for(spec, lo) == 100
+        assert ms.score_for(spec, hi) == 0
+        assert ms.score_for(spec, lo) > ms.score_for(spec, (lo + hi) / 2) > ms.score_for(spec, hi)
 
 
 def test_fidelity_without_backend_has_no_learned_keys(monkeypatch) -> None:
