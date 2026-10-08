@@ -100,6 +100,32 @@ def test_cli_smoke_writes_json(eval_folder: Path, tmp_path: Path) -> None:
     assert data["summary"]["cel_art"]["clean"] == 1
 
 
+def test_clean_set_has_no_false_alarms(tmp_path: Path) -> None:
+    """Calibration regression: a clean image must not false-alarm (SalArt-VQA).
+
+    Guards the abstention contract — the cel-art halo FP is the motivating case.
+    """
+    from devtools.gallery_quality_eval import _load_truth, _summarize, run_eval
+
+    x = np.linspace(0, 255, 256).astype(np.uint8)
+    _write(tmp_path / "grad.png", Image.fromarray(np.tile(x, (128, 1)), "L").convert("RGB"))
+    (tmp_path / "truth.yaml").write_text(
+        "\n".join(
+            [
+                "images:",
+                "  grad.png:",
+                "    expect: {banding: clean, halo: clean, blocking: clean, chroma_fringing: clean}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    truth = _load_truth(tmp_path / "truth.yaml")
+    summary = _summarize(run_eval(tmp_path, None, truth))
+    for axis in ("banding", "halo", "blocking", "chroma_fringing"):
+        assert summary["detector"][axis]["fp"] == 0, axis
+
+
 def test_write_template_lists_images(eval_folder: Path, tmp_path: Path) -> None:
     from devtools.gallery_quality_eval import main
 
