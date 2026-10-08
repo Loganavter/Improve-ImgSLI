@@ -11,9 +11,21 @@ from pathlib import Path
 def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
     try:
         if is_fidelity:
-            overlay._report_title.setText("Fidelity report")
-            src_name = Path(overlay._source_path).name if overlay._source_path is not None else "source"
-            overlay._report_sub.setText(f"vs SOURCE {src_name} · shared/analysis engine")
+            # Viewing the source itself → this is not a comparison report.
+            _is_source = False
+            try:
+                _sp = getattr(overlay, "_source_path", None)
+                _cur = getattr(overlay, "_current_item", None)
+                _is_source = _sp is not None and _cur is not None and Path(getattr(_cur, "path", "")) == Path(_sp)
+            except Exception:
+                _is_source = False
+            if _is_source:
+                overlay._report_title.setText("Source")
+                overlay._report_sub.setText("reference image — variants are compared to it")
+            else:
+                overlay._report_title.setText("Fidelity report")
+                src_name = Path(overlay._source_path).name if overlay._source_path is not None else "source"
+                overlay._report_sub.setText(f"vs SOURCE {src_name} · shared/analysis engine")
             for w in (overlay._report_title, overlay._report_sub):
                 try:
                     w.setVisible(True)
