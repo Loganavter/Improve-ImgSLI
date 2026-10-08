@@ -54,6 +54,17 @@ def test_learned_metric_specs_map_lower_is_better() -> None:
         assert ms.score_for(spec, lo) > ms.score_for(spec, (lo + hi) / 2) > ms.score_for(spec, hi)
 
 
+def test_artifact_mild_note_reads_as_possible() -> None:
+    """SalArt-VQA ladder: clean=abstain, mild=possible, flagged=committed."""
+    from tabs.image_gallery.services.metric_scores import fallback_note as fb
+
+    assert fb("halo", 100) == "clean edges"  # abstain — no claim
+    assert fb("halo", 50) == "possible halo"  # uncertain
+    assert fb("halo", 15) == "strong halo"  # committed
+    assert fb("banding", 50) == "possible banding"
+    assert fb("chroma_fringing", 50) == "possible fringing"
+
+
 def test_fidelity_without_backend_has_no_learned_keys(monkeypatch) -> None:
     from tabs.image_gallery.services import quality_models as qm
 

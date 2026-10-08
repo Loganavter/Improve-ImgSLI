@@ -171,6 +171,10 @@ def score_band(score: int) -> str:
 
 # Band descriptors (good, mid, bad) used when the AI gave no axis note, so
 # every row still carries a short meaning. English — same as the AI notes.
+#
+# Artifact notes follow SalArt-VQA's claim ladder: good = abstain ("no claim"),
+# mid = a *possible* (uncertain) defect, bad = a committed defect. So a `mild`
+# artifact reads "possible X", never a verdict.
 _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "sharpness": ("sharp", "slightly soft", "very soft"),
     "exposure": ("well exposed", "slightly off", "poorly exposed"),
@@ -186,12 +190,12 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "brisque": ("natural", "slightly unnatural", "unnatural"),
     "composition": ("well composed", "ok composition", "poor composition"),
-    "banding": ("smooth gradients", "mild banding", "visible banding"),
-    "halo": ("clean edges", "some halo", "strong halo"),
-    "blocking": ("no blocking", "mild blocking", "strong blocking"),
-    "over_smoothing": ("detail kept", "slightly smooth", "over-smoothed"),
-    "invented_texture": ("authentic texture", "some invented texture", "invented texture"),
-    "chroma_fringing": ("no fringing", "mild fringing", "strong fringing"),
+    "banding": ("smooth gradients", "possible banding", "visible banding"),
+    "halo": ("clean edges", "possible halo", "strong halo"),
+    "blocking": ("no blocking", "possible blocking", "strong blocking"),
+    "over_smoothing": ("detail kept", "possibly smoothed", "over-smoothed"),
+    "invented_texture": ("authentic texture", "possible invented texture", "invented texture"),
+    "chroma_fringing": ("no fringing", "possible fringing", "strong fringing"),
 }
 
 
