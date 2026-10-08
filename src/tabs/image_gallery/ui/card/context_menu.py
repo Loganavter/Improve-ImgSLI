@@ -7,7 +7,7 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    when a non-empty selection exists. No "clear selection" entry by design
    — deselect is Esc, menus offer actions ON the set.
 2. Per-card actions mirroring the hover capsule: Make best / Reject /
-   Remove from view (+ Set as source in fidelity mode), plus the manual
+   Remove from view (+ Make source, every mode), plus the manual
    grouping pair — Ungroup (dissolve into the tail) and Group (pin the
    menu-rule targets into a brand-new series; multi-select only, hidden
    when the selection is already exactly one whole series).
@@ -215,25 +215,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             ContextMenuSeparator,
         )
 
-        # Resolve mode: explicit > card attribute > owner state.
-        _mode = mode
-        if _mode is None:
-            try:
-                _mode = getattr(card, "_gallery_mode", None)
-            except Exception:
-                _mode = None
-        if _mode is None and owner is not None:
-            try:
-                st = getattr(owner, "state", None)
-                _mode = getattr(st, "mode", None) if st is not None else getattr(owner, "_mode", None)
-            except Exception:
-                pass
-        try:
-            ms = str(_mode.value).lower() if hasattr(_mode, "value") else str(_mode).lower() if _mode is not None else ""
-        except Exception:
-            ms = ""
-        include_source = ms == "fidelity"
-
         n = int(selection_count) if selection_count is not None else _selection_count(owner)
         has_selection = n > 0
         has_analyze = on_analyze is not None or owner is not None
@@ -337,13 +318,15 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 )
             )
         entries.extend(per_card)
-        if include_source:
-            entries.append(
-                ContextMenuAction(
-                    "gallery.set_as_source",
-                    "Set as source",
-                )
+        # "Make source" is available in every mode: in camera/batch the click
+        # switches to fidelity and re-runs the fidelity pass
+        # (on_quick_set_source -> select_mode + _start_fidelity_analysis).
+        entries.append(
+            ContextMenuAction(
+                "gallery.set_as_source",
+                "Make source",
             )
+        )
         def _on_triggered(action_id: str, _data: object) -> None:
             try:
                 if action_id == "gallery.selection.analyze":

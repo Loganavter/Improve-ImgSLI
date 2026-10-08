@@ -116,6 +116,21 @@ def test_menu_without_selection_has_no_selection_section(monkeypatch) -> None:
     assert "gallery.compare" not in ids
 
 
+def test_make_source_available_in_every_mode(monkeypatch) -> None:
+    """'Make source' shows regardless of mode (camera included), labelled so."""
+    from tabs.image_gallery.models import Mode
+
+    for mode in (None, Mode.CAMERA, Mode.FIDELITY, Mode.BATCH_SYNTHETIC):
+        captured = _capture_menu(monkeypatch)
+        owner = _owner({Path("/a.png")}, mode=mode)
+        popup_gallery_card_context_menu(
+            SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=1,
+        )
+        ids = _action_ids(captured["entries"])
+        assert "gallery.set_as_source" in ids, mode
+        assert _action_text(captured["entries"], "gallery.set_as_source") == "Make source"
+
+
 def test_selection_callbacks_fire(monkeypatch) -> None:
     captured = _capture_menu(monkeypatch)
     fired: list[str] = []
