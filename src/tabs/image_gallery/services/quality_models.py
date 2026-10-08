@@ -63,6 +63,44 @@ def available() -> bool:
     return bool(_load())
 
 
+def is_photographic(image, *, max_edge: int = 256) -> bool:
+    """Cheap local content gate: natural photo vs cartoon/line-art/screenshot.
+
+    Illustrative/synthetic content has large flat regions and a small palette;
+    photographs have continuous tone. Used to gate no-reference metrics that are
+    only defined for photographic content (BRISQUE). Fail-open: unreadable input
+    is treated as photographic (show the metric rather than silently drop it).
+    """
+    try:
+        import numpy as np
+        from PIL import Image as _Image
+
+        im = image.convert("RGB")
+        w, h = im.size
+        m = max(int(w), int(h))
+        if m > max_edge > 0:
+            scale = max_edge / m
+            try:
+                resample = _Image.Resampling.BILINEAR  # type: ignore[attr-defined]
+            except AttributeError:
+                resample = _Image.BILINEAR  # type: ignore[attr-defined]
+            im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))), resample)
+        a = np.asarray(im, dtype=np.float32)
+        g = a.mean(2)
+        gx = np.abs(np.diff(g, axis=1))
+        gy = np.abs(np.diff(g, axis=0))
+        grad = np.zeros_like(g)
+        grad[:, :-1] = np.maximum(grad[:, :-1], gx)
+        grad[:-1, :] = np.maximum(grad[:-1, :], gy)
+        flat = float((grad < 6.0).mean())
+        palette = len({tuple(v) for v in (a // 24).astype(np.uint8).reshape(-1, 3)})
+        # Conservative: only reject when clearly illustrative (big flat areas or
+        # a tiny palette), so a real photo is never hidden by accident.
+        return not (flat > 0.7 or palette < 180)
+    except Exception:
+        return True
+
+
 def _tensor(image, size):
     """PIL RGB -> [1,3,H,W] float tensor in [0,1], resized to *size*."""
     import numpy as np
@@ -120,6 +158,10 @@ def nr_metrics(image, *, max_edge: int = _LEARNED_MAX_EDGE) -> dict:
     """
     models = _load()
     if not models or image is None:
+        return {}
+    # BRISQUE is trained on natural photos — out of domain on cartoon/line-art/
+    # screenshot (it rates grain as "natural"). Gate it by content type.
+    if not is_photographic(image):
         return {}
     try:
         import torch
