@@ -51,6 +51,14 @@ def _make_overlay(qtbot) -> QuickLookOverlay:
 def _show(overlay: QuickLookOverlay, item: GalleryItem, series, mode=Mode.FIDELITY, source=None):
     if series and not isinstance(series[0], (list, tuple)):
         series = [list(series)]
+    # Badges are computed once upstream (widget.set_triage); stamp here so the
+    # strip renders the same item.badge the app would.
+    try:
+        from tabs.image_gallery.services.rank_badge import stamp_badges
+
+        stamp_badges([m for cl in series for m in cl], source)
+    except Exception:
+        pass
     owner = SimpleNamespace(
         state=SimpleNamespace(
             mode=mode,

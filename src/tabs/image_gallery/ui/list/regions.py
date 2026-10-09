@@ -38,20 +38,18 @@ def item_unreadable(item: GalleryItem) -> bool:
 
 
 def _badges_text(item: GalleryItem) -> str:
-    """Inline badges from the shared rank resolver: ``#N`` + ★ + ✕.
+    """Inline badges: the precomputed ``item.badge`` + ★ (leader) + ✕ (rejected).
 
-    ``leader_as_rank=False``: a leader without an explicit rank shows the
-    ★ affordance here, not a synthetic ``#1`` (the list's own convention).
+    The badge string is computed once by ``services.rank_badge.stamp_badges``;
+    the list only adds its own ★/✕ affordances and never re-derives it.
     """
-    from tabs.image_gallery.services.rank_badge import resolve_rank_badge
-
-    badge = resolve_rank_badge(item, leader_as_rank=False)
     parts: list[str] = []
-    if badge.text:
-        parts.append(badge.text)
-    if badge.is_best:
+    text = str(getattr(item, "badge", "") or "")
+    if text:
+        parts.append(text)
+    if bool(getattr(item, "is_best", False)):
         parts.append("★")
-    if badge.rejected:
+    if bool(getattr(item, "rejected", False)):
         parts.append("✕")
     return " ".join(parts)
 

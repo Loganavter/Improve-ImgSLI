@@ -153,6 +153,12 @@ class GalleryItem:
     is_best: bool = False
     crown_rank: int | None = None
     provenance_series_id: str | None = None
+    # Display badge — the single computed string every surface renders
+    # (grid card / quick-look strip / list row). Computed once in
+    # ``services/rank_badge.stamp_badges`` from the item's rank/source state
+    # so no surface re-derives it (add a new badge kind in ONE place).
+    badge: str = ""
+    badge_kind: str = "none"
     # Stage 2 artifact catalog — 7 detectors, severity per artifact (design.md:67-83)
     artifacts: dict[Artifact, Severity] = field(default_factory=dict)
     # Coarse localization per artifact name ({name: [[0..1]*grid]*grid}) for the

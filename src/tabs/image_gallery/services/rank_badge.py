@@ -20,6 +20,7 @@ flag; ``rejected`` marks a rejected item.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 #: Badge kinds.
 KIND_RANK = "rank"
@@ -103,9 +104,38 @@ def resolve_rank_badge(
     return RankBadge("", KIND_NONE, None, is_best, rejected)
 
 
+def stamp_badges(items, source_path=None) -> None:
+    """Compute and store the display badge on every item — ONE place.
+
+    Every surface (grid card, quick-look strip, list row) renders
+    ``item.badge`` / ``item.badge_kind`` verbatim; none re-derives the badge
+    from flags, so adding a new badge kind (upscale/underscale/…) is a change
+    in :func:`resolve_rank_badge` alone. Called from the single render path
+    (``widget.set_triage``) with the current source, so a source/mode/rank
+    change re-stamps. Never raises.
+    """
+    try:
+        src = Path(str(source_path)) if source_path is not None else None
+    except Exception:
+        src = None
+    for it in items or []:
+        try:
+            is_source = src is not None and Path(str(getattr(it, "path", ""))) == src
+            badge = resolve_rank_badge(it, is_source=is_source)
+            it.badge = badge.text
+            it.badge_kind = badge.kind
+        except Exception:
+            try:
+                it.badge = ""
+                it.badge_kind = KIND_NONE
+            except Exception:
+                pass
+
+
 __all__ = [
     "RankBadge",
     "resolve_rank_badge",
+    "stamp_badges",
     "KIND_RANK",
     "KIND_SOURCE",
     "KIND_NONE",

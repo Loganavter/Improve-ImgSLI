@@ -174,18 +174,26 @@ def test_selection_and_click_parity_in_list_mode(qtbot) -> None:
 
 
 def test_list_row_texts() -> None:
-    assert _badges_text(_items("a.png")[0]) == ""
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    plain = _items("a.png")[0]
+    stamp_badges([plain])
+    assert _badges_text(plain) == ""
     it = _items("a.png")[0]
     it.is_best = True
     it.rank = 3
+    stamp_badges([it])
     assert _badges_text(it) == "#3 ★"
     crowned = _items("b.png")[0]
     crowned.crown_rank = 2
+    stamp_badges([crowned])
     assert _badges_text(crowned) == "#2"
     crowned.rank = 5
+    stamp_badges([crowned])
     assert _badges_text(crowned) == "#2"  # crown wins over rank
     rej = _items("c.png")[0]
     rej.rejected = True
+    stamp_badges([rej])
     assert _badges_text(rej) == "✕"
     assert "R" not in _badges_text(it) and "C" not in _badges_text(crowned)
     assert _artifacts_text(_items("d.png")[0]) == "…"
@@ -256,6 +264,9 @@ def test_list_title_single_row(qtbot) -> None:
     assert row.text == "a.png" and row.weight == "normal" and row.size == 16 and row.marquee is False and row.elide is True  # static truncated rows (marquee storm retired)
     it.rank = 3
     it.is_best = True
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    stamp_badges([it])
     rows = _list_text_rows(it)
     assert len(rows) == 1 and rows[0].text == "a.png #3 ★"
     card = build_gallery_list_card(it)

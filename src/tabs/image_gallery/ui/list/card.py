@@ -22,7 +22,6 @@ from tabs.image_gallery.ui.list.regions import (
     _list_meta_rows,
     _list_text_rows,
     _thumb_region,
-    item_unreadable,
 )
 from tabs.image_gallery.ui.list.visuals import _apply_list_rejected_visuals
 

@@ -1810,6 +1810,18 @@ class ImageGalleryWidget(QWidget):
             self._source_path = Path(source) if source is not None else None
         except Exception:
             self._source_path = None
+        # Single source of truth for the display badge: compute it ONCE here
+        # (triage/mode/source all converge in set_triage) so every surface
+        # renders item.badge verbatim and never re-derives it.
+        try:
+            from tabs.image_gallery.services.rank_badge import stamp_badges
+
+            _all_items = list(self._items or [])
+            for _cluster in norm_series:
+                _all_items.extend(_cluster)
+            stamp_badges(_all_items, self._source_path)
+        except Exception:
+            pass
         try:
             view_unchanged = self._series_view_matches(
                 norm_series, prev_mode, prev_source, mode, source
