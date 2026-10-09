@@ -266,7 +266,7 @@ def test_source_caption_includes_dimensions(qtbot):
 # -- S4-5: SSIM muted subline -------------------------------------------------
 
 
-def test_ssim_subline_next_rank_and_rejected_tail(qtbot):
+def test_ssim_subline_rejected_tail_only(qtbot):
     src = _item("src.png", rank=0, metrics={})
     viewing = _item("v.png", rank=1, metrics={"ssim": 0.95})
     second = _item("b.png", rank=2, metrics={"ssim": 0.91})
@@ -274,7 +274,8 @@ def test_ssim_subline_next_rank_and_rejected_tail(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [src, viewing, second, rejected])
     subline = ov._ssim_subline(viewing)
-    assert "#2 scores 0.91" in subline
+    # Declutter: the "#N scores X" part is gone (the rows already show it).
+    assert "scores" not in subline
     assert "rejected tail ≤ 0.83" in subline
     ov.hide()
 
@@ -1465,7 +1466,7 @@ def test_right_column_stretches_with_full_content(qtbot):
         for lbl in w.findChildren(Label)
         if "rejected tail" in getattr(lbl, "_original_text", "")
     ]
-    assert sublines == ["#2 scores 0.91 · rejected tail ≤ 0.83"]
+    assert sublines == ["rejected tail ≤ 0.83"]
     captions = [
         lbl._original_text
         for w in ov._artifact_rows

@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 from tabs.image_gallery.services.rank_badge import (
     KIND_NONE,
-    KIND_PENDING,
     KIND_RANK,
     KIND_SOURCE,
     resolve_rank_badge,
@@ -41,12 +40,9 @@ def test_leader_as_rank_flag() -> None:
     assert b.text == "" and b.is_best is True
 
 
-def test_source_and_pending_priority() -> None:
+def test_source_priority() -> None:
     src = resolve_rank_badge(_item(rank=3), is_source=True)
     assert src.kind == KIND_SOURCE and src.text == "SOURCE"
-    # pending wins over source and rank.
-    pend = resolve_rank_badge(_item(rank=3), is_source=True, pending=True)
-    assert pend.kind == KIND_PENDING and pend.text == "…"
 
 
 def test_rejected_reported_not_folded() -> None:

@@ -659,8 +659,9 @@ def _strip_rank_text_and_style(m, is_source: bool):
 
     The label/kind come from the shared resolver
     (``services/rank_badge.resolve_rank_badge``) so the strip, the grid
-    cards and the list can never drift. Priority here: pending "…" >
-    rejected None > SOURCE > #N. Returns
+    cards and the list can never drift. Priority here: rejected None >
+    SOURCE > #N (a tie-break-pending item falls through to its rank, like
+    the card — no "…" placeholder). Returns
     ``(text, outline, text_color, design_width_px)`` — the pill fills white
     with ``outline`` as its 1px border — or None when no pill is shown. The
     width is a compact *design*-px floor; the build grows it to the label's
@@ -670,7 +671,6 @@ def _strip_rank_text_and_style(m, is_source: bool):
         from PySide6.QtGui import QColor as _QC
 
         from tabs.image_gallery.services.rank_badge import (
-            KIND_PENDING,
             KIND_RANK,
             KIND_SOURCE,
             resolve_rank_badge,
@@ -680,16 +680,7 @@ def _strip_rank_text_and_style(m, is_source: bool):
 
         _strip_is_dark = _strip_dark()
         _ink = _QC("#000000")
-        badge = resolve_rank_badge(
-            m,
-            is_source=is_source,
-            pending=bool(getattr(m, "vlm_tie_pending", False)),
-        )
-        if badge.kind == KIND_PENDING:
-            bg = _strip_token("surface.button", "#8a8a8a" if not _strip_is_dark else "#5a5a5a")
-            if bg is None:
-                bg = _QC(90, 90, 90)
-            return ("…", bg, _ink, 24)
+        badge = resolve_rank_badge(m, is_source=is_source)
         if badge.rejected:
             return None  # no pill — dim effect carries the signal
         if badge.kind == KIND_SOURCE:
@@ -941,7 +932,6 @@ def _strip_fingerprint(overlay) -> tuple:
     try:
         paths = tuple(str(getattr(m, "path", "") or "") for m in items)
         rejected = tuple(bool(getattr(m, "rejected", False)) for m in items)
-        pending = tuple(bool(getattr(m, "vlm_tie_pending", False)) for m in items)
         ranks = tuple(_strip_rank_key(m) for m in items)
         source = str(getattr(overlay, "_source_path", None) or "")
         try:
@@ -954,7 +944,7 @@ def _strip_fingerprint(overlay) -> tuple:
             sp = int(scaled_px(66))
         except Exception:
             sp = 66
-        return (paths, rejected, pending, ranks, source, dark, sp)
+        return (paths, rejected, ranks, source, dark, sp)
     except Exception:
         return ()
 
@@ -1002,7 +992,6 @@ def _refresh_strip_selection(overlay) -> None:
         except Exception:
             pass
         rejected = bool(getattr(m, "rejected", False))
-        pending = bool(getattr(m, "vlm_tie_pending", False))
         was_blocked = btn.blockSignals(True)
         try:
             try:
@@ -1179,7 +1168,6 @@ def rebuild_strip(overlay) -> None:
         except Exception:
             pass
         rejected = bool(getattr(m, "rejected", False))
-        pending = bool(getattr(m, "vlm_tie_pending", False))
         thumb_pm = None
         try:
             from tabs.image_gallery.ui.quick_look.helpers import _thumb_pixmap
@@ -1235,7 +1223,7 @@ def rebuild_strip(overlay) -> None:
             pass
         # Rank pill is a real button now (bottom-center of the thumb, in a
         # shared-hover ButtonFamily) — no toolkit badge anywhere on thumbs.
-        # Priority: pending "…" > rejected (none) > SOURCE > #N.
+        # Priority: rejected (none) > SOURCE > #N.
         try:
             _rank_spec = _strip_rank_text_and_style(m, is_source)
         except Exception:
