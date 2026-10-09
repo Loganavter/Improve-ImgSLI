@@ -838,6 +838,39 @@ def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
     ov.hide()
 
 
+def test_strip_rank_pill_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
+    """Right-click on a thumb's rank pill opens the same card menu.
+
+    The pill is a real button above the thumb; grid parity means it resolves
+    to its own item's path (via the object-name index) and opens the shared
+    menu exactly once.
+    """
+    from PySide6.QtCore import Qt as _Qt
+
+    import tabs.image_gallery.ui.card.context_menu as _menu_mod
+
+    calls = []
+    monkeypatch.setattr(
+        _menu_mod,
+        "popup_gallery_card_context_menu",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    paths = [_real_png(tmp_path, f"rp{i}.png") for i in range(3)]
+    leader = GalleryItem(path=paths[0], mtime_ns=1, is_best=True)
+    items = [leader, GalleryItem(path=paths[1], mtime_ns=2), GalleryItem(path=paths[2], mtime_ns=3)]
+    ov = _make_overlay(qtbot)
+    _show(ov, leader, items)
+    pills = _rank_pills_by_path(ov)
+    pill = pills.get(str(paths[0]))
+    assert pill is not None
+    qtbot.mouseClick(pill, _Qt.MouseButton.RightButton)
+    QApplication.processEvents()
+    assert len(calls) == 1
+    (args, _kwargs) = calls[0]
+    assert Path(args[2]) == paths[0]
+    ov.hide()
+
+
 def test_strip_lasso_selects_dragged_thumbs(qtbot, tmp_path):
     """Drag across two thumbs selects both, keeps preview unmoved.
 
