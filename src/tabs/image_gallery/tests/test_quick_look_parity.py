@@ -1382,6 +1382,28 @@ def test_meta_smaller_than_source(tmp_path, qtbot):
     ov.hide()
 
 
+def test_meta_series_same_size_not_repeated(tmp_path, qtbot):
+    """A uniform fidelity series says 'same size' once, not twice.
+
+    The item↔source claim ('same size as source') already carries it; the
+    series tracker's old 'same size WxH' repeated both the claim and the
+    dims already shown — dropped (only 'mixed sizes' remains).
+    """
+    a = tmp_path / "a.png"
+    b = tmp_path / "b.png"
+    _w5_solid_png(a, (64, 64))
+    _w5_solid_png(b, (64, 64), (40, 50, 60))
+    src = GalleryItem(path=a, mtime_ns=1, metrics={})
+    item = GalleryItem(path=b, mtime_ns=2, metrics={"upscale_factor": 1})
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [src, item], source=src.path)
+    text = ov._meta_label._original_text
+    assert "same size as source" in text
+    assert text.count("same size") == 1, text
+    assert "same size 64" not in text
+    ov.hide()
+
+
 def test_right_column_stretches_with_full_content(qtbot):
     """W5 item 3 + W7 + W13: full right column (metrics + 2 artifact rows +
     series + brief) fits the 1040×680 card with both scrollbars hidden
