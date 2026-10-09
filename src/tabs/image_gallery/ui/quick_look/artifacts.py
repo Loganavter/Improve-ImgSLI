@@ -75,9 +75,19 @@ def rebuild_artifacts(overlay, item) -> None:
     except Exception:
         artifacts = ["banding", "halo"]
         shown = [(aid, "clean") for aid in artifacts]
-    # Drop the noise artifact row: the measured "Clean" metric above already
-    # reports noise (continuously), so a second Noise row is a duplicate.
-    shown = [(aid, sev) for aid, sev in shown if aid != "noise_amplification"]
+    # Drop rows that duplicate a measured metric (noise) or are unreliable:
+    # in camera mode the no-reference halo/chroma detectors are blind to thin
+    # rims (they average out under the detector's downscale), so hide them —
+    # the source-relative fidelity rows carry halo/chroma where a source exists.
+    _drop = {"noise_amplification"}
+    try:
+        from tabs.image_gallery.use_cases import quality as _q
+
+        if _q.normalize_mode(getattr(overlay, "_mode", None)) == "camera":
+            _drop |= {"chroma_fringing", "halo"}
+    except Exception:
+        pass
+    shown = [(aid, sev) for aid, sev in shown if aid not in _drop]
     # Rows depend only on the local (source-anchored) severity — no AI note in
     # the change key (plan-gallery-ai-quality UX contract).
     shown_key = [(aid, lvl) for aid, lvl in shown]

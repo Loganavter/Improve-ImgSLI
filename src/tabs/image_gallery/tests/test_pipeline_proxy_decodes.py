@@ -211,9 +211,10 @@ def test_fidelity_equivalence_and_keys(tmp_path: Path) -> None:
     clear_proxy_cache()
     via_paths = compute_fidelity_metrics(item, source)
     base = {"ssim", "hf_ratio", "delta_e", "upscale_factor"}
-    # `clipping_delta` is always present; `lpips`/`dists` only with the optional
-    # learned backend installed.
-    assert base <= set(via_paths) <= base | {"clipping_delta", "lpips", "dists"}
+    # Source-relative extras are always attempted; `lpips`/`dists` only with the
+    # optional learned backend installed.
+    extra = {"clipping_delta", "halo_delta", "chroma_fringe_delta", "lpips", "dists"}
+    assert base <= set(via_paths) <= base | extra
     assert "clipping_delta" in via_paths
     item_proxy = proxy_for(item)
     src_proxy = proxy_for(source)

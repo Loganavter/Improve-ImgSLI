@@ -758,6 +758,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             except Exception:
                 _cd = 0.0
             _add_score_row("clipping_delta", gap=False, extra=f"{_cd:+.2f}%")
+        # Source-relative edge artifacts (halo / chroma fringing) — reliable
+        # form; shown with the raw edge/flat ratio.
+        for _k in ("halo_delta", "chroma_fringe_delta"):
+            if _k in metrics:
+                try:
+                    _rv = float(metrics.get(_k))
+                except Exception:
+                    _rv = 0.0
+                _add_score_row(_k, gap=False, extra=f"{_rv:.1f}×")
         # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
         # when the backend is installed (the keys are absent otherwise), so no
         # empty row ever appears.

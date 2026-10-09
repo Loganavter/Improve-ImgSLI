@@ -40,6 +40,9 @@ _SSIM_MAX_EDGE = 1024
 _HF_MAX_EDGE = 512
 _DELTAE_THUMB = 64
 _CLIP_MAX_EDGE = 512
+#: Edge artifacts (halo / chroma fringing) are thin rims — measured near full
+#: resolution so a 1-2 px rim is not averaged away by downscaling.
+_ARTIFACT_MAX_EDGE = 2048
 
 
 def _cap_edge(image, max_edge: int):
@@ -101,6 +104,60 @@ def _mean_rgb_distance(item_image, source_image) -> float | None:
     except Exception:
         logger.debug("fidelity delta_e failed", exc_info=True)
         return None
+
+
+def _edge_artifact_ratios(item_image, source_image) -> tuple[float | None, float | None]:
+    """Source-relative halo / chroma-fringing at near-full resolution.
+
+    A real halo/fringing is a change *concentrated at edges*; noise removal or
+    global processing changes edges and flats alike. So the discriminator is
+    the ratio ``mean|diff| at strong edges / mean|diff| in flat areas`` — ~1
+    for uniform changes, high for edge-localized artifacts. Measured on the
+    item-vs-source diff (common content cancels) near full resolution, since a
+    1-2 px rim vanishes under the usual 512 cap.
+
+    Returns ``(halo_ratio, chroma_ratio)`` (0.0 when below the edge magnitude
+    floor, None on failure).
+    """
+    try:
+        import numpy as np
+
+        it = _cap_edge(item_image.convert("RGB"), _ARTIFACT_MAX_EDGE)
+        sr = _cap_edge(source_image.convert("RGB"), _ARTIFACT_MAX_EDGE)
+        w, h = min(it.size[0], sr.size[0]), min(it.size[1], sr.size[1])
+        if w < 8 or h < 8:
+            return None, None
+        if it.size != (w, h):
+            it = it.resize((w, h))
+        if sr.size != (w, h):
+            sr = sr.resize((w, h))
+        a = np.asarray(it, dtype=np.float64)
+        b = np.asarray(sr, dtype=np.float64)
+        R, G, B = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+        sR, sG, sB = b[:, :, 0], b[:, :, 1], b[:, :, 2]
+        g = (R + G + B) / 3.0
+        gx = np.zeros_like(g)
+        gy = np.zeros_like(g)
+        gx[:, :-1] = np.abs(g[:, 1:] - g[:, :-1])
+        gy[:-1, :] = np.abs(g[1:, :] - g[:-1, :])
+        grad = np.maximum(gx, gy)
+        edge = grad >= max(float(np.percentile(grad, 90)), 18.0)
+        flat = grad < 6.0
+        if int(edge.sum()) < 20 or int(flat.sum()) < 20:
+            return None, None
+        luma = np.abs(g - (sR + sG + sB) / 3.0)
+        fringe = np.abs((R - G) - (sR - sG)) + np.abs((B - G) - (sB - sG))
+        le, lf = float(luma[edge].mean()), float(luma[flat].mean())
+        fe, ff = float(fringe[edge].mean()), float(fringe[flat].mean())
+        # Edge-localized change only: a minimum absolute edge difference avoids
+        # a blow-up when both sides are ~0, and keeps global (uniform) changes
+        # out (their ratio stays ~1).
+        halo = le / (lf + 1e-6) if le >= 2.0 else 0.0
+        chroma = fe / (ff + 1e-6) if fe >= 4.0 else 0.0
+        return halo, chroma
+    except Exception:
+        logger.debug("fidelity: edge artifact ratios failed", exc_info=True)
+        return None, None
 
 
 def _clipping_pct(image, max_edge: int = _CLIP_MAX_EDGE) -> float | None:
@@ -185,6 +242,16 @@ def compute_fidelity_from_images(
             out["clipping_delta"] = float(clip_item - clip_source)
     except Exception:
         logger.debug("fidelity: clipping_delta failed (images)", exc_info=True)
+    # Source-relative edge artifacts (halo / chroma fringing) — the reliable
+    # form (the no-reference camera detectors are blind to thin rims).
+    try:
+        halo_r, chroma_r = _edge_artifact_ratios(item_image, source_image)
+        if halo_r is not None:
+            out["halo_delta"] = float(halo_r)
+        if chroma_r is not None:
+            out["chroma_fringe_delta"] = float(chroma_r)
+    except Exception:
+        logger.debug("fidelity: edge artifacts failed (images)", exc_info=True)
     # Optional learned perceptual metrics (LPIPS/DISTS) — only when the backend
     # is installed; absent backend returns {} so the report is unchanged.
     try:
