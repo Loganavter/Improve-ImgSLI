@@ -86,13 +86,20 @@ def _member_dims(item) -> tuple[int, int] | None:
 
 
 def _size_note(items) -> str:
-    """Size tracker: 'same size WxH' / 'mixed sizes' / '' when unknown."""
+    """Size tracker: 'mixed sizes' when members differ, '' otherwise/unknown.
+
+    A uniform series is the expected case and the viewing item's dims are
+    already the first part of the meta line, so the old ``same size WxH``
+    note only repeated them (and doubled the fidelity ``same size as
+    source`` claim) — dropped. Only the non-obvious ``mixed sizes`` signal
+    remains.
+    """
     dims_list = [_member_dims(m) for m in items]
     if not dims_list or any(d is None for d in dims_list):
         return ""
     first = dims_list[0]
     if all(d == first for d in dims_list):
-        return f"same size {first[0]}×{first[1]}"
+        return ""
     return "mixed sizes"
 
 
@@ -100,10 +107,11 @@ def series_size_note(overlay) -> str:
     """Series size/upscale note for the filename meta line (sidebar top).
 
     Multi-item series only: fidelity members larger than the source read
-    ``"N upscales of one source"``; anything with known member dims adds
-    the size tracker (``"same size WxH"`` / ``"mixed sizes"``). Counts and
-    rejected tallies are deliberately excluded (user-facing series chrome
-    is gone — the strip carries identity now).
+    ``"N upscales of one source"``; a series whose members differ in size
+    adds ``"mixed sizes"`` (a uniform series adds nothing — its dims are
+    already on the line). Counts and rejected tallies are deliberately
+    excluded (user-facing series chrome is gone — the strip carries
+    identity now).
     """
     try:
         items = list(getattr(overlay, "_series_items", None) or [])

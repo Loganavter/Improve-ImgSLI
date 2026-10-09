@@ -658,9 +658,10 @@ def _strip_rank_text_and_style(m, is_source: bool):
     """Rank pill content for one series member (badge-button input).
 
     Priority (mirrors the old badge order): pending "…" > rejected None >
-    SOURCE > #N. Returns ``(text, outline, text_color, width_px)`` — the
-    pill fills white with ``outline`` as its 1px border — or None when no
-    pill is shown. Never raises.
+    SOURCE > #N. Returns ``(text, outline, text_color, design_width_px)`` —
+    the pill fills white with ``outline`` as its 1px border — or None when no
+    pill is shown. The width is a compact *design*-px floor; the build grows
+    it to the label's own text hint so the pill never clips. Never raises.
     """
     try:
         from PySide6.QtGui import QColor as _QC
@@ -674,12 +675,12 @@ def _strip_rank_text_and_style(m, is_source: bool):
             bg = _strip_token("surface.button", "#8a8a8a" if not _strip_is_dark else "#5a5a5a")
             if bg is None:
                 bg = _QC(90, 90, 90)
-            return ("…", bg, _ink, scaled_px(24))
+            return ("…", bg, _ink, 24)
         if bool(getattr(m, "rejected", False)):
             return None  # no pill — dim effect carries the signal
         if is_source:
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
-            return ("SOURCE", _gold, _ink, scaled_px(58))
+            return ("SOURCE", _gold, _ink, 58)
         _rank = getattr(m, "rank", None)
         _crown = getattr(m, "crown_rank", None)
         _rv = _crown if _crown is not None else _rank
@@ -694,7 +695,7 @@ def _strip_rank_text_and_style(m, is_source: bool):
         except Exception:
             _text = str(_rv)
         _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-        return (_text, _rank_bg, _ink, scaled_px(34))
+        return (_text, _rank_bg, _ink, 34)
     except Exception:
         return None
 
@@ -1415,11 +1416,29 @@ def rebuild_strip(overlay) -> None:
                 rank_btn = Button(
                     rows=[ButtonRow(text=str(_rank_text), size=11, ratio=1.0, color=_rank_txt)],
                     variant="surface",
-                    size=(int(_rank_w), scaled_px(16)),
+                    size=(int(_rank_w), 16),
                     corner_radius=scaled_px(8),
                     parent=container,
                 )
                 rank_btn.setObjectName(f"quicklook_rank_{idx}")
+                # Fit the pill to its label. The compact design floor is
+                # narrower than the painter's text hint (which reserves the
+                # horizontal padding), so "#N" / "SOURCE" / "…" were clipped
+                # to "…". Grow to the content hint in DESIGN px (so a later
+                # UiScale change re-derives the same fit), never below the
+                # floor.
+                try:
+                    from sli_ui_toolkit.ui.managers.ui_scale import UiScale as _UiScale
+
+                    _factor = float(_UiScale.get_instance().factor()) or 1.0
+                    _design_w = max(
+                        int(_rank_w),
+                        int(round(int(rank_btn.sizeHint().width()) / _factor)),
+                    )
+                    rank_btn._design_fixed_size = (_design_w, 16)
+                    rank_btn.setFixedSize(scaled_px(_design_w), scaled_px(16))
+                except Exception:
+                    pass
                 if _rank_bg is not None:
                     try:
                         # White opaque fill (override layer) + the kind color
