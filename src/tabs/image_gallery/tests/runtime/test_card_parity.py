@@ -345,6 +345,20 @@ def test_rank_badge_text_is_black(qapp):
     card.deleteLater()
 
 
+def test_source_card_shows_source_badge(qapp):
+    """A source item's card shows the same 'SOURCE' string as the strip."""
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    item = _item(rank=1)
+    stamp_badges([item], str(item.path))
+    assert item.badge == "SOURCE"
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, item)
+    assert getattr(card, "_gallery_badge", None) == "SOURCE"
+    card.deleteLater()
+
+
 def test_unreadable_cover_has_plate_background(qapp):
     item = _item(
         thumbnail_status=ThumbnailStatus.ERROR,

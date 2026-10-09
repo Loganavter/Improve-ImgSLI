@@ -56,3 +56,32 @@ def test_rejected_reported_not_folded() -> None:
 def test_bad_rank_never_raises() -> None:
     b = resolve_rank_badge(_item(rank="oops"))
     assert b.text == "" and b.rank is None
+
+
+def test_stamp_badges_sets_source_and_rank() -> None:
+    """One computation stamps every item's display badge + kind."""
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    src = _item(path="/gallery/src.png", rank=1)
+    other = _item(path="/gallery/o.png", rank=2)
+    stamp_badges([src, other], "/gallery/src.png")
+    assert (src.badge, src.badge_kind) == ("SOURCE", KIND_SOURCE)
+    assert (other.badge, other.badge_kind) == ("#2", KIND_RANK)
+
+
+def test_stamp_badges_leader_and_rejected() -> None:
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    leader = _item(path="/gallery/l.png", is_best=True)
+    rej = _item(path="/gallery/r.png", rejected=True)
+    stamp_badges([leader, rej], None)
+    assert (leader.badge, leader.badge_kind) == ("#1", KIND_RANK)
+    assert (rej.badge, rej.badge_kind) == ("", KIND_NONE)
+
+
+def test_stamp_badges_source_path_none_never_marks_source() -> None:
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    it = _item(path="/gallery/x.png", rank=1)
+    stamp_badges([it], None)
+    assert it.badge == "#1" and it.badge_kind == KIND_RANK

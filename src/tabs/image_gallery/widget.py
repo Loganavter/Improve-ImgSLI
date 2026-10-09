@@ -1456,6 +1456,14 @@ class ImageGalleryWidget(QWidget):
             pass
 
     def refresh_card(self, item: GalleryItem) -> None:
+        # Re-stamp the display badge (rank/source may have changed since the
+        # last triage) before the card renders it — same single computation.
+        try:
+            from tabs.image_gallery.services.rank_badge import stamp_badges
+
+            stamp_badges([item], getattr(self, "_source_path", None))
+        except Exception:
+            pass
         # Delegate to grid_view (Button region update)
         try:
             self._grid_view.refresh_card(item)
@@ -1514,6 +1522,12 @@ class ImageGalleryWidget(QWidget):
         API (tests with stubbed grid views). Single-card semantics (incl.
         the legacy tooltip tail) live in ``refresh_card``.
         """
+        try:
+            from tabs.image_gallery.services.rank_badge import stamp_badges
+
+            stamp_badges(list(items or []), getattr(self, "_source_path", None))
+        except Exception:
+            pass
         try:
             batch = getattr(self._grid_view, "refresh_cards", None)
             if callable(batch):
