@@ -19,5 +19,9 @@ def test_downscale_pair_to_limit_never_materializes_full():
 
     assert max(d1.size) <= 1024
     assert max(d2.size) <= 1024
+    # Content identity: the two stores must not be swapped or mixed. A uniform
+    # size-only check would pass even if d1 held store2's pixels.
+    assert d1.convert("RGB").getpixel((d1.size[0] // 2, d1.size[1] // 2)) == (255, 0, 0)
+    assert d2.convert("RGB").getpixel((d2.size[0] // 2, d2.size[1] // 2)) == (0, 0, 255)
     store1.close()
     store2.close()
