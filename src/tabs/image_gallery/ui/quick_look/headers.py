@@ -33,7 +33,7 @@ def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
             else:
                 overlay._report_title.setText("Fidelity report")
                 src_name = Path(overlay._source_path).name if overlay._source_path is not None else "source"
-                overlay._report_sub.setText(f"vs SOURCE {src_name} · shared/analysis engine")
+                overlay._report_sub.setText(f"vs SOURCE {src_name}")
                 for w in (overlay._report_title, overlay._report_sub):
                     try:
                         w.setVisible(True)

@@ -1430,7 +1430,7 @@ def test_right_column_stretches_with_full_content(qtbot):
     assert len(thumbs) == 4
     assert ov._brief_label.isVisible() and ov._brief_label.text()
     # W7 LIVE-long texts (verbatim full copies, painting elides them).
-    assert ov._report_sub._original_text == "vs SOURCE 2x-Futsuu-Anime(1).png · shared/analysis engine"
+    assert ov._report_sub._original_text == "vs SOURCE 2x-Futsuu-Anime(1).png"
     # Series text chrome removed: no counts/hub in the sidebar — the size
     # note rides the meta line instead, rejected tallies excluded.
     assert "rejected" not in ov._meta_label.text()
@@ -1466,7 +1466,7 @@ def test_right_column_stretches_with_full_content(qtbot):
     assert scroll.horizontalScrollBar().isVisible() is False
     assert scroll.verticalScrollBar().isVisible() is False
     # Elide, not truncate: the full sub copy survives in _original_text.
-    assert "shared/analysis engine" in ov._report_sub._original_text
+    assert "2x-Futsuu-Anime(1).png" in ov._report_sub._original_text
     ov.hide()
 
 
