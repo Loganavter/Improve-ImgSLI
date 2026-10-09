@@ -166,11 +166,57 @@ def proxy_for(path: Path | str) -> Proxy | None:
     return proxy
 
 
+def _open_full_res_store(path):
+    """One full-resolution ``TiledPixelStore`` for *path*, or ``None`` on failure.
+
+    Wave A3: the caller owns ``close()`` (the store deletes a disk spill on
+    close). Any decode/size/pyvips failure is swallowed — the callers
+    fail open to the bounded proxy.
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+
+        return TiledPixelStore.from_path(path)
+    except Exception:
+        logger.debug("proxy batch: full-res store open failed for %s", path, exc_info=True)
+        return None
+
+
+def _analyze_artifacts_full_res(own, source_store, same, proxy_image, src_img):
+    """Tiled full-res artifact catalog with per-item fail-open to the proxy.
+
+    Builds one full-resolution store for *own*, runs
+    ``analyze_artifacts_tiled`` over it (anchored on *source_store* unless
+    this is the same-file pair, which stays sourceless), closes the store in
+    a ``finally`` and falls back to ``analyze_images(proxy_image, src_img)``
+    on any error. Never raises.
+    """
+    from engine.store.tiled_pixel_store import TiledPixelStore
+    from tabs.image_gallery.services.artifact_tiles import analyze_artifacts_tiled
+    from tabs.image_gallery.services.artifacts import analyze_images
+
+    item_store = None
+    try:
+        item_store = TiledPixelStore.from_path(own)
+        source_image = None if same else source_store
+        return analyze_artifacts_tiled(item_store, source_image=source_image)
+    except Exception:
+        logger.debug("proxy batch: tiled artifacts failed for %s", own, exc_info=True)
+        return analyze_images(proxy_image, src_img)
+    finally:
+        if item_store is not None:
+            try:
+                item_store.close()
+            except Exception:
+                logger.debug("proxy batch: item store close failed for %s", own, exc_info=True)
+
+
 def run_proxy_stages_sync(
     items: list,
     source_path: Path | str | None,
     *,
     include_camera: bool = False,
+    full_res_artifacts: bool = False,
 ) -> dict[str, dict]:
     """Single-pass Stage-2 worker body for ``GenericWorker``.
 
@@ -181,6 +227,14 @@ def run_proxy_stages_sync(
     "camera": {...}}}`` — stage dicts present only when that stage was
     requested and measurable (fail-closed per item, path-keyed, never
     copied between items). The controller still owns delivery (wave B).
+
+    ``full_res_artifacts`` (wave A3): when True the artifact catalog runs
+    tiled over a full-resolution ``TiledPixelStore`` per item instead of the
+    bounded proxy, so the 8x8 block grid and thin chroma rims survive. One
+    full-res ``source_store`` is built per call and reused across items;
+    fidelity/camera still consume the bounded proxy (inputs unchanged). Any
+    per-item failure building/using the full-res store fails open to the
+    proxy catalog. Default ``False`` is the unchanged proxy path.
     """
     from tabs.image_gallery.services.artifacts import analyze_images
     from tabs.image_gallery.services.camera_metrics import measure_camera_from_image
@@ -191,73 +245,89 @@ def run_proxy_stages_sync(
         src_proxy = proxy_for(source_path) if source_path is not None else None
     except Exception:
         src_proxy = None
-    for it in items or []:
-        try:
-            own = Path(getattr(it, "path"))
-        except Exception:
-            continue
-        key = str(own)
-        entry: dict = {}
-        try:
-            proxy = proxy_for(own)
-        except Exception:
-            proxy = None
-        if proxy is None:
-            out[key] = entry
-            continue
-        try:
-            src_img = src_proxy.image if src_proxy is not None else None
-            if src_proxy is not None:
-                try:
-                    same = Path(source_path).resolve() == own.resolve()  # type: ignore[arg-type]
-                except Exception:
-                    same = False
-                if same:
-                    src_img = None  # same-file pair: detectors run sourceless
-            entry["artifacts"] = analyze_images(proxy.image, src_img)
-        except Exception:
-            logger.debug("proxy batch: artifacts failed for %s", own, exc_info=True)
-        # Coarse localization for the artifacts that actually fired (SalArt-VQA:
-        # tie a claim to local evidence). Only non-clean axes, so the tile pass
-        # stays cheap; failures leave no map.
-        try:
-            from tabs.image_gallery.services.artifact_maps import localize as _localize
-
-            maps: dict = {}
-            for art, sev in (entry.get("artifacts") or {}).items():
-                sv = str(getattr(sev, "value", sev)).lower()
-                if sv == "clean":
-                    continue
-                m = _localize(proxy.image, art, src_img, grid=5)
-                if m is not None:
-                    maps[str(getattr(art, "value", art))] = m
-            if maps:
-                entry["artifact_maps"] = maps
-        except Exception:
-            logger.debug("proxy batch: localization failed for %s", own, exc_info=True)
-        if source_path is not None and src_proxy is not None:
+    source_store = None
+    if full_res_artifacts and source_path is not None:
+        source_store = _open_full_res_store(source_path)
+    try:
+        for it in items or []:
             try:
-                try:
-                    same = Path(source_path).resolve() == own.resolve()  # type: ignore[arg-type]
-                except Exception:
-                    same = False
-                if same:
-                    # Same-file pair: identity scores, no engine call
-                    # (mirrors compute_fidelity_metrics path equality).
-                    entry["fidelity"] = {"ssim": 1.0, "hf_ratio": 0.0, "delta_e": 0.0, "upscale_factor": 1}
-                else:
-                    entry["fidelity"] = compute_fidelity_from_images(
-                        proxy.image,
-                        src_proxy.image,
-                        item_size=proxy.size,
-                        source_size=src_proxy.size,
+                own = Path(getattr(it, "path"))
+            except Exception:
+                continue
+            key = str(own)
+            entry: dict = {}
+            try:
+                proxy = proxy_for(own)
+            except Exception:
+                proxy = None
+            if proxy is None:
+                out[key] = entry
+                continue
+            try:
+                src_img = src_proxy.image if src_proxy is not None else None
+                same = False
+                if src_proxy is not None:
+                    try:
+                        same = Path(source_path).resolve() == own.resolve()  # type: ignore[arg-type]
+                    except Exception:
+                        same = False
+                    if same:
+                        src_img = None  # same-file pair: detectors run sourceless
+                if full_res_artifacts:
+                    entry["artifacts"] = _analyze_artifacts_full_res(
+                        own, source_store, same, proxy.image, src_img
                     )
+                else:
+                    entry["artifacts"] = analyze_images(proxy.image, src_img)
             except Exception:
-                logger.debug("proxy batch: fidelity failed for %s", own, exc_info=True)
-        if include_camera:
+                logger.debug("proxy batch: artifacts failed for %s", own, exc_info=True)
+            # Coarse localization for the artifacts that actually fired (SalArt-VQA:
+            # tie a claim to local evidence). Only non-clean axes, so the tile pass
+            # stays cheap; failures leave no map.
             try:
-                entry["camera"] = measure_camera_from_image(proxy.image)
+                from tabs.image_gallery.services.artifact_maps import localize as _localize
+
+                maps: dict = {}
+                for art, sev in (entry.get("artifacts") or {}).items():
+                    sv = str(getattr(sev, "value", sev)).lower()
+                    if sv == "clean":
+                        continue
+                    m = _localize(proxy.image, art, src_img, grid=5)
+                    if m is not None:
+                        maps[str(getattr(art, "value", art))] = m
+                if maps:
+                    entry["artifact_maps"] = maps
             except Exception:
-                logger.debug("proxy batch: camera failed for %s", own, exc_info=True)
-        out[key] = entry
+                logger.debug("proxy batch: localization failed for %s", own, exc_info=True)
+            if source_path is not None and src_proxy is not None:
+                try:
+                    try:
+                        same = Path(source_path).resolve() == own.resolve()  # type: ignore[arg-type]
+                    except Exception:
+                        same = False
+                    if same:
+                        # Same-file pair: identity scores, no engine call
+                        # (mirrors compute_fidelity_metrics path equality).
+                        entry["fidelity"] = {"ssim": 1.0, "hf_ratio": 0.0, "delta_e": 0.0, "upscale_factor": 1}
+                    else:
+                        entry["fidelity"] = compute_fidelity_from_images(
+                            proxy.image,
+                            src_proxy.image,
+                            item_size=proxy.size,
+                            source_size=src_proxy.size,
+                        )
+                except Exception:
+                    logger.debug("proxy batch: fidelity failed for %s", own, exc_info=True)
+            if include_camera:
+                try:
+                    entry["camera"] = measure_camera_from_image(proxy.image)
+                except Exception:
+                    logger.debug("proxy batch: camera failed for %s", own, exc_info=True)
+            out[key] = entry
+    finally:
+        if source_store is not None:
+            try:
+                source_store.close()
+            except Exception:
+                logger.debug("proxy batch: source store close failed", exc_info=True)
     return out

@@ -730,7 +730,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 3502,
+      "lines": 3509,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -754,7 +754,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 665,
+      "lines": 685,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tiled-pipeline size=679 reason=\"7 pure detectors sharing PIL/numpy helpers + source-anchor delta — single catalog lifecycle\"",
