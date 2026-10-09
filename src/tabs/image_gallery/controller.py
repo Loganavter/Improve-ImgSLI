@@ -313,7 +313,7 @@ class GalleryController:
 
     # -- bounded scheduler (Phase 2b+3; frozen seam: schedule) --------------
 
-    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None) -> int:
+    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
         """Single scheduler entry for gallery concurrency (frozen seam).
 
         ``items`` is a list of GalleryItem; ``priority`` is a Qt pool
@@ -334,7 +334,7 @@ class GalleryController:
             except Exception:
                 gen = 0
         if op == "proxy":
-            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera)
+            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
         return self._schedule_thumbs(batch, int(priority), gen)
 
     def sched_stats(self) -> dict:
@@ -2344,17 +2344,24 @@ class GalleryController:
     # -- unified Stage-2 proxy step (Phase 2b+3; single-pass) ------------------
 
     @staticmethod
-    def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool) -> dict:
+    def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_res_artifacts: bool = False) -> dict:
         """One chunk worker body: shared-proxy single pass (wave A1 API)."""
         from tabs.image_gallery.services.proxy import run_proxy_stages_sync
 
         try:
-            return dict(run_proxy_stages_sync(list(chunk), source_path, include_camera=include_camera))
+            return dict(
+                run_proxy_stages_sync(
+                    list(chunk),
+                    source_path,
+                    include_camera=include_camera,
+                    full_res_artifacts=full_res_artifacts,
+                )
+            )
         except Exception:
             logger.debug("proxy chunk failed", exc_info=True)
             return {}
 
-    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None) -> int:
+    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
         """Chunked proxy batches: one worker per 50 items (never N)."""
         chunks = [items[i:i + _GALLERY_PROXY_CHUNK] for i in range(0, len(items), _GALLERY_PROXY_CHUNK)]
         if not chunks:
@@ -2374,7 +2381,7 @@ class GalleryController:
         for chunk in chunks:
             worker = GenericWorker(
                 self._tracked(GalleryController._run_proxy_chunk_sync),
-                list(chunk), source, include_camera,
+                list(chunk), source, include_camera, full_res_artifacts,
             )
             worker.signals.result.connect(
                 lambda res, g=gen, w=wanted_set: self._on_proxy_batch_ready(res, g, w)
@@ -2422,7 +2429,7 @@ class GalleryController:
             self.schedule(
                 list(items), PROXY_BATCH_PRIORITY, op="proxy",
                 source=source_path, gen=self._folder_gen, wanted=wanted,
-                include_camera=want_camera,
+                include_camera=want_camera, full_res_artifacts=want_artifacts,
             )
         except Exception:
             logger.debug("proxy analysis start failed", exc_info=True)

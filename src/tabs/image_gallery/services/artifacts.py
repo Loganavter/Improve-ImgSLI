@@ -408,10 +408,30 @@ def detect_invented_texture(pil_image: Image.Image, source_image: Image.Image | 
         return _SEV_CLEAN
 
 
+#: Largest native edge ``detect_blocking`` will analyse pixel-for-pixel. The
+#: 8-px DCT grid only exists at native resolution — once pixels are resampled
+#: the ``(x+1)%8==0`` phase is meaningless. Above this edge we abstain instead
+#: of silently downscaling (an honest CLEAN, never a mis-phased severity).
+_BLOCKING_MAX_NATIVE_EDGE = 2048
+
+
 def detect_blocking(pil_image: Image.Image, source_image: Image.Image | None = None) -> Severity:
-    """Blocking — 8×8 DCT block-boundary energy (JPEG re-save chains)."""
+    """Blocking — 8×8 DCT block-boundary energy (JPEG re-save chains).
+
+    Contract: the 8-px block grid is only meaningful on *native* pixels, so
+    this detector never resamples. The tiled runner feeds native tiles whose
+    origin is a multiple of 8, so the ``(x+1)%8==0`` boundary phase is exact;
+    a full image whose origin is 0 is likewise exact. An input a caller has
+    already downscaled (e.g. a bounded proxy of a larger file) simply carries
+    no native 8-px grid and reads CLEAN — an honest abstention, not a silent
+    mis-phase. Inputs larger than ``_BLOCKING_MAX_NATIVE_EDGE`` abstain too
+    rather than being blind-resampled.
+    """
     try:
-        arr = _to_gray_array(pil_image)
+        w, h = pil_image.size
+        if max(w, h) > _BLOCKING_MAX_NATIVE_EDGE:
+            return _SEV_CLEAN
+        arr = _to_gray_array(pil_image, max_edge=_BLOCKING_MAX_NATIVE_EDGE)
         np = _np()
         if arr is None or np is None:
             return _SEV_CLEAN
