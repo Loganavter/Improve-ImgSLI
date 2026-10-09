@@ -121,7 +121,7 @@ def rebuild_artifacts(overlay, item) -> None:
         row = QWidget(host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.setSpacing(scaled_px(2))  # W5: fit budget (helpers outer note)
+        rl.setSpacing(scaled_px(6))  # label→bar gap (W5 fit budget checked)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
@@ -161,7 +161,10 @@ def rebuild_artifacts(overlay, item) -> None:
 
                 _hm_lbl = _QLabel(row)
                 _hm_lbl.setPixmap(_heatmap_pixmap(_hm))
-                _hm_lbl.setToolTip("where this artifact is strongest")
+                _hm_lbl.setToolTip(
+                    "Where this artifact is strongest — coarse 5×5 grid:\n"
+                    "green = none · yellow = mild · red = strongest"
+                )
                 header.addWidget(_hm_lbl)
             except Exception:
                 pass

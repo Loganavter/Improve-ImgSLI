@@ -702,6 +702,15 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     right_lay.addWidget(overlay._meta_label)
+    # Gap below the dims/format/size (resolution) row so the first metric row
+    # does not abut it. A real fixed-height widget (not a spacerItem) survives
+    # relayout_report_rows' spacer sweep.
+    try:
+        _meta_gap = QWidget(right_host)
+        _meta_gap.setFixedHeight(scaled_px(6))
+        right_lay.addWidget(_meta_gap)
+    except Exception:
+        pass
     overlay._report_title = _make_label("Fidelity report", parent=right_host, pixel_size=13, pt=13)
     overlay._report_title.setObjectName("quicklook_report_title")
     right_lay.addWidget(overlay._report_title)
