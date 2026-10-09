@@ -162,6 +162,10 @@ class _StripLassoFilter(QObject):
         # repeats so exactly one handling (the first, with watched ==
         # receiver and correct coords) takes effect.
         self._seen = None
+        # Coalescing signature of the last live selection applied mid-drag:
+        # a move that does not change membership only shifts the band, never
+        # re-paints every thumb (grid parity, ``_marquee_last_update_sig``).
+        self._pick_sig = None
         # Right-press anchor for release-time menu (same grab-race reason
         # as the lasso: the popup opens on release, never mid-press).
         self._rpress = None
@@ -215,6 +219,31 @@ class _StripLassoFilter(QObject):
             except Exception:
                 pass
 
+    def _apply_live_selection(self, rect):
+        """Preview the strip selection mid-drag (grid marquee parity).
+
+        The main grid applies its preview on every band update; the strip
+        used to commit only on release, so the accent only appeared once the
+        drag ended. Coalesce on membership so an unchanged hit set repaints
+        nothing (only the band geometry moves).
+        """
+        try:
+            picked = _strip_lasso_pick(self._overlay, rect)
+        except Exception:
+            return
+        sig = frozenset(picked)
+        if sig == self._pick_sig:
+            return
+        self._pick_sig = sig
+        try:
+            self._overlay._strip_selected_paths = set(picked)
+        except Exception:
+            pass
+        try:
+            _strip_refresh_selection(self._overlay)
+        except Exception:
+            pass
+
     def eventFilter(self, watched, event):  # noqa: N802
         # Return policy (kills double-delivery: a press handled on the host
         # must never ALSO be processed on the viewport — propagated events
@@ -251,6 +280,9 @@ class _StripLassoFilter(QObject):
                             return False
                         self._seen = _key
                         self._hide_band()
+                        # New gesture: drop the coalescing signature so the
+                        # first move always previews, even at equal membership.
+                        self._pick_sig = None
                         self._origin = self._to_strip(watched, _pos)
                         try:
                             from tabs.image_gallery.debug import gallery_debug as _dbg
@@ -313,7 +345,12 @@ class _StripLassoFilter(QObject):
                                 except Exception:
                                     pass
                             if self._band is not None:
-                                self._band.setGeometry(_QR(_QP(self._origin), _QP(cur)).normalized())
+                                _rect = _QR(_QP(self._origin), _QP(cur)).normalized()
+                                self._band.setGeometry(_rect)
+                                # Live accent while dragging (grid parity):
+                                # thumbs in the band light up on every move,
+                                # not only after release.
+                                self._apply_live_selection(_rect)
                                 if not _is_button:
                                     return True
                     except Exception:
@@ -481,21 +518,19 @@ def _strip_open_menu_for(overlay, watched, view_pos) -> bool:
         return False
 
 
-def _strip_apply_lasso_selection(overlay, rect) -> None:
-    """Select strip items whose containers intersect *rect* (viewport coords).
+def _strip_lasso_pick(overlay, rect) -> list[str]:
+    """Strip item paths whose containers intersect *rect* (viewport coords).
 
-    Quick Look keeps its OWN selection: the picked set lives on the overlay
-    (``_strip_selected_paths``) and is never written back to the owner, so a
-    strip lasso highlights strip thumbs only and leaves the main grid
-    untouched. Container geometries map into the same viewport space (valid
-    downward mapping). Series order is preserved (container order == series
-    order). Refreshes the thumb selection visuals.
+    Pure geometry: maps each thumb container into the scroll viewport (valid
+    downward mapping) and keeps the ones the band touches. Series order is
+    preserved (container order == series order). Used both by the live
+    mid-drag preview and the release-time commit. Never raises.
     """
     try:
         containers = list(getattr(overlay, "_strip_buttons", None) or [])
         items = list(getattr(overlay, "_series_items", None) or [])
     except Exception:
-        return
+        return []
     try:
         _scroll = getattr(overlay, "_strip_scroll", None)
         _view = _scroll.viewport() if _scroll is not None else None
@@ -527,15 +562,25 @@ def _strip_apply_lasso_selection(overlay, rect) -> None:
                 continue
     except Exception:
         pass
-    picked = [p for p in picked if p]
+    return [p for p in picked if p]
+
+
+def _strip_apply_lasso_selection(overlay, rect) -> None:
+    """Select strip items whose containers intersect *rect* (viewport coords).
+
+    Quick Look keeps its OWN selection: the picked set lives on the overlay
+    (``_strip_selected_paths``) and is never written back to the owner, so a
+    strip lasso highlights strip thumbs only and leaves the main grid
+    untouched. Refreshes the thumb selection visuals.
+    """
+    picked = _strip_lasso_pick(overlay, rect)
     try:
         from tabs.image_gallery.debug import gallery_debug as _dbg4
 
         _dbg4(
-            "strip lasso picked=%d rect=%s containers=%d",
+            "strip lasso picked=%d rect=%s",
             len(picked),
             rect,
-            len(containers),
         )
     except Exception:
         pass

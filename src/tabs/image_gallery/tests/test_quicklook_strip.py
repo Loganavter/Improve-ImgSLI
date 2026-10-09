@@ -998,6 +998,37 @@ def test_strip_lasso_from_viewport_coords(qtbot, tmp_path):
     ov.hide()
 
 
+def test_strip_lasso_previews_live_before_release(qtbot, tmp_path):
+    """Thumbs light up mid-drag, not only after the release (grid parity).
+
+    Regression: the strip applied ``_strip_apply_lasso_selection`` only on
+    mouse release, so the accent appeared once the band was finished. The
+    main grid previews on every band update; assert the strip does too.
+    """
+    from PySide6.QtCore import Qt as _Qt
+    from PySide6.QtCore import QPoint as _QP
+
+    paths = [_real_png(tmp_path, f"lv{i}.png") for i in range(3)]
+    items = [GalleryItem(path=p, mtime_ns=i + 1) for i, p in enumerate(paths)]
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items)
+    host = ov._strip_host
+
+    cs = list(ov._strip_buttons)
+    g0, g1 = cs[0].geometry(), cs[1].geometry()
+    mid = (g0.center().y() + g1.center().y()) // 2
+    qtbot.mousePress(host, _Qt.MouseButton.LeftButton, pos=_QP(g0.left() - 30, mid))
+    assert ov._strip_selected_paths == set()
+    qtbot.mouseMove(host, _QP(g1.right() + 30, mid))
+    QApplication.processEvents()
+    # Before release: the dragged-over thumbs are already selected.
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
+    qtbot.mouseRelease(host, _Qt.MouseButton.LeftButton, pos=_QP(g1.right() + 30, mid))
+    QApplication.processEvents()
+    assert ov._strip_selected_paths == {str(paths[0]), str(paths[1])}
+    ov.hide()
+
+
 def test_strip_plain_click_clears_selection(qtbot, tmp_path):
     """A plain strip click drops the lasso selection (local only).
 
