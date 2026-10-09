@@ -22,7 +22,11 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
 
 from PIL import Image
 

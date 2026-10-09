@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
+
 from tabs.image_compare.services.snapshot_render_plan_builder import (
     SnapshotRenderPlanBuilder,
 )

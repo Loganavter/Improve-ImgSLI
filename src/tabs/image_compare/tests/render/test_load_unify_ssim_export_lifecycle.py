@@ -2,6 +2,10 @@
 
 from PIL import Image
 
+import pytest
+
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
+
 from shared.analysis.diff_source import create_highlight_diff_from_sources
 from shared.analysis.ssim_source import create_ssim_map_from_sources
 from engine.store.pixel_ops.downscale import downscale_pair_to_limit

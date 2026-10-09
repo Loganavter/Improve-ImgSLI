@@ -21,8 +21,8 @@ Markers are registered in `pytest.ini` (`slow`, `gui`, `flaky`). No `addopts`
 — default runs are unchanged; tiers are opt-in via `-m`:
 
 ```bash
-pytest tests -m "not slow" -n auto -q     # fast tier: everything except the ~13
-                                          # whole-tree scans (43 tests); PR/iteration default
+pytest tests -m "not slow" -n auto -q     # fast tier: everything except the
+                                          # whole-tree scans (15 files / 44 tests); PR default
 pytest -n auto -q                        # full suite: tests/ + src/tabs/*/tests/ (nightly / pre-merge)
 pytest -m "slow" -q                       # slow scans only
 ```
@@ -66,7 +66,8 @@ shiboken guards) + tests without a `DeferredDelete` sweep
 mypy                      # checks src/ (config: files = src, mypy_path = src)
 ```
 
-It runs in CI (Windows build workflow, "Run Mypy" step) alongside pytest.
+Run it locally before pushing; it is not currently wired into the app CI
+workflows (the sibling `sli-ui-toolkit` repo runs mypy in its own CI).
 Notes for contributors:
 
 - Packages are rooted at `src/` (app runs with `PYTHONPATH=src`), so
@@ -250,13 +251,15 @@ not *how* — without a Qt window or real QRhi rendering.
 4. **`SimpleNamespace` over `MagicMock`.** Mocks only fail when invoked; namespaces fail at `AttributeError`. Tests should fail on missing contract fields, not pass silently.
 5. **Document the dogma in the docstring.** First line — link to a section in `docs/dev/`, so when a rule changes it is clear which doc to update with the test.
 6. **Do not mock Store.** To test a reducer — dispatch a real action into a real store; for a pass — build `scene_frame` by hand.
+7. **Agent-written tests are low-trust; require a falsification story.** A new regression test must be shown failing before the fix (a test green on both sides proves nothing). Prefer human-authored contracts, ground-truth harnesses, and content-identity assertions over agent-generated parity that merely restates the implementation. Rationale: the 2026-10-08 agent-tests study (agent-written unit/integration tests did not improve outcomes) and our own `~180 green tests with swapped previews` lesson — see `improve-imgsli-internal-docs` `inv-test-suite-state-2026-10-09`.
 
 ## Hermeticity (tests must never touch real user data)
 
 Every test must run without reading or writing the developer's / CI runner's
-real profile. The CI job `tests-hermetic` enforces this mechanically (isolated
-`HOME`/`XDG_*`, then asserts the real app dirs are empty). Observed incidents
-that shaped these rules:
+real profile. This is enforced by the shared redirect fixtures in
+`tests/conftest.py` / `src/tabs/conftest.py` (QSettings `NativeFormat` +
+`IniFormat` paths, `TiledPixelStore` spill dir, theme/tab singletons) — there
+is no separate hermetic CI job. Observed incidents that shaped these rules:
 
 - `QSettings("org", "app")` resolves with **`NativeFormat`** on Linux, and the
   2-arg constructor ignores `setDefaultFormat`. Redirecting only the

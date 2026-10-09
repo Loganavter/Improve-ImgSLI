@@ -23,6 +23,10 @@ from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
+
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
+
 from PIL import Image
 
 from shared.image_processing.autocrop.model import CropBox

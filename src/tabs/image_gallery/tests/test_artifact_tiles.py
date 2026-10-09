@@ -22,6 +22,7 @@ import pytest
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("PIL")
+pytest.importorskip("skimage")
 
 from PIL import Image  # noqa: E402
 
