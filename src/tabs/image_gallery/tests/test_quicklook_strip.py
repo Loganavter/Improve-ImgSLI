@@ -1129,3 +1129,31 @@ def test_strip_source_outline_corner_recedes_monotonically(qtbot, tmp_path):
     edge = img.pixelColor(1, img.height() // 2)
     assert edge.alpha() > 200
     ov.hide()
+
+
+def test_strip_rank_pill_not_clipped_by_container(qtbot, tmp_path):
+    """The rank pill's bottom outline must fit inside its container.
+
+    Regression: the container reserved only scaled_px(8) below the thumb
+    while the pill straddles BADGE_HEIGHT//2 = 9px below the thumb's bottom
+    edge (bottom-center, half out) — the container rect clipped the pill's
+    bottom 1px, cutting its outline.
+    """
+    p1 = _real_png(tmp_path, "r1.png")
+    p2 = _real_png(tmp_path, "r2.png")
+    a = GalleryItem(path=p1, mtime_ns=1, rank=1)
+    b = GalleryItem(path=p2, mtime_ns=2, rank=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a, b])
+    QApplication.processEvents()
+    pill = _rank_pills_by_path(ov).get(str(p1))
+    assert pill is not None
+    container = pill.parentWidget()
+    assert container is not None
+    # QRect.bottom() is inclusive; the pill's own rect (border included) must
+    # end at or above the container's bottom edge.
+    assert pill.geometry().bottom() + 1 <= container.height(), (
+        pill.geometry(),
+        container.height(),
+    )
+    ov.hide()

@@ -1249,10 +1249,18 @@ def rebuild_strip(overlay) -> None:
         container = QWidget(overlay._strip_host)
         container.setObjectName(f"quicklook_strip_container_{idx}")
         cont_lay = QVBoxLayout(container)
-        # Bottom reserve for the rank pill overhang: the pill straddles
-        # the thumb's bottom edge (half out), so the container extends
-        # past the thumb instead of clipping it.
-        cont_lay.setContentsMargins(0, 0, 0, scaled_px(8))
+        # Bottom reserve for the rank pill overhang: the pill straddles the
+        # thumb's bottom edge (bottom-center, half out = BADGE_HEIGHT//2), so
+        # the container must extend at least that far below the thumb or the
+        # container rect clips the pill's bottom outline. +2 covers the 1px
+        # border and its antialiased edge.
+        try:
+            from tabs.image_gallery.services.rank_badge import BADGE_HEIGHT as _BADGE_H
+
+            _pill_reserve = scaled_px(_BADGE_H // 2 + 2)
+        except Exception:
+            _pill_reserve = scaled_px(11)
+        cont_lay.setContentsMargins(0, 0, 0, _pill_reserve)
         cont_lay.setSpacing(scaled_px(2))
         cont_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         # S4: thumbnail goes on a ButtonRegion (Button has no pixmap
