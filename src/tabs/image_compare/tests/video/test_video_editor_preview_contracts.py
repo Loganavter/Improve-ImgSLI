@@ -297,6 +297,26 @@ def test_preview_scene_uses_main_renderer_not_thumbnail(monkeypatch):
     assert captured["snap"] is snap
     assert (captured["out_w"], captured["out_h"]) == (640, 360)
 
+def test_preview_keys_change_with_snapshot_content():
+    """Content identity: the prepare/request keys include the snapshot's content
+    signature, so a different frame can never reuse a cached plan (the stale /
+    neighbour-frame risk). Key STABILITY was tested; content-sensitivity was not.
+    """
+    from tabs.image_compare.plugins.video_editor.presenter_parts.preview import (
+        PreviewCoordinator,
+    )
+
+    common = (640, 360, False, None, None, 320, 180)
+    sig_a = ("/a.png", "/b.png", 1.0, "vp", "st")
+    sig_b = ("/a.png", "/b.png", 2.0, "vp", "st")  # different frame timestamp
+    prep_a, req_a = PreviewCoordinator._build_preview_keys(sig_a, *common)
+    prep_b, req_b = PreviewCoordinator._build_preview_keys(sig_b, *common)
+    assert prep_a != prep_b
+    assert req_a != req_b
+    # Same signature -> stable key (guards the other direction).
+    assert PreviewCoordinator._build_preview_keys(sig_a, *common) == (prep_a, req_a)
+
+
 def test_preview_scene_forces_canvas_read_only(monkeypatch):
     """set_read_only(True) happens synchronously in render_preview_gpu, before
     the (background-threaded) prepare is even submitted."""

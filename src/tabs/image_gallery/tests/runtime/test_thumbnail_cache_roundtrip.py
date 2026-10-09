@@ -51,8 +51,12 @@ def test_render_and_cache_thumbnail_writes_file_to_disk(tmp_path, monkeypatch):
     assert expected.is_file()
     with Image.open(expected) as cached:
         width, height = cached.size
+        # Content identity: the cached thumbnail is the SOURCE's image, not
+        # another file's (a bounded-size-only check would pass on a collision).
+        center = cached.convert("RGB").getpixel((width // 2, height // 2))
     assert width <= thumbnail_cache.THUMBNAIL_SIZE[0]
     assert height <= thumbnail_cache.THUMBNAIL_SIZE[1]
+    assert center == (200, 100, 50)
 
 
 def test_cache_hit_returns_cached_file_without_rerender(tmp_path, monkeypatch):

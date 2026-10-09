@@ -13,6 +13,8 @@ from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
+
 from tabs.image_compare.services.gpu_export_scene import build_export_render_scene
 from tabs.image_compare.services.snapshot_render_plan_builder import (
     SnapshotRenderPlanBuilder,

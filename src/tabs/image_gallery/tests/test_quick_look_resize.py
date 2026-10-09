@@ -384,6 +384,50 @@ def test_metric_row_gaps_grow_uniformly_on_vertical_stretch(qtbot, tmp_path):
     ov.hide()
 
 
+def test_metric_block_outer_gaps_match_inter_row_gaps(qtbot, tmp_path):
+    """The metric block breathes from the meta row above and the analysis
+    divider below exactly like rows do between themselves.
+
+    Falsification story: before the leading/trailing spacers, the top seam
+    was a fixed ~6px ``meta_gap`` widget (+ layout spacing) and the bottom
+    seam was only the 3px layout spacing — both far below the inter-row
+    stretch gaps, so the first/last metric hugged the meta row / divider.
+    """
+    from PySide6.QtCore import QPoint
+
+    src_p = _real_png(tmp_path, "src.png")
+    v_p = _real_png(tmp_path, "v.png")
+    src = GalleryItem(path=src_p, mtime_ns=1, metrics={})
+    item = GalleryItem(
+        path=v_p, mtime_ns=2,
+        metrics={"ssim": 0.93, "hf_ratio": -0.07, "delta_e": 8.3},
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [[src], [item]], source=src.path)
+
+    host = ov._report_host
+    rows = list(ov._metric_rows) + list(ov._artifact_rows)
+    assert len(rows) >= 4
+
+    def _top(w):
+        return w.mapTo(host, QPoint(0, 0)).y()
+
+    meta_bottom = _top(ov._meta_label) + ov._meta_label.height()
+    spans = [(r, _top(r), _top(r) + r.height()) for r in rows]
+    first_top = spans[0][1]
+    last_bottom = spans[-1][2]
+    div_top = _top(ov._div_analysis)
+    inter = [spans[i + 1][1] - spans[i][2] for i in range(len(spans) - 1)]
+    gap_top = first_top - meta_bottom
+    gap_bottom = div_top - last_bottom
+
+    # All seams — top, inter-row, bottom — share one uniform gap.
+    assert max(inter + [gap_top, gap_bottom]) - min(inter + [gap_top, gap_bottom]) <= 8
+    # And it is the stretch gap, not the old cramped fixed seam.
+    assert gap_top > 12 and gap_bottom > 12
+    ov.hide()
+
+
 def test_grow_shrink_roundtrip_restores_proportions(qtbot, tmp_path):
     """Sticky-width regression: grow->shrink must settle back (no ratchet).
 

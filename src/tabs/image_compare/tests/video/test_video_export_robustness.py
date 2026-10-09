@@ -126,6 +126,57 @@ def test_tolerated_skips_are_counted_and_stream_stays_full():
     assert all(len(p) > 0 for p in process.stdin.written)
 
 
+def _frame_index_color(frame_idx: int):
+    return (frame_idx % 256, (frame_idx * 7) % 256, (frame_idx * 13) % 256, 255)
+
+
+def test_written_frames_carry_their_own_content():
+    """Content identity: written frame k encodes frame k's snapshot.
+
+    The robustness suite asserted payload SIZES only (``{8*4*4}``), so an
+    index -> content swap in the export loop passed it. The fake renderer
+    encodes the frame index derived from the snapshot timestamp; the written
+    payloads must decode back to their own frame.
+    """
+    fps = 60
+    total = 12
+
+    def render_snapshot_to_pil(snap, w, h, *args, **kwargs):
+        idx = int(round(float(snap.timestamp) * fps))
+        return Image.new("RGBA", (w, h), _frame_index_color(idx))
+
+    exporter = SimpleNamespace(
+        main_controller=None,
+        render_snapshot_to_pil=render_snapshot_to_pil,
+        _drain_last_render_debug=lambda: {},
+        _last_render_backend="cpu",
+        is_cancel_requested=lambda: False,
+    )
+    loop = VideoRenderLoop(exporter)
+    job = SimpleNamespace(
+        recording=SimpleNamespace(evaluate_at=lambda t: SimpleNamespace(timestamp=t)),
+        width=8,
+        height=4,
+        fps=fps,
+        total_frames=total,
+        font_path=None,
+        auto_crop=False,
+        fit_content=False,
+        global_bounds=None,
+        fill_rgba=(0, 0, 0, 0),
+    )
+    process = _FakeProcess()
+    loop.render(process, job)
+
+    written = process.stdin.written
+    assert len(written) == total
+    for k, payload in enumerate(written):
+        r, g, b, a = payload[0:4]
+        assert (r, g, b, a) == _frame_index_color(k), (
+            f"frame {k} carried a neighbour's content: {(r, g, b, a)}"
+        )
+
+
 def test_bounded_rendezvous_past_cancel(monkeypatch):
     """Hung writer + cancel: render() returns instead of wedging."""
     monkeypatch.setattr(VideoRenderLoop, "_ENQUEUE_TIMEOUT_S", 0.05)

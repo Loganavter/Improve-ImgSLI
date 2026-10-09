@@ -147,6 +147,18 @@ def test_dots_overlay_painter_draws_per_dot_colors(qapp):
         _dots_overlay_painter(painter, _Ctx(), None)
     finally:
         painter.end()
+
+    # Content identity: every configured dot colour must actually be painted.
+    # (The previous version had no assertions — a no-op or wrong-colour painter
+    # passed despite the test name promising per-dot colours.)
+    seen = {
+        image.pixelColor(x, y).name()
+        for y in range(image.height())
+        for x in range(image.width())
+    }
+    assert "#c0392b" in seen, "flagged dot colour not painted"
+    assert "#e8b64c" in seen, "mild dot colour not painted"
+    assert "#3fbf5f" in seen, "clean dot colour not painted"
     card.deleteLater()
 
 

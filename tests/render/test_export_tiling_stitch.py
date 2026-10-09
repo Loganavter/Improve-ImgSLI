@@ -3,7 +3,7 @@
 from PIL import Image
 from PySide6.QtGui import QColor, QImage
 
-from engine.gpu.export_tiling import TiledFramebufferExporter
+from engine.gpu.export_tiling import TiledFramebufferExporter, iter_export_tile_rects
 
 
 class _StubWidget:
@@ -29,8 +29,14 @@ class _StubWidget:
             qimg.fill(QColor(1, 2, 3, 255))
         else:
             _full_w, _full_h, left, top = vp
-            qimg.fill(QColor((left % 250) + 1, (top % 250) + 1, 128, 255))
+            # Encode the tile's own origin so the stitched pixel is falsifiable:
+            # /100 keeps distinct tiles distinct (left%250 collided: 0/3000/6000).
+            qimg.fill(QColor(((left // 100) % 250) + 1, ((top // 100) % 250) + 1, 128, 255))
         return qimg
+
+
+def _expected_origin_color(left: int, top: int) -> tuple[int, int, int, int]:
+    return (((left // 100) % 250) + 1, ((top // 100) % 250) + 1, 128, 255)
 
 
 def test_tiled_framebuffer_exporter_stitches_large_canvas():
@@ -55,7 +61,16 @@ def test_tiled_framebuffer_exporter_stitches_large_canvas():
 
     assert isinstance(image, Image.Image)
     assert image.size == (9000, 100)
-    assert image.getpixel((0, 0))[3] == 255
-    assert image.getpixel((5000, 50))[3] == 255
-    assert len(viewports) >= 2
+
+    # Content identity per tile: each tile's pixels must land in that tile's own
+    # region. The stub encodes the tile origin in RGB, so sampling the centre of
+    # each expected tile rect must reproduce that tile's colour — a swapped,
+    # duplicated, or mis-offset paste fails here. (Alpha-only assertions did not.)
+    rects = list(iter_export_tile_rects(9000, 100, 4096))
+    assert len(rects) >= 2
+    for left, top, w, h in rects:
+        cx, cy = left + w // 2, top + h // 2
+        assert image.getpixel((cx, cy)) == _expected_origin_color(left, top), (left, top)
+
+    assert image.getpixel((0, 0)) == _expected_origin_color(0, 0)
     assert viewports[-1] is None

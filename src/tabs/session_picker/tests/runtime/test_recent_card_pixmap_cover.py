@@ -50,6 +50,12 @@ def test_grid_card_uses_pixmap_cover(tmp_path, qapp, monkeypatch):
     )
     assert region.pixmap is not None
     assert region.image_fill == "cover"
+    # Content identity: the cover must be THIS project's preview, not a generic
+    # placeholder or another project's. (The pixmap-is-not-None check alone
+    # would pass for any image of the right shape.)
+    cover_img = region.pixmap.toImage()
+    center = cover_img.pixelColor(cover_img.width() // 2, cover_img.height() // 2)
+    assert (center.red(), center.green(), center.blue()) == (10, 180, 90)
 
     card = build_grid_card(
         record,

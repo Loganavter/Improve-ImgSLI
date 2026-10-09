@@ -1018,6 +1018,13 @@ def test_strip_thumbs_use_button_regions(qtbot, tmp_path):
         assert len(regions) == 1
         assert regions[0].pixmap is not None and not regions[0].pixmap.isNull()
         assert regions[0].image_fill == "cover"
+    # Content identity: each strip thumb shows ITS OWN image (s1 red, s2 green),
+    # never a neighbour's. A "pixmap exists" check passed for any image.
+    by_path = {str(b.property("gallery_path")): b for b in buttons}
+    for path, expected in ((str(p1), (200, 30, 30)), (str(p2), (30, 200, 30))):
+        thumb_img = by_path[path].regions()[0].pixmap.toImage()
+        c = thumb_img.pixelColor(thumb_img.width() // 2, thumb_img.height() // 2)
+        assert (c.red(), c.green(), c.blue()) == expected, path
     # Pill contract: SOURCE pill on source, #N pill on ranked viewing —
     # real buttons, never badge paint or Button text on the thumb.
     thumbs = {b.property("gallery_path"): b for b in buttons}
