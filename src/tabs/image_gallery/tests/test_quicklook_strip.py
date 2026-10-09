@@ -1092,3 +1092,40 @@ def test_strip_selection_overlay_paints_marker(qtbot, tmp_path):
     assert after_sel.pixelColor(33, 22) != before
     assert after_plain.pixelColor(33, 22) == before
     ov.hide()
+
+
+def test_strip_source_outline_corner_recedes_monotonically(qtbot, tmp_path):
+    """Source outline's inner edge must nest with the cover's rounded corner.
+
+    Regression: the widget-scope ``BorderLayer`` stroke is painted *under*
+    the cover pixmap; the pixmap's antialiased corner is semi-transparent,
+    so the stroke showed through it unevenly — the first photo pixel per
+    row went [None, 2, 1, 3, 3, 2, 2, 2] (a notch at the corner). The strip
+    overlay re-paints the exact band opaquely on top, so the boundary
+    recedes monotonically from the corner.
+    """
+    p1 = _real_png(tmp_path, "src.png")
+    p2 = _real_png(tmp_path, "other.png")
+    src = GalleryItem(path=p1, mtime_ns=1)
+    other = GalleryItem(path=p2, mtime_ns=2)
+    ov = _make_overlay(qtbot)
+    _show(ov, src, [src, other], source=p1)
+    btn = {b.property("gallery_path"): b for b in _strip_buttons(ov)}[str(p1)]
+    assert btn.borderColor() is not None
+    QApplication.processEvents()
+    img = btn.grab().toImage()
+    firsts = []
+    for y in range(0, 8):
+        fx = None
+        for x in range(0, 12):
+            c = img.pixelColor(x, y)
+            if c.blue() > 140 and c.red() < 140:  # cover photo (blue #3a6ea5)
+                fx = x
+                break
+        firsts.append(fx)
+    seen = [f for f in firsts if f is not None]
+    assert seen == sorted(seen, reverse=True), firsts
+    # The outline band is opaque on the straight edge (covers the cover).
+    edge = img.pixelColor(1, img.height() // 2)
+    assert edge.alpha() > 200
+    ov.hide()

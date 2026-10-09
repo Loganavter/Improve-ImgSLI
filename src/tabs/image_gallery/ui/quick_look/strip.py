@@ -875,18 +875,98 @@ def _strip_selection_overlay(painter, ctx, tm) -> None:  # type: ignore[no-untyp
         pass
 
 
+def _strip_source_outline(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """Re-paint the source/viewing outline ON TOP of the cover as a solid ring.
+
+    The toolkit's widget-scope ``BorderLayer`` strokes the outline *under*
+    the cover pixmap. The pixmap's rounded clip is antialiased, so its
+    corner pixels are semi-transparent and let the under-border show
+    through unevenly — the outline's inner edge no longer nests with the
+    pixmap clip (two independently-antialiased edges on one boundary; see
+    docs/dev/rendering/cases/sdf-edge-feather-1px.md and
+    docs/dev/qt/precedents.md `painting-antialias-rounded-clips`). Here the
+    same band is filled opaquely in the widget-scope overlay pass (after
+    every region layer), covering the pixmap's corner pixels and leaving a
+    single clean edge. The under-border stays (tests/`borderColor()` rely on
+    it) — it is simply no longer visible.
+
+    Geometry mirrors ``BorderLayer``: pen width ``w`` centered on the path
+    inset by ``w/2``, so the outer boundary is the widget rect at radius
+    ``r + w/2`` and the inner boundary is inset by ``w`` at radius
+    ``r - w/2``. Never raises.
+    """
+    try:
+        widget = getattr(ctx, "widget", None)
+        if widget is None:
+            return
+        try:
+            color = widget.borderColor()
+        except Exception:
+            color = None
+        if color is None and hasattr(widget, "_border_color_override"):
+            color = getattr(widget, "_border_color_override", None)
+        if color is None:
+            return
+        from PySide6.QtCore import Qt as _QtOut
+        from PySide6.QtGui import QBrush as _QBrushOut
+        from PySide6.QtGui import QColor as _QColorOut
+        from PySide6.QtGui import QPainterPath as _QPathOut
+
+        if not isinstance(color, _QColorOut):
+            color = _QColorOut(color)
+        if not color.isValid():
+            return
+        try:
+            width = float(widget.property("borderWidth") or 1.0)
+        except Exception:
+            width = 1.0
+        width = max(1.0, width)
+        rect = getattr(ctx, "rect", None)
+        if rect is None:
+            return
+        radii = getattr(ctx, "corner_radii", None) or (0, 0, 0, 0)
+        try:
+            radius = float(radii[0])
+        except Exception:
+            radius = 0.0
+        half = width / 2.0
+        outer = rect.adjusted(0, 0, 0, 0)
+        inner = outer.adjusted(width, width, -width, -width)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+        path = _QPathOut()
+        path.setFillRule(_QtOut.FillRule.OddEvenFill)
+        path.addRoundedRect(outer, radius + half, radius + half)
+        path.addRoundedRect(inner, max(0.0, radius - half), max(0.0, radius - half))
+        painter.save()
+        try:
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.setPen(_QtOut.PenStyle.NoPen)
+            painter.setBrush(_QBrushOut(color))
+            painter.drawPath(path)
+        finally:
+            painter.restore()
+    except Exception:
+        pass
+
+
 def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
-    """Strip thumb overlay: card hover wash + local-selection marker.
+    """Strip thumb overlay: source outline + card hover wash + selection marker.
 
     Hover wash stays the visual hover only (no IconActionFlyout/capsule on
-    strip thumbs); the selection marker paints the strip's OWN selection
-    over the image. Rank pills are real buttons now (bottom-center of each
-    thumb), not painted badges.
+    strip thumbs); the source/viewing outline is re-painted on top as a
+    solid ring (see ``_strip_source_outline``); the selection marker paints
+    the strip's OWN selection over the image. Rank pills are real buttons
+    now (bottom-center of each thumb), not painted badges.
     """
     try:
         from tabs.image_gallery.ui.card.painters import _gallery_hover_wash
 
         _gallery_hover_wash(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        _strip_source_outline(painter, ctx, tm)
     except Exception:
         pass
     try:
