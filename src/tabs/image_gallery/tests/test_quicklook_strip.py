@@ -221,6 +221,35 @@ def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
     ov.hide()
 
 
+def test_rank_pill_width_fits_label(qtbot, tmp_path):
+    """Every rank pill is at least as wide as its own text hint.
+
+    Regression: the compact fixed pill widths were narrower than the
+    painter's text hint (which reserves the horizontal padding), so
+    ``#N`` / ``SOURCE`` / ``…`` were clipped to ``…``.
+    """
+    paths = [_real_png(tmp_path, f"w{i}.png") for i in range(3)]
+    src = GalleryItem(path=paths[0], mtime_ns=1)
+    ranked = GalleryItem(path=paths[1], mtime_ns=2, rank=2)
+    pending = GalleryItem(path=paths[2], mtime_ns=3)
+    pending.vlm_tie_pending = True
+    ov = _make_overlay(qtbot)
+    _show(ov, src, [src, ranked, pending], source=src.path)
+    QApplication.processEvents()
+    pills = _rank_pills_by_path(ov)
+    seen = set()
+    for path, pill in pills.items():
+        assert pill is not None, path
+        assert pill.width() >= pill.sizeHint().width(), (
+            _pill_text(pill),
+            pill.width(),
+            pill.sizeHint().width(),
+        )
+        seen.add(_pill_text(pill))
+    assert "SOURCE" in seen
+    ov.hide()
+
+
 def test_rank_pill_bottom_center_inside_thumb(qtbot, tmp_path):
     """Rank pill straddles the thumb's bottom edge (half out, centered)."""
     p1 = _real_png(tmp_path, "v.png")
