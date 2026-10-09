@@ -838,7 +838,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1524,
+      "lines": 1556,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -861,7 +861,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 943,
+      "lines": 931,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -917,6 +917,18 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look_hooks.py",
+      "lines": 546,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam"
       }
     },
     {

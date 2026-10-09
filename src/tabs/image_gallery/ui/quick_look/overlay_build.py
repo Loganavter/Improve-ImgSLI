@@ -16,7 +16,6 @@ from tabs.image_gallery.ui.quick_look.labels_theme import (
     _apply_point_size,
     _is_dark_theme,
     _make_label,
-    _set_colored_text,
     _token_color,
 )
 from tabs.image_gallery.ui.quick_look.resize import (
@@ -857,10 +856,8 @@ def build_overlay_ui(overlay) -> None:
     bar_lay.setContentsMargins(0, scaled_px(4), 0, 0)
     bar_lay.setSpacing(scaled_px(8))
     dark_bottom = _is_dark_theme()
-    # NOTE: old fallbacks were dark-only (#0096FF, #D93025, #e8b64c) — now light/dark chains.
-    accent = _token_color("accent", "#0078D4" if not dark_bottom else "#0096FF")
+    # NOTE: old fallbacks were dark-only (#D93025) — now light/dark chain.
     danger = _token_color("gallery.status.danger", "#c0392b" if not dark_bottom else "#d64545")
-    warning = _token_color("gallery.status.warn", "#b77900" if not dark_bottom else "#d9a441")
     # Heavy bar actions run after the press ripple finishes (defer_click):
     # _populate / carry flows block the GUI thread for hundreds of ms, and
     # a synchronous clicked would freeze mid-ripple with no press feedback.
@@ -868,15 +865,12 @@ def build_overlay_ui(overlay) -> None:
     # Compare here) — triage only (Reject / Set as source).
     overlay._compare_btn = None
     overlay._multi_btn = None
+    # Reject / Set as source are plain default surface buttons (no accent,
+    # gold or danger tint): the label itself carries the state ("Reject" ↔
+    # "Restore", "Set as source" ↔ "Unset").
     overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar, defer_click="ripple")
     overlay._reject_btn.setObjectName("quicklook_reject")
-    overlay._reject_text_color = QColor(Qt.GlobalColor.black)
-    try:
-        # No fill override: surface default wash + black border/label.
-        overlay._reject_btn.set_border_color(QColor(Qt.GlobalColor.black))
-        _set_colored_text(overlay._reject_btn, "✕ Reject", QColor(Qt.GlobalColor.black))
-    except Exception:
-        pass
+    overlay._reject_text_color = None
     overlay._reject_btn.clicked.connect(overlay._on_reject)
     bar_lay.addWidget(overlay._reject_btn)
     overlay._delete_btn = Button(
@@ -895,12 +889,6 @@ def build_overlay_ui(overlay) -> None:
     bar_lay.addWidget(overlay._delete_btn)
     overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
     overlay._set_source_btn.setObjectName("quicklook_set_source")
-    try:
-        if warning is not None:
-            overlay._set_source_btn.set_border_color(warning)
-            _set_colored_text(overlay._set_source_btn, "Set as source", warning)
-    except Exception:
-        pass
     overlay._set_source_btn.clicked.connect(overlay._on_set_source)
     bar_lay.addWidget(overlay._set_source_btn)
     bar_lay.addStretch(1)

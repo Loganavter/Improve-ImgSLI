@@ -1129,13 +1129,25 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         try:
-            self._set_source_btn.setVisible(bool(is_fidelity))
+            # Always available (every mode): "Set as source" from camera/batch
+            # switches to fidelity; on the current source it reads "Unset".
+            self._set_source_btn.setVisible(True)
+            is_src = (
+                self._source_path is not None
+                and Path(getattr(item, "path", "")) == Path(self._source_path)
+            )
+            if callable(_set_colored_text):
+                _set_colored_text(
+                    self._set_source_btn,
+                    "Unset" if is_src else "Set as source",
+                    None,
+                )
         except Exception:
             pass
         try:
             rejected = bool(getattr(item, "rejected", False))
             if callable(_set_colored_text):
-                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", getattr(self, "_reject_text_color", None))
+                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", None)
         except Exception:
             pass
         try:
@@ -1394,7 +1406,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             rejected = bool(getattr(item, "rejected", False))
             if callable(_set_colored_text):
-                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", getattr(self, "_reject_text_color", None))
+                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", None)
         except Exception:
             pass
         try:
@@ -1456,6 +1468,26 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             p = Path(getattr(self._current_item, "path", ""))
             owner = self._owner
+            # Already the source → the button reads "Unset": clear it and
+            # return the pool to its no-source mode.
+            is_src = self._source_path is not None and p == Path(self._source_path)
+            if is_src:
+                try:
+                    from tabs.image_gallery.ui.quick_look_hooks import on_quick_set_source as _set_src
+
+                    _set_src(owner, None)
+                except Exception:
+                    pass
+                self._source_path = None
+                try:
+                    st = getattr(owner, "state", None) if owner is not None else None
+                    mode = getattr(st, "mode", None)
+                    if mode is not None:
+                        self._mode = mode
+                except Exception:
+                    pass
+                self._populate()
+                return
             new_mode = None
             if owner is not None:
                 try:
