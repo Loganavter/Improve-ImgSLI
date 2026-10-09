@@ -969,7 +969,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 1961,
+      "lines": 2016,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

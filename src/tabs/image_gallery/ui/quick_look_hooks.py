@@ -341,6 +341,14 @@ def on_quick_set_source(owner, path) -> None:
             owner._source_path = Path(path)  # type: ignore[attr-defined]
         except Exception:
             pass
+        # Move the SOURCE badge NOW, decoupled from the comparison pass below:
+        # the badge flips on click, the background fidelity worker catches up.
+        try:
+            sync = getattr(owner, "sync_source_badge", None)
+            if callable(sync):
+                sync(Path(path))
+        except Exception:
+            pass
         try:
             if new_mode is None:
                 try:

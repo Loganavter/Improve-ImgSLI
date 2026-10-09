@@ -1541,6 +1541,61 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def sync_source_badge(self, source) -> None:
+        """Move the SOURCE badge the instant the source changes.
+
+        A source change is a pure badge move, so it must not be chained to
+        the heavy comparison pass: ``stamp_badges`` is cheap (no decode, no
+        Qt) and only the two affected cards — the previous and the new
+        source — need a repaint. The background fidelity pass then re-stamps
+        everything in ``set_triage`` when it lands. Without this, pressing
+        "Make source" showed the old badge until every item had been
+        compared against the new source.
+        """
+        try:
+            try:
+                old = getattr(self, "_source_path", None)
+            except Exception:
+                old = None
+            try:
+                new = Path(source) if source is not None else None
+            except Exception:
+                new = None
+            try:
+                self._source_path = new
+            except Exception:
+                pass
+            from tabs.image_gallery.services.rank_badge import stamp_badges
+
+            items: list = []
+            try:
+                items.extend(list(self._items or []))
+            except Exception:
+                pass
+            try:
+                for cluster in getattr(self, "_series", None) or []:
+                    items.extend(list(cluster))
+            except Exception:
+                pass
+            stamp_badges(items, new)
+            want = {str(p) for p in (old, new) if p is not None}
+            if not want:
+                return
+            changed = []
+            seen: set[str] = set()
+            for item in items:
+                try:
+                    key = str(getattr(item, "path", ""))
+                except Exception:
+                    continue
+                if key in want and key not in seen:
+                    seen.add(key)
+                    changed.append(item)
+            if changed:
+                self.refresh_cards(changed)
+        except Exception:
+            pass
+
     def set_card_visible(self, path: Path, visible: bool) -> None:
         try:
             self._grid_view.set_card_visible(path, visible)
