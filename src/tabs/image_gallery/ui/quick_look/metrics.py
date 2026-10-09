@@ -830,7 +830,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
 
 
 def ssim_subline(overlay, item) -> str:
-    """Build the fidelity SSIM subline from series items (S4-5)."""
+    """Build the fidelity SSIM subline: the rejected tail's ceiling (S4-5).
+
+    The old "#N scores X" part named another series member and restated an
+    SSIM the rows already show — dropped (declutter).
+    """
     try:
         def _ssim_of(m):
             mt = getattr(m, "metrics", None) or {}
@@ -839,34 +843,8 @@ def ssim_subline(overlay, item) -> str:
             except Exception:
                 return None
 
-        def _rank_of(m, default):
-            r = getattr(m, "rank", None) or getattr(m, "crown_rank", None)
-            try:
-                return int(r) if r is not None else default
-            except Exception:
-                return default
-
         parts: list[str] = []
-        viewing_rank = _rank_of(item, overlay._current_idx + 1)
         others = [m for m in overlay._series_items if m is not item]
-        next_item = None
-        best = None
-        for m in others:
-            r = getattr(m, "rank", None) or getattr(m, "crown_rank", None)
-            try:
-                r = int(r) if r is not None else None
-            except Exception:
-                r = None
-            if r is not None and r > viewing_rank:
-                if next_item is None or r < next_item[0]:
-                    next_item = (r, m)
-            if r is not None and (best is None or r < best[0]):
-                best = (r, m)
-        pick = next_item if next_item is not None else best
-        if pick is not None:
-            s = _ssim_of(pick[1])
-            if s is not None:
-                parts.append(f"#{pick[0]} scores {s:.2f}")
         rejected = [m for m in others if bool(getattr(m, "rejected", False))]
         tail = [v for v in (_ssim_of(m) for m in rejected) if v is not None]
         if tail:

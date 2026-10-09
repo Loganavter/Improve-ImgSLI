@@ -657,45 +657,39 @@ def ensure_strip_visible(overlay) -> None:
 def _strip_rank_text_and_style(m, is_source: bool):
     """Rank pill content for one series member (badge-button input).
 
-    Priority (mirrors the old badge order): pending "…" > rejected None >
-    SOURCE > #N. Returns ``(text, outline, text_color, design_width_px)`` —
-    the pill fills white with ``outline`` as its 1px border — or None when no
-    pill is shown. The width is a compact *design*-px floor; the build grows
-    it to the label's own text hint so the pill never clips. Never raises.
+    The label/kind come from the shared resolver
+    (``services/rank_badge.resolve_rank_badge``) so the strip, the grid
+    cards and the list can never drift. Priority here: rejected None >
+    SOURCE > #N (a tie-break-pending item falls through to its rank, like
+    the card — no "…" placeholder). Returns
+    ``(text, outline, text_color, design_width_px)`` — the pill fills white
+    with ``outline`` as its 1px border — or None when no pill is shown. The
+    width is a compact *design*-px floor; the build grows it to the label's
+    own text hint so the pill never clips. Never raises.
     """
     try:
         from PySide6.QtGui import QColor as _QC
 
+        from tabs.image_gallery.services.rank_badge import (
+            KIND_RANK,
+            KIND_SOURCE,
+            resolve_rank_badge,
+        )
         from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
         from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
 
         _strip_is_dark = _strip_dark()
         _ink = _QC("#000000")
-        if bool(getattr(m, "vlm_tie_pending", False)):
-            bg = _strip_token("surface.button", "#8a8a8a" if not _strip_is_dark else "#5a5a5a")
-            if bg is None:
-                bg = _QC(90, 90, 90)
-            return ("…", bg, _ink, 24)
-        if bool(getattr(m, "rejected", False)):
+        badge = resolve_rank_badge(m, is_source=is_source)
+        if badge.rejected:
             return None  # no pill — dim effect carries the signal
-        if is_source:
+        if badge.kind == KIND_SOURCE:
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
             return ("SOURCE", _gold, _ink, 58)
-        _rank = getattr(m, "rank", None)
-        _crown = getattr(m, "crown_rank", None)
-        _rv = _crown if _crown is not None else _rank
-        if _rv is None and bool(getattr(m, "is_best", False)):
-            _rv = 1
-        if _rv is None:
-            return None
-        # Synced with grid cards (ui/card/visuals.py): no BEST pill —
-        # the leader shows its #N rank like every ranked item.
-        try:
-            _text = f"#{int(_rv)}"
-        except Exception:
-            _text = str(_rv)
-        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-        return (_text, _rank_bg, _ink, 34)
+        if badge.kind == KIND_RANK:
+            _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+            return (badge.text, _rank_bg, _ink, 34)
+        return None
     except Exception:
         return None
 
@@ -911,24 +905,16 @@ def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped
 def _strip_rank_key(m) -> tuple:
     """Rank identity for one series member (rank-pill input).
 
-    Mirrors the badge priority in ``rebuild_strip``: crown_rank wins over
-    rank, which wins over the is_best fallback.
+    Delegates to the shared resolver, so the strip fingerprint tracks the
+    exact rule the pill renders (crown_rank ?? rank, leader → #1).
     """
     try:
-        c = getattr(m, "crown_rank", None)
-        if c is not None:
-            return ("crown", str(c))
-        r = getattr(m, "rank", None)
-        if r is not None:
-            return ("rank", str(r))
+        from tabs.image_gallery.services.rank_badge import resolve_rank_badge
+
+        b = resolve_rank_badge(m)
+        return (b.kind, b.rank, b.is_best, b.rejected)
     except Exception:
-        pass
-    try:
-        if bool(getattr(m, "is_best", False)):
-            return ("best", True)
-    except Exception:
-        pass
-    return ("none", False)
+        return ("none", None, False, False)
 
 
 def _strip_fingerprint(overlay) -> tuple:
@@ -946,7 +932,6 @@ def _strip_fingerprint(overlay) -> tuple:
     try:
         paths = tuple(str(getattr(m, "path", "") or "") for m in items)
         rejected = tuple(bool(getattr(m, "rejected", False)) for m in items)
-        pending = tuple(bool(getattr(m, "vlm_tie_pending", False)) for m in items)
         ranks = tuple(_strip_rank_key(m) for m in items)
         source = str(getattr(overlay, "_source_path", None) or "")
         try:
@@ -959,7 +944,7 @@ def _strip_fingerprint(overlay) -> tuple:
             sp = int(scaled_px(66))
         except Exception:
             sp = 66
-        return (paths, rejected, pending, ranks, source, dark, sp)
+        return (paths, rejected, ranks, source, dark, sp)
     except Exception:
         return ()
 
@@ -1007,7 +992,6 @@ def _refresh_strip_selection(overlay) -> None:
         except Exception:
             pass
         rejected = bool(getattr(m, "rejected", False))
-        pending = bool(getattr(m, "vlm_tie_pending", False))
         was_blocked = btn.blockSignals(True)
         try:
             try:
@@ -1184,7 +1168,6 @@ def rebuild_strip(overlay) -> None:
         except Exception:
             pass
         rejected = bool(getattr(m, "rejected", False))
-        pending = bool(getattr(m, "vlm_tie_pending", False))
         thumb_pm = None
         try:
             from tabs.image_gallery.ui.quick_look.helpers import _thumb_pixmap
@@ -1240,7 +1223,7 @@ def rebuild_strip(overlay) -> None:
             pass
         # Rank pill is a real button now (bottom-center of the thumb, in a
         # shared-hover ButtonFamily) — no toolkit badge anywhere on thumbs.
-        # Priority: pending "…" > rejected (none) > SOURCE > #N.
+        # Priority: rejected (none) > SOURCE > #N.
         try:
             _rank_spec = _strip_rank_text_and_style(m, is_source)
         except Exception:

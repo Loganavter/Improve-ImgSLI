@@ -106,10 +106,6 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         rejected = bool(getattr(item, "rejected", False))
     except Exception:
         rejected = False
-    try:
-        is_best = bool(getattr(item, "is_best", False))
-    except Exception:
-        is_best = False
 
     # Badge priority: #N rank pills only. The leader-star and tie-break
     # pills were dropped by design verdict (#N stays): tie-pending items fall
@@ -134,22 +130,16 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         else:
             # Left top per spec — overlay for ranked cards, clear toolkit right badge.
             # No accent outline: the frame stays the default card border.
-            cr = getattr(item, "crown_rank", None)
-            rank_val = cr if cr is not None else getattr(item, "rank", None)
-            if rank_val is None and is_best:
-                # Leader without an explicit rank still shows #1.
-                rank_val = 1
-            if rank_val is not None:
-                try:
-                    badge_text = f"#{int(rank_val)}"
-                except Exception:
-                    badge_text = str(rank_val)
+            from tabs.image_gallery.services.rank_badge import resolve_rank_badge
+
+            badge = resolve_rank_badge(item)
+            if badge.text:
                 try:
                     card.setBadge(None)
                 except Exception:
                     pass
                 try:
-                    card._gallery_badge = badge_text  # type: ignore[attr-defined]
+                    card._gallery_badge = badge.text  # type: ignore[attr-defined]
                     rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
                     # Rank pill text is always black (both themes).
                     card._gallery_badge_style = (True, rank_bg, rank_bg, QColor("#000000"))  # type: ignore[attr-defined]

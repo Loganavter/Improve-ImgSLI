@@ -5,7 +5,8 @@
   never fired: the thumb region id is ``"thumb"``, not ``"_main"``).
 - Card-style badge contract: rejected → no pill, leader → ``#N`` like every
   ranked item (no BEST pill), ranked → ``#N`` (real pill button;
-  pending shows ``…``). Rank pills are plain Buttons — no shared-hover
+  a tie-break-pending item falls through to its rank, no ``…`` placeholder).
+  Rank pills are plain Buttons — no shared-hover
   ButtonFamily anywhere (dropped): pills walk to their item on click
   with no hover sync.
 """
@@ -231,10 +232,9 @@ def test_rank_pill_width_fits_label(qtbot, tmp_path):
     paths = [_real_png(tmp_path, f"w{i}.png") for i in range(3)]
     src = GalleryItem(path=paths[0], mtime_ns=1)
     ranked = GalleryItem(path=paths[1], mtime_ns=2, rank=2)
-    pending = GalleryItem(path=paths[2], mtime_ns=3)
-    pending.vlm_tie_pending = True
+    ranked2 = GalleryItem(path=paths[2], mtime_ns=3, rank=3)
     ov = _make_overlay(qtbot)
-    _show(ov, src, [src, ranked, pending], source=src.path)
+    _show(ov, src, [src, ranked, ranked2], source=src.path)
     QApplication.processEvents()
     pills = _rank_pills_by_path(ov)
     seen = set()
