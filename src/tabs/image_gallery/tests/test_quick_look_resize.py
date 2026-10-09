@@ -248,12 +248,13 @@ def test_footer_reflows_hint_right_on_resize(qtbot, tmp_path):
         assert getattr(ov, "_multi_btn", None) is None
         assert bar.findChild(QWidget, "quicklook_compare") is None
         assert bar.findChild(QWidget, "quicklook_multi") is None
-        first = ov._reject_btn
+        # Set as source is the leftmost action, then Reject, then Delete.
+        first = ov._set_source_btn
         # Actions stay ordered left-to-right with no overlaps.
         cmp_left = first.mapTo(ov._content, first.rect().topLeft()).x()
         assert cmp_left >= 0
         prev_right = -1
-        for btn in (ov._reject_btn, ov._delete_btn, ov._set_source_btn):
+        for btn in (ov._set_source_btn, ov._reject_btn, ov._delete_btn):
             left = btn.mapTo(ov._content, btn.rect().topLeft()).x()
             assert left >= prev_right
             prev_right = btn.mapTo(ov._content, btn.rect().bottomRight()).x()

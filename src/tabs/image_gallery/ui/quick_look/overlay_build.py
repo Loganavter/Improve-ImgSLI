@@ -865,9 +865,14 @@ def build_overlay_ui(overlay) -> None:
     # Compare here) — triage only (Reject / Set as source).
     overlay._compare_btn = None
     overlay._multi_btn = None
-    # Reject / Set as source are plain default surface buttons (no accent,
-    # gold or danger tint): the label itself carries the state ("Reject" ↔
-    # "Restore", "Set as source" ↔ "Unset").
+    # Set as source / Reject are plain default surface buttons (no accent,
+    # gold or danger tint): the label itself carries the state
+    # ("Set as source" ↔ "Unset", "Reject" ↔ "Restore"). Set as source sits
+    # at the left edge; Delete keeps its danger tint.
+    overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
+    overlay._set_source_btn.setObjectName("quicklook_set_source")
+    overlay._set_source_btn.clicked.connect(overlay._on_set_source)
+    bar_lay.addWidget(overlay._set_source_btn)
     overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar, defer_click="ripple")
     overlay._reject_btn.setObjectName("quicklook_reject")
     overlay._reject_text_color = None
@@ -887,10 +892,6 @@ def build_overlay_ui(overlay) -> None:
         pass
     overlay._delete_btn.clicked.connect(overlay._on_delete)
     bar_lay.addWidget(overlay._delete_btn)
-    overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
-    overlay._set_source_btn.setObjectName("quicklook_set_source")
-    overlay._set_source_btn.clicked.connect(overlay._on_set_source)
-    bar_lay.addWidget(overlay._set_source_btn)
     bar_lay.addStretch(1)
     outer.addWidget(bar)
     overlay.add_widget(overlay._content, slot=None)
