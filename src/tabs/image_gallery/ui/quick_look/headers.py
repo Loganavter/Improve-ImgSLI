@@ -5,40 +5,22 @@ Extracted verbatim from ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 
 def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
     try:
         if is_fidelity:
-            # Viewing the source itself → this is not a comparison report.
-            _is_source = False
-            try:
-                _sp = getattr(overlay, "_source_path", None)
-                _cur = getattr(overlay, "_current_item", None)
-                _is_source = _sp is not None and _cur is not None and Path(getattr(_cur, "path", "")) == Path(_sp)
-            except Exception:
-                _is_source = False
-            if _is_source:
-                # The source is the reference — no comparison report at all.
-                for w in (overlay._report_title, overlay._report_sub):
-                    try:
-                        w.setText("")
-                    except Exception:
-                        pass
-                    try:
-                        w.hide()
-                    except Exception:
-                        pass
-            else:
-                overlay._report_title.setText("Fidelity report")
-                src_name = Path(overlay._source_path).name if overlay._source_path is not None else "source"
-                overlay._report_sub.setText(f"vs SOURCE {src_name}")
-                for w in (overlay._report_title, overlay._report_sub):
-                    try:
-                        w.setVisible(True)
-                    except Exception:
-                        pass
+            # Decluttered: the report is self-evident — no "Fidelity report"
+            # title and no "vs SOURCE <name>" subtitle (the metric rows and
+            # the strip carry identity). Hide both, whatever the item.
+            for w in (overlay._report_title, overlay._report_sub):
+                try:
+                    w.setText("")
+                except Exception:
+                    pass
+                try:
+                    w.hide()
+                except Exception:
+                    pass
         else:
             if "CAMERA" in mode_str:
                 # No header labels in camera mode (rows are self-evident).

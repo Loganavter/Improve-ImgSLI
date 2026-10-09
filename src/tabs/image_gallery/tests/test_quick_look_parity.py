@@ -886,7 +886,7 @@ def test_crop_hidden_in_fidelity(qtbot):
     viewing = _item("v.png", metrics={})
     ov = _make_overlay(qtbot)
     _show(ov, viewing, [src, viewing], source=src.path)
-    assert "Fidelity" in ov._report_title.text()
+    assert ov._owner.state.mode == Mode.FIDELITY
     assert getattr(ov, "_crop_host", None) is None
     ov.hide()
 
@@ -910,7 +910,7 @@ def test_refresh_metrics_signature():
 
 
 def test_refresh_metrics_rebuilds_without_reopen(qtbot):
-    """Fidelity delivery (W2) refreshes the open overlay: numbers, meta, brief."""
+    """Fidelity delivery (W2) refreshes the open overlay: numbers, meta."""
     src = _item("src.png", rank=0, metrics={})
     viewing = _item("v.png", rank=1, metrics={})
     second = _item("b.png", rank=2, metrics={"ssim": 0.91, "hf_ratio": -0.31})
@@ -934,8 +934,9 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
     assert any("94%" in t for t in after)  # Source match 0.94 → 94%
     assert not any("not measured" in t for t in after)
     assert "upscale ×4" in ov._meta_label._original_text
-    assert ov._brief_label.text().startswith("vs #2:")
-    assert ov._brief_label.isVisible()
+    # Fidelity report is decluttered: no bottom "vs #N" brief.
+    assert ov._brief_label.text() == ""
+    assert not ov._brief_label.isVisible()
     assert getattr(ov, "_crop_host", None) is None
     ov.hide()
 
@@ -1450,9 +1451,11 @@ def test_right_column_stretches_with_full_content(qtbot):
         b for b in ov._strip_host.findChildren(Button) if b.objectName().startswith("quicklook_strip_")
     ]
     assert len(thumbs) == 4
-    assert ov._brief_label.isVisible() and ov._brief_label.text()
-    # W7 LIVE-long texts (verbatim full copies, painting elides them).
-    assert ov._report_sub._original_text == "vs SOURCE 2x-Futsuu-Anime(1).png"
+    # Fidelity report decluttered: no title/sub/brief chrome (the rows and
+    # the strip carry identity; the bottom "vs #N" brief is batch-only).
+    assert ov._brief_label.text() == ""
+    assert not ov._brief_label.isVisible()
+    assert ov._report_sub._original_text == ""
     # Series text chrome removed: no counts/hub in the sidebar — the size
     # note rides the meta line instead, rejected tallies excluded.
     assert "rejected" not in ov._meta_label.text()
@@ -1487,8 +1490,6 @@ def test_right_column_stretches_with_full_content(qtbot):
     assert scroll.verticalScrollBar().maximum() == 0
     assert scroll.horizontalScrollBar().isVisible() is False
     assert scroll.verticalScrollBar().isVisible() is False
-    # Elide, not truncate: the full sub copy survives in _original_text.
-    assert "2x-Futsuu-Anime(1).png" in ov._report_sub._original_text
     ov.hide()
 
 

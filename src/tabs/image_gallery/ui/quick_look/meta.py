@@ -249,10 +249,11 @@ def local_brief_fallback(item, series_items) -> str:
 
 def populate_brief(overlay, item) -> None:
     try:
-        # The source is the reference — no "vs #N" comparison brief for it.
+        # Fidelity report is decluttered: no bottom "vs #N" brief at all —
+        # the metric rows already carry the comparison (the source included).
+        # Batch (no source) keeps the brief.
         try:
-            _sp = getattr(overlay, "_source_path", None)
-            if _sp is not None and Path(getattr(item, "path", "")) == Path(_sp):
+            if getattr(overlay, "_source_path", None) is not None:
                 overlay._brief_label.setText("")
                 overlay._brief_label.setVisible(False)
                 div = getattr(overlay, "_div_series", None)
