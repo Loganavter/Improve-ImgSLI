@@ -26,6 +26,16 @@ KIND_RANK = "rank"
 KIND_SOURCE = "source"
 KIND_NONE = "none"
 
+#: Badge geometry (design px) — shared by the grid-card painter
+#: (``ui/card/painters.py``) and the quick-look strip pill
+#: (``ui/quick_look/strip.py``) so the two cannot drift in size: a compact
+#: pill = text + ``BADGE_H_PAD`` horizontal breathing room, at least
+#: ``BADGE_MIN_WIDTH`` wide, ``BADGE_HEIGHT`` tall, ``BADGE_RADIUS`` corners.
+BADGE_MIN_WIDTH = 28
+BADGE_H_PAD = 12
+BADGE_HEIGHT = 18
+BADGE_RADIUS = 9
+
 
 @dataclass(frozen=True)
 class RankBadge:
@@ -93,4 +103,14 @@ def resolve_rank_badge(
     return RankBadge("", KIND_NONE, None, is_best, rejected)
 
 
-__all__ = ["RankBadge", "resolve_rank_badge", "KIND_RANK", "KIND_SOURCE", "KIND_NONE"]
+__all__ = [
+    "RankBadge",
+    "resolve_rank_badge",
+    "KIND_RANK",
+    "KIND_SOURCE",
+    "KIND_NONE",
+    "BADGE_MIN_WIDTH",
+    "BADGE_H_PAD",
+    "BADGE_HEIGHT",
+    "BADGE_RADIUS",
+]

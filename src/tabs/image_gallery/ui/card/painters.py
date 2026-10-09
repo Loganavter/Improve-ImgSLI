@@ -99,10 +99,17 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
         f = ui_font(pixel_size=13, bold=False)
         painter.save()
         try:
+            from tabs.image_gallery.services.rank_badge import (
+                BADGE_H_PAD,
+                BADGE_HEIGHT,
+                BADGE_MIN_WIDTH,
+                BADGE_RADIUS,
+            )
+
             painter.setFont(f)
             fm = painter.fontMetrics()
-            w = max(28, fm.horizontalAdvance(text) + 12)
-            h = 18
+            w = max(BADGE_MIN_WIDTH, fm.horizontalAdvance(text) + BADGE_H_PAD)
+            h = BADGE_HEIGHT
             x = rect.x() + 13
             y = rect.y() + 8 + 6
             r = QRectF(x, y, w, h)
@@ -117,7 +124,7 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
             else:
                 painter.setPen(QColor(0, 0, 0, 0))
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            painter.drawRoundedRect(r, 9, 9)
+            painter.drawRoundedRect(r, BADGE_RADIUS, BADGE_RADIUS)
             painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
             painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
         finally:

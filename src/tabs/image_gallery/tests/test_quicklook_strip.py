@@ -222,13 +222,17 @@ def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
     ov.hide()
 
 
-def test_rank_pill_width_fits_label(qtbot, tmp_path):
-    """Every rank pill is at least as wide as its own text hint.
+def test_rank_pill_compact_fits_label(qtbot, tmp_path):
+    """Rank pills size to text + BADGE_H_PAD (shared with the grid card).
 
-    Regression: the compact fixed pill widths were narrower than the
-    painter's text hint (which reserves the horizontal padding), so
-    ``#N`` / ``SOURCE`` / ``…`` were clipped to ``…``.
+    Regression: the pill used the Button's 24px text hint (a 12px side gap
+    each side) instead of the card's compact ``text + 12`` geometry, so it
+    looked padded — and earlier clipped.
     """
+    from sli_ui_toolkit.managers import scaled_px
+
+    from tabs.image_gallery.services.rank_badge import BADGE_H_PAD, BADGE_MIN_WIDTH
+
     paths = [_real_png(tmp_path, f"w{i}.png") for i in range(3)]
     src = GalleryItem(path=paths[0], mtime_ns=1)
     ranked = GalleryItem(path=paths[1], mtime_ns=2, rank=2)
@@ -240,11 +244,12 @@ def test_rank_pill_width_fits_label(qtbot, tmp_path):
     seen = set()
     for path, pill in pills.items():
         assert pill is not None, path
-        assert pill.width() >= pill.sizeHint().width(), (
-            _pill_text(pill),
-            pill.width(),
-            pill.sizeHint().width(),
-        )
+        # The Button hint reserves 24px; the label's own width is that − 24.
+        text_w = max(0, pill.sizeHint().width() - scaled_px(24))
+        assert pill.width() >= text_w, (_pill_text(pill), pill.width(), text_w)
+        assert pill.width() <= max(
+            scaled_px(BADGE_MIN_WIDTH), text_w + scaled_px(BADGE_H_PAD)
+        ), (_pill_text(pill), pill.width(), text_w)
         seen.add(_pill_text(pill))
     assert "SOURCE" in seen
     ov.hide()

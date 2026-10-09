@@ -790,7 +790,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/card/painters.py",
-      "lines": 460,
+      "lines": 467,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one painters concern: badge/dots overlay recipes share one stroke-alignment contract (half-pixel inset mirrors across painters so borders stay pixel-crisp)\"",
@@ -909,7 +909,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1571,
+      "lines": 1575,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",

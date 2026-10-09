@@ -661,11 +661,10 @@ def _strip_rank_text_and_style(m, is_source: bool):
     (``services/rank_badge.resolve_rank_badge``) so the strip, the grid
     cards and the list can never drift. Priority here: rejected None >
     SOURCE > #N (a tie-break-pending item falls through to its rank, like
-    the card — no "…" placeholder). Returns
-    ``(text, outline, text_color, design_width_px)`` — the pill fills white
-    with ``outline`` as its 1px border — or None when no pill is shown. The
-    width is a compact *design*-px floor; the build grows it to the label's
-    own text hint so the pill never clips. Never raises.
+    the card — no "…" placeholder). Returns ``(text, outline, text_color)``
+    — the pill fills white with ``outline`` as its 1px border — or None when
+    no pill is shown. The build sizes the pill from the shared
+    ``rank_badge.BADGE_*`` geometry. Never raises.
     """
     try:
         from PySide6.QtGui import QColor as _QC
@@ -685,10 +684,10 @@ def _strip_rank_text_and_style(m, is_source: bool):
             return None  # no pill — dim effect carries the signal
         if badge.kind == KIND_SOURCE:
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
-            return ("SOURCE", _gold, _ink, 58)
+            return ("SOURCE", _gold, _ink)
         if badge.kind == KIND_RANK:
             _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-            return (badge.text, _rank_bg, _ink, 34)
+            return (badge.text, _rank_bg, _ink)
         return None
     except Exception:
         return None
@@ -1395,31 +1394,36 @@ def rebuild_strip(overlay) -> None:
         # _repin_strip_rank_buttons pins it after the rebuild settles.
         if _rank_spec is not None:
             try:
-                _rank_text, _rank_bg, _rank_txt, _rank_w = _rank_spec
+                _rank_text, _rank_bg, _rank_txt = _rank_spec
+                from tabs.image_gallery.services.rank_badge import (
+                    BADGE_H_PAD,
+                    BADGE_HEIGHT,
+                    BADGE_MIN_WIDTH,
+                    BADGE_RADIUS,
+                )
+
                 rank_btn = Button(
                     rows=[ButtonRow(text=str(_rank_text), size=11, ratio=1.0, color=_rank_txt)],
                     variant="surface",
-                    size=(int(_rank_w), 16),
-                    corner_radius=scaled_px(8),
+                    size=(BADGE_MIN_WIDTH, BADGE_HEIGHT),
+                    corner_radius=scaled_px(BADGE_RADIUS),
                     parent=container,
                 )
                 rank_btn.setObjectName(f"quicklook_rank_{idx}")
-                # Fit the pill to its label. The compact design floor is
-                # narrower than the painter's text hint (which reserves the
-                # horizontal padding), so "#N" / "SOURCE" / "…" were clipped
-                # to "…". Grow to the content hint in DESIGN px (so a later
-                # UiScale change re-derives the same fit), never below the
-                # floor.
+                # Size the pill exactly like the grid-card badge (shared
+                # geometry): text + BADGE_H_PAD breathing room, min
+                # BADGE_MIN_WIDTH. The Button's own sizeHint reserves 24px
+                # (12 each side), which left a visible side gap. Computed in
+                # DESIGN px so a UiScale change re-derives the same fit.
                 try:
                     from sli_ui_toolkit.ui.managers.ui_scale import UiScale as _UiScale
 
                     _factor = float(_UiScale.get_instance().factor()) or 1.0
-                    _design_w = max(
-                        int(_rank_w),
-                        int(round(int(rank_btn.sizeHint().width()) / _factor)),
-                    )
-                    rank_btn._design_fixed_size = (_design_w, 16)
-                    rank_btn.setFixedSize(scaled_px(_design_w), scaled_px(16))
+                    _text_w = max(0, int(rank_btn.sizeHint().width()) - scaled_px(24))
+                    _fit = max(scaled_px(BADGE_MIN_WIDTH), _text_w + scaled_px(BADGE_H_PAD))
+                    _design_w = max(1, int(round(_fit / _factor)))
+                    rank_btn._design_fixed_size = (_design_w, BADGE_HEIGHT)
+                    rank_btn.setFixedSize(scaled_px(_design_w), scaled_px(BADGE_HEIGHT))
                 except Exception:
                     pass
                 if _rank_bg is not None:
