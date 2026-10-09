@@ -654,41 +654,35 @@ def ensure_strip_visible(overlay) -> None:
         pass
 
 
-def _strip_rank_text_and_style(m, is_source: bool):
+def _strip_rank_text_and_style(m):
     """Rank pill content for one series member (badge-button input).
 
-    The label/kind come from the shared resolver
-    (``services/rank_badge.resolve_rank_badge``) so the strip, the grid
-    cards and the list can never drift. Priority here: rejected None >
-    SOURCE > #N (a tie-break-pending item falls through to its rank, like
-    the card — no "…" placeholder). Returns ``(text, outline, text_color)``
-    — the pill fills white with ``outline`` as its 1px border — or None when
-    no pill is shown. The build sizes the pill from the shared
-    ``rank_badge.BADGE_*`` geometry. Never raises.
+    Renders ``item.badge`` / ``item.badge_kind`` — computed ONCE by
+    ``services.rank_badge.stamp_badges`` and read verbatim here (the strip
+    never re-derives the badge from flags). Priority: no badge on rejected.
+    Returns ``(text, outline, text_color)`` — the pill fills white with
+    ``outline`` as its 1px border — or None when no pill is shown. The build
+    sizes the pill from the shared ``rank_badge.BADGE_*`` geometry. Never
+    raises.
     """
     try:
         from PySide6.QtGui import QColor as _QC
 
-        from tabs.image_gallery.services.rank_badge import (
-            KIND_RANK,
-            KIND_SOURCE,
-            resolve_rank_badge,
-        )
+        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
         from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
         from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
 
+        text = str(getattr(m, "badge", "") or "")
+        kind = str(getattr(m, "badge_kind", "none") or "none")
+        if not text or bool(getattr(m, "rejected", False)):
+            return None  # no pill — dim effect carries the rejected signal
         _strip_is_dark = _strip_dark()
         _ink = _QC("#000000")
-        badge = resolve_rank_badge(m, is_source=is_source)
-        if badge.rejected:
-            return None  # no pill — dim effect carries the signal
-        if badge.kind == KIND_SOURCE:
+        if kind == KIND_SOURCE:
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
-            return ("SOURCE", _gold, _ink)
-        if badge.kind == KIND_RANK:
-            _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
-            return (badge.text, _rank_bg, _ink)
-        return None
+            return (text, _gold, _ink)
+        _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
+        return (text, _rank_bg, _ink)
     except Exception:
         return None
 
@@ -902,18 +896,16 @@ def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped
 
 
 def _strip_rank_key(m) -> tuple:
-    """Rank identity for one series member (rank-pill input).
+    """Badge identity for one series member (rank-pill input).
 
-    Delegates to the shared resolver, so the strip fingerprint tracks the
-    exact rule the pill renders (crown_rank ?? rank, leader → #1).
+    Reads the precomputed ``item.badge`` — the strip fingerprint tracks the
+    exact string the pill renders (no per-surface re-derivation).
     """
-    try:
-        from tabs.image_gallery.services.rank_badge import resolve_rank_badge
-
-        b = resolve_rank_badge(m)
-        return (b.kind, b.rank, b.is_best, b.rejected)
-    except Exception:
-        return ("none", None, False, False)
+    return (
+        str(getattr(m, "badge", "") or ""),
+        str(getattr(m, "badge_kind", "none") or "none"),
+        bool(getattr(m, "rejected", False)),
+    )
 
 
 def _strip_fingerprint(overlay) -> tuple:
@@ -1222,9 +1214,9 @@ def rebuild_strip(overlay) -> None:
             pass
         # Rank pill is a real button now (bottom-center of the thumb, in a
         # shared-hover ButtonFamily) — no toolkit badge anywhere on thumbs.
-        # Priority: rejected (none) > SOURCE > #N.
+        # Priority: rejected (none) > badge text (computed once upstream).
         try:
-            _rank_spec = _strip_rank_text_and_style(m, is_source)
+            _rank_spec = _strip_rank_text_and_style(m)
         except Exception:
             _rank_spec = None
         try:

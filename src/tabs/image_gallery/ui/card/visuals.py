@@ -130,19 +130,25 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
         else:
             # Left top per spec — overlay for ranked cards, clear toolkit right badge.
             # No accent outline: the frame stays the default card border.
-            from tabs.image_gallery.services.rank_badge import resolve_rank_badge
+            # The badge text/kind are computed once (services.rank_badge.
+            # stamp_badges) and read verbatim here — never re-derived.
+            from tabs.image_gallery.services.rank_badge import KIND_SOURCE
 
-            badge = resolve_rank_badge(item)
-            if badge.text:
+            badge_text = str(getattr(item, "badge", "") or "")
+            badge_kind = str(getattr(item, "badge_kind", "none") or "none")
+            if badge_text:
                 try:
                     card.setBadge(None)
                 except Exception:
                     pass
                 try:
-                    card._gallery_badge = badge.text  # type: ignore[attr-defined]
-                    rank_bg = _token_qcolor("button.toggle.background.checked", "#555555")
-                    # Rank pill text is always black (both themes).
-                    card._gallery_badge_style = (True, rank_bg, rank_bg, QColor("#000000"))  # type: ignore[attr-defined]
+                    card._gallery_badge = badge_text  # type: ignore[attr-defined]
+                    if badge_kind == KIND_SOURCE:
+                        accent = _token_qcolor("gallery.status.warn", "#b77900")
+                    else:
+                        accent = _token_qcolor("button.toggle.background.checked", "#555555")
+                    # Badge text is always black (both themes).
+                    card._gallery_badge_style = (True, accent, accent, QColor("#000000"))  # type: ignore[attr-defined]
                     card.setBorderColor(_card_border_color())
                 except Exception:
                     pass

@@ -253,7 +253,10 @@ def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes)
     # Design verdict: the tie-break pill is removed. Tie-pending items fall
     # through to the rank path — #N if ranked, else no badge (never a
     # tie-break pill). Toolkit badge stays cleared either way.
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
     item = _item(vlm_tie_pending=True)
+    stamp_badges([item])
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
@@ -261,6 +264,7 @@ def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes)
     assert getattr(card, "_gallery_badge", None) is None
     card.deleteLater()
     ranked = _item(vlm_tie_pending=True, rank=3)
+    stamp_badges([ranked])
     card = build_gallery_card(ranked, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, ranked)
@@ -273,9 +277,11 @@ def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes)
 
 
 def test_best_card_shows_rank_pill_with_default_frame(qapp, _production_dark_palettes):
+    from tabs.image_gallery.services.rank_badge import stamp_badges
     from tabs.image_gallery.ui.card.visuals import _card_border_color
 
     item = _item(is_best=True)
+    stamp_badges([item])
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
@@ -304,6 +310,9 @@ def test_leader_rank_pill_text_is_black_in_both_themes(qapp, _production_dark_pa
             pass
         qapp.processEvents()
         item = _item(is_best=True)
+        from tabs.image_gallery.services.rank_badge import stamp_badges
+
+        stamp_badges([item])
         card = build_gallery_card(item, parent=None)
         qapp.processEvents()
         _apply_rejected_visuals(card, item)
@@ -320,11 +329,33 @@ def test_rank_badge_text_is_black(qapp):
     qapp.processEvents()
     _apply_rejected_visuals(
         card,
-        SimpleNamespace(rejected=False, is_best=False, vlm_tie_pending=False, rank=3, crown_rank=None),
+        SimpleNamespace(
+            rejected=False,
+            is_best=False,
+            vlm_tie_pending=False,
+            rank=3,
+            crown_rank=None,
+            badge="#3",
+            badge_kind="rank",
+        ),
     )
     assert getattr(card, "_gallery_badge", None) == "#3"
     _filled, _bg, _bd, txt = card._gallery_badge_style
     assert txt.name().lower() == "#000000"
+    card.deleteLater()
+
+
+def test_source_card_shows_source_badge(qapp):
+    """A source item's card shows the same 'SOURCE' string as the strip."""
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    item = _item(rank=1)
+    stamp_badges([item], str(item.path))
+    assert item.badge == "SOURCE"
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, item)
+    assert getattr(card, "_gallery_badge", None) == "SOURCE"
     card.deleteLater()
 
 
