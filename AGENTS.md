@@ -237,7 +237,7 @@ Common focused test pattern:
 env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/<target_test>.py
 ```
 
-When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/`.
+When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/` — but only with a falsification story (proven failing pre-fix). Agent-written tests are low-trust: a test that merely restates the implementation proves nothing (see `docs/dev/TESTING.md` § Rules for writing new tests).
 
 ### Local-green merges
 
@@ -304,6 +304,6 @@ Private sibling docs: hard-won QRhi/Wayland gotchas live in `../improve-imgsli-i
 - Prefer codebase search over guessing file locations.
 - Prefer small, explicit patches.
 - If a controller/widget is mixing orthogonal concerns (loading + export + drag&drop, …) and keeps growing, split by [docs/dev/CODE_PATTERNS.md](docs/dev/CODE_PATTERNS.md)'s "thin owner + `use_cases/` module" pattern rather than adding another method to the same class.
-- Prefer adding a focused regression test when fixing rendering/export/UI wiring bugs.
+- Prefer adding a focused regression test when fixing rendering/export/UI wiring bugs — with a falsification story (proven failing pre-fix); agent-written parity tests that restate the implementation are low-trust.
 - If a bug involves preview vs export mismatch, inspect both code paths before changing anything.
 - If runtime behavior is unclear after reading code, enable the tracer (`--debug`) before adding log statements.

@@ -70,7 +70,9 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest tests --maxfail=1 -q
+          # tests/ + src/tabs/*/tests/ (tab coverage parity with the nightly
+          # full job); collection is guarded by importorskip for optional deps.
+          python -m pytest tests src/tabs --maxfail=1 -q
 
   build-bundle:
     name: Build PyInstaller bundle

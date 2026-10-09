@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
+pytest.importorskip("skimage")  # diff/SSIM needs scikit-image; app degrades without it
+
 from engine.store import pyramid_registry
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.lod import LevelKey
