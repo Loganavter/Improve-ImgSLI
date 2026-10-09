@@ -120,6 +120,36 @@ def test_clipping_delta_is_source_relative() -> None:
     assert abs(same["clipping_delta"]) < 1e-6
 
 
+def test_source_relative_edge_artifacts() -> None:
+    """Edge-localized change flags; a global colour shift does not."""
+    import numpy as np
+
+    from tabs.image_gallery.services.fidelity_metrics import compute_fidelity_from_images
+
+    h, w = 256, 256
+    src = np.zeros((h, w, 3), np.uint8)
+    src[:, : w // 2] = (60, 60, 60)
+    src[:, w // 2 :] = (180, 180, 180)
+
+    # Chroma rim within 2px of the edge -> edge-localized artifact.
+    rim = src.astype(np.int16)
+    for x in (w // 2 - 2, w // 2 - 1, w // 2, w // 2 + 1):
+        rim[:, x, 0] += 40
+        rim[:, x, 2] += 40
+    out = compute_fidelity_from_images(_img_from(np.clip(rim, 0, 255).astype(np.uint8)), _img_from(src))
+    assert out.get("chroma_fringe_delta", 0.0) > 3.0
+
+    # Global colour shift everywhere -> NOT an edge artifact (ratio ~1).
+    shifted = np.clip(src.astype(np.int16) + np.array([10, 0, 10]), 0, 255).astype(np.uint8)
+    glob = compute_fidelity_from_images(_img_from(shifted), _img_from(src))
+    assert glob.get("chroma_fringe_delta", 0.0) < 2.0
+
+    # Self-pair -> nothing.
+    same = compute_fidelity_from_images(_img_from(src), _img_from(src))
+    assert same.get("chroma_fringe_delta", 0.0) < 1.0
+    assert same.get("halo_delta", 0.0) < 1.0
+
+
 def test_fidelity_without_backend_has_no_learned_keys(monkeypatch) -> None:
     from tabs.image_gallery.services import quality_models as qm
 

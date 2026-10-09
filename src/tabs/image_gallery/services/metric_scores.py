@@ -99,6 +99,12 @@ def _clipping_delta(v: float) -> float:
     return _clamp01(1.0 - max(0.0, _clamp_raw(v)) / 5.0)
 
 
+def _edge_ratio_quality(v: float) -> float:
+    """Edge-artifact ratio (edge/flat diff vs source): 1 = no edge-localized
+    change (best); higher = the variant added halo/fringing."""
+    return _clamp01(1.0 - max(0.0, _clamp_raw(v) - 1.0) / 5.0)
+
+
 # Order = report order. Positive labels: Noise→Clean, Clipping→Highlight
 # detail, ΔE→Color accuracy, SSIM→Source match.
 SPECS: tuple[MetricSpec, ...] = (
@@ -120,6 +126,9 @@ SPECS: tuple[MetricSpec, ...] = (
     MetricSpec("brisque", "Naturalness", ("brisque",), _brisque),
     # Source-relative clipping delta (percentage points; 0 = same as source).
     MetricSpec("clipping_delta", "Clipping vs source", ("clipping_delta",), _clipping_delta),
+    # Source-relative edge artifacts (ratio; 1 = no edge-localized change).
+    MetricSpec("halo_delta", "Halo vs source", ("halo_delta",), _edge_ratio_quality),
+    MetricSpec("chroma_fringe_delta", "Chroma vs source", ("chroma_fringe_delta",), _edge_ratio_quality),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -198,6 +207,8 @@ _FALLBACK_NOTES: dict[str, tuple[str, str, str]] = {
     "dists": ("perceptually close", "slight perceptual drift", "perceptually far"),
     "brisque": ("natural", "slightly unnatural", "unnatural"),
     "clipping_delta": ("no added clipping", "slight added clipping", "added clipping"),
+    "halo_delta": ("no added halo", "possible added halo", "added halo"),
+    "chroma_fringe_delta": ("no added fringing", "possible added fringing", "added fringing"),
     "composition": ("well composed", "ok composition", "poor composition"),
     "banding": ("smooth gradients", "possible banding", "visible banding"),
     "halo": ("clean edges", "possible halo", "strong halo"),

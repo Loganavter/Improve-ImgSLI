@@ -174,7 +174,11 @@ def test_non_clean_artifact_rows_shown(qtbot):
 
 
 def test_camera_rows_unified_positive_percent(qtbot):
-    """Camera artifacts render positive %; the duplicate Noise row is dropped."""
+    """Camera mode hides the unreliable no-reference artifact rows.
+
+    noise_amplification duplicates the measured Clean metric; halo/chroma are
+    blind to thin rims under the detector downscale. So camera shows no
+    artifact rows (the measured metrics carry camera quality)."""
     item = _item(
         "cm.png",
         artifacts={
@@ -186,16 +190,7 @@ def test_camera_rows_unified_positive_percent(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, item, [item], mode=Mode.CAMERA)
-    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    # noise_amplification dropped (the measured "Clean" metric covers it).
-    assert len(ov._artifact_rows) == 2
-    assert any("Chroma" in t for t in titles)
-    assert any("Edges" in t for t in titles)
-    assert not any("Noise" in t for t in titles)
-    assert not any("Halo" in t for t in titles)
-    assert not any("Banding" in t for t in titles)
-    texts = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
-    assert "100%" in texts and "15%" in texts
+    assert len(ov._artifact_rows) == 0
     ov.hide()
 
 
