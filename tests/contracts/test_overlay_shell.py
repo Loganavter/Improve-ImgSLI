@@ -1049,6 +1049,109 @@ def test_mc_textured_mounts_ride_engine_shell_directly():
 
 
 # ---------------------------------------------------------------------------
+# R3B DEDUP (behavior pin): an unchanged frame is not re-uploaded.
+#
+# MC raster passes (labels / drag / focus-dim) call ``upload_frame`` every
+# rendered frame while their gate stays active. The shell remembers the
+# last uploaded frame's content signature and skips the (fullscreen)
+# ``uploadTexture`` when the bytes repeat with an unchanged texture size.
+# Behavior, not shape: a fake resource-update batch counts uploads.
+# ---------------------------------------------------------------------------
+
+
+class _CountingUpdates:
+    def __init__(self) -> None:
+        self.uploads: list = []
+
+    def uploadTexture(self, texture, image) -> None:
+        self.uploads.append((texture, image))
+
+
+class _FakeTexture:
+    def create(self) -> bool:
+        return True
+
+    def destroy(self) -> None:
+        pass
+
+
+class _FakeRhi:
+    def newTexture(self, *_args, **_kwargs) -> _FakeTexture:
+        return _FakeTexture()
+
+
+def _mounted_shell():
+    """A shell with a live 2x2 texture, no real RHI (dedup probe only)."""
+    from PySide6.QtCore import QSize
+
+    from engine.overlay import TexturedOverlayShell
+
+    shell = TexturedOverlayShell()
+    shell.texture = _FakeTexture()
+    shell.texture_size = QSize(2, 2)
+    shell.rhi = _FakeRhi()
+    # The resize path would normally rebuild the SRB/pipeline; the dedup
+    # behavior under test does not depend on them.
+    setattr(shell, "_build_srb", lambda: object())
+    return shell
+
+
+def test_textured_upload_frame_dedups_identical_content():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    frame = (2, 2, bytes([1, 2, 3, 4]) * 4)
+
+    assert shell.upload_frame(updates, None, frame) is True
+    assert len(updates.uploads) == 1
+    # Identical bytes, unchanged size: skip the upload, stay active.
+    assert shell.upload_frame(updates, None, frame) is True
+    assert len(updates.uploads) == 1
+    assert shell.active is True
+
+
+def test_textured_upload_frame_reuploads_changed_bytes():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    shell.upload_frame(updates, None, (2, 2, bytes([1, 2, 3, 4]) * 4))
+    # Changed (but same-size) content must land: no false hit.
+    shell.upload_frame(updates, None, (2, 2, bytes([9, 9, 9, 9]) * 4))
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_reuploads_on_resize_and_resets_signature():
+    from PySide6.QtCore import QSize
+
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    shell.upload_frame(updates, None, (2, 2, bytes([1, 2, 3, 4]) * 4))
+    # Resize always uploads, then remembers the post-resize frame: a
+    # second identical 4x4 frame dedups against that upload.
+    big = (4, 4, bytes([5, 6, 7, 8]) * 16)
+    shell.upload_frame(updates, None, big)
+    assert len(updates.uploads) == 2
+    assert shell.texture_size == QSize(4, 4)
+    shell.upload_frame(updates, None, big)
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_force_bypasses_dedup():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    frame = (2, 2, bytes([1, 2, 3, 4]) * 4)
+    shell.upload_frame(updates, None, frame)
+    shell.upload_frame(updates, None, frame, force=True)
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_none_deactivates():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    assert shell.upload_frame(updates, None, None) is False
+    assert shell.active is False
+    assert updates.uploads == []
+
+
+# ---------------------------------------------------------------------------
 # F1 SHELL-PACKS (F1 owns this section; S1/S2/R3 sections above untouched).
 #
 # Pins the shell-side packing seam for scale-free resolvers
