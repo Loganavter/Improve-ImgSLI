@@ -134,7 +134,7 @@ class VideoEditorDialogRuntime:
         # same pattern as ExportDialog (ClickFocus: edit on click, not on raise).
         from sli_ui_toolkit.widgets import ComboBox, SpinBox
 
-        for edit in d.findChildren(QLineEdit):
+        for edit in [*d.findChildren(QLineEdit), *d.findChildren(CustomLineEdit)]:
             edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             if hasattr(edit, "returnPressed"):
                 edit.returnPressed.connect(edit.clearFocus)

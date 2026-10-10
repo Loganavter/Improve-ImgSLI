@@ -21,6 +21,7 @@ from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.managers import SettleGate, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.theming import polish_themed_dialog
 from utils.resource_loader import resource_path
 
@@ -758,5 +759,5 @@ class ExportDialog(ThemedDialog):
 
     def clear_input_focus(self):
         focused_widget = self.focusWidget()
-        if focused_widget and isinstance(focused_widget, QLineEdit):
+        if focused_widget and isinstance(focused_widget, (QLineEdit, CustomLineEdit)):
             focused_widget.clearFocus()

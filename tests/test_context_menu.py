@@ -47,6 +47,45 @@ def test_popup_at_offsets_from_cursor(qtbot):
         UiScale.get_instance().set_factor(1.0)
 
 
+def test_line_edit_menu_filter_matches_painted_custom_line_edit(qapp, monkeypatch):
+    """The app-wide line-edit menu must open for painted CustomLineEdit.
+
+    Regression: ``CustomLineEdit`` is now a painted field, no longer a
+    ``QLineEdit`` subclass, so the filter's ``isinstance(watched, QLineEdit)``
+    guard silently stopped matching toolkit editors (e.g. spin-box fields) and
+    right-click fell through to the default QWidget policy — the styled
+    Cut/Copy/Paste menu never opened. Guard the actual dispatch, not the
+    isinstance spelling: a ContextMenu event delivered to a ``CustomLineEdit``
+    must be consumed and forwarded to ``open_context_menu_entries``.
+    """
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QContextMenuEvent
+    from sli_ui_toolkit.widgets import CustomLineEdit
+
+    from ui.context_menu import line_edit_menu as line_edit_menu_module
+
+    opened: list[object] = []
+
+    def _fake_open(source_widget, global_pos, entries, key, on_triggered):
+        opened.append(source_widget)
+
+    monkeypatch.setattr(
+        line_edit_menu_module, "open_context_menu_entries", _fake_open
+    )
+
+    widget = CustomLineEdit()
+    event_filter = line_edit_menu_module._LineEditContextMenuFilter(None)
+    event = QContextMenuEvent(
+        QContextMenuEvent.Reason.Mouse,
+        QPoint(1, 1),
+        QPoint(50, 50),
+    )
+
+    handled = event_filter.eventFilter(widget, event)
+
+    assert handled is True
+    assert opened == [widget]
+
 
 def test_popup_fade_snapshot_captured_after_show(qtbot):
     """Fade snapshot of a popup menu must be taken after show().

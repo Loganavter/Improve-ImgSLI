@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from sli_ui_toolkit.widgets import CustomLineEdit
+
 from ui.actions.keymap import (
     aliases_for,
     binding_priority,
@@ -239,14 +241,8 @@ class ActionShortcutBinder:
 def _is_text_input(widget: QWidget | None) -> bool:
     if widget is None:
         return False
-    if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
-        return True
-    # Toolkit CustomLineEdit subclasses QLineEdit — covered above.
-    try:
-        from sli_ui_toolkit.widgets import CustomLineEdit
-
-        if isinstance(widget, CustomLineEdit):
-            return True
-    except Exception:
-        pass
-    return False
+    # CustomLineEdit is the toolkit's painted, QLineEdit-compatible field —
+    # no longer a QLineEdit subclass, so it must be matched explicitly.
+    return isinstance(
+        widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)
+    )
