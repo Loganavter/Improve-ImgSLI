@@ -1,3 +1,4 @@
+# File-Size-Exempt: one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files.
 """QRhi resources for the IC filename_overlay pass (F5 BOUNDARY, stays).
 
 F5 filename-verdict -- documented permanent boundary, not a migration
@@ -267,12 +268,15 @@ class FilenameOverlayGpuResources:
         assert self.rhi is not None
         """(Re)builds ``slot``'s raw (CPU-uploaded, supersampled) and final
         (device-res, GPU-downsampled-into) textures, plus everything that
-        depends on either -- the downsample pass's SRB/target/rpdesc/
-        pipeline, and the main pass's srb_nearest/srb_linear. ``raw_size``
-        and ``final_size`` always change together in practice (raw is a
-        fixed multiple of final, see render/label_raster.py's
-        _LABEL_SUPERSAMPLE), but each is checked independently since
-        neither depends on the other having actually changed."""
+        depends on either -- the main pass's srb_nearest/srb_linear, the
+        downsample SRB and render target. The downsample render-pass
+        descriptor and graphics pipeline are created ONCE (they depend on
+        attachment format + SRB layout, not texture size) and reused across
+        size changes. ``raw_size`` and ``final_size`` always change together
+        in practice (raw is a fixed multiple of final, see
+        render/label_raster.py's ``_LABEL_SUPERSAMPLE``), but each is checked
+        independently since neither depends on the other having actually
+        changed."""
         # BOUNDARY (F5): per-slot raw + final textures -- the two-texture
         # shape (supersampled CPU-upload source + RenderTarget-flagged
         # device-res resolve target) the single-texture shell cannot host.
@@ -320,58 +324,83 @@ class FilenameOverlayGpuResources:
         # dedicated RenderTarget/pipeline/SRB per slot (never shared
         # across slots), the device-resolve stage with no shell image.
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        if slot.srb_downsample is not None:
-            try:
-                slot.srb_downsample.destroy()
-            except RuntimeError:
-                pass
-        slot.srb_downsample = self.rhi.newShaderResourceBindings()
-        slot.srb_downsample.setBindings(
-            [
-                QRhiShaderResourceBinding.sampledTexture(
-                    0, fragment, slot.raw_texture, self.sampler_linear  # type: ignore[arg-type]  # set right above; typed Optional for lifecycle
-                ),
-            ]
-        )
-        if not slot.srb_downsample.create():
-            raise RuntimeError("Failed to create filename_overlay downsample SRB")
-
-        for res in (
-            slot.downsample_pipeline,
-            slot.downsample_rpdesc,
-            slot.downsample_target,
-        ):
-            if res is not None:
+        # The downsample SRB samples raw_texture, so it must be rebuilt only
+        # when that texture object changes (or on first creation) -- not on
+        # every final-size change.
+        if slot.srb_downsample is None or raw_changed:
+            if slot.srb_downsample is not None:
                 try:
-                    res.destroy()
+                    slot.srb_downsample.destroy()
                 except RuntimeError:
                     pass
-        assert slot.texture is not None
-        slot.downsample_target = self.rhi.newTextureRenderTarget(
-            QRhiTextureRenderTargetDescription(QRhiColorAttachment(slot.texture))
-        )
-        slot.downsample_rpdesc = slot.downsample_target.newCompatibleRenderPassDescriptor()
-        slot.downsample_target.setRenderPassDescriptor(slot.downsample_rpdesc)
-        if not slot.downsample_target.create():
-            raise RuntimeError("Failed to create filename_overlay downsample target")
-        slot.downsample_pipeline = self.rhi.newGraphicsPipeline()
-        slot.downsample_pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex,
-                    load_qshader(_SHADER_DIR / "label_downsample.vert.qsb"),
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment,
-                    load_qshader(_SHADER_DIR / "label_downsample.frag.qsb"),
-                ),
-            ]
-        )
-        slot.downsample_pipeline.setTopology(QRhiGraphicsPipeline.Topology.Triangles)
-        slot.downsample_pipeline.setRenderPassDescriptor(slot.downsample_rpdesc)
-        slot.downsample_pipeline.setShaderResourceBindings(slot.srb_downsample)
-        if not slot.downsample_pipeline.create():
-            raise RuntimeError("Failed to create filename_overlay downsample pipeline")
+            slot.srb_downsample = self.rhi.newShaderResourceBindings()
+            slot.srb_downsample.setBindings(
+                [
+                    QRhiShaderResourceBinding.sampledTexture(
+                        0, fragment, slot.raw_texture, self.sampler_linear  # type: ignore[arg-type]  # set right above; typed Optional for lifecycle
+                    ),
+                ]
+            )
+            if not slot.srb_downsample.create():
+                raise RuntimeError("Failed to create filename_overlay downsample SRB")
+
+        # The render target wraps the final texture, so it is recreated when
+        # that texture object changes -- but the render-pass descriptor is
+        # REUSED: QRhi rpdesc compatibility is format-based (see
+        # engine/gpu/mip_cascade.py's probe-target pattern), so the pipeline
+        # baked against it stays valid across label-size changes.
+        if slot.downsample_target is None or final_changed:
+            if slot.downsample_target is not None:
+                try:
+                    slot.downsample_target.destroy()
+                except RuntimeError:
+                    pass
+            assert slot.texture is not None
+            slot.downsample_target = self.rhi.newTextureRenderTarget(
+                QRhiTextureRenderTargetDescription(QRhiColorAttachment(slot.texture))
+            )
+            if slot.downsample_rpdesc is None:
+                slot.downsample_rpdesc = (
+                    slot.downsample_target.newCompatibleRenderPassDescriptor()
+                )
+            slot.downsample_target.setRenderPassDescriptor(slot.downsample_rpdesc)
+            if not slot.downsample_target.create():
+                raise RuntimeError(
+                    "Failed to create filename_overlay downsample target"
+                )
+
+        # The downsample pipeline is created ONCE. It depends only on the
+        # shaders, vertex layout, topology and the (format-based) rpdesc --
+        # never on texture size. Recreating it on every label-size change was
+        # the divider-drag stall: a graphics pipeline create per mouse-move
+        # frame. The SRB changes with the source texture, but a rebuilt SRB
+        # with the same binding layout is compatible with the existing
+        # pipeline, which is re-bound at draw time (record_pre_pass) -- same
+        # shape mip_cascade uses for its per-(layer, level) targets.
+        if slot.downsample_pipeline is None:
+            assert slot.downsample_rpdesc is not None
+            slot.downsample_pipeline = self.rhi.newGraphicsPipeline()
+            slot.downsample_pipeline.setShaderStages(
+                [
+                    QRhiShaderStage(
+                        QRhiShaderStage.Type.Vertex,
+                        load_qshader(_SHADER_DIR / "label_downsample.vert.qsb"),
+                    ),
+                    QRhiShaderStage(
+                        QRhiShaderStage.Type.Fragment,
+                        load_qshader(_SHADER_DIR / "label_downsample.frag.qsb"),
+                    ),
+                ]
+            )
+            slot.downsample_pipeline.setTopology(
+                QRhiGraphicsPipeline.Topology.Triangles
+            )
+            slot.downsample_pipeline.setRenderPassDescriptor(slot.downsample_rpdesc)
+            slot.downsample_pipeline.setShaderResourceBindings(slot.srb_downsample)
+            if not slot.downsample_pipeline.create():
+                raise RuntimeError(
+                    "Failed to create filename_overlay downsample pipeline"
+                )
 
     def release(self) -> None:
         for slot in self.slots:

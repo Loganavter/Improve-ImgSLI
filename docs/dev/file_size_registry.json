@@ -140,7 +140,7 @@
     },
     {
       "path": "src/plugins/export/dialog.py",
-      "lines": 762,
+      "lines": 763,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
@@ -257,6 +257,16 @@
       "parsed": {
         "pattern": "thin-owner-target",
         "reason": "action contributions — one registry builder"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/filename_overlay/render/gpu_resources.py",
+      "lines": 423,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files.",
+      "parsed": {
+        "reason": "one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files."
       }
     },
     {
@@ -909,7 +919,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1655,
+      "lines": 1626,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
