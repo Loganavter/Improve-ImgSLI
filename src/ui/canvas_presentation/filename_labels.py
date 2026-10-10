@@ -231,6 +231,7 @@ def draw_text_bold_supersampled(
     stroke_px_qt = float(pixel_size) * font_weight / 500.0 * scale
     path = QPainterPath()
     path.addText(QPointF(float(text_inset_px) * scale, baseline_y), big_font, text)
+    path.setFillRule(Qt.FillRule.WindingFill)
     pen = QPen(color, stroke_px_qt)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -270,6 +271,7 @@ def draw_text_bold(
     stroke_px = float(pixel_size) * font_weight / 500.0
     path = QPainterPath()
     path.addText(QPointF(float(text_inset_px), baseline_y), font, text)
+    path.setFillRule(Qt.FillRule.WindingFill)
     pen = QPen(color, stroke_px)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)

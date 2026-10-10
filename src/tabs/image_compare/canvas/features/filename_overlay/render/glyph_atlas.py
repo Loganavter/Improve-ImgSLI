@@ -133,6 +133,10 @@ class GlyphAtlas:
         for ch in _CHARSET:
             path = QPainterPath()
             path.addText(0.0, 0.0, dev_font, ch)
+            # Glyph outlines are non-zero-winding; QPainterPath defaults to
+            # OddEvenFill, which punches holes where contours overlap (the "f"
+            # crossbar/stem, "e" bar, "a" bowl junction). Force WindingFill.
+            path.setFillRule(Qt.FillRule.WindingFill)
             br = path.boundingRect()
             advance = float(metrics.horizontalAdvance(ch)) / dpr
             if br.width() <= 0.0 or br.height() <= 0.0:
