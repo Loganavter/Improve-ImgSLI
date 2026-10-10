@@ -60,6 +60,13 @@ _PILOT_PASSES = {
         "grid_divider",
         96,
     ),
+    # Overdraw wave: focus_dim's letterbox bars are plain rectangles, so the
+    # pass migrated off the textured raster shell onto the shared uniform
+    # quad shell -- same 96B NDC-bounds block shape as grid_dividers.
+    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": (
+        "focus_dim",
+        96,
+    ),
 }
 
 # GPU allocation the engine owns -- never spelled in a tab pass.
@@ -411,6 +418,9 @@ def test_overlay_resolver_protocol_is_ctx_first():
 # (``_TEXTURED_PASSES`` + the R3B section below) and both tab-side
 # mirrors retire atomically. Scene sources (``scene/passes/*``) stay
 # S2-pinned read-only; per-pass DPR behavior is preserved, never unified.
+# Overdraw wave: focus_dim's bars are plain rectangles, so it left the
+# textured set for the uniform quad shell (``_PILOT_PASSES``, stem
+# "focus_dim"); only labels/drag remain raster mounts here.
 # ---------------------------------------------------------------------------
 
 # Model-side migrate source: must expose the ctx-first resolver intake.
@@ -692,11 +702,12 @@ def test_overlay_shell_avoids_legacy_resource_fingerprint():
 
 # Raster mounts on the textured shell: pass path -> shader stem.
 # R3b: all three MC raster passes join the IC drag mount here.
+# Overdraw wave: focus_dim left this set -- its bars render as uniform
+# NDC-bounded quads (_PILOT_PASSES) instead of an uploaded raster.
 _TEXTURED_PASSES = {
     "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
     "src/tabs/multi_compare/canvas/features/layer_labels/passes.py": ("overlay",),
     "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
-    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": ("overlay",),
 }
 
 # Tab-side textured mirrors retired by R3b (ruling 3, atomic with the
@@ -984,6 +995,9 @@ def test_ic_drag_mount_rides_engine_shell_directly():
 # never unified (labels source-owned, drag scales, focus is DPR-free
 # rect fill). The tab-side mirrors retire in the same wave (ruling 3,
 # atomic): pinned absent by test_no_tab_side_textured_mirror_classes.
+# Overdraw wave: focus_dim left this set -- its bars are uniform NDC
+# quads now (_PILOT_PASSES), so labels/drag are the only raster mounts
+# pinned below.
 # ---------------------------------------------------------------------------
 
 # MC mount -> tab-side seams that must stay on the mount (gating,
@@ -1002,13 +1016,6 @@ _MC_TEXTURED_SEAMS = {
         "_raster",
         "DragDropOverlaySource",
         "_dbg_recorded",
-        "RENDER_PASSES",
-    ),
-    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": (
-        "should_paint",
-        "stack_role",
-        "_raster",
-        "DIM_COLOR",
         "RENDER_PASSES",
     ),
 }

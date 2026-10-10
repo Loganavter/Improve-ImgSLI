@@ -9,11 +9,15 @@ ones (``ctx.offset``/``ctx.scale`` in ``build_render_context``), i.e. the
 "sides of the image" on the canvas itself -- this pass paints translucent
 black over exactly those bars.
 
-Draws through the shared textured engine shell
-(``engine.overlay.TexturedOverlayShell``). No GPU allocation, no bespoke
-pipeline builders, no draw-recorder calls here -- those live in the
-shell; this pass only declares its binding, resolves per-frame raster
-bytes through a ctx-first resolver, and stages them.
+The bars are plain axis-aligned rectangles, so they draw as solid-color
+NDC-bounded quads through the shared fullscreen-quad uniform shell
+(``engine.overlay.OverlayShell``) rather than a fullscreen raster: geometry
+is built in framebuffer px and packed with the shared
+``engine.overlay.pack_grid_dividers`` packer (fb-rect -> NDC bounds + color,
+the same conversion ``grid_dividers`` uses). No GPU allocation, no bespoke
+pipeline builders, no draw-recorder calls here -- those live in the shell;
+this pass only declares its binding, resolves per-frame packed blocks, and
+stages them.
 """
 
 from __future__ import annotations
@@ -22,42 +26,52 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QColor, QRhiScissor
 
-from engine.overlay import (
-    TexturedOverlayBinding,
-    TexturedOverlayResolver,
-    TexturedOverlayShell,
-)
 from engine.frame.context import make_ids
+from engine.overlay import (
+    GRID_DIVIDER_UNIFORM_SIZE,
+    OverlayBinding,
+    OverlayResolver,
+    OverlayShell,
+    RectItem,
+    Rgba,
+    pack_grid_dividers,
+)
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 logger = logging.getLogger("ImproveImgSLI")
 
 DIM_COLOR = QColor(0, 0, 0, 235)
+#: Linear float form of ``DIM_COLOR`` for the engine-typed packed uniform
+#: (the shell/wire color type is ``Rgba``, never a host ``QColor``).
+_DIM_RGBA = Rgba(
+    DIM_COLOR.redF(),
+    DIM_COLOR.greenF(),
+    DIM_COLOR.blueF(),
+    DIM_COLOR.alphaF(),
+)
 
+_SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
-def _shader_dir() -> Path:
-    # Mirrors the retired ``scene.resources.load_shader`` location: the
-    # shared multi_compare QRhi shader dir holding overlay.vert/frag.qsb.
-    return Path(__file__).resolve().parents[3] / "shaders" / "qrhi"
-
-
-BINDING = TexturedOverlayBinding(
-    shader_dir=_shader_dir(),
-    shader_stem="overlay",
+BINDING = OverlayBinding(
+    shader_dir=_SHADER_DIR,
+    shader_stem="focus_dim",
+    uniform_size=GRID_DIVIDER_UNIFORM_SIZE,
 )
 
 
-def _raster_image(ctx) -> QImage | None:
-    """Rasterize the focus-dim bars for ``ctx`` into a premultiplied image."""
+def focus_dim_rects(ctx: Any) -> tuple[RectItem, ...]:
+    """The 0-4 dim bars (framebuffer px) around the focused image in ``ctx``.
+
+    Pure geometry, byte-for-byte the bounds the retired raster pass painted:
+    the area outside the letterboxed image within the framebuffer -- top
+    ``0..oy``, bottom ``oy+image_h..fb_h``, left ``0..ox`` within
+    ``[top, bottom]``, right ``ox+image_w..fb_w`` -- skipping zero-area bars.
+    """
     fb_w, fb_h = ctx.framebuffer_size
     fb_w, fb_h = max(1, int(fb_w)), max(1, int(fb_h))
-    img = QImage(fb_w, fb_h, QImage.Format.Format_RGBA8888_Premultiplied)
-    img.fill(Qt.GlobalColor.transparent)
-
     ox, oy = ctx.offset
     comp = ctx.composition
     image_w = max(1, int(comp.canvas_w)) * ctx.scale
@@ -67,68 +81,49 @@ def _raster_image(ctx) -> QImage | None:
     left = max(0, int(round(ox)))
     right = min(fb_w, int(round(ox + image_w)))
 
-    painter = QPainter(img)
-    try:
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(DIM_COLOR)
-        if top > 0:
-            painter.drawRect(0, 0, fb_w, top)
-        if bottom < fb_h:
-            painter.drawRect(0, bottom, fb_w, fb_h - bottom)
-        if left > 0:
-            painter.drawRect(0, top, left, bottom - top)
-        if right < fb_w:
-            painter.drawRect(right, top, fb_w - right, bottom - top)
-    finally:
-        painter.end()
-    return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
-
-
-def _image_to_frame(img: QImage) -> tuple[int, int, bytes] | None:
-    """Convert a premultiplied host image to shell bytes (tab-side seam).
-
-    The engine takes bytes, never host images: this snapshot owns its
-    copy, so the shell can wrap it for the synchronous upload call
-    without holding any host image type.
-    """
-    width, height = int(img.width()), int(img.height())
-    if width <= 0 or height <= 0:
-        return None
-    stride = width * 4
-    try:
-        raw = bytes(img.constBits())
-    except Exception:
-        return None
-    bytes_per_line = int(img.bytesPerLine())
-    if bytes_per_line == stride:
-        pixels = raw[: stride * height]
-    else:
-        pixels = b"".join(
-            raw[y * bytes_per_line : y * bytes_per_line + stride] for y in range(height)
+    rects: list[RectItem] = []
+    if top > 0:
+        rects.append(RectItem(0.0, 0.0, float(fb_w), float(top), _DIM_RGBA))
+    if bottom < fb_h:
+        rects.append(
+            RectItem(0.0, float(bottom), float(fb_w), float(fb_h - bottom), _DIM_RGBA)
         )
-    if len(pixels) != stride * height:
-        return None
-    return (width, height, pixels)
+    if left > 0:
+        rects.append(
+            RectItem(0.0, float(top), float(left), float(bottom - top), _DIM_RGBA)
+        )
+    if right < fb_w:
+        rects.append(
+            RectItem(
+                float(right),
+                float(top),
+                float(fb_w - right),
+                float(bottom - top),
+                _DIM_RGBA,
+            )
+        )
+    return tuple(rects)
 
 
-def resolve(ctx: Any) -> tuple[int, int, bytes] | None:
-    """Ctx-first raster resolver: ctx in, framebuffer bytes out (or None)."""
-    img = _raster_image(ctx)
-    if img is None or img.isNull():
-        return None
-    return _image_to_frame(img)
+def resolve(ctx: Any) -> tuple[bytes, ...]:
+    """Ctx-first resolver: ctx in, packed uniform blocks out (or empty).
 
-
-def _frame_resolver() -> TexturedOverlayResolver:
-    """Resolver factory: the raster arrives via ``ctx``, nothing is captured."""
-    return resolve
+    Reuses the shared grid-dividers packer (framebuffer-px rect -> NDC
+    bounds + per-item color); no second quad packer is introduced.
+    """
+    fb_w, fb_h = (float(value) for value in ctx.framebuffer_size)
+    if fb_w <= 0.0 or fb_h <= 0.0:
+        return ()
+    matrix = tuple(float(value) for value in ctx.clip_matrix)
+    return pack_grid_dividers(focus_dim_rects(ctx), matrix, fb_w, fb_h)
 
 
 class FocusDimPass(CanvasRenderPass):
     stack_role = CanvasStackRole.HUD_LABEL
 
     def __init__(self) -> None:
-        self._shell = TexturedOverlayShell()
+        self._shell = OverlayShell(GRID_DIVIDER_UNIFORM_SIZE)
+        self._items: list[bytes] = []
 
     def should_paint(self, ctx) -> bool:
         widget = ctx.widget
@@ -139,35 +134,12 @@ class FocusDimPass(CanvasRenderPass):
             and ctx.composition is not None
         )
 
-    def _raster(self, widget, ctx) -> QImage | None:
-        return _raster_image(ctx)
-
     def initialize(self, rhi, target) -> None:
         self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
 
     def prepare(self, widget, ctx, resource_updates, frame_context=None) -> None:
-        self._shell.stage_quad(resource_updates)
-        self._shell.stage_clip(resource_updates, ctx.clip_matrix)
-        frame = _frame_resolver()(ctx)
-        try:
-            rt = widget.renderTarget() if widget is not None else None
-        except Exception:
-            rt = None
-        self._shell.upload_frame(resource_updates, rt, frame)
-        if getattr(widget, "_mc_overlay_debug", False):
-            if frame is None:
-                logger.info(
-                    "[mc-overlay-debug] %s.prepare: no overlay image (None=%s)",
-                    type(self).__name__,
-                    True,
-                )
-            else:
-                logger.info(
-                    "[mc-overlay-debug] %s.prepare: uploaded texture size=%s active=%s",
-                    type(self).__name__,
-                    QSize(frame[0], frame[1]),
-                    self._shell.active,
-                )
+        self._items = list(resolve(ctx))
+        self._shell.stage_packed(resource_updates, self._items)
 
     def record(self, command_buffer, widget, ctx, frame_context=None) -> None:
         # Frame bus: overlay fact (record only, never instead). Verdict
@@ -175,7 +147,7 @@ class FocusDimPass(CanvasRenderPass):
         # callers stay silent).
         if frame_context is not None:
             _gate = self.should_paint(ctx)
-            _count = 1 if self._shell.active else 0
+            _count = len(self._items)
             frame_context.record(
                 "overlay.focus_dim",
                 "ran" if _gate else "skipped",
@@ -184,16 +156,30 @@ class FocusDimPass(CanvasRenderPass):
             )
         if getattr(widget, "_mc_overlay_debug", False):
             logger.info(
-                "[mc-overlay-debug] %s.record: active=%s pipeline=%s",
+                "[mc-overlay-debug] %s.record: items=%s pipeline=%s",
                 type(self).__name__,
-                self._shell.active,
+                len(self._items),
                 self._shell.pipeline is not None,
             )
+        if not self._items:
+            return
         fb_w, fb_h = ctx.framebuffer_size
-        self._shell.draw(command_buffer, width=float(fb_w), height=float(fb_h))
+        # Full-target scissor only -- per-bar bounds live in the fragment
+        # shader (fullscreen quad, one uniform block per bar). A full-target
+        # scissor is Y-convention-agnostic, so it needs no widget/rhi reads
+        # and record() stays ctx-only.
+        scissor = QRhiScissor(0, 0, int(round(float(fb_w))), int(round(float(fb_h))))
+        self._shell.draw(
+            command_buffer,
+            width=float(fb_w),
+            height=float(fb_h),
+            scissor=scissor,
+            count=len(self._items),
+        )
 
     def release(self) -> None:
         self._shell.teardown()
+        self._items = []
 
 
 RENDER_PASSES: list[CanvasRenderPass] = [FocusDimPass()]
