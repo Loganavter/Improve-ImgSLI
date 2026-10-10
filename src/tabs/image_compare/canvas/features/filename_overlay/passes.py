@@ -329,6 +329,10 @@ class FilenameOverlayPass(CanvasRenderPass):
             # correct edge. The retained-atlas architecture changes only *how*
             # the run is drawn (per-glyph quads), never this clip/anchoring.
             elided = fit_text(name, font_metrics, max_text_w)
+            # No room for even one glyph -> fit_text yields a bare ellipsis;
+            # drawing an empty box with just "..." is noise, so skip the slot.
+            if not elided.strip("\u2026"):
+                continue
 
             screen_rect = _to_screen_rect(rect)
             zoom_scale = (screen_rect.width() / quad_w) if quad_w > 0 else 1.0

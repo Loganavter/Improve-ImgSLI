@@ -21,8 +21,10 @@ quads (built CPU-side here, uploaded by ``gpu_resources``) has no image in
 re-open the verdict if the shell gains a shared glyph atlas + per-glyph quad
 stream.
 
-C1 limitation: one face only -- ASCII 32..126. Missing code points (CJK,
-emoji, combining marks) return ``None`` from ``glyph_for`` and are skipped.
+C1 limitation: one face only -- printable ASCII 32..126 plus the horizontal
+ellipsis U+2026 (what ``QFontMetrics.elidedText`` inserts on truncation).
+Other missing code points (CJK, emoji, combining marks) return ``None`` from
+``glyph_for`` and are skipped.
 """
 
 from __future__ import annotations
@@ -38,8 +40,10 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainte
 # antialiased edge gradient -- see module docstring.
 _SUPERSAMPLE = 4
 
-# Printable ASCII -- the C1 charset (see module docstring).
-_CHARSET = "".join(chr(c) for c in range(32, 127))
+# Printable ASCII plus the horizontal ellipsis U+2026 -- the elision glyph
+# ``QFontMetrics.elidedText`` appends when a filename is truncated to the label
+# box. Without it the elided string's tail glyph is dropped (hard cut, no "...").
+_CHARSET = "".join(chr(c) for c in range(32, 127)) + "\u2026"
 _ATLAS_WIDTH = 512
 _PAD_FRACTION = 0.25
 _MIN_PAD = 3.0
@@ -61,7 +65,7 @@ class _Tile:
     ch: str
     w: int
     h: int
-    coverage: np.ndarray
+    coverage: np.ndarray | None
     advance_px: float
     bearing_px: tuple[float, float]
     x: int = 0
@@ -132,6 +136,20 @@ class GlyphAtlas:
             br = path.boundingRect()
             advance = float(metrics.horizontalAdvance(ch)) / dpr
             if br.width() <= 0.0 or br.height() <= 0.0:
+                # Advance-only glyph (space and friends): no ink tile, but the
+                # pen must still move -- otherwise words collapse into one run
+                # ("Original Tom" -> "OriginalTom").
+                if advance > 0.0:
+                    tiles.append(
+                        _Tile(
+                            ch=ch,
+                            w=0,
+                            h=0,
+                            coverage=None,
+                            advance_px=advance,
+                            bearing_px=(0.0, 0.0),
+                        )
+                    )
                 continue
             w = int(np.ceil(br.width())) + 2 * pad_dev
             h = int(np.ceil(br.height())) + 2 * pad_dev
@@ -151,11 +169,12 @@ class GlyphAtlas:
         self._pack(tiles, dpr)
 
     def _pack(self, tiles: list[_Tile], dpr: float) -> None:
-        tiles.sort(key=lambda t: (-t.h, t.ch))
+        ink = [t for t in tiles if t.w > 0 and t.h > 0]
+        ink.sort(key=lambda t: (-t.h, t.ch))
         x = _GUTTER
         y = _GUTTER
         row_h = 0
-        for tile in tiles:
+        for tile in ink:
             if x + tile.w + _GUTTER > _ATLAS_WIDTH:
                 x = _GUTTER
                 y += row_h + _GUTTER
@@ -168,7 +187,7 @@ class GlyphAtlas:
 
         atlas = np.zeros((atlas_h, _ATLAS_WIDTH, 4), dtype=np.uint8)
         self._slots = {}
-        for tile in tiles:
+        for tile in ink:
             cov_u8 = np.round(tile.coverage * 255.0).astype(np.uint8)
             x0, y0 = tile.x, tile.y
             atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 0] = cov_u8
@@ -183,6 +202,16 @@ class GlyphAtlas:
                 bearing_px=tile.bearing_px,
                 size_px=(tile.w / dpr, tile.h / dpr),
             )
+        # Advance-only glyphs (space etc.): a slot with no uv/tile so pack_run
+        # still moves the pen without emitting a quad.
+        for tile in tiles:
+            if tile.w <= 0 or tile.h <= 0:
+                self._slots[tile.ch] = GlyphSlot(
+                    uv=(0.0, 0.0, 0.0, 0.0),
+                    advance_px=tile.advance_px,
+                    bearing_px=(0.0, 0.0),
+                    size_px=(0.0, 0.0),
+                )
 
         self.width = _ATLAS_WIDTH
         self.height = atlas_h
