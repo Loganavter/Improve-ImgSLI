@@ -113,6 +113,15 @@ class LabelSlot:
         # record_pre_pass() has actually uploaded it and run the downsample
         # pass once for it.
         self.needs_downsample: bool = False
+        # Interactive (drag) path: the text was rasterized at 1x, so
+        # ``pending_upload_image`` is device-resolution and is uploaded
+        # straight into ``texture`` (the sampled target), skipping the
+        # Lanczos downsample (whose SCALE=4 expects a 4x raw). Mutually
+        # exclusive with ``needs_downsample``. Added back for variant A --
+        # pixel-based elision changes the string every drag frame, so the
+        # content cache misses every frame and a full 4x text raster
+        # (measured 6-35ms) would otherwise run per frame.
+        self.direct_upload: bool = False
         self.content_key: object | None = None
         self.active: bool = False
         self.smooth: bool = False
@@ -149,6 +158,7 @@ class LabelSlot:
         self.downsample_pipeline = None
         self.srb_downsample = None
         self.needs_downsample = False
+        self.direct_upload = False
         self.pending_upload_image = None
         self.content_key = None
         self.active = False
