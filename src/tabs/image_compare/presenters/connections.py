@@ -198,16 +198,18 @@ def _connect_magnifier_color_controls(presenter):
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
-        viewport_ctrl.on_slider_pressed(slider_name)
+    # `viewport_plugin.on_slider_pressed` never existed on this host (dead
+    # path), so a font-slider drag never left full-quality rendering. Reuse
+    # the canvas's own interactive-movement channel (the same one the split
+    # drag uses): main_controller -> image_canvas.
+    controller = getattr(presenter, "main_controller", None)
+    signal = getattr(controller, "start_interactive_movement", None)
+    if signal is not None:
+        signal.emit()
 
 
 def _on_font_flyout_interaction_finished(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
-        viewport_ctrl.on_slider_released(slider_name)
+    controller = getattr(presenter, "main_controller", None)
+    signal = getattr(controller, "stop_interactive_movement", None)
+    if signal is not None:
+        signal.emit()
