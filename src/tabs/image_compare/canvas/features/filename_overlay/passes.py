@@ -360,13 +360,18 @@ class FilenameOverlayPass(CanvasRenderPass):
             zoom_scale = (screen_rect.width() / quad_w) if quad_w > 0 else 1.0
             display_w = text_w * zoom_scale
             display_inset = text_inset * zoom_scale
+            # The backing box HUGS the (elided) text, anchored to the label's
+            # own edge -- not the full label_rects width (which carries extra
+            # padding and left a gap on the far side of the text).
+            box_w = display_w + display_inset * 2.0
+            box_h = screen_rect.height()
             if anchor == "right":
-                tx = screen_rect.width() - display_inset - display_w
+                box_left = screen_rect.right() - box_w
             elif anchor == "center":
-                tx = (screen_rect.width() - display_w) * 0.5
+                box_left = screen_rect.left() + (screen_rect.width() - box_w) * 0.5
             else:
-                tx = display_inset
-            origin_x = screen_rect.left() + tx
+                box_left = screen_rect.left()
+            origin_x = box_left + display_inset
             baseline_y = screen_rect.top() + (
                 (quad_h - float(font_metrics.height())) * 0.5
                 + float(font_metrics.ascent())
@@ -376,10 +381,10 @@ class FilenameOverlayPass(CanvasRenderPass):
             if draw_bg:
                 vertices += pack_bg_quad(
                     (
-                        screen_rect.left(),
+                        box_left,
                         screen_rect.top(),
-                        screen_rect.right(),
-                        screen_rect.bottom(),
+                        box_left + box_w,
+                        screen_rect.top() + box_h,
                     )
                 )
             run, glyph_count = pack_run(
@@ -415,8 +420,8 @@ class FilenameOverlayPass(CanvasRenderPass):
                 _pack_label_uniform(
                     mvp,
                     bg_premul,
-                    screen_rect.width() * dpr,
-                    screen_rect.height() * dpr,
+                    box_w * dpr,
+                    box_h * dpr,
                     corner_radius,
                     1.0 if draw_bg else 0.0,
                     sdf_range,
