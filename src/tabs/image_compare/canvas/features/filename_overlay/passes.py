@@ -318,7 +318,7 @@ class FilenameOverlayPass(CanvasRenderPass):
             font_px = max(1, int(font.pixelSize()))
         # Build/refresh the shared SDF atlas only when the font/size/dpr triple
         # changes -- a split drag never reaches the atlas (C1's core win).
-        if self._gpu.ensure_atlas(font, font_px, dpr):
+        if self._gpu.ensure_atlas(font, font_px, dpr, int(font_weight)):
             if self._gpu.atlas_image is not None:
                 resource_updates.uploadTexture(
                     self._gpu.atlas_texture, self._gpu.atlas_image

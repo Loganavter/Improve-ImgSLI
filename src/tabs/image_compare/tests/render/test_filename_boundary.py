@@ -85,15 +85,16 @@ def test_filename_verdict_statement_present():
 
 
 def test_filename_c1_atlas_owns_the_sdf():
-    """C1 stay: one shared SDF atlas, built CPU-side (texture owner is gpu)."""
+    """C1 stay: one shared coverage atlas, built CPU-side (texture owner is gpu)."""
     atlas_text = _read(_ATLAS)
     for marker in (
         "class GlyphAtlas",
         "def ensure",
         "def glyph_for",
-        "distance_transform_edt",
-        "signed_distance",
         "class GlyphSlot",
+        "_SUPERSAMPLE",
+        "_render_coverage",
+        "_downscale_lanczos",
     ):
         assert marker in atlas_text, f"glyph_atlas.py lost marker {marker!r}"
     assert "newTexture" not in atlas_text, (
@@ -124,7 +125,7 @@ def test_filename_gpu_resources_hold_atlas_and_quads_not_the_old_cluster():
 
 
 def test_filename_shaders_are_sdf_glyph_quads():
-    """C1 shader shape: per-glyph SDF quads + procedural bg, no downsample."""
+    """C1 shader shape: per-glyph coverage quads + procedural bg, no downsample."""
     vert = _read(_VERT_OVERLAY)
     for marker in ("mvp", "aPos", "aUV", "aColor", "aAux", "bgColor"):
         assert marker in vert, f"filename_overlay.vert lost marker {marker!r}"
@@ -135,13 +136,10 @@ def test_filename_shaders_are_sdf_glyph_quads():
         "quadSizePx",
         "cornerRadiusPx",
         "bgEnabled",
-        "sdfRangePx",
-        "pixelSize",
-        "edgePx",
-        "smoothstep",
+        "uAtlas",
         "vAux",
     ):
-        assert marker in frag, f"filename_overlay.frag lost SDF marker {marker!r}"
+        assert marker in frag, f"filename_overlay.frag lost marker {marker!r}"
     for stale in ("label_downsample.vert", "label_downsample.frag"):
         assert not (_FN / "shaders" / stale).exists(), (
             f"retired shader {stale!r} is back -- C1 deleted it"
