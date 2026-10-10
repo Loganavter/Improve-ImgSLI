@@ -1,26 +1,28 @@
-"""Glyph atlas + signed-distance field for the filename_overlay text pass (C1).
+"""Glyph atlas for the filename_overlay text pass (variant C1).
 
-Variant C1 replaces the per-string CPU raster + 4x supersample + GPU Lanczos
-downsample of variant A with a single-channel signed-distance-field atlas:
-every glyph is rasterized once per ``(font key, pixel_size, dpr)`` into a
-shelf-packed atlas, converted to a signed distance field (negative inside,
-positive outside, ``0.5`` == the glyph edge once normalized), and sampled by
-per-glyph quads in ``shaders/filename_overlay.frag``. Resolution-independent
-AA comes from the SDF threshold, so there is no supersample stage and no
-per-drag raster at all.
+Per-glyph **antialiased coverage** atlas (NOT a signed-distance field): each
+glyph is rasterized once per ``(font key, pixel_size, dpr, weight)`` at
+``_SUPERSAMPLE`` x device resolution and CPU-downscaled to device resolution,
+so the stored coverage carries genuine sub-pixel area information (0..1 alpha
+edge gradient). This is the glass-panel text-mask technique
+(``docs/legacy/rendering/glass-panel-text-vibrancy-plan.md`` bugs 9/13): a flat
+1x QPainter render tops out at weak/near-binary coverage; supersample +
+downscale gives a real gradient. The shader samples the coverage directly
+(``alpha = tex``), so there is no SDF decode/threshold that could saturate to
+0/1.
 
 Ownership note (contract): this module is under ``src/tabs`` and must not
-allocate a QRhi texture -- ``tests/contracts/test_no_direct_texture_alloc.py``
-/ ``test_no_private_grid.py`` pin the tab texture owners, and
-``render/gpu_resources.py`` (an allowed owner) owns the QRhi texture/sampler.
-This module only builds the CPU image + slot metadata; the caller uploads it.
-F5 BOUNDARY (C1): the shared atlas + per-glyph quads has no image in
-``TexturedOverlayShell`` (one fullscreen quad over one texture) -- the full
-verdict prose lives on ``FilenameOverlayPass`` / ``render/gpu_resources.py``.
+allocate a QRhi texture -- ``render/gpu_resources.py`` owns the QRhi texture.
+This module only builds the CPU image + slot metadata.
+
+F5 BOUNDARY (C1): WHAT STAYS -- the shared per-glyph coverage atlas + per-glyph
+quads (built CPU-side here, uploaded by ``gpu_resources``) has no image in
+``TexturedOverlayShell`` (one fullscreen quad over one texture). INVALIDATION --
+re-open the verdict if the shell gains a shared glyph atlas + per-glyph quad
+stream.
 
 C1 limitation: one face only -- ASCII 32..126. Missing code points (CJK,
-emoji, combining marks) return ``None`` from ``glyph_for`` and are skipped, not
-fallback-rendered.
+emoji, combining marks) return ``None`` from ``glyph_for`` and are skipped.
 """
 
 from __future__ import annotations
@@ -28,18 +30,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainterPath
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainterPath, QPen
 
-try:  # scipy is not declared in requirements-gui.txt yet; keep a numpy fallback.
-    from scipy.ndimage import distance_transform_edt as _scipy_edt
-except Exception:  # pragma: no cover - exercised only where scipy is absent
-    _scipy_edt = None
+# Supersample factor for the per-glyph coverage raster (matches the glass-HUD
+# text-mask supersample). The CPU downscale to device res is the source of the
+# antialiased edge gradient -- see module docstring.
+_SUPERSAMPLE = 4
 
 # Printable ASCII -- the C1 charset (see module docstring).
 _CHARSET = "".join(chr(c) for c in range(32, 127))
 _ATLAS_WIDTH = 512
-_SDF_PAD_FRACTION = 0.4
-_SDF_MIN_PAD = 4.0
+_PAD_FRACTION = 0.25
+_MIN_PAD = 3.0
 _GUTTER = 2
 
 
@@ -65,69 +68,13 @@ class _Tile:
     y: int = 0
 
 
-def _distance_to(target: np.ndarray) -> np.ndarray:
-    """Distance (px) from every cell to the nearest ``True`` cell.
-
-    scipy's exact EDT when present; otherwise a two-pass chamfer 3-4
-    approximation (good enough for SDF AA, and keeps the app importable where
-    scipy is not installed).
-    """
-    if _scipy_edt is not None:
-        # scipy measures distance to the nearest *zero*: invert the mask so it
-        # measures distance to the nearest True (our "target") cell.
-        return _scipy_edt(~target)
-    h, w = target.shape
-    inf = 1.0e9
-    d = np.where(target, 0.0, inf)
-    for y in range(h):
-        row = d[y]
-        prev = d[y - 1] if y > 0 else None
-        for x in range(w):
-            best = row[x]
-            if prev is not None:
-                best = min(best, prev[x] + 1.0)
-                if x > 0:
-                    best = min(best, prev[x - 1] + 1.41421356)
-                if x < w - 1:
-                    best = min(best, prev[x + 1] + 1.41421356)
-            if x > 0:
-                best = min(best, row[x - 1] + 1.0)
-            row[x] = best
-    for y in range(h - 1, -1, -1):
-        row = d[y]
-        nxt = d[y + 1] if y < h - 1 else None
-        for x in range(w - 1, -1, -1):
-            best = row[x]
-            if nxt is not None:
-                best = min(best, nxt[x] + 1.0)
-                if x < w - 1:
-                    best = min(best, nxt[x + 1] + 1.41421356)
-                if x > 0:
-                    best = min(best, nxt[x - 1] + 1.41421356)
-            if x < w - 1:
-                best = min(best, row[x + 1] + 1.0)
-            row[x] = best
-    return d
-
-
-def _signed_distance(coverage: np.ndarray, pad_px: float) -> np.ndarray:
-    """Signed distance in px: negative inside the glyph, positive outside."""
-    inside = coverage > 0.5
-    if not inside.any():
-        return np.full(coverage.shape, pad_px, dtype=np.float64)
-    if inside.all():
-        return np.full(coverage.shape, -pad_px, dtype=np.float64)
-    return _distance_to(inside) - _distance_to(~inside)
-
-
 class GlyphAtlas:
-    """Shelf-packed SDF atlas for one font face / pixel size / dpr.
+    """Shelf-packed antialiased coverage atlas for one face / pixel size / dpr / weight.
 
-    ``ensure`` rebuilds only when the ``(font key, pixel_size, dpr)`` triple
-    changes, so a split drag (which changes the elided string, not the font)
-    never touches the CPU here. ``image`` is the RGBA8 SDF atlas (R = distance,
-    A = 255 inside a glyph tile / 0 elsewhere); ``gpu_resources`` owns the
-    QRhi texture built from it.
+    ``ensure`` rebuilds only when the ``(font key, pixel_size, dpr, weight)``
+    tuple changes, so a split drag (which changes the elided string, not the
+    font) never touches the CPU here. ``image`` is the RGBA8 atlas (R = alpha
+    coverage, A = coverage too); ``gpu_resources`` owns the QRhi texture.
     """
 
     def __init__(self, rhi) -> None:
@@ -137,16 +84,22 @@ class GlyphAtlas:
         self.width = 0
         self.height = 0
         self.pad_px = 0.0
+        # Kept for interface compatibility; unused by the coverage atlas.
         self.sdf_range_px = 0.0
         self._slots: dict[str, GlyphSlot] = {}
 
-    def ensure(self, font: QFont, pixel_size: int, dpr: float) -> bool:
+    def ensure(self, font: QFont, pixel_size: int, dpr: float, weight: int = 0) -> bool:
         """Build/refresh the atlas; no-op (``False``) when the key is unchanged."""
-        key = (font.key(), int(pixel_size), round(max(1.0, float(dpr)), 3))
+        key = (
+            font.key(),
+            int(pixel_size),
+            round(max(1.0, float(dpr)), 3),
+            int(weight),
+        )
         if key == self._key:
             return False
         self._key = key
-        self._build(font, int(pixel_size), max(1.0, float(dpr)))
+        self._build(font, int(pixel_size), max(1.0, float(dpr)), int(weight))
         return True
 
     def glyph_for(self, ch: str) -> GlyphSlot | None:
@@ -159,16 +112,18 @@ class GlyphAtlas:
         self.height = 0
         self._slots = {}
 
-    def _build(self, font: QFont, pixel_size: int, dpr: float) -> None:
+    def _build(self, font: QFont, pixel_size: int, dpr: float, weight: int) -> None:
         pixel_size = max(1, pixel_size)
         dev_font = QFont(font)
         dev_font.setPixelSize(max(1, int(round(pixel_size * dpr))))
         metrics = QFontMetrics(dev_font)
 
-        pad_logical = max(_SDF_MIN_PAD, round(pixel_size * _SDF_PAD_FRACTION))
+        pad_logical = max(_MIN_PAD, round(pixel_size * _PAD_FRACTION))
         pad_dev = max(1, int(round(pad_logical * dpr)))
         self.pad_px = pad_logical
-        self.sdf_range_px = 2.0 * pad_logical
+        # Synthetic bold stroke width (device px), same formula as the retired
+        # CPU raster: stroke_px = pixel_size * weight / 500.
+        stroke_dev = float(pixel_size) * float(weight) / 500.0 * dpr
 
         tiles: list[_Tile] = []
         for ch in _CHARSET:
@@ -180,7 +135,7 @@ class GlyphAtlas:
                 continue
             w = int(np.ceil(br.width())) + 2 * pad_dev
             h = int(np.ceil(br.height())) + 2 * pad_dev
-            coverage = _render_coverage(path, br, w, h, pad_dev)
+            coverage = _render_coverage(path, br, w, h, pad_dev, stroke_dev)
             bearing = (br.x() / dpr - pad_logical, br.y() / dpr - pad_logical)
             tiles.append(
                 _Tile(
@@ -193,9 +148,9 @@ class GlyphAtlas:
                 )
             )
 
-        self._pack(tiles, pad_dev, dpr)
+        self._pack(tiles, dpr)
 
-    def _pack(self, tiles: list[_Tile], pad_dev: int, dpr: float) -> None:
+    def _pack(self, tiles: list[_Tile], dpr: float) -> None:
         tiles.sort(key=lambda t: (-t.h, t.ch))
         x = _GUTTER
         y = _GUTTER
@@ -211,19 +166,13 @@ class GlyphAtlas:
             row_h = max(row_h, tile.h)
         atlas_h = max(1, y + row_h + _GUTTER)
 
-        atlas = np.full((atlas_h, _ATLAS_WIDTH, 4), 0, dtype=np.uint8)
-        atlas[..., 0] = 255  # default = far outside (edge 0.5 -> 1.0)
+        atlas = np.zeros((atlas_h, _ATLAS_WIDTH, 4), dtype=np.uint8)
         self._slots = {}
-        sdf_range = self.sdf_range_px
         for tile in tiles:
-            # EDT distances are in device px; normalize to logical px so the
-            # shader's sdf_range (logical) decodes cleanly.
-            sd = _signed_distance(tile.coverage, float(pad_dev)) / dpr
-            tex = np.clip(0.5 + sd / sdf_range, 0.0, 1.0)
-            tex_u8 = np.round(tex * 255.0).astype(np.uint8)
+            cov_u8 = np.round(tile.coverage * 255.0).astype(np.uint8)
             x0, y0 = tile.x, tile.y
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 0] = tex_u8
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 3] = 255
+            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 0] = cov_u8
+            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 3] = cov_u8
             u0 = x0 / _ATLAS_WIDTH
             v0 = y0 / atlas_h
             u1 = (x0 + tile.w) / _ATLAS_WIDTH
@@ -246,20 +195,66 @@ class GlyphAtlas:
         ).copy()
 
 
+def _downscale_lanczos(img: QImage, w: int, h: int) -> QImage:
+    """Downscale ``img`` to ``w x h`` with a real multi-tap filter.
+
+    PIL LANCZOS when available (matches ``draw_text_bold_supersampled``);
+    Qt's SmoothTransformation otherwise (mushier but always present).
+    """
+    try:
+        from PIL import Image
+
+        rgba = img.convertToFormat(QImage.Format.Format_RGBA8888)
+        pil = Image.frombytes(
+            "RGBA", (rgba.width(), rgba.height()), bytes(rgba.constBits())
+        )
+        pil = pil.resize((w, h), Image.Resampling.LANCZOS)
+        raw = pil.tobytes("raw", "RGBA")
+        return QImage(
+            raw, w, h, w * 4, QImage.Format.Format_RGBA8888
+        ).copy()
+    except Exception:
+        return img.scaled(
+            w,
+            h,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+
 def _render_coverage(
-    path: QPainterPath, br, w: int, h: int, pad_dev: int
+    path: QPainterPath, br, w: int, h: int, pad_dev: int, stroke_dev: float
 ) -> np.ndarray:
-    """Rasterize one glyph path to an alpha coverage array (device px)."""
-    img = QImage(w, h, QImage.Format.Format_RGBA8888)
+    """Rasterize one glyph to antialiased coverage (device px), supersampled.
+
+    Renders at ``_SUPERSAMPLE`` x then downscales to ``w x h`` (LANCZOS), so
+    each output pixel is a genuine area average -- the glass-HUD text-mask fix
+    for weak/near-binary 1x coverage.
+    """
+    ss = _SUPERSAMPLE
+    big_w, big_h = max(1, w * ss), max(1, h * ss)
+    img = QImage(big_w, big_h, QImage.Format.Format_RGBA8888)
     img.fill(0)
     painter = QPainter(img)
     try:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.scale(float(ss), float(ss))
         painter.translate(float(pad_dev) - br.x(), float(pad_dev) - br.y())
-        painter.setPen(QColor(255, 255, 255, 255))
-        painter.setBrush(QColor(255, 255, 255, 255))
-        painter.drawPath(path)
+        color = QColor(255, 255, 255, 255)
+        if stroke_dev > 0.0:
+            pen = QPen(color, stroke_dev)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(color)
+            painter.drawPath(path)
+        else:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            painter.drawPath(path)
     finally:
         painter.end()
-    raw = np.frombuffer(img.constBits(), dtype=np.uint8).reshape(h, w, 4)
+    small = _downscale_lanczos(img, w, h)
+    raw = np.frombuffer(small.constBits(), dtype=np.uint8).reshape(h, w, 4)
     return raw[..., 3].astype(np.float64) / 255.0
