@@ -1,8 +1,11 @@
+# File-Size-Exempt: single QRhi filename-overlay pass (F5 boundary verdict) —
+# one per-slot resource lifecycle plus the pinned verdict prose; splitting it
+# would fragment the boundary this contract test measures.
 from __future__ import annotations
 
 import struct
 
-from PySide6.QtCore import QRectF
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import (
     QColor,
     QFontMetrics,
@@ -26,44 +29,116 @@ from tabs.image_compare.canvas.features.filename_overlay.render.gpu_resources im
     FilenameOverlayGpuResources,
 )
 
-_MATRIX_UNIFORM_FMT = "<16f"
+# std140 block (32 floats) shared byte-for-byte with
+# filename_overlay.vert / .frag: mat4 mvp + vec4 bgColor (premultiplied) +
+# vec2 quadSizePx + vec2 pad0 + vec4 textRectPx + float cornerRadiusPx +
+# float bgEnabled + float textEnabled + float pad1.
+_MATRIX_UNIFORM_FMT = "<32f"
 assert_uniform_size(
     _MATRIX_UNIFORM_FMT, _UNIFORM_SIZE, label="FilenameOverlayGpuResources uniform"
 )
 from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
+    _LABEL_SUPERSAMPLE,
     build_quad_vertices,
-    rasterize_label,
+    rasterize_label_text,
 )
+
+
+def _slot_anchor(placement: str, is_horizontal: bool, slot_index: int) -> str:
+    """Which edge of the label quad the text hugs.
+
+    Mirrors ``ui.canvas_presentation.filename_labels.label_rects``'s own
+    align choice: ``edges`` pins name1 left / name2 right, ``split_line``
+    flips them (labels hug the divider), horizontal centres both.
+    """
+    if is_horizontal:
+        return "center"
+    if placement == "split_line":
+        return "right" if slot_index == 0 else "left"
+    return "left" if slot_index == 0 else "right"
+
+
+def _elide(text: str, metrics: QFontMetrics, max_width: float, anchor: str) -> str:
+    """Elide toward the anchored edge: a right-anchored label keeps its tail
+    (the part nearest the divider), a left-anchored one keeps its head.
+    """
+    if metrics.horizontalAdvance(text) <= max_width:
+        return text
+    mode = {
+        "right": Qt.TextElideMode.ElideLeft,
+        "center": Qt.TextElideMode.ElideMiddle,
+    }.get(anchor, Qt.TextElideMode.ElideRight)
+    return metrics.elidedText(text, mode, max(1, int(max_width)))
+
+
+def _pack_label_uniform(
+    mvp,
+    bg_premul: tuple[float, float, float, float],
+    quad_w: float,
+    quad_h: float,
+    text_rect: tuple[float, float, float, float],
+    corner_radius: float,
+    bg_enabled: float,
+    text_enabled: float,
+) -> bytes:
+    values = (
+        *mvp,
+        bg_premul[0],
+        bg_premul[1],
+        bg_premul[2],
+        bg_premul[3],
+        float(quad_w),
+        float(quad_h),
+        0.0,
+        0.0,
+        float(text_rect[0]),
+        float(text_rect[1]),
+        float(text_rect[2]),
+        float(text_rect[3]),
+        float(corner_radius),
+        float(bg_enabled),
+        float(text_enabled),
+        0.0,
+    )
+    return struct.pack(_MATRIX_UNIFORM_FMT, *values)
 
 
 class FilenameOverlayPass(CanvasRenderPass):
     """Renders filename labels as screen-positioned textured quads.
 
     F5 FILENAME-VERDICT: PERMANENT BOUNDARY (not a migration candidate).
+    Variant A re-open (2026-10-06): the rounded-rect BACKGROUND is drawn
+    procedurally in ``filename_overlay.frag`` (signed-distance rounded box)
+    and the texture now carries ONLY the text -- so a width change resizes
+    the quad and shifts the shader's ``textRectPx`` sample window WITHOUT
+    re-rasterizing (the raster is keyed by content, not width).
 
     (1) WHAT STAYS (exact GPU sites -- see the markers below):
     per-slot raw + final textures (``ensure_slot_textures`` in
     ``render/gpu_resources.py``), per-slot ``RenderTarget`` downsample
     targets with their own rpdesc, the ``_LABEL_SUPERSAMPLE = 4``
-    supersampled upload -> Lanczos pre-pass (``label_downsample.frag``
+    supersampled TEXT upload -> Lanczos pre-pass (``label_downsample.frag``
     ``SCALE = 4`` / ``RADIUS = 8``) -> device-resolve in
     ``record_pre_pass`` below, per-slot screen quads via
-    ``build_quad_vertices`` (never fullscreen), and per-slot vertex
-    buffers with ``srb_linear`` / ``srb_nearest`` selection in
-    ``record`` below.
+    ``build_quad_vertices`` (never fullscreen), per-slot vertex buffers
+    with ``srb_linear`` / ``srb_nearest`` selection in ``record`` below,
+    and per-slot 128-byte uniform buffers written in ``prepare`` below.
 
     (2) WHY (uniqueness proof): two independently-sized label textures
     plus a supersample stage plus a device-resolve plus per-slot screen
-    quads has no image in the single-fullscreen-upload
-    ``TexturedOverlayShell`` (one texture, upload-then-draw in the same
-    main pass, shared ``FULLSCREEN_VERTICES``, one ``srb``). MC
-    ``layer_labels`` rides the shell ONLY because it is one fullscreen
-    raster with no supersample stage.
+    quads plus per-slot uniform blocks has no image in the
+    single-fullscreen-upload ``TexturedOverlayShell`` (one texture,
+    upload-then-draw in the same main pass, shared ``FULLSCREEN_VERTICES``,
+    one ``srb``, one 64B uniform). MC ``layer_labels`` rides the shell ONLY
+    because it is one fullscreen raster with no supersample stage and a
+    pre-composited background.
 
     (3) INVALIDATION CONDITION: re-open this verdict if the shell gains
-    slot-targets plus a GPU-supersample stage, or if these labels drop
-    supersampling for a single fullscreen raster like MC. Either change
-    breaks the markers pinned in
+    slot-targets plus a GPU-supersample stage, or if these labels drop the
+    per-slot two-texture / supersample shape for a single fullscreen raster
+    like MC. Moving the background between CPU and shader does not
+    invalidate the verdict by itself. Either resource-shape change breaks
+    the markers pinned in
     ``src/tabs/image_compare/tests/render/test_filename_boundary.py``.
     """
 
@@ -220,43 +295,58 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
         draw_bg = bool(getattr(cfg, "draw_text_background", True))
         font_weight = int(getattr(cfg, "font_weight", 0) or 0)
-        font_key = (
-            int(overlay_style.font_pixel_size),
-            font_weight,
-            text_color.rgba(),
-            bg_color.rgba(),
-            draw_bg,
-        )
+        text_inset = float(overlay_style.text_inset_px)
+        is_horizontal = bool(getattr(cfg, "is_horizontal", False))
+        placement = str(getattr(cfg, "text_placement_mode", "edges") or "edges")
+        quality = _LABEL_SUPERSAMPLE
 
-        matrix = struct.pack(
-            _MATRIX_UNIFORM_FMT,
-            *tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data()),
+        # Premultiplied rgba, as the fragment shader outputs premultiplied.
+        bg_alpha = bg_color.alphaF()
+        bg_premul = (
+            bg_color.redF() * bg_alpha,
+            bg_color.greenF() * bg_alpha,
+            bg_color.blueF() * bg_alpha,
+            bg_alpha,
         )
-        resource_updates.updateDynamicBuffer(self._gpu.uniform_buffer, 0, matrix)
+        mvp = tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data())
 
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
             slot = self._gpu.slots[i]
             if not name or rect is None:
                 slot.content_key = None
                 continue
-            rw = max(1, int(rect.width()))
-            rh = max(1, int(rect.height()))
+            quad_w = float(rect.width())
+            quad_h = float(rect.height())
+            anchor = _slot_anchor(placement, is_horizontal, i)
+            max_text_w = max(1.0, quad_w - text_inset * 2.0)
+            elided = _elide(name, font_metrics, max_text_w, anchor)
+            text_w = max(1.0, float(font_metrics.horizontalAdvance(elided)))
+            rh = max(1, int(round(quad_h)))
             dpr = max(1.0, float(widget.devicePixelRatioF()))
-            cache_key = (name, rw, rh, font_key, round(dpr, 3))
+            # Content + style only -- NO width/height in the key, so a split
+            # drag that leaves the (possibly elided) string unchanged reuses
+            # the existing text texture instead of re-rasterizing every frame.
+            cache_key = (
+                name,
+                elided,
+                int(overlay_style.font_pixel_size),
+                font_weight,
+                text_color.rgba(),
+                round(dpr, 3),
+                quality,
+            )
 
             if slot.content_key != cache_key:
-                image, final_size = rasterize_label(
-                    name,
-                    rw,
+                image, final_size = rasterize_label_text(
+                    elided,
+                    text_w,
                     rh,
                     font,
                     font_metrics,
                     text_color,
-                    bg_color,
-                    draw_bg,
-                    overlay_style,
                     font_weight,
                     dpr,
+                    quality,
                 )
                 self._gpu.ensure_slot_textures(slot, image.size(), final_size)
                 # NOT resource_updates.uploadTexture() here -- that shared
@@ -269,6 +359,45 @@ class FilenameOverlayPass(CanvasRenderPass):
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
+            zoom_scale = (screen_rect.width() / quad_w) if quad_w > 0 else 1.0
+            display_w = text_w * zoom_scale
+            display_h = quad_h * zoom_scale
+            display_inset = text_inset * zoom_scale
+            if anchor == "right":
+                tx = screen_rect.width() - display_inset - display_w
+            elif anchor == "center":
+                tx = (screen_rect.width() - display_w) * 0.5
+            else:
+                tx = display_inset
+            # textRectPx maps the text-only texture into the quad: tuv =
+            # (localPx - xy) / zw in the fragment shader, so its size must be
+            # the displayed texture size and its origin its quad-local
+            # placement. Anything outside [0,1] is discarded (the width clip
+            # is a UV window -- no scissor).
+            text_rect = (
+                tx * dpr,
+                0.0,
+                display_w * dpr,
+                display_h * dpr,
+            )
+            corner_radius = (
+                float(overlay_style.label_corner_radius_px) * zoom_scale * dpr
+            )
+            resource_updates.updateDynamicBuffer(
+                slot.uniform_buffer,
+                0,
+                _pack_label_uniform(
+                    mvp,
+                    bg_premul,
+                    screen_rect.width() * dpr,
+                    screen_rect.height() * dpr,
+                    text_rect,
+                    corner_radius,
+                    1.0 if draw_bg else 0.0,
+                    1.0,
+                ),
+            )
+
             # BOUNDARY (F5): per-slot screen quads -- each label draws its
             # own NDC quad from build_quad_vertices, never the shared
             # FULLSCREEN_VERTICES the TexturedOverlayShell stages.
