@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import struct
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import (
     QColor,
     QFontMetrics,
@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 )
 
 from ui.canvas_presentation.filename_labels import (
+    fit_text,
     font_for_style,
     label_rects,
     limit_name,
@@ -43,33 +44,6 @@ _MATRIX_UNIFORM_FMT = "<32f"
 assert_uniform_size(
     _MATRIX_UNIFORM_FMT, _UNIFORM_SIZE, label="FilenameOverlayGpuResources uniform"
 )
-
-
-def _slot_anchor(placement: str, is_horizontal: bool, slot_index: int) -> str:
-    """Which edge of the label quad the text hugs.
-
-    Mirrors ``ui.canvas_presentation.filename_labels.label_rects``'s own
-    align choice: ``edges`` pins name1 left / name2 right, ``split_line``
-    flips them (labels hug the divider), horizontal centres both.
-    """
-    if is_horizontal:
-        return "center"
-    if placement == "split_line":
-        return "right" if slot_index == 0 else "left"
-    return "left" if slot_index == 0 else "right"
-
-
-def _elide(text: str, metrics: QFontMetrics, max_width: float, anchor: str) -> str:
-    """Elide toward the anchored edge: a right-anchored label keeps its tail
-    (the part nearest the divider), a left-anchored one keeps its head.
-    """
-    if metrics.horizontalAdvance(text) <= max_width:
-        return text
-    mode = {
-        "right": Qt.TextElideMode.ElideLeft,
-        "center": Qt.TextElideMode.ElideMiddle,
-    }.get(anchor, Qt.TextElideMode.ElideRight)
-    return metrics.elidedText(text, mode, max(1, int(max_width)))
 
 
 def _pixel_space_mvp(rhi, ctx) -> tuple[float, ...]:
@@ -309,8 +283,6 @@ class FilenameOverlayPass(CanvasRenderPass):
         draw_bg = bool(getattr(cfg, "draw_text_background", True))
         font_weight = int(getattr(cfg, "font_weight", 0) or 0)
         text_inset = float(overlay_style.text_inset_px)
-        is_horizontal = bool(getattr(cfg, "is_horizontal", False))
-        placement = str(getattr(cfg, "text_placement_mode", "edges") or "edges")
 
         dpr = max(1.0, float(widget.devicePixelRatioF()))
         font_px = int(round(float(overlay_style.font_pixel_size)))
@@ -351,22 +323,20 @@ class FilenameOverlayPass(CanvasRenderPass):
                 continue
             quad_w = float(rect.width())
             quad_h = float(rect.height())
-            anchor = _slot_anchor(placement, is_horizontal, i)
             max_text_w = max(1.0, quad_w - text_inset * 2.0)
-            elided = _elide(name, font_metrics, max_text_w, anchor)
-            text_w = max(1.0, float(font_metrics.horizontalAdvance(elided)))
+            # Pre-variant-A clip: elide toward the tail (ElideRight) inside the
+            # label_rects box, which already hugs and anchors the text to the
+            # correct edge. The retained-atlas architecture changes only *how*
+            # the run is drawn (per-glyph quads), never this clip/anchoring.
+            elided = fit_text(name, font_metrics, max_text_w)
 
             screen_rect = _to_screen_rect(rect)
             zoom_scale = (screen_rect.width() / quad_w) if quad_w > 0 else 1.0
-            display_w = text_w * zoom_scale
             display_inset = text_inset * zoom_scale
-            if anchor == "right":
-                tx = screen_rect.width() - display_inset - display_w
-            elif anchor == "center":
-                tx = (screen_rect.width() - display_w) * 0.5
-            else:
-                tx = display_inset
-            origin_x = screen_rect.left() + tx
+            box_left = screen_rect.left()
+            box_w = screen_rect.width()
+            box_h = screen_rect.height()
+            origin_x = box_left + display_inset
             baseline_y = screen_rect.top() + (
                 (quad_h - float(font_metrics.height())) * 0.5
                 + float(font_metrics.ascent())
@@ -376,10 +346,10 @@ class FilenameOverlayPass(CanvasRenderPass):
             if draw_bg:
                 vertices += pack_bg_quad(
                     (
-                        screen_rect.left(),
+                        box_left,
                         screen_rect.top(),
-                        screen_rect.right(),
-                        screen_rect.bottom(),
+                        box_left + box_w,
+                        screen_rect.top() + box_h,
                     )
                 )
             run, glyph_count = pack_run(
@@ -415,8 +385,8 @@ class FilenameOverlayPass(CanvasRenderPass):
                 _pack_label_uniform(
                     mvp,
                     bg_premul,
-                    screen_rect.width() * dpr,
-                    screen_rect.height() * dpr,
+                    box_w * dpr,
+                    box_h * dpr,
                     corner_radius,
                     1.0 if draw_bg else 0.0,
                     sdf_range,

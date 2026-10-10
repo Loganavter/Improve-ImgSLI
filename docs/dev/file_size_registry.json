@@ -261,7 +261,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/passes.py",
-      "lines": 459,
+      "lines": 429,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi filename-overlay pass (F5 boundary verdict) —",
