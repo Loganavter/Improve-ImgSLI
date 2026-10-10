@@ -29,6 +29,7 @@ from engine.overlay import (
 )
 from engine.frame.context import make_ids
 from tabs.multi_compare.scene.passes.labels import LabelsOverlaySource
+from tabs.multi_compare.scene.projection import layer_fit_scale
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
@@ -113,6 +114,66 @@ def resolve(ctx: Any) -> tuple[int, int, bytes] | None:
     return _image_to_frame(img)
 
 
+def raster_signature(ctx: Any) -> tuple:
+    """Cheap value signature of everything ``LabelsOverlaySource.paint`` reads.
+
+    Pure: reads only ``ctx`` (composition geometry/style + camera + framebuffer
+    size) and returns nested tuples of numbers/strings -- never whole
+    composition objects -- so equality is value-based and cheap. A change in
+    any element means the raster must be recomputed. Covers the per-layer
+    ``rect`` / label text plus the image-aspect / ``zoom`` / ``pan_y`` terms
+    ``_image_bottom_fb`` reads (labels hug the letterboxed image bottom, so
+    those move the label even when the cell rect is stable).
+    """
+    composition = getattr(ctx, "composition", None)
+    if composition is None:
+        return ("const", None)
+
+    default_text = (255, 255, 255, 255)
+    default_bg = (0, 0, 0, 170)
+    settings = getattr(composition, "label_settings", None)
+    settings_sig = (
+        int(getattr(settings, "font_size_percent", 100) or 100),
+        int(getattr(settings, "font_weight", 0) or 0),
+        tuple(getattr(settings, "text_rgba", default_text) or default_text),
+        tuple(getattr(settings, "bg_rgba", default_bg) or default_bg),
+        bool(getattr(settings, "draw_background", True)),
+        int(getattr(settings, "text_alpha_percent", 100) or 100),
+    )
+
+    layers = []
+    for layer in getattr(composition, "layers", ()) or ():
+        label = getattr(layer, "label", None)
+        text = str(getattr(label, "text", "") or "") if label is not None else ""
+        lx, ly, lw, lh = layer.rect
+        fit_x, fit_y = layer_fit_scale(layer.image, lw, lh)
+        layers.append(
+            (
+                int(lx),
+                int(ly),
+                int(lw),
+                int(lh),
+                text,
+                float(getattr(layer, "zoom", 1.0)),
+                float(getattr(layer, "pan_y", 0.0)),
+                float(fit_x),
+                float(fit_y),
+            )
+        )
+
+    offset = getattr(ctx, "offset", (0.0, 0.0))
+    fb = getattr(ctx, "framebuffer_size", (0.0, 0.0))
+    return (
+        int(getattr(composition, "canvas_w", 1)),
+        int(getattr(composition, "canvas_h", 1)),
+        tuple(layers),
+        settings_sig,
+        float(getattr(ctx, "scale", 1.0)),
+        (float(offset[0]), float(offset[1])),
+        (float(fb[0]), float(fb[1])),
+    )
+
+
 def _frame_resolver() -> TexturedOverlayResolver:
     """Resolver factory: the raster arrives via ``ctx``, nothing is captured."""
     return resolve
@@ -126,6 +187,10 @@ class LayerLabelsPass(CanvasRenderPass):
     def __init__(self) -> None:
         self._shell = TexturedOverlayShell()
         self._source = _SOURCE
+        # (signature, frame) of the last uploaded raster; None until the
+        # first upload (and after every (re)mount). The pass is a singleton
+        # in RENDER_PASSES, so this instance state survives between frames.
+        self._raster_cache: tuple[tuple, tuple[int, int, bytes] | None] | None = None
 
     def should_paint(self, ctx) -> bool:
         return self._source.should_paint(ctx.composition)
@@ -135,16 +200,35 @@ class LayerLabelsPass(CanvasRenderPass):
 
     def initialize(self, rhi, target) -> None:
         self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)
+        # A (re)mount owns a fresh placeholder texture: force a re-upload on
+        # the next prepare rather than trusting a pre-remount cached frame.
+        self._raster_cache = None
 
     def prepare(self, widget, ctx, resource_updates, frame_context=None) -> None:
+        # Quad + clip are cheap uniform/vertex writes that legitimately change
+        # with the camera, so they are staged every frame regardless.
         self._shell.stage_quad(resource_updates)
         self._shell.stage_clip(resource_updates, ctx.clip_matrix)
-        frame = _frame_resolver()(ctx)
-        try:
-            rt = widget.renderTarget() if widget is not None else None
-        except Exception:
-            rt = None
-        self._shell.upload_frame(resource_updates, rt, frame)
+
+        # Raster cache: the fullscreen QImage + QPainter raster and the
+        # texture upload are the expensive part (~10-20ms CPU + MBs of
+        # upload). The raster depends only on the value signature below, so
+        # an unchanged frame reuses the retained texture: no resolve, no
+        # upload -- just keep the shell's active flag in sync with it.
+        signature = raster_signature(ctx)
+        cached = self._raster_cache
+        if cached is not None and cached[0] == signature:
+            frame = cached[1]
+            self._shell.active = frame is not None
+        else:
+            frame = _frame_resolver()(ctx)
+            try:
+                rt = widget.renderTarget() if widget is not None else None
+            except Exception:
+                rt = None
+            self._shell.upload_frame(resource_updates, rt, frame)
+            self._raster_cache = (signature, frame)
+
         if getattr(widget, "_mc_overlay_debug", False):
             if frame is None:
                 logger.info(
@@ -185,6 +269,7 @@ class LayerLabelsPass(CanvasRenderPass):
 
     def release(self) -> None:
         self._shell.teardown()
+        self._raster_cache = None
 
 
 RENDER_PASSES: list[CanvasRenderPass] = [LayerLabelsPass()]
