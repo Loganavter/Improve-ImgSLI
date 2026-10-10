@@ -176,11 +176,9 @@ def draw_text_bold_supersampled(
     down onto ``painter`` at 1x -- used by callers that rasterize a label at
     1x resolution and have no GPU downsample pass of their own to lean on
     instead (``tabs.multi_compare.ui.layer_labels``). ``image_compare``'s
-    own filename_overlay feature uses ``draw_text_bold`` instead (see that
-    function's docstring for why): it rasterizes its *entire* label,
-    background included, supersampled already, then downsamples once via a
-    dedicated GPU Lanczos-2 pass -- stacking this function's own internal
-    supersample on top of that would double-downscale for no benefit.
+    own filename_overlay feature no longer CPU-rasterizes a label at all
+    (variant C1 renders text as per-glyph quads over an SDF atlas), so this
+    is the CPU-side path for callers that still rasterize a label.
     """
     from shared_toolkit.ui.managers.font_manager import FontManager
 
@@ -260,12 +258,11 @@ def draw_text_bold(
     """Draws synthetic-bold text (a filled+stroked QPainterPath, since Qt
     has no variable font-weight axis to lean on here) directly at
     ``painter``'s *current* transform -- no internal supersample/downscale
-    step of its own. For callers whose *entire* rasterization (background
-    rect included) already happens supersampled and gets downsampled once
-    via a dedicated GPU pass afterward -- currently only
-    ``image_compare``'s ``render/label_raster.py`` -- see
-    ``draw_text_bold_supersampled`` for the CPU-side alternative other
-    callers still use.
+    step of its own. Retained for any caller that rasterizes a label at 1x
+    with no GPU downsample pass of its own; ``image_compare``'s
+    filename_overlay feature no longer uses it (variant C1 renders text
+    from an SDF glyph atlas). See ``draw_text_bold_supersampled`` for the
+    CPU-side alternative.
     """
     pixel_size = font.pixelSize()
     metrics = QFontMetrics(font)

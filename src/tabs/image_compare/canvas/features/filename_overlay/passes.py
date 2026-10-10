@@ -1,17 +1,17 @@
 # File-Size-Exempt: single QRhi filename-overlay pass (F5 boundary verdict) —
-# one per-slot resource lifecycle plus the pinned verdict prose; splitting it
-# would fragment the boundary this contract test measures.
+# one shared SDF atlas plus the per-slot N-quad draw orchestration and the
+# pinned verdict prose; splitting it would fragment the boundary this contract
+# test measures.
 from __future__ import annotations
 
 import struct
-import time
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import (
     QColor,
     QFontMetrics,
+    QMatrix4x4,
     QRhiCommandBuffer,
-    QRhiDepthStencilClearValue,
     QRhiViewport,
 )
 
@@ -29,33 +29,20 @@ from tabs.image_compare.canvas.features.filename_overlay.render.gpu_resources im
     _UNIFORM_SIZE,
     FilenameOverlayGpuResources,
 )
+from tabs.image_compare.canvas.features.filename_overlay.render.text_run import (
+    pack_bg_quad,
+    pack_run,
+)
 
 # std140 block (32 floats) shared byte-for-byte with
 # filename_overlay.vert / .frag: mat4 mvp + vec4 bgColor (premultiplied) +
-# vec2 quadSizePx + vec2 pad0 + vec4 textRectPx + float cornerRadiusPx +
-# float bgEnabled + float textEnabled + float pad1.
+# vec2 quadSizePx + vec2 pad0 + float cornerRadiusPx + float bgEnabled +
+# float sdfRangePx + float pixelSize + float edgePx + float pad1 +
+# vec2 pad2.
 _MATRIX_UNIFORM_FMT = "<32f"
 assert_uniform_size(
     _MATRIX_UNIFORM_FMT, _UNIFORM_SIZE, label="FilenameOverlayGpuResources uniform"
 )
-from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
-    _LABEL_SUPERSAMPLE,
-    build_quad_vertices,
-    rasterize_label_text,
-)
-from tabs.image_compare.canvas.features.filename_overlay.render.perf import (
-    filename_perf_enabled,
-    log_prepare_raster,
-)
-
-
-def _changed_fields(old_key, new_key) -> str:
-    if not old_key or len(old_key) != len(new_key):
-        return "first"
-    names = ("name", "elided", "font_px", "weight", "color", "dpr", "quality")
-    return ",".join(
-        names[i] for i in range(len(new_key)) if old_key[i] != new_key[i]
-    ) or "?"
 
 
 def _slot_anchor(placement: str, is_horizontal: bool, slot_index: int) -> str:
@@ -85,15 +72,29 @@ def _elide(text: str, metrics: QFontMetrics, max_width: float, anchor: str) -> s
     return metrics.elidedText(text, mode, max(1, int(max_width)))
 
 
+def _pixel_space_mvp(rhi, ctx) -> tuple[float, ...]:
+    """Pixel-space (y-down, tile-local px) -> clip matrix.
+
+    Glyph/background quads are emitted in ``ctx`` pixel space (not NDC), so the
+    uniform carries the full ortho*clipCorr product rather than the bare
+    ``clipSpaceCorrMatrix`` the old NDC quads used.
+    """
+    proj = QMatrix4x4()
+    proj.ortho(0.0, float(ctx.width), float(ctx.height), 0.0, -1.0, 1.0)
+    matrix = rhi.clipSpaceCorrMatrix() * proj
+    return tuple(float(v) for v in matrix.data())
+
+
 def _pack_label_uniform(
     mvp,
     bg_premul: tuple[float, float, float, float],
     quad_w: float,
     quad_h: float,
-    text_rect: tuple[float, float, float, float],
     corner_radius: float,
     bg_enabled: float,
-    text_enabled: float,
+    sdf_range_px: float,
+    pixel_size: float,
+    edge_px: float,
 ) -> bytes:
     values = (
         *mvp,
@@ -105,54 +106,52 @@ def _pack_label_uniform(
         float(quad_h),
         0.0,
         0.0,
-        float(text_rect[0]),
-        float(text_rect[1]),
-        float(text_rect[2]),
-        float(text_rect[3]),
         float(corner_radius),
         float(bg_enabled),
-        float(text_enabled),
+        float(sdf_range_px),
+        float(pixel_size),
+        float(edge_px),
+        0.0,
+        0.0,
         0.0,
     )
     return struct.pack(_MATRIX_UNIFORM_FMT, *values)
 
 
 class FilenameOverlayPass(CanvasRenderPass):
-    """Renders filename labels as screen-positioned textured quads.
+    """Renders filename labels as SDF glyph quads over a procedural background.
 
     F5 FILENAME-VERDICT: PERMANENT BOUNDARY (not a migration candidate).
-    Variant A re-open (2026-10-06): the rounded-rect BACKGROUND is drawn
-    procedurally in ``filename_overlay.frag`` (signed-distance rounded box)
-    and the texture now carries ONLY the text -- so a width change resizes
-    the quad and shifts the shader's ``textRectPx`` sample window WITHOUT
-    re-rasterizing (the raster is keyed by content, not width).
+    Variant C1 re-open (2026-10-06): the per-string CPU raster, the 4x
+    supersample and the GPU Lanczos downsample of variant A are gone. Text is
+    per-glyph quads sampling one shared signed-distance-field atlas
+    (``render/glyph_atlas.py``); the rounded-rect BACKGROUND is a mode-0 quad
+    drawn through the same pipeline (signed-distance rounded box in
+    ``filename_overlay.frag``). A split drag changes only the packed quad
+    positions -- the atlas is keyed by ``(font, pixel_size, dpr)`` and never
+    re-rasterizes on a width change.
 
     (1) WHAT STAYS (exact GPU sites -- see the markers below):
-    per-slot raw + final textures (``ensure_slot_textures`` in
-    ``render/gpu_resources.py``), per-slot ``RenderTarget`` downsample
-    targets with their own rpdesc, the ``_LABEL_SUPERSAMPLE = 4``
-    supersampled TEXT upload -> Lanczos pre-pass (``label_downsample.frag``
-    ``SCALE = 4`` / ``RADIUS = 8``) -> device-resolve in
-    ``record_pre_pass`` below, per-slot screen quads via
-    ``build_quad_vertices`` (never fullscreen), per-slot vertex buffers
-    with ``srb_linear`` / ``srb_nearest`` selection in ``record`` below,
-    and per-slot 128-byte uniform buffers written in ``prepare`` below.
+    one shared SDF atlas texture + linear/nearest samplers
+    (``ensure_atlas`` in ``render/gpu_resources.py``), a four-attribute vertex
+    layout (pos / uv / color / mode+weight), per-slot growable vertex buffers
+    holding the background quad plus N glyph quads, per-slot 128-byte uniform
+    buffers, per-slot screen draws of N quads (``prepare`` / ``record``
+    below), and per-slot ``srb_linear`` / ``srb_nearest`` selection.
 
-    (2) WHY (uniqueness proof): two independently-sized label textures
-    plus a supersample stage plus a device-resolve plus per-slot screen
-    quads plus per-slot uniform blocks has no image in the
-    single-fullscreen-upload ``TexturedOverlayShell`` (one texture,
-    upload-then-draw in the same main pass, shared ``FULLSCREEN_VERTICES``,
-    one ``srb``, one 64B uniform). MC ``layer_labels`` rides the shell ONLY
-    because it is one fullscreen raster with no supersample stage and a
-    pre-composited background.
+    (2) WHY (uniqueness proof): N independently-positioned glyph quads sampling
+    a shared atlas, plus a procedural rounded-box background composited through
+    per-slot uniforms, has no image in the single-fullscreen-upload
+    ``TexturedOverlayShell`` (one texture, upload-then-draw in the same main
+    pass, shared ``FULLSCREEN_VERTICES``, one ``srb``, one 64B uniform). MC
+    ``layer_labels`` rides the shell ONLY because it is one fullscreen raster
+    with a pre-composited background.
 
-    (3) INVALIDATION CONDITION: re-open this verdict if the shell gains
-    slot-targets plus a GPU-supersample stage, or if these labels drop the
-    per-slot two-texture / supersample shape for a single fullscreen raster
-    like MC. Moving the background between CPU and shader does not
-    invalidate the verdict by itself. Either resource-shape change breaks
-    the markers pinned in
+    (3) INVALIDATION CONDITION: re-open this verdict if the shell gains a
+    shared glyph atlas plus per-glyph quads, or if these labels drop the atlas
+    + per-slot N-quad shape for a single fullscreen raster like MC. Moving the
+    background between CPU and shader does not invalidate the verdict by
+    itself. Either resource-shape change breaks the markers pinned in
     ``src/tabs/image_compare/tests/render/test_filename_boundary.py``.
     """
 
@@ -204,6 +203,7 @@ class FilenameOverlayPass(CanvasRenderPass):
         for slot in self._gpu.slots:
             slot.active = False
             slot.vertices = None
+            slot.vertex_count = 0
 
         cfg = (
             ctx.scene_frame.feature_payloads.get("filename_overlay")
@@ -232,9 +232,8 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
         # Pivot/pan scale off the logical canvas center (== widget center
         # outside tiled export), then shift into this render target's
-        # tile-local pixel space via canvas_offset_x/y so _build_quad_vertices
-        # (which uses the actual ctx.width/height for NDC) gets tile-local
-        # coordinates.
+        # tile-local pixel space via canvas_offset_x/y so the pixel-space
+        # quads (and the ortho mvp built from ctx.width/height) stay tile-local.
         canvas_w = float(ctx.canvas_width)
         canvas_h = float(ctx.canvas_height)
         wcx = canvas_w / 2.0
@@ -312,15 +311,21 @@ class FilenameOverlayPass(CanvasRenderPass):
         text_inset = float(overlay_style.text_inset_px)
         is_horizontal = bool(getattr(cfg, "is_horizontal", False))
         placement = str(getattr(cfg, "text_placement_mode", "edges") or "edges")
-        # Quality-during-drag: pixel-based elision changes the string every
-        # drag frame, so the content cache misses every frame; rasterizing at
-        # the full 4x there costs 6-35ms/frame (measured via
-        # IMGSLI_IC_PERF_DEBUG). Raster at 1x while a movement is in flight,
-        # upload straight into the sampled texture (skip the Lanczos pass),
-        # and re-raster at 4x on the first settled frame (quality is in the
-        # cache key, so the settle frame is guaranteed to re-raster).
-        interactive = bool(getattr(cfg, "is_interactive_mode", False))
-        quality = 1 if interactive else _LABEL_SUPERSAMPLE
+
+        dpr = max(1.0, float(widget.devicePixelRatioF()))
+        font_px = int(round(float(overlay_style.font_pixel_size)))
+        if font_px <= 0:
+            font_px = max(1, int(font.pixelSize()))
+        # Build/refresh the shared SDF atlas only when the font/size/dpr triple
+        # changes -- a split drag never reaches the atlas (C1's core win).
+        if self._gpu.ensure_atlas(font, font_px, dpr):
+            if self._gpu.atlas_image is not None:
+                resource_updates.uploadTexture(
+                    self._gpu.atlas_texture, self._gpu.atlas_image
+                )
+        atlas = self._gpu.atlas
+        if atlas is None:
+            return
 
         # Premultiplied rgba, as the fragment shader outputs premultiplied.
         bg_alpha = bg_color.alphaF()
@@ -330,13 +335,19 @@ class FilenameOverlayPass(CanvasRenderPass):
             bg_color.blueF() * bg_alpha,
             bg_alpha,
         )
-        mvp = tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data())
+        text_alpha_f = text_color.alphaF()
+        text_premul = (
+            text_color.redF() * text_alpha_f,
+            text_color.greenF() * text_alpha_f,
+            text_color.blueF() * text_alpha_f,
+            text_alpha_f,
+        )
+        mvp = _pixel_space_mvp(self._gpu.rhi, ctx)
+        sdf_range = float(atlas.sdf_range_px)
 
-        _perf = filename_perf_enabled()
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
             slot = self._gpu.slots[i]
             if not name or rect is None:
-                slot.content_key = None
                 continue
             quad_w = float(rect.width())
             quad_h = float(rect.height())
@@ -344,65 +355,10 @@ class FilenameOverlayPass(CanvasRenderPass):
             max_text_w = max(1.0, quad_w - text_inset * 2.0)
             elided = _elide(name, font_metrics, max_text_w, anchor)
             text_w = max(1.0, float(font_metrics.horizontalAdvance(elided)))
-            rh = max(1, int(round(quad_h)))
-            dpr = max(1.0, float(widget.devicePixelRatioF()))
-            # Content + style only -- NO width/height in the key, so a split
-            # drag that leaves the (possibly elided) string unchanged reuses
-            # the existing text texture instead of re-rasterizing every frame.
-            cache_key = (
-                name,
-                elided,
-                int(overlay_style.font_pixel_size),
-                font_weight,
-                text_color.rgba(),
-                round(dpr, 3),
-                quality,
-            )
-
-            if slot.content_key != cache_key:
-                changed = _changed_fields(slot.content_key, cache_key)
-                _t0 = time.perf_counter() if _perf else 0.0
-                image, final_size = rasterize_label_text(
-                    elided,
-                    text_w,
-                    rh,
-                    font,
-                    font_metrics,
-                    text_color,
-                    font_weight,
-                    dpr,
-                    quality,
-                )
-                _t1 = time.perf_counter() if _perf else 0.0
-                self._gpu.ensure_slot_textures(slot, image.size(), final_size)
-                if _perf:
-                    log_prepare_raster(
-                        i,
-                        elided,
-                        int(text_w),
-                        rh,
-                        dpr,
-                        quality,
-                        bool(getattr(cfg, "is_interactive_mode", False)),
-                        changed,
-                        (_t1 - _t0) * 1000.0,
-                        (time.perf_counter() - _t1) * 1000.0,
-                    )
-                # NOT resource_updates.uploadTexture() here -- that shared
-                # batch only actually submits alongside the *main* pass's
-                # beginPass, which runs after record_pre_pass()'s own
-                # downsample read of this texture. See LabelSlot.
-                # pending_upload_image's docstring.
-                slot.pending_upload_image = image
-                direct = quality < _LABEL_SUPERSAMPLE
-                slot.direct_upload = direct
-                slot.needs_downsample = not direct
-                slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
             zoom_scale = (screen_rect.width() / quad_w) if quad_w > 0 else 1.0
             display_w = text_w * zoom_scale
-            display_h = quad_h * zoom_scale
             display_inset = text_inset * zoom_scale
             if anchor == "right":
                 tx = screen_rect.width() - display_inset - display_w
@@ -410,20 +366,49 @@ class FilenameOverlayPass(CanvasRenderPass):
                 tx = (screen_rect.width() - display_w) * 0.5
             else:
                 tx = display_inset
-            # textRectPx maps the text-only texture into the quad: tuv =
-            # (localPx - xy) / zw in the fragment shader, so its size must be
-            # the displayed texture size and its origin its quad-local
-            # placement. Anything outside [0,1] is discarded (the width clip
-            # is a UV window -- no scissor).
-            text_rect = (
-                tx * dpr,
-                0.0,
-                display_w * dpr,
-                display_h * dpr,
+            origin_x = screen_rect.left() + tx
+            baseline_y = screen_rect.top() + (
+                (quad_h - float(font_metrics.height())) * 0.5
+                + float(font_metrics.ascent())
+            ) * zoom_scale
+
+            vertices = bytearray()
+            if draw_bg:
+                vertices += pack_bg_quad(
+                    (
+                        screen_rect.left(),
+                        screen_rect.top(),
+                        screen_rect.right(),
+                        screen_rect.bottom(),
+                    )
+                )
+            run, glyph_count = pack_run(
+                elided,
+                atlas,
+                (origin_x, baseline_y),
+                text_premul,
+                float(font_weight),
+                zoom_scale,
             )
-            corner_radius = (
-                float(overlay_style.label_corner_radius_px) * zoom_scale * dpr
-            )
+            vertices += run
+            if not vertices:
+                continue
+
+            # BOUNDARY (F5): per-slot screen quads -- the background quad plus
+            # N glyph quads, each packed from text_run, never the shared
+            # FULLSCREEN_VERTICES the TexturedOverlayShell stages.
+            self._gpu.ensure_vertex_capacity(slot, len(vertices))
+            resource_updates.updateDynamicBuffer(slot.vertex_buffer, 0, bytes(vertices))
+            slot.vertices = bytes(vertices)
+            slot.vertex_count = (6 if draw_bg else 0) + glyph_count * 6
+
+            corner_radius = float(overlay_style.label_corner_radius_px) * zoom_scale * dpr
+            # AA half-width: sd is in logical atlas px. Per docs/dev/rendering/
+            # patterns.md ("SDF edge feather minimum"), a smoothstep SDF edge
+            # under single-sample rasterization needs a feather HALF-width of
+            # >= ~1px or it aliases into a hard/jagged step (the "binary alpha"
+            # seen live). 1 device px = 1/(zoom_scale*dpr) logical px.
+            edge_px = 1.0 / max(1e-6, zoom_scale * dpr)
             resource_updates.updateDynamicBuffer(
                 slot.uniform_buffer,
                 0,
@@ -432,80 +417,15 @@ class FilenameOverlayPass(CanvasRenderPass):
                     bg_premul,
                     screen_rect.width() * dpr,
                     screen_rect.height() * dpr,
-                    text_rect,
                     corner_radius,
                     1.0 if draw_bg else 0.0,
-                    1.0,
+                    sdf_range,
+                    float(font_px),
+                    edge_px,
                 ),
             )
-
-            # BOUNDARY (F5): per-slot screen quads -- each label draws its
-            # own NDC quad from build_quad_vertices, never the shared
-            # FULLSCREEN_VERTICES the TexturedOverlayShell stages.
-            vertices = build_quad_vertices(ctx, screen_rect)
-            resource_updates.updateDynamicBuffer(slot.vertex_buffer, 0, vertices)
-            slot.vertices = vertices
             slot.smooth = bool(apply_transform)
             slot.active = True
-
-    def record_pre_pass(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
-        if self._gpu.pipeline is None:
-            return
-        # BOUNDARY (F5): device-resolve stage -- the uploadTexture +
-        # beginPass/endPass nesting here is the shape TexturedOverlayShell
-        # cannot host (it uploads in prepare and draws in the same main
-        # pass). Pinned by test_filename_boundary.py; see the class
-        # docstring for the invalidation condition.
-        # Lanczos-2 downsample: raw_texture (supersampled, uploaded right
-        # below) -> texture (device res, what record()'s main draw samples)
-        # -- see render/gpu_resources.py's LabelSlot docstring. Only for
-        # slots whose content actually changed this call (prepare() sets
-        # needs_downsample/pending_upload_image). Must run here, before the
-        # main scene pass opens -- QRhi passes can't nest (see
-        # CanvasRenderPass.record_pre_pass's own docstring), and record()
-        # itself is only ever called *inside* that already-open main pass.
-        for slot in self._gpu.slots:
-            if slot.direct_upload:
-                # Interactive 1x raster: device-resolution bytes, so upload
-                # straight into the sampled final texture and skip the Lanczos
-                # pass (its SCALE=4 expects a 4x raw). Own resourceUpdate,
-                # submitted here so the upload is visible to record()'s draw.
-                slot.direct_upload = False
-                updates = self._gpu.rhi.nextResourceUpdateBatch()
-                updates.uploadTexture(slot.texture, slot.pending_upload_image)
-                command_buffer.resourceUpdate(updates)
-                slot.pending_upload_image = None
-                continue
-            if not slot.needs_downsample:
-                continue
-            slot.needs_downsample = False
-            # Own resourceUpdate(), submitted right here rather than queued
-            # into prepare()'s shared batch -- that batch only actually
-            # submits alongside the *main* pass's beginPass, which runs
-            # *after* this method, so the upload wouldn't be visible yet to
-            # the downsample read below if left there. See
-            # pending_upload_image's docstring.
-            raw_updates = self._gpu.rhi.nextResourceUpdateBatch()
-            raw_updates.uploadTexture(slot.raw_texture, slot.pending_upload_image)
-            command_buffer.resourceUpdate(raw_updates)
-            slot.pending_upload_image = None
-            command_buffer.beginPass(
-                slot.downsample_target,
-                QColor(0, 0, 0, 0),
-                QRhiDepthStencilClearValue(1.0, 0),
-            )
-            command_buffer.setGraphicsPipeline(slot.downsample_pipeline)
-            command_buffer.setViewport(
-                QRhiViewport(
-                    0.0,
-                    0.0,
-                    float(slot.texture_size.width()),
-                    float(slot.texture_size.height()),
-                )
-            )
-            command_buffer.setShaderResources(slot.srb_downsample)
-            command_buffer.draw(3)
-            command_buffer.endPass()
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
         if self._gpu.pipeline is None:
@@ -515,19 +435,25 @@ class FilenameOverlayPass(CanvasRenderPass):
         fb_height = float(int(ctx.height) * dpr)
         command_buffer.setGraphicsPipeline(self._gpu.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_width, fb_height))
-        # BOUNDARY (F5): per-slot draw -- own vertex buffer per slot plus
-        # srb_linear/srb_nearest selection. The shell draws one fullscreen
-        # quad through one srb; this loop cannot delegate to it.
+        # BOUNDARY (F5): per-slot N-quad draw -- own vertex buffer per slot plus
+        # srb_linear/srb_nearest selection. The shell draws one fullscreen quad
+        # through one srb; this loop cannot delegate to it.
         for slot in self._gpu.slots:
-            if not slot.active:
+            if not slot.active or slot.vertex_count <= 0:
                 continue
-            srb = slot.srb_linear if slot.smooth else slot.srb_nearest
+            # The SDF atlas MUST be sampled with the LINEAR filter: nearest
+            # sampling defeats the distance-field AA (each fragment gets one
+            # texel's distance, so the threshold edge is hard/jagged, and at a
+            # non-1:1 scale it aliases into a mottled "fur"). The mode-0
+            # background quad carries no texture, so the sampler is moot there.
+            srb = slot.srb_linear
             command_buffer.setShaderResources(srb)
             command_buffer.setVertexInput(0, [(slot.vertex_buffer, 0)])
-            command_buffer.draw(4)
+            command_buffer.draw(slot.vertex_count)
 
     def release(self) -> None:
         self._gpu.release()
+
 
 RENDER_PASSES: list[CanvasRenderPass] = [FilenameOverlayPass()]
 RENDER_PASSES = RENDER_PASSES
