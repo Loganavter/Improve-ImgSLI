@@ -36,6 +36,11 @@ _LATTICE_NAMES = frozenset(
     }
 )
 
+# Non-tile classes that legitimately define a ``slot_for`` of their own,
+# unrelated to TileTextureService's tile-slot lattice. Scoped by class name so
+# the rule still fails on any *new* tab-local tile bookkeeping.
+_SLOT_FOR_UNRELATED_CLASSES = frozenset({"GlyphAtlas"})
+
 # Tab modules allowed to call newTexture/newTextureArray, and why:
 # - rhi_renderer/resources.py: whole-image 1x1 upload path + placeholder.
 # - slot_resources.py: plain (non-array) path per-slot textures, residency
@@ -104,10 +109,22 @@ def test_tabs_define_no_grid_or_slot_bookkeeping():
         tree = parse(py)
         if tree is None:
             continue
+        # A few non-tile classes legitimately use the name ``slot_for`` for
+        # their own unrelated lookup (the filename_overlay SDF glyph atlas:
+        # ``GlyphAtlas.slot_for(ch) -> GlyphSlot``). The dogmas here are about
+        # TileTextureService tile-slot bookkeeping, so allowlist those classes
+        # explicitly rather than weakening the rule.
+        allowed_methods: set[int] = set()
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef) and cls.name in _SLOT_FOR_UNRELATED_CLASSES:
+                for stmt in cls.body:
+                    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        allowed_methods.add(id(stmt))
         for node in ast.walk(tree):
             if (
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name in ("register_source", "slot_for")
+                and id(node) not in allowed_methods
             ):
                 leaks.append(
                     f"{rel(py)}:{node.lineno} defines '{node.name}' "

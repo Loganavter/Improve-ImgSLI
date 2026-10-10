@@ -1,31 +1,43 @@
 #version 440
 
-// Variant A (F5 re-open 2026-10-06): the rounded-rect BACKGROUND is drawn
-// here procedurally from the quad geometry (signed-distance rounded box)
-// instead of being baked into the CPU raster. The texture now carries ONLY
-// the text (transparent background) and is cached by content, so a width
-// change only resizes the quad / shifts textRectPx -- no re-rasterize.
+// Variant C1 (F5 re-open 2026-10-06): the text texture + 4x supersample +
+// Lanczos downsample of variant A are gone. Text is per-glyph quads that
+// sample a signed-distance-field atlas; the glyph edge is
+//    sd = (tex - 0.5) * sdfRangePx   (negative inside, 0 at the edge)
+// and the coverage is a smoothstep around sd == 0, so AA is
+// resolution-independent. Synthetic bold shifts the edge:
+//    sd -= weight/500 * pixel_size.
+// The rounded-rect BACKGROUND is still procedural (mode 0, signed-distance
+// rounded box), so both fragment paths share one pipeline.
 //
-// Output is premultiplied: frag = text + bg * (1 - text.a); the pipeline
-// blend stays One / OneMinusSrcAlpha (render/gpu_resources.initialize).
-// Declared byte-for-byte identically in filename_overlay.vert (std140,
-// binding 0, 128 bytes); the Python side asserts "<32f" == 128 in passes.py.
+// Output is premultiplied; the pipeline blend stays One / OneMinusSrcAlpha,
+// and the mode-0 background quad is emitted before the mode-1 glyph quads so
+//    result = text + bg * (1 - text.a)
+// falls out of the fixed-function blend order.
+//
+// std140 block declared byte-for-byte identically in filename_overlay.vert
+// (binding 0, 128 bytes); the Python side asserts "<32f" == 128 in passes.py.
 layout(std140, binding = 0) uniform UBuf
 {
-    mat4 mvp;              // offset 0
+    mat4 mvp;              // offset 0   pixel-space -> clip
     vec4 bgColor;          // offset 64  premultiplied rgba
-    vec2 quadSizePx;       // offset 80
+    vec2 quadSizePx;       // offset 80  label quad size (device px, bg local space)
     vec2 pad0;             // offset 88
-    vec4 textRectPx;       // offset 96  quad-local text sample window
-    float cornerRadiusPx;  // offset 112
-    float bgEnabled;       // offset 116
-    float textEnabled;     // offset 120
-    float pad1;            // offset 124
+    float cornerRadiusPx;  // offset 96
+    float bgEnabled;       // offset 100
+    float sdfRangePx;      // offset 104 atlas decode range (logical px)
+    float pixelSize;       // offset 108 logical font px (bold scale)
+    float edgePx;          // offset 112 AA half-width in logical px
+    float pad1;            // offset 116
+    vec2 pad2;             // offset 120
 };
 
-layout(binding = 1) uniform sampler2D uTex;
+layout(binding = 1) uniform sampler2D uAtlas;
 
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec4 vColor;
+layout(location = 2) in vec2 vAux;
+
 layout(location = 0) out vec4 fragColor;
 
 // Standard rounded-box signed distance: < 0 inside, > 0 outside.
@@ -37,27 +49,31 @@ float roundedBoxSdf(vec2 p, vec2 halfSize, float radius)
 
 void main()
 {
-    vec2 localPx = vTexCoord * quadSizePx;
-
-    float bgCoverage = 0.0;
-    if (bgEnabled > 0.5)
+    vec4 outColor;
+    if (vAux.x < 0.5)
     {
-        vec2 halfSize = quadSizePx * 0.5;
-        float d = roundedBoxSdf(localPx - halfSize, halfSize, cornerRadiusPx);
-        // Reproduce the old CPU 0.5px inset (label_raster's
-        // adjusted(0.5,0.5,-0.5,-0.5)) as a 0.5px SDF erode with a 1px-wide
-        // AA ramp centred on d == -0.5, so there is no seam at the edge.
-        bgCoverage = clamp(-d, 0.0, 1.0);
+        // Mode 0: procedural rounded-rect background. vTexCoord is the label
+        // quad's own 0..1 coordinate; quadSizePx is its device-px size.
+        vec2 localPx = vTexCoord * quadSizePx;
+        float bgCoverage = 0.0;
+        if (bgEnabled > 0.5)
+        {
+            vec2 halfSize = quadSizePx * 0.5;
+            float d = roundedBoxSdf(localPx - halfSize, halfSize, cornerRadiusPx);
+            // 0.5px SDF erode with a 1px AA ramp centred on d == -0.5, matching
+            // the retired CPU 0.5px inset so there is no seam at the edge.
+            bgCoverage = clamp(-d, 0.0, 1.0);
+        }
+        outColor = bgColor * bgCoverage;
     }
-    vec4 bg = bgColor * bgCoverage;
-
-    vec4 text = vec4(0.0);
-    if (textEnabled > 0.5)
+    else
     {
-        vec2 tuv = (localPx - textRectPx.xy) / textRectPx.zw;
-        vec2 inRange = step(vec2(0.0), tuv) * step(tuv, vec2(1.0));
-        text = texture(uTex, tuv) * (inRange.x * inRange.y);
+        // Mode 1: glyph SDF sample.
+        float tex = texture(uAtlas, vTexCoord).r;
+        float sd = (tex - 0.5) * sdfRangePx;
+        sd -= (vAux.y / 500.0) * pixelSize;
+        float alpha = 1.0 - smoothstep(-edgePx, edgePx, sd);
+        outColor = vColor * alpha;
     }
-
-    fragColor = text + bg * (1.0 - text.a);
+    fragColor = outColor;
 }

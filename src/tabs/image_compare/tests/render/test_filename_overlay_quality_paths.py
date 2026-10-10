@@ -1,76 +1,193 @@
-"""Variant A quality-path pins for the filename_overlay text raster.
+"""Variant C1 quality pins + the offscreen glyph-atlas test.
 
-Falsification story: these fail if the text-only raster stops being
-supersampled, stops charging the caller's ``dpr``, or stops being a pure
-function of content (the property that lets a split drag reuse the cached
-texture instead of re-rasterizing on every width pixel).
+Two jobs:
 
-No GPU, no scene: all checks are on the CPU ``QImage`` the raster returns.
+* **Atlas correctness** -- advances and coverage match ``QFontMetrics`` /
+  the glyph outline, and ``ensure()`` is a no-op on an unchanged key (the
+  property that lets a split drag skip the CPU entirely).
+* **Crispness** -- a CPU SDF-threshold run simulator is compared against the
+  retired variant-A reference (4x QPainter raster, Lanczos/``Smooth``
+  downsample to 18px). The SDF run must be at least as crisp (fewer partial-
+  alpha edge pixels) and close to the reference (low mean abs diff). Numbers
+  are printed for the record.
+
+No GPU: the atlas is a CPU ``QImage`` and the simulator reproduces the
+fragment shader's threshold in numpy.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QColor, QFont, QFontMetrics
-
-from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
-    _LABEL_SUPERSAMPLE,
-    rasterize_label_text,
+import numpy as np
+from PySide6.QtCore import Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
 )
 
-_SHADERS = (
-    Path(__file__).resolve().parents[2]
-    / "canvas"
-    / "features"
-    / "filename_overlay"
-    / "shaders"
+from tabs.image_compare.canvas.features.filename_overlay.render.glyph_atlas import (
+    GlyphAtlas,
 )
+
+_TEXT = "sample.png"
+_PIXEL_SIZE = 18
+_DPR = 4.0
 
 
 def _font() -> QFont:
-    return QFont()
+    font = QFont()
+    font.setPixelSize(_PIXEL_SIZE)
+    return font
 
 
-def test_raster_charges_dpr_and_supersample(qapp):
-    font = _font()
-    metrics = QFontMetrics(font)
-    text = "sample.png"
-    rw = max(1, metrics.horizontalAdvance(text))
-    rh = 26
-    dpr = 2.0
-    image, final_size = rasterize_label_text(
-        text, rw, rh, font, metrics, QColor(255, 0, 0, 255), 0, dpr, _LABEL_SUPERSAMPLE
+def _atlas() -> GlyphAtlas:
+    atlas = GlyphAtlas(None)
+    atlas.ensure(_font(), _PIXEL_SIZE, _DPR)
+    return atlas
+
+
+def _atlas_pixels(atlas: GlyphAtlas) -> np.ndarray:
+    raw = np.frombuffer(atlas.image.constBits(), dtype=np.uint8)
+    return raw.reshape(atlas.height, atlas.width, 4)
+
+
+def test_atlas_advances_match_font_metrics(qapp):
+    atlas = _atlas()
+    dev_font = QFont(_font())
+    dev_font.setPixelSize(int(round(_PIXEL_SIZE * _DPR)))
+    dev_metrics = QFontMetrics(dev_font)
+    for ch in "Aghm.W":
+        slot = atlas.slot_for(ch)
+        assert slot is not None, f"atlas lost glyph {ch!r}"
+        expected = dev_metrics.horizontalAdvance(ch) / _DPR
+        assert abs(slot.advance_px - expected) <= 1.5, (
+            f"{ch!r} advance {slot.advance_px} vs metrics {expected}"
+        )
+    assert atlas.slot_for(" ") is None, (
+        "whitespace should carry no ink tile (space is advance-only)"
     )
-    assert final_size == QSize(int(round(rw * dpr)), int(round(rh * dpr)))
-    assert image.size() == QSize(
-        int(round(rw * dpr * _LABEL_SUPERSAMPLE)),
-        int(round(rh * dpr * _LABEL_SUPERSAMPLE)),
-    )
 
 
-def test_lanczos_scale_matches_raster_supersample():
-    frag = (_SHADERS / "label_downsample.frag").read_text(encoding="utf-8")
-    assert f"const float SCALE = {float(_LABEL_SUPERSAMPLE)}" in frag
-    assert f"const int RADIUS = {int(2 * _LABEL_SUPERSAMPLE)}" in frag
-
-
-def test_text_raster_is_transparent_background(qapp):
-    font = _font()
-    metrics = QFontMetrics(font)
-    text = "sample.png"
-    rw = max(1, metrics.horizontalAdvance(text))
-    rh = 26
-    image, _ = rasterize_label_text(
-        text, rw, rh, font, metrics, QColor(255, 0, 0, 255), 0, 2.0, _LABEL_SUPERSAMPLE
-    )
-    assert image.pixelColor(0, 0).alpha() == 0, (
-        "text-only raster has an opaque corner -- the background leaked back "
-        "into the CPU raster (variant A moved it to filename_overlay.frag)"
-    )
-    alphas = [
-        image.pixelColor(x, image.height() // 2).alpha()
-        for x in range(0, image.width(), max(1, image.width() // 32))
+def test_atlas_coverage_is_a_spread_sdf(qapp):
+    atlas = _atlas()
+    pixels = _atlas_pixels(atlas)
+    slot = atlas.slot_for("g")
+    assert slot is not None
+    u0, v0, u1, v1 = slot.uv
+    tile = pixels[
+        int(v0 * atlas.height) : int(v1 * atlas.height),
+        int(u0 * atlas.width) : int(u1 * atlas.width),
+        0,
     ]
-    assert max(alphas) > 0, "text raster is fully transparent -- nothing drawn"
+    assert tile.size > 0
+    # A real SDF spans well inside (0) and well outside (255) the edge.
+    assert tile.min() < 128, "no glyph interior in the atlas tile"
+    assert tile.max() > 200, "no glyph exterior in the atlas tile"
+    assert abs(float(tile.mean()) - 255.0) > 1.0, "tile is uniformly outside"
+
+
+def test_atlas_ensure_is_keyed_noop(qapp):
+    atlas = _atlas()
+    assert atlas.ensure(_font(), _PIXEL_SIZE, _DPR) is False, (
+        "ensure() rebuilt on an unchanged (font, pixel_size, dpr) key -- a "
+        "split drag would re-rasterize the atlas every frame"
+    )
+    assert atlas.ensure(_font(), _PIXEL_SIZE + 4, _DPR) is True
+
+
+def _sdf_run(atlas: GlyphAtlas, metrics: QFontMetrics, text: str, w: int, h: int):
+    """Reproduce the fragment shader's SDF threshold for a whole run (1x)."""
+    out = np.zeros((h, w), dtype=np.float64)
+    pixels = _atlas_pixels(atlas)
+    sdf_range = atlas.sdf_range_px
+    pen = 0.0
+    baseline = (h - metrics.height()) / 2.0 + metrics.ascent()
+    for ch in text:
+        slot = atlas.slot_for(ch)
+        if slot is not None:
+            gw, gh = slot.size_px
+            x0 = pen + slot.bearing_px[0]
+            y0 = baseline + slot.bearing_px[1]
+            u0, v0, u1, v1 = slot.uv
+            for py in range(max(0, int(np.floor(y0))), min(h, int(np.ceil(y0 + gh)))):
+                for px in range(
+                    max(0, int(np.floor(x0))), min(w, int(np.ceil(x0 + gw)))
+                ):
+                    sx = (px + 0.5 - x0) / gw
+                    sy = (py + 0.5 - y0) / gh
+                    if not (0.0 <= sx <= 1.0 and 0.0 <= sy <= 1.0):
+                        continue
+                    ax = min(atlas.width - 1, int((u0 + sx * (u1 - u0)) * atlas.width))
+                    ay = min(atlas.height - 1, int((v0 + sy * (v1 - v0)) * atlas.height))
+                    tex = pixels[ay, ax, 0] / 255.0
+                    sd = (tex - 0.5) * sdf_range
+                    alpha = float(np.clip(0.5 - sd, 0.0, 1.0))
+                    out[py, px] = alpha + out[py, px] * (1.0 - alpha)
+            pen += slot.advance_px
+    return out
+
+
+def _lanczos_reference(metrics: QFontMetrics, text: str, w: int, h: int):
+    """The retired variant-A reference: 4x QPainter raster, smooth downsample."""
+    ss = 4
+    big = QImage(w * ss, h * ss, QImage.Format.Format_RGBA8888)
+    big.fill(0)
+    painter = QPainter(big)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.scale(ss, ss)
+        painter.setFont(_font())
+        painter.setPen(QColor(255, 255, 255, 255))
+        painter.drawText(
+            0,
+            0,
+            w,
+            h,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            text,
+        )
+    finally:
+        painter.end()
+    small = big.scaled(
+        w,
+        h,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    raw = np.frombuffer(small.constBits(), dtype=np.uint8).reshape(h, w, 4)
+    return raw[..., 3].astype(np.float64) / 255.0
+
+
+def test_sdf_run_is_crisp_vs_lanczos_reference(qapp):
+    atlas = _atlas()
+    metrics = QFontMetrics(_font())
+    adv = sum(metrics.horizontalAdvance(c) for c in _TEXT)
+    w = adv + 2
+    h = metrics.height()
+    sdf = _sdf_run(atlas, metrics, _TEXT, w, h)
+    ref = _lanczos_reference(metrics, _TEXT, w, h)
+
+    mean_diff = float(np.abs(sdf - ref).mean())
+    sdf_ink = int((sdf > 0.5).sum())
+    ref_ink = int((ref > 0.5).sum())
+    sdf_partial = int(((sdf > 0.05) & (sdf < 0.95)).sum())
+    ref_partial = int(((ref > 0.05) & (ref < 0.95)).sum())
+    print(
+        f"[c1-sdf] mean_diff={mean_diff:.4f} sdf_ink={sdf_ink} "
+        f"ref_ink={ref_ink} sdf_partial={sdf_partial} ref_partial={ref_partial}"
+    )
+
+    assert sdf_partial <= ref_partial, (
+        "SDF run has more partial-alpha pixels than the Lanczos reference -- "
+        "C1 must be at least as crisp"
+    )
+    assert 0.6 <= sdf_ink / max(1, ref_ink) <= 1.6, (
+        f"SDF ink coverage {sdf_ink} diverges from reference {ref_ink}"
+    )
+    assert mean_diff < 0.12, (
+        f"SDF/ref mean abs diff {mean_diff:.4f} too high -- SDF threshold or "
+        f"atlas decode drifted from the retired raster"
+    )
