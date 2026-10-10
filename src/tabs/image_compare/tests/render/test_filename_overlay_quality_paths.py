@@ -59,13 +59,13 @@ def test_atlas_advances_match_font_metrics(qapp):
     dev_font.setPixelSize(int(round(_PIXEL_SIZE * _DPR)))
     dev_metrics = QFontMetrics(dev_font)
     for ch in "Aghm.W":
-        slot = atlas.slot_for(ch)
+        slot = atlas.glyph_for(ch)
         assert slot is not None, f"atlas lost glyph {ch!r}"
         expected = dev_metrics.horizontalAdvance(ch) / _DPR
         assert abs(slot.advance_px - expected) <= 1.5, (
             f"{ch!r} advance {slot.advance_px} vs metrics {expected}"
         )
-    assert atlas.slot_for(" ") is None, (
+    assert atlas.glyph_for(" ") is None, (
         "whitespace should carry no ink tile (space is advance-only)"
     )
 
@@ -73,7 +73,7 @@ def test_atlas_advances_match_font_metrics(qapp):
 def test_atlas_coverage_is_a_spread_sdf(qapp):
     atlas = _atlas()
     pixels = _atlas_pixels(atlas)
-    slot = atlas.slot_for("g")
+    slot = atlas.glyph_for("g")
     assert slot is not None
     u0, v0, u1, v1 = slot.uv
     tile = pixels[
@@ -105,7 +105,7 @@ def _sdf_run(atlas: GlyphAtlas, metrics: QFontMetrics, text: str, w: int, h: int
     pen = 0.0
     baseline = (h - metrics.height()) / 2.0 + metrics.ascent()
     for ch in text:
-        slot = atlas.slot_for(ch)
+        slot = atlas.glyph_for(ch)
         if slot is not None:
             gw, gh = slot.size_px
             x0 = pen + slot.bearing_px[0]

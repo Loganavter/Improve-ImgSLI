@@ -19,7 +19,7 @@ F5 BOUNDARY (C1): the shared atlas + per-glyph quads has no image in
 verdict prose lives on ``FilenameOverlayPass`` / ``render/gpu_resources.py``.
 
 C1 limitation: one face only -- ASCII 32..126. Missing code points (CJK,
-emoji, combining marks) return ``None`` from ``slot_for`` and are skipped, not
+emoji, combining marks) return ``None`` from ``glyph_for`` and are skipped, not
 fallback-rendered.
 """
 
@@ -149,7 +149,7 @@ class GlyphAtlas:
         self._build(font, int(pixel_size), max(1.0, float(dpr)))
         return True
 
-    def slot_for(self, ch: str) -> GlyphSlot | None:
+    def glyph_for(self, ch: str) -> GlyphSlot | None:
         return self._slots.get(ch)
 
     def reset(self) -> None:

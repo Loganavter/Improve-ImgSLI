@@ -90,7 +90,7 @@ def test_filename_c1_atlas_owns_the_sdf():
     for marker in (
         "class GlyphAtlas",
         "def ensure",
-        "def slot_for",
+        "def glyph_for",
         "distance_transform_edt",
         "signed_distance",
         "class GlyphSlot",

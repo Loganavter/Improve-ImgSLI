@@ -93,7 +93,7 @@ def pack_run(
     out = bytearray()
     count = 0
     for ch in text:
-        slot = atlas.slot_for(ch)
+        slot = atlas.glyph_for(ch)
         if slot is None:
             continue
         w, h = slot.size_px
