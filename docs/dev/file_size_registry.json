@@ -261,12 +261,22 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/passes.py",
-      "lines": 451,
+      "lines": 481,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi filename-overlay pass (F5 boundary verdict) —",
       "parsed": {
         "reason": "single QRhi filename-overlay pass (F5 boundary verdict) —"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/filename_overlay/render/gpu_resources.py",
+      "lines": 417,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "the F5 two-slot QRhi resource lifecycle (raw/final texture,",
+      "parsed": {
+        "reason": "the F5 two-slot QRhi resource lifecycle (raw/final texture,"
       }
     },
     {
