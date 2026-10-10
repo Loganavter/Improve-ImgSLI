@@ -68,12 +68,13 @@ void main()
     }
     else
     {
-        // Mode 1: glyph SDF sample.
-        float tex = texture(uAtlas, vTexCoord).r;
-        float sd = (tex - 0.5) * sdfRangePx;
-        sd -= (vAux.y / 500.0) * pixelSize;
-        float alpha = 1.0 - smoothstep(-edgePx, edgePx, sd);
-        outColor = vColor * alpha;
+        // Mode 1: glyph coverage sample. The atlas stores antialiased alpha
+        // coverage (supersample+LANCZOS downscaled per glyph -- the glass-HUD
+        // text-mask fix), NOT a signed-distance field, so there is no decode
+        // or threshold that can saturate to 0/1: the edge gradient is the
+        // coverage itself.
+        float a = texture(uAtlas, vTexCoord).r;
+        outColor = vColor * a;
     }
     fragColor = outColor;
 }
