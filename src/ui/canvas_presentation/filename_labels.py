@@ -55,6 +55,7 @@ def label_rects(
     style: FilenameOverlayStyle,
     split_override: float | None = None,
     divider_thickness_wx: float | None = None,
+    width_overrides: tuple[float | None, float | None] = (None, None),
 ):
     x, y, w, h = content_rect
     safe_gap = float(style.label_safe_gap_px)
