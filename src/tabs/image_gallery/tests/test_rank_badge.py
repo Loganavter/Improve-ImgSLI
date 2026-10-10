@@ -7,6 +7,7 @@ badge here, so the priority rule (``crown_rank ?? rank``, leader → ``#1``,
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from tabs.image_gallery.services.rank_badge import (
@@ -85,3 +86,31 @@ def test_stamp_badges_source_path_none_never_marks_source() -> None:
     it = _item(path="/gallery/x.png", rank=1)
     stamp_badges([it], None)
     assert it.badge == "#1" and it.badge_kind == KIND_RANK
+
+
+def test_sync_source_badge_moves_source_now(qtbot) -> None:
+    """'Make source' moves the badge immediately, without the comparison pass.
+
+    ``sync_source_badge`` stamps all items and repaints only the two cards
+    whose badge moved (old + new source) — no decode, no fidelity worker.
+    """
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    src = _item(path="/gallery/src.png", rank=1)
+    other = _item(path="/gallery/o.png", rank=2)
+    src.badge, src.badge_kind = "SOURCE", KIND_SOURCE
+    other.badge, other.badge_kind = "#2", KIND_RANK
+    w._items = [src, other]
+    w._series = []
+    w._source_path = "/gallery/src.png"
+    repainted: list[list[str]] = []
+    w.refresh_cards = lambda items: repainted.append([str(i.path) for i in items])
+
+    w.sync_source_badge("/gallery/o.png")
+
+    assert (other.badge, other.badge_kind) == ("SOURCE", KIND_SOURCE)
+    assert (src.badge, src.badge_kind) == ("#1", KIND_RANK)
+    assert w._source_path == Path("/gallery/o.png")
+    assert repainted and set(repainted[0]) == {"/gallery/src.png", "/gallery/o.png"}

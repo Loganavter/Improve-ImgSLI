@@ -162,9 +162,10 @@ class _StripLassoFilter(QObject):
         # repeats so exactly one handling (the first, with watched ==
         # receiver and correct coords) takes effect.
         self._seen = None
-        # Right-press anchor for release-time menu (same grab-race reason
-        # as the lasso: the popup opens on release, never mid-press).
-        self._rpress = None
+        # Coalescing signature of the last live selection applied mid-drag:
+        # a move that does not change membership only shifts the band, never
+        # re-paints every thumb (grid parity, ``_marquee_last_update_sig``).
+        self._pick_sig = None
 
     def _to_strip(self, widget, pos):
         # Viewport-space mapping (see __init__ for why not host-space):
@@ -215,6 +216,31 @@ class _StripLassoFilter(QObject):
             except Exception:
                 pass
 
+    def _apply_live_selection(self, rect):
+        """Preview the strip selection mid-drag (grid marquee parity).
+
+        The main grid applies its preview on every band update; the strip
+        used to commit only on release, so the accent only appeared once the
+        drag ended. Coalesce on membership so an unchanged hit set repaints
+        nothing (only the band geometry moves).
+        """
+        try:
+            picked = _strip_lasso_pick(self._overlay, rect)
+        except Exception:
+            return
+        sig = frozenset(picked)
+        if sig == self._pick_sig:
+            return
+        self._pick_sig = sig
+        try:
+            self._overlay._strip_selected_paths = set(picked)
+        except Exception:
+            pass
+        try:
+            _strip_refresh_selection(self._overlay)
+        except Exception:
+            pass
+
     def eventFilter(self, watched, event):  # noqa: N802
         # Return policy (kills double-delivery: a press handled on the host
         # must never ALSO be processed on the viewport — propagated events
@@ -251,6 +277,9 @@ class _StripLassoFilter(QObject):
                             return False
                         self._seen = _key
                         self._hide_band()
+                        # New gesture: drop the coalescing signature so the
+                        # first move always previews, even at equal membership.
+                        self._pick_sig = None
                         self._origin = self._to_strip(watched, _pos)
                         try:
                             from tabs.image_gallery.debug import gallery_debug as _dbg
@@ -266,23 +295,6 @@ class _StripLassoFilter(QObject):
                             return True
                 except Exception:
                     self._origin = None
-                # Release-time menu (NOT press-time rightClicked): opening a
-                # native popup mid-press races the button's active mouse grab
-                # (focus/grab churn) and flashes the GPU canvas — the IC
-                # canvas opens its menu on release for the same reason.
-                # rightClicked also fires on press AND the Button consumes
-                # right presses (no contextMenuEvent is ever synthesized),
-                # so neither fits; the filter observes everything first.
-                try:
-                    if event.button() == Qt.MouseButton.RightButton:
-                        try:
-                            _rp = event.position().toPoint()
-                        except Exception:
-                            self._rpress = None
-                        else:
-                            self._rpress = (watched, self._to_strip(watched, _rp))
-                except Exception:
-                    self._rpress = None
             elif t == QEvent.Type.MouseMove:
                 if self._origin is not None:
                     try:
@@ -313,7 +325,12 @@ class _StripLassoFilter(QObject):
                                 except Exception:
                                     pass
                             if self._band is not None:
-                                self._band.setGeometry(_QR(_QP(self._origin), _QP(cur)).normalized())
+                                _rect = _QR(_QP(self._origin), _QP(cur)).normalized()
+                                self._band.setGeometry(_rect)
+                                # Live accent while dragging (grid parity):
+                                # thumbs in the band light up on every move,
+                                # not only after release.
+                                self._apply_live_selection(_rect)
                                 if not _is_button:
                                     return True
                     except Exception:
@@ -369,111 +386,48 @@ class _StripLassoFilter(QObject):
                             return True
                 except Exception:
                     pass
-                try:
-                    if event.button() == Qt.MouseButton.RightButton and self._rpress is not None:
-                        _w0, _p0 = self._rpress
-                        self._rpress = None
-                        try:
-                            _rp1 = event.position().toPoint()
-                            _cur = self._to_strip(watched, _rp1)
-                            _moved = abs(_cur.x() - _p0.x()) + abs(_cur.y() - _p0.y())
-                        except Exception:
-                            _moved = None
-                            _cur = None
-                        if _moved is not None and _moved < self._threshold() and _cur is not None:
-                            try:
-                                _strip_open_menu_for(self._overlay, watched, _cur)
-                            except Exception:
-                                pass
-                except Exception:
-                    self._rpress = None
         except Exception:
             pass
         return False
 
 
-def _strip_open_menu_for(overlay, watched, view_pos) -> bool:
-    """Open the shared card menu for the strip item under *view_pos*.
+def open_strip_thumb_menu(overlay, widget, path=None) -> bool:
+    """Open the shared grid card menu for a strip thumb/pill (grid parity).
 
-    Resolves the item from the pressed widget (thumb button carries
-    ``gallery_path``; containers map by index; anything else by
-    position), then calls the grid cards' ``popup_gallery_card_context_menu``
-    with the overlay owner. True when a menu was opened. Never raises.
+    Wired to each thumb's ``rightClicked`` — the exact signal the grid cards
+    use (see ``ui/card.py`` ``_bind_gallery_card``) — so the strip menu is
+    produced by the same proven signal path instead of a release-time filter
+    branch. Resolves the item path from the widget's ``gallery_path``
+    property, else from the ``quicklook_strip_<idx>`` / ``quicklook_rank_<idx>``
+    object-name index. True when a menu was opened. Never raises.
     """
     try:
-        from PySide6.QtGui import QCursor as _QCursor
-
-        from sli_ui_toolkit.widgets import Button as _MB
-
-        try:
-            _gp = _QCursor.pos()
-        except Exception:
-            _gp = None
-        anchor = None
-        path = ""
-        try:
-            if isinstance(watched, _MB):
-                path = str(watched.property("gallery_path") or "")
-                anchor = watched
-        except Exception:
-            pass
-        try:
-            containers = list(getattr(overlay, "_strip_buttons", None) or [])
-            items = list(getattr(overlay, "_series_items", None) or [])
-        except Exception:
-            containers, items = [], []
+        if path is None:
+            try:
+                path = str(widget.property("gallery_path") or "")
+            except Exception:
+                path = ""
         if not path:
             try:
-                idx = None
-                for i, c in enumerate(containers):
-                    try:
-                        if watched is c:
-                            idx = i
-                            break
-                        if isinstance(watched, _MB) and watched.parentWidget() is c:
-                            idx = i
-                            break
-                    except Exception:
-                        continue
-                if idx is None and view_pos is not None:
-                    try:
-                        _scroll = getattr(overlay, "_strip_scroll", None)
-                        _view = _scroll.viewport() if _scroll is not None else None
-                    except Exception:
-                        _view = None
-                    if _view is not None:
-                        from PySide6.QtCore import QPoint as _QP3
-                        from PySide6.QtCore import QRect as _QR3
-
-                        for i, c in enumerate(containers):
-                            try:
-                                _g = _QR3(c.mapTo(_view, c.rect().topLeft()), c.rect().size())
-                                if _g.contains(_QP3(int(view_pos.x()), int(view_pos.y()))):
-                                    idx = i
-                                    break
-                            except Exception:
-                                continue
-                if idx is not None and 0 <= idx < len(items):
-                    try:
-                        path = str(getattr(items[idx], "path", "") or "")
-                    except Exception:
-                        pass
-                    if anchor is None:
-                        try:
-                            anchor = containers[idx]
-                        except Exception:
-                            pass
+                idx = int(str(widget.objectName() or "").rsplit("_", 1)[-1])
+                items = list(getattr(overlay, "_series_items", None) or [])
+                if 0 <= idx < len(items):
+                    path = str(getattr(items[idx], "path", "") or "")
             except Exception:
-                pass
+                path = ""
         if not path:
             return False
         try:
+            from PySide6.QtGui import QCursor
+
+            gp = QCursor.pos()
+        except Exception:
+            gp = None
+        try:
             from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
 
-            _owner = getattr(overlay, "_owner", None)
-            popup_gallery_card_context_menu(
-                anchor, _owner, Path(path), global_pos=_gp
-            )
+            owner = getattr(overlay, "_owner", None)
+            popup_gallery_card_context_menu(widget, owner, Path(path), global_pos=gp)
             return True
         except Exception:
             return False
@@ -481,21 +435,19 @@ def _strip_open_menu_for(overlay, watched, view_pos) -> bool:
         return False
 
 
-def _strip_apply_lasso_selection(overlay, rect) -> None:
-    """Select strip items whose containers intersect *rect* (viewport coords).
+def _strip_lasso_pick(overlay, rect) -> list[str]:
+    """Strip item paths whose containers intersect *rect* (viewport coords).
 
-    Quick Look keeps its OWN selection: the picked set lives on the overlay
-    (``_strip_selected_paths``) and is never written back to the owner, so a
-    strip lasso highlights strip thumbs only and leaves the main grid
-    untouched. Container geometries map into the same viewport space (valid
-    downward mapping). Series order is preserved (container order == series
-    order). Refreshes the thumb selection visuals.
+    Pure geometry: maps each thumb container into the scroll viewport (valid
+    downward mapping) and keeps the ones the band touches. Series order is
+    preserved (container order == series order). Used both by the live
+    mid-drag preview and the release-time commit. Never raises.
     """
     try:
         containers = list(getattr(overlay, "_strip_buttons", None) or [])
         items = list(getattr(overlay, "_series_items", None) or [])
     except Exception:
-        return
+        return []
     try:
         _scroll = getattr(overlay, "_strip_scroll", None)
         _view = _scroll.viewport() if _scroll is not None else None
@@ -527,15 +479,25 @@ def _strip_apply_lasso_selection(overlay, rect) -> None:
                 continue
     except Exception:
         pass
-    picked = [p for p in picked if p]
+    return [p for p in picked if p]
+
+
+def _strip_apply_lasso_selection(overlay, rect) -> None:
+    """Select strip items whose containers intersect *rect* (viewport coords).
+
+    Quick Look keeps its OWN selection: the picked set lives on the overlay
+    (``_strip_selected_paths``) and is never written back to the owner, so a
+    strip lasso highlights strip thumbs only and leaves the main grid
+    untouched. Refreshes the thumb selection visuals.
+    """
+    picked = _strip_lasso_pick(overlay, rect)
     try:
         from tabs.image_gallery.debug import gallery_debug as _dbg4
 
         _dbg4(
-            "strip lasso picked=%d rect=%s containers=%d",
+            "strip lasso picked=%d rect=%s",
             len(picked),
             rect,
-            len(containers),
         )
     except Exception:
         pass
@@ -875,18 +837,98 @@ def _strip_selection_overlay(painter, ctx, tm) -> None:  # type: ignore[no-untyp
         pass
 
 
+def _strip_source_outline(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
+    """Re-paint the source/viewing outline ON TOP of the cover as a solid ring.
+
+    The toolkit's widget-scope ``BorderLayer`` strokes the outline *under*
+    the cover pixmap. The pixmap's rounded clip is antialiased, so its
+    corner pixels are semi-transparent and let the under-border show
+    through unevenly — the outline's inner edge no longer nests with the
+    pixmap clip (two independently-antialiased edges on one boundary; see
+    docs/dev/rendering/cases/sdf-edge-feather-1px.md and
+    docs/dev/qt/precedents.md `painting-antialias-rounded-clips`). Here the
+    same band is filled opaquely in the widget-scope overlay pass (after
+    every region layer), covering the pixmap's corner pixels and leaving a
+    single clean edge. The under-border stays (tests/`borderColor()` rely on
+    it) — it is simply no longer visible.
+
+    Geometry mirrors ``BorderLayer``: pen width ``w`` centered on the path
+    inset by ``w/2``, so the outer boundary is the widget rect at radius
+    ``r + w/2`` and the inner boundary is inset by ``w`` at radius
+    ``r - w/2``. Never raises.
+    """
+    try:
+        widget = getattr(ctx, "widget", None)
+        if widget is None:
+            return
+        try:
+            color = widget.borderColor()
+        except Exception:
+            color = None
+        if color is None and hasattr(widget, "_border_color_override"):
+            color = getattr(widget, "_border_color_override", None)
+        if color is None:
+            return
+        from PySide6.QtCore import Qt as _QtOut
+        from PySide6.QtGui import QBrush as _QBrushOut
+        from PySide6.QtGui import QColor as _QColorOut
+        from PySide6.QtGui import QPainterPath as _QPathOut
+
+        if not isinstance(color, _QColorOut):
+            color = _QColorOut(color)
+        if not color.isValid():
+            return
+        try:
+            width = float(widget.property("borderWidth") or 1.0)
+        except Exception:
+            width = 1.0
+        width = max(1.0, width)
+        rect = getattr(ctx, "rect", None)
+        if rect is None:
+            return
+        radii = getattr(ctx, "corner_radii", None) or (0, 0, 0, 0)
+        try:
+            radius = float(radii[0])
+        except Exception:
+            radius = 0.0
+        half = width / 2.0
+        outer = rect.adjusted(0, 0, 0, 0)
+        inner = outer.adjusted(width, width, -width, -width)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+        path = _QPathOut()
+        path.setFillRule(_QtOut.FillRule.OddEvenFill)
+        path.addRoundedRect(outer, radius + half, radius + half)
+        path.addRoundedRect(inner, max(0.0, radius - half), max(0.0, radius - half))
+        painter.save()
+        try:
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.setPen(_QtOut.PenStyle.NoPen)
+            painter.setBrush(_QBrushOut(color))
+            painter.drawPath(path)
+        finally:
+            painter.restore()
+    except Exception:
+        pass
+
+
 def _strip_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
-    """Strip thumb overlay: card hover wash + local-selection marker.
+    """Strip thumb overlay: source outline + card hover wash + selection marker.
 
     Hover wash stays the visual hover only (no IconActionFlyout/capsule on
-    strip thumbs); the selection marker paints the strip's OWN selection
-    over the image. Rank pills are real buttons now (bottom-center of each
-    thumb), not painted badges.
+    strip thumbs); the source/viewing outline is re-painted on top as a
+    solid ring (see ``_strip_source_outline``); the selection marker paints
+    the strip's OWN selection over the image. Rank pills are real buttons
+    now (bottom-center of each thumb), not painted badges.
     """
     try:
         from tabs.image_gallery.ui.card.painters import _gallery_hover_wash
 
         _gallery_hover_wash(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        _strip_source_outline(painter, ctx, tm)
     except Exception:
         pass
     try:
@@ -1169,10 +1211,18 @@ def rebuild_strip(overlay) -> None:
         container = QWidget(overlay._strip_host)
         container.setObjectName(f"quicklook_strip_container_{idx}")
         cont_lay = QVBoxLayout(container)
-        # Bottom reserve for the rank pill overhang: the pill straddles
-        # the thumb's bottom edge (half out), so the container extends
-        # past the thumb instead of clipping it.
-        cont_lay.setContentsMargins(0, 0, 0, scaled_px(8))
+        # Bottom reserve for the rank pill overhang: the pill straddles the
+        # thumb's bottom edge (bottom-center, half out = BADGE_HEIGHT//2), so
+        # the container must extend at least that far below the thumb or the
+        # container rect clips the pill's bottom outline. +2 covers the 1px
+        # border and its antialiased edge.
+        try:
+            from tabs.image_gallery.services.rank_badge import BADGE_HEIGHT as _BADGE_H
+
+            _pill_reserve = scaled_px(_BADGE_H // 2 + 2)
+        except Exception:
+            _pill_reserve = scaled_px(11)
+        cont_lay.setContentsMargins(0, 0, 0, _pill_reserve)
         cont_lay.setSpacing(scaled_px(2))
         cont_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         # S4: thumbnail goes on a ButtonRegion (Button has no pixmap
@@ -1221,6 +1271,13 @@ def rebuild_strip(overlay) -> None:
             _rank_spec = None
         try:
             btn.setProperty("gallery_path", str(getattr(m, "path", "")))
+        except Exception:
+            pass
+        # Context menu: the same ``rightClicked`` signal the grid cards use
+        # (ui/card.py ``_bind_gallery_card``) — one proven path, no filter
+        # release-time branch. See ``open_strip_thumb_menu``.
+        try:
+            btn.rightClicked.connect(lambda _b=btn: open_strip_thumb_menu(overlay, _b))
         except Exception:
             pass
         # Quick Look selection is local to the overlay; carry it as a dynamic
@@ -1450,6 +1507,10 @@ def rebuild_strip(overlay) -> None:
                 except Exception:
                     pass
                 try:
+                    rank_btn.rightClicked.connect(lambda _b=rank_btn: open_strip_thumb_menu(overlay, _b))
+                except Exception:
+                    pass
+                try:
                     rank_btn.show()
                 except Exception:
                     pass
@@ -1458,11 +1519,9 @@ def rebuild_strip(overlay) -> None:
                 pass
         cont_lay.addWidget(btn)
         # Shared card context menu (same entries as the grid cards living
-        # in the OpaqueFillHost) opens release-time from _StripLassoFilter
-        # below — never on press (a native popup mid-press races the
-        # button's active grab and flashes the GPU canvas; the IC canvas
-        # opens its menu on release for the same reason). See
-        # _strip_open_menu_for.
+        # in the OpaqueFillHost) opens from the thumb's own ``rightClicked``
+        # signal — the exact mechanism grid cards use. See
+        # ``open_strip_thumb_menu``.
         overlay._strip_buttons.append(container)
         overlay._strip_layout.addWidget(container)
         # First build is shown later via an ancestor show(); on every later
