@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import inspect
 
-from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy
+from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy, LayerStack
 
 # Mutual-exclusion set: opening any of these dismisses the others.
 # Context menus are intentionally excluded — they stack above other flyouts and
@@ -83,11 +83,33 @@ def install_flyout_show_policy() -> GroupShowPolicy:
     policy.configure_group("scroll_value", dismisses=(), claim_active=False)
 
     manager = FlyoutManager.get_instance()
+    _install_overlay_layers(manager)
     manager.set_show_policy(policy)
     _install_context_menu_topmost_stacking(manager)
     _install_title_bar_resize_keeps_context_menus()
     _install_button_suppress_clears_context_menu_flag()
     return policy
+
+
+def _install_overlay_layers(manager: FlyoutManager) -> None:
+    """Give transient value flyouts their own layer above the base panels.
+
+    Flyout z-order is not plain ``raise_()``: ``FlyoutManager.ensure_overlay_stacking``
+    re-raises every flyout in a layer above ``base`` on each show/raise of any
+    flyout (see ``layer_stack.py``). The value hints (``slider_hint`` /
+    ``scroll_value``) otherwise live in ``base`` next to the settings panels
+    that host their sliders, so a panel raised after the hint (e.g. on a
+    per-tick store update while dragging a slider) covers the hint. Lifting
+    them into their own layer keeps the hints above any base-layer panel while
+    leaving ``context_menu`` topmost.
+    """
+    stack = (
+        LayerStack(order=("base", "transient_value", "context_menu"))
+        .assign_group("context_menu", "context_menu")
+        .assign_group("slider_hint", "transient_value")
+        .assign_group("scroll_value", "transient_value")
+    )
+    manager.set_layer_stack(stack)
 
 
 def _configure_pinned_hud_rules(policy: GroupShowPolicy) -> None:
