@@ -261,22 +261,22 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/passes.py",
-      "lines": 421,
+      "lines": 481,
       "limit": 400,
       "marker": "File-Size-Exempt:",
-      "raw": "single QRhi filename-overlay pass — one resource lifecycle (prepare/record_pre_pass/record) whose interactive 1x and settled 4x quality paths share the same per-slot cache key, slots and GPU resources.",
+      "raw": "single QRhi filename-overlay pass (F5 boundary verdict) —",
       "parsed": {
-        "reason": "single QRhi filename-overlay pass — one resource lifecycle (prepare/record_pre_pass/record) whose interactive 1x and settled 4x quality paths share the same per-slot cache key, slots and GPU resources."
+        "reason": "single QRhi filename-overlay pass (F5 boundary verdict) —"
       }
     },
     {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/render/gpu_resources.py",
-      "lines": 430,
+      "lines": 417,
       "limit": 400,
       "marker": "File-Size-Exempt:",
-      "raw": "one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files.",
+      "raw": "the F5 two-slot QRhi resource lifecycle (raw/final texture,",
       "parsed": {
-        "reason": "one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files."
+        "reason": "the F5 two-slot QRhi resource lifecycle (raw/final texture,"
       }
     },
     {
@@ -858,7 +858,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1556,
+      "lines": 1524,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -881,7 +881,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 932,
+      "lines": 947,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -917,7 +917,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/resize.py",
-      "lines": 1180,
+      "lines": 1167,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one card-resize concern: border/ring share one clamp + repin idiom\"",
@@ -929,7 +929,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1626,
+      "lines": 1567,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
@@ -937,18 +937,6 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)"
-      }
-    },
-    {
-      "path": "src/tabs/image_gallery/ui/quick_look_hooks.py",
-      "lines": 546,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam\"",
-      "parsed": {
-        "pattern": "thin-owner-target",
-        "size": "exempt",
-        "reason": "one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam"
       }
     },
     {
@@ -1001,7 +989,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2016,
+      "lines": 1961,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

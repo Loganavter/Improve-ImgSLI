@@ -1,29 +1,38 @@
-# File-Size-Exempt: one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files.
 """QRhi resources for the IC filename_overlay pass (F5 BOUNDARY, stays).
 
-F5 filename-verdict -- documented permanent boundary, not a migration
-candidate. Three-part proof (full statement on ``FilenameOverlayPass``;
-mechanical pins in
+F5 filename-verdict (variant A, re-opened 2026-10-06) -- documented permanent
+boundary, not a migration candidate. The rounded-rect background is now drawn
+procedurally in ``filename_overlay.frag`` (signed-distance rounded box) and
+the texture is TEXT ONLY, but the resource shape below is unchanged and still
+has no image in ``TexturedOverlayShell``. Three-part proof (full statement on
+``FilenameOverlayPass``; mechanical pins in
 ``src/tabs/image_compare/tests/render/test_filename_boundary.py``):
 
 (1) WHAT STAYS: per-slot raw + final textures (``ensure_slot_textures``
-below), per-slot ``RenderTarget`` downsample targets with their own
-rpdesc, the ``_LABEL_SUPERSAMPLE = 4`` supersampled upload -> Lanczos
-pre-pass (``label_downsample.frag`` ``SCALE = 4`` / ``RADIUS = 8``) ->
-device-resolve in ``record_pre_pass``, per-slot screen quads via
-``build_quad_vertices`` (never fullscreen), per-slot vertex buffers
-with ``srb_linear`` / ``srb_nearest`` selection.
+below), per-slot ``RenderTarget`` downsample targets with their own rpdesc,
+the ``_LABEL_SUPERSAMPLE = 4`` supersampled TEXT upload -> Lanczos pre-pass
+(``label_downsample.frag`` ``SCALE = 4`` / ``RADIUS = 8``) -> device-resolve
+in ``record_pre_pass``, per-slot screen quads via ``build_quad_vertices``
+(never fullscreen), per-slot vertex buffers with ``srb_linear`` /
+``srb_nearest`` selection, and per-slot 128-byte uniform buffers.
 
-(2) WHY: two independently-sized label textures plus a supersample
-stage plus a device-resolve plus per-slot screen quads has no image in
-the single-fullscreen-upload ``TexturedOverlayShell`` (one texture,
-upload-then-draw in the same main pass, shared ``FULLSCREEN_VERTICES``,
-one ``srb``). MC ``layer_labels`` rides the shell ONLY because it is
-one fullscreen raster with no supersample stage.
+(2) WHY: two independently-sized label textures plus a supersample stage plus
+a device-resolve plus per-slot screen quads has no image in the
+single-fullscreen-upload ``TexturedOverlayShell`` (one texture, upload-then-
+draw in the same main pass, shared ``FULLSCREEN_VERTICES``, one ``srb``, one
+64B uniform). MC ``layer_labels`` rides the shell ONLY because it is one
+fullscreen raster with no supersample stage and a pre-composited background.
 
-(3) INVALIDATION: re-open the verdict if the shell gains slot-targets
-plus a GPU-supersample stage, or if these labels drop supersampling
-for a single fullscreen raster like MC.
+(3) INVALIDATION: re-open the verdict if the shell gains slot-targets plus a
+GPU-supersample stage, or if these labels drop the per-slot two-texture /
+supersample shape for a single fullscreen raster like MC. A change to the
+procedural background drawing itself (e.g. moving it back onto the CPU) does
+NOT invalidate this verdict by itself -- only the resource shape above does.
+
+File-Size-Exempt: the F5 two-slot QRhi resource lifecycle (raw/final texture,
+per-slot downsample target + rpdesc + pipeline + SRB, per-slot uniform +
+vertex buffer) is one shape; splitting it threads the lifecycle the boundary
+pins.
 """
 
 from __future__ import annotations
@@ -53,7 +62,11 @@ from PySide6.QtGui import (
 from tabs.image_compare.canvas.rhi_feature_common import load_qshader
 
 _SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
-_UNIFORM_SIZE = 64
+# std140 block shared by filename_overlay.vert / .frag:
+#   mat4 mvp (64B) + vec4 bgColor (16B) + vec2 quadSizePx (8B) +
+#   vec2 pad0 (8B) + vec4 textRectPx (16B) + float cornerRadiusPx +
+#   float bgEnabled + float textEnabled + float pad1 = 128 bytes.
+_UNIFORM_SIZE = 128
 _VERTEX_STRIDE = 16
 _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
 
@@ -61,6 +74,11 @@ _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
 class LabelSlot:
     def __init__(self) -> None:
         self.vertex_buffer: QRhiBuffer | None = None
+        # Per-slot 128-byte uniform block (variant A): quad size, premultiplied
+        # bg color, SDF corner radius, and the text sample window. Per slot
+        # rather than one shared buffer so prepare() can write each active
+        # slot's own values without dynamic offsets.
+        self.uniform_buffer: QRhiBuffer | None = None
         # Final, device-resolution texture -- what filename_overlay.frag
         # actually samples for the on-screen quad. Filled by the downsample
         # pass below, not uploaded directly (see raw_texture).
@@ -95,12 +113,6 @@ class LabelSlot:
         # record_pre_pass() has actually uploaded it and run the downsample
         # pass once for it.
         self.needs_downsample: bool = False
-        # Interactive (drag) path: the label was rasterized at 1x, so
-        # ``pending_upload_image`` is device-resolution and is uploaded
-        # straight into ``texture`` (the sampled target), skipping the
-        # Lanczos downsample (whose SCALE=4 expects a 4x raw). Mutually
-        # exclusive with ``needs_downsample``.
-        self.direct_upload: bool = False
         self.content_key: object | None = None
         self.active: bool = False
         self.smooth: bool = False
@@ -117,6 +129,7 @@ class LabelSlot:
             self.texture,
             self.raw_texture,
             self.vertex_buffer,
+            self.uniform_buffer,
         ):
             if res is not None:
                 try:
@@ -124,6 +137,7 @@ class LabelSlot:
                 except RuntimeError:
                     pass
         self.vertex_buffer = None
+        self.uniform_buffer = None
         self.texture = None
         self.texture_size = None
         self.srb_nearest = None
@@ -135,7 +149,6 @@ class LabelSlot:
         self.downsample_pipeline = None
         self.srb_downsample = None
         self.needs_downsample = False
-        self.direct_upload = False
         self.pending_upload_image = None
         self.content_key = None
         self.active = False
@@ -160,7 +173,6 @@ class FilenameOverlayGpuResources:
 
     def __init__(self) -> None:
         self.rhi: QRhi | None = None
-        self.uniform_buffer: QRhiBuffer | None = None
         self.sampler_nearest: QRhiSampler | None = None
         self.sampler_linear: QRhiSampler | None = None
         self.pipeline: QRhiGraphicsPipeline | None = None
@@ -169,14 +181,6 @@ class FilenameOverlayGpuResources:
     def initialize(self, rhi, target) -> None:
         self.release()
         self.rhi = rhi
-
-        self.uniform_buffer = rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            _UNIFORM_SIZE,
-        )
-        if not self.uniform_buffer.create():
-            raise RuntimeError("Failed to create filename_overlay uniform buffer")
 
         self.sampler_nearest = rhi.newSampler(
             QRhiSampler.Filter.Nearest,
@@ -206,6 +210,15 @@ class FilenameOverlayGpuResources:
             )
             if not slot.vertex_buffer.create():
                 raise RuntimeError("Failed to create filename_overlay vertex buffer")
+            slot.uniform_buffer = rhi.newBuffer(
+                QRhiBuffer.Type.Dynamic,
+                QRhiBuffer.UsageFlag.UniformBuffer,
+                _UNIFORM_SIZE,
+            )
+            if not slot.uniform_buffer.create():
+                raise RuntimeError(
+                    "Failed to create filename_overlay slot uniform buffer"
+                )
             self.ensure_slot_textures(slot, QSize(1, 1), QSize(1, 1))
 
         self.pipeline = rhi.newGraphicsPipeline()
@@ -252,7 +265,7 @@ class FilenameOverlayGpuResources:
         if not self.pipeline.create():
             raise RuntimeError("Failed to create filename_overlay QRhi pipeline")
 
-    def _build_srb(self, texture, sampler):
+    def _build_srb(self, texture, sampler, uniform_buffer):
         srb = self.rhi.newShaderResourceBindings()
         stages = (
             QRhiShaderResourceBinding.StageFlag.VertexStage
@@ -261,7 +274,7 @@ class FilenameOverlayGpuResources:
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
         srb.setBindings(
             [
-                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
+                QRhiShaderResourceBinding.uniformBuffer(0, stages, uniform_buffer),
                 QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, sampler),
             ]
         )
@@ -275,15 +288,12 @@ class FilenameOverlayGpuResources:
         assert self.rhi is not None
         """(Re)builds ``slot``'s raw (CPU-uploaded, supersampled) and final
         (device-res, GPU-downsampled-into) textures, plus everything that
-        depends on either -- the main pass's srb_nearest/srb_linear, the
-        downsample SRB and render target. The downsample render-pass
-        descriptor and graphics pipeline are created ONCE (they depend on
-        attachment format + SRB layout, not texture size) and reused across
-        size changes. ``raw_size`` and ``final_size`` always change together
-        in practice (raw is a fixed multiple of final, see
-        render/label_raster.py's ``_LABEL_SUPERSAMPLE``), but each is checked
-        independently since neither depends on the other having actually
-        changed."""
+        depends on either -- the downsample pass's SRB/target/rpdesc/
+        pipeline, and the main pass's srb_nearest/srb_linear. ``raw_size``
+        and ``final_size`` always change together in practice (raw is a
+        fixed multiple of final, see render/label_raster.py's
+        _LABEL_SUPERSAMPLE), but each is checked independently since
+        neither depends on the other having actually changed."""
         # BOUNDARY (F5): per-slot raw + final textures -- the two-texture
         # shape (supersampled CPU-upload source + RenderTarget-flagged
         # device-res resolve target) the single-texture shell cannot host.
@@ -322,7 +332,11 @@ class FilenameOverlayGpuResources:
                         srb.destroy()
                     except RuntimeError:
                         pass
-                setattr(slot, srb_attr, self._build_srb(slot.texture, sampler))
+                setattr(
+                    slot,
+                    srb_attr,
+                    self._build_srb(slot.texture, sampler, slot.uniform_buffer),
+                )
 
         if not (raw_changed or final_changed):
             return
@@ -331,83 +345,58 @@ class FilenameOverlayGpuResources:
         # dedicated RenderTarget/pipeline/SRB per slot (never shared
         # across slots), the device-resolve stage with no shell image.
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        # The downsample SRB samples raw_texture, so it must be rebuilt only
-        # when that texture object changes (or on first creation) -- not on
-        # every final-size change.
-        if slot.srb_downsample is None or raw_changed:
-            if slot.srb_downsample is not None:
+        if slot.srb_downsample is not None:
+            try:
+                slot.srb_downsample.destroy()
+            except RuntimeError:
+                pass
+        slot.srb_downsample = self.rhi.newShaderResourceBindings()
+        slot.srb_downsample.setBindings(
+            [
+                QRhiShaderResourceBinding.sampledTexture(
+                    0, fragment, slot.raw_texture, self.sampler_linear  # type: ignore[arg-type]  # set right above; typed Optional for lifecycle
+                ),
+            ]
+        )
+        if not slot.srb_downsample.create():
+            raise RuntimeError("Failed to create filename_overlay downsample SRB")
+
+        for res in (
+            slot.downsample_pipeline,
+            slot.downsample_rpdesc,
+            slot.downsample_target,
+        ):
+            if res is not None:
                 try:
-                    slot.srb_downsample.destroy()
+                    res.destroy()
                 except RuntimeError:
                     pass
-            slot.srb_downsample = self.rhi.newShaderResourceBindings()
-            slot.srb_downsample.setBindings(
-                [
-                    QRhiShaderResourceBinding.sampledTexture(
-                        0, fragment, slot.raw_texture, self.sampler_linear  # type: ignore[arg-type]  # set right above; typed Optional for lifecycle
-                    ),
-                ]
-            )
-            if not slot.srb_downsample.create():
-                raise RuntimeError("Failed to create filename_overlay downsample SRB")
-
-        # The render target wraps the final texture, so it is recreated when
-        # that texture object changes -- but the render-pass descriptor is
-        # REUSED: QRhi rpdesc compatibility is format-based (see
-        # engine/gpu/mip_cascade.py's probe-target pattern), so the pipeline
-        # baked against it stays valid across label-size changes.
-        if slot.downsample_target is None or final_changed:
-            if slot.downsample_target is not None:
-                try:
-                    slot.downsample_target.destroy()
-                except RuntimeError:
-                    pass
-            assert slot.texture is not None
-            slot.downsample_target = self.rhi.newTextureRenderTarget(
-                QRhiTextureRenderTargetDescription(QRhiColorAttachment(slot.texture))
-            )
-            if slot.downsample_rpdesc is None:
-                slot.downsample_rpdesc = (
-                    slot.downsample_target.newCompatibleRenderPassDescriptor()
-                )
-            slot.downsample_target.setRenderPassDescriptor(slot.downsample_rpdesc)
-            if not slot.downsample_target.create():
-                raise RuntimeError(
-                    "Failed to create filename_overlay downsample target"
-                )
-
-        # The downsample pipeline is created ONCE. It depends only on the
-        # shaders, vertex layout, topology and the (format-based) rpdesc --
-        # never on texture size. Recreating it on every label-size change was
-        # the divider-drag stall: a graphics pipeline create per mouse-move
-        # frame. The SRB changes with the source texture, but a rebuilt SRB
-        # with the same binding layout is compatible with the existing
-        # pipeline, which is re-bound at draw time (record_pre_pass) -- same
-        # shape mip_cascade uses for its per-(layer, level) targets.
-        if slot.downsample_pipeline is None:
-            assert slot.downsample_rpdesc is not None
-            slot.downsample_pipeline = self.rhi.newGraphicsPipeline()
-            slot.downsample_pipeline.setShaderStages(
-                [
-                    QRhiShaderStage(
-                        QRhiShaderStage.Type.Vertex,
-                        load_qshader(_SHADER_DIR / "label_downsample.vert.qsb"),
-                    ),
-                    QRhiShaderStage(
-                        QRhiShaderStage.Type.Fragment,
-                        load_qshader(_SHADER_DIR / "label_downsample.frag.qsb"),
-                    ),
-                ]
-            )
-            slot.downsample_pipeline.setTopology(
-                QRhiGraphicsPipeline.Topology.Triangles
-            )
-            slot.downsample_pipeline.setRenderPassDescriptor(slot.downsample_rpdesc)
-            slot.downsample_pipeline.setShaderResourceBindings(slot.srb_downsample)
-            if not slot.downsample_pipeline.create():
-                raise RuntimeError(
-                    "Failed to create filename_overlay downsample pipeline"
-                )
+        assert slot.texture is not None
+        slot.downsample_target = self.rhi.newTextureRenderTarget(
+            QRhiTextureRenderTargetDescription(QRhiColorAttachment(slot.texture))
+        )
+        slot.downsample_rpdesc = slot.downsample_target.newCompatibleRenderPassDescriptor()
+        slot.downsample_target.setRenderPassDescriptor(slot.downsample_rpdesc)
+        if not slot.downsample_target.create():
+            raise RuntimeError("Failed to create filename_overlay downsample target")
+        slot.downsample_pipeline = self.rhi.newGraphicsPipeline()
+        slot.downsample_pipeline.setShaderStages(
+            [
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Vertex,
+                    load_qshader(_SHADER_DIR / "label_downsample.vert.qsb"),
+                ),
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Fragment,
+                    load_qshader(_SHADER_DIR / "label_downsample.frag.qsb"),
+                ),
+            ]
+        )
+        slot.downsample_pipeline.setTopology(QRhiGraphicsPipeline.Topology.Triangles)
+        slot.downsample_pipeline.setRenderPassDescriptor(slot.downsample_rpdesc)
+        slot.downsample_pipeline.setShaderResourceBindings(slot.srb_downsample)
+        if not slot.downsample_pipeline.create():
+            raise RuntimeError("Failed to create filename_overlay downsample pipeline")
 
     def release(self) -> None:
         for slot in self.slots:
@@ -416,7 +405,6 @@ class FilenameOverlayGpuResources:
             self.pipeline,
             self.sampler_linear,
             self.sampler_nearest,
-            self.uniform_buffer,
         ):
             if res is not None:
                 try:
@@ -426,5 +414,4 @@ class FilenameOverlayGpuResources:
         self.pipeline = None
         self.sampler_linear = None
         self.sampler_nearest = None
-        self.uniform_buffer = None
         self.rhi = None
