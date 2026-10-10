@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -175,6 +176,72 @@ def _count_requirements(path: Path) -> int:
     return count
 
 
+def _pip_env_overrides() -> dict[str, str]:
+    """Neutralize machine-level pip configuration for launcher venv installs.
+
+    A host ``pip.conf`` (e.g. the one NVIDIA PyIndex auto-writes with
+    ``extra-index-url = https://pypi.ngc.nvidia.com``) is applied to every
+    pip invocation. When that index is unreachable, pip stalls on DNS
+    retries and can fail installs that have nothing to do with it.
+    ``PIP_CONFIG_FILE=os.devnull`` disables config-file loading for this
+    process only (env vars still apply), so the launcher uses pip's
+    defaults + the repo requirements.
+    """
+    return {"PIP_CONFIG_FILE": os.devnull}
+
+
+_EDITABLE_RE = re.compile(r"^(?P<flag>-e|--editable)\s+(?P<path>\S+)")
+
+
+def resolve_requirements(path: Path, tmp_dir: Path | None = None) -> Path:
+    """Return a requirements file pip can consume, fixing editable paths.
+
+    Relative editable requirements (``-e ../sli-ui-toolkit``) are resolved
+    against the repo root; if the sibling is missing, the resolver falls
+    back to ``$SLI_TOOLKIT_DIR`` and the repo's parent, otherwise drops the
+    line (with an inline comment) instead of letting pip hard-fail. Returns
+    ``path`` unchanged when there is nothing to rewrite.
+    """
+    if not path.is_file():
+        return path
+    lines = path.read_text(encoding="utf-8").splitlines()
+    toolkit_env = os.environ.get("SLI_TOOLKIT_DIR")
+    out: list[str] = []
+    changed = False
+    for line in lines:
+        match = _EDITABLE_RE.match(line.strip())
+        if match is None:
+            out.append(line)
+            continue
+        raw = match.group("path")
+        target = Path(raw)
+        if target.is_absolute():
+            out.append(line)
+            continue
+        for candidate in (
+            (SCRIPT_DIR / target),
+            (SCRIPT_DIR.parent / target.name),
+            (Path(toolkit_env) if toolkit_env else None),
+        ):
+            if candidate is not None and candidate.is_dir():
+                out.append(f"{match.group('flag')} {candidate.resolve()}")
+                changed = True
+                break
+        else:
+            out.append(
+                "# launcher: dropped unresolved editable requirement "
+                f"(sibling not found): {line.strip()}"
+            )
+            changed = True
+    if not changed:
+        return path
+    base = tmp_dir if tmp_dir is not None else path.parent
+    resolved = base / f"{path.stem}.launcher-resolved{path.suffix}"
+    resolved.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return resolved
+
+
+
 def run_pip_with_inline_progress(
     ui: UI, message: str, command: list[str], requirements: Path, extra_env: dict[str, str] | None = None
 ) -> bool:
@@ -266,7 +333,8 @@ def create_venv(ui: UI, venv_dir: Path) -> bool:
         ui.status("Critical error: Failed to create venv", False)
         return False
     return subprocess.run(
-        [str(py), "-m", "pip", "install", "--upgrade", "pip", "--disable-pip-version-check", "--quiet"]
+        [str(py), "-m", "pip", "install", "--upgrade", "pip", "--disable-pip-version-check", "--quiet"],
+        env={**os.environ, **_pip_env_overrides()},
     ).returncode == 0
 
 
@@ -279,11 +347,13 @@ def ensure_venv_ready(ui: UI) -> Path | None:
                 ui.status("Critical error: Failed to create venv", False)
                 return None
             py = venv_python(VENV_DIR)
+            resolved_reqs = resolve_requirements(REQUIREMENTS, VENV_DIR)
             if not run_pip_with_inline_progress(
                 ui,
                 "Installing dependencies",
-                [str(py), "-m", "pip", "install", "-r", str(REQUIREMENTS), "--disable-pip-version-check"],
-                REQUIREMENTS,
+                [str(py), "-m", "pip", "install", "-r", str(resolved_reqs), "--disable-pip-version-check"],
+                resolved_reqs,
+                extra_env=_pip_env_overrides(),
             ):
                 ui.status("Critical error: Failed to install dependencies in new venv", False)
                 if _confirm_removal(ui, VENV_DIR, "failed new virtual environment"):
@@ -309,11 +379,13 @@ def ensure_venv_ready(ui: UI) -> Path | None:
         marker = VENV_DIR / ".installed"
         update_needed = not marker.exists() or _is_newer(REQUIREMENTS, marker)
         if update_needed:
+            resolved_reqs = resolve_requirements(REQUIREMENTS, VENV_DIR)
             if not run_pip_with_inline_progress(
                 ui,
                 "Checking/Updating dependencies",
-                [str(py), "-m", "pip", "install", "-r", str(REQUIREMENTS), "--disable-pip-version-check"],
-                REQUIREMENTS,
+                [str(py), "-m", "pip", "install", "-r", str(resolved_reqs), "--disable-pip-version-check"],
+                resolved_reqs,
+                extra_env=_pip_env_overrides(),
             ):
                 ui.status("Dependency installation failed. Venv may be corrupted.", False)
                 if retry_done:
@@ -665,6 +737,7 @@ def test_action(args: argparse.Namespace, extras: list[str], ui: UI) -> int:
             "Installing test dependencies",
             [str(py), "-m", "pip", "install", "-r", str(DEV_REQUIREMENTS)],
             DEV_REQUIREMENTS,
+            extra_env=_pip_env_overrides(),
         ):
             return 1
 
