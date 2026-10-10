@@ -1,5 +1,7 @@
 """Quick look overlay helpers for ImageGalleryWidget — thin-owner target.
 
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam"
+
 Per CODE_PATTERNS.md: plain functions taking the owning widget as first
 argument. No string-dispatched getattr for dispatch — owner and paths are
 passed explicitly.
@@ -305,7 +307,62 @@ def on_quick_reject(owner, path) -> None:
         pass
 
 
+def _unset_quick_source(owner) -> None:
+    """Clear the triage source (the "Unset" half of the source toggle).
+
+    Mirrors ``on_quick_set_source``: clears ``source_path`` everywhere, moves
+    the SOURCE badge immediately, then re-runs triage so the pool regroups in
+    its no-source mode (camera/batch) and the mode-appropriate analysis
+    starts. Never raises.
+    """
+    try:
+        try:
+            triage_owner = owner_for_triage(owner)
+        except Exception:
+            triage_owner = owner
+        try:
+            state = getattr(triage_owner, "state", None)
+            if state is not None:
+                state.source_path = None  # type: ignore[attr-defined]
+                # No source → back to the no-source mode (camera/batch).
+                try:
+                    from tabs.image_gallery.services.mode import select_mode
+
+                    state.mode = select_mode(  # type: ignore[attr-defined]
+                        getattr(state, "series", None),
+                        getattr(state, "items", None),
+                        None,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            owner._source_path = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            sync = getattr(owner, "sync_source_badge", None)
+            if callable(sync):
+                sync(None)
+        except Exception:
+            pass
+        # Re-run triage: resets source=None, re-selects mode, restarts the
+        # mode-appropriate proxy analysis, and repaints the grid.
+        try:
+            retriage = getattr(triage_owner, "retriage_quiet", None)
+            if callable(retriage):
+                retriage()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def on_quick_set_source(owner, path) -> None:
+    if path is None:
+        _unset_quick_source(owner)
+        return
     try:
         triage_owner = owner_for_triage(owner)
         new_mode = None
@@ -339,6 +396,14 @@ def on_quick_set_source(owner, path) -> None:
             pass
         try:
             owner._source_path = Path(path)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # Move the SOURCE badge NOW, decoupled from the comparison pass below:
+        # the badge flips on click, the background fidelity worker catches up.
+        try:
+            sync = getattr(owner, "sync_source_badge", None)
+            if callable(sync):
+                sync(Path(path))
         except Exception:
             pass
         try:

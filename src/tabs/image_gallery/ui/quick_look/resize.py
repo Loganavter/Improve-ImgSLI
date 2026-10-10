@@ -199,13 +199,15 @@ def relayout_report_rows(overlay) -> None:
 
     Rows (tracked in ``overlay._metric_rows`` / ``overlay._artifact_rows``)
     become direct ``right_lay`` children with stretch 0, in visual order,
-    with one stretch-1 spacer between every consecutive pair — metrics rows,
-    then artifact rows, inserted right before the series divider. Rows pin
-    at sizeHint; ALL surplus splits evenly among the N equal spacers at
-    every height (gap = surplus/N, collapsing to the 4px spacing floor
-    when short). The series/strip/brief blocks below stay pinned after the
-    last row. Called after every metrics/artifacts rebuild (either order);
-    never raises.
+    with one stretch-1 spacer before the first row, between every
+    consecutive pair, and after the last row — metrics rows, then artifact
+    rows, inserted right before the series divider. The group's outer gaps
+    (to the dims/format/size meta row above, to the series/analysis divider
+    below) therefore match the inter-row gaps. Rows pin at sizeHint; ALL
+    surplus splits evenly among the N+1 equal spacers at every height
+    (gap = surplus/(N+1), collapsing to the spacing floor when short). The
+    series/strip/brief blocks below stay pinned after the last row. Called
+    after every metrics/artifacts rebuild (either order); never raises.
     """
     try:
         lay = getattr(overlay, "_right_lay", None)
@@ -237,7 +239,16 @@ def relayout_report_rows(overlay) -> None:
             idx = -1
         if idx < 0:
             return
-        for n, row in enumerate(rows):
+        # Leading spacer: the first metric row breathes from the
+        # dims/format/size meta row above exactly like rows from each other
+        # (no fixed meta_gap widget — that would make the top seam larger).
+        if rows:
+            try:
+                lay.insertStretch(idx, 1)
+            except Exception:
+                pass
+            idx += 1
+        for row in rows:
             try:
                 if row.parent() is not host:
                     row.setParent(host)
@@ -258,12 +269,14 @@ def relayout_report_rows(overlay) -> None:
             except Exception:
                 pass
             idx += 1
-            if n < len(rows) - 1:
-                try:
-                    lay.insertStretch(idx, 1)
-                except Exception:
-                    pass
-                idx += 1
+            # Spacer after every row (including the last): the last metric
+            # row breathes from the divider below exactly like rows from
+            # each other.
+            try:
+                lay.insertStretch(idx, 1)
+            except Exception:
+                pass
+            idx += 1
         # Bar-fill settle: fill widths ride on child sizeHints, and one
         # lay.activate() does NOT recurse synchronously into row/bar
         # layouts (each level settles on a later event-loop pass) — so the

@@ -452,18 +452,50 @@ def test_bottom_bar_button_colors(qtbot):
     # Compare actions removed from quick look — no Compare/Multi buttons.
     assert getattr(ov, "_compare_btn", None) is None
     assert getattr(ov, "_multi_btn", None) is None
-    # Reject: no fill override, black border, black label.
+    # Reject + Set as source: plain default surface (no black/amber tint) —
+    # the label itself carries the state.
     assert getattr(ov._reject_btn, "_override_bg_color", None) is None
-    assert ov._reject_btn.borderColor() is not None
-    assert ov._reject_btn.borderColor().name() == "#000000"
+    assert ov._reject_btn.borderColor() is None
+    assert ov._set_source_btn.borderColor() is None
     # Delete: red-tinted trash icon (QIcon, silhouette filled with danger).
     from PySide6.QtGui import QIcon
 
     assert isinstance(ov._delete_btn._icon_unchecked, QIcon)
     assert not ov._delete_btn._icon_unchecked.isNull()
     assert ov._delete_btn.borderColor() is not None
-    # Set as source: amber stroke.
-    assert ov._set_source_btn.borderColor() is not None
+    ov.hide()
+
+
+def _btn_row_text(btn) -> str:
+    try:
+        for region in btn.regions():
+            for row in getattr(region, "rows", None) or []:
+                text = getattr(row, "text", "")
+                if text:
+                    return text
+    except Exception:
+        pass
+    return ""
+
+
+def test_set_source_button_always_visible_and_toggles(qtbot):
+    """Set as source is always visible; on the source it reads Unset and clears it."""
+    a = _item("a.png")
+    b = _item("b.png")
+    ov = _make_overlay(qtbot)
+    _show(ov, b, [a, b], mode=Mode.CAMERA)
+    # Visible even in camera mode (was fidelity-only before).
+    assert ov._set_source_btn.isVisibleTo(ov)
+    assert "Set as source" in _btn_row_text(ov._set_source_btn)
+    ov._on_set_source()  # b becomes the source
+    QApplication.processEvents()
+    assert ov._owner.state.source_path == b.path
+    # Viewing the source → the button toggles to Unset.
+    assert "Unset" in _btn_row_text(ov._set_source_btn)
+    ov._on_set_source()  # unset
+    QApplication.processEvents()
+    assert ov._owner.state.source_path is None
+    assert "Set as source" in _btn_row_text(ov._set_source_btn)
     ov.hide()
 
 

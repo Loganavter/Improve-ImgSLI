@@ -438,7 +438,12 @@ class FilenameOverlayPass(CanvasRenderPass):
         for slot in self._gpu.slots:
             if not slot.active or slot.vertex_count <= 0:
                 continue
-            srb = slot.srb_linear if slot.smooth else slot.srb_nearest
+            # The SDF atlas MUST be sampled with the LINEAR filter: nearest
+            # sampling defeats the distance-field AA (each fragment gets one
+            # texel's distance, so the threshold edge is hard/jagged, and at a
+            # non-1:1 scale it aliases into a mottled "fur"). The mode-0
+            # background quad carries no texture, so the sampler is moot there.
+            srb = slot.srb_linear
             command_buffer.setShaderResources(srb)
             command_buffer.setVertexInput(0, [(slot.vertex_buffer, 0)])
             command_buffer.draw(slot.vertex_count)
