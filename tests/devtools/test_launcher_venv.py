@@ -205,3 +205,92 @@ def test_install_action_returns_zero_on_ready(monkeypatch):
     monkeypatch.setattr(launcher, "ensure_venv_ready", lambda ui: Path("/x/python"))
     code = launcher.install_action(None, [], _quiet_ui())
     assert code == 0
+
+
+# --------------------------------------------------------------------------
+# pip isolation (dead host index) + relative editable resolution
+
+
+def test_pip_env_overrides_disables_pip_config_file():
+    assert launcher._pip_env_overrides() == {"PIP_CONFIG_FILE": os.devnull}
+
+
+def test_resolve_requirements_resolves_editable_sibling(tmp_path, monkeypatch):
+    repo = tmp_path / "Improve-ImgSLI"
+    repo.mkdir()
+    sibling = tmp_path / "sli-ui-toolkit"
+    sibling.mkdir()
+    monkeypatch.setattr(launcher, "SCRIPT_DIR", repo)
+    monkeypatch.delenv("SLI_TOOLKIT_DIR", raising=False)
+
+    reqs = tmp_path / "requirements-gui.txt"
+    reqs.write_text("pyvips\n-e ../sli-ui-toolkit\nMarkdown==3.8\n")
+
+    resolved = launcher.resolve_requirements(reqs, tmp_path)
+    text = resolved.read_text(encoding="utf-8")
+    assert f"-e {sibling.resolve()}" in text
+    assert "pyvips" in text
+    assert "Markdown==3.8" in text
+
+
+def test_resolve_requirements_drops_unresolved_editable(tmp_path, monkeypatch):
+    repo = tmp_path / "Improve-ImgSLI"
+    repo.mkdir()
+    monkeypatch.setattr(launcher, "SCRIPT_DIR", repo)
+    monkeypatch.delenv("SLI_TOOLKIT_DIR", raising=False)
+
+    reqs = tmp_path / "requirements-gui.txt"
+    reqs.write_text("pyvips\n-e ../missing-toolkit\n")
+
+    resolved = launcher.resolve_requirements(reqs, tmp_path)
+    active = [
+        line
+        for line in resolved.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert all("missing-toolkit" not in line for line in active)
+    assert "dropped unresolved editable requirement" in resolved.read_text(encoding="utf-8")
+
+
+def test_resolve_requirements_uses_env_toolkit_dir(tmp_path, monkeypatch):
+    repo = tmp_path / "Improve-ImgSLI"
+    repo.mkdir()
+    env_dir = tmp_path / "elsewhere" / "sli-ui-toolkit"
+    env_dir.mkdir(parents=True)
+    monkeypatch.setattr(launcher, "SCRIPT_DIR", repo)
+    monkeypatch.setenv("SLI_TOOLKIT_DIR", str(env_dir))
+
+    reqs = tmp_path / "requirements-gui.txt"
+    reqs.write_text("-e ../sli-ui-toolkit\n")
+
+    resolved = launcher.resolve_requirements(reqs, tmp_path)
+    assert f"-e {env_dir.resolve()}" in resolved.read_text(encoding="utf-8")
+
+
+def test_ensure_venv_ready_isolates_pip_and_resolves_reqs(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher, "VENV_DIR", tmp_path / "venv")
+    monkeypatch.setattr(launcher, "SCRIPT_DIR", tmp_path)
+    monkeypatch.delenv("SLI_TOOLKIT_DIR", raising=False)
+    reqs = tmp_path / "requirements-gui.txt"
+    reqs.write_text("-e ../nonexistent-toolkit\npyvips\n")
+    monkeypatch.setattr(launcher, "REQUIREMENTS", reqs)
+
+    captured = {}
+
+    def fake_create(ui, venv_dir):
+        (venv_dir / "bin").mkdir(parents=True)
+        (venv_dir / "bin" / "python").touch()
+        return True
+
+    def fake_pip(ui, message, command, requirements, extra_env=None):
+        captured["requirements"] = requirements
+        captured["extra_env"] = extra_env or {}
+        return True
+
+    monkeypatch.setattr(launcher, "create_venv", fake_create)
+    monkeypatch.setattr(launcher, "run_pip_with_inline_progress", fake_pip)
+
+    assert launcher.ensure_venv_ready(_quiet_ui()) is not None
+    assert captured["extra_env"].get("PIP_CONFIG_FILE") == os.devnull
+    assert captured["requirements"].name.endswith(".launcher-resolved.txt")
+
