@@ -1,28 +1,38 @@
 """QRhi resources for the IC filename_overlay pass (F5 BOUNDARY, stays).
 
-F5 filename-verdict -- documented permanent boundary, not a migration
-candidate. Three-part proof (full statement on ``FilenameOverlayPass``;
-mechanical pins in
+F5 filename-verdict (variant A, re-opened 2026-10-06) -- documented permanent
+boundary, not a migration candidate. The rounded-rect background is now drawn
+procedurally in ``filename_overlay.frag`` (signed-distance rounded box) and
+the texture is TEXT ONLY, but the resource shape below is unchanged and still
+has no image in ``TexturedOverlayShell``. Three-part proof (full statement on
+``FilenameOverlayPass``; mechanical pins in
 ``src/tabs/image_compare/tests/render/test_filename_boundary.py``):
 
 (1) WHAT STAYS: per-slot raw + final textures (``ensure_slot_textures``
-below), per-slot ``RenderTarget`` downsample targets with their own
-rpdesc, the ``_LABEL_SUPERSAMPLE = 4`` supersampled upload -> Lanczos
-pre-pass (``label_downsample.frag`` ``SCALE = 4`` / ``RADIUS = 8``) ->
-device-resolve in ``record_pre_pass``, per-slot screen quads via
-``build_quad_vertices`` (never fullscreen), per-slot vertex buffers
-with ``srb_linear`` / ``srb_nearest`` selection.
+below), per-slot ``RenderTarget`` downsample targets with their own rpdesc,
+the ``_LABEL_SUPERSAMPLE = 4`` supersampled TEXT upload -> Lanczos pre-pass
+(``label_downsample.frag`` ``SCALE = 4`` / ``RADIUS = 8``) -> device-resolve
+in ``record_pre_pass``, per-slot screen quads via ``build_quad_vertices``
+(never fullscreen), per-slot vertex buffers with ``srb_linear`` /
+``srb_nearest`` selection, and per-slot 128-byte uniform buffers.
 
-(2) WHY: two independently-sized label textures plus a supersample
-stage plus a device-resolve plus per-slot screen quads has no image in
-the single-fullscreen-upload ``TexturedOverlayShell`` (one texture,
-upload-then-draw in the same main pass, shared ``FULLSCREEN_VERTICES``,
-one ``srb``). MC ``layer_labels`` rides the shell ONLY because it is
-one fullscreen raster with no supersample stage.
+(2) WHY: two independently-sized label textures plus a supersample stage plus
+a device-resolve plus per-slot screen quads has no image in the
+single-fullscreen-upload ``TexturedOverlayShell`` (one texture, upload-then-
+draw in the same main pass, shared ``FULLSCREEN_VERTICES``, one ``srb``, one
+64B uniform). MC ``layer_labels`` rides the shell ONLY because it is one
+fullscreen raster with no supersample stage and a pre-composited background.
 
-(3) INVALIDATION: re-open the verdict if the shell gains slot-targets
-plus a GPU-supersample stage, or if these labels drop supersampling
-for a single fullscreen raster like MC.
+(3) INVALIDATION: re-open the verdict if the shell gains slot-targets plus a
+GPU-supersample stage, or if these labels drop the per-slot two-texture /
+supersample shape for a single fullscreen raster like MC. A change to the
+procedural background drawing itself (e.g. moving it back onto the CPU) does
+NOT invalidate this verdict by itself -- only the resource shape above does.
+
+File-Size-Exempt: the F5 two-slot QRhi resource lifecycle (raw/final texture,
+per-slot downsample target + rpdesc + pipeline + SRB, per-slot uniform +
+vertex buffer) is one shape; splitting it threads the lifecycle the boundary
+pins.
 """
 
 from __future__ import annotations
@@ -52,7 +62,11 @@ from PySide6.QtGui import (
 from tabs.image_compare.canvas.rhi_feature_common import load_qshader
 
 _SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
-_UNIFORM_SIZE = 64
+# std140 block shared by filename_overlay.vert / .frag:
+#   mat4 mvp (64B) + vec4 bgColor (16B) + vec2 quadSizePx (8B) +
+#   vec2 pad0 (8B) + vec4 textRectPx (16B) + float cornerRadiusPx +
+#   float bgEnabled + float textEnabled + float pad1 = 128 bytes.
+_UNIFORM_SIZE = 128
 _VERTEX_STRIDE = 16
 _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
 
@@ -60,6 +74,11 @@ _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
 class LabelSlot:
     def __init__(self) -> None:
         self.vertex_buffer: QRhiBuffer | None = None
+        # Per-slot 128-byte uniform block (variant A): quad size, premultiplied
+        # bg color, SDF corner radius, and the text sample window. Per slot
+        # rather than one shared buffer so prepare() can write each active
+        # slot's own values without dynamic offsets.
+        self.uniform_buffer: QRhiBuffer | None = None
         # Final, device-resolution texture -- what filename_overlay.frag
         # actually samples for the on-screen quad. Filled by the downsample
         # pass below, not uploaded directly (see raw_texture).
@@ -110,6 +129,7 @@ class LabelSlot:
             self.texture,
             self.raw_texture,
             self.vertex_buffer,
+            self.uniform_buffer,
         ):
             if res is not None:
                 try:
@@ -117,6 +137,7 @@ class LabelSlot:
                 except RuntimeError:
                     pass
         self.vertex_buffer = None
+        self.uniform_buffer = None
         self.texture = None
         self.texture_size = None
         self.srb_nearest = None
@@ -152,7 +173,6 @@ class FilenameOverlayGpuResources:
 
     def __init__(self) -> None:
         self.rhi: QRhi | None = None
-        self.uniform_buffer: QRhiBuffer | None = None
         self.sampler_nearest: QRhiSampler | None = None
         self.sampler_linear: QRhiSampler | None = None
         self.pipeline: QRhiGraphicsPipeline | None = None
@@ -161,14 +181,6 @@ class FilenameOverlayGpuResources:
     def initialize(self, rhi, target) -> None:
         self.release()
         self.rhi = rhi
-
-        self.uniform_buffer = rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            _UNIFORM_SIZE,
-        )
-        if not self.uniform_buffer.create():
-            raise RuntimeError("Failed to create filename_overlay uniform buffer")
 
         self.sampler_nearest = rhi.newSampler(
             QRhiSampler.Filter.Nearest,
@@ -198,6 +210,15 @@ class FilenameOverlayGpuResources:
             )
             if not slot.vertex_buffer.create():
                 raise RuntimeError("Failed to create filename_overlay vertex buffer")
+            slot.uniform_buffer = rhi.newBuffer(
+                QRhiBuffer.Type.Dynamic,
+                QRhiBuffer.UsageFlag.UniformBuffer,
+                _UNIFORM_SIZE,
+            )
+            if not slot.uniform_buffer.create():
+                raise RuntimeError(
+                    "Failed to create filename_overlay slot uniform buffer"
+                )
             self.ensure_slot_textures(slot, QSize(1, 1), QSize(1, 1))
 
         self.pipeline = rhi.newGraphicsPipeline()
@@ -244,7 +265,7 @@ class FilenameOverlayGpuResources:
         if not self.pipeline.create():
             raise RuntimeError("Failed to create filename_overlay QRhi pipeline")
 
-    def _build_srb(self, texture, sampler):
+    def _build_srb(self, texture, sampler, uniform_buffer):
         srb = self.rhi.newShaderResourceBindings()
         stages = (
             QRhiShaderResourceBinding.StageFlag.VertexStage
@@ -253,7 +274,7 @@ class FilenameOverlayGpuResources:
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
         srb.setBindings(
             [
-                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
+                QRhiShaderResourceBinding.uniformBuffer(0, stages, uniform_buffer),
                 QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, sampler),
             ]
         )
@@ -311,7 +332,11 @@ class FilenameOverlayGpuResources:
                         srb.destroy()
                     except RuntimeError:
                         pass
-                setattr(slot, srb_attr, self._build_srb(slot.texture, sampler))
+                setattr(
+                    slot,
+                    srb_attr,
+                    self._build_srb(slot.texture, sampler, slot.uniform_buffer),
+                )
 
         if not (raw_changed or final_changed):
             return
@@ -380,7 +405,6 @@ class FilenameOverlayGpuResources:
             self.pipeline,
             self.sampler_linear,
             self.sampler_nearest,
-            self.uniform_buffer,
         ):
             if res is not None:
                 try:
@@ -390,5 +414,4 @@ class FilenameOverlayGpuResources:
         self.pipeline = None
         self.sampler_linear = None
         self.sampler_nearest = None
-        self.uniform_buffer = None
         self.rhi = None
