@@ -524,9 +524,21 @@ class RhiCanvasRenderer:
         # glass backdrops: copy colorTexture after main pass (see glass_panel docs)
         glass_panels = getattr(widget, "glass_panels", None)
         if glass_panels is not None:
+            import os as _perf_os
+            import time as _perf_time
+
+            _perf_on = bool(_perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"))
+            _perf_t0 = _perf_time.perf_counter() if _perf_on else 0.0
             self.glass_panel_renderer.render_backdrops(
                 command_buffer, widget.colorTexture(), dict(glass_panels.items())
             )
+            if _perf_on:
+                import logging
+
+                logging.getLogger("ImproveImgSLI").info(
+                    "[perf] glass.render_backdrops %.1f ms",
+                    (_perf_time.perf_counter() - _perf_t0) * 1000.0,
+                )
             widget._glass_panel_sprites = self.glass_panel_renderer.ready_sprites
             widget._glass_panel_images = self.glass_panel_renderer.ready_images
 

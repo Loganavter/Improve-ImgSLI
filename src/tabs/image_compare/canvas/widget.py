@@ -666,7 +666,20 @@ class CanvasWidget(QRhiWidget):
         # requestUpdate/restack makes the frame visible. Emitting here would
         # hide the startup placeholder a frame too early — the user sees the
         # transparent subsurface until the flush lands.
+        import os as _perf_os
+        import time as _perf_time
+
+        _perf_on = bool(_perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"))
+        _perf_t0 = _perf_time.perf_counter() if _perf_on else 0.0
         painted = render_clear_frame(self, command_buffer)
+        if _perf_on:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").info(
+                "[perf] canvas.render %.1f ms painted=%s",
+                (_perf_time.perf_counter() - _perf_t0) * 1000.0,
+                painted,
+            )
         if not painted:
             ic_first_frame_debug(
                 self, "render() returned NOT-painted (engine not ready yet)"

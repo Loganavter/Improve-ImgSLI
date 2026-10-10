@@ -86,19 +86,7 @@ def schedule_update(presenter):
             "interactive mode -> immediate update, fps timer stopped",
         )
         presenter._update_scheduler_timer.stop()
-        import time as _perf_time
-
-        _perf_t0 = _perf_time.perf_counter()
         result = presenter.update_comparison_if_needed()
-        try:
-            from tabs.image_compare.debug import ic_perf_debug
-
-            ic_perf_debug(
-                "[perf] ic.render interactive %.1f ms",
-                (_perf_time.perf_counter() - _perf_t0) * 1000.0,
-            )
-        except Exception:
-            pass
         if result:
             presenter._pending_interactive_mode = None
     else:

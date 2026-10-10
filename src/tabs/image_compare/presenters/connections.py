@@ -32,9 +32,11 @@ def connect_signals(presenter):
     if presenter.event_bus:
 
         def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
+            import os
             import time
 
-            t0 = time.perf_counter()
+            _perf = bool(os.environ.get("IMGSLI_UI_PERF_DEBUG"))
+            t0 = time.perf_counter() if _perf else 0.0
             presenter.event_bus.emit(
                 SettingsApplyFontSettingsEvent(
                     size,
@@ -46,15 +48,13 @@ def connect_signals(presenter):
                     alpha,
                 )
             )
-            try:
-                from tabs.image_compare.debug import ic_perf_debug
+            if _perf:
+                import logging
 
-                ic_perf_debug(
+                logging.getLogger("ImproveImgSLI").info(
                     "[perf] font_settings.apply %.1f ms",
                     (time.perf_counter() - t0) * 1000.0,
                 )
-            except Exception:
-                pass
 
         presenter.font_settings_flyout.settings_changed.connect(_emit_font_settings)
     else:
