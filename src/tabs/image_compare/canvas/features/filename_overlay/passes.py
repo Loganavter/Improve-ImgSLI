@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import struct
+import time
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import (
@@ -42,6 +43,19 @@ from tabs.image_compare.canvas.features.filename_overlay.render.label_raster imp
     build_quad_vertices,
     rasterize_label_text,
 )
+from tabs.image_compare.canvas.features.filename_overlay.render.perf import (
+    filename_perf_enabled,
+    log_prepare_raster,
+)
+
+
+def _changed_fields(old_key, new_key) -> str:
+    if not old_key or len(old_key) != len(new_key):
+        return "first"
+    names = ("name", "elided", "font_px", "weight", "color", "dpr", "quality")
+    return ",".join(
+        names[i] for i in range(len(new_key)) if old_key[i] != new_key[i]
+    ) or "?"
 
 
 def _slot_anchor(placement: str, is_horizontal: bool, slot_index: int) -> str:
@@ -298,7 +312,15 @@ class FilenameOverlayPass(CanvasRenderPass):
         text_inset = float(overlay_style.text_inset_px)
         is_horizontal = bool(getattr(cfg, "is_horizontal", False))
         placement = str(getattr(cfg, "text_placement_mode", "edges") or "edges")
-        quality = _LABEL_SUPERSAMPLE
+        # Quality-during-drag: pixel-based elision changes the string every
+        # drag frame, so the content cache misses every frame; rasterizing at
+        # the full 4x there costs 6-35ms/frame (measured via
+        # IMGSLI_IC_PERF_DEBUG). Raster at 1x while a movement is in flight,
+        # upload straight into the sampled texture (skip the Lanczos pass),
+        # and re-raster at 4x on the first settled frame (quality is in the
+        # cache key, so the settle frame is guaranteed to re-raster).
+        interactive = bool(getattr(cfg, "is_interactive_mode", False))
+        quality = 1 if interactive else _LABEL_SUPERSAMPLE
 
         # Premultiplied rgba, as the fragment shader outputs premultiplied.
         bg_alpha = bg_color.alphaF()
@@ -310,6 +332,7 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
         mvp = tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data())
 
+        _perf = filename_perf_enabled()
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
             slot = self._gpu.slots[i]
             if not name or rect is None:
@@ -337,6 +360,8 @@ class FilenameOverlayPass(CanvasRenderPass):
             )
 
             if slot.content_key != cache_key:
+                changed = _changed_fields(slot.content_key, cache_key)
+                _t0 = time.perf_counter() if _perf else 0.0
                 image, final_size = rasterize_label_text(
                     elided,
                     text_w,
@@ -348,14 +373,30 @@ class FilenameOverlayPass(CanvasRenderPass):
                     dpr,
                     quality,
                 )
+                _t1 = time.perf_counter() if _perf else 0.0
                 self._gpu.ensure_slot_textures(slot, image.size(), final_size)
+                if _perf:
+                    log_prepare_raster(
+                        i,
+                        elided,
+                        int(text_w),
+                        rh,
+                        dpr,
+                        quality,
+                        bool(getattr(cfg, "is_interactive_mode", False)),
+                        changed,
+                        (_t1 - _t0) * 1000.0,
+                        (time.perf_counter() - _t1) * 1000.0,
+                    )
                 # NOT resource_updates.uploadTexture() here -- that shared
                 # batch only actually submits alongside the *main* pass's
                 # beginPass, which runs after record_pre_pass()'s own
                 # downsample read of this texture. See LabelSlot.
                 # pending_upload_image's docstring.
                 slot.pending_upload_image = image
-                slot.needs_downsample = True
+                direct = quality < _LABEL_SUPERSAMPLE
+                slot.direct_upload = direct
+                slot.needs_downsample = not direct
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
@@ -424,6 +465,17 @@ class FilenameOverlayPass(CanvasRenderPass):
         # CanvasRenderPass.record_pre_pass's own docstring), and record()
         # itself is only ever called *inside* that already-open main pass.
         for slot in self._gpu.slots:
+            if slot.direct_upload:
+                # Interactive 1x raster: device-resolution bytes, so upload
+                # straight into the sampled final texture and skip the Lanczos
+                # pass (its SCALE=4 expects a 4x raw). Own resourceUpdate,
+                # submitted here so the upload is visible to record()'s draw.
+                slot.direct_upload = False
+                updates = self._gpu.rhi.nextResourceUpdateBatch()
+                updates.uploadTexture(slot.texture, slot.pending_upload_image)
+                command_buffer.resourceUpdate(updates)
+                slot.pending_upload_image = None
+                continue
             if not slot.needs_downsample:
                 continue
             slot.needs_downsample = False
