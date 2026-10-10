@@ -136,7 +136,9 @@ def label_rects(
 def limit_name(text: str, max_name_length: int) -> str:
     if max_name_length <= 0 or len(text) <= max_name_length:
         return text
-    return text[:max_name_length]
+    # Truncated: keep the ellipsis visible at the cut (the label also elides to
+    # the box width; this is the character-cap cut the setting enforces).
+    return text[: max(1, max_name_length - 1)] + "…"
 
 
 def draw_round_rect(
