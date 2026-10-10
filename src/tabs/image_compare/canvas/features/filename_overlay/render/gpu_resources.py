@@ -272,15 +272,28 @@ class FilenameOverlayGpuResources:
                     pass
             setattr(slot, srb_attr, self._build_srb(sampler, slot.uniform_buffer))
 
-    def ensure_atlas(self, font: QFont, pixel_size: int, dpr: float, weight: int = 0) -> bool:
+    def ensure_atlas(
+        self,
+        font: QFont,
+        pixel_size: int,
+        dpr: float,
+        weight: int = 0,
+        supersample: int | None = None,
+    ) -> bool:
         """Build/refresh the shared SDF atlas; returns True when it changed.
 
         On a rebuild the atlas texture is recreated at the new size and every
         slot's SRBs are rebound to it. The caller uploads ``atlas_image`` via
-        its own resource-update batch.
+        its own resource-update batch. ``supersample`` lowers the coverage
+        quality (and cost) for interactive drags; None keeps the default.
         """
         assert self.atlas is not None
-        changed = self.atlas.ensure(font, pixel_size, dpr, weight)
+        if supersample is None:
+            changed = self.atlas.ensure(font, pixel_size, dpr, weight)
+        else:
+            changed = self.atlas.ensure(
+                font, pixel_size, dpr, weight, int(supersample)
+            )
         if not changed:
             return False
         self.atlas_image = self.atlas.image

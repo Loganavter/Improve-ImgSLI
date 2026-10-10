@@ -26,6 +26,10 @@ from ui.canvas_presentation.filename_labels import (
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from engine.cache.uniform_layout import assert_uniform_size
+from tabs.image_compare.canvas.features.filename_overlay.render.glyph_atlas import (
+    _INTERACTIVE_SUPERSAMPLE,
+    _SUPERSAMPLE,
+)
 from tabs.image_compare.canvas.features.filename_overlay.render.gpu_resources import (
     _UNIFORM_SIZE,
     FilenameOverlayGpuResources,
@@ -289,8 +293,12 @@ class FilenameOverlayPass(CanvasRenderPass):
         if font_px <= 0:
             font_px = max(1, int(font.pixelSize()))
         # Build/refresh the shared SDF atlas only when the font/size/dpr triple
-        # changes -- a split drag never reaches the atlas (C1's core win).
-        if self._gpu.ensure_atlas(font, font_px, dpr, int(font_weight)):
+        # changes -- a split drag never reaches the atlas (C1's core win). A
+        # weight/size *slider* drag DOES change the key every tick, so use the
+        # cheaper coverage supersample while the render is interactive; the
+        # settled frame rebuilds once at full quality.
+        atlas_ss = _INTERACTIVE_SUPERSAMPLE if is_interactive_live else _SUPERSAMPLE
+        if self._gpu.ensure_atlas(font, font_px, dpr, int(font_weight), atlas_ss):
             if self._gpu.atlas_image is not None:
                 resource_updates.uploadTexture(
                     self._gpu.atlas_texture, self._gpu.atlas_image

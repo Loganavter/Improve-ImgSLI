@@ -40,6 +40,12 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainte
 # antialiased edge gradient -- see module docstring.
 _SUPERSAMPLE = 4
 
+# Cheaper supersample used while a settings slider is being dragged
+# (interactive render mode): a weight/size drag changes the atlas key every
+# tick, and a full 4x rebuild is ~40-120 ms per tick. 2x keeps the drag
+# responsive; the settled frame rebuilds at the full ``_SUPERSAMPLE``.
+_INTERACTIVE_SUPERSAMPLE = 2
+
 # Printable ASCII plus the horizontal ellipsis U+2026 -- the elision glyph
 # ``QFontMetrics.elidedText`` appends when a filename is truncated to the label
 # box. Without it the elided string's tail glyph is dropped (hard cut, no "...").
@@ -92,18 +98,27 @@ class GlyphAtlas:
         self.sdf_range_px = 0.0
         self._slots: dict[str, GlyphSlot] = {}
 
-    def ensure(self, font: QFont, pixel_size: int, dpr: float, weight: int = 0) -> bool:
+    def ensure(
+        self,
+        font: QFont,
+        pixel_size: int,
+        dpr: float,
+        weight: int = 0,
+        supersample: int = _SUPERSAMPLE,
+    ) -> bool:
         """Build/refresh the atlas; no-op (``False``) when the key is unchanged."""
+        ss = max(1, int(supersample))
         key = (
             font.key(),
             int(pixel_size),
             round(max(1.0, float(dpr)), 3),
             int(weight),
+            ss,
         )
         if key == self._key:
             return False
         self._key = key
-        self._build(font, int(pixel_size), max(1.0, float(dpr)), int(weight))
+        self._build(font, int(pixel_size), max(1.0, float(dpr)), int(weight), ss)
         return True
 
     def glyph_for(self, ch: str) -> GlyphSlot | None:
@@ -116,7 +131,9 @@ class GlyphAtlas:
         self.height = 0
         self._slots = {}
 
-    def _build(self, font: QFont, pixel_size: int, dpr: float, weight: int) -> None:
+    def _build(
+        self, font: QFont, pixel_size: int, dpr: float, weight: int, supersample: int
+    ) -> None:
         pixel_size = max(1, pixel_size)
         dev_font = QFont(font)
         dev_font.setPixelSize(max(1, int(round(pixel_size * dpr))))
@@ -157,7 +174,9 @@ class GlyphAtlas:
                 continue
             w = int(np.ceil(br.width())) + 2 * pad_dev
             h = int(np.ceil(br.height())) + 2 * pad_dev
-            coverage = _render_coverage(path, br, w, h, pad_dev, stroke_dev)
+            coverage = _render_coverage(
+                path, br, w, h, pad_dev, stroke_dev, supersample
+            )
             bearing = (br.x() / dpr - pad_logical, br.y() / dpr - pad_logical)
             tiles.append(
                 _Tile(
@@ -256,15 +275,21 @@ def _downscale_lanczos(img: QImage, w: int, h: int) -> QImage:
 
 
 def _render_coverage(
-    path: QPainterPath, br, w: int, h: int, pad_dev: int, stroke_dev: float
+    path: QPainterPath,
+    br,
+    w: int,
+    h: int,
+    pad_dev: int,
+    stroke_dev: float,
+    supersample: int = _SUPERSAMPLE,
 ) -> np.ndarray:
     """Rasterize one glyph to antialiased coverage (device px), supersampled.
 
-    Renders at ``_SUPERSAMPLE`` x then downscales to ``w x h`` (LANCZOS), so
+    Renders at ``supersample`` x then downscales to ``w x h`` (LANCZOS), so
     each output pixel is a genuine area average -- the glass-HUD text-mask fix
     for weak/near-binary 1x coverage.
     """
-    ss = _SUPERSAMPLE
+    ss = max(1, int(supersample))
     big_w, big_h = max(1, w * ss), max(1, h * ss)
     img = QImage(big_w, big_h, QImage.Format.Format_RGBA8888)
     img.fill(0)

@@ -30,8 +30,12 @@ def connect_signals(presenter):
     from plugins.settings.events import SettingsApplyFontSettingsEvent
 
     if presenter.event_bus:
-        presenter.font_settings_flyout.settings_changed.connect(
-            lambda size, weight, color, bg_color, draw_bg, placement, alpha: presenter.event_bus.emit(
+
+        def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
+            import time
+
+            t0 = time.perf_counter()
+            presenter.event_bus.emit(
                 SettingsApplyFontSettingsEvent(
                     size,
                     weight,
@@ -42,7 +46,17 @@ def connect_signals(presenter):
                     alpha,
                 )
             )
-        )
+            try:
+                from tabs.image_compare.debug import ic_perf_debug
+
+                ic_perf_debug(
+                    "[perf] font_settings.apply %.1f ms",
+                    (time.perf_counter() - t0) * 1000.0,
+                )
+            except Exception:
+                pass
+
+        presenter.font_settings_flyout.settings_changed.connect(_emit_font_settings)
     else:
         presenter.font_settings_flyout.settings_changed.connect(
             presenter.main_controller.apply_font_settings
