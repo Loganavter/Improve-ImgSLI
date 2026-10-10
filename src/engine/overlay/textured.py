@@ -150,6 +150,11 @@ class TexturedOverlayShell:
         self._shader_dir: Path | None = None
         self._shader_stem: str = ""
         self.active = False
+        # Content signature of the last frame uploaded to ``texture``:
+        # ``(width, height, len(pixels), hash(pixels))``. Used by
+        # ``upload_frame`` to skip re-uploading an identical fullscreen
+        # raster while a pass stays active (see the dedup note there).
+        self._uploaded_signature: tuple[int, int, int, int] | None = None
 
     def mount(self, rhi: Any, target: Any, shader_dir: Path, shader_stem: str) -> None:
         """Create the vertex/uniform/sampler/texture/SRB/pipeline set."""
@@ -279,6 +284,8 @@ class TexturedOverlayShell:
         resource_updates: Any,
         render_target: Any,
         frame: tuple[int, int, bytes] | None,
+        *,
+        force: bool = False,
     ) -> bool:
         """Grow the texture to ``frame`` if needed, upload, set ``active``.
 
@@ -287,6 +294,22 @@ class TexturedOverlayShell:
         ``render_target`` rebuilds the pipeline after a resize (may be
         ``None`` when the caller has no target -- the upload still
         lands, the rebuild waits for the next target).
+
+        Content-signature dedup: when the same frame bytes land twice
+        while the texture size is unchanged, the second call skips
+        ``uploadTexture`` and just re-asserts ``active`` -- MC overlay
+        passes (labels / drag / focus-dim) call this every rendered
+        frame while active, and an unchanged raster would otherwise
+        re-upload a fullscreen texture each pass each frame. ``force=True``
+        bypasses the dedup (always uploads and re-remembers the
+        signature); a texture-size change always uploads and resets the
+        remembered signature.
+
+        The signature is ``(width, height, len(pixels), hash(pixels))``.
+        A full ``hash`` was chosen over first/last-KiB sampling: a false
+        miss here re-uploads (cheap), but a false *hit* would draw a
+        stale overlay, and the tab-side frame snapshot already copies the
+        whole raster every frame, so the hash is not the dominant cost.
         """
         if frame is None:
             self.active = False
@@ -296,7 +319,8 @@ class TexturedOverlayShell:
             self.active = False
             return False
         size = QSize(int(width), int(height))
-        if self.texture_size != size:
+        resized = self.texture_size != size
+        if resized:
             try:
                 if self.texture is not None:
                     self.texture.destroy()
@@ -307,6 +331,8 @@ class TexturedOverlayShell:
             if not self.texture.create():
                 raise RuntimeError(f"Failed to resize {self._shader_stem} texture")
             self.texture_size = size
+            # The old signature described the destroyed texture.
+            self._uploaded_signature = None
             try:
                 if self.srb is not None:
                     self.srb.destroy()
@@ -318,11 +344,20 @@ class TexturedOverlayShell:
             # resize (Vulkan).
             if render_target is not None:
                 self._ensure_pipeline(render_target, force=True)
+        signature = (int(width), int(height), len(pixels), hash(pixels))
+        if (
+            not force
+            and not resized
+            and signature == self._uploaded_signature
+        ):
+            self.active = True
+            return True
         image = QImage(pixels, int(width), int(height), int(width) * 4, QImage.Format.Format_RGBA8888_Premultiplied)
         if image.isNull():
             self.active = False
             return False
         resource_updates.uploadTexture(self.texture, image)
+        self._uploaded_signature = signature
         self.active = True
         return True
 
@@ -364,3 +399,4 @@ class TexturedOverlayShell:
         self._shader_dir = None
         self._shader_stem = ""
         self.active = False
+        self._uploaded_signature = None

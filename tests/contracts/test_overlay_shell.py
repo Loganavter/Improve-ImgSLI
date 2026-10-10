@@ -60,6 +60,13 @@ _PILOT_PASSES = {
         "grid_divider",
         96,
     ),
+    # Overdraw wave: focus_dim's letterbox bars are plain rectangles, so the
+    # pass migrated off the textured raster shell onto the shared uniform
+    # quad shell -- same 96B NDC-bounds block shape as grid_dividers.
+    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": (
+        "focus_dim",
+        96,
+    ),
 }
 
 # GPU allocation the engine owns -- never spelled in a tab pass.
@@ -411,6 +418,9 @@ def test_overlay_resolver_protocol_is_ctx_first():
 # (``_TEXTURED_PASSES`` + the R3B section below) and both tab-side
 # mirrors retire atomically. Scene sources (``scene/passes/*``) stay
 # S2-pinned read-only; per-pass DPR behavior is preserved, never unified.
+# Overdraw wave: focus_dim's bars are plain rectangles, so it left the
+# textured set for the uniform quad shell (``_PILOT_PASSES``, stem
+# "focus_dim"); only labels/drag remain raster mounts here.
 # ---------------------------------------------------------------------------
 
 # Model-side migrate source: must expose the ctx-first resolver intake.
@@ -692,11 +702,12 @@ def test_overlay_shell_avoids_legacy_resource_fingerprint():
 
 # Raster mounts on the textured shell: pass path -> shader stem.
 # R3b: all three MC raster passes join the IC drag mount here.
+# Overdraw wave: focus_dim left this set -- its bars render as uniform
+# NDC-bounded quads (_PILOT_PASSES) instead of an uploaded raster.
 _TEXTURED_PASSES = {
     "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
     "src/tabs/multi_compare/canvas/features/layer_labels/passes.py": ("overlay",),
     "src/tabs/multi_compare/canvas/features/drag_drop_overlay/passes.py": ("overlay",),
-    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": ("overlay",),
 }
 
 # Tab-side textured mirrors retired by R3b (ruling 3, atomic with the
@@ -984,6 +995,9 @@ def test_ic_drag_mount_rides_engine_shell_directly():
 # never unified (labels source-owned, drag scales, focus is DPR-free
 # rect fill). The tab-side mirrors retire in the same wave (ruling 3,
 # atomic): pinned absent by test_no_tab_side_textured_mirror_classes.
+# Overdraw wave: focus_dim left this set -- its bars are uniform NDC
+# quads now (_PILOT_PASSES), so labels/drag are the only raster mounts
+# pinned below.
 # ---------------------------------------------------------------------------
 
 # MC mount -> tab-side seams that must stay on the mount (gating,
@@ -1002,13 +1016,6 @@ _MC_TEXTURED_SEAMS = {
         "_raster",
         "DragDropOverlaySource",
         "_dbg_recorded",
-        "RENDER_PASSES",
-    ),
-    "src/tabs/multi_compare/canvas/features/focus_dim/passes.py": (
-        "should_paint",
-        "stack_role",
-        "_raster",
-        "DIM_COLOR",
         "RENDER_PASSES",
     ),
 }
@@ -1046,6 +1053,109 @@ def test_mc_textured_mounts_ride_engine_shell_directly():
                     f"stay tab-side on the mount"
                 )
     assert not offenders, "\n  - " + "\n  - ".join(offenders)
+
+
+# ---------------------------------------------------------------------------
+# R3B DEDUP (behavior pin): an unchanged frame is not re-uploaded.
+#
+# MC raster passes (labels / drag / focus-dim) call ``upload_frame`` every
+# rendered frame while their gate stays active. The shell remembers the
+# last uploaded frame's content signature and skips the (fullscreen)
+# ``uploadTexture`` when the bytes repeat with an unchanged texture size.
+# Behavior, not shape: a fake resource-update batch counts uploads.
+# ---------------------------------------------------------------------------
+
+
+class _CountingUpdates:
+    def __init__(self) -> None:
+        self.uploads: list = []
+
+    def uploadTexture(self, texture, image) -> None:
+        self.uploads.append((texture, image))
+
+
+class _FakeTexture:
+    def create(self) -> bool:
+        return True
+
+    def destroy(self) -> None:
+        pass
+
+
+class _FakeRhi:
+    def newTexture(self, *_args, **_kwargs) -> _FakeTexture:
+        return _FakeTexture()
+
+
+def _mounted_shell():
+    """A shell with a live 2x2 texture, no real RHI (dedup probe only)."""
+    from PySide6.QtCore import QSize
+
+    from engine.overlay import TexturedOverlayShell
+
+    shell = TexturedOverlayShell()
+    shell.texture = _FakeTexture()
+    shell.texture_size = QSize(2, 2)
+    shell.rhi = _FakeRhi()
+    # The resize path would normally rebuild the SRB/pipeline; the dedup
+    # behavior under test does not depend on them.
+    setattr(shell, "_build_srb", lambda: object())
+    return shell
+
+
+def test_textured_upload_frame_dedups_identical_content():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    frame = (2, 2, bytes([1, 2, 3, 4]) * 4)
+
+    assert shell.upload_frame(updates, None, frame) is True
+    assert len(updates.uploads) == 1
+    # Identical bytes, unchanged size: skip the upload, stay active.
+    assert shell.upload_frame(updates, None, frame) is True
+    assert len(updates.uploads) == 1
+    assert shell.active is True
+
+
+def test_textured_upload_frame_reuploads_changed_bytes():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    shell.upload_frame(updates, None, (2, 2, bytes([1, 2, 3, 4]) * 4))
+    # Changed (but same-size) content must land: no false hit.
+    shell.upload_frame(updates, None, (2, 2, bytes([9, 9, 9, 9]) * 4))
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_reuploads_on_resize_and_resets_signature():
+    from PySide6.QtCore import QSize
+
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    shell.upload_frame(updates, None, (2, 2, bytes([1, 2, 3, 4]) * 4))
+    # Resize always uploads, then remembers the post-resize frame: a
+    # second identical 4x4 frame dedups against that upload.
+    big = (4, 4, bytes([5, 6, 7, 8]) * 16)
+    shell.upload_frame(updates, None, big)
+    assert len(updates.uploads) == 2
+    assert shell.texture_size == QSize(4, 4)
+    shell.upload_frame(updates, None, big)
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_force_bypasses_dedup():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    frame = (2, 2, bytes([1, 2, 3, 4]) * 4)
+    shell.upload_frame(updates, None, frame)
+    shell.upload_frame(updates, None, frame, force=True)
+    assert len(updates.uploads) == 2
+
+
+def test_textured_upload_frame_none_deactivates():
+    shell = _mounted_shell()
+    updates = _CountingUpdates()
+    assert shell.upload_frame(updates, None, None) is False
+    assert shell.active is False
+    assert updates.uploads == []
 
 
 # ---------------------------------------------------------------------------
