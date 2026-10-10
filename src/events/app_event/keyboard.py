@@ -6,6 +6,8 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
+from sli_ui_toolkit.widgets import CustomLineEdit
+
 from events.app_event.common import get_main_controller
 from tabs.registry import get_shared_tab_registry
 
@@ -66,7 +68,9 @@ class GlobalKeyboardHandler:
         focused_widget = QApplication.focusWidget()
         if active_tab is not None and active_tab.owns_widget(focused_widget):
             return False
-        if isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+        if isinstance(
+            focused_widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)
+        ):
             return False
 
         key = event.key()

@@ -12,7 +12,11 @@ from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import QApplication, QLineEdit
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
+from sli_ui_toolkit.widgets import (
+    ContextMenuAction,
+    ContextMenuSeparator,
+    CustomLineEdit,
+)
 from ui.context_menu.manager import open_context_menu_entries
 from ui.icon_manager import AppIcon, get_app_icon
 
@@ -32,12 +36,12 @@ class _LineEditContextMenuFilter(QObject):
 
     def __init__(self, parent: QObject) -> None:
         super().__init__(parent)
-        self._pending_selection: tuple[QLineEdit, int, str] | None = None
+        self._pending_selection: tuple[QLineEdit | CustomLineEdit, int, str] | None = None
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if (
             event.type() == QEvent.Type.MouseButtonPress
-            and isinstance(watched, QLineEdit)
+            and isinstance(watched, (QLineEdit, CustomLineEdit))
             and isinstance(event, QMouseEvent)
             and event.button() == Qt.MouseButton.RightButton
         ):
@@ -50,12 +54,14 @@ class _LineEditContextMenuFilter(QObject):
             else:
                 self._pending_selection = None
             return super().eventFilter(watched, event)
-        if event.type() == QEvent.Type.ContextMenu and isinstance(watched, QLineEdit):
+        if event.type() == QEvent.Type.ContextMenu and isinstance(
+            watched, (QLineEdit, CustomLineEdit)
+        ):
             self._open_menu(watched, event.globalPos())  # type: ignore[attr-defined]  # QContextMenuEvent globalPos
             return True
         return super().eventFilter(watched, event)
 
-    def _restore_pending_selection(self, line_edit: QLineEdit) -> None:
+    def _restore_pending_selection(self, line_edit: QLineEdit | CustomLineEdit) -> None:
         pending = self._pending_selection
         self._pending_selection = None
         if pending is None:
@@ -67,7 +73,7 @@ class _LineEditContextMenuFilter(QObject):
             return
         line_edit.setSelection(start, len(text))
 
-    def _open_menu(self, line_edit: QLineEdit, global_pos) -> None:
+    def _open_menu(self, line_edit: QLineEdit | CustomLineEdit, global_pos) -> None:
         self._restore_pending_selection(line_edit)
         has_selection = line_edit.hasSelectedText()
         read_only = line_edit.isReadOnly()
@@ -126,7 +132,11 @@ _installed = False
 
 
 def install_line_edit_context_menu_policy(app: QApplication) -> None:
-    """Install the styled ПКМ menu for every ``QLineEdit`` in the process."""
+    """Install the styled ПКМ menu for every line edit in the process.
+
+    Matches both raw ``QLineEdit`` and painted ``CustomLineEdit`` (the
+    toolkit's QLineEdit-compatible, non-QLineEdit field).
+    """
     global _installed
     if _installed:
         return
