@@ -403,9 +403,12 @@ class FilenameOverlayPass(CanvasRenderPass):
             slot.vertex_count = (6 if draw_bg else 0) + glyph_count * 6
 
             corner_radius = float(overlay_style.label_corner_radius_px) * zoom_scale * dpr
-            # AA half-width: sd is in logical atlas px; one screen device px is
-            # 1/(zoom_scale*dpr) logical px.
-            edge_px = 0.5 / max(1e-6, zoom_scale * dpr)
+            # AA half-width: sd is in logical atlas px. Per docs/dev/rendering/
+            # patterns.md ("SDF edge feather minimum"), a smoothstep SDF edge
+            # under single-sample rasterization needs a feather HALF-width of
+            # >= ~1px or it aliases into a hard/jagged step (the "binary alpha"
+            # seen live). 1 device px = 1/(zoom_scale*dpr) logical px.
+            edge_px = 1.0 / max(1e-6, zoom_scale * dpr)
             resource_updates.updateDynamicBuffer(
                 slot.uniform_buffer,
                 0,
