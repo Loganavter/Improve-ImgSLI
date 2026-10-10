@@ -84,21 +84,30 @@ def rasterize_label(
     style: FilenameOverlayStyle,
     font_weight: int,
     dpr: float,
+    supersample: int = _LABEL_SUPERSAMPLE,
 ) -> tuple[QImage, QSize]:
     """Rasterizes the entire label (background rect + text) at
-    ``_LABEL_SUPERSAMPLE`` x its own final device resolution and returns it
+    ``supersample`` x its own final device resolution and returns it
     *undownscaled*, alongside that final device-px size -- see this
     module's ``_LABEL_SUPERSAMPLE`` docstring for why (the caller's GPU
     downsample pass does the actual downscale).
+
+    ``supersample`` defaults to ``_LABEL_SUPERSAMPLE`` (4). The overlay pass
+    passes ``1`` while an interactive drag is in flight: that rasterizes
+    straight to device resolution (no supersample), which the pass uploads
+    into the final texture and draws directly (skipping the Lanczos pass) --
+    ~16x cheaper, so the label tracks the divider without frame drops. The
+    settled frame re-rasterizes at the full 4x for crispness.
 
     BOUNDARY (F5): this supersampled-upload shape is the stay the shell
     cannot host -- the shell uploads device-res bytes and draws them in
     the same main pass, with no Lanczos pre-pass stage in between.
     """
     dpr = max(1.0, float(dpr))
+    supersample = max(1, int(supersample))
     phys_w = max(1, int(round(rw * dpr)))
     phys_h = max(1, int(round(rh * dpr)))
-    total_scale = dpr * _LABEL_SUPERSAMPLE
+    total_scale = dpr * supersample
     super_w = max(1, int(round(rw * total_scale)))
     super_h = max(1, int(round(rh * total_scale)))
     img = new_overlay_image(super_w, super_h)

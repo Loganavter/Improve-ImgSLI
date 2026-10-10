@@ -260,8 +260,18 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/filename_overlay/passes.py",
+      "lines": 421,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "single QRhi filename-overlay pass — one resource lifecycle (prepare/record_pre_pass/record) whose interactive 1x and settled 4x quality paths share the same per-slot cache key, slots and GPU resources.",
+      "parsed": {
+        "reason": "single QRhi filename-overlay pass — one resource lifecycle (prepare/record_pre_pass/record) whose interactive 1x and settled 4x quality paths share the same per-slot cache key, slots and GPU resources."
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/render/gpu_resources.py",
-      "lines": 423,
+      "lines": 430,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "one QRhi resource-lifecycle owner for the filename_overlay device-resolve (per-slot raw/final textures, downsample targets, shared pipeline); splitting scatters a single create/upload/resize/release lifecycle across files.",

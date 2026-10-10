@@ -1,6 +1,8 @@
+# File-Size-Exempt: single QRhi filename-overlay pass — one resource lifecycle (prepare/record_pre_pass/record) whose interactive 1x and settled 4x quality paths share the same per-slot cache key, slots and GPU resources.
 from __future__ import annotations
 
 import struct
+import time
 
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import (
@@ -31,8 +33,15 @@ assert_uniform_size(
     _MATRIX_UNIFORM_FMT, _UNIFORM_SIZE, label="FilenameOverlayGpuResources uniform"
 )
 from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
+    _LABEL_SUPERSAMPLE,
     build_quad_vertices,
     rasterize_label,
+)
+from tabs.image_compare.canvas.features.filename_overlay.render.perf import (
+    filename_perf_enabled,
+    log_direct_upload,
+    log_downsample,
+    log_prepare_raster,
 )
 
 
@@ -234,6 +243,17 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
         resource_updates.updateDynamicBuffer(self._gpu.uniform_buffer, 0, matrix)
 
+        # Quality-during-drag: while a movement is in flight the label tracks
+        # the divider, so rw/rh change every frame and the full 4x-supersample
+        # raster costs 8-50ms per label per frame (measured). Rasterize at 1x
+        # for the duration -- upload straight into the sampled texture and
+        # skip the Lanczos pass (whose SCALE=4 expects a 4x raw) -- then
+        # re-raster at the full 4x on the first settled frame. Same idea as
+        # browsers rasterizing at lower quality during scroll/transform.
+        interactive = bool(getattr(cfg, "is_interactive_mode", False))
+        quality = 1 if interactive else _LABEL_SUPERSAMPLE
+
+        _perf = filename_perf_enabled()
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
             slot = self._gpu.slots[i]
             if not name or rect is None:
@@ -242,9 +262,11 @@ class FilenameOverlayPass(CanvasRenderPass):
             rw = max(1, int(rect.width()))
             rh = max(1, int(rect.height()))
             dpr = max(1.0, float(widget.devicePixelRatioF()))
-            cache_key = (name, rw, rh, font_key, round(dpr, 3))
+            cache_key = (name, rw, rh, font_key, round(dpr, 3), quality)
 
             if slot.content_key != cache_key:
+                if _perf:
+                    _t0 = time.perf_counter()
                 image, final_size = rasterize_label(
                     name,
                     rw,
@@ -257,15 +279,33 @@ class FilenameOverlayPass(CanvasRenderPass):
                     overlay_style,
                     font_weight,
                     dpr,
+                    supersample=quality,
                 )
+                if _perf:
+                    _t1 = time.perf_counter()
                 self._gpu.ensure_slot_textures(slot, image.size(), final_size)
+                if _perf:
+                    _t2 = time.perf_counter()
+                    log_prepare_raster(
+                        i,
+                        len(name),
+                        rw,
+                        rh,
+                        dpr,
+                        interactive,
+                        quality,
+                        (_t1 - _t0) * 1000.0,
+                        (_t2 - _t1) * 1000.0,
+                    )
                 # NOT resource_updates.uploadTexture() here -- that shared
                 # batch only actually submits alongside the *main* pass's
                 # beginPass, which runs after record_pre_pass()'s own
                 # downsample read of this texture. See LabelSlot.
                 # pending_upload_image's docstring.
                 slot.pending_upload_image = image
-                slot.needs_downsample = True
+                direct = quality < _LABEL_SUPERSAMPLE
+                slot.direct_upload = direct
+                slot.needs_downsample = not direct
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
@@ -295,9 +335,32 @@ class FilenameOverlayPass(CanvasRenderPass):
         # CanvasRenderPass.record_pre_pass's own docstring), and record()
         # itself is only ever called *inside* that already-open main pass.
         for slot in self._gpu.slots:
+            if slot.direct_upload:
+                # Interactive 1x raster: device-resolution bytes, so upload
+                # straight into the sampled final texture and skip the Lanczos
+                # pass (its SCALE=4 expects a 4x raw). Same own-resourceUpdate
+                # ordering as below so the upload is visible to record()'s draw.
+                slot.direct_upload = False
+                _perf = filename_perf_enabled()
+                if _perf:
+                    _t0 = time.perf_counter()
+                updates = self._gpu.rhi.nextResourceUpdateBatch()
+                updates.uploadTexture(slot.texture, slot.pending_upload_image)
+                command_buffer.resourceUpdate(updates)
+                slot.pending_upload_image = None
+                if _perf:
+                    log_direct_upload(
+                        (time.perf_counter() - _t0) * 1000.0,
+                        slot.texture_size.width(),
+                        slot.texture_size.height(),
+                    )
+                continue
             if not slot.needs_downsample:
                 continue
             slot.needs_downsample = False
+            _perf = filename_perf_enabled()
+            if _perf:
+                _t0 = time.perf_counter()
             # Own resourceUpdate(), submitted right here rather than queued
             # into prepare()'s shared batch -- that batch only actually
             # submits alongside the *main* pass's beginPass, which runs
@@ -325,6 +388,12 @@ class FilenameOverlayPass(CanvasRenderPass):
             command_buffer.setShaderResources(slot.srb_downsample)
             command_buffer.draw(3)
             command_buffer.endPass()
+            if _perf:
+                log_downsample(
+                    (time.perf_counter() - _t0) * 1000.0,
+                    slot.texture_size.width(),
+                    slot.texture_size.height(),
+                )
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
         if self._gpu.pipeline is None:
