@@ -42,6 +42,14 @@ _CTX = {
 }
 
 
+def _system_text(payload: dict) -> str:
+    return payload["messages"][0]["content"][0]["text"]
+
+
+def _user_text(payload: dict) -> str:
+    return payload["messages"][-1]["content"][0]["text"]
+
+
 def test_empty_question_routes_to_text():
     assert route_backend("", _CTX) == BACKEND_TEXT
     assert route_backend("Summary", _CTX) == BACKEND_TEXT
@@ -59,30 +67,38 @@ def test_routing_question_routes_to_jev():
 
 def test_text_payload_has_no_image_bytes():
     payload = build_text_payload("Summary", _CTX, model="m")
-    content = payload["messages"][0]["content"]
-    assert all(part["type"] == "text" for part in content)
+    assert payload["messages"][0]["role"] == "system"
+    assert all(m["role"] != "tool" for m in payload["messages"])
     assert "image_url" not in repr(payload)
 
 
 def test_text_payload_uses_opaque_alias_not_filename():
     payload = build_text_payload("Summary", _CTX, model="m")
-    text = payload["messages"][0]["content"][0]["text"]
+    text = _user_text(payload)
     assert "img_1" in text
     assert "a.png" not in text
-    assert "label" in text.lower()
+    assert "label" in _system_text(payload).lower()
 
 
 def test_context_block_uses_labels_and_descriptors_not_raw_ids():
     payload = build_text_payload("Summary", _CTX, model="m")
-    text = payload["messages"][0]["content"][0]["text"]
+    user = _user_text(payload)
     # Human label + band descriptor, never the bare metric id.
-    assert "Sharpness 50%" in text
-    assert "sharpness=50" not in text
-    # The style rule forbids reciting raw percentages unless asked, and
-    # forbids role-play / preambles (the "as a photographer" glitch).
-    assert "percentages" in text.lower()
-    assert "role-play" in text.lower() or "preamble" in text.lower()
-    assert "photographer" not in text.lower()
+    assert "Sharpness 50%" in user
+    assert "sharpness=50" not in user
+    # The instructions live in the system turn: no number recital, no preamble.
+    system = _system_text(payload).lower()
+    assert "percentages" in system
+    assert "preamble" in system
+    assert "photographer" not in system
+
+
+def test_text_payload_has_system_role_and_fewshot():
+    payload = build_text_payload("Summary", _CTX, model="m")
+    roles = [m["role"] for m in payload["messages"]]
+    assert roles[0] == "system"
+    assert "assistant" in roles  # the few-shot exemplar
+    assert roles[-1] == "user"
 
 
 def test_context_block_renders_artifact_severities_with_meaning():
@@ -91,22 +107,24 @@ def test_context_block_renders_artifact_severities_with_meaning():
         "metric_labels": {},
         "items": [{"alias": "img_1", "metrics": {}, "severities": {"banding": "flagged"}}],
     }
-    text = build_text_payload("x", ctx, model="m")["messages"][0]["content"][0]["text"]
+    text = _user_text(build_text_payload("x", ctx, model="m"))
     assert "banding:flagged" in text
     assert "visible banding" in text  # severity gets a meaning, not just the id
 
 
 def test_context_block_falls_back_to_id_when_no_labels():
     ctx = {"count": 1, "items": [{"metrics": {"sharpness": 50}}]}
-    text = build_text_payload("Summary", ctx, model="m")["messages"][0]["content"][0]["text"]
+    text = _user_text(build_text_payload("Summary", ctx, model="m"))
     assert "Sharpness 50%" not in text  # no label map → id used
     assert "sharpness 50%" in text
 
 
 def test_vision_payload_embeds_downscaled_image(monkeypatch):
-    monkeypatch.setattr(ask_router, "_encode_image", lambda p: ("png", "QUJD"))
+    from tabs.image_gallery.services import ask_payload
+
+    monkeypatch.setattr(ask_payload, "_encode_image", lambda p: ("png", "QUJD"))
     payload = build_vision_payload("what is wrong?", _CTX, model="m")
-    content = payload["messages"][0]["content"]
+    content = payload["messages"][-1]["content"]
     assert content[0]["type"] == "text"
     assert any(
         part["type"] == "image_url" and "data:image/png;base64,QUJD" in part["image_url"]["url"]
@@ -137,7 +155,9 @@ def test_answer_text_uses_transport_and_returns_text():
 
 
 def test_answer_vlm_routes_images(monkeypatch):
-    monkeypatch.setattr(ask_router, "_encode_image", lambda p: ("png", "QUJD"))
+    from tabs.image_gallery.services import ask_payload
+
+    monkeypatch.setattr(ask_payload, "_encode_image", lambda p: ("png", "QUJD"))
     captured = {}
 
     def fake_transport(base_url, api_key, payload):
@@ -276,3 +296,95 @@ def test_answer_backend_exception_yields_error_result():
     )
     assert result.text == ""
     assert "exploded" in result.error
+
+
+def test_answer_parses_json_envelope_and_confidence():
+    def fake(base_url, api_key, payload):
+        return {"choices": [{"message": {"content": '{"answer": "Prefer img_1.", "confidence": "high"}'}}]}
+
+    result = answer(
+        "Summary", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert result.text == "Prefer img_1."
+    assert result.confidence == 0.9
+    assert result.revised is False
+
+
+def test_answer_falls_back_to_raw_when_not_enveloped():
+    def fake(base_url, api_key, payload):
+        return {"choices": [{"message": {"content": "Prefer img_1, it is clean."}}]}
+
+    result = answer(
+        "Summary", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert result.text == "Prefer img_1, it is clean."
+
+
+def test_guard_triggers_one_rewrite_on_number_recital():
+    calls: list[dict] = []
+
+    def fake(base_url, api_key, payload):
+        calls.append(payload)
+        if len(calls) == 1:
+            return {"choices": [{"message": {"content": '{"answer": "img_1 is 88% vs img_2 71%.", "confidence": "high"}'}}]}
+        return {"choices": [{"message": {"content": '{"answer": "Prefer img_1: it is the cleanest; img_2 is softer.", "confidence": "high"}'}}]}
+
+    result = answer(
+        "Summary", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert len(calls) == 2
+    assert result.revised is True
+    assert "88%" not in result.text
+    # the rewrite carried the previous answer + feedback in the user turn
+    assert "REVISION REQUEST" in calls[1]["messages"][-1]["content"][0]["text"]
+
+
+def test_guard_numeric_question_allows_numbers_and_skips_rewrite():
+    calls: list[dict] = []
+
+    def fake(base_url, api_key, payload):
+        calls.append(payload)
+        return {"choices": [{"message": {"content": '{"answer": "img_1 scores 88.", "confidence": "high"}'}}]}
+
+    result = answer(
+        "give me the sharpness numbers", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert len(calls) == 1
+    assert result.revised is False
+
+
+def test_guard_still_violating_rewrite_keeps_original():
+    calls: list[dict] = []
+
+    def fake(base_url, api_key, payload):
+        calls.append(payload)
+        return {"choices": [{"message": {"content": '{"answer": "img_1 is 88%.", "confidence": "high"}'}}]}
+
+    result = answer(
+        "Summary", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert len(calls) == 2
+    assert result.revised is False
+    assert result.text == "img_1 is 88%."
+
+
+def test_guard_rewrite_error_is_fail_open():
+    calls: list[dict] = []
+
+    def fake(base_url, api_key, payload):
+        calls.append(payload)
+        if len(calls) == 1:
+            return {"choices": [{"message": {"content": '{"answer": "img_1 is 88%.", "confidence": "high"}'}}]}
+        raise RuntimeError("network blip")
+
+    result = answer(
+        "Summary", _CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert result.revised is False
+    assert result.text == "img_1 is 88%."

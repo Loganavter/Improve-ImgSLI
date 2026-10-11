@@ -138,6 +138,67 @@ class GalleryToolbarViewSwitchContainer(QWidget):
             pass
 
 
+class GalleryToolbarDomainSwitchContainer(QWidget):
+    """Segmented domain-switch background (Algorithms|AI), painter-painted, no QSS.
+
+    Mirrors ``GalleryToolbarViewSwitchContainer`` — same tokens/shape; only
+    the child segments differ (plan-gallery-two-domain-axes W2).
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+    def _on_theme_changed(self) -> None:
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def on_theme_changed(self) -> None:
+        self._on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        try:
+            from PySide6.QtCore import QRectF
+            from PySide6.QtGui import QColor, QPainter
+
+            from sli_ui_toolkit.managers import ThemeManager
+            from ui.theming import try_resolve_theme_color
+
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            try:
+                col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
+                bg = QColor(col) if isinstance(col, str) else col
+                if bg is None:
+                    bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
+            except Exception:
+                bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
+            try:
+                border = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.border")
+                border_col = QColor(border) if isinstance(border, str) else border
+                if border_col is None:
+                    border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
+            except Exception:
+                border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
+            p.setPen(border_col)
+            p.setBrush(bg)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            p.end()
+        except Exception:
+            pass
+        try:
+            super().paintEvent(event)
+        except Exception:
+            pass
+
+
 class GalleryToolbar(QWidget):
     """Toolbar row for the gallery: Open Folder + filter + Sort + view switch (svg v2).
 
@@ -150,6 +211,10 @@ class GalleryToolbar(QWidget):
     filterChanged = Signal(str)
     sortChanged = Signal(str)
     viewToggled = Signal(bool)
+    domainChanged = Signal(str)
+
+    #: Sort option gated to the AI judgment domain (orders by an AI score).
+    _AI_SORT_LABEL = "Sort: AI quality"
 
     def __init__(
         self,
@@ -247,6 +312,114 @@ class GalleryToolbar(QWidget):
         except Exception:
             pass
         layout.addWidget(self._sort_combo)
+
+        # Domain switch — segmented Algorithms|AI (plan-gallery-two-domain-axes
+        # W2). Placed right after Sort; the scanner + view-switch keep their
+        # positions (view-switch stays last/rightmost).
+        self._judgment_domain = "algorithms"
+        self._domain_switch_container = GalleryToolbarDomainSwitchContainer(self)
+        self._domain_switch_container.setObjectName("gallery_toolbar_domain_switch_container")
+        try:
+            self._domain_switch_container.setFixedSize(scaled_px(106), scaled_px(32))
+        except Exception:
+            pass
+        # Container paints its own background in paintEvent (explicit fill).
+        ds_lay = QHBoxLayout(self._domain_switch_container)
+        ds_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
+        ds_lay.setSpacing(scaled_px(2))
+        # Icon-only segments (view-switch pattern): a chip = algorithms, a
+        # sparkle = AI. Text labels would clip in the 34px toolbar row.
+        self._domain_switch = Button(
+            icon=(GalleryIcon.ALGORITHMS_INACTIVE, GalleryIcon.ALGORITHMS),
+            variant="ghost",
+            toggle=True,
+            size=(scaled_px(48), scaled_px(28)),
+            parent=self._domain_switch_container,
+        )
+        self._domain_switch.setObjectName("gallery_toolbar_domain_switch")
+        try:
+            self._domain_switch.setToolTip(_tr("image_gallery.domain.algorithms", "Algorithms"))
+        except Exception:
+            pass
+        self._domain_switch_ai = Button(
+            icon=(GalleryIcon.AI_INACTIVE, GalleryIcon.AI),
+            variant="ghost",
+            toggle=True,
+            size=(scaled_px(48), scaled_px(28)),
+            parent=self._domain_switch_container,
+        )
+        self._domain_switch_ai.setObjectName("gallery_toolbar_domain_switch_ai")
+        try:
+            self._domain_switch_ai.setToolTip(_tr("image_gallery.domain.ai", "AI"))
+        except Exception:
+            pass
+
+        def _apply_domain(domain: str) -> None:
+            dom = str(domain or "").strip().lower()
+            if dom not in ("algorithms", "ai"):
+                dom = "algorithms"
+            # Already in desired domain — revert the auto-toggle flip that
+            # Button did on click, no emit.
+            if getattr(self, "_judgment_domain", "algorithms") == dom:
+                try:
+                    self._domain_switch.blockSignals(True)
+                    self._domain_switch_ai.blockSignals(True)
+                    self._domain_switch.setChecked(dom == "algorithms")
+                    self._domain_switch_ai.setChecked(dom == "ai")
+                    if dom == "algorithms":
+                        _apply_view_fill_chip(self._domain_switch, self._domain_switch_ai)
+                    else:
+                        _apply_view_fill_chip(self._domain_switch_ai, self._domain_switch)
+                finally:
+                    try:
+                        self._domain_switch.blockSignals(False)
+                        self._domain_switch_ai.blockSignals(False)
+                    except Exception:
+                        pass
+                return
+            try:
+                self._domain_switch.blockSignals(True)
+                self._domain_switch_ai.blockSignals(True)
+                self._domain_switch.setChecked(dom == "algorithms")
+                self._domain_switch_ai.setChecked(dom == "ai")
+                try:
+                    if dom == "algorithms":
+                        _apply_view_fill_chip(self._domain_switch, self._domain_switch_ai)
+                    else:
+                        _apply_view_fill_chip(self._domain_switch_ai, self._domain_switch)
+                except Exception:
+                    pass
+            finally:
+                try:
+                    self._domain_switch.blockSignals(False)
+                    self._domain_switch_ai.blockSignals(False)
+                except Exception:
+                    pass
+            self._judgment_domain = dom
+            try:
+                self.domainChanged.emit(dom)
+            except Exception:
+                pass
+
+        # Initial: algorithms active, AI inactive (no emit).
+        try:
+            _apply_domain("algorithms")
+        except Exception:
+            try:
+                self._domain_switch.setChecked(True)
+                self._domain_switch_ai.setChecked(False)
+            except Exception:
+                pass
+        try:
+            self._domain_switch.clicked.connect(lambda: _apply_domain("algorithms"))
+            self._domain_switch_ai.clicked.connect(lambda: _apply_domain("ai"))
+        except Exception:
+            pass
+        ds_lay.addWidget(self._domain_switch)
+        ds_lay.addWidget(self._domain_switch_ai)
+        # Expose helper for tests/programmatic switch.
+        self._apply_domain = _apply_domain  # type: ignore[attr-defined]
+        layout.addWidget(self._domain_switch_container)
 
         # Scanning near Sort (S1)
         try:
@@ -417,7 +590,17 @@ class GalleryToolbar(QWidget):
         except Exception:
             pass
         try:
+            apply_domain = getattr(self, "_apply_domain", None)
+            if callable(apply_domain):
+                apply_domain(str(getattr(self, "_judgment_domain", "algorithms")))
+        except Exception:
+            pass
+        try:
             self._view_switch_container.update()
+        except Exception:
+            pass
+        try:
+            self._domain_switch_container.update()
         except Exception:
             pass
         try:
@@ -456,6 +639,25 @@ class GalleryToolbar(QWidget):
         """Select grid/list view programmatically (emits viewToggled)."""
         try:
             self._apply_view(bool(is_list))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    @property
+    def domain_switch(self) -> Button:
+        return self._domain_switch
+
+    @property
+    def domain_switch_ai(self) -> Button:
+        return self._domain_switch_ai
+
+    @property
+    def judgment_domain(self) -> str:
+        return str(getattr(self, "_judgment_domain", "algorithms"))
+
+    def set_judgment_domain(self, domain: str) -> None:
+        """Select the judgment domain programmatically (emits domainChanged on change)."""
+        try:
+            self._apply_domain(str(domain))  # type: ignore[attr-defined]
         except Exception:
             pass
 
@@ -563,6 +765,22 @@ class GalleryToolbar(QWidget):
             self._sort_flyout = flyout
         return flyout
 
+    def _sort_options_for_domain(self) -> list[str]:
+        """Sort labels selectable in the current judgment domain.
+
+        The AI-quality sort orders by a judgment-domain score, so the
+        ``algorithms`` domain does not offer it. The row is *listed* in the
+        flyout (canonical ``_sort_items`` indices stay 1:1 — no remap) but
+        disabled; the widget also fails it over to Rank — see
+        ``ImageGalleryWidget._on_sort_changed``.
+        """
+        try:
+            if self.judgment_domain == "ai":
+                return list(self._sort_items)
+        except Exception:
+            return list(self._sort_items)
+        return [opt for opt in self._sort_items if opt != self._AI_SORT_LABEL]
+
     def _on_sort_clicked(self) -> None:
         """Open the sort flyout under the button (toggles on re-click)."""
         try:
@@ -584,6 +802,16 @@ class GalleryToolbar(QWidget):
             except Exception:
                 pass
             flyout.populate(list(self._sort_items), int(self._sort_index))
+            # Domain gate: "Sort: AI quality" is listed (canonical indices)
+            # but not selectable outside the AI domain.
+            try:
+                selectable = set(self._sort_options_for_domain())
+                for _i, _opt in enumerate(self._sort_items):
+                    _row = flyout.row_widget(_i)
+                    if _row is not None:
+                        _row.setEnabled(_opt in selectable)
+            except Exception:
+                pass
             # Content width: uniform rows on the widest label
             # ("Sort: Name"), tight card. The button carries " ▾" the rows
             # don't, so anchor-matching leaves trailing slack in every row.
@@ -614,5 +842,10 @@ class GalleryToolbar(QWidget):
             pass
         try:
             self._filter_edit.setPlaceholderText("Filter by tag / description…")
+        except Exception:
+            pass
+        try:
+            self._domain_switch.setText(_tr("image_gallery.domain.algorithms", "Algorithms"))
+            self._domain_switch_ai.setText(_tr("image_gallery.domain.ai", "AI"))
         except Exception:
             pass

@@ -132,6 +132,10 @@ class ImageGalleryWidget(QWidget):
         # segmented switch; grid_view owns the per-card builders
         # (set_view_mode swaps ui/card <-> ui/list in place).
         self._view_mode = False
+        # Judgment domain served by the toolbar switch (plan-gallery-two-domain-
+        # axes W2): "algorithms" (local detectors) or "ai". Transient view
+        # state — session-slot persistence is a follow-up.
+        self._judgment_domain = "algorithms"
 
         def _tr(key: str, default: str) -> str:
             if context is None:
@@ -178,6 +182,10 @@ class ImageGalleryWidget(QWidget):
             pass
         try:
             self.toolbar.viewToggled.connect(self._on_view_toggled)
+        except Exception:
+            pass
+        try:
+            self.toolbar.domainChanged.connect(self._on_domain_changed)
         except Exception:
             pass
         root.addWidget(self.toolbar)
@@ -602,6 +610,15 @@ class ImageGalleryWidget(QWidget):
         # Thin owner: delegate to filtering/sorting helper if available, else sort items in place.
         try:
             key = str(text or "").lower()
+            # Domain gate (plan-gallery-two-domain-axes W2): "Sort: AI quality"
+            # is a judgment-domain ordering. Outside the AI domain it falls
+            # back to Rank so the algorithms view never orders by an AI score.
+            # ``None`` (unwired fake/legacy path with no domain state) keeps the
+            # legacy behaviour and is not gated.
+            if "quality" in key:
+                _domain = getattr(self, "_judgment_domain", None)
+                if _domain is not None and _domain != "ai":
+                    key = "rank"
             keyfunc = self._sort_keyfunc(key)
             if keyfunc is None:
                 return
@@ -713,6 +730,47 @@ class ImageGalleryWidget(QWidget):
             pass
         try:
             _dbg("view toggled %s", bool(checked))
+        except Exception:
+            pass
+
+    def _on_domain_changed(self, domain: str) -> None:
+        """Toolbar domain switch changed — normalize, store, mirror.
+
+        Transient view state only: the session-slot persistence of
+        ``judgment_domain`` is out of scope (follow-up). The controller mirror
+        (``state.judgment_domain``) is best-effort — a widget without an
+        attached controller still tracks its own domain (storeless tests).
+        """
+        try:
+            from tabs.image_gallery import models as _models
+
+            valid = tuple(getattr(_models, "JUDGMENT_DOMAINS", ("algorithms", "ai")))
+        except Exception:
+            valid = ("algorithms", "ai")
+        dom = str(domain or "").strip().lower()
+        if dom not in valid:
+            dom = "algorithms"
+        self._judgment_domain = dom
+        try:
+            ctrl = getattr(self, "_controller", None) or getattr(
+                self, "_attached_controller", None
+            )
+        except Exception:
+            ctrl = None
+        try:
+            activate = getattr(ctrl, "activate_judgment_domain", None)
+            if callable(activate):
+                # The switch's real effect: lazily analyze the visible items
+                # (or show the not-configured error on the cards).
+                activate(dom)
+            else:
+                state = getattr(ctrl, "state", None)
+                if state is not None:
+                    state.judgment_domain = dom
+        except Exception:
+            pass
+        try:
+            _dbg("judgment domain %s", dom)
         except Exception:
             pass
 
@@ -902,7 +960,7 @@ class ImageGalleryWidget(QWidget):
         return flyout
 
     def open_ask_ai(
-        self, anchor, scope, *, default_prompt: str = "Summary", texts=None
+        self, anchor, scope, *, default_prompt: str = "What matters here?", texts=None
     ) -> None:
         """Show the Ask AI flyout; submit routes to ``controller.ask_ai_question``."""
         flyout = self._ensure_ask_ai_flyout()

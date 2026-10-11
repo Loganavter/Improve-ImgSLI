@@ -7,6 +7,10 @@
     "empty_view": "No images in view.",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
+    "domain": {
+      "algorithms": "Algorithms",
+      "ai": "AI"
+    },
     "settings": {
       "ai_title": "Image Gallery — AI",
       "enable_ai": "Enable AI image analysis",
@@ -49,7 +53,7 @@
     "ask_ai": {
       "action": "AI…",
       "title": "Ask AI",
-      "default_prompt": "Summary",
+      "default_prompt": "What matters here?",
       "busy": "Thinking…",
       "read_badge": "AI read, unverified",
       "error": "AI could not answer.",

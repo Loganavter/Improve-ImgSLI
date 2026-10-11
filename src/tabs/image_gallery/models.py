@@ -52,6 +52,29 @@ class Artifact(str, Enum):
     NOISE_AMPLIFICATION = "noise_amplification"
 
 
+class MetricKind(str, Enum):
+    """What an axis *is* — the slot that lets non-measured axes exist.
+
+    ``MEASURED`` — a local detector produces a number (0-100 quality). The
+    algorithms domain owns these; AI never overwrites them.
+    ``CANDIDATE`` — a flag "possible X" (no number): a learned detector OR an
+    AI/human observation, always marked unverified.
+    ``JUDGMENT`` — plausibility/behaviour (e.g. a hallucination): AI/human only,
+    never a number. Some artifacts have no cheap metric; this is the honest slot
+    instead of fabricating a score.
+
+    See ``plan-gallery-two-domain-axes``.
+    """
+
+    MEASURED = "measured"
+    CANDIDATE = "candidate"
+    JUDGMENT = "judgment"
+
+
+#: The two judgment domains the gallery can display (toolbar switch).
+JUDGMENT_DOMAINS: tuple[str, ...] = ("algorithms", "ai")
+
+
 class TriageState(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
@@ -65,6 +88,22 @@ class AiDefect:
 
     kind: str
     severity: str = "mild"  # "clean" | "mild" | "flagged"
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class AiAxisFlag:
+    """An AI-sourced non-measured axis: a candidate flag or a judgment.
+
+    ``kind`` is a ``MetricKind`` value (``candidate`` | ``judgment``) — never
+    ``measured`` (numbers stay with the local detectors). ``id`` is an existing
+    axis id when the observation maps to one, else ``flag-for-review``.
+    See ``plan-gallery-two-domain-axes``.
+    """
+
+    id: str
+    label: str = ""
+    kind: str = "candidate"
     note: str = ""
 
 
@@ -91,6 +130,9 @@ class AiAnalysisResult:
     # Short, vision-based note per axis (canonical metric id → phrase), shown
     # next to the metric label, e.g. {"noise": "coarse film grain"}.
     axis_notes: dict[str, str] = field(default_factory=dict)
+    #: AI-sourced non-measured axes (candidate flags / judgments). AI never
+    #: writes a measured number here (see plan-gallery-two-domain-axes).
+    axis_flags: tuple[AiAxisFlag, ...] = ()
 
 
 def ai_quality_score(result: AiAnalysisResult | None) -> float | None:
@@ -190,6 +232,10 @@ class GalleryState:
     folder: Path | None = None
     items: list[GalleryItem] = field(default_factory=list)
     filter_text: str = ""
+    # Which judgment domain the toolbar serves: one of ``JUDGMENT_DOMAINS``
+    # ("algorithms" | "ai"). Transient view state (plan-gallery-two-domain-axes
+    # W2) — session-slot persistence is a follow-up.
+    judgment_domain: str = "algorithms"
     selected_paths: set[Path] = field(default_factory=set)
     selected_order: list[Path] = field(default_factory=list)
     series: list[Series] = field(default_factory=list)

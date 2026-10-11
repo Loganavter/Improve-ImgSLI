@@ -7,6 +7,10 @@
     "empty_view": "暂无可显示的图片。",
     "analyze": "分析",
     "analyzing": "分析中…",
+    "domain": {
+      "algorithms": "算法",
+      "ai": "AI"
+    },
     "settings": {
       "ai_title": "图库 — AI",
       "enable_ai": "启用 AI 图像分析",
@@ -49,7 +53,7 @@
     "ask_ai": {
       "action": "AI…",
       "title": "询问 AI",
-      "default_prompt": "摘要",
+      "default_prompt": "这里有什么重点？",
       "busy": "思考中…",
       "read_badge": "AI 解读，未经核实",
       "error": "AI 无法回答。",

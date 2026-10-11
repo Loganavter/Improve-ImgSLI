@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from tabs.image_gallery.models import MetricKind
+
 # Rounding helper: expose the 0–100 int the UI and prompt both use.
 ScoreFn = Callable[[float], float]
 
@@ -51,6 +53,12 @@ class MetricSpec:
     qual: ScoreFn  # raw float -> quality in [0, 1]
     unit: str = "%"
     measured: bool = True
+    #: What the axis *is* (see ``MetricKind``). All registry axes today are
+    #: MEASURED; candidate/judgment axes arrive via ``plan-gallery-two-domain-axes``.
+    kind: MetricKind = MetricKind.MEASURED
+    #: Free-form tags for the open-vocabulary relevance matcher (no closed
+    #: operation/content enum). Empty = always relevant.
+    tags: tuple[str, ...] = ()
 
 
 def _sharpness(v: float) -> float:
@@ -113,22 +121,22 @@ SPECS: tuple[MetricSpec, ...] = (
     MetricSpec("clipping", "Highlight detail", ("clipping", "clipping_pct"), _lower_is_better(10.0)),
     MetricSpec("noise", "Clean", ("noise", "noise_estimate", "noise_level"), _lower_is_better(1.0)),
     MetricSpec("white_balance", "White balance", ("wb_shift", "white_balance"), _lower_is_better(1.0)),
-    MetricSpec("ssim", "Source match", ("ssim",), _direct),
+    MetricSpec("ssim", "Source match", ("ssim",), _direct, tags=("reference",)),
     MetricSpec("detail_gain", "Detail", ("hf_ratio", "detail_gain"), _detail_gain),
-    MetricSpec("color_accuracy", "Color accuracy", ("delta_e", "deltaE", "color_shift"), _lower_is_better(10.0)),
+    MetricSpec("color_accuracy", "Color accuracy", ("delta_e", "deltaE", "color_shift"), _lower_is_better(10.0), tags=("reference",)),
     MetricSpec("typicality", "Typicality", ("embedding_dist_to_centroid",), _lower_is_better(1.0)),
     MetricSpec("aesthetic", "Aesthetic", ("aesthetic", "aesthetic_score"), _aesthetic),
     # Learned perceptual metrics (optional backend): lower = closer to source.
     # Caps chosen so typical upscaler distances map to the mid band.
-    MetricSpec("lpips", "Perceptual (LPIPS)", ("lpips",), _lower_is_better(0.8)),
-    MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6)),
+    MetricSpec("lpips", "Perceptual (LPIPS)", ("lpips",), _lower_is_better(0.8), tags=("reference",)),
+    MetricSpec("dists", "Perceptual", ("dists",), _lower_is_better(0.6), tags=("reference",)),
     # No-reference naturalness (BRISQUE; lower is better, can be negative).
-    MetricSpec("brisque", "Naturalness", ("brisque",), _brisque),
+    MetricSpec("brisque", "Naturalness", ("brisque",), _brisque, tags=("photo",)),
     # Source-relative clipping delta (percentage points; 0 = same as source).
-    MetricSpec("clipping_delta", "Clipping vs source", ("clipping_delta",), _clipping_delta),
+    MetricSpec("clipping_delta", "Clipping vs source", ("clipping_delta",), _clipping_delta, tags=("reference",)),
     # Source-relative edge artifacts (ratio; 1 = no edge-localized change).
-    MetricSpec("halo_delta", "Halo vs source", ("halo_delta",), _edge_ratio_quality),
-    MetricSpec("chroma_fringe_delta", "Chroma vs source", ("chroma_fringe_delta",), _edge_ratio_quality),
+    MetricSpec("halo_delta", "Halo vs source", ("halo_delta",), _edge_ratio_quality, tags=("reference",)),
+    MetricSpec("chroma_fringe_delta", "Chroma vs source", ("chroma_fringe_delta",), _edge_ratio_quality, tags=("reference",)),
 )
 
 _BY_ID = {s.id: s for s in SPECS}
@@ -162,9 +170,15 @@ def score_for(spec: MetricSpec, raw: float) -> int:
 
 
 def measured_scores(metrics: dict) -> list[tuple[str, str, float, int]]:
-    """All measured metrics as ``(id, label, raw, score)`` in report order."""
+    """All MEASURED metrics as ``(id, label, raw, score)`` in report order.
+
+    Candidate/judgment axes are not numbers and are never emitted here (see
+    ``plan-gallery-two-domain-axes``).
+    """
     out: list[tuple[str, str, float, int]] = []
     for spec in SPECS:
+        if spec.kind is not MetricKind.MEASURED:
+            continue
         got = raw_for(spec, metrics)
         if got is None:
             continue

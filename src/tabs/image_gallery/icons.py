@@ -18,3 +18,7 @@ class Icon(Enum):
     VIEW_GRID_INACTIVE = "view_grid_inactive.svg"
     VIEW_LIST = "view_list.svg"
     VIEW_LIST_ACTIVE = "view_list_active.svg"
+    ALGORITHMS = "algorithms.svg"
+    ALGORITHMS_INACTIVE = "algorithms_inactive.svg"
+    AI = "ai.svg"
+    AI_INACTIVE = "ai_inactive.svg"
