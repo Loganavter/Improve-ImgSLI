@@ -47,6 +47,58 @@ def test_popup_at_offsets_from_cursor(qtbot):
         UiScale.get_instance().set_factor(1.0)
 
 
+def test_reopen_after_source_widget_destroyed(qapp, monkeypatch):
+    """Opening a menu after its source widget was destroyed must not crash.
+
+    Regression: the popup is parented to its source widget (card / series
+    header / canvas). A rebuild that destroys that widget deletes the popup's
+    C++ object, but ``ContextMenuManager`` still held the wrapper and called
+    ``isVisible()``/``hide()``/``getattr`` on it -> ``RuntimeError: Internal
+    C++ object (ContextMenu) already deleted``. Seen live on the gallery
+    series-header menu (header rebuild). The manager must drop the stale ref.
+    """
+    import shiboken6
+
+    from ui.context_menu.manager import ContextMenuManager
+
+    monkeypatch.setattr(
+        ContextMenu, "popup_at", lambda self, pos=None, *a, **k: None
+    )
+
+    mgr = ContextMenuManager()
+    parent = QWidget()
+    parent.resize(100, 80)
+    other = QWidget()
+    try:
+        mgr.open_entries(
+            source_widget=parent,
+            global_pos=None,
+            entries=(ContextMenuAction("a", "A"),),
+            key="k1",
+        )
+        assert shiboken6.isValid(mgr._active_menu)
+
+        shiboken6.delete(parent)  # destroys the parented popup's C++ object
+        assert not shiboken6.isValid(mgr._active_menu)
+
+        # None of these may raise on the dangling wrapper.
+        assert mgr.active_menu_contains_global(None) is False
+        mgr.hide_active_menu()
+        mgr.raise_active_menus()
+
+        mgr.open_entries(
+            source_widget=other,
+            global_pos=None,
+            entries=(ContextMenuAction("b", "B"),),
+            key="k2",
+        )
+        assert mgr._active_menu is not None
+    finally:
+        if shiboken6.isValid(parent):
+            parent.deleteLater()
+        other.deleteLater()
+
+
 def test_line_edit_menu_filter_matches_painted_custom_line_edit(qapp, monkeypatch):
     """The app-wide line-edit menu must open for painted CustomLineEdit.
 
