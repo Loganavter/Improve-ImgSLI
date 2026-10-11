@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtCore import Qt
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CheckBox, CustomLineEdit
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit
 
 from plugins.settings.typography import (
     apply_settings_body,
@@ -27,7 +27,22 @@ from plugins.settings.typography import (
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from tabs.image_gallery.services.ai_settings_store import AiSettingsStore, DEFAULT_BASE_URL
+from tabs.image_gallery.services.ai_settings_store import (
+    REASONING_EFFORTS,
+    AiSettingsStore,
+    DEFAULT_BASE_URL,
+)
+
+# Effort picker order — maps a ComboBox index to a stored effort value.
+_EFFORT_CHOICES = REASONING_EFFORTS
+_EFFORT_KEYS = (
+    "image_gallery.settings.effort_auto",
+    "image_gallery.settings.effort_low",
+    "image_gallery.settings.effort_medium",
+    "image_gallery.settings.effort_high",
+    "image_gallery.settings.effort_none",
+)
+_EFFORT_FALLBACKS = ("Auto", "Low", "Medium", "High", "None")
 
 AI_GROUP = group(
     "image_gallery.settings.ai_title",
@@ -35,6 +50,13 @@ AI_GROUP = group(
     "image_gallery.settings.base_url",
     "image_gallery.settings.api_key",
     "image_gallery.settings.model_name",
+    "image_gallery.settings.ask_max_tokens",
+    "image_gallery.settings.reasoning_effort",
+    "image_gallery.settings.effort_auto",
+    "image_gallery.settings.effort_low",
+    "image_gallery.settings.effort_medium",
+    "image_gallery.settings.effort_high",
+    "image_gallery.settings.effort_none",
     "image_gallery.settings.api_key_warning",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
@@ -147,6 +169,80 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     model_row.addWidget(model_label)
     model_row.addWidget(dialog.gallery_ai_model, 1)
 
+    # Ask AI — answer-token budget (0/empty = auto from the scope size).
+    tokens_row = QHBoxLayout()
+    tokens_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    tokens_row.setSpacing(scaled_px(8))
+    tokens_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.ask_max_tokens") if hasattr(AI_GROUP, "text") else "Answer token budget",
+        parent=dialog,
+    )
+    tokens_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_ask_tokens_label = tokens_label
+    dialog.gallery_ai_ask_tokens = CustomLineEdit(parent=dialog)
+    apply_settings_body(dialog.gallery_ai_ask_tokens)
+    if int(getattr(current, "ask_max_tokens", 0) or 0) > 0:
+        dialog.gallery_ai_ask_tokens.setText(str(current.ask_max_tokens))
+    dialog.gallery_ai_ask_tokens.setPlaceholderText("auto")
+    try:
+        AI_GROUP.tag_member(dialog.gallery_ai_ask_tokens, "image_gallery.settings.ask_max_tokens")
+    except Exception:
+        pass
+    tokens_row.addWidget(tokens_label)
+    tokens_row.addWidget(dialog.gallery_ai_ask_tokens, 1)
+
+    # Ask AI — reasoning effort (auto keeps a mandatory-reasoning model from
+    # spending the whole budget thinking).
+    effort_row = QHBoxLayout()
+    effort_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    effort_row.setSpacing(scaled_px(8))
+    effort_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.reasoning_effort") if hasattr(AI_GROUP, "text") else "Reasoning effort",
+        parent=dialog,
+    )
+    effort_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_effort_label = effort_label
+    dialog.gallery_ai_effort = ComboBox(dialog)
+    _effort_labels = []
+    for _key, _fallback in zip(_EFFORT_KEYS, _EFFORT_FALLBACKS):
+        try:
+            _effort_labels.append(AI_GROUP.text(dialog, _key))
+        except Exception:
+            _effort_labels.append(_fallback)
+    try:
+        dialog.gallery_ai_effort.addItems(_effort_labels)
+    except Exception:
+        for _label in _effort_labels:
+            dialog.gallery_ai_effort.addItem(_label)
+    try:
+        _cur_effort = str(getattr(current, "reasoning_effort", "auto") or "auto").lower()
+        dialog.gallery_ai_effort.setCurrentIndex(
+            _EFFORT_CHOICES.index(_cur_effort) if _cur_effort in _EFFORT_CHOICES else 0
+        )
+    except Exception:
+        pass
+    try:
+        AI_GROUP.tag_member(dialog.gallery_ai_effort, "image_gallery.settings.reasoning_effort")
+    except Exception:
+        pass
+    effort_row.addWidget(effort_label)
+    effort_row.addWidget(dialog.gallery_ai_effort, 1)
+
+    # One label column for the whole group, sized to the longest translated
+    # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
+    try:
+        from PySide6.QtGui import QFontMetrics
+
+        _labels = [url_label, key_label, model_label, tokens_label, effort_label]
+        _need = max(
+            QFontMetrics(lbl.font()).horizontalAdvance(lbl.text()) for lbl in _labels
+        )
+        _col = max(scaled_px(150), _need + scaled_px(10))
+        for _lbl in _labels:
+            _lbl.setFixedWidth(_col)
+    except Exception:
+        pass
+
     # Assemble group rows
     if builder is not None:
         group_widget.add_widget(builder.row(dialog.gallery_ai_enabled))
@@ -154,11 +250,13 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(url_row))
         group_widget.add_widget(builder.row(key_row))
         group_widget.add_widget(builder.row(model_row))
+        group_widget.add_widget(builder.row(tokens_row))
+        group_widget.add_widget(builder.row(effort_row))
         group_widget.add_widget(builder.row(warning))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
-        for lay in (url_row, key_row, model_row):
+        for lay in (url_row, key_row, model_row, tokens_row, effort_row):
             from PySide6.QtWidgets import QWidget
 
             w = QWidget()
@@ -175,11 +273,26 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         except Exception:
             pass
 
+    def _save_ask_tokens(text):
+        raw = str(text).strip()
+        try:
+            value = int(raw) if raw else 0
+        except Exception:
+            value = 0
+        _save_field("ask_max_tokens", max(0, value))
+
     try:
         dialog.gallery_ai_enabled.toggled.connect(lambda v: _save_field("enabled", bool(v)))
         dialog.gallery_ai_base_url.textChanged.connect(lambda t: _save_field("base_url", str(t)))
         dialog.gallery_ai_api_key.textChanged.connect(lambda t: _save_field("api_key", str(t)))
         dialog.gallery_ai_model.textChanged.connect(lambda t: _save_field("model", str(t)))
+        dialog.gallery_ai_ask_tokens.textChanged.connect(_save_ask_tokens)
+        dialog.gallery_ai_effort.currentIndexChanged.connect(
+            lambda i: _save_field(
+                "reasoning_effort",
+                _EFFORT_CHOICES[i] if 0 <= int(i) < len(_EFFORT_CHOICES) else "auto",
+            )
+        )
     except Exception:
         pass
 
@@ -190,11 +303,20 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     # Read payload from dialog widgets
     def _read_payload(_dialog):
         try:
+            tokens_raw = str(_dialog.gallery_ai_ask_tokens.text()).strip()
+            try:
+                tokens = max(0, int(tokens_raw)) if tokens_raw else 0
+            except Exception:
+                tokens = 0
+            idx = int(_dialog.gallery_ai_effort.currentIndex())
+            effort = _EFFORT_CHOICES[idx] if 0 <= idx < len(_EFFORT_CHOICES) else "auto"
             return {
                 "enabled": bool(_dialog.gallery_ai_enabled.isChecked()),
                 "base_url": str(_dialog.gallery_ai_base_url.text()).strip(),
                 "api_key": str(_dialog.gallery_ai_api_key.text()),
                 "model": str(_dialog.gallery_ai_model.text()).strip(),
+                "ask_max_tokens": tokens,
+                "reasoning_effort": effort,
             }
         except Exception:
             return {}
@@ -207,7 +329,14 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         def _seed_payload(src):
             try:
                 cur = store.load()
-                return {"enabled": cur.enabled, "base_url": cur.base_url, "api_key": cur.api_key, "model": cur.model}
+                return {
+                    "enabled": cur.enabled,
+                    "base_url": cur.base_url,
+                    "api_key": cur.api_key,
+                    "model": cur.model,
+                    "ask_max_tokens": cur.ask_max_tokens,
+                    "reasoning_effort": cur.reasoning_effort,
+                }
             except Exception:
                 return {}
 

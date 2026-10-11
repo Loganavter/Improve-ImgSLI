@@ -210,6 +210,9 @@ class GalleryController:
         self._thread_pool = thread_pool or _new_gallery_pool()
         self._context = context
         self._ai_settings_store = AiSettingsStore()
+        # Ask AI (A4): in-session answer cache keyed by
+        # scope-identity + question + backend + model (re-open serves cache).
+        self._ask_cache: dict[str, object] = {}
         # Generation tokens against async races: bumped on every folder switch
         # (open_folder/open_paths). Late triage/artifact/thumbnail/VLM results
         # carrying a stale generation are dropped, never applied to the new
@@ -1660,6 +1663,236 @@ class GalleryController:
             ql = getattr(self.widget, "_quick_look_overlay", None)
             if ql is not None and hasattr(ql, "refresh_analysis"):
                 ql.refresh_analysis(item)
+        except Exception:
+            pass
+
+    # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
+
+    def open_ask_ai(self, scope_kind: str, card, path) -> None:
+        """Entry from the card / selection context menu (scope = selection/card)."""
+        from tabs.image_gallery.services.ask_context import AskScope
+
+        path = Path(path)
+        if scope_kind == "card":
+            scope = AskScope(kind="selection", paths=(path,), label=path.name)
+        else:
+            try:
+                paths = tuple(getattr(self.state, "selected_paths", None) or ())
+            except Exception:
+                paths = ()
+            if not paths:
+                paths = (path,)
+            scope = AskScope(kind="selection", paths=paths, label="Selection")
+        self._open_ask_ai(card, scope)
+
+    def open_ask_ai_for_series(self, index, anchor, member_paths, label) -> None:
+        """Entry from the series header menu (scope = whole series)."""
+        from tabs.image_gallery.services.ask_context import AskScope
+
+        # No series name in the surface/context: the anchor already labels it.
+        scope = AskScope(
+            kind="series",
+            paths=tuple(member_paths or ()),
+            label="",
+        )
+        self._open_ask_ai(anchor, scope)
+
+    def _open_ask_ai(self, anchor, scope) -> None:
+        opener = getattr(self.widget, "open_ask_ai", None)
+        if not callable(opener):
+            return
+        try:
+            default = self._tr("image_gallery.ask_ai.default_prompt", "Summary")
+            texts = {
+                "title": self._tr("image_gallery.ask_ai.title", "Ask AI"),
+                "busy": self._tr("image_gallery.ask_ai.busy", "Thinking…"),
+                "read_badge": self._tr(
+                    "image_gallery.ask_ai.read_badge", "AI read, unverified"
+                ),
+                "error": self._tr(
+                    "image_gallery.ask_ai.error", "AI could not answer."
+                ),
+            }
+        except Exception:
+            default = "Summary"
+            texts = None
+        opener(anchor, scope, default_prompt=default, texts=texts)
+
+    def _ask_cache_key(self, scope, context, question: str, backend: str, model: str) -> str:
+        import hashlib
+        import json
+
+        try:
+            paths = sorted(
+                str(it.get("path", "")) for it in (context.get("items") or [])
+            )
+        except Exception:
+            paths = []
+        ident = {
+            "kind": getattr(scope, "kind", ""),
+            "series": getattr(scope, "series_id", None),
+            "label": getattr(scope, "label", ""),
+            "paths": paths,
+            "mode": (context or {}).get("mode", ""),
+            "question": str(question or "").strip(),
+            "backend": backend,
+            "model": model,
+        }
+        blob = json.dumps(ident, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha1(blob.encode("utf-8")).hexdigest()
+
+    def ask_ai_question(self, scope, question: str) -> None:
+        """Build context, route, and run the backend on a GenericWorker.
+
+        Advisory only: never mutates rank/selection/store. Late answers are
+        dropped by the folder generation guard. Fail-open: a backend error is
+        shown visibly, never replaced by fabricated text.
+        """
+        from tabs.image_gallery.services.ask_context import (
+            build_ask_context,
+            deanonymize_answer,
+        )
+        from tabs.image_gallery.services.ask_router import answer, route_backend
+
+        logger.debug(
+            "[ask-ai] submit scope=%s q=%.80s",
+            getattr(scope, "kind", None),
+            str(question or ""),
+        )
+        try:
+            context = build_ask_context(scope, controller=self)
+            backend = route_backend(question, context)
+        except Exception:
+            logger.debug("ask-ai context build failed", exc_info=True)
+            self._show_ask_ai_error("Could not assemble the ask context.")
+            return
+        logger.debug(
+            "[ask-ai] route backend=%s items=%d", backend, len(context.get("items") or [])
+        )
+
+        settings = self._ai_settings_store.load()
+        if not settings.enabled or not settings.api_key or not settings.model:
+            logger.debug("[ask-ai] not configured (enabled=%s key=%s model=%s)",
+                         settings.enabled, bool(settings.api_key), bool(settings.model))
+            self._show_ask_ai_error(
+                self._tr(
+                    "image_gallery.errors.not_configured",
+                    "Configure the AI API key in Settings first.",
+                )
+            )
+            return
+
+        key = self._ask_cache_key(scope, context, question, backend, settings.model)
+        cached = self._ask_cache.get(key)
+        if cached is not None:
+            logger.debug("[ask-ai] cache hit backend=%s", backend)
+            try:
+                from dataclasses import replace
+
+                cached = replace(cached, cached=True)  # type: ignore[arg-type]
+            except Exception:
+                pass
+            self._show_ask_ai_result(cached)
+            return
+
+        logger.debug(
+            "[ask-ai] worker start backend=%s model=%s", backend, settings.model
+        )
+        self._show_ask_ai_busy()
+        # The model only ever sees opaque img_N labels (see ask_context); map
+        # them back to the real filenames on the way out, off the UI thread.
+        names = context.get("names")
+
+        def _run():
+            result = answer(
+                question,
+                context,
+                backend=backend,
+                base_url=settings.base_url,
+                api_key=settings.api_key,
+                model=settings.model,
+                max_tokens=getattr(settings, "ask_max_tokens", 0),
+                reasoning_effort=getattr(settings, "reasoning_effort", "auto"),
+            )
+            if not getattr(result, "error", None) and names:
+                try:
+                    from dataclasses import replace as _replace
+
+                    result = _replace(
+                        result, text=deanonymize_answer(result.text, names)
+                    )
+                except Exception:
+                    pass
+            return result
+
+        worker = GenericWorker(self._tracked(_run))
+        gen = self._folder_gen
+        worker.signals.result.connect(
+            lambda result, k=key, g=gen: self._on_ask_ai_ready(result, k, g)
+        )
+        worker.signals.error.connect(
+            lambda err, g=gen: self._on_ask_ai_error(err, g)
+        )
+        self._pool_start(worker, None)
+
+    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            logger.debug("[ask-ai] result dropped (stale folder gen)")
+            return  # folder switched — late ask answer dropped
+        error = getattr(result, "error", None)
+        logger.debug(
+            "[ask-ai] ready backend=%s err=%s text_chars=%d",
+            getattr(result, "backend", None),
+            error,
+            len(getattr(result, "text", "") or ""),
+        )
+        if error:
+            self._show_ask_ai_error(self._ask_error_text(error))
+            return
+        try:
+            self._ask_cache[key] = result
+        except Exception:
+            pass
+        self._show_ask_ai_result(result)
+
+    def _on_ask_ai_error(self, error_info, gen: int | None = None) -> None:
+        if gen is not None and not self._is_current_folder_gen(gen):
+            return
+        logger.debug("[ask-ai] worker error: %r", error_info, exc_info=True)
+        message = None
+        try:
+            _exctype, value, _tb = error_info
+            message = str(value) if value is not None else None
+        except Exception:
+            message = str(error_info)
+        self._show_ask_ai_error(self._ask_error_text(message))
+
+    def _ask_error_text(self, error) -> str:
+        text = str(error) if error else ""
+        if "routing backend" in text:
+            return self._tr(
+                "image_gallery.ask_ai.routing_unavailable",
+                "Routing is not enabled yet.",
+            )
+        return text or self._tr(
+            "image_gallery.ask_ai.error", "AI could not answer."
+        )
+
+    def _show_ask_ai_busy(self) -> None:
+        try:
+            self.widget.show_ask_ai_busy()
+        except Exception:
+            pass
+
+    def _show_ask_ai_result(self, result) -> None:
+        try:
+            self.widget.show_ask_ai_result(result)
+        except Exception:
+            pass
+
+    def _show_ask_ai_error(self, message: str) -> None:
+        try:
+            self.widget.show_ask_ai_error(message)
         except Exception:
             pass
 

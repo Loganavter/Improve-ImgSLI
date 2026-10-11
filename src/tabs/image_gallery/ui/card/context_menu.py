@@ -187,6 +187,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     on_carry=None,
     on_analyze=None,
     on_find_similar=None,
+    on_ask_ai=None,
     translate=None,
 ):
     """Popup toolkit ``ContextMenu`` for gallery card at *global_pos*.
@@ -253,6 +254,18 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             except Exception:
                 pass
 
+        def _do_ask_ai(scope_kind: str) -> None:
+            try:
+                if callable(on_ask_ai):
+                    on_ask_ai(scope_kind)
+                    return
+                fn = getattr(owner, "open_ask_ai", None)
+                if callable(fn):
+                    fn(scope_kind, card, path)
+            except Exception:
+                pass
+
+        ask_ai_label = _t(translate, "image_gallery.ask_ai.action", "AI…")
         entries: list = []
         if has_selection:
             sel_actions = [
@@ -264,6 +277,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.selection.find_similar",
                     _t(translate, "image_gallery.selection.find_similar", "Find similar"),
+                ),
+                ContextMenuAction(
+                    "gallery.selection.ask_ai",
+                    ask_ai_label,
                 ),
             ]
             entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
@@ -277,16 +294,23 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             if _targets_all_rejected(owner, _menu_targets)
             else "✕ Reject"
         )
-        per_card = [
-            ContextMenuAction(
-                "gallery.make_best",
-                "★ Make best",
-            ),
-            ContextMenuAction(
-                "gallery.reject",
-                _reject_label,
-            ),
-        ]
+        per_card: list = []
+        # Ask AI on the clicked card alone — only when there is no selection,
+        # so it never competes with the selection-scoped entry above.
+        if not has_selection:
+            per_card.append(ContextMenuAction("gallery.ask_ai", ask_ai_label))
+        per_card.extend(
+            [
+                ContextMenuAction(
+                    "gallery.make_best",
+                    "★ Make best",
+                ),
+                ContextMenuAction(
+                    "gallery.reject",
+                    _reject_label,
+                ),
+            ]
+        )
         per_card.append(
             ContextMenuAction(
                 "gallery.remove",
@@ -333,6 +357,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     _do_analyze()
                 elif action_id == "gallery.selection.find_similar":
                     _do_find_similar()
+                elif action_id == "gallery.selection.ask_ai":
+                    _do_ask_ai("selection")
+                elif action_id == "gallery.ask_ai":
+                    _do_ask_ai("card")
                 elif action_id == "gallery.make_best":
                     _ctx_make_best(owner, path)
                 elif action_id == "gallery.reject":

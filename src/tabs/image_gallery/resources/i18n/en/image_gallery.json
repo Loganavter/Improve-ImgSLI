@@ -13,6 +13,13 @@
       "base_url": "API base URL",
       "api_key": "API key",
       "model_name": "Model name",
+      "ask_max_tokens": "Answer token budget",
+      "reasoning_effort": "Reasoning effort",
+      "effort_auto": "Auto",
+      "effort_low": "Low",
+      "effort_medium": "Medium",
+      "effort_high": "High",
+      "effort_none": "None",
       "api_key_warning": "Stored unencrypted on this device."
     },
     "errors": {
@@ -38,6 +45,15 @@
       "make_best": "★ Make best",
       "reject": "✕ Reject",
       "compare": "⇄ Compare"
+    },
+    "ask_ai": {
+      "action": "AI…",
+      "title": "Ask AI",
+      "default_prompt": "Summary",
+      "busy": "Thinking…",
+      "read_badge": "AI read, unverified",
+      "error": "AI could not answer.",
+      "routing_unavailable": "Routing is not enabled yet."
     },
     "sort_by": "Sort by",
     "view": "View",
