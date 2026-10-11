@@ -165,3 +165,33 @@ def test_on_domain_changed_normalizes_and_mirrors(qapp) -> None:
     ImageGalleryWidget._on_domain_changed(fake, "bogus")
     assert fake._judgment_domain == "algorithms"
     assert state.judgment_domain == "algorithms"
+
+
+def test_on_domain_changed_calls_controller_activate(qapp) -> None:
+    calls: list[str] = []
+    fake = SimpleNamespace(
+        _controller=SimpleNamespace(activate_judgment_domain=lambda d: calls.append(d))
+    )
+    fake._judgment_domain = "algorithms"
+    ImageGalleryWidget._on_domain_changed(fake, "ai")
+    assert calls == ["ai"]
+
+
+def test_run_ai_for_visible_only_visible_unanalyzed(qapp) -> None:
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.models import AnalysisStatus
+
+    vis = GalleryItem(path=Path("/g/vis.png"), mtime_ns=1)
+    off = GalleryItem(path=Path("/g/off.png"), mtime_ns=1)
+    done = GalleryItem(
+        path=Path("/g/done.png"), mtime_ns=1, analysis_status=AnalysisStatus.DONE
+    )
+    analyzed: list[str] = []
+    fake = SimpleNamespace(
+        widget=SimpleNamespace(visible_paths=lambda: [Path("/g/vis.png"), Path("/g/done.png")]),
+        state=SimpleNamespace(items=[vis, off, done]),
+        analyze_item=lambda it: analyzed.append(it.path.name),
+        _AI_VISIBLE_CAP=12,
+    )
+    GalleryController._run_ai_for_visible(fake)
+    assert analyzed == ["vis.png"]

@@ -755,9 +755,18 @@ class ImageGalleryWidget(QWidget):
             ctrl = getattr(self, "_controller", None) or getattr(
                 self, "_attached_controller", None
             )
-            state = getattr(ctrl, "state", None)
-            if state is not None:
-                state.judgment_domain = dom
+        except Exception:
+            ctrl = None
+        try:
+            activate = getattr(ctrl, "activate_judgment_domain", None)
+            if callable(activate):
+                # The switch's real effect: lazily analyze the visible items
+                # (or show the not-configured error on the cards).
+                activate(dom)
+            else:
+                state = getattr(ctrl, "state", None)
+                if state is not None:
+                    state.judgment_domain = dom
         except Exception:
             pass
         try:

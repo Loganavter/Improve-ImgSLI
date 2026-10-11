@@ -1527,6 +1527,71 @@ class GalleryController:
         except Exception:
             pass
 
+    #: Lazy-AI cap: the domain switch analyzes only the VISIBLE items, bounded
+    #: so flipping to AI never turns into a whole-folder API flood.
+    _AI_VISIBLE_CAP = 12
+
+    def activate_judgment_domain(self, domain: str) -> None:
+        """Apply the toolbar domain switch (plan-gallery-two-domain-axes).
+
+        Switching to ``ai`` is the switch's actual effect: it lazily analyzes
+        the **visible** items (cache-first, in-flight skipped, capped). Not
+        configured / no key degrades to the existing per-item error on the cards
+        — the control always does something visible, never a silent no-op.
+        Switching back to ``algorithms`` only flips the report domain; it never
+        cancels in-flight work.
+        """
+        try:
+            from tabs.image_gallery.models import JUDGMENT_DOMAINS
+
+            dom = str(domain or "").strip().lower()
+            if dom not in tuple(JUDGMENT_DOMAINS):
+                dom = "algorithms"
+        except Exception:
+            dom = "algorithms"
+        try:
+            self.state.judgment_domain = dom
+        except Exception:
+            pass
+        if dom != "ai":
+            return
+        self._run_ai_for_visible()
+
+    def _run_ai_for_visible(self) -> None:
+        """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
+        try:
+            vis = getattr(self.widget, "visible_paths", None)
+            paths = vis() if callable(vis) else None
+        except Exception:
+            paths = None
+        try:
+            keys = {str(p) for p in (paths or [])}
+        except Exception:
+            keys = set()
+        picked: list = []
+        try:
+            items = list(getattr(self.state, "items", None) or [])
+        except Exception:
+            items = []
+        for it in items:
+            try:
+                if keys and str(it.path) not in keys:
+                    continue
+                status = getattr(it, "analysis_status", None)
+                if status in (AnalysisStatus.DONE, AnalysisStatus.PENDING):
+                    continue
+            except Exception:
+                continue
+            picked.append(it)
+        if not keys:
+            # Viewport not laid out yet — bound instead of flooding.
+            picked = picked[: self._AI_VISIBLE_CAP]
+        for it in picked[: self._AI_VISIBLE_CAP]:
+            try:
+                self.analyze_item(it)
+            except Exception:
+                continue
+
     def _begin_analysis(self, item: GalleryItem) -> None:
         settings = self._ai_settings_store.load()
         if not settings.enabled or not settings.api_key or not settings.model:
